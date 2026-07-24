@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.231.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.232.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,12 +457,22 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.232.0] - 2026-07-24</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Comment replies are now composed and edited INLINE in the sidebar thread card (a Word-style experience) instead of in a floating popup. Clicking Reply opens an EMPTY editor inside the thread - it is never prepopulated with the text of the comment being replied to, and there is no &quot;reply to:&quot; quote header; the reply is simply appended to the thread. Editing an existing reply edits it in place, prefilled with that reply&#x27;s own text. (CMH-THREAD-01, CMH-THREAD-05, CMH-THREAD-06, CMH-THREAD-07)</li>
+              <li>The first reply made without a reviewer name set now reveals the identity editor so the reply can be attributed (a non-blocking prompt); the reply still saves unattributed if declined. (CMH-THREAD-08)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.231.0] - 2026-07-24</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>The open-comment count badge (toolbar and sidebar) now includes pending note and checklist changes, not just comment threads. A reviewer who only edited an editable note or ticked a checklist item previously saw the count stay at 0, as if nothing had been captured; now each changed note (one per note) and each changed checklist (one per list) is counted, so the badge reflects that there is something to hand back. Widget/layout state changes remain a non-comment signal and are still not counted (CMH-STATE-01 unchanged). (CMH-NOTE-04, CMH-CHECK-06)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.230.0] - 2026-07-24</h3></div>
             <div class="group-label">Changed</div>
@@ -470,8 +480,6 @@
               <li>The Manage storage dialog now shows storage consumption ONLY as a four-slice pie chart with a short bullet legend beside it, replacing both the previous prose usage summary and the &quot;About X used across N documents&quot; total line. The slices are This document, Other commentable-html documents (only other real documents), Other (all remaining same-origin data - non-commentable-html apps plus commentable-html&#x27;s shared registry index and preferences), and Free (remaining headroom in the assumed ~5 MB budget); the four slices sum to the whole disc. Each legend bullet names its slice with a human-readable size and percentage (the accessible text alternative), and the pie SVG carries a brief role/aria-label plus a per-slice title as a non-color cue. (CMH-STORE-13)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.228.0] - 2026-07-24</h3></div>
             <div class="group-label">Fixed</div>
@@ -500,15 +508,7 @@
               <li>Markdown export: a <code>&lt;blockquote&gt;</code> now recursively serializes its block children (paragraphs, lists, code fences, nested blockquotes) so every output line is prefixed with <code>&gt; </code>, preserving the full GFM structure. Previously <code>_mdCollapse(_mdInlineText(el))</code> flattened all block children to a single line, losing the nested structure and changing the document&#x27;s meaning. (CMH-MD-08)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.224.0] - 2026-07-23</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Markdown review-note exports now carry an untrusted-data preamble and non-forgeable dynamic fences, and strip bidi/invisible formatting controls from note text.</li>
-              <li>Portable, Offline, and Plain HTML exports strip authoring session-id and agent provenance by default; an explicit retain option preserves it when deliberately requested.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">189 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">190 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

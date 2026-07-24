@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.232.0] - 2026-07-24
+
+### Changed
+
+- Comment replies are now composed and edited INLINE in the sidebar thread card (a Word-style
+  experience) instead of in a floating popup. Clicking Reply opens an EMPTY editor inside the thread -
+  it is never prepopulated with the text of the comment being replied to, and there is no "reply to:"
+  quote header; the reply is simply appended to the thread. Editing an existing reply edits it in
+  place, prefilled with that reply's own text. (CMH-THREAD-01, CMH-THREAD-05, CMH-THREAD-06,
+  CMH-THREAD-07)
+- The first reply made without a reviewer name set now reveals the identity editor so the reply can
+  be attributed (a non-blocking prompt); the reply still saves unattributed if declined.
+  (CMH-THREAD-08)
+
 ## [1.231.0] - 2026-07-24
 
 ### Changed

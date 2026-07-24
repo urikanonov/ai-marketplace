@@ -411,11 +411,11 @@ async function replyToFirstComment(page, text) {
   const btn = page.locator(".cm-card .cm-reply-btn").first();
   await btn.waitFor({ state: "visible", timeout: 5000 });
   await btn.click();
-  const composer = page.locator(".cm-composer").first();
+  const composer = page.locator(".cm-reply-compose").first();
   await composer.waitFor({ state: "visible", timeout: 5000 });
-  await composer.locator("textarea").first().fill(text);
-  await composer.locator("button:has-text('Comment'), button:has-text('Save'), button.cm-save").first().click();
-  await expectNoComposer(page);
+  await composer.locator("textarea.cm-reply-input").first().fill(text);
+  await composer.locator("button.cm-reply-save").first().click();
+  await page.locator(".cm-reply-compose").first().waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
   await waitForStableLayout(page);
 }
 

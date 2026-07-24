@@ -6,6 +6,7 @@
 .cm-sidebar button:focus-visible,
 .cm-composer button:focus-visible,
 .cm-composer textarea:focus-visible,
+.cm-reply-input:focus-visible,
 .cm-menu button:focus-visible,
 .cm-mermaid-add:focus-visible,
 .cm-diff-add:focus-visible,
