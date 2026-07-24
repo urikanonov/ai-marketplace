@@ -30,6 +30,13 @@ _JS_TITLE_RE = re.compile(
     r'(?:"((?:\\.|[^"\\])*)"|\'((?:\\.|[^\'\\])*)\'|`((?:\\.|[^`\\])*)`)',
     re.DOTALL,
 )
+# Test-only titles: `test(...)` / `it(...)` (with modifiers) but NOT `describe(...)` suite names,
+# so the strict "cite an exact TEST" gate is not satisfied by a suite/group title.
+_JS_TEST_ONLY_RE = re.compile(
+    r'(?:test|it)(?:\.(?:only|skip|fixme|serial|parallel))*\s*\(\s*'
+    r'(?:"((?:\\.|[^"\\])*)"|\'((?:\\.|[^\'\\])*)\'|`((?:\\.|[^`\\])*)`)',
+    re.DOTALL,
+)
 
 
 @dataclass(frozen=True)
@@ -107,7 +114,72 @@ def _file_has_name(path: Path, name: str) -> bool:
     return False
 
 
-def _js_test_titles(text: str) -> set[str]:
+def _python_is_exact_test(path: Path, name: str) -> bool:
+    """True when name is a test method (`test_*`, bare or `Class.method`) or a test-case CLASS in
+    path. A non-test helper/function (e.g. `main`, `setUp`) or a non-test helper class does NOT
+    qualify; a class counts only when it subclasses `TestCase` or is named `*Tests`/`*Case`."""
+    text = _read(path)
+    try:
+        tree = ast.parse(text, filename=str(path))
+    except SyntaxError:
+        return False
+    classes: dict[str, set[str]] = {}
+    test_classes: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            classes[node.name] = {
+                child.name
+                for child in node.body
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
+            if _TEST_CLASS_NAME_RE.search(node.name) or _has_testcase_base(node):
+                test_classes.add(node.name)
+    if "." in name:
+        class_name, method_name = name.split(".", 1)
+        return method_name.startswith("test") and method_name in classes.get(class_name, set())
+    if name in test_classes:
+        return True  # a TestCase class names a group of tests
+    return name.startswith("test") and any(name in methods for methods in classes.values())
+
+
+_TEST_CLASS_NAME_RE = re.compile(r"(?:Tests?|Case)$")
+
+
+def _has_testcase_base(node: ast.ClassDef) -> bool:
+    for base in node.bases:
+        label = getattr(base, "attr", None) or getattr(base, "id", None)
+        if label and "TestCase" in label:
+            return True
+    return False
+
+
+def _is_exact_test_name(path: Path, name: str) -> bool:
+    """True when name is a verbatim JS TEST title (`test(...)`/`it(...)`, not a `describe(...)`
+    suite) or a Python test method/test-case class in path. A bare feature id, a suite/group title,
+    or a non-test helper does NOT count - the strict gate wants an exact TEST, per issue #629."""
+    if _FEATURE_ID_RE.fullmatch(name.strip()):
+        return False
+    if path.suffix in {".js", ".mjs"}:
+        return name in _js_test_titles(_read(path), _JS_TEST_ONLY_RE)
+    if path.suffix == ".py":
+        return _python_is_exact_test(path, name)
+    return False
+
+
+def _clause_cites_exact_test_name(segment: str, test_path: Path) -> bool:
+    """Whether any backticked token in an automated coverage clause is an exact test title/method.
+    Catches a single-token JS title (no whitespace) that the _looks_like_test_reference heuristic
+    used by _referenced_names would otherwise miss."""
+    for match in _QUOTED_RE.finditer(segment):
+        token = match.group(1)
+        if _TEST_PATH_RE.fullmatch("`%s`" % token):
+            continue
+        if _is_exact_test_name(test_path, token):
+            return True
+    return False
+
+
+def _js_test_titles(text: str, pattern: re.Pattern = _JS_TITLE_RE) -> set[str]:
     titles: set[str] = set()
     i = 0
     quote = ""
@@ -154,7 +226,7 @@ def _js_test_titles(text: str) -> set[str]:
             line_start = False
             continue
         if line_start:
-            match = _JS_TITLE_RE.match(text, i)
+            match = pattern.match(text, i)
             if match:
                 raw = next(group for group in match.groups() if group is not None)
                 titles.add(_decode_js_string(raw))
@@ -308,13 +380,27 @@ def check_spec(spec_path: Path, base_dir: Path) -> list[SpecIssue]:
                 continue
             next_ref = matches[idx + 1].start() if idx + 1 < len(matches) else len(coverage)
             end = _clause_end(coverage, match.end(), next_ref)
-            for name in _referenced_names(coverage[match.end():end], test_path):
-                if not _file_has_name(test_path, name):
-                    issues.append(SpecIssue(
-                        spec_path,
-                        line_no,
-                        "`%s` not found in `%s`" % (name, rel),
-                    ))
+            names = _referenced_names(coverage[match.end():end], test_path)
+            segment = coverage[match.end():end]
+            missing = [name for name in names if not _file_has_name(test_path, name)]
+            # Strict rule (issue #629): an automated test-file clause must cite at least one EXACT
+            # test - a JS test/it title or a Python test method/test-case class. A bare feature id,
+            # a describe suite title, a non-test helper, or pure prose does not satisfy it. Only flag
+            # this when every cited name resolves, so a mistyped name still surfaces as "not found"
+            # (its own, more specific error) rather than a redundant "no exact test name cited".
+            if not missing and not _clause_cites_exact_test_name(segment, test_path):
+                issues.append(SpecIssue(
+                    spec_path,
+                    line_no,
+                    "no exact test name cited for `%s` (name at least one exact test title or "
+                    "Python test method)" % rel,
+                ))
+            for name in missing:
+                issues.append(SpecIssue(
+                    spec_path,
+                    line_no,
+                    "`%s` not found in `%s`" % (name, rel),
+                ))
     return issues
 
 
