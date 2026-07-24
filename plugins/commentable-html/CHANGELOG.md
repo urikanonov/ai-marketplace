@@ -4,6 +4,18 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.234.0] - 2026-07-24
+
+### Added
+
+- Rendered mermaid diagrams are now keyboard-commentable, mirroring the image keyboard path: focusing a
+  diagram reveals the whole-diagram "Comment on diagram" button and Enter opens the whole-diagram
+  composer, so a keyboard-only user never has to tab to the disjointed floating button. Every diagram
+  gets exactly one comment tab stop - a standalone host, or the card inside a `.cmh-diagram-gallery`
+  (fitting or overflowing, desktop or mobile). A bubbled Enter/Space from a descendant control (a
+  `figcaption` link/button) keeps its native action, and on an overflowing gallery card Space and the
+  arrow keys are left to native horizontal scrolling (WCAG 2.1.1). (CMH-MMD-11)
+
 ## [1.233.0] - 2026-07-24
 
 ### Added

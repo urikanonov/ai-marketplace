@@ -219,16 +219,16 @@ function updateMermaidWidthClass(host) {
   else setTimeout(syncFade, 0);
 }
 // A .cmh-diagram-gallery card whose diagram is WIDER than the card overflows into a horizontal scroll
-// (overflow-x:auto). A bare overflow container is not keyboard-focusable in every browser, so make an
-// OVERFLOWING card keyboard-focusable (WCAG 2.1.1) so a sighted keyboard-only user can scroll to the
-// clipped content. Only a card that actually overflows gets a tab stop - a card that fits, and the
-// frameless mobile single-column flow, do not - and the state is re-synced on resize/ResizeObserver so
-// it clears when a widened viewport lets the card fit. This sets ONLY a11y attributes, never a size.
-// Ownership is explicit: we adopt a card ONLY when the author set none of tabindex/role/aria-label, we
-// mark it with `data-cmh-scroll-a11y` (which survives export so a reloaded card is re-adopted),
-// idempotently re-assert the trio (healing a sanitizer that stripped tabindex/role but kept the
-// marker), and remove ONLY the values we set. `host` is a mermaid host; the actual gallery CARD is
-// resolved with closest over the exact card selectors, so a mermaid host in a figure marks the figure.
+// (overflow-x:auto) - a gallery card's SCROLL affordance (WCAG 2.1.1): when a diagram overflows its framed card into the
+// horizontal scroll, tell an assistive-tech user it scrolls. This is layered ON TOP of the comment tab
+// stop that attachMermaidKeyboardCommenting always gives every gallery card: that helper owns
+// `tabindex`, the accessible NAME (aria-label), and `data-cmh-comment-a11y`; THIS helper owns only the
+// scroll `role` (for a bare pre/div) and the scroll hint as `aria-description` (NOT aria-label, so it
+// never clobbers the comment name), marked with `data-cmh-scroll-a11y`. Below the mobile breakpoint the
+// gallery is a frameless full-height flow (a wide diagram uses the layer's own horizontal scroll,
+// CMH-RESP-01/09), so a mobile card is not a scroll container - the else-branch clears ONLY the scroll
+// attributes there and on a desktop->mobile resize, leaving the comment tab stop intact. `host` is a
+// mermaid host; the actual gallery CARD is resolved with closest over the exact card selectors.
 var GALLERY_SCROLL_LABEL = "Scrollable diagram - use the arrow keys to scroll";
 var GALLERY_CARD_SEL = ".cmh-diagram-gallery > pre.mermaid, .cmh-diagram-gallery > div.mermaid, .cmh-diagram-gallery > figure";
 function markGalleryCardScrollable(host) {
@@ -236,35 +236,27 @@ function markGalleryCardScrollable(host) {
   if (!card) return;
   // Only the framed (>=481px) gallery is a bounded scroll card; below the mobile breakpoint the helper
   // is a frameless full-height flow (a wide diagram uses the layer's own horizontal scroll,
-  // CMH-RESP-01/09), so a mobile card gets no tab stop. A desktop->mobile resize makes `overflows`
-  // false, so the else-branch clears any marking we added.
+  // CMH-RESP-01/09), so a mobile card gets no scroll marking. A desktop->mobile resize makes `overflows`
+  // false, so the else-branch clears any scroll marking we added.
   const framed = typeof window.matchMedia !== "function" || window.matchMedia("screen and (min-width: 481px)").matches;
   // A gallery card only ever scrolls HORIZONTALLY (overflow-x:auto; overflow-y:hidden, and the svg is
-  // pinned to a fixed 15rem height), so overflow == the diagram being wider than the card. (Checking
-  // scrollHeight too would be dead under this design and could mislead a future regression that added a
-  // card height into marking a card focusable for a direction it cannot scroll.)
+  // pinned to a fixed 15rem height), so overflow == the diagram being wider than the card.
   const overflows = framed && card.scrollWidth > card.clientWidth + 1;
   const owned = card.getAttribute("data-cmh-scroll-a11y") === "1";
+  const isFigure = card.tagName === "FIGURE";
   if (overflows) {
-    if (!owned && (card.hasAttribute("tabindex") || card.hasAttribute("role") || card.hasAttribute("aria-label") || card.hasAttribute("aria-description"))) return;
-    if (!card.hasAttribute("tabindex")) card.setAttribute("tabindex", "0");
-    const isFigure = card.tagName === "FIGURE";
-    // A <figure> is already a figure landmark; only a pre/div card needs an explicit role. Use `group`
-    // (a scrollable group of diagram content) rather than a spurious landmark.
+    // Respect an author who set their own scroll role/description; tabindex and the accessible name are
+    // owned by the comment helper, so we never inspect or touch them here.
+    if (!owned && ((!isFigure && card.hasAttribute("role")) || card.hasAttribute("aria-description"))) return;
+    // A <figure> is already a figure landmark; only a pre/div card needs an explicit `group` role.
     if (!isFigure && !card.hasAttribute("role")) card.setAttribute("role", "group");
-    // The scroll hint: use aria-label when the card has no other name; a captioned <figure> is already
-    // named by its <figcaption>, so attach the hint as aria-description (progressive - ignored by a
-    // screen reader that does not support it) instead of clobbering the caption name.
-    if (!card.hasAttribute("aria-label") && !card.querySelector("figcaption")) {
-      card.setAttribute("aria-label", GALLERY_SCROLL_LABEL);
-    } else if (isFigure && card.querySelector("figcaption") && !card.hasAttribute("aria-description")) {
-      card.setAttribute("aria-description", GALLERY_SCROLL_LABEL);
-    }
+    // The scroll hint always rides aria-description so it never clobbers the comment name (aria-label).
+    if (!card.hasAttribute("aria-description")) card.setAttribute("aria-description", GALLERY_SCROLL_LABEL);
     card.setAttribute("data-cmh-scroll-a11y", "1");
   } else if (owned) {
-    if (card.getAttribute("tabindex") === "0") card.removeAttribute("tabindex");
+    // Clear ONLY the scroll attributes we set; the comment tab stop (tabindex + aria-label +
+    // data-cmh-comment-a11y) stays, so every gallery diagram remains keyboard-commentable on mobile too.
     if (card.getAttribute("role") === "group") card.removeAttribute("role");
-    if (card.getAttribute("aria-label") === GALLERY_SCROLL_LABEL) card.removeAttribute("aria-label");
     if (card.getAttribute("aria-description") === GALLERY_SCROLL_LABEL) card.removeAttribute("aria-description");
     card.removeAttribute("data-cmh-scroll-a11y");
   }
@@ -554,9 +546,72 @@ function scheduleHideMermaidAdd() {
     if (!mermaidAddBtn.matches(":hover")) { mermaidAddBtn.hidden = true; mermaidActiveNode = null; pendingMermaid = null; clearActiveAdd(mermaidAddBtn); }
   }, 220);
 }
+// Keyboard commenting a11y: a rendered diagram is a commentable target, so - like an image
+// (30-images.js) - it must be a keyboard focus target whose focus reveals the whole-diagram
+// "Comment on diagram" button and whose Enter opens the composer, so a keyboard-only user never has to
+// tab to the floating (end-of-DOM) add button. `el` is the focus TARGET (a standalone host, or a
+// gallery CARD); `host` is the mermaid host used for the diagram title/index. This owns tabindex, the
+// accessible NAME, and `data-cmh-comment-a11y` (the focus-ring marker) - the scroll helper
+// (markGalleryCardScrollable) owns the separate scroll role/aria-description and never touches these.
+function makeMermaidCommentFocusable(el, host) {
+  // Exactly one comment tab stop per diagram; setting tabindex is idempotent, so it never creates a
+  // second focusable element even if the scroll helper already ran.
+  if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "0");
+  el.setAttribute("data-cmh-comment-a11y", "1");
+  // Never clobber an author-provided accessible name.
+  if (el.hasAttribute("aria-label") || el.hasAttribute("aria-labelledby")) return;
+  // A <figure> whose <figcaption> is a DESCENDANT (a gallery figure card is the focus target) is
+  // already named by that caption - leave it as the name and add no aria-label.
+  if (el.querySelector && el.querySelector(":scope > figcaption")) return;
+  // A pre/div host inside a <figure> has the caption as a SIBLING (host.querySelector misses it), so
+  // borrow the caption text as the host's accessible name and keep the caption as the single source.
+  const fig = el.closest && el.closest("figure");
+  const sibCaption = fig && fig.querySelector(":scope > figcaption");
+  const capText = sibCaption && (sibCaption.textContent || "").trim().replace(/\s+/g, " ");
+  if (capText) { el.setAttribute("aria-label", capText); return; }
+  el.setAttribute("aria-label", mermaidDiagramLabel(host) + " - press Enter to comment");
+}
+// Wire focus/blur/keydown so a focused diagram reveals the whole-diagram button and Enter opens the
+// composer. The focus TARGET is the standalone host, but for a gallery diagram it is the CARD
+// (figure/pre/div) - the element the scroll-a11y helper (markGalleryCardScrollable, CMH-CONTENT-19)
+// may also mark - so a keyboard user gets ONE sane tab stop, not a disjointed host+float pair. EVERY
+// rendered diagram gets a comment tab stop here, gallery or not, fitting or overflowing, desktop or
+// mobile (issue #638: keyboard-commentable like an image) - focusability is NOT delegated to the
+// scroll helper, which only ever adopts an OVERFLOWING framed card.
+function attachMermaidKeyboardCommenting(host) {
+  const galleryCard = host.closest && host.closest(GALLERY_CARD_SEL);
+  const target = galleryCard || host;
+  if (target._cmKbdCommentAttached) return;
+  target._cmKbdCommentAttached = true;
+  makeMermaidCommentFocusable(target, host);
+  target.addEventListener("focus", () => { mermaidActiveNode = host; showMermaidWholeFor(host); });
+  target.addEventListener("blur", scheduleHideMermaidAdd);
+  target.addEventListener("keydown", (e) => {
+    // Only the tab stop ITSELF activates: a bubbled Enter/Space from a descendant control (e.g. a link
+    // or button inside a <figcaption>) must keep its native action, not open the diagram composer.
+    if (e.target !== target) return;
+    const isEnter = e.key === "Enter";
+    const isSpace = e.key === " ";
+    if (!isEnter && !isSpace) return;
+    // On an OVERFLOWING (horizontally scrollable) gallery card, leave Space (and the arrow keys) to
+    // native scrolling so a keyboard user can reach the clipped diagram (WCAG 2.1.1); Enter is the
+    // universal activator. A fitting card / standalone host keeps Space-to-comment (like the image path).
+    if (isSpace && target.getAttribute("data-cmh-scroll-a11y") === "1") return;
+    e.preventDefault();
+    pendingMermaid = null;
+    mermaidAddBtn.hidden = true;
+    mermaidActiveNode = null;
+    openMermaidComposer({
+      diagramIndex: parseInt(host.dataset.cmMermaidIndex, 10) || 0,
+      nodeKey: "__diagram__",
+      nodeLabel: mermaidDiagramLabel(host),
+    });
+  });
+}
 function attachMermaidHostHandlers(host) {
   if (host._cmAttached) return;
   host._cmAttached = true;
+  attachMermaidKeyboardCommenting(host);
   host.addEventListener("mousemove", (e) => {
     const node = e.target.closest && e.target.closest(MERMAID_NODE_SEL);
     if (node && host.contains(node)) {
@@ -600,7 +655,11 @@ function attachMermaidHostHandlers(host) {
 mermaidAddBtn.addEventListener("mouseenter", () => {
   if (mermaidAddHideTimer) { clearTimeout(mermaidAddHideTimer); mermaidAddHideTimer = null; }
 });
+mermaidAddBtn.addEventListener("focus", () => {
+  if (mermaidAddHideTimer) { clearTimeout(mermaidAddHideTimer); mermaidAddHideTimer = null; }
+});
 mermaidAddBtn.addEventListener("mouseleave", scheduleHideMermaidAdd);
+mermaidAddBtn.addEventListener("blur", scheduleHideMermaidAdd);
 mermaidAddBtn.addEventListener("click", () => {
   if (!pendingMermaid) return;
   const info = pendingMermaid;

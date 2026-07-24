@@ -946,6 +946,15 @@ h5:focus-within > .cmh-review-unreviewed, h6:focus-within > .cmh-review-unreview
 .cm-mermaid-hl { filter: drop-shadow(0 0 4px var(--cp-accent)); }
 /* Whole-diagram highlight: outline the host box (the node stroke rules don't apply). */
 .cm-mermaid-host.cm-mermaid-hl { outline: 2px solid var(--cp-accent); outline-offset: 4px; border-radius: 6px; }
+/* CMH-MMD-11: every rendered diagram is keyboard-focusable for commenting (attachMermaidKeyboardCommenting
+   adds tabindex + data-cmh-comment-a11y) so a keyboard user can reveal the whole-diagram button and press
+   Enter to comment. Give it a visible, themed focus ring (WCAG 2.4.7); the browser default outline is
+   low-contrast on the soft surface. This covers a standalone host AND a gallery card (the figure/pre/div
+   focus target), whether or not the card also carries the scroll-a11y ring. */
+#commentRoot .cm-mermaid-host[data-cmh-comment-a11y="1"]:focus-visible,
+#commentRoot .cmh-diagram-gallery > [data-cmh-comment-a11y="1"]:focus-visible {
+  outline: 2px solid var(--cp-accent); outline-offset: 2px; border-radius: 6px;
+}
 /* Gantt/sequence labels are SVG <text> with no child shape; tint the text itself. */
 text.cm-mermaid-hl, .cm-mermaid-hl > text { fill: var(--cp-accent) !important; font-weight: 700; }
 /* CMH-MMD-10: a NARROW report diagram (natural width well under the content column) grows toward the

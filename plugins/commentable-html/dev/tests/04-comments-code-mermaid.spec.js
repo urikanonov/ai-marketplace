@@ -132,6 +132,63 @@ test.describe("mermaid node comments (local vendored mermaid)", () => {
       if (dir) fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test("CMH-MMD-11: a rendered mermaid diagram is keyboard-commentable (focus reveals the whole-diagram button, Enter composes)", async ({ page }) => {
+    const server = await startStaticServer(SKILL);
+    try {
+      await routeMermaidLocal(page);
+      await installClipboardCapture(page);
+      await page.goto(server.url + "/dist/PORTABLE.html?mermaid=1");
+      await ready(page);
+
+      const host = page.locator("#commentRoot .cm-mermaid-host").first();
+      await expect(host.locator("svg g.node").first()).toBeVisible({ timeout: 20000 });
+
+      // Like an image (CMH-IMG), a rendered diagram host is a keyboard focus target: it carries a tab
+      // stop and focusing it reveals the WHOLE-diagram "Comment on diagram" button - no hover, and no
+      // tabbing to the floating (end-of-DOM) add button.
+      await expect(host).toHaveAttribute("tabindex", "0");
+      // A standalone host owns its comment tab stop: the focus-ring marker and a non-empty accessible
+      // name (so a screen-reader user hears more than an unlabeled focus stop).
+      await expect(host).toHaveAttribute("data-cmh-comment-a11y", "1");
+      const hostLabel = await host.getAttribute("aria-label");
+      expect((hostLabel || "").trim().length, "standalone host has a non-empty accessible name").toBeGreaterThan(0);
+      await host.focus();
+      const btn = page.locator("#mermaidAddBtn");
+      await expect(btn).toBeVisible();
+      await expect(btn).toHaveText(/diagram/i);
+
+      // The floating add button keeps itself visible on focus (tabbing onto it must not immediately
+      // hide it via the host's blur), so a keyboard user can actually reach and press it.
+      await btn.focus();
+      await expect(btn).toBeVisible();
+
+      // Space also activates the composer on a standalone host / fitting card (Enter is universal; a
+      // non-scrolling target may activate on Space too, like the image path). Dismiss it with Escape so
+      // the Enter flow below starts clean.
+      await host.focus();
+      await host.press(" ");
+      await expect(page.locator(".cm-composer").last()).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.locator(".cm-composer")).toHaveCount(0);
+
+      // Enter on the focused host opens the composer directly, so a keyboard-only user can comment on
+      // the whole diagram without reaching the disjointed floating button.
+      await host.focus();
+      await host.press("Enter");
+      const composer = page.locator(".cm-composer").last();
+      await expect(composer).toBeVisible();
+      await composer.locator("textarea").fill("keyboard whole-diagram comment");
+      await composer.locator('[data-act="save"]').click();
+      await expect(composer).toHaveCount(0);
+
+      await expect(page.locator("#commentList")).toContainText("keyboard whole-diagram comment");
+      await expect(page.locator(".cm-card .pin")).toContainText(/mermaid diagram/i);
+      await expect(host).toHaveClass(/cm-mermaid-hl/);
+    } finally {
+      await server.close();
+    }
+  });
 });
 
 // A diagram authored inside a collapsible section must NOT be rendered by mermaid.run() while that
