@@ -110,11 +110,15 @@ function measureCards(page, cardSel) {
       // / hidden - a broken HTML label would look empty while all the svg-geometry checks stay green).
       svg.querySelectorAll("foreignObject").forEach((fo) => {
         const label = fo.querySelector(".nodeLabel, .edgeLabel, span, div, p") || fo;
+        // Count every label that carries TEXT (skip structural/empty foreignObjects) REGARDLESS of
+        // size, so a label that COLLAPSED to zero height - the exact regression this guards - is counted
+        // and fails the floor/visibility checks, instead of being skipped (vacuous guard).
+        if (!label.textContent || !label.textContent.trim()) return;
+        nHtmlLabel++;
         const nr = label.getBoundingClientRect();
-        if (nr.width <= 0 || nr.height <= 0) return;
-        nHtmlLabel++; htmlLabelMinH = Math.min(htmlLabelMinH, nr.height);
+        htmlLabelMinH = Math.min(htmlLabelMinH, nr.height);
         const ls = getComputedStyle(label);
-        if (ls.color === "rgba(0, 0, 0, 0)" || ls.color === "transparent" || parseFloat(ls.opacity) === 0 || ls.visibility === "hidden" || ls.display === "none") htmlLabelInvisible++;
+        if (nr.width <= 0 || nr.height <= 0 || ls.color === "rgba(0, 0, 0, 0)" || ls.color === "transparent" || parseFloat(ls.opacity) === 0 || ls.visibility === "hidden" || ls.display === "none") htmlLabelInvisible++;
       });
     }
     return {

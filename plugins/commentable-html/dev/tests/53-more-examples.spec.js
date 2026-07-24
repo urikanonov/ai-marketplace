@@ -344,11 +344,16 @@ test.describe("commentable visuals matrix: diagram gallery layout (CMH-DEMO-06 /
         // legibility floor) and its paint visibility (transparent color / zero opacity / hidden).
         svg.querySelectorAll("foreignObject").forEach((foEl) => {
           const label = foEl.querySelector(".nodeLabel, .edgeLabel, span, div, p") || foEl;
+          // Count every label that carries TEXT (skip structural/empty foreignObjects) REGARDLESS of
+          // size, so a label that COLLAPSED to zero height - the exact regression this guards - is
+          // counted and fails the floor/visibility checks below, instead of being skipped (which would
+          // drop nHtmlLabel to 0 and let the assertions be vacuously skipped).
+          if (!label.textContent || !label.textContent.trim()) return;
+          nHtmlLabel++;
           const nr = label.getBoundingClientRect();
-          if (nr.width <= 0 || nr.height <= 0) return;
-          nHtmlLabel++; htmlLabelMinH = Math.min(htmlLabelMinH, nr.height);
+          htmlLabelMinH = Math.min(htmlLabelMinH, nr.height);
           const ls = getComputedStyle(label);
-          if (ls.color === "rgba(0, 0, 0, 0)" || ls.color === "transparent" || parseFloat(ls.opacity) === 0 || ls.visibility === "hidden" || ls.display === "none") htmlLabelInvisible++;
+          if (nr.width <= 0 || nr.height <= 0 || ls.color === "rgba(0, 0, 0, 0)" || ls.color === "transparent" || parseFloat(ls.opacity) === 0 || ls.visibility === "hidden" || ls.display === "none") htmlLabelInvisible++;
         });
       }
       return {
