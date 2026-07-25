@@ -105,6 +105,31 @@ class DeckExampleTests(unittest.TestCase):
         self.assertIn('data-cmh-mode="deck"', roots[-1],
                       "the deck example's active #commentRoot must carry data-cmh-mode=deck")
 
+    def test_cmh_deck_showcase_18_covers_threads_authors_rich_find_storage_widgets(self):
+        # CMH-DECK-SHOWCASE-18: the feature tour includes a dedicated slide that demonstrates the
+        # remaining user-facing areas (threads/authors, rich-text, section review + search,
+        # storage + widgets), so the deck covers the full audited feature set, not a subset.
+        html = _read(DECK)
+        marker = 'data-slide-id="slide-a1c0de60"'
+        self.assertIn(marker, html,
+                      "the SHOWCASE-18 coverage slide (slide-a1c0de60) is missing from the deck")
+        # Isolate this slide's markup so the assertions pin THIS slide, not the whole deck.
+        start = html.index(marker)
+        nxt = html.find('<section class="slide"', start + 1)
+        slide = html[start:nxt] if nxt != -1 else html[start:]
+        for heading in (
+            "Threads and authors",
+            "Rich-text notes",
+            "Find what needs review",
+            "Storage and widgets",
+        ):
+            self.assertIn(heading, slide,
+                          "SHOWCASE-18 slide is missing the '%s' card" % heading)
+        # Each of the four cards frames its area as a live "Try it" invitation (the deck runs the
+        # real runtime), and the count is scoped to this slide so deleting a card fails the test.
+        self.assertEqual(slide.count("Try it:"), 4,
+                         "SHOWCASE-18 slide should carry exactly four live 'Try it' invitations")
+
     def test_deck_validates_clean(self):
         r = subprocess.run([sys.executable, DECK_VALIDATE, DECK], capture_output=True, text=True, cwd=SKILL)
         self.assertEqual(r.returncode, 0,

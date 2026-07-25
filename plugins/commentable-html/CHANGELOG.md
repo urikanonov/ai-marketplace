@@ -4,6 +4,25 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.238.0] - 2026-07-25
+
+### Added
+
+- The showcase deck (`examples/deck-showcase.html`) now demonstrates the full set of user-facing
+  areas: a new "Discuss, find, and keep it tidy" slide covers threaded inline replies and colored
+  author pills, rich-text comment formatting, per-section review badges plus the section menu and
+  search/filter, and the storage manager plus commentable widgets - each framed as a live "Try it"
+  invitation, since the deck runs the real runtime. This closes the gap between the deck and the
+  documented feature set. (CMH-DECK-SHOWCASE-18)
+
+### Changed
+
+- Governance: the doc-surface registry in `dev/SPEC.md` now tracks a required `Deck` dimension
+  alongside the reader-doc surface. Every new user-facing feature must declare that it is demonstrated
+  on a showcase-deck slide (`deck`) or record an explicit `opt-out: <reason>`, checked by
+  `scripts/check_doc_surfaces.py` (run in the required validate job and the pre-push hook) and encoded
+  in AGENTS.md, so the deck stays a fourth documentation surface that cannot silently fall behind.
+
 ## [1.237.0] - 2026-07-25
 
 ### Changed

@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.237.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.238.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,6 +457,17 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.238.0] - 2026-07-25</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>The showcase deck (<code>examples/deck-showcase.html</code>) now demonstrates the full set of user-facing areas: a new &quot;Discuss, find, and keep it tidy&quot; slide covers threaded inline replies and colored author pills, rich-text comment formatting, per-section review badges plus the section menu and search/filter, and the storage manager plus commentable widgets - each framed as a live &quot;Try it&quot; invitation, since the deck runs the real runtime. This closes the gap between the deck and the documented feature set. (CMH-DECK-SHOWCASE-18)</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Governance: the doc-surface registry in <code>dev/SPEC.md</code> now tracks a required <code>Deck</code> dimension alongside the reader-doc surface. Every new user-facing feature must declare that it is demonstrated on a showcase-deck slide (<code>deck</code>) or record an explicit <code>opt-out: &lt;reason&gt;</code>, checked by <code>scripts/check_doc_surfaces.py</code> (run in the required validate job and the pre-push hook) and encoded in AGENTS.md, so the deck stays a fourth documentation surface that cannot silently fall behind.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.237.0] - 2026-07-25</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -467,6 +478,8 @@
               <li>Validator: a warning when an author <code>&lt;a href&gt;</code> document reference inside <code>#commentRoot</code> sets an explicit <code>target</code> other than <code>_blank</code> (it would open in the same tab), so a same-tab link is caught before handoff (CMH-LINK-05).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.236.0] - 2026-07-25</h3></div>
             <div class="group-label">Changed</div>
@@ -475,8 +488,6 @@
               <li>Regenerated every tutorial screenshot that shows the comments panel so it reflects the new header; the full-page shots (Copy all, dark theme, saved comment, thread, and others) had lagged behind because a whole-page screenshot dilutes the header-region change below the screenshot-check tolerance.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.235.0] - 2026-07-24</h3></div>
             <div class="group-label">Changed</div>
@@ -512,14 +523,7 @@
               <li>The first reply made without a reviewer name set now reveals the identity editor so the reply can be attributed (a non-blocking prompt); the reply still saves unattributed if declined. (CMH-THREAD-08)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.231.0] - 2026-07-24</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The open-comment count badge (toolbar and sidebar) now includes pending note and checklist changes, not just comment threads. A reviewer who only edited an editable note or ticked a checklist item previously saw the count stay at 0, as if nothing had been captured; now each changed note (one per note) and each changed checklist (one per list) is counted, so the badge reflects that there is something to hand back. Widget/layout state changes remain a non-comment signal and are still not counted (CMH-STATE-01 unchanged). (CMH-NOTE-04, CMH-CHECK-06)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">195 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">196 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
