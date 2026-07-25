@@ -270,7 +270,10 @@ body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) +
    keeps the larger small-font so the field stays comfortable to read and type in. */
 .cm-sidebar .cm-identity .cm-identity-input { font-size: var(--cp-chrome-small-font); }
 
-/* On phones every ribbon action (Sort included) gets a comfortable >=44px touch target. */
+/* On phones every ribbon action (Sort/Search included) and both primary-row buttons (Copy all and
+   the Export toggle, which is no longer a ribbon button) get a comfortable >=44px touch target. */
 @media (max-width: 640px) {
-  .cm-sidebar .cm-ribbon-btn { min-height: 44px; }
+  .cm-sidebar .cm-ribbon-btn,
+  .cm-sidebar .head-primary > button,
+  .cm-sidebar .head-primary .cm-sidebar-export-toggle { min-height: 44px; }
 }

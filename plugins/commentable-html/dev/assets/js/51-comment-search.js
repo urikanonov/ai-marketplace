@@ -4,9 +4,9 @@
 // The query is module-level so it survives re-renders: renderComments() re-applies it at the
 // end of every render, so adding, editing, or sorting comments keeps the active filter.
 let commentSearchQuery = "";
-// Explicit reviewer intent for the filter field: null = auto (hidden at zero comments, shown once
-// there is one), true = the reviewer opened it via the Search button, false = the reviewer closed it.
-// This survives re-renders so closing the field stays closed even while comments exist.
+// Explicit reviewer intent for the filter field: null = default (hidden - the field never appears on
+// its own), true = the reviewer opened it via the Search button, false = the reviewer closed it.
+// This survives re-renders so the field stays hidden until opened, and stays closed once closed.
 let searchUserState = null;
 
 function _normalizeCommentSearchText(value) {
@@ -105,8 +105,8 @@ function setupCommentSearch() {
   const input = document.getElementById("cmSearchInput");
   const clearBtn = document.getElementById("cmSearchClear");
   if (!input) return;
-  // The filter field auto-appears once there are comments (it is hidden only at zero comments);
-  // the Search button toggles it: it opens and focuses the field, or closes and clears it.
+  // The filter field is hidden by default and never appears on its own; the Search button toggles it:
+  // it opens and focuses the field, or closes and clears it.
   const toggle = document.getElementById("btnSearchToggle");
   const row = document.querySelector(".head-search");
   if (toggle && row) {

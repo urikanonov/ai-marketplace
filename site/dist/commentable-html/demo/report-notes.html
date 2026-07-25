@@ -741,9 +741,12 @@ body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) +
    keeps the larger small-font so the field stays comfortable to read and type in. */
 .cm-sidebar .cm-identity .cm-identity-input { font-size: var(--cp-chrome-small-font); }
 
-/* On phones every ribbon action (Sort included) gets a comfortable >=44px touch target. */
+/* On phones every ribbon action (Sort/Search included) and both primary-row buttons (Copy all and
+   the Export toggle, which is no longer a ribbon button) get a comfortable >=44px touch target. */
 @media (max-width: 640px) {
-  .cm-sidebar .cm-ribbon-btn { min-height: 44px; }
+  .cm-sidebar .cm-ribbon-btn,
+  .cm-sidebar .head-primary > button,
+  .cm-sidebar .head-primary .cm-sidebar-export-toggle { min-height: 44px; }
 }
 /* Attribution footer (runtime-generated, cm-skip) - appears whenever the layer is
    active, and is correctly absent from a Plain HTML export where the layer is removed.
@@ -841,18 +844,19 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   width: 100%;
 }
 /* The Export dropdown anchors to its own button (position:relative on .cm-sidebar-export) and the
-   More dropdown to the action ribbon (position:relative); both are sized to their content (not the
-   full row width) and clamped to the viewport so they never render off-screen. The Export menu (in
-   the primary row) and the More menu both open from the right edge so a right-docked sidebar cannot
-   push them off-screen. */
+   More dropdown to its own toggle; both are sized to their content and clamped to the VIEWPORT (not
+   the narrow toggle wrapper, which would crush them) so they stay readable and never render
+   off-screen. The Export menu (in the primary row) and the More menu both open from the right edge. */
 .cm-sidebar-export-menu {
   position: absolute;
   z-index: 230;
   top: calc(100% + 0.35rem);
   left: 0;
   width: max-content;
-  min-width: min(11rem, 100%);
-  max-width: min(18rem, 100%);
+  min-width: 11rem;
+  max-width: min(18rem, calc(100vw - 1rem));
+  max-height: min(60vh, 22rem);
+  overflow-y: auto;
   padding: 0.3rem;
   display: flex;
   flex-direction: column;
@@ -10630,9 +10634,9 @@ root.addEventListener("click", (e) => {
 // The query is module-level so it survives re-renders: renderComments() re-applies it at the
 // end of every render, so adding, editing, or sorting comments keeps the active filter.
 let commentSearchQuery = "";
-// Explicit reviewer intent for the filter field: null = auto (hidden at zero comments, shown once
-// there is one), true = the reviewer opened it via the Search button, false = the reviewer closed it.
-// This survives re-renders so closing the field stays closed even while comments exist.
+// Explicit reviewer intent for the filter field: null = default (hidden - the field never appears on
+// its own), true = the reviewer opened it via the Search button, false = the reviewer closed it.
+// This survives re-renders so the field stays hidden until opened, and stays closed once closed.
 let searchUserState = null;
 
 function _normalizeCommentSearchText(value) {
@@ -10731,8 +10735,8 @@ function setupCommentSearch() {
   const input = document.getElementById("cmSearchInput");
   const clearBtn = document.getElementById("cmSearchClear");
   if (!input) return;
-  // The filter field auto-appears once there are comments (it is hidden only at zero comments);
-  // the Search button toggles it: it opens and focuses the field, or closes and clears it.
+  // The filter field is hidden by default and never appears on its own; the Search button toggles it:
+  // it opens and focuses the field, or closes and clears it.
   const toggle = document.getElementById("btnSearchToggle");
   const row = document.querySelector(".head-search");
   if (toggle && row) {
