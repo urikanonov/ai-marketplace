@@ -148,8 +148,8 @@ Every section heading carries a small review badge so you can mark sections as y
 
 Once you have several comments, the sidebar helps you find and order them.
 
-1. Once you have comments, a search field appears in the panel; type to filter the list to comments whose **note** matches your query, and the field shows how many of the total are shown. The **Search** button hides or re-shows the field, and the clear (X) button empties it.
-2. Use the **Sort** arrows in the header ribbon to order comments oldest-first or newest-first; click the active arrow again to return to document order.
+1. Click the **Search** button in the header ribbon to reveal the search field (it is hidden by default); type to filter the list to comments whose **note** matches your query, and the field shows how many of the total are shown. Click **Search** again to hide it, or the clear (X) button to empty it.
+2. Use the **Sort** button in the header ribbon to cycle the order: document position, then newest-first, then oldest-first, then back to document order; its icon and tooltip reflect the current state.
 
 ![The comments panel filtered by a search query, with the sort controls and a shown-of-total count](assets/garden-13-comment-search.png)
 

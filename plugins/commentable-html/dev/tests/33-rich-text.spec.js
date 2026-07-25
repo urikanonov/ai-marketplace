@@ -3,7 +3,7 @@
 import { test, expect } from "@playwright/test";
 import {
   openInline, addTextComment, storedComments, distinctCids,
-  installClipboardCapture, lastCopied, openSidebarExportMenu, openToolbarMenu, readDownload,
+  installClipboardCapture, lastCopied, openSidebarExportMenu, openToolbarMenu, readDownload, openSearch,
 } from "./helpers.js";
 
 const SEL = "#commentRoot section p";
@@ -136,6 +136,7 @@ test.describe("rich-text comment notes (CMH-RICH)", () => {
     // A null note renders an empty card without error.
     await expect(page.locator('.cm-card[data-cid="cseednull1"] .note.cmh-rich')).toHaveText("");
     // The null note's hidden raw source is empty (not the literal string "null"), so it is not searchable as "null".
+    await openSearch(page);
     await page.locator("#cmSearchInput").fill("null");
     await expect(page.locator('#commentList .cm-card[data-cid="cseednull1"]')).toBeHidden();
   });
@@ -261,6 +262,7 @@ test.describe("rich-text comment notes (CMH-RICH)", () => {
     await expect(note).not.toContainText("**");
     const input = page.locator("#cmSearchInput");
     const visible = page.locator("#commentList .cm-card[data-cid]:visible");
+    await openSearch(page);
     await input.fill("dashboard"); // only present in the URL
     await expect(visible).toHaveCount(1);
     await input.fill("**urgent**"); // a raw-only marker substring
@@ -326,6 +328,7 @@ test.describe("rich-text comment notes (CMH-RICH)", () => {
     await expect(reply.locator("strong")).toHaveText("bolded");
     await expect(reply.locator('a[href="https://intra.test/ticket"]')).toHaveCount(1);
     // The reply's raw markers/URL stay searchable via its hidden raw-source element.
+    await openSearch(page);
     await page.locator("#cmSearchInput").fill("ticket");
     await expect(page.locator('#commentList .cm-card[data-cid="crootrich1"]')).toBeVisible();
   });

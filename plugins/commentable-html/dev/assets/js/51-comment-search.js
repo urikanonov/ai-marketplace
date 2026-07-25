@@ -4,9 +4,9 @@
 // The query is module-level so it survives re-renders: renderComments() re-applies it at the
 // end of every render, so adding, editing, or sorting comments keeps the active filter.
 let commentSearchQuery = "";
-// Explicit reviewer intent for the filter field: null = auto (hidden at zero comments, shown once
-// there is one), true = the reviewer opened it via the Search button, false = the reviewer closed it.
-// This survives re-renders so closing the field stays closed even while comments exist.
+// Explicit reviewer intent for the filter field: null = default (hidden - the field never appears on
+// its own), true = the reviewer opened it via the Search button, false = the reviewer closed it.
+// This survives re-renders so the field stays hidden until opened, and stays closed once closed.
 let searchUserState = null;
 
 function _normalizeCommentSearchText(value) {
@@ -50,7 +50,8 @@ function _toggleSearchEmptyNote(show) {
 }
 
 // Re-apply the active query to the currently-rendered cards. Called by the input handler and
-// at the end of renderComments(). With no comments the whole row is hidden (nothing to search).
+// at the end of renderComments(). The search row is hidden by default and only appears when the
+// reader opens it via the Search button (searchUserState === true), regardless of comment count.
 function applyCommentSearch() {
   const row = document.querySelector(".head-search");
   const countEl = document.getElementById("cmSearchCount");
@@ -60,18 +61,18 @@ function applyCommentSearch() {
     : (Array.isArray(comments) ? comments.length : 0);
   const noteCards = listEl ? listEl.querySelectorAll(".cm-card-note") : [];
   if (row) {
-    row.hidden = searchUserState === null
-      ? (total === 0 && noteCards.length === 0)
-      : !searchUserState;
+    row.hidden = searchUserState !== true;
   }
   const _searchToggle = document.getElementById("btnSearchToggle");
   if (_searchToggle && row) _searchToggle.setAttribute("aria-expanded", row.hidden ? "false" : "true");
+  const q = _normalizeCommentSearchText(commentSearchQuery.trim());
+  // Keep the clear (X) button in sync with the field even when there is nothing to search, so a query
+  // typed while the comment list is empty still shows the X (and clearing it hides the X again).
+  if (clearBtn) clearBtn.hidden = q === "";
   if (total === 0 && noteCards.length === 0) {
     _toggleSearchEmptyNote(false);
     return;
   }
-  const q = _normalizeCommentSearchText(commentSearchQuery.trim());
-  if (clearBtn) clearBtn.hidden = q === "";
   const cards = listEl ? listEl.querySelectorAll(".cm-card[data-cid]") : [];
   let shown = 0;
   cards.forEach((card) => {
@@ -106,8 +107,8 @@ function setupCommentSearch() {
   const input = document.getElementById("cmSearchInput");
   const clearBtn = document.getElementById("cmSearchClear");
   if (!input) return;
-  // The filter field auto-appears once there are comments (it is hidden only at zero comments);
-  // the Search button toggles it: it opens and focuses the field, or closes and clears it.
+  // The filter field is hidden by default and never appears on its own; the Search button toggles it:
+  // it opens and focuses the field, or closes and clears it.
   const toggle = document.getElementById("btnSearchToggle");
   const row = document.querySelector(".head-search");
   if (toggle && row) {

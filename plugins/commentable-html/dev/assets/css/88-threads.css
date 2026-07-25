@@ -62,6 +62,30 @@ html[data-theme="dark"] .cm-author-pill {
   background: var(--cp-surface, #fff);
   color: inherit;
 }
+/* The edit-mode Save/Cancel are themed, not default UA buttons: Save is the crimson primary (matching
+   Copy all), Cancel a themed secondary with a border that hovers to the accent. */
+.cm-identity-save, .cm-identity-cancel {
+  flex: 0 0 auto;
+  padding: 0.15rem 0.6rem;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.cm-identity-save {
+  background: var(--cp-accent);
+  color: var(--cp-accent-fg);
+  border: 1px solid var(--cp-accent);
+}
+.cm-identity-save:hover { background: var(--cp-accent-hover); border-color: var(--cp-accent-hover); }
+.cm-identity-cancel {
+  background: var(--cp-surface);
+  color: var(--cp-text);
+  border: 1px solid var(--cp-border);
+  font-weight: 500;
+}
+.cm-identity-cancel:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
 
 /* ---- Thread entries + replies ---- */
 .cm-card .cm-entry-root .note { margin: 0; }

@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.243.0";
+const CMH_VERSION = "1.244.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -6684,9 +6684,9 @@ root.addEventListener("click", (e) => {
 // The query is module-level so it survives re-renders: renderComments() re-applies it at the
 // end of every render, so adding, editing, or sorting comments keeps the active filter.
 let commentSearchQuery = "";
-// Explicit reviewer intent for the filter field: null = auto (hidden at zero comments, shown once
-// there is one), true = the reviewer opened it via the Search button, false = the reviewer closed it.
-// This survives re-renders so closing the field stays closed even while comments exist.
+// Explicit reviewer intent for the filter field: null = default (hidden - the field never appears on
+// its own), true = the reviewer opened it via the Search button, false = the reviewer closed it.
+// This survives re-renders so the field stays hidden until opened, and stays closed once closed.
 let searchUserState = null;
 
 function _normalizeCommentSearchText(value) {
@@ -6730,7 +6730,8 @@ function _toggleSearchEmptyNote(show) {
 }
 
 // Re-apply the active query to the currently-rendered cards. Called by the input handler and
-// at the end of renderComments(). With no comments the whole row is hidden (nothing to search).
+// at the end of renderComments(). The search row is hidden by default and only appears when the
+// reader opens it via the Search button (searchUserState === true), regardless of comment count.
 function applyCommentSearch() {
   const row = document.querySelector(".head-search");
   const countEl = document.getElementById("cmSearchCount");
@@ -6740,18 +6741,18 @@ function applyCommentSearch() {
     : (Array.isArray(comments) ? comments.length : 0);
   const noteCards = listEl ? listEl.querySelectorAll(".cm-card-note") : [];
   if (row) {
-    row.hidden = searchUserState === null
-      ? (total === 0 && noteCards.length === 0)
-      : !searchUserState;
+    row.hidden = searchUserState !== true;
   }
   const _searchToggle = document.getElementById("btnSearchToggle");
   if (_searchToggle && row) _searchToggle.setAttribute("aria-expanded", row.hidden ? "false" : "true");
+  const q = _normalizeCommentSearchText(commentSearchQuery.trim());
+  // Keep the clear (X) button in sync with the field even when there is nothing to search, so a query
+  // typed while the comment list is empty still shows the X (and clearing it hides the X again).
+  if (clearBtn) clearBtn.hidden = q === "";
   if (total === 0 && noteCards.length === 0) {
     _toggleSearchEmptyNote(false);
     return;
   }
-  const q = _normalizeCommentSearchText(commentSearchQuery.trim());
-  if (clearBtn) clearBtn.hidden = q === "";
   const cards = listEl ? listEl.querySelectorAll(".cm-card[data-cid]") : [];
   let shown = 0;
   cards.forEach((card) => {
@@ -6786,8 +6787,8 @@ function setupCommentSearch() {
   const input = document.getElementById("cmSearchInput");
   const clearBtn = document.getElementById("cmSearchClear");
   if (!input) return;
-  // The filter field auto-appears once there are comments (it is hidden only at zero comments);
-  // the Search button toggles it: it opens and focuses the field, or closes and clears it.
+  // The filter field is hidden by default and never appears on its own; the Search button toggles it:
+  // it opens and focuses the field, or closes and clears it.
   const toggle = document.getElementById("btnSearchToggle");
   const row = document.querySelector(".head-search");
   if (toggle && row) {
@@ -10773,9 +10774,9 @@ function showHelp(restoreEl) {
       T('The panel and toolbar',
         '<ul>' +
           '<li>The <strong>Comments</strong> heading carries a <strong>count bubble</strong> showing how many items still need attention: open comment threads plus any unresolved review-note and checklist changes (each top-level thread counts once, not its individual replies). The portability badge and version sit at the right of the same row.</li>' +
-          '<li>Below it, a row of captioned buttons - <strong>Export</strong>, <strong>Sort</strong>, <strong>More</strong>, <strong>Help</strong>, and <strong>Hide</strong>. <strong>Help</strong> opens this dialog; <strong>Hide</strong> collapses the panel, leaving a small floating toolbar to bring it back.</li>' +
-          '<li><strong>Copy all</strong> (the primary button) copies every comment as a Markdown bundle to paste back to the agent; beside it, a search field appears once there are comments and filters the list by each comment\'s note text, and the <strong>Search</strong> button hides or re-shows that field.</li>' +
-          '<li><strong>More</strong> opens a menu with <strong>Manage storage</strong> and <strong>Clear all comments</strong>; <strong>Export</strong> opens the file-format menu. While the panel is collapsed, the floating toolbar\'s overflow <kbd>...</kbd> menu holds the export actions, Manage storage, and <strong>Help &amp; About</strong>.</li>' +
+          '<li>Below it, a row of captioned buttons - <strong>Search</strong>, <strong>Sort</strong>, <strong>More</strong>, <strong>Help</strong>, and <strong>Hide</strong>. <strong>Help</strong> opens this dialog; <strong>Hide</strong> collapses the panel, leaving a small floating toolbar to bring it back.</li>' +
+          '<li><strong>Copy all</strong> (the primary button) copies every comment as a Markdown bundle to paste back to the agent; beside it, the <strong>Export</strong> button opens the file-format menu. The <strong>Search</strong> button in the ribbon reveals a search field (hidden by default) that filters the list by each comment\'s note text.</li>' +
+          '<li><strong>More</strong> opens a menu with <strong>Manage storage</strong> and <strong>Clear all comments</strong>. While the panel is collapsed, the floating toolbar\'s overflow <kbd>...</kbd> menu holds the export actions, Manage storage, and <strong>Help &amp; About</strong>.</li>' +
         '</ul>') +
       T('Portable or Not portable',
         '<p>A bubble at the top of the panel shows whether this file is safe to share as-is:</p>' +

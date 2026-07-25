@@ -244,24 +244,29 @@ test.describe("Save comments / Export plain", () => {
     await addTextComment(page, "#commentRoot section p", "styling note");
     await openSidebarExportMenu(page);
     const m = await page.evaluate(() => {
-      const ribbon = document.querySelector(".cm-sidebar .head-ribbon");
+      const container = document.querySelector(".cm-sidebar .head-primary");
       const menu = document.getElementById("sidebarExportMenu");
       const btn = menu.querySelector("button");
       const label = menu.querySelector("label");
       return {
-        ribbonWidth: ribbon.getBoundingClientRect().width,
+        containerWidth: container.getBoundingClientRect().width,
         menuWidth: menu.getBoundingClientRect().width,
         menuRight: menu.getBoundingClientRect().right,
+        menuLeft: menu.getBoundingClientRect().left,
         viewportWidth: window.innerWidth,
         btnBg: getComputedStyle(btn).backgroundColor,
         btnPadLeft: getComputedStyle(btn).paddingLeft,
         labelPadLeft: getComputedStyle(label).paddingLeft,
+        labelClip: Math.max(0, label.scrollWidth - label.clientWidth),
       };
     });
-    // The menu is sized to its content, not stretched to the full ribbon width (the old behavior).
-    expect(m.menuWidth).toBeLessThan(m.ribbonWidth - 8);
-    // It never extends past the right edge of the viewport (docked-right sidebar).
+    // The menu is sized to its content, not stretched to fill the primary row it now lives in.
+    expect(m.menuWidth).toBeLessThan(m.containerWidth - 8);
+    // It stays on-screen (docked-right sidebar): right edge within the viewport, left edge >= 0.
     expect(m.menuRight).toBeLessThanOrEqual(m.viewportWidth + 1);
+    expect(m.menuLeft).toBeGreaterThanOrEqual(-1);
+    // Its widest item (the provenance label) is not clipped.
+    expect(m.labelClip).toBeLessThanOrEqual(0.5);
     // Menu-item buttons are transparent at rest (a clean dropdown item, not a bordered button).
     expect(["rgba(0, 0, 0, 0)", "transparent"]).toContain(m.btnBg);
     // The provenance setting label shares the buttons' left padding so it lines up with them

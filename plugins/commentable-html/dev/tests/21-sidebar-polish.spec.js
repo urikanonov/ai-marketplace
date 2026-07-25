@@ -17,6 +17,23 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
     expect(meta).not.toMatch(/\bAM\b|\bPM\b/i);
   });
 
+  test("Export sits in the prominent primary row and Search sits in the compact ribbon (CMH-EXP-13)", async ({ page }) => {
+    await openKitchenSink(page);
+    await openSidebarPanel(page);
+    // Export (the more important action) is in the primary row beside Copy all.
+    await expect(page.locator(".cm-sidebar .head-primary #btnSidebarExportMenu")).toHaveCount(1);
+    await expect(page.locator(".cm-sidebar .head-primary #btnCopyAll")).toHaveCount(1);
+    // Export is no longer a compact ribbon button.
+    await expect(page.locator(".cm-sidebar .head-ribbon #btnSidebarExportMenu")).toHaveCount(0);
+    // Search moved into the compact ribbon and is no longer in the primary row.
+    await expect(page.locator(".cm-sidebar .head-ribbon #btnSearchToggle")).toHaveCount(1);
+    await expect(page.locator(".cm-sidebar .head-primary #btnSearchToggle")).toHaveCount(0);
+    await expect(page.locator("#btnSearchToggle")).toHaveClass(/cm-ribbon-btn/);
+    // Opening Search from the ribbon still reveals the filter field.
+    await page.click("#btnSearchToggle");
+    await expect(page.locator(".head-search")).toBeVisible();
+  });
+
   test("the Copy all button is a prominent primary action, larger and bolder than the small controls (CMH-SIDE-07)", async ({ page }) => {
     await openKitchenSink(page);
     await openSidebarPanel(page);
@@ -164,7 +181,7 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
 
   test("the sidebar minimum width keeps every action button label legible (CMH-SIDE-06)", async ({ page }) => {
     // The resize floor is 256px - the empirically measured minimum at which the captioned action
-    // ribbon (Export, Sort, More, Help, Hide), the Copy all / Search primary row, and the search
+    // ribbon (Search, Sort, More, Help, Hide), the Copy all / Export primary row, and the search
     // placeholder stay fully shown. The same floor applies on wide and narrow viewports. Below the
     // 640px phone breakpoint the sidebar is instead a non-resizable full-width sheet (CMH-RESP-04),
     // so the narrow-viewport case uses 700px, where the panel is still a resizable side panel.
@@ -178,9 +195,10 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
       const m = await page.evaluate(() => {
         const sidebar = document.getElementById("sidebar");
         const clip = (el) => Math.max(0, el.scrollWidth - el.clientWidth);
-        // Every captioned ribbon action plus the two primary-row button labels must stay legible.
+        // Every captioned ribbon action plus the two primary-row button labels (Copy all, Export)
+        // must stay legible - the export MENU item labels are excluded (they live in a dropdown).
         const labels = Array.from(sidebar.querySelectorAll(
-          ".head-ribbon .cm-ribbon-cap, .head-primary button > span"));
+          ".head-ribbon .cm-ribbon-cap, .head-primary > button > span, .head-primary .cm-sidebar-export-toggle > span"));
         const spanClips = labels.map(clip);
         return {
           width: sidebar.getBoundingClientRect().width,
@@ -194,7 +212,7 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
       expect(m.min).toBe(256);
       expect(Math.abs(m.width - 256)).toBeLessThanOrEqual(2);
       // The retargeted query must actually match the new labels (guards against a vacuous pass):
-      // 5 ribbon captions (Export, Sort, More, Help, Hide) + 2 primary labels (Copy all, Search).
+      // 5 ribbon captions (Search, Sort, More, Help, Hide) + 2 primary labels (Copy all, Export).
       expect(m.labelCount).toBe(7);
       // No ribbon caption nor primary label (nor Copy all) clips at the enforced minimum width.
       expect(m.maxSpanClip).toBeLessThanOrEqual(0.5);
@@ -256,7 +274,7 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
     });
 
     expect(layout.narrow).toBe(true);
-    expect(layout.cells).toBe(5); // Export, Sort, More, Help, Hide
+    expect(layout.cells).toBe(5); // Search, Sort, More, Help, Hide
     expect(layout.rows).toBe(1);
     expect(layout.overflow).toBe(false);
   });

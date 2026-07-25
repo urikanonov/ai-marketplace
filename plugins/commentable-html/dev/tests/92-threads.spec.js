@@ -77,6 +77,26 @@ test.describe("collaboration: author attribution and threads", () => {
     await expect(page.locator("#cmIdentityName .cm-author-pill")).toHaveText("Bob");
   });
 
+  test("the identity Save and Cancel buttons use themed colors, not default UA styling (CMH-AUTHOR-01)", async ({ page }) => {
+    await openKitchenSink(page);
+    await openSidebarPanel(page);
+    if (await page.locator("#cmIdentityEdit").isHidden()) await page.click("#btnEditIdentity");
+    const s = await page.evaluate(() => {
+      const g = (id) => {
+        const cs = getComputedStyle(document.getElementById(id));
+        return { bg: cs.backgroundColor, borderWidth: cs.borderTopWidth };
+      };
+      return { copy: g("btnCopyAll"), save: g("btnSaveIdentity"), cancel: g("btnCancelIdentity") };
+    });
+    // Save is the crimson primary action, filled with the same accent as Copy all.
+    expect(s.save.bg).toBe(s.copy.bg);
+    // Cancel is a distinct themed secondary: a real border and a non-transparent fill that is NOT
+    // the accent crimson (so neither button falls back to the browser's default button chrome).
+    expect(s.cancel.bg).not.toBe(s.save.bg);
+    expect(s.cancel.bg).not.toBe("rgba(0, 0, 0, 0)");
+    expect(parseFloat(s.cancel.borderWidth)).toBeGreaterThanOrEqual(1);
+  });
+
   test("an attributed comment shows a hashed author pill and a hostile name is sanitized and capped (CMH-AUTHOR-02)", async ({ page }) => {
     await openKitchenSink(page);
     // Seed a comment whose author is over-long and multi-line: merge sanitizes + caps it.

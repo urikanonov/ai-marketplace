@@ -254,34 +254,58 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
     await expect(page.locator("#sidebarExportMenu #btnStorage")).toHaveCount(0);
   });
 
-  test("the sidebar More menu is content-width, right-anchored, and viewport-safe (CMH-SIDE-11)", async ({ page }) => {
+  test("the sidebar More menu is content-width, anchored to its toggle, and clear of the Export button (CMH-SIDE-11)", async ({ page }) => {
+    await page.setViewportSize({ width: 1200, height: 900 });
     await openInline(page);
     await page.evaluate(() => {
       document.body.classList.add("sidebar-open");
       const sb = document.getElementById("sidebar");
       if (sb) sb.inert = false;
     });
-    await page.click("#btnMoreMenu");
-    await expect(page.locator("#sidebarMoreMenu")).toBeVisible();
-    const m = await page.evaluate(() => {
-      const ribbon = document.querySelector(".cm-sidebar .head-ribbon");
-      const menu = document.getElementById("sidebarMoreMenu");
-      const btn = menu.querySelector("button");
-      const rr = ribbon.getBoundingClientRect();
-      const mr = menu.getBoundingClientRect();
-      return {
-        ribbonWidth: rr.width, menuWidth: mr.width,
-        ribbonRight: rr.right, menuRight: mr.right,
-        viewportWidth: window.innerWidth,
-        btnBg: getComputedStyle(btn).backgroundColor,
-      };
-    });
-    // Content-width (not the full ribbon), transparent menu-item buttons, and anchored to the
-    // ribbon's RIGHT edge so a right-docked sidebar never pushes it off-screen.
-    expect(m.menuWidth).toBeLessThan(m.ribbonWidth - 8);
-    expect(m.menuRight).toBeLessThanOrEqual(m.viewportWidth + 1);
-    expect(Math.abs(m.menuRight - m.ribbonRight)).toBeLessThanOrEqual(1);
-    expect(["rgba(0, 0, 0, 0)", "transparent"]).toContain(m.btnBg);
+    const measure = async () => {
+      await page.click("#btnMoreMenu");
+      await expect(page.locator("#sidebarMoreMenu")).toBeVisible();
+      const m = await page.evaluate(() => {
+        const ribbon = document.querySelector(".cm-sidebar .head-ribbon");
+        const menu = document.getElementById("sidebarMoreMenu");
+        const btn = menu.querySelector("button");
+        const toggle = document.getElementById("btnMoreMenu");
+        const exp = document.getElementById("btnSidebarExportMenu");
+        const clip = (el) => Math.max(0, el.scrollWidth - el.clientWidth);
+        const rr = ribbon.getBoundingClientRect();
+        const mr = menu.getBoundingClientRect();
+        const tr = toggle.getBoundingClientRect();
+        const er = exp.getBoundingClientRect();
+        return {
+          ribbonWidth: rr.width, menuWidth: mr.width,
+          menuRight: mr.right, toggleRight: tr.right,
+          viewportWidth: window.innerWidth,
+          btnBg: getComputedStyle(btn).backgroundColor,
+          exportCenterX: (er.left + er.right) / 2,
+          storageClip: clip(document.getElementById("btnStorage")),
+          clearClip: clip(document.getElementById("btnClearAll")),
+        };
+      });
+      await page.click("#btnMoreMenu"); // close before the next case
+      return m;
+    };
+    // At the default width AND at the sidebar's enforced minimum width, the menu must stay readable
+    // (labels not clipped - the regression this guards), anchored to its toggle's right edge,
+    // viewport-safe, and clear of the Export button's center so the two disclosures can swap.
+    for (const shrinkToMin of [false, true]) {
+      if (shrinkToMin) {
+        await page.locator("#sidebarResizeHandle").focus();
+        await page.keyboard.press("Home");
+      }
+      const m = await measure();
+      expect(m.menuWidth).toBeLessThan(m.ribbonWidth - 8);
+      expect(["rgba(0, 0, 0, 0)", "transparent"]).toContain(m.btnBg);
+      expect(m.storageClip, "Manage storage label must not be clipped").toBeLessThanOrEqual(0.5);
+      expect(m.clearClip, "Clear all comments label must not be clipped").toBeLessThanOrEqual(0.5);
+      expect(Math.abs(m.menuRight - m.toggleRight)).toBeLessThanOrEqual(1);
+      expect(m.menuRight).toBeLessThanOrEqual(m.viewportWidth + 1);
+      expect(m.menuRight).toBeLessThan(m.exportCenterX);
+    }
   });
 
   test("opening either sidebar disclosure closes the sibling one (CMH-SIDE-11)", async ({ page }) => {
@@ -307,7 +331,7 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
     await expect(page.locator("#btnMoreMenu")).toHaveAttribute("aria-expanded", "false");
   });
 
-  test("on a phone the Sort button exposes a >=44px touch target (CMH-SIDE-12)", async ({ page }) => {
+  test("on a phone the Sort button and the primary-row actions expose a >=44px touch target (CMH-SIDE-12)", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openInline(page);
     await page.evaluate(() => {
@@ -315,12 +339,16 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
       const sb = document.getElementById("sidebar");
       if (sb) sb.inert = false;
     });
-    const b = await page.locator("#btnSort").evaluate((el) => {
-      const r = el.getBoundingClientRect();
-      return { w: r.width, h: r.height };
-    });
-    expect(b.w).toBeGreaterThanOrEqual(44);
-    expect(b.h).toBeGreaterThanOrEqual(44);
+    // The Sort/Search ribbon buttons and both primary-row actions (Copy all and the Export toggle,
+    // which is no longer a ribbon button) must each meet the 44px touch-target minimum on phones.
+    for (const sel of ["#btnSort", "#btnSearchToggle", "#btnCopyAll", "#btnSidebarExportMenu"]) {
+      const b = await page.locator(sel).evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return { w: r.width, h: r.height };
+      });
+      expect(b.w, `${sel} width`).toBeGreaterThanOrEqual(44);
+      expect(b.h, `${sel} height`).toBeGreaterThanOrEqual(44);
+    }
   });
 
   test("the Search button reveals and focuses the filter field (CMH-SEARCH-08)", async ({ page }) => {
