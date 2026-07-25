@@ -52,11 +52,34 @@ def _front_matter(text):
     return m.group(1) if m else ""
 
 
+def _md_table_rows(text, header_line):
+    """Return the data rows (each a list of stripped cell strings) of the first Markdown
+    pipe-table whose header row equals header_line, skipping the `---|---` separator."""
+    lines = text.splitlines()
+    try:
+        start = next(i for i, ln in enumerate(lines) if ln.strip() == header_line)
+    except StopIteration:
+        return []
+    rows = []
+    for ln in lines[start + 2:]:  # +1 header, +1 the |---|---| separator
+        if not ln.strip().startswith("|"):
+            break
+        cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+        rows.append(cells)
+    return rows
+
+
+def _base_family(cell):
+    """Normalise a roster/prisms family cell (e.g. 'Anthropic Opus', 'Microsoft MAI',
+    'OpenAI (5.6 sibling variant)') to its base provider (first word)."""
+    return cell.split()[0] if cell else ""
+
+
 class MultiDuckRegistrationTests(unittest.TestCase):
     def test_registered_in_both_marketplaces_with_matching_identity(self):
         # MDUCK-REG-01: multi-duck is registered in the Copilot and Claude marketplace manifests, and
         # the shared identity fields (version, source, description, keywords) match across both plus
-        # the two plugin.json files, at 1.0.1.
+        # the two plugin.json files, at 1.1.0.
         cop = _entry(COPILOT_MKT, PLUGIN)
         cla = _entry(CLAUDE_MKT, PLUGIN)
         self.assertIsNotNone(cop, "multi-duck missing from Copilot marketplace")
@@ -66,7 +89,7 @@ class MultiDuckRegistrationTests(unittest.TestCase):
         cop_pj = _json(COPILOT_PJ)
         cla_pj = _json(CLAUDE_PJ)
         versions = {cop["version"], cla["version"], cop_pj["version"], cla_pj["version"]}
-        self.assertEqual(versions, {"1.0.2"})
+        self.assertEqual(versions, {"1.1.0"})
         descs = {cop["description"], cla["description"],
                  cop_pj["description"], cla_pj["description"]}
         self.assertEqual(len(descs), 1, "description must be byte-identical across all four manifests")
@@ -121,6 +144,57 @@ class MultiDuckSkillTests(unittest.TestCase):
         self.assertIn("selection rule is model diversity first", t)
         self.assertIn("current example roster for the GitHub Copilot CLI", t)
         self.assertIn("substitute the equivalents your host exposes", t)
+
+    def test_roster_leads_with_opus5_and_documents_run_rotation(self):
+        # MDUCK-ROTATE-11: the example roster leads with claude-opus-5 (roster row 1 and duck 1 in
+        # the prisms table), and the skill documents rotating/refreshing the roster across repeated
+        # runs while keeping the top flagships and widening the panel when weaker models take part.
+        t = _read(SKILL)
+        # claude-opus-5 leads both the roster table (row 1) and the prisms assignment (duck 1).
+        self.assertIn("| 1 | `claude-opus-5` | Anthropic Opus |", t)
+        self.assertIn("| 1 | `claude-opus-5` | Anthropic | correctness & logic bugs |", t)
+        # The lead is a fresh flagship, so the prior generation is now a tail row, not the lead.
+        self.assertNotIn("| 1 | `claude-opus-4.8` | Anthropic Opus |", t)
+        # A dedicated repeated-runs section covers rotation, keeping the anchors, and widening.
+        self.assertIn("### Repeated runs: rotate the roster and widen for weaker models", t)
+        self.assertIn("Keep the top flagships every run", t)
+        self.assertIn("Rotate the tail between runs", t)
+        self.assertIn("Widen the panel when weaker models take part", t)
+        self.assertIn("increase `count`", t)
+        # Pin the SUBSTANTIVE rotation rules, not just their headings, so removing them fails the test:
+        # rotate to models earlier runs did not use, and (prisms) rotate model-to-aspect assignments.
+        self.assertIn("no earlier run has used", t)
+        self.assertIn("rotate which model reviews which aspect", t)
+        self.assertIn("raise `count` by roughly one duck per weaker model added", t)
+
+        # The two invariants MDUCK-ROTATE-11 promises are asserted against the actual tables, so a
+        # future roster refresh that breaks them (e.g. a second same-family model in the front-load
+        # positions, or a same-family aspect pair) fails this test rather than passing silently.
+        roster = _md_table_rows(t, "| # | example model | family |")
+        self.assertGreaterEqual(len(roster), 4, "roster table not found or too short")
+        # Front-load one model per family: with D distinct families in the roster, the FIRST D rows
+        # must all be distinct families (no family taken twice before every family appears once).
+        families = [_base_family(r[2]) for r in roster]
+        distinct = len(set(families))
+        self.assertGreaterEqual(distinct, 4,
+                                "roster must span at least 4 provider families, got %r" % sorted(set(families)))
+        front = families[:distinct]
+        self.assertEqual(len(set(front)), distinct,
+                         "the first %d rows must front-load one model per family before any repeat, "
+                         "got %r" % (distinct, front))
+        self.assertEqual(families[0], "Anthropic")  # opus-5 leads
+
+        # Every prisms aspect is covered by two ducks on DIFFERENT families.
+        prisms = _md_table_rows(t, "| duck | model | family | aspect |")
+        self.assertEqual(len(prisms), 8, "expected the 8-duck prisms example")
+        by_aspect = {}
+        for _duck, _model, family, aspect in ((r[0], r[1], r[2], r[3]) for r in prisms):
+            by_aspect.setdefault(aspect, []).append(_base_family(family))
+        self.assertEqual(len(by_aspect), 4, "expected 4 aspects, 2 ducks each")
+        for aspect, fams in by_aspect.items():
+            self.assertEqual(len(fams), 2, "aspect %r must have exactly 2 ducks" % aspect)
+            self.assertNotEqual(fams[0], fams[1],
+                                "aspect %r must pair two different families, got %r" % (aspect, fams))
 
     def test_extractor_is_shipped_and_referenced_not_inlined(self):
         # MDUCK-EXTRACT-09: the open-comments extractor ships as a real file under tools/, SKILL.md

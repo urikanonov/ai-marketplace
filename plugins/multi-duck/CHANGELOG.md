@@ -4,6 +4,27 @@ All notable changes to the multi-duck plugin are documented here. The format fol
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to semantic
 versioning.
 
+## [1.1.0] - 2026-07-25
+
+### Changed
+
+- Refreshed the example duck roster to lead with the current strongest Anthropic flagship. The panel
+  now leads with `claude-opus-5` as roster row 1 and duck 1 of the prisms example. The rows that
+  changed are row 1 (`claude-opus-4.8` -> `claude-opus-5`), row 6 (`gpt-5.3-codex` ->
+  `gpt-5.6-terra`), and the prior-generation tail rows 7 and 8 (`claude-opus-4.7` ->
+  `claude-opus-4.8`, `gpt-5.4` -> `gpt-5.5`); the other rows (`gpt-5.6-sol`, `gemini-3.1-pro-preview`,
+  `mai-code-1-flash-picker`, `claude-sonnet-5`) were already current and are unchanged. The roster
+  stays an illustrative example of the diversity-first selection strategy - substitute the
+  equivalents your host exposes (for example xAI's Grok or Moonshot's Kimi flagships on hosts that
+  offer them, or Google's `gemini-3.6-flash` as a lighter distinct-family voice).
+
+### Added
+
+- Built-in guidance for repeated panel runs on the same work: rotate/refresh the non-anchor roster
+  each run (and, in prisms mode, which model reviews which aspect) while keeping the top flagships
+  pinned, and increase the duck `count` when weaker or lighter models are added so extra diversity is
+  additive rather than displacing the flagships.
+
 ## [1.0.2] - 2026-07-19
 
 ### Changed
