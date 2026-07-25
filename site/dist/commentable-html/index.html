@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.243.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.244.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,12 +457,23 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.244.0] - 2026-07-25</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The identity edit-mode <code>Save</code> button is now the crimson primary (matching <code>Copy all</code>) and <code>Cancel</code> a themed secondary button, instead of the browser&#x27;s default button chrome.</li>
+              <li>Moved the <code>Export</code> control into the prominent primary row beside <code>Copy all</code> and moved <code>Search</code> into the compact action ribbon, since Export is the more important action. The More menu now anchors to its own toggle so it stays clear of the Export button.</li>
+              <li>The comment search field is now hidden by default and appears only when the reader opens it with the <code>Search</code> button (previously it appeared automatically whenever comments existed).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.243.0] - 2026-07-25</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>Print / Save-as-PDF single continuous page is now generic across ALL print destinations, not just Chromium&#x27;s native &quot;Save as PDF&quot;. Previously it forced the body to the on-screen reading-column width (~1280px on a wide screen) and sized a giant custom <code>@page</code> to match. Chromium&#x27;s native vector &quot;Save as PDF&quot; honors that custom page, but a driver that ignores it (Microsoft Print to PDF, physical printers, browsers without custom-<code>@page</code> support) paginated onto standard paper while the body stayed forced to ~1280px, so it downscaled to fit (poor quality), left wide side whitespace, and stranded tall diagrams. The single page is now sized to a portable standard page (US Letter, 816px) and, crucially, the print CSS uses <code>width: auto</code> with the inset provided by the <code>@page</code> margin instead of a forced body width: a browser that honors the custom <code>@page</code> fills it as one tall page, while any driver that ignores it reflows the content into its OWN real Letter/A4 printable area and paginates normally, never downscaled. The height is measured at the exact content width the page renders at, so it is accurate (fixing a box-model skew and a double-counted page margin that had bloated the page and, on a multi-diagram document, spilled a near-blank overflow page). A document with genuinely wide content (a wide table) still grows the page so nothing is clipped.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.242.0] - 2026-07-25</h3></div>
             <div class="group-label">Changed</div>
@@ -477,8 +488,6 @@
               <li>Each export action now shows a centered toast naming which export is running.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.241.0] - 2026-07-25</h3></div>
             <div class="group-label">Fixed</div>
@@ -516,15 +525,7 @@
               <li>Validator: a warning when an author <code>&lt;a href&gt;</code> document reference inside <code>#commentRoot</code> sets an explicit <code>target</code> other than <code>_blank</code> (it would open in the same tab), so a same-tab link is caught before handoff (CMH-LINK-05).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.236.0] - 2026-07-25</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Updated the in-runtime Help/About panel and the guided tutorial (<code>docs/TUTORIAL.md</code>) to describe the redesigned composite header: the captioned action ribbon (Export, Sort, More, Help, Hide), the Copy all / Search split, and the More menu that now holds Manage storage and Clear all comments (previously described as living in the Export menu).</li>
-              <li>Regenerated every tutorial screenshot that shows the comments panel so it reflects the new header; the full-page shots (Copy all, dark theme, saved comment, thread, and others) had lagged behind because a whole-page screenshot dilutes the header-region change below the screenshot-check tolerance.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">200 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">201 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -87,16 +87,17 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-empty kbd { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 4px; padding: 1px 5px; font-family: inherit; font-size: var(--cp-chrome-body-font); color: var(--cp-text); }
 
 .cm-sidebar-export {
-  flex: 1 1 6.8rem;
-  min-width: min(100%, 6.2rem);
+  position: relative;
 }
 .cm-sidebar .cm-sidebar-export > button,
 .cm-sidebar .cm-sidebar-more > button {
   width: 100%;
 }
-/* Export and More dropdowns anchor to the action ribbon (position:relative) and are sized to their
-   content (not the full ribbon width). The Export menu opens from the ribbon's left edge and the
-   More menu from the right edge, and both are clamped to the viewport so they never render off-screen. */
+/* The Export dropdown anchors to its own button (position:relative on .cm-sidebar-export) and the
+   More dropdown to the action ribbon (position:relative); both are sized to their content (not the
+   full row width) and clamped to the viewport so they never render off-screen. The Export menu (in
+   the primary row) and the More menu both open from the right edge so a right-docked sidebar cannot
+   push them off-screen. */
 .cm-sidebar-export-menu {
   position: absolute;
   z-index: 230;
@@ -116,6 +117,9 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 }
 .cm-sidebar-export-menu[hidden] { display: none; }
 .cm-sidebar-more-menu { left: auto; right: 0; }
+/* In the primary row the Export button is the right-hand action, so its menu opens from the right
+   edge (extending left into the sidebar) rather than off the right of the viewport. */
+.cm-sidebar .head-primary .cm-sidebar-export-menu { left: auto; right: 0; }
 /* Clean menu-item buttons (matching the collapsed toolbar menu): transparent until hovered, a
    left-aligned icon + label, and an accent-soft highlight - not heavy full-width bordered buttons. */
 .cm-sidebar .cm-sidebar-export-menu button {

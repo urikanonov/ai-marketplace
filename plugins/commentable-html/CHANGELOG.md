@@ -6,6 +6,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 
 ## [1.243.0] - 2026-07-25
 
+## [1.244.0] - 2026-07-25
+
+### Changed
+
+- The identity edit-mode `Save` button is now the crimson primary (matching `Copy all`) and `Cancel`
+  a themed secondary button, instead of the browser's default button chrome.
+- Moved the `Export` control into the prominent primary row beside `Copy all` and moved `Search` into
+  the compact action ribbon, since Export is the more important action. The More menu now anchors to
+  its own toggle so it stays clear of the Export button.
+- The comment search field is now hidden by default and appears only when the reader opens it with the
+  `Search` button (previously it appeared automatically whenever comments existed).
+
+## [1.243.0] - 2026-07-25
+
 ### Fixed
 
 - Print / Save-as-PDF single continuous page is now generic across ALL print destinations, not just

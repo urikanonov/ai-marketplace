@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import fs from "fs";
-import { openKitchenSink, addTextComment, stageContent, fileUrl, ready } from "./helpers.js";
+import { openKitchenSink, addTextComment, stageContent, fileUrl, ready, openSearch } from "./helpers.js";
 
 async function openSidebarPanel(page) {
   if (!(await page.evaluate(() => document.body.classList.contains("sidebar-open")))) {
@@ -16,6 +16,7 @@ test.describe("comment search / filter", () => {
     await addTextComment(page, "#commentRoot section p", "cmhsearch beta melon", 1);
     await addTextComment(page, "#commentRoot section p", "cmhsearch gamma apple", 2);
     await openSidebarPanel(page);
+    await openSearch(page);
 
     const input = page.locator("#cmSearchInput");
     const count = page.locator("#cmSearchCount");
@@ -50,6 +51,7 @@ test.describe("comment search / filter", () => {
     await addTextComment(page, "#commentRoot section p", "cmhsearch alpha apple", 0);
     await addTextComment(page, "#commentRoot section p", "cmhsearch beta melon", 1);
     await openSidebarPanel(page);
+    await openSearch(page);
 
     await page.locator("#cmSearchInput").fill("zzznomatch");
     await expect(page.locator("#commentList .cm-card[data-cid]:visible")).toHaveCount(0);
@@ -57,11 +59,15 @@ test.describe("comment search / filter", () => {
     await expect(page.locator("#commentList .cm-search-empty")).toBeVisible();
   });
 
-  test("the search row is hidden until there is at least one comment (CMH-SEARCH-03)", async ({ page }) => {
+  test("the search row is hidden by default and only the Search button reveals it (CMH-SEARCH-03)", async ({ page }) => {
     await openKitchenSink(page);
     await openSidebarPanel(page);
     await expect(page.locator(".head-search")).toBeHidden();
+    // Adding a comment does NOT reveal the search field on its own - it stays hidden by default.
     await addTextComment(page, "#commentRoot section p", "cmhsearch first", 0);
+    await expect(page.locator(".head-search")).toBeHidden();
+    // Only clicking the Search button opens it.
+    await page.click("#btnSearchToggle");
     await expect(page.locator(".head-search")).toBeVisible();
   });
 
@@ -70,6 +76,8 @@ test.describe("comment search / filter", () => {
     await addTextComment(page, "#commentRoot section p", "cmhsearch keep", 0);
     await openSidebarPanel(page);
     const row = page.locator(".head-search");
+    // Open the field via the Search toggle (it is hidden by default), then close it.
+    await page.click("#btnSearchToggle");
     await expect(row).toBeVisible();
     // Close the field via the Search toggle; the explicit reviewer intent must survive later renders.
     await page.click("#btnSearchToggle");
@@ -87,8 +95,10 @@ test.describe("comment search / filter", () => {
     await openSidebarPanel(page);
     const row = page.locator(".head-search");
     const input = page.locator("#cmSearchInput");
-    await input.focus();
+    // The field is hidden by default; open it via the Search button before focusing the input.
+    await page.click("#btnSearchToggle");
     await expect(row).toBeVisible();
+    await input.focus();
     await input.press("Escape");
     await expect(row).toBeHidden();
     await expect(page.locator("#btnSearchToggle")).toBeFocused();
@@ -98,6 +108,7 @@ test.describe("comment search / filter", () => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section p", "zzznoteonly", 0);
     await openSidebarPanel(page);
+    await openSearch(page);
 
     const input = page.locator("#cmSearchInput");
     const visible = page.locator("#commentList .cm-card[data-cid]:visible");
@@ -136,6 +147,7 @@ test.describe("comment search / filter", () => {
       await addTextComment(page, "#commentRoot section p", "search-note-section-only", 0);
       await addTextComment(page, "#commentRoot pre code", "search-note-pin-only", 0);
       await openSidebarPanel(page);
+      await openSearch(page);
 
       const input = page.locator("#cmSearchInput");
       const visible = page.locator("#commentList .cm-card[data-cid]:visible");
@@ -162,6 +174,7 @@ test.describe("comment search / filter", () => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section p", "note so the search row appears");
     await openSidebarPanel(page);
+    await openSearch(page);
     // Shrink the panel to its enforced minimum width.
     const handle = page.locator("#sidebarResizeHandle");
     await handle.focus();
@@ -184,6 +197,7 @@ test.describe("comment search / filter", () => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section p", "Cafe\u0301 review");
     await openSidebarPanel(page);
+    await openSearch(page);
 
     await page.locator("#cmSearchInput").fill("Caf\u00e9");
     await expect(page.locator("#commentList .cm-card[data-cid]:visible")).toHaveCount(1);
@@ -197,6 +211,7 @@ test.describe("comment search / filter", () => {
       await openKitchenSink(page);
       await addTextComment(page, "#commentRoot section p", "IRMAK review");
       await openSidebarPanel(page);
+      await openSearch(page);
 
       await page.locator("#cmSearchInput").fill("\u0131rmak");
       await expect(page.locator("#commentList .cm-card[data-cid]:visible")).toHaveCount(1);

@@ -254,7 +254,7 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
     await expect(page.locator("#sidebarExportMenu #btnStorage")).toHaveCount(0);
   });
 
-  test("the sidebar More menu is content-width, right-anchored, and viewport-safe (CMH-SIDE-11)", async ({ page }) => {
+  test("the sidebar More menu is content-width, anchored to its toggle, and clear of the Export button (CMH-SIDE-11)", async ({ page }) => {
     await openInline(page);
     await page.evaluate(() => {
       document.body.classList.add("sidebar-open");
@@ -267,21 +267,29 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
       const ribbon = document.querySelector(".cm-sidebar .head-ribbon");
       const menu = document.getElementById("sidebarMoreMenu");
       const btn = menu.querySelector("button");
+      const toggle = document.getElementById("btnMoreMenu");
+      const exp = document.getElementById("btnSidebarExportMenu");
       const rr = ribbon.getBoundingClientRect();
       const mr = menu.getBoundingClientRect();
+      const tr = toggle.getBoundingClientRect();
+      const er = exp.getBoundingClientRect();
       return {
         ribbonWidth: rr.width, menuWidth: mr.width,
-        ribbonRight: rr.right, menuRight: mr.right,
+        menuRight: mr.right, toggleRight: tr.right,
         viewportWidth: window.innerWidth,
         btnBg: getComputedStyle(btn).backgroundColor,
+        exportCenterX: (er.left + er.right) / 2,
       };
     });
-    // Content-width (not the full ribbon), transparent menu-item buttons, and anchored to the
-    // ribbon's RIGHT edge so a right-docked sidebar never pushes it off-screen.
+    // Content-width (not the full ribbon) with transparent menu-item buttons.
     expect(m.menuWidth).toBeLessThan(m.ribbonWidth - 8);
-    expect(m.menuRight).toBeLessThanOrEqual(m.viewportWidth + 1);
-    expect(Math.abs(m.menuRight - m.ribbonRight)).toBeLessThanOrEqual(1);
     expect(["rgba(0, 0, 0, 0)", "transparent"]).toContain(m.btnBg);
+    // Anchored to its own More toggle's right edge (not the far ribbon edge) and viewport-safe.
+    expect(Math.abs(m.menuRight - m.toggleRight)).toBeLessThanOrEqual(1);
+    expect(m.menuRight).toBeLessThanOrEqual(m.viewportWidth + 1);
+    // Critically the open menu clears the Export button's center, so Export (now in the primary row)
+    // stays clickable while More is open - that is what lets the two disclosures swap.
+    expect(m.menuRight).toBeLessThan(m.exportCenterX);
   });
 
   test("opening either sidebar disclosure closes the sibling one (CMH-SIDE-11)", async ({ page }) => {

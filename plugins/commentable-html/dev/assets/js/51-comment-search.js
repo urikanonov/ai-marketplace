@@ -50,7 +50,8 @@ function _toggleSearchEmptyNote(show) {
 }
 
 // Re-apply the active query to the currently-rendered cards. Called by the input handler and
-// at the end of renderComments(). With no comments the whole row is hidden (nothing to search).
+// at the end of renderComments(). The search row is hidden by default and only appears when the
+// reader opens it via the Search button (searchUserState === true), regardless of comment count.
 function applyCommentSearch() {
   const row = document.querySelector(".head-search");
   const countEl = document.getElementById("cmSearchCount");
@@ -60,9 +61,7 @@ function applyCommentSearch() {
     : (Array.isArray(comments) ? comments.length : 0);
   const noteCards = listEl ? listEl.querySelectorAll(".cm-card-note") : [];
   if (row) {
-    row.hidden = searchUserState === null
-      ? (total === 0 && noteCards.length === 0)
-      : !searchUserState;
+    row.hidden = searchUserState !== true;
   }
   const _searchToggle = document.getElementById("btnSearchToggle");
   if (_searchToggle && row) _searchToggle.setAttribute("aria-expanded", row.hidden ? "false" : "true");

@@ -198,6 +198,14 @@ export async function openSidebarMoreMenu(page) {
   await expect(menu).toBeVisible();
 }
 
+// The search field is hidden by default (CMH-SEARCH-03); open it via the Search button before
+// interacting with it.
+export async function openSearch(page) {
+  const row = page.locator(".head-search");
+  if (await row.isHidden()) await page.click("#btnSearchToggle");
+  await expect(row).toBeVisible();
+}
+
 export async function clickSidebarMore(page, selector) {
   await openSidebarMoreMenu(page);
   await page.locator(selector).click();

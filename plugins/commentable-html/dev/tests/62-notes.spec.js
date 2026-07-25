@@ -10,7 +10,7 @@ import {
   fileUrl, ready, installClipboardCapture, stageContent, copiedBundle, readDownload,
   addTextComment, SKILL, PYTHON,
   clickSidebarExport,
-  clickClearAll,
+  clickClearAll, openSearch,
 } from "./helpers.js";
 
 const NOTES_APPLY = path.join(SKILL, "tools", "notes", "notes_apply.py");
@@ -183,6 +183,7 @@ test("CMH-NOTE-10: a changed note is searchable in the sidebar", async ({ page }
   await open(page, DOC, "cmh-note-10");
   await field(page).fill(HOSTILE);
   const search = page.locator("#cmSearchInput");
+  await openSearch(page);
   await search.fill("blocker");   // matches the note text
   await expect(page.locator(".cm-card-note")).toBeVisible();
   await search.fill("nonexistent-term-xyz");
