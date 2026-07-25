@@ -372,6 +372,22 @@ test("CMH-PRINT-06: an eligible flat document prints as a single continuous no-b
   expect(garden.text, "garden single page keeps the opening section").toContain("Overview");
   expect(garden.text, "garden single page keeps the closing section").toContain("Next Steps");
 
+  // The single-page path is generic to EVERY eligible flat example, not just the two long reports
+  // above. report-checklist (a review checklist) and report-notes (editable notes) are each taller
+  // than one US Letter sheet (792pt), so normal pagination would split them across sheets; the
+  // single-page path must keep each on ONE tall portrait page, not blank, with its content present.
+  // Getting exactly one page TALLER than a Letter sheet pins the collapse (a doc that trivially fit a
+  // single sheet, or that regressed to normal pagination, would not).
+  for (const name of ["report-checklist.html", "report-notes.html"]) {
+    const report = await analyzePdf(await renderSinglePagePdf(page, path.join(EXAMPLES, name)));
+    expect(report.pages.length, `${name} prints as a single page`).toBe(1);
+    const pg = report.pages[0];
+    expect(pg.width, `${name} single page is portrait (taller than wide)`).toBeLessThan(pg.height);
+    expect(pg.height, `${name} single page is taller than one Letter sheet (genuine collapse, not a short doc)`).toBeGreaterThan(792);
+    expect(pg.ink, `${name} single page is not blank`).toBeGreaterThan(MIN_INK);
+    expect(report.text.length, `${name} single page carries its content`).toBeGreaterThan(200);
+  }
+
   // Scope guard: a document with a block-stacking container - report-metrics has multi-column chart
   // galleries (.visual-grid), report-triage has a grid kanban board - is intentionally LEFT ON
   // NORMAL PAGINATION (its grid->block print reflow + async chart resize cannot be measured before
