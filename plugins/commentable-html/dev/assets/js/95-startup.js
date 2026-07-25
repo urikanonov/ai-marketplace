@@ -199,6 +199,12 @@ function _cmTipHide() {
   _cmTipPending = null; _cmTipFor = null;
   if (_cmTipEl) _cmTipEl.classList.remove("is-visible");
 }
+// Let a control that changes its own tooltip text while it is the one showing the bubble (e.g. the
+// 3-state sort cycle button, re-labelled on each keyboard activation) refresh the visible bubble in
+// place, so the tooltip does not keep describing the previous state until focus or hover moves.
+window.__cmhRefreshTip = function (el) {
+  if (el && el === _cmTipFor && _cmTipEl && _cmTipEl.classList.contains("is-visible")) _cmTipShow(el);
+};
 function _cmTipSchedule(el) {
   if (el === _cmTipFor) { if (_cmTipTimer) { clearTimeout(_cmTipTimer); _cmTipTimer = null; } return; }
   if (el === _cmTipPending) return;

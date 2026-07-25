@@ -453,6 +453,11 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
         doc = build().replace('<span id="btnCopyAll" class="cm-skip"></span>', "")
         self.assertError(doc, 'required element id="btnCopyAll" is missing')
 
+    def test_missing_required_id_sort(self):
+        # btnSort is the sole control wired by 80-sort-comments.js; without it sorting no-ops.
+        doc = build().replace('<span id="btnSort" class="cm-skip"></span>', "")
+        self.assertError(doc, 'required element id="btnSort" is missing')
+
     def test_missing_required_id_sidebar(self):
         doc = build().replace('<span id="sidebar" class="cm-skip"></span>', "")
         self.assertError(doc, 'required element id="sidebar" is missing')

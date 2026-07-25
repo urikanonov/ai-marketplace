@@ -101,6 +101,23 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
     await expect(page.locator("#btnSort")).toHaveAttribute("aria-label", /newest first/i);
   });
 
+  test("cycling the Sort button with the keyboard refreshes its live tooltip in place (CMH-SIDE-02)", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "kb tip note");
+    await openSidebarPanel(page);
+    const sort = page.locator("#btnSort");
+    const tipBubble = page.locator(".cm-tooltip.is-visible");
+    // Focusing the button shows the shared tooltip bubble describing the current (document) state.
+    await sort.focus();
+    await expect(tipBubble).toBeVisible();
+    await expect(tipBubble).toContainText(/document position/i);
+    // Activating it by keyboard cycles the state; the ALREADY-VISIBLE bubble must refresh in place
+    // rather than keep describing the previous state until focus moves.
+    await page.keyboard.press("Enter");
+    await expect(sort).toHaveAttribute("data-sort", "time-desc");
+    await expect(tipBubble).toContainText(/newest first/i);
+  });
+
 
   test("the sidebar resize handle persists width and reserves matching page space", async ({ page }) => {
     await page.setViewportSize({ width: 1400, height: 800 });

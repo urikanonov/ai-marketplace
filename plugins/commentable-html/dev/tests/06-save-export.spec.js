@@ -336,6 +336,39 @@ test.describe("Save comments / Export plain", () => {
     await expect(page.locator("#toast")).toContainText("Exporting as PDF");
   });
 
+  test("every export control (both menus, all five formats) announces its centered toast label (CMH-EXP-15)", async ({ page }) => {
+    await openInline(page);
+    await addTextComment(page, "#commentRoot section p", "map coverage note");
+    // Let the capture-phase intent-toast listener fire, then swallow the click so no real export
+    // (download/print) runs - this keeps the test fast while still exercising the EXPORT_LABELS map
+    // for every one of the ten controls, so a missing or wrong entry is caught.
+    await page.evaluate(() => {
+      document.addEventListener("click", (e) => {
+        if (e.target && e.target.closest && e.target.closest("button[id]")) e.stopImmediatePropagation();
+      }, true);
+    });
+    const cases = [
+      ["btnSaveHtml", "Portable"], ["btnSaveHtmlTop", "Portable"],
+      ["btnExportOffline", "Offline"], ["btnExportOfflineTop", "Offline"],
+      ["btnExportMd", "Markdown"], ["btnExportMdTop", "Markdown"],
+      ["btnSavePlain", "Plain HTML"], ["btnSavePlainTop", "Plain HTML"],
+      ["btnPrint", "PDF"], ["btnPrintTop", "PDF"],
+    ];
+    for (const [id, label] of cases) {
+      const shown = await page.evaluate((btnId) => {
+        const t = document.getElementById("toast");
+        t.classList.remove("show", "cm-toast-center");
+        t.textContent = "";
+        document.getElementById(btnId).dispatchEvent(
+          new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+        return { text: t.textContent || "", show: t.classList.contains("show"), center: t.classList.contains("cm-toast-center") };
+      }, id);
+      expect(shown.show, `${id} should show its toast`).toBe(true);
+      expect(shown.center, `${id} toast should be centered`).toBe(true);
+      expect(shown.text, `${id} should announce "${label}"`).toBe(`Exporting as ${label}...`);
+    }
+  });
+
   test("the provenance checkbox has a clear label and explanatory tooltip (CMH-SEC-05)", async ({ page }) => {
     await openInline(page);
     await addTextComment(page, "#commentRoot section p", "provenance label note");

@@ -43,7 +43,7 @@ VALIDATE_PY = os.path.join(TOOLS, "validate", "validate.py")
 EXPECTED_REQUIRED_IDS = frozenset({
     "sidebar", "commentList", "contextMenu", "mermaidAddBtn", "diffAddBtn", "imageAddBtn", "linkAddBtn", "hlBubble", "toast",
     "toolbarCount", "sidebarCount",
-    "btnToggleSidebar", "btnCopyAll", "btnCopyAllTop", "btnClearAll",
+    "btnToggleSidebar", "btnCopyAll", "btnCopyAllTop", "btnClearAll", "btnSort",
     "btnCloseSidebar", "menuComment",
     "btnToolbarMenu", "toolbarMenu",
     "btnMoreMenu", "sidebarMoreMenu", "btnSearchToggle",

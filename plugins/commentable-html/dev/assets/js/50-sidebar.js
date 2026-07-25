@@ -67,6 +67,10 @@ function updateSortUi() {
   b.setAttribute("aria-label", "Sort comments (currently: " + ARIA[state] + ")");
   const icon = document.getElementById("cmSortIcon");
   if (icon && ICONS[state]) icon.innerHTML = ICONS[state];
+  // If the shared tooltip bubble is currently showing for this button (a keyboard user focuses it,
+  // then presses Enter to cycle the state), refresh it in place so it does not describe the old
+  // state until focus moves.
+  if (window.__cmhRefreshTip) window.__cmhRefreshTip(b);
 }
 function renderComments() {
   // Test/perf hook: renderComments runs two full-document tree walks, so a spec pins that the

@@ -10009,6 +10009,10 @@ function updateSortUi() {
   b.setAttribute("aria-label", "Sort comments (currently: " + ARIA[state] + ")");
   const icon = document.getElementById("cmSortIcon");
   if (icon && ICONS[state]) icon.innerHTML = ICONS[state];
+  // If the shared tooltip bubble is currently showing for this button (a keyboard user focuses it,
+  // then presses Enter to cycle the state), refresh it in place so it does not describe the old
+  // state until focus moves.
+  if (window.__cmhRefreshTip) window.__cmhRefreshTip(b);
 }
 function renderComments() {
   // Test/perf hook: renderComments runs two full-document tree walks, so a spec pins that the
@@ -16540,6 +16544,12 @@ function _cmTipHide() {
   _cmTipPending = null; _cmTipFor = null;
   if (_cmTipEl) _cmTipEl.classList.remove("is-visible");
 }
+// Let a control that changes its own tooltip text while it is the one showing the bubble (e.g. the
+// 3-state sort cycle button, re-labelled on each keyboard activation) refresh the visible bubble in
+// place, so the tooltip does not keep describing the previous state until focus or hover moves.
+window.__cmhRefreshTip = function (el) {
+  if (el && el === _cmTipFor && _cmTipEl && _cmTipEl.classList.contains("is-visible")) _cmTipShow(el);
+};
 function _cmTipSchedule(el) {
   if (el === _cmTipFor) { if (_cmTipTimer) { clearTimeout(_cmTipTimer); _cmTipTimer = null; } return; }
   if (el === _cmTipPending) return;
