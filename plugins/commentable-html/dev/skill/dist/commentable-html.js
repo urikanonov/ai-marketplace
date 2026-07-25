@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.236.0";
+const CMH_VERSION = "1.237.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -3215,7 +3215,10 @@ function _cmhCommentableLink(a) {
 }
 // Render-time defaults. Two independent concerns:
 // - NEW-TAB stamping: open author-facing document references (http/https/file only) in a new
-//   tab by default (never fragments, UI chrome, or non-document schemes like mailto:/tel:).
+//   tab, ALWAYS (never fragments, UI chrome, or non-document schemes like mailto:/tel:). An
+//   author-set target on a document reference (target="_self"/"_top"/a named frame) is OVERRIDDEN
+//   to _blank: navigating a document reference in the same tab would strand the reviewer away from
+//   the report and their comments, so a new tab is enforced, not merely defaulted.
 // - rel ENFORCEMENT (reverse-tabnabbing defense): whenever the effective target is _blank
 //   (case-insensitively) on ANY author link - even a data:/blob: link an author pre-set - ensure
 //   rel="noopener noreferrer" is present. This is decoupled from commentability on purpose so a
@@ -3223,7 +3226,7 @@ function _cmhCommentableLink(a) {
 function stampLinkTargets() {
   root.querySelectorAll("a[href]").forEach((a) => {
     if (a.closest(".cm-skip")) return; // never touch runtime UI chrome
-    if (_cmhCommentableLink(a) && !a.getAttribute("target")) a.setAttribute("target", "_blank");
+    if (_cmhCommentableLink(a)) a.setAttribute("target", "_blank");
     if ((a.getAttribute("target") || "").trim().toLowerCase() === "_blank") {
       const rel = (a.getAttribute("rel") || "").split(/\s+/).filter(Boolean);
       let changed = false;

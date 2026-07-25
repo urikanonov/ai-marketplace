@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.237.0] - 2026-07-25
+
+### Changed
+
+- Document links now ALWAYS open in a new tab: the runtime overrides an author-set `target`
+  (`_self`/`_top`/a named frame) on a `#commentRoot` document reference (`http`/`https`/`file`) to
+  `target="_blank"`, so opening a reference never navigates the reviewer away from the report and
+  their comments (CMH-LINK-01). Non-document schemes (`mailto:`/`tel:`/`javascript:`/`data:`),
+  same-page `#` fragments, and `.cm-skip` chrome stay excluded.
+
+### Added
+
+- Validator: a warning when an author `<a href>` document reference inside `#commentRoot` sets an
+  explicit `target` other than `_blank` (it would open in the same tab), so a same-tab link is
+  caught before handoff (CMH-LINK-05).
+
 ## [1.236.0] - 2026-07-25
 
 ### Changed

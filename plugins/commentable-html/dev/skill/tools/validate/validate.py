@@ -184,6 +184,9 @@ from checks.kind import (  # noqa: F401,E402
     check_mermaid_renders,
     check_section_reference_links,
 )
+from checks.links import (  # noqa: F401,E402
+    check_links,
+)
 from checks.charts import (  # noqa: F401,E402
     CANVAS_RENDER_RE,
     GUARD_RE,

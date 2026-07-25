@@ -239,6 +239,7 @@ class _DocParser(HTMLParser):
         self.has_comment_root = False
         self.js_end_marker_pos = None
         self.all_ids = []        # every element id value, in document order
+        self.anchors = []        # [{"href", "target", "skip", "in_root"}] for every <a> element
         self.metas = {}          # {meta name (lowercased): content} for <meta name content>
         self.icon_links = []     # [{"rel": str, "href": str}] for every head <link rel~="icon">
         self._head_ended = False # True once the head is over (a <body>/</head>/first flow element)
@@ -342,6 +343,21 @@ class _DocParser(HTMLParser):
             self.figcaptions.append({"skip": self._skip_ancestor() or own_skip,
                                      "in_canvas": self._in_canvas(),
                                      "in_chart_figure": any(self._figure_chart)})
+        if tag == "a":
+            # SVG-namespaced <a> (tagName "a", not "A") is never stamped by the runtime, so exclude
+            # it. But an <a> inside an SVG <foreignObject> is at an HTML integration point (tagName
+            # "A") and IS stamped - detect the nearest svg/foreignObject ancestor, not any svg.
+            in_svg = False
+            for (t, _s) in reversed(self.stack):
+                if t == "svg":
+                    in_svg = True
+                    break
+                if t == "foreignobject":
+                    break
+            self.anchors.append({"href": ad.get("href"), "target": ad.get("target"),
+                                 "skip": self._skip_ancestor() or own_skip,
+                                 "in_svg": in_svg,
+                                 "in_root": self._in_comment_root()})
         if "data-cm-offline-chart" in ad:
             self.has_offline_chart = True
         if "style" in ad:
