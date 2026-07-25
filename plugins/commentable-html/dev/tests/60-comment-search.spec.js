@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import fs from "fs";
-import { openKitchenSink, addTextComment, stageContent, fileUrl, ready, openSearch } from "./helpers.js";
+import { openKitchenSink, addTextComment, stageContent, fileUrl, ready, openSearch, openInline } from "./helpers.js";
 
 async function openSidebarPanel(page) {
   if (!(await page.evaluate(() => document.body.classList.contains("sidebar-open")))) {
@@ -43,6 +43,21 @@ test.describe("comment search / filter", () => {
     await expect(input).toHaveValue("");
     await expect(visible).toHaveCount(3);
     await expect(count).toHaveText("3 / 3");
+    await expect(clear).toBeHidden();
+  });
+
+  test("the clear button reflects the query even when there is nothing to search (CMH-SEARCH-01)", async ({ page }) => {
+    // A note-free document with no comments: the field can still be opened, and typing a query must
+    // show the X even though there is nothing to match (the early return used to strand it hidden).
+    await openInline(page);
+    await openSidebarPanel(page);
+    await openSearch(page);
+    const input = page.locator("#cmSearchInput");
+    const clear = page.locator("#cmSearchClear");
+    await expect(clear).toBeHidden();
+    await input.fill("orphan-query");
+    await expect(clear).toBeVisible();
+    await input.fill("");
     await expect(clear).toBeHidden();
   });
 

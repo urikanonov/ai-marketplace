@@ -6745,12 +6745,14 @@ function applyCommentSearch() {
   }
   const _searchToggle = document.getElementById("btnSearchToggle");
   if (_searchToggle && row) _searchToggle.setAttribute("aria-expanded", row.hidden ? "false" : "true");
+  const q = _normalizeCommentSearchText(commentSearchQuery.trim());
+  // Keep the clear (X) button in sync with the field even when there is nothing to search, so a query
+  // typed while the comment list is empty still shows the X (and clearing it hides the X again).
+  if (clearBtn) clearBtn.hidden = q === "";
   if (total === 0 && noteCards.length === 0) {
     _toggleSearchEmptyNote(false);
     return;
   }
-  const q = _normalizeCommentSearchText(commentSearchQuery.trim());
-  if (clearBtn) clearBtn.hidden = q === "";
   const cards = listEl ? listEl.querySelectorAll(".cm-card[data-cid]") : [];
   let shown = 0;
   cards.forEach((card) => {
