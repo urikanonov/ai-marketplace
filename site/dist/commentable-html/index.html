@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.244.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.245.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,6 +457,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.245.0] - 2026-07-25</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Deck showcase: the &quot;Act 1 - The loop&quot; slide now illustrates the generate -&gt; review -&gt; comment -&gt; copy-all/paste/Enter cycle as a top-down Mermaid diagram that fans out and loops back, so it fills the 16:9 stage (full height and width) instead of rendering as one thin, wide band that wasted the top and bottom of the slide and clipped its right-most node. (CMH-DECK-41)</li>
+              <li>Deck layout: every deck the skill produces now keeps a stable header baseline - the deck CSS reserves a consistent title band (em-sized) so a slide&#x27;s subtitle/body starts at the same height regardless of whether the title is one or two lines, and content slides top-align so the title starts at the same height on every slide; the header no longer jumps when navigating. Showcase content slides pin that header at the top and center the body in the space below it, so a light slide no longer leaves a large empty band at the bottom. Section/divider slides still center. (CMH-DECK-42, CMH-DECK-SHOWCASE-12)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.244.0] - 2026-07-25</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -465,6 +473,8 @@
               <li>The comment search field is now hidden by default and appears only when the reader opens it with the <code>Search</code> button (previously it appeared automatically whenever comments existed).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.243.0] - 2026-07-25</h3></div>
             <div class="group-label">Fixed</div>
@@ -472,8 +482,6 @@
               <li>Print / Save-as-PDF single continuous page is now generic across ALL print destinations, not just Chromium&#x27;s native &quot;Save as PDF&quot;. Previously it forced the body to the on-screen reading-column width (~1280px on a wide screen) and sized a giant custom <code>@page</code> to match. Chromium&#x27;s native vector &quot;Save as PDF&quot; honors that custom page, but a driver that ignores it (Microsoft Print to PDF, physical printers, browsers without custom-<code>@page</code> support) paginated onto standard paper while the body stayed forced to ~1280px, so it downscaled to fit (poor quality), left wide side whitespace, and stranded tall diagrams. The single page is now sized to a portable standard page (US Letter, 816px) and, crucially, the print CSS uses <code>width: auto</code> with the inset provided by the <code>@page</code> margin instead of a forced body width: a browser that honors the custom <code>@page</code> fills it as one tall page, while any driver that ignores it reflows the content into its OWN real Letter/A4 printable area and paginates normally, never downscaled. The height is measured at the exact content width the page renders at, so it is accurate (fixing a box-model skew and a double-counted page margin that had bloated the page and, on a multi-diagram document, spilled a near-blank overflow page). A document with genuinely wide content (a wide table) still grows the page so nothing is clipped.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.242.0] - 2026-07-25</h3></div>
             <div class="group-label">Changed</div>
@@ -514,18 +522,7 @@
               <li>Governance: the doc-surface registry in <code>dev/SPEC.md</code> now tracks a required <code>Deck</code> dimension alongside the reader-doc surface. Every new user-facing feature must declare that it is demonstrated on a showcase-deck slide (<code>deck</code>) or record an explicit <code>opt-out: &lt;reason&gt;</code>, checked by <code>scripts/check_doc_surfaces.py</code> (run in the required validate job and the pre-push hook) and encoded in AGENTS.md, so the deck stays a fourth documentation surface that cannot silently fall behind.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.237.0] - 2026-07-25</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Document links now ALWAYS open in a new tab: the runtime overrides an author-set <code>target</code> (<code>_self</code>/<code>_top</code>/a named frame) on a <code>#commentRoot</code> document reference (<code>http</code>/<code>https</code>/<code>file</code>) to <code>target=&quot;_blank&quot;</code>, so opening a reference never navigates the reviewer away from the report and their comments (CMH-LINK-01). Non-document schemes (<code>mailto:</code>/<code>tel:</code>/<code>javascript:</code>/<code>data:</code>), same-page <code>#</code> fragments, and <code>.cm-skip</code> chrome stay excluded.</li>
-            </ul>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Validator: a warning when an author <code>&lt;a href&gt;</code> document reference inside <code>#commentRoot</code> sets an explicit <code>target</code> other than <code>_blank</code> (it would open in the same tab), so a same-tab link is caught before handoff (CMH-LINK-05).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">201 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">202 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

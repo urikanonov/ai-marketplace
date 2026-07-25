@@ -4,6 +4,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.245.0] - 2026-07-25
+
+### Changed
+
+- Deck showcase: the "Act 1 - The loop" slide now illustrates the generate -> review -> comment ->
+  copy-all/paste/Enter cycle as a top-down Mermaid diagram that fans out and loops back, so it fills
+  the 16:9 stage (full height and width) instead of rendering as one thin, wide band that wasted the
+  top and bottom of the slide and clipped its right-most node. (CMH-DECK-41)
+- Deck layout: every deck the skill produces now keeps a stable header baseline - the deck CSS reserves
+  a consistent title band (em-sized) so a slide's subtitle/body starts at the same height regardless of
+  whether the title is one or two lines, and content slides top-align so the title starts at the same
+  height on every slide; the header no longer jumps when navigating. Showcase content slides pin that
+  header at the top and center the body in the space below it, so a light slide no longer leaves a large
+  empty band at the bottom. Section/divider slides still center. (CMH-DECK-42, CMH-DECK-SHOWCASE-12)
+
 ## [1.244.0] - 2026-07-25
 
 ### Changed

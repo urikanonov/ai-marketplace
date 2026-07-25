@@ -252,13 +252,13 @@ test("CMH-MMD-08: deck Mermaid node labels are fully visible inside their node b
     expect(result.svgTextLabels, "deck node labels must be SVG <text>").toBeGreaterThanOrEqual(5);
     // Edge labels are covered too: the showcase's labeled edge renders and uses SVG text.
     expect(result.edgeForeignObjects, "deck edge labels must not use a foreignObject").toBe(0);
-    expect(result.edgeTexts.some((t) => t.replace(/\s+/g, "").includes("commentonanyelement")),
+    expect(result.edgeTexts.some((t) => t.replace(/\s+/g, "").includes("thenrepeat")),
       "the labeled showcase edge must render its text").toBe(true);
     // A known long label from the showcase flowchart must be rendered (SVG <text> wrapping can drop
     // the space at a wrap point, so compare with whitespace removed)...
     const normalized = result.labels.map((t) => t.replace(/\s+/g, ""));
     expect(normalized, "expected the long showcase node label to be rendered")
-      .toContain("Youcommentontheexactspot");
+      .toContain("Agentwritesthegardenplan");
     // ...and no node or edge label may be clipped by its box.
     expect(result.clipped, "clipped deck labels: " + JSON.stringify(result.clipped)).toEqual([]);
   } finally {
@@ -274,11 +274,12 @@ test("CMH-MMD-08: deck mermaid comment labels preserve spaces across SVG-text wr
     await settle(page);
     await enterCommentMode(page);
 
-    // The wrapped node's raw textContent drops the wrap-point space ("You comment on the exactspot"),
-    // so the runtime must rejoin the SVG <text> rows to anchor and label it with the spaced words.
+    // The wrapped node's raw textContent drops the wrap-point space ("Agent writes the garden plan"
+    // renders as "Agent writes the garden" + "plan"), so the runtime must rejoin the SVG <text> rows
+    // to anchor and label it with the spaced words.
     const idx = await page.evaluate(() => {
       const nodes = [...document.querySelectorAll(".slide.active pre.mermaid svg g.node")];
-      return nodes.findIndex((n) => (n.textContent || "").replace(/\s+/g, "").includes("Youcommentontheexactspot"));
+      return nodes.findIndex((n) => (n.textContent || "").replace(/\s+/g, "").includes("Agentwritesthegardenplan"));
     });
     expect(idx, "expected the wrapped showcase node to be present").toBeGreaterThanOrEqual(0);
     const node = page.locator(".slide.active pre.mermaid svg g.node").nth(idx);
@@ -291,11 +292,11 @@ test("CMH-MMD-08: deck mermaid comment labels preserve spaces across SVG-text wr
     await composer.locator('[data-act="save"]').click();
     await expect(composer).toHaveCount(0);
 
-    // Copy all quotes the anchored node with its spaces intact, not the space-dropped "exactspot".
+    // Copy all quotes the anchored node with its spaces intact, not the space-dropped "gardenplan".
     await page.evaluate(() => document.getElementById("btnCopyAll").click());
     const bundle = await copiedBundle(page);
-    expect(bundle).toContain("You comment on the exact spot");
-    expect(bundle).not.toContain("exactspot");
+    expect(bundle).toContain("Agent writes the garden plan");
+    expect(bundle).not.toContain("gardenplan");
   } finally {
     await server.close();
   }
@@ -311,7 +312,7 @@ test("CMH-MMD-08: a legacy deck mermaid anchor whose spacing differs re-attaches
 
     const idx = await page.evaluate(() =>
       [...document.querySelectorAll(".slide.active pre.mermaid svg g.node")]
-        .findIndex((n) => (n.textContent || "").replace(/\s+/g, "").includes("Youcommentontheexactspot")));
+        .findIndex((n) => (n.textContent || "").replace(/\s+/g, "").includes("Agentwritesthegardenplan")));
     expect(idx).toBeGreaterThanOrEqual(0);
     const node = page.locator(".slide.active pre.mermaid svg g.node").nth(idx);
     await node.hover();
@@ -325,14 +326,14 @@ test("CMH-MMD-08: a legacy deck mermaid anchor whose spacing differs re-attaches
 
     // Rewrite the persisted anchor to a space-DROPPED label key (the form an SVG-text deck produced
     // before the rejoin fix, or an HTML deck whose wrapped label concatenated without a space), then
-    // reload. The current rendered/rejoined label keeps the space ("You comment on the exact spot"),
+    // reload. The current rendered/rejoined label keeps the space ("Agent writes the garden plan"),
     // so the exact `label:` match fails and only the whitespace-insensitive fallback can re-anchor it.
     const rewrote = await page.evaluate(() => {
       const arr = window.__cmhStorageCodec.read();
       let changed = false;
       arr.forEach((c) => {
-        if (c && typeof c.nodeKey === "string" && c.nodeKey.replace(/\s+/g, "") === "label:Youcommentontheexactspot") {
-          c.nodeKey = "label:You comment on the exactspot";
+        if (c && typeof c.nodeKey === "string" && c.nodeKey.replace(/\s+/g, "") === "label:Agentwritesthegardenplan") {
+          c.nodeKey = "label:Agent writes the gardenplan";
           changed = true;
         }
       });
@@ -349,7 +350,7 @@ test("CMH-MMD-08: a legacy deck mermaid anchor whose spacing differs re-attaches
 
     const reanchored = await page.evaluate(() =>
       [...document.querySelectorAll(".slide.active pre.mermaid svg g.node")]
-        .some((n) => (n.textContent || "").replace(/\s+/g, "").includes("Youcommentontheexactspot")
+        .some((n) => (n.textContent || "").replace(/\s+/g, "").includes("Agentwritesthegardenplan")
           && n.classList.contains("cm-mermaid-hl")));
     expect(reanchored, "the legacy-keyed comment must re-ring its node via the whitespace-insensitive fallback").toBe(true);
   } finally {
@@ -889,34 +890,49 @@ test("CMH-DECK-SHOWCASE-09: the showcase deck shows a concrete Copy all bundle s
 
     await showSlideWith(page, "text=Comment on the actual thing, not a screenshot of it.");
     const pointAt = page.locator(".slide.active");
-    await expect(pointAt).toContainText('Example: the "Paste the Copy all bundle" node.');
+    await expect(pointAt).toContainText('Example: the "Copy all, paste, press Enter" node.');
     await expect(pointAt).not.toContainText("Copy all Markdown bundle");
   } finally {
     await server.close();
   }
 });
 
-test("CMH-DECK-SHOWCASE-12: showcase slides vertically center their content", async ({ page }) => {
+test("CMH-DECK-SHOWCASE-12: showcase slides pin the header and center the body below it", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
     await showSlideWith(page, ".show-card-example");
-    const metrics = await page.locator(".slide.active").evaluate((slide) => {
+    const m = await page.locator(".slide.active").evaluate((slide) => {
       const rect = slide.getBoundingClientRect();
-      const content = slide.querySelector(".show-card-example").getBoundingClientRect();
       const style = getComputedStyle(slide);
+      const h2 = slide.querySelector(":scope > h2");
+      const subtitle = h2 && h2.nextElementSibling && h2.nextElementSibling.classList.contains("show-lead")
+        ? h2.nextElementSibling : null;
+      const firstBody = (subtitle || h2).nextElementSibling;
+      const lastBody = slide.lastElementChild;
+      if (!firstBody || !lastBody) {
+        return { error: "no body element after the header on " + slide.dataset.slideId };
+      }
+      const headerBottom = (subtitle || h2).getBoundingClientRect().bottom;
       return {
         display: style.display,
         flexDirection: style.flexDirection,
         justifyContent: style.justifyContent,
-        stageCenterY: rect.top + rect.height / 2,
-        contentCenterY: content.top + content.height / 2,
+        gapTop: firstBody.getBoundingClientRect().top - headerBottom,
+        gapBottom: rect.bottom - lastBody.getBoundingClientRect().bottom,
         stageHeight: rect.height,
       };
     });
-    expect(metrics.display).toBe("flex");
-    expect(metrics.flexDirection).toBe("column");
-    expect(metrics.justifyContent).toBe("center");
-    expect(Math.abs(metrics.contentCenterY - metrics.stageCenterY)).toBeLessThan(metrics.stageHeight * 0.2);
+    expect(m.display).toBe("flex");
+    expect(m.flexDirection).toBe("column");
+    expect(m.error, m.error || "ok").toBeUndefined();
+    // The header (kicker + title + subtitle) is pinned at the top for a stable baseline, so content
+    // slides top-align rather than centering the whole slide.
+    expect(m.justifyContent).toBe("flex-start");
+    // The body is centered in the working area below the header (auto top/bottom margins), so a light
+    // slide does not leave a large empty band at the bottom: the space above the body ~= below it.
+    expect(m.gapTop).toBeGreaterThan(0);
+    expect(m.gapBottom).toBeGreaterThan(0);
+    expect(Math.abs(m.gapTop - m.gapBottom)).toBeLessThan(m.stageHeight * 0.06);
   } finally {
     await server.close();
   }
@@ -1183,6 +1199,93 @@ test("CMH-DECK-SHOWCASE-17: the portability-modes slide tags parts with colorful
     const cdnBg = await slide.locator(".show-src.show-src-cdn").first().evaluate((el) => getComputedStyle(el).backgroundColor);
     const inlineBg = await slide.locator(".show-src.show-src-inline").first().evaluate((el) => getComputedStyle(el).backgroundColor);
     expect(cdnBg).not.toBe(inlineBg);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-41: the loop slide's diagram fills the stage instead of a thin clipped band", async ({ page }) => {
+  const server = await openShowcaseDeck(page, { mermaid: true });
+  try {
+    // The "Act 1 - The loop" slide.
+    const slideId = "slide-efe04d9f";
+    await page.evaluate((id) => window.__cmhDeck.showSlideById(id), slideId);
+    await settle(page);
+    await expect
+      .poll(() => page.locator(`[data-slide-id="${slideId}"] pre.mermaid svg g.node`).count())
+      .toBeGreaterThanOrEqual(5);
+    const m = await page.evaluate((id) => {
+      const slide = document.querySelector(`[data-slide-id="${id}"]`);
+      const stage = document.querySelector(".deck-stage");
+      const scale = stage.getBoundingClientRect().width / 1920;
+      const svg = slide.querySelector("pre.mermaid svg");
+      const sb = svg.getBoundingClientRect();
+      const slb = slide.getBoundingClientRect();
+      return {
+        svgH: sb.height / scale,
+        aspect: sb.width / sb.height,
+        rightGap: (slb.right - sb.right) / scale,
+      };
+    }, slideId);
+    // Fills the vertical space rather than a ~80px horizontal band.
+    expect(m.svgH).toBeGreaterThan(360);
+    // Not an extreme wide-thin ribbon (the old flowchart LR was ~15:1).
+    expect(m.aspect).toBeLessThan(3);
+    // The diagram stays clear of the slide's right edge, so no node is clipped or overlapped by
+    // the top-right comment affordance.
+    expect(m.rightGap).toBeGreaterThan(40);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-42: content-slide titles and subtitles share a stable header baseline", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    // Slides stay laid out even when inactive (visibility, not display, toggles), so every
+    // content slide's header can be measured in one pass. Section/divider slides center on
+    // purpose and are excluded.
+    const rows = await page.evaluate(() => {
+      const stage = document.querySelector(".deck-stage");
+      const rect = stage.getBoundingClientRect();
+      const scale = rect.width / 1920;
+      const top = rect.top;
+      const out = [];
+      const slides = Array.from(document.querySelectorAll(".slide")).filter(
+        (s) => !s.matches(".show-header, .show-title, .show-close, .show-question"),
+      );
+      for (const s of slides) {
+        const h2 = s.querySelector(":scope > h2");
+        if (!h2) continue;
+        const b = h2.getBoundingClientRect();
+        // A subtitle placed immediately under the title (the deck's lead/lede), if present.
+        const sub = h2.nextElementSibling;
+        const isSub = sub && sub.matches(".show-lead, .cmh-slide-lede");
+        out.push({
+          id: s.dataset.slideId,
+          h2Top: Math.round((b.top - top) / scale),
+          h2Bottom: Math.round((b.bottom - top) / scale),
+          subTop: isSub ? Math.round((sub.getBoundingClientRect().top - top) / scale) : null,
+        });
+      }
+      return out;
+    });
+    expect(rows.length).toBeGreaterThanOrEqual(10);
+    // Assumes every content-slide title fits within the reserved two-line band (<= 2.8em); a 3-line
+    // title would push its h2 bottom below the others and (correctly) fail the tolerance below.
+    const tops = rows.map((r) => r.h2Top);
+    const bottoms = rows.map((r) => r.h2Bottom);
+    // The title starts at the same height on every content slide (the header does not jump).
+    expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(8);
+    // The title reserves a uniform band, so whatever follows it (a subtitle/lead or the body)
+    // starts at the same height regardless of how many lines the title wraps to.
+    expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThanOrEqual(8);
+    // The RENDERED subtitle top (not just the h2 box) is stable too: a subtitle placed directly
+    // under the title takes its top from the title's margin-bottom, not its own margin, so every
+    // content slide that has one puts it at the same height.
+    const subTops = rows.map((r) => r.subTop).filter((v) => v != null);
+    expect(subTops.length).toBeGreaterThanOrEqual(2);
+    expect(Math.max(...subTops) - Math.min(...subTops)).toBeLessThanOrEqual(8);
   } finally {
     await server.close();
   }

@@ -1787,11 +1787,41 @@ svg {
   --slide-fg: var(--show-text);
   background: var(--slide-bg);
   padding: 64px 78px;
-  /* Center slide content vertically so it uses the full 1080px stage instead of hugging the top
-     with a large empty band at the bottom. */
+  /* Content slides top-align so the header (kicker + title + subtitle) keeps a stable baseline
+     across slides; the general deck title-band rule (90-deck.css) then keeps the subtitle at a
+     consistent height too. Only the section/divider slides (below) center on purpose. */
   display: flex;
   flex-direction: column;
+  justify-content: flex-start;
+}
+/* Section / divider slides center their content vertically (title, header, and the two closing
+   slides), so they are exempt from the top-aligned content-slide header rhythm. */
+#commentRoot[data-cmh-mode="deck"] .slide.show-header,
+#commentRoot[data-cmh-mode="deck"] .slide.show-title,
+#commentRoot[data-cmh-mode="deck"] .slide.show-close,
+#commentRoot[data-cmh-mode="deck"] .slide.show-question {
   justify-content: center;
+}
+/* The section/divider slides are centered, single-heading slides, so they opt out of the general
+   deck title-band (90-deck.css reserves a min-height on a content slide's h2 to keep the subtitle
+   baseline stable). The layer exempts native `.cmh-slide-section` slides; the showcase uses its own
+   `.show-*` section classes, so reset the band here or a tall centered h2 box would push the title
+   above the slide's true vertical center. */
+#commentRoot[data-cmh-mode="deck"] .slide.show-close > h2,
+#commentRoot[data-cmh-mode="deck"] .slide.show-question > h2 {
+  min-height: 0;
+}
+/* With the header (kicker + title + any subtitle) pinned at the top, center the remaining body in
+   the space below it, so a light slide fills the stage instead of leaving a large empty band at
+   the bottom. The auto top margin goes on the first NON-subtitle body element (so a subtitle stays
+   under the title), and the auto bottom margin on the last child; the two absorb the free space
+   equally and center the body. A content-dense slide has no free space, so the margins collapse. */
+#commentRoot[data-cmh-mode="deck"] .slide:not(.show-header):not(.show-title):not(.show-close):not(.show-question) > h2 + :not(.show-lead),
+#commentRoot[data-cmh-mode="deck"] .slide:not(.show-header):not(.show-title):not(.show-close):not(.show-question) > h2 + .show-lead + * {
+  margin-top: auto;
+}
+#commentRoot[data-cmh-mode="deck"] .slide:not(.show-header):not(.show-title):not(.show-close):not(.show-question) > h2 ~ :last-child {
+  margin-bottom: auto;
 }
 #commentRoot[data-cmh-mode="deck"] .slide h1,
 #commentRoot[data-cmh-mode="deck"] .slide h2,
@@ -1808,6 +1838,11 @@ svg {
 #commentRoot[data-cmh-mode="deck"] .show-mark { background-image: linear-gradient(rgba(245, 158, 11, 0.42), rgba(245, 158, 11, 0.42)); background-repeat: no-repeat; background-position: 0 58%; background-size: 100% 1em; border-radius: 6px; padding: 0 0.12em; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 #commentRoot[data-cmh-mode="deck"] .show-kicker { color: var(--show-accent); font-size: 24px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 18px; }
 #commentRoot[data-cmh-mode="deck"] .show-lead { font-size: 30px; color: var(--show-muted); max-width: 1480px; }
+/* A subtitle placed immediately under the title sits at the (stable) title-band bottom: its top
+   comes from the title's margin-bottom, not its own margin-top, so the rendered subtitle baseline is
+   identical on every content slide. Trailing .show-lead captions (not immediately after the h2) keep
+   their own spacing. */
+#commentRoot[data-cmh-mode="deck"] .slide > h2 + .show-lead { margin-top: 0; }
 #commentRoot[data-cmh-mode="deck"] .show-header { display: grid; grid-template-columns: 1fr 640px; gap: 56px; align-items: center; padding: 148px 120px; }
 #commentRoot[data-cmh-mode="deck"] .show-ui-shot { margin: 0; }
 #commentRoot[data-cmh-mode="deck"] .show-ui-shot-img { display: block; width: 100%; height: auto; border-radius: 18px; border: 1px solid var(--show-line); box-shadow: 0 22px 50px rgba(120, 98, 60, 0.20); background: #fffdf8; }
@@ -2095,14 +2130,16 @@ svg {
   <div class="show-kicker">Act 1 - The loop</div>
   <h2>Generate, review in place, copy all, paste, <span class="show-mark">press Enter</span>.</h2>
   <pre class="mermaid cm-skip">
-flowchart LR
-  A[Agent writes the garden plan] --> B[Commentable HTML plan]
-  B --> C[You comment on the exact spot]
-  C --> D[Paste the Copy all bundle]
-  D --> E[Agent applies the notes]
-  E --> F[Handled ids embedded]
-  F --> B
-  C -. comment on any element .-> B
+flowchart TB
+  A[Agent writes the garden plan] --> H[Commentable HTML file]
+  H --> R[You review it in place]
+  R --> C1[Comment on a sentence]
+  R --> C2[Comment on a cell or chart]
+  R --> C3[Comment on a diagram node]
+  C1 --> P[Copy all, paste, press Enter]
+  C2 --> P
+  C3 --> P
+  P -->|then repeat| H
   </pre>
 </section>
 
@@ -2177,7 +2214,7 @@ Press Enter.</code></pre>
   <div class="show-four">
     <div class="show-card"><h3>Prose and cells</h3><p>Paragraphs, headings, list items, and single table cells in the garden plan.</p><p class="show-card-example">Example: the "Bed 4 / 44 L" watering cell.</p></div>
     <div class="show-card"><h3>Charts + images</h3><p>The watering chart or a bed-layout image as one visual anchor.</p><p class="show-card-example">Example: the full watering chart canvas.</p></div>
-    <div class="show-card"><h3>Mermaid diagrams</h3><p>Individual Mermaid nodes, clusters, and task bars.</p><p class="show-card-example">Example: the "Paste the Copy all bundle" node.</p></div>
+    <div class="show-card"><h3>Mermaid diagrams</h3><p>Individual Mermaid nodes, clusters, and task bars.</p><p class="show-card-example">Example: the "Copy all, paste, press Enter" node.</p></div>
     <div class="show-card"><h3>Code, KQL, diffs</h3><p>Exact code ranges and diff rows, copied without line-number noise.</p><p class="show-card-example">Example: the rainfall skip branch in the diff.</p></div>
   </div>
   <div class="show-demo-row">
@@ -2486,12 +2523,12 @@ HANDLED_IDS_JSON: ["cmh-bed4-liters"]</pre>
     <div class="show-card"><h3>Main skill file</h3><p><code>SKILL.md</code> is the entry point: when to use Commentable HTML, which authoring path to take, and which final validation steps are mandatory.</p></div>
     <div class="show-card"><h3>On-demand references</h3><p><code>references/document-layout.md</code> and <code>references/design-decisions.md</code> stay loaded on demand to keep context minimal until the agent needs that exact contract.</p></div>
   </div>
-  <div class="show-two" style="margin-top:22px;">
+  <div class="show-two" style="margin-top:14px;">
     <div class="show-card"><h3>Deterministic editors</h3><p><code>tools/authoring/new_document.py</code>, <code>tools/authoring/retrofit.py</code>, and <code>tools/authoring/upgrade.py</code> do surgical, repeatable edits instead of freehand rewriting.</p></div>
     <div class="show-card"><h3>Mandatory final gate</h3><p><code>tools/validate/validate.py --strict</code> is the last stop before HTML goes back to the user, so malformed structure never slips through.</p></div>
   </div>
-  <div class="show-panel" style="margin-top:24px;padding:24px;">
-    <pre><code>SKILL.md
+  <div class="show-panel" style="margin-top:14px;padding:16px 20px;">
+    <pre style="font-size:18px;line-height:1.35;"><code>SKILL.md
 references/document-layout.md
 references/design-decisions.md
 tools/authoring/retrofit.py
