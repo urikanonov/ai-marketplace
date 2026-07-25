@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.240.0";
+const CMH_VERSION = "1.241.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -3804,7 +3804,7 @@ function _onWidgetMutation() {
     // Surface a newly-detected layout change: open the panel so the state card (which is
     // not counted as a comment) is not missed. Only on the 0 -> >0 transition, so a user
     // who closes the panel is not fought.
-    if (has && !_hadWidgetChanges && typeof openSidebar === "function") openSidebar();
+    if (has && !_hadWidgetChanges && !document.body.classList.contains("cmh-deck-comments-off") && typeof openSidebar === "function") openSidebar();
     _hadWidgetChanges = has;
     _syncWidgetResetButtons();
   };
@@ -4007,7 +4007,7 @@ function _clAfterChange() {
   // Surface a newly-detected change: open the panel once on the 0 -> >0 transition so the
   // per-list card (which is not a comment) is not missed, matching the widget state card.
   const has = checklistChanges().length > 0;
-  if (has && !_clHadChanges && typeof openSidebar === "function") openSidebar();
+  if (has && !_clHadChanges && !document.body.classList.contains("cmh-deck-comments-off") && typeof openSidebar === "function") openSidebar();
   _clHadChanges = has;
 }
 function _clCycleItem(item) {
@@ -4264,7 +4264,7 @@ function _noteSyncUi() {
   _noteHadChanges = has;
   if (typeof updateDocTypeUi === "function") updateDocTypeUi();
   if (typeof updateCopyAllState === "function") updateCopyAllState();
-  if (has && typeof openSidebar === "function") openSidebar();
+  if (has && !document.body.classList.contains("cmh-deck-comments-off") && typeof openSidebar === "function") openSidebar();
 }
 // The expensive half of a note change: renderComments() runs two full-document tree walks (a
 // getTextNodes walk per changed note plus the section-review scan), so it is O(document) and must
@@ -13455,10 +13455,19 @@ function setupDeck() {
   // Keep deckMode in step with any OTHER code path that opens or closes the panel (adding a
   // comment opens the sidebar; the sidebar header Close button closes it). applyDeckMode leaves
   // body.sidebar-open consistent with deckMode, so this observer never fights its own writes.
+  // "off" is an EXPLICIT present-only lock: an incidental sidebar open that carries NO comment
+  // (e.g. a note/checklist/widget change surfacing a card) must never silently re-enable
+  // commenting (issue #659). Such an incidental open is instead REVERTED (closeSidebar) so the deck
+  // stays truly present-only - leaving sidebar-open set would reserve an empty layout gutter and,
+  // worse, make a later openSidebar() a no-op mutation that the observer never sees (stranding a
+  // subsequently saved comment). The one promotion out of "off" is a real comment actually landing
+  // (a composer left open when "off" was chosen, then saved): "off" is only valid with zero
+  // comments, so that comment must not be stranded - it exits to "open" so it is visible.
   if (typeof MutationObserver === "function") {
     new MutationObserver(() => {
       const open = document.body.classList.contains("sidebar-open");
-      if (open && deckMode !== "open") setDeckMode("open");
+      if (open && (deckMode === "closed" || (deckMode === "off" && commentCount() > 0))) setDeckMode("open");
+      else if (open && deckMode === "off") closeSidebar();
       else if (!open && deckMode === "open") setDeckMode("closed");
     }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
   }
