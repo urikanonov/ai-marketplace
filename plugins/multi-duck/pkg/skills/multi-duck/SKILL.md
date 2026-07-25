@@ -61,7 +61,7 @@ Keep one tracking record per duck so nothing is lost across the parallel run. On
 
 ```sql
 CREATE TABLE IF NOT EXISTS duck_panel (
-  duck_id TEXT PRIMARY KEY,   -- e.g. duck-1-opus48
+  duck_id TEXT PRIMARY KEY,   -- e.g. duck-1-opus5
   model TEXT,
   lens TEXT,                  -- assigned aspect (prisms mode) or 'shared goal' (consensus mode)
   aspect_group TEXT,          -- prisms mode: the aspect key, so pair-mates share a value
@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS duck_panel (
 );
 ```
 
-On Claude Code there is no session DB: keep the same fields (duck id, model, lens, aspect group, subagent handle, status, verdict) in a `panel.json` file under `<scratch>/multi-duck/`, and mirror the high-level state into your host's todo/task tracker if it has one. Either way, one record per duck.
+On Claude Code there is no session DB: keep the same fields (duck id, model, lens, aspect group, subagent handle, status, verdict) in a `panel.json` file under `<scratch>/multi-duck/`, and mirror the high-level state into your host's todo/task tracker if it has one. Either way, one record per duck. If you run the panel more than once in the same session (see "Repeated runs" in Step 2), RESET this store before each run - `DELETE FROM duck_panel` on the Copilot CLI, or start a fresh `panel.json` on Claude Code, before inserting the new run's ducks - so the run's status, verdict rollup, and reporting only ever see the current run's rows and never inherit or mix in an earlier run's records.
 
 ## Step 1. Discover the flow and build one shared context bundle
 
@@ -147,18 +147,29 @@ The concrete IDs below are a **current example roster for the GitHub Copilot CLI
 
 | # | example model | family |
 |---|----------------|--------|
-| 1 | `claude-opus-4.8` | Anthropic Opus |
+| 1 | `claude-opus-5` | Anthropic Opus |
 | 2 | `gpt-5.6-sol` | OpenAI |
 | 3 | `gemini-3.1-pro-preview` | Google |
 | 4 | `mai-code-1-flash-picker` | Microsoft MAI |
 | 5 | `claude-sonnet-5` | Anthropic Sonnet |
-| 6 | `gpt-5.3-codex` | OpenAI Codex |
-| 7 | `claude-opus-4.7` | Anthropic Opus (prior generation) |
-| 8 | `gpt-5.4` | OpenAI (prior generation) |
+| 6 | `gpt-5.6-terra` | OpenAI (5.6 sibling variant) |
+| 7 | `claude-opus-4.8` | Anthropic Opus (prior generation) |
+| 8 | `gpt-5.5` | OpenAI (prior generation) |
 
-Rows 7 and 8 illustrate the tail of the rule: once a family's newest flagship is on the panel, its prior generation is still a strong, usefully-different reviewer. Extend the same way past 8, always preferring a distinct model over reusing one. The example's row 4 is a lighter, faster model included only as a distinct fourth-family voice, not for raw reviewing strength; when only the strongest reviewers matter, drop it or move it to the tail and pull up the next flagship.
+Rows 7 and 8 illustrate the tail of the rule: once a family's newest flagship is on the panel (row 1 leads with Anthropic's `claude-opus-5`), its prior generation - here `claude-opus-4.8` - is still a strong, usefully-different reviewer. Extend the same way past 8, always preferring a distinct model over reusing one. Row 6 (`gpt-5.6-terra`) is a *sibling variant* of the row 2 flagship (both are OpenAI 5.6): it is a valid extra OpenAI voice, but a different generation or sub-family (a code-focused `gpt-5.3-codex`, or a prior generation such as `gpt-5.4`) is stronger diversity than a same-generation sibling, so prefer one of those when a genuinely independent OpenAI opinion matters. The example's row 4 is a lighter, faster model included only as a distinct fourth-family voice, not for raw reviewing strength; when only the strongest reviewers matter, drop it or move it to the tail and pull up the next flagship. Substitute the equivalents your host exposes: some strong reviewers are on other hosts, not the Copilot CLI (for example xAI's Grok or Moonshot's Kimi flagships on hosts that offer them), and the Copilot roster also offers lighter distinct-family voices you can rotate in, such as Google's `gemini-3.6-flash`.
 
 On **Claude Code**, apply the identical strategy to whatever models your rubber-duck subagents can run (see Hosts): if they are all one model, define several subagents pinned to different available models and rotate through them, or fall back to prisms mode for aspect-and-context diversity.
+
+### Repeated runs: rotate the roster and widen for weaker models
+
+The panel is often run more than once on the same work (for example the two rounds a feature PR needs, or a re-run after applying fixes). Across those runs the goal shifts from "the single strongest panel" to "the widest *combined* coverage", so vary the panel each time rather than replaying the identical roster:
+
+- **Keep the top flagships every run.** The strongest reviewers - `claude-opus-5` and `gpt-5.6-sol` above, and whatever your host's current equivalents are - stay pinned on every run; they are the anchor, not the thing you rotate out. Rotation happens in the *rest* of the roster.
+- **Rotate the tail between runs.** Refresh the non-anchor rows each run by swapping to the next distinct models your host exposes - a prior-generation flagship, a different sub-family (Opus vs Sonnet), a code-focused variant, or a lighter distinct-family voice - so run 2 sees the change through models run 1 did not use. Draw the fresh voices from models NOT already in this run's roster (for example `gpt-5.3-codex`, `claude-opus-4.7`, `gpt-5.4`, or `gemini-3.6-flash` relative to the example above). Prefer a model no earlier run has used before reusing one; only reuse a model once the distinct pool is exhausted.
+- **In prisms mode, also rotate which model reviews which aspect.** If run 1 paired `claude-opus-5` on correctness, put it on a different aspect in run 2 (still paired across families) so each aspect accumulates opinions from more than two models over the runs.
+- **Widen the panel when weaker models take part.** If a run pulls in lighter or lower-tier models for diversity (a flash-class model, an older generation), *increase `count`* for that run so the extra breadth is not bought at the cost of depth - add ducks rather than displacing the flagships. A practical rule: raise `count` by roughly one duck per weaker model added (staying within the 1..12 clamp), and keep both anchor flagships in the enlarged panel. The point is additive diversity: more independent voices, with the strongest ones always present.
+
+Note which models each run used by keeping a short list in your final report (which stays in the conversation): the per-duck tracking store holds only the CURRENT run - you reset it before each run (see Step 0), Claude Code's `panel.json` is also removed with the scratch bundle after the summary - so the durable cross-run record is the list you carry forward, letting a later run deliberately pick models the earlier runs did not.
 
 ### Aspect list (prisms mode only)
 
@@ -182,14 +193,14 @@ At the default `count=8`, `A=4`, so the panel covers aspects 1-4, each by 2 diff
 
 | duck | model | family | aspect |
 |------|-------|--------|--------|
-| 1 | `claude-opus-4.8` | Anthropic | correctness & logic bugs |
+| 1 | `claude-opus-5` | Anthropic | correctness & logic bugs |
 | 2 | `gpt-5.6-sol` | OpenAI | correctness & logic bugs |
 | 3 | `gemini-3.1-pro-preview` | Google | edge cases, error handling & input validation |
-| 4 | `gpt-5.3-codex` | OpenAI Codex | edge cases, error handling & input validation |
+| 4 | `gpt-5.6-terra` | OpenAI | edge cases, error handling & input validation |
 | 5 | `claude-sonnet-5` | Anthropic | security, data safety & privacy |
-| 6 | `gpt-5.4` | OpenAI | security, data safety & privacy |
+| 6 | `gpt-5.5` | OpenAI | security, data safety & privacy |
 | 7 | `mai-code-1-flash-picker` | Microsoft MAI | tests, performance & design/maintainability |
-| 8 | `claude-opus-4.7` | Anthropic | tests, performance & design/maintainability |
+| 8 | `claude-opus-4.8` | Anthropic | tests, performance & design/maintainability |
 
 Every aspect above is reviewed by two different-family models, so each aspect gets two independent opinions. Record each duck's `model`, `lens`/aspect, `aspect_group`, and (once launched) its subagent handle in your tracking store.
 
@@ -264,7 +275,7 @@ If nothing is safely auto-fixable, that is a valid outcome - report the findings
 
 Give one consolidated report:
 
-1. **Panel**: the mode that ran (prisms or consensus) and the `count` ducks, each model with its verdict (e.g. `opus-4.8: ship-with-fixes`). In prisms mode, group ducks by aspect so each aspect shows its two opinions; in consensus mode just list them. Note any duck that failed.
+1. **Panel**: the mode that ran (prisms or consensus) and the `count` ducks, each model with its verdict (e.g. `opus-5: ship-with-fixes`). In prisms mode, group ducks by aspect so each aspect shows its two opinions; in consensus mode just list them. Note any duck that failed.
 2. **Consensus**: the overall verdict (ship / ship-with-fixes / do-not-ship) and the top 3 agreed risks.
 3. **Findings table**: severity, agreement (k/m; m = the ducks on that aspect in prisms, or N = count in consensus), location, issue, and status (Fixed / Deferred / Dismissed-as-noise). Proposed action is not repeated here - it is covered by the sections below.
 4. **What I changed**: files touched, a one-line why per fix, and the verification result (tests/build).
