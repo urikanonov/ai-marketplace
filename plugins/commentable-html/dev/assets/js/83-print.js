@@ -166,14 +166,15 @@ function setupSinglePagePrint() {
 
   // Single-page sizing is reliable only when the PRINT layout matches the ON-SCREEN layout, because
   // Chromium locks the print @page size to a measurement taken at `beforeprint` (in screen media,
-  // before print media activates). A multi-column gallery (`.visual-grid`) or a grid/flex widget (a
-  // kanban board) reflows grid->block for print (92-print.css) and async-resizes its charts to full
-  // width, so its printed height differs from - and cannot be reliably measured before - the @page
-  // lock. Leave a document that contains such a container on normal pagination (its content is never
-  // clipped; it just spans standard pages). Prose, tables, inline charts, diagrams, code, KQL, and
-  // diffs all keep the single-page treatment.
+  // before print media activates). A multi-column gallery (`.visual-grid`), a diagram gallery
+  // (`.cmh-diagram-gallery`, which block-stacks and drops its per-card height cap for print), or a
+  // grid/flex widget (a kanban board) reflows grid->block for print (92-print.css) and async-resizes
+  // its charts/diagrams, so its printed height differs from - and cannot be reliably measured before -
+  // the @page lock. Leave a document that contains such a container on normal pagination (its content
+  // is never clipped; it just spans standard pages). Prose, tables, inline charts, standalone
+  // diagrams, code, KQL, and diffs all keep the single-page treatment.
   function hasBlockStackingContainer() {
-    if (root.querySelector(".visual-grid")) return true;
+    if (root.querySelector(".visual-grid, .cmh-diagram-gallery")) return true;
     const widgets = root.querySelectorAll("[data-cm-widget]");
     for (let i = 0; i < widgets.length; i++) {
       const d = getComputedStyle(widgets[i]).display;
@@ -186,8 +187,23 @@ function setupSinglePagePrint() {
   // Chromium clamps a page dimension to 200in (~19200px at 96dpi); stay well under it. A document
   // that would exceed this in either axis falls back to normal pagination rather than being clipped.
   const MAX_PAGE_PX = 18000;
-  // Inner white border around the single-page content (the @page margin is 0, so this is body pad).
-  const PAD = 40;
+  // The inset around the single-page content, as a real print margin (0.5in - a standard, safe page
+  // margin that clears typical printer hardware minimums, ~0.25in). It is applied as the `@page`
+  // MARGIN (see printCss), not body padding, so a driver that ignores the custom @page size but honors
+  // its margin still gets a sane inset, and the content height is not double-counted. It is also the
+  // amount by which the page is larger than the measured content in each axis
+  // (pageW = contentW + 2*PAD, pageH = h + 2*PAD).
+  const PAD = 48;
+
+  // The honored single continuous page is sized to a portable, standard page width (US Letter, 816px)
+  // rather than the on-screen reading column (which is ~1280px on a wide screen), so the browsers that
+  // honor the custom @page (Chromium's native vector "Save as PDF") produce a standard-sheet-width
+  // PDF instead of an awkward 13in-wide one. On drivers that IGNORE the custom @page (Microsoft Print
+  // to PDF, physical printers) the content is NOT forced to this width at all - printCss uses
+  // width:auto so it reflows into the real printable area (see printCss) - so the exact value here
+  // only sets the honored page's width; content that genuinely cannot fit it (a wide table) still
+  // grows the page past the cap so nothing is clipped.
+  const PORTABLE_PAGE_W = 816;
 
   // The on-screen reading-column width drives the single-page width. Print media resets body/.app
   // width, so it must be read under SCREEN media; keep it fresh across window resizes (but never
@@ -237,17 +253,61 @@ function setupSinglePagePrint() {
       + "#commentRoot figure.cmh-kql pre,#commentRoot figure.cmh-kql code{white-space:pre-wrap !important;"
       + "overflow-wrap:anywhere !important;word-break:break-word !important}"
       + "#commentRoot table{display:table !important;width:100% !important;max-width:100% !important;table-layout:auto !important}"
+      // Long unbreakable cell text (an id, url, or token) wraps rather than forcing the table wider,
+      // so on a driver that CANNOT grow the page (a non-honoring driver paginating onto fixed paper) a
+      // wide cell wraps instead of being clipped off the sheet edge. Mirrors 92-print.css.
+      + "#commentRoot td,#commentRoot th{overflow-wrap:anywhere !important;word-break:break-word !important}"
       + "#commentRoot pre.mermaid svg,#commentRoot figure svg,#commentRoot figure img,#commentRoot img{"
-      + "max-height:8.4in !important;max-width:100% !important;width:auto !important;height:auto !important}";
+      + "max-height:8.4in !important;max-width:100% !important;width:auto !important;height:auto !important}"
+      // Chart canvases (and any inline SVG) scale to fit the column too, so a narrowed measurement
+      // matches print instead of overflowing the capped page width. Mirrors 92-print.css.
+      + "#commentRoot img,#commentRoot svg,#commentRoot canvas{max-width:100% !important;height:auto !important}"
+      // Mirror the print-only box model of the materialized comments appendix (92-print.css) so its
+      // height is measured accurately - each comment's margin/padding/border is print-scoped and would
+      // otherwise be invisible to this screen-media measure, under-counting a heavily-commented
+      // document's height enough to spill a trailing overflow page. Borders are made transparent so
+      // the measurement adds their WIDTH without painting anything on screen.
+      + ".cmh-print-comments,.cmh-print-noscript{margin:2rem 0 0 !important;padding:1rem 0 0 !important;"
+      + "border-top:2px solid transparent !important}"
+      + ".cmh-print-comment{margin:1rem 0 !important;padding:0.85rem 1rem !important;"
+      + "border:1px solid transparent !important}"
+      + ".cmh-print-comment h3{margin:0 0 0.45rem !important}"
+      + ".cmh-print-comment p{margin:0.35rem 0 !important}"
+      + ".cmh-print-comment blockquote{margin:0.5rem 0 !important;padding:0.4rem 0.65rem !important}"
+      // Replies are print-only indented and top-margined (88-threads.css @media print); mirror that so
+      // a thread-heavy document's replies are counted (the indent also wraps reply text taller).
+      + ".cmh-print-reply{margin:0.2rem 0 0 0.8rem !important}";
   }
-  // Final rules: print-scoped (inert on screen). Pin the width so print lays out at the measured
-  // width, drop the appendix's forced page break, and size the single @page to the content.
-  function printCss(w, h) {
-    return "@media print{html,body,.app{width:" + w + "px !important;max-width:none !important;"
-      + "margin:0 !important;box-sizing:border-box !important}"
-      + "body{padding:" + PAD + "px !important;box-sizing:border-box !important}"
+  // Final rules: print-scoped (inert on screen). PROGRESSIVE DEGRADATION - do NOT force a fixed body
+  // width. The single custom `@page { size: pageW pageH; margin: PAD }` carries the portable page
+  // dimensions, and `width: auto` lets the content flow into whatever page it actually gets: on a
+  // browser that HONORS the custom `@page` size (Chromium's native vector "Save as PDF") the content
+  // fills the pageW-wide custom page as ONE tall page; on a driver that IGNORES it (Microsoft Print
+  // to PDF, physical printers, browsers without custom-`@page` support) the content instead reflows
+  // into the driver's real Letter/A4 printable area and paginates normally - NEVER forced to an
+  // oversized width that the driver would then downscale (the old bug). The @page MARGIN (not body
+  // padding) provides the inset, so it is honored on both paths without double-counting the height.
+  // Two assumptions the honored-path math relies on: (1) this runtime <style> is appended to <head>
+  // AFTER the bundled 92-print.css, so its `@page{margin:PAD}` wins over the base `@page{margin:0.6in}`
+  // by source order (keep it appended last); (2) the honored content area equals `pageW - 2*PAD`, so a
+  // user who manually selects a LARGER margin than PAD in the browser's own print dialog shrinks that
+  // area below the measured contentW - inherent to any custom-@page single-page layout, harmless
+  // (content just wraps a little) but not something CSS can prevent.
+  function printCss(pageW, pageH) {
+    return "@media print{html,body,.app{width:auto !important;max-width:none !important;"
+      + "margin:0 !important;padding:0 !important;box-sizing:border-box !important}"
       + ".cmh-print-comments,.cmh-print-noscript{break-before:auto !important;page-break-before:auto !important}"
-      + "@page{size:" + w + "px " + h + "px;margin:0}}";
+      + "@page{size:" + pageW + "px " + pageH + "px;margin:" + PAD + "px}}";
+  }
+
+  // Screen-media replica used to MEASURE the printed CONTENT height at content width `cw` (= the page
+  // content area, pageW - 2*PAD). It forces html/body/.app to `cw` with NO padding (the inset is the
+  // @page margin in print, applied outside the content box), so the measured height is the true
+  // content height at the width the honored page will render it - no `.app`-overflows-body box-model
+  // skew and no PAD double-count. Applied and read synchronously, then replaced, so nothing repaints.
+  function layoutAtWidthCss(cw) {
+    return "html,body,.app{width:" + cw + "px !important;max-width:none !important;"
+      + "margin:0 !important;padding:0 !important;box-sizing:border-box !important}";
   }
 
   // Measure the print-layout size (WITHOUT the comments appendix) under STABLE screen media and cache
@@ -274,8 +334,11 @@ function setupSinglePagePrint() {
 
   // Refresh the cache when the layout can change: initial progressive settle (charts/mermaid render
   // async over the first few seconds), window resize, and a ResizeObserver on chart canvases (which
-  // settle asynchronously). measureCss never resizes a canvas (no width change, no grid->block), so
-  // observing canvases cannot loop on our own measurement.
+  // settle asynchronously). computeAndCache measures at the NATURAL (un-narrowed) width, where the
+  // canvas cap in measureCss (max-width:100%) is a no-op because a canvas already fits its container -
+  // so no canvas is resized and observing canvases cannot loop on our own measurement. The width
+  // narrowing that scales canvases (layoutAtWidthCss) only runs synchronously inside apply() at print
+  // time, not here.
   let rafId = 0;
   function scheduleCache() {
     if (rafId) return;
@@ -308,6 +371,10 @@ function setupSinglePagePrint() {
     applied = true;
     ensureStyle();
     try {
+      // Re-check eligibility here, not only at setup: a block-stacking container (a diagram/chart
+      // gallery or a grid/flex widget) inserted AFTER setup would otherwise get the single-page path
+      // even though its print-time reflow cannot be pre-measured. If one is present now, fall back.
+      if (hasBlockStackingContainer()) { styleEl.textContent = ""; return; }
       // Document size: prefer the stable cache (charts settled), but never go below a fresh inline
       // measure - so the very first print before anything cached is still covered.
       styleEl.textContent = measureCss();
@@ -316,14 +383,50 @@ function setupSinglePagePrint() {
       if (typeof materializePrintAppendix === "function") materializePrintAppendix();
       void document.documentElement.offsetHeight;
       const colW = Math.round(root.getBoundingClientRect().width) || readWidth || 800;
-      const w = Math.max(cachedW, colW, root.scrollWidth) + PAD * 2;
+      // Cap the CONTENT width to a portable standard page's content area (PORTABLE_PAGE_W minus the
+      // two @page margins) so the honored single page is standard-sheet-sized. Content that genuinely
+      // cannot fit the cap (a wide table) still grows the page below, so nothing is ever clipped.
+      const MAX_CONTENT_W = PORTABLE_PAGE_W - PAD * 2;
+      let contentW = Math.min(Math.max(cachedW, colW, root.scrollWidth), MAX_CONTENT_W);
+      // Measure the height AT the content width the honored page renders at (pageW - 2*PAD): a
+      // narrower column reflows taller and scales charts/diagrams to fit, so the height must be taken
+      // there, not at the wide reading column. This width now MATCHES the printed content width
+      // (printCss uses width:auto inside the pageW-wide @page), so the measurement is accurate.
+      styleEl.textContent = measureCss() + layoutAtWidthCss(contentW);
+      void document.documentElement.offsetHeight;
+      // Unbreakable content wider than the capped column (a wide table, a long code token, an
+      // author-styled overwide child) overflows #commentRoot; grow the content width by the overflow
+      // so it is never clipped. Iterate a few times because widening can expose a DIFFERENT widest
+      // element (a percentage-width or containing-block-relative child); contentW only grows, so it
+      // cannot oscillate, and it converges when the row no longer overflows.
+      for (let i = 0; i < 4; i++) {
+        const overflow = root.scrollWidth - root.clientWidth;
+        if (overflow <= 1) break;
+        contentW = contentW + Math.ceil(overflow);
+        styleEl.textContent = measureCss() + layoutAtWidthCss(contentW);
+        void document.documentElement.offsetHeight;
+      }
+      // If content STILL overflows after bounded growth (pathological content that widens with its
+      // container, e.g. a percentage width), do not emit a page that clips it - fall back to normal
+      // pagination instead.
+      if (root.scrollWidth - root.clientWidth > 1) { styleEl.textContent = ""; return; }
       // The INLINE measure already includes the materialized appendix; the stable cache measured the
       // document WITHOUT the appendix, so add the appendix height to the CACHE path only (never to the
-      // inline path - that would double-count it). Take the larger: the cache covers the case where
-      // charts had not settled at beforeprint, the inline covers the not-yet-cached case.
+      // inline path - that would double-count it), and take the larger. The inline capped-width measure
+      // is the accurate one; the cache is a SAFE FLOOR that only ever errs TALL: it was measured at the
+      // wide reading column, where a wide chart/diagram can be proportionally taller than at the capped
+      // print width, so `cachedH` can exceed the true narrow height - which adds harmless bottom
+      // whitespace, never a spill or clip. It also covers a rare very-early print before charts settle.
       const appendix = document.getElementById("cmhPrintComments");
       const appendixH = appendix ? Math.ceil(appendix.getBoundingClientRect().height) : 0;
-      const h = Math.max(measureHeight(), cachedH > 0 ? cachedH + appendixH : 0) + PAD * 2 + 2;
+      const h0 = Math.max(measureHeight(), cachedH > 0 ? cachedH + appendixH : 0);
+      const w = contentW + PAD * 2;
+      // Page height = content height + the two @page margins + a small safety band. Because the height
+      // is now measured at the SAME width the honored page renders at, the screen-vs-print drift is
+      // tiny (rounding only), so a small band suffices - unlike the old wrong-width measurement that
+      // needed a large proportional band. The band still guards a small over/under so a slight
+      // under-measure can never spill a near-blank overflow page (harmless bottom whitespace instead).
+      const h = h0 + PAD * 2 + Math.max(24, Math.ceil(h0 * 0.01));
       if (h > MAX_PAGE_PX || w > MAX_PAGE_PX) {
         // Too large for one page - fall back to the default paginated print layout.
         styleEl.textContent = "";

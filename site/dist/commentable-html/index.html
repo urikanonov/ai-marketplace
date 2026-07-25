@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.242.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.243.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,6 +457,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.243.0] - 2026-07-25</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Print / Save-as-PDF single continuous page is now generic across ALL print destinations, not just Chromium&#x27;s native &quot;Save as PDF&quot;. Previously it forced the body to the on-screen reading-column width (~1280px on a wide screen) and sized a giant custom <code>@page</code> to match. Chromium&#x27;s native vector &quot;Save as PDF&quot; honors that custom page, but a driver that ignores it (Microsoft Print to PDF, physical printers, browsers without custom-<code>@page</code> support) paginated onto standard paper while the body stayed forced to ~1280px, so it downscaled to fit (poor quality), left wide side whitespace, and stranded tall diagrams. The single page is now sized to a portable standard page (US Letter, 816px) and, crucially, the print CSS uses <code>width: auto</code> with the inset provided by the <code>@page</code> margin instead of a forced body width: a browser that honors the custom <code>@page</code> fills it as one tall page, while any driver that ignores it reflows the content into its OWN real Letter/A4 printable area and paginates normally, never downscaled. The height is measured at the exact content width the page renders at, so it is accurate (fixing a box-model skew and a double-counted page margin that had bloated the page and, on a multi-diagram document, spilled a near-blank overflow page). A document with genuinely wide content (a wide table) still grows the page so nothing is clipped.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.242.0] - 2026-07-25</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -470,6 +477,8 @@
               <li>Each export action now shows a centered toast naming which export is running.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.241.0] - 2026-07-25</h3></div>
             <div class="group-label">Fixed</div>
@@ -477,8 +486,6 @@
               <li>Deck: a comments-off (present-only) deck no longer silently re-enables commenting when a review NOTE is edited, a CHECKLIST item is toggled, or a widget layout changes. While in the comments-off mode a deck no longer auto-opens the sidebar on such a non-comment change (it still does in a non-deck document, and in a comments-enabled deck it surfaces the change card); the change is still tracked. The deck comment-model observer was also hardened so that neither slide movement nor an incidental sidebar open from a non-comment change re-enables commenting - such an incidental open is reverted rather than flipping <code>off</code> to <code>open</code>. Two things still leave <code>off</code>: an explicit comment-options re-selection, and a real comment actually landing while off (a composer left open when off was chosen, then saved) - because <code>off</code> is only valid at zero comments, that comment exits to <code>open</code> so it is not stranded. (CMH-DECK-25, issue #659)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.240.0] - 2026-07-25</h3></div>
             <div class="group-label">Changed</div>
@@ -517,15 +524,7 @@
               <li>Regenerated every tutorial screenshot that shows the comments panel so it reflects the new header; the full-page shots (Copy all, dark theme, saved comment, thread, and others) had lagged behind because a whole-page screenshot dilutes the header-region change below the screenshot-check tolerance.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.235.0] - 2026-07-24</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Redesigned the comment panel header into a composite layout: a top row with the title, count, and the portability badge + version; a captioned action ribbon (Export, Sort, More, Help, Hide); a half-and-half Copy / Search row where the Search button reveals and focuses the filter field; and stacked Generated / Last comment / identity metadata rows.</li>
-              <li>Moved Manage storage and Clear all comments into a new sidebar More menu (kebab); the Export menu now holds only the five file formats.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">199 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">200 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -4,6 +4,25 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.243.0] - 2026-07-25
+
+### Fixed
+
+- Print / Save-as-PDF single continuous page is now generic across ALL print destinations, not just
+  Chromium's native "Save as PDF". Previously it forced the body to the on-screen reading-column width
+  (~1280px on a wide screen) and sized a giant custom `@page` to match. Chromium's native vector
+  "Save as PDF" honors that custom page, but a driver that ignores it (Microsoft Print to PDF, physical
+  printers, browsers without custom-`@page` support) paginated onto standard paper while the body
+  stayed forced to ~1280px, so it downscaled to fit (poor quality), left wide side whitespace, and
+  stranded tall diagrams. The single page is now sized to a portable standard page (US Letter, 816px)
+  and, crucially, the print CSS uses `width: auto` with the inset provided by the `@page` margin
+  instead of a forced body width: a browser that honors the custom `@page` fills it as one tall page,
+  while any driver that ignores it reflows the content into its OWN real Letter/A4 printable area and
+  paginates normally, never downscaled. The height is measured at the exact content width the page
+  renders at, so it is accurate (fixing a box-model skew and a double-counted page margin that had
+  bloated the page and, on a multi-diagram document, spilled a near-blank overflow page). A document
+  with genuinely wide content (a wide table) still grows the page so nothing is clipped.
+
 ## [1.242.0] - 2026-07-25
 
 ### Changed
