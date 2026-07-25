@@ -85,3 +85,4 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-SIDE-12 | opt-out: responsive touch-target sizing for the already-documented Sort control; a mobile accessibility refinement, not a new user-facing capability | opt-out: responsive touch-target refinement, not a deck topic |
 | CMH-LINK-05 | opt-out: an authoring-time validator warning (agent/author-facing) that enforces the already-documented new-tab link behavior; no new reader-facing capability | opt-out: authoring-time validator warning (agent/author-facing), not a deck topic |
 | CMH-DECK-SHOWCASE-18 | site | deck |
+| CMH-DECK-SHOWCASE-19 | site | deck |

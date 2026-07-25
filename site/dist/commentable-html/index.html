@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.238.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.240.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,6 +457,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.240.0] - 2026-07-25</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Showcase deck polish. Link pills (<code>.show-link-pill</code>) keep their rounded pill shape on hover in deck comment mode - the authored deck CSS overrides the runtime link-comment hover so the dashed outline hugs the pill instead of squaring it (deck-wide, e.g. &quot;View Live Demo&quot; and the install/link pills). The primary &quot;View Live Demo&quot; label gains a subtle text-shadow for legibility on the crimson accent, and the four slide-9 feature cards lift on hover (translateY + shadow), matching the pill lift.</li>
+              <li>Rebalanced the code / notes / decide slides so each uses its space: the &quot;Supported syntax labels&quot; card moved onto the &quot;Code, KQL, and diffs&quot; slide, the review checklist moved beside the notes demo, and the decision-board slide gained a short widget caption. (CMH-DECK-SHOWCASE-08, CMH-DECK-SHOWCASE-19)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.238.0] - 2026-07-25</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -467,6 +475,8 @@
               <li>Governance: the doc-surface registry in <code>dev/SPEC.md</code> now tracks a required <code>Deck</code> dimension alongside the reader-doc surface. Every new user-facing feature must declare that it is demonstrated on a showcase-deck slide (<code>deck</code>) or record an explicit <code>opt-out: &lt;reason&gt;</code>, checked by <code>scripts/check_doc_surfaces.py</code> (run in the required validate job and the pre-push hook) and encoded in AGENTS.md, so the deck stays a fourth documentation surface that cannot silently fall behind.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.237.0] - 2026-07-25</h3></div>
             <div class="group-label">Changed</div>
@@ -478,8 +488,6 @@
               <li>Validator: a warning when an author <code>&lt;a href&gt;</code> document reference inside <code>#commentRoot</code> sets an explicit <code>target</code> other than <code>_blank</code> (it would open in the same tab), so a same-tab link is caught before handoff (CMH-LINK-05).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.236.0] - 2026-07-25</h3></div>
             <div class="group-label">Changed</div>
@@ -515,15 +523,7 @@
               <li>New governance: every new user-facing feature must declare its documentation surface (tutorial, site, or help) - or record an explicit opt-out with a reason - in the SPEC &quot;Doc-surface registry&quot;. <code>scripts/check_doc_surfaces.py</code> (run in the required validate job and the pre-push hook) fails a PR whose newly added feature ids lack a doc-surface entry.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.232.0] - 2026-07-24</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Comment replies are now composed and edited INLINE in the sidebar thread card (a Word-style experience) instead of in a floating popup. Clicking Reply opens an EMPTY editor inside the thread - it is never prepopulated with the text of the comment being replied to, and there is no &quot;reply to:&quot; quote header; the reply is simply appended to the thread. Editing an existing reply edits it in place, prefilled with that reply&#x27;s own text. (CMH-THREAD-01, CMH-THREAD-05, CMH-THREAD-06, CMH-THREAD-07)</li>
-              <li>The first reply made without a reviewer name set now reveals the identity editor so the reply can be attributed (a non-blocking prompt); the reply still saves unattributed if declined. (CMH-THREAD-08)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">196 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">197 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
