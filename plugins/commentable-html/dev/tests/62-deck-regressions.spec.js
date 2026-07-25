@@ -553,7 +553,7 @@ test("CMH-DECK-SHOWCASE-02: showcase deck mounts in deck mode and is commentable
     await showSlideWith(page, ".showcase-diff-slide");
     await expect(page.locator(".slide.active .cmh-diff-host")).toBeVisible();
     await expect(page.locator(".slide.active .cmh-code-line").first()).toBeVisible();
-    await showSlideWith(page, ".showcase-checklist-slide");
+    await showSlideWith(page, "[data-cmh-checklist]");
     await expect(page.locator(".slide.active [data-cmh-checklist].cmh-checklist-ready")).toHaveCount(1);
     await showSlideWith(page, ".slide pre.mermaid");
     await expect.poll(() => page.locator(".slide.active pre.mermaid svg g.node").count()).toBeGreaterThanOrEqual(5);
@@ -811,16 +811,26 @@ test("CMH-DECK-SHOWCASE-07: the problem, point-at, and install slides use the ne
   }
 });
 
-test("CMH-DECK-SHOWCASE-08: the showcase deck includes supported languages and live editable notes", async ({ page }) => {
+test("CMH-DECK-SHOWCASE-08: the showcase deck includes supported syntax labels, live editable notes, and a review checklist", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
+    // Measure with the review panel open (deck comment mode), the state a reviewer actually uses.
+    await enterCommentMode(page);
+    // Supported syntax labels live on the code / KQL / diff slide (slide 11).
+    await showSlideWith(page, ".show-supported-panel");
+    const labels = page.locator(".slide.active");
+    await expect(labels.locator(".show-supported-pills .show-pill")).toHaveCount(11);
+    await expect(labels.locator(".show-supported-panel")).toContainText("Python");
+    await expect(labels.locator(".show-supported-panel")).toContainText("TypeScript");
+    await expect(labels.locator(".show-supported-panel")).toContainText("PowerShell");
+    await expect(labels.locator(".show-supported-panel")).toContainText("+37 more");
+    // The rebalanced code/diff slide still fits the fixed 1080px stage (no overflow/clipping).
+    expect(await labels.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(4);
+    // Live editable notes and the review checklist share the notes slide (slide 12).
     await showSlideWith(page, ".show-note-live");
     const slide = page.locator(".slide.active");
-    await expect(slide.locator(".show-supported-pills .show-pill")).toHaveCount(11);
-    await expect(slide.locator(".show-supported-panel")).toContainText("Python");
-    await expect(slide.locator(".show-supported-panel")).toContainText("TypeScript");
-    await expect(slide.locator(".show-supported-panel")).toContainText("PowerShell");
-    await expect(slide.locator(".show-supported-panel")).toContainText("+37 more");
+    await expect(slide.locator("[data-cmh-checklist].cmh-checklist-ready")).toHaveCount(1);
+    expect(await slide.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(4);
     // The notes demo is the REAL notes feature, not a static mock: two [data-cmh-note] elements the
     // runtime has upgraded into editable textareas.
     await expect(slide.locator(".show-note-live[data-cmh-note]")).toHaveCount(2);
@@ -851,6 +861,13 @@ test("CMH-DECK-SHOWCASE-08: the showcase deck includes supported languages and l
     await expect.poll(() => page.evaluate(() => window.__cmhDeck.activeSlideId())).toBe(otherSlideId);
     await card.locator('[data-act="note-jump"]').click();
     await expect.poll(() => page.evaluate(() => window.__cmhDeck.activeSlideId())).toBe(notesSlideId);
+    // The decision-board slide (slide 13) keeps the triage board and, after the checklist moved off
+    // it, gained a short widget caption; the checklist is no longer on this slide.
+    await showSlideWith(page, '[data-cm-widget="showcase-triage-board"]');
+    const board = page.locator(".slide.active");
+    await expect(board.locator("[data-cmh-checklist]")).toHaveCount(0);
+    await expect(board.locator("p.show-lead")).toContainText("commentable widget");
+    expect(await board.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(4);
   } finally {
     await server.close();
   }
@@ -1076,6 +1093,56 @@ test("CMH-DECK-SHOWCASE-16: showcase byline pills lift on hover", async ({ page 
     expect(await pill.evaluate((el) => getComputedStyle(el).transform)).toBe("none");
     await pill.hover();
     await expect(pill).not.toHaveCSS("transform", "none");
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-19: link pills stay rounded on hover in comment mode, the primary pill label stays legible, and slide-9 feature cards lift on hover", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await enterCommentMode(page);
+    // Navigate to the slide carrying the primary "View Live Demo" pill (slide 9).
+    await showSlideWith(page, ".show-link-pill-primary");
+    const pill = page.locator(".slide.active .show-link-pill-primary").first();
+    await expect(pill).toBeVisible();
+
+    // The runtime makes author links commentable (cm-link-commentable) and its hover affordance
+    // squares the corners to 2px; the authored deck CSS overrides that back to the 999px pill radius
+    // so the dashed comment-hover outline hugs the rounded shape instead of boxing it.
+    await pill.hover();
+    await expect(pill).toHaveClass(/cm-link-commentable/);
+    const radius = await pill.evaluate((el) => Number.parseFloat(getComputedStyle(el).borderTopLeftRadius));
+    expect(radius, "the pill must stay rounded on hover, not go square").toBeGreaterThanOrEqual(100);
+
+    // The primary "View Live Demo" label reads clearly on the crimson accent (WCAG AA for large text).
+    const c = await pill.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { color: cs.color, bg: cs.backgroundColor };
+    });
+    const ratio = contrast(composite(parseRgb(c.color), parseRgb(c.bg)), parseRgb(c.bg));
+    expect(ratio, "View Live Demo label contrast").toBeGreaterThanOrEqual(4.5);
+
+    // The four feature cards on slide 9 lift on hover (translateY + shadow), matching the pill's lift.
+    const card = page.locator(".slide.active .show-four .show-card").first();
+    await expect(card).toBeVisible();
+    const cardTransition = await card.evaluate((el) => getComputedStyle(el).transitionProperty);
+    expect(cardTransition).toContain("transform");
+    expect(cardTransition).toContain("box-shadow");
+    expect(await card.evaluate((el) => getComputedStyle(el).transform)).toBe("none");
+    const restShadow = await card.evaluate((el) => getComputedStyle(el).boxShadow);
+    await card.hover();
+    await expect(card).not.toHaveCSS("transform", "none");
+    await expect(card).not.toHaveCSS("box-shadow", restShadow);
+
+    // AC1 is deck-wide: the non-primary link pills on the install slide (slide 14) also keep their
+    // rounded shape on hover, confirming the fix is not scoped to the slide-9 primary pill.
+    await page.evaluate(() => window.__cmhDeck.showSlideById("slide-12668385"));
+    const ghPill = page.locator('.slide.active a.show-link-pill[href="https://github.com/urikanonov/ai-marketplace"]');
+    await expect(ghPill).toBeVisible();
+    await ghPill.hover();
+    await expect(ghPill).toHaveClass(/cm-link-commentable/);
+    expect(await ghPill.evaluate((el) => Number.parseFloat(getComputedStyle(el).borderTopLeftRadius))).toBeGreaterThanOrEqual(100);
   } finally {
     await server.close();
   }

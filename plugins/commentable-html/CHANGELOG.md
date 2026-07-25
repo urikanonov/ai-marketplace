@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.240.0] - 2026-07-25
+
+### Changed
+
+- Showcase deck polish. Link pills (`.show-link-pill`) keep their rounded pill shape on hover in deck
+  comment mode - the authored deck CSS overrides the runtime link-comment hover so the dashed outline
+  hugs the pill instead of squaring it (deck-wide, e.g. "View Live Demo" and the install/link pills).
+  The primary "View Live Demo" label gains a subtle text-shadow for legibility on the crimson accent,
+  and the four slide-9 feature cards lift on hover (translateY + shadow), matching the pill lift.
+- Rebalanced the code / notes / decide slides so each uses its space: the "Supported syntax labels"
+  card moved onto the "Code, KQL, and diffs" slide, the review checklist moved beside the notes demo,
+  and the decision-board slide gained a short widget caption. (CMH-DECK-SHOWCASE-08, CMH-DECK-SHOWCASE-19)
+
 ## [1.238.0] - 2026-07-25
 
 ### Added

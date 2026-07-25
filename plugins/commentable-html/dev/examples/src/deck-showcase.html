@@ -1831,6 +1831,8 @@ svg {
 #commentRoot[data-cmh-mode="deck"] .show-four .show-card h3 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 29px; }
 #commentRoot[data-cmh-mode="deck"] .show-card p,
 #commentRoot[data-cmh-mode="deck"] .show-card li { font-size: 23px; line-height: 1.35; }
+#commentRoot[data-cmh-mode="deck"] .show-four .show-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+#commentRoot[data-cmh-mode="deck"] .show-four .show-card:hover { transform: translateY(-4px); box-shadow: 0 22px 46px rgba(120, 98, 60, 0.2); }
 #commentRoot[data-cmh-mode="deck"] .show-card-example { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--show-line); color: var(--show-text); font-size: 20px; line-height: 1.3; }
 #commentRoot[data-cmh-mode="deck"] .show-problem { display: grid; grid-template-columns: 1fr 80px 1fr; gap: 24px; align-items: center; margin-top: 34px; }
 #commentRoot[data-cmh-mode="deck"] .show-arrow { color: var(--show-accent); font-size: 58px; text-align: center; font-weight: 900; }
@@ -1876,8 +1878,8 @@ svg {
 #commentRoot[data-cmh-mode="deck"] .show-ticket { border-radius: 14px; padding: 14px; margin: 10px 0; background: #fbe9d6; border: 1px solid #eccfa8; }
 #commentRoot[data-cmh-mode="deck"] .show-ticket strong { display: block; font-size: 22px; margin-bottom: 5px; color: var(--show-text); }
 #commentRoot[data-cmh-mode="deck"] .show-ticket span { color: #5c5344; font-size: 19px; }
-#commentRoot[data-cmh-mode="deck"] .showcase-checklist-slide .cmh-checklist { padding: 20px 28px; border-radius: 20px; background: #fffdf8; border: 1px solid var(--show-line); }
-#commentRoot[data-cmh-mode="deck"] .showcase-checklist-slide li { font-size: 22px; margin: 10px 0; }
+#commentRoot[data-cmh-mode="deck"] .show-checklist-demo .cmh-checklist { padding: 0; border: 0; background: none; }
+#commentRoot[data-cmh-mode="deck"] .show-checklist-demo li { font-size: 22px; margin: 10px 0; }
 #commentRoot[data-cmh-mode="deck"] .show-export-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-top: 26px; }
 #commentRoot[data-cmh-mode="deck"] .show-export { min-height: 220px; padding: 24px; border-radius: 20px; background: #fffdf8; border: 1px solid var(--show-line); }
 #commentRoot[data-cmh-mode="deck"] .show-export h3 { color: var(--show-accent-2); font-size: 27px; }
@@ -1899,15 +1901,19 @@ svg {
 #commentRoot[data-cmh-mode="deck"] .show-links { margin-top: 22px; display: flex; gap: 14px; flex-wrap: wrap; font-size: 24px; }
 #commentRoot[data-cmh-mode="deck"] .show-link-pill { display: inline-flex; align-items: center; gap: 10px; padding: 12px 18px; border-radius: 999px; border: 1px solid var(--show-line); background: #fffdf8; color: var(--show-text); font-size: 21px; font-weight: 800; text-decoration: none; box-shadow: 0 10px 24px rgba(120, 98, 60, 0.12); }
 #commentRoot[data-cmh-mode="deck"] .show-link-pill:hover { text-decoration: none; transform: translateY(-1px); }
-#commentRoot[data-cmh-mode="deck"] .show-link-pill-primary { background: var(--show-accent); border-color: #8f173b; color: #fffdf8; }
+#commentRoot[data-cmh-mode="deck"] .show-link-pill-primary { background: var(--show-accent); border-color: #8f173b; color: #fffdf8; text-shadow: 0 1px 2px rgba(60, 12, 26, 0.4); }
+#commentRoot[data-cmh-mode="deck"] .slide a.show-link-pill-primary { color: #fffdf8; }
 #commentRoot[data-cmh-mode="deck"] .show-link-pill-primary .show-link-icon { background: rgba(255, 255, 255, 0.16); }
+#commentRoot[data-cmh-mode="deck"] a.show-link-pill.cm-link-commentable:hover { border-radius: 999px; }
 #commentRoot[data-cmh-mode="deck"] .show-link-icon { width: 30px; height: 30px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: #efe8db; color: currentColor; flex: none; font-size: 12px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; }
 #commentRoot[data-cmh-mode="deck"] .show-link-svg { width: 18px; height: 18px; display: block; }
 #commentRoot[data-cmh-mode="deck"] .show-supported-notes { align-items: start; }
 #commentRoot[data-cmh-mode="deck"] .show-supported-panel,
-#commentRoot[data-cmh-mode="deck"] .show-note-demo { padding: 26px 28px; }
+#commentRoot[data-cmh-mode="deck"] .show-note-demo,
+#commentRoot[data-cmh-mode="deck"] .show-checklist-demo { padding: 26px 28px; }
 #commentRoot[data-cmh-mode="deck"] .show-supported-panel h3,
-#commentRoot[data-cmh-mode="deck"] .show-note-demo h3 { margin-bottom: 12px; }
+#commentRoot[data-cmh-mode="deck"] .show-note-demo h3,
+#commentRoot[data-cmh-mode="deck"] .show-checklist-demo h3 { margin-bottom: 12px; }
 #commentRoot[data-cmh-mode="deck"] .show-supported-pills { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
 #commentRoot[data-cmh-mode="deck"] .show-supported-pills .show-pill { font-size: 20px; padding: 8px 14px; }
 #commentRoot[data-cmh-mode="deck"] .show-pill-muted { background: #efe8db; color: var(--show-muted); }
@@ -2234,6 +2240,23 @@ Press Enter.</code></pre>
 +      liters = round(bed.area_m2 * 4.0 - rainfall_mm, 1)
 +    schedule.append(liters)
    return schedule</pre>
+      <div class="show-panel show-supported-panel">
+        <h3>Supported syntax labels</h3>
+        <p>The built-in highlighter covers the core review languages without a separate build step.</p>
+        <div class="show-supported-pills">
+          <span class="show-pill">Python</span>
+          <span class="show-pill">JavaScript</span>
+          <span class="show-pill">TypeScript</span>
+          <span class="show-pill">Bash</span>
+          <span class="show-pill">PowerShell</span>
+          <span class="show-pill">JSON</span>
+          <span class="show-pill">YAML</span>
+          <span class="show-pill">HTML</span>
+          <span class="show-pill">CSS</span>
+          <span class="show-pill">SQL</span>
+          <span class="show-pill show-pill-muted">+37 more</span>
+        </div>
+      </div>
     </div>
     <div>
       <div class="show-code-stack">
@@ -2261,38 +2284,42 @@ StormEvents
 </section>
 
 <section class="slide showcase-languages-notes-slide" data-slide-id="slide-6f0f4d24">
-  <div class="show-kicker">Act 2 - Code and notes</div>
-  <h2>Syntax-highlighted code and editable notes stay in the same file.</h2>
+  <div class="show-kicker">Act 2 - Notes and checklists</div>
+  <h2>Editable notes and review checklists stay in the same file.</h2>
   <div class="show-two show-supported-notes">
-    <div class="show-panel show-supported-panel">
-      <h3>Supported syntax labels</h3>
-      <p>The built-in highlighter covers the core review languages without a separate build step.</p>
-      <div class="show-supported-pills">
-        <span class="show-pill">Python</span>
-        <span class="show-pill">JavaScript</span>
-        <span class="show-pill">TypeScript</span>
-        <span class="show-pill">Bash</span>
-        <span class="show-pill">PowerShell</span>
-        <span class="show-pill">JSON</span>
-        <span class="show-pill">YAML</span>
-        <span class="show-pill">HTML</span>
-        <span class="show-pill">CSS</span>
-        <span class="show-pill">SQL</span>
-        <span class="show-pill show-pill-muted">+37 more</span>
-      </div>
-    </div>
     <div class="show-panel show-note-demo">
       <h3>Notes demo</h3>
       <p>Live, editable notes for summaries, follow-ups, or presenter cues - type right here; edits are tracked and stay attached to the file.</p>
       <div class="cmh-note show-note-live" data-cmh-note="showcase-reviewer-summary" data-cmh-note-label="Reviewer summary" data-cmh-note-multiline="true">Clarify the Bed 8 recommendation before sign-off.</div>
       <div class="cmh-note show-note-live" data-cmh-note="showcase-meeting-followup" data-cmh-note-label="Meeting follow-up" data-cmh-note-multiline="true" data-cmh-note-foldable="true">Capture the volunteer-day decision after Thursday's walk-through.</div>
     </div>
+    <div class="show-panel show-checklist-demo">
+      <h3>Review checklist</h3>
+      <p>Track readiness with layered check / question / blank states - toggle any item live.</p>
+      <div class="cmh-checklist" data-cmh-checklist="garden-readiness" data-cmh-checklist-label="Garden plan readiness">
+        <ul>
+          <li data-cmh-item="beds" data-cmh-state="blank">Beds and crops
+            <ul>
+              <li data-cmh-item="layout" data-cmh-state="check">Bed layout agreed</li>
+              <li data-cmh-item="bed8" data-cmh-state="question">Bed 8 crop still open</li>
+            </ul>
+          </li>
+          <li data-cmh-item="water" data-cmh-state="blank">Watering
+            <ul>
+              <li data-cmh-item="rule" data-cmh-state="check">Rain skip rule drafted</li>
+              <li data-cmh-item="days" data-cmh-state="question">Volunteer days to confirm</li>
+            </ul>
+          </li>
+          <li data-cmh-item="budget" data-cmh-state="check">Budget approved</li>
+        </ul>
+      </div>
+    </div>
   </div>
 </section>
 
 <section class="slide showcase-checklist-slide" data-slide-id="slide-a74f331a">
   <div class="show-kicker">Act 2 - Decide and track</div>
-  <h2>Decisions and checklists are feedback too.</h2>
+  <h2>Decisions on a shared board are feedback too.</h2>
   <div class="show-board cm-skip" data-cm-widget="showcase-triage-board" data-cm-draggable aria-label="Garden decision board">
     <div class="show-col" data-cm-slot="Open" data-cm-part="slot-open" data-cm-part-label="Open column">
       <h3>Open</h3>
@@ -2308,23 +2335,7 @@ StormEvents
       <article class="show-ticket" data-cm-part="compost" data-cm-part-label="Compost bins"><strong>Compost bins</strong><span>Two bins by the north fence, approved.</span></article>
     </div>
   </div>
-  <div class="cmh-checklist" data-cmh-checklist="garden-readiness" data-cmh-checklist-label="Garden plan readiness" style="margin-top:22px;">
-    <ul>
-      <li data-cmh-item="beds" data-cmh-state="blank">Beds and crops
-        <ul>
-          <li data-cmh-item="layout" data-cmh-state="check">Bed layout agreed</li>
-          <li data-cmh-item="bed8" data-cmh-state="question">Bed 8 crop still open</li>
-        </ul>
-      </li>
-      <li data-cmh-item="water" data-cmh-state="blank">Watering
-        <ul>
-          <li data-cmh-item="rule" data-cmh-state="check">Rain skip rule drafted</li>
-          <li data-cmh-item="days" data-cmh-state="question">Volunteer days to confirm</li>
-        </ul>
-      </li>
-      <li data-cmh-item="budget" data-cmh-state="check">Budget approved</li>
-    </ul>
-  </div>
+  <p class="show-lead" style="margin-top:26px;">Drag a ticket between Open, Decide now, and Locked - the board is a commentable widget, so every column and card is its own review target.</p>
 </section>
 
 <section class="slide" data-slide-id="slide-a1c0de60">
