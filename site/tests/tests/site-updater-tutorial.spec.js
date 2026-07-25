@@ -349,3 +349,25 @@ test("the multi-duck page recommends running multiple rounds for complex work (S
   await expect(callout).toContainText(/several rounds|multiple rounds|number of rounds/i);
   await expect(callout).toContainText(/complex/i);
 });
+
+
+test("the multi-duck page roster step lists the example roster in SKILL.md order (SITE-MDUCK-06)", async ({ page }) => {
+  // Derive the expected roster (model + family, in order) from the shipped skill's SKILL.md example
+  // roster table, so this test fails if the site page drifts from the skill's roster or its order.
+  const fs = require("fs");
+  const path = require("path");
+  const skill = fs.readFileSync(
+    path.resolve(__dirname, "../../../plugins/multi-duck/pkg/skills/multi-duck/SKILL.md"), "utf8");
+  const rows = [...skill.matchAll(/^\|\s*\d+\s*\|\s*`([^`]+)`\s*\|\s*([^|]+?)\s*\|\s*$/gm)].slice(0, 8);
+  expect(rows.length).toBe(8);
+  const expected = rows.map((m) => `${m[1]} - ${m[2]}`);
+
+  await page.goto("/multi-duck/", { waitUntil: "domcontentloaded" });
+  // Scope to the "Pick a model-diverse roster" step and read its rendered ordered list.
+  const step = page.locator(".step", { hasText: "Pick a model-diverse roster" });
+  await expect(step).toBeVisible();
+  await expect(step.locator("ol.roster-list > li")).toHaveText(expected);
+  // The list is framed as a host-dependent example, not an authoritative catalog.
+  await expect(step.locator(".roster-caption")).toContainText(
+    "substitute the equivalents your host exposes");
+});

@@ -158,6 +158,12 @@
 .step h3, .step h4 { font-size: 1.02rem; margin-bottom: 4px; }
 .step p { color: var(--cp-text-muted); font-size: 0.93rem; }
 
+/* The multi-duck "Pick a model-diverse roster" step lists an example roster in order. The caption is
+   scoped under .step so it beats the ".step p" font-size rule above. */
+.step .roster-caption { color: var(--cp-text-muted); font-size: 0.86rem; margin: 10px 0 4px; }
+.step .roster-list { margin: 0; padding-left: 20px; display: grid; gap: 3px; color: var(--cp-text-muted); font-size: 0.9rem; }
+.step .roster-list code { font-size: 0.86em; }
+
 /* Accent callout: a highlighted note that stands out from body prose (e.g. the multi-duck
    "run it more than once" recommendation). */
 .callout {

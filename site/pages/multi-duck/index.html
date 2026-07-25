@@ -146,7 +146,18 @@
         <p class="section-sub">Discover, diversify, launch, consolidate, act - autonomously and safely.</p>
         <div class="steps steps-vertical">
           <div class="step"><h3>Discover the work in flight</h3><p>It gathers the diff, the PR and its open comments, any markdown plan, the tests, and active commentable-HTML plans with their open inline comments into one self-contained bundle every reviewer can read.</p></div>
-          <div class="step"><h3>Pick a model-diverse roster</h3><p>The strongest, most different models your host exposes - one per provider family first - so the ducks are as independent as possible. Each duck gets a review aspect (prisms) or the shared goal (consensus).</p></div>
+          <div class="step"><h3>Pick a model-diverse roster</h3><p>The strongest, most different models your host exposes - one per provider family first - so the ducks are as independent as possible. Each duck gets a review aspect (prisms) or the shared goal (consensus).</p>
+            <p class="roster-caption">Example roster on the GitHub Copilot CLI, in order (substitute the equivalents your host exposes):</p>
+            <ol class="roster-list">
+              <li><code>claude-opus-5</code> - Anthropic Opus</li>
+              <li><code>gpt-5.6-sol</code> - OpenAI</li>
+              <li><code>gemini-3.1-pro-preview</code> - Google</li>
+              <li><code>mai-code-1-flash-picker</code> - Microsoft MAI</li>
+              <li><code>claude-sonnet-5</code> - Anthropic Sonnet</li>
+              <li><code>gpt-5.6-terra</code> - OpenAI (5.6 sibling variant)</li>
+              <li><code>claude-opus-4.8</code> - Anthropic Opus (prior generation)</li>
+              <li><code>gpt-5.5</code> - OpenAI (prior generation)</li>
+            </ol></div>
           <div class="step"><h3>Launch the panel in parallel</h3><p>Every duck runs at once as a strictly review-only reviewer. Running many in parallel is safe because no duck can change anything.</p></div>
           <div class="step"><h3>Consolidate the findings</h3><p>Cluster duplicate findings, weigh agreement, rank by severity, and adjudicate conflicts by reading the code - because agreement across models that read the same bundle is corroboration to verify, never proof.</p></div>
           <div class="step"><h3>Act on the safe ones</h3><p>Apply the local, non-destructive, independently-verified fixes and check them with the narrowest test. Defer anything risky - API, dependency, migration, security, infrastructure, history-rewriting - with a clear recommendation.</p></div>
