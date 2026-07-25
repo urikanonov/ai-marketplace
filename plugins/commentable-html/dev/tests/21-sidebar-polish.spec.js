@@ -304,6 +304,20 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
     expect(Math.abs(gaps.a - gaps.b)).toBeLessThanOrEqual(3);
   });
 
+  test("the metadata block has a divider above Generated on matching the header rule (CMH-SIDE-03)", async ({ page }) => {
+    await openKitchenSink(page);
+    await openSidebarPanel(page);
+    const rule = await page.evaluate(() => {
+      const info = document.querySelector(".cm-sidebar .cm-side-info");
+      const s = getComputedStyle(info);
+      return { width: parseFloat(s.borderTopWidth), style: s.borderTopStyle };
+    });
+    // A visible top border separates the button/ribbon area from the Generated-on / Last-comment
+    // metadata block, mirroring the header's own bottom rule under the identity row.
+    expect(rule.width).toBeGreaterThan(0);
+    expect(rule.style).toBe("solid");
+  });
+
   test("the identity edit input stays legible and is not shrunk to the tiny metadata size (CMH-SIDE-03)", async ({ page }) => {
     await openKitchenSink(page);
     await openSidebarPanel(page);
@@ -334,5 +348,24 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
       const ws = await pre.evaluate(el => getComputedStyle(el).whiteSpace);
       expect(ws).toBe("pre-wrap");
     }
+  });
+});
+
+test.describe("Generated-on date-only rendering is timezone-stable (CMH-SIDE-03)", () => {
+  // A viewer west of UTC: new Date("2026-01-15") is UTC midnight = 2026-01-14 16:00 here, so the old
+  // datetime path rendered the previous day with a spurious evening time.
+  test.use({ timezoneId: "America/Los_Angeles" });
+
+  test("a date-only data-generated shows the same calendar day west of UTC (CMH-SIDE-03)", async ({ page }) => {
+    await openKitchenSink(page);
+    await page.evaluate(() =>
+      document.getElementById("commentRoot").setAttribute("data-generated", "2026-01-15"));
+    // Adding a comment re-runs updateSideInfo, which re-reads data-generated and re-renders the line.
+    await addTextComment(page, "#commentRoot section p", "trigger side info");
+    const text = await page.locator("#cmGenerated").innerText();
+    expect(text).toContain("Generated on: Jan 15, 2026");
+    expect(text).not.toContain("Jan 14");
+    // A bare calendar date carries no time-of-day.
+    expect(text).not.toMatch(/\d{1,2}:\d{2}/);
   });
 });

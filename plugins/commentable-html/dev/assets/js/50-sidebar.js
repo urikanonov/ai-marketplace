@@ -4,6 +4,16 @@ function escapeHtml(s) {
 }
 function formatTime(iso) {
   try {
+    // A date-only value (YYYY-MM-DD, e.g. a data-generated build/authoring date) is a CALENDAR
+    // date, not an instant: parse it in LOCAL time and render it without a time, so it shows the
+    // same day in every timezone. new Date("2026-07-25") parses as UTC midnight, which slides to
+    // the previous evening for viewers west of UTC (the "Jul 24 ... 17:00" artifact), so a bare
+    // date must not go through the datetime path below.
+    const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso).trim());
+    if (dateOnly) {
+      const d = new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
+      return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    }
     // Month name (not a number) so the date is unambiguous across M/D/Y and D/M/Y
     // locales (e.g. "Jul 9, 2026, 13:07"). 24-hour time, no AM/PM.
     return new Date(iso).toLocaleString(undefined, {
