@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.245.0";
+const CMH_VERSION = "1.246.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -6014,6 +6014,16 @@ function escapeHtml(s) {
 }
 function formatTime(iso) {
   try {
+    // A date-only value (YYYY-MM-DD, e.g. a data-generated build/authoring date) is a CALENDAR
+    // date, not an instant: parse it in LOCAL time and render it without a time, so it shows the
+    // same day in every timezone. new Date("2026-07-25") parses as UTC midnight, which slides to
+    // the previous evening for viewers west of UTC (the "Jul 24 ... 17:00" artifact), so a bare
+    // date must not go through the datetime path below.
+    const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso).trim());
+    if (dateOnly) {
+      const d = new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
+      return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    }
     // Month name (not a number) so the date is unambiguous across M/D/Y and D/M/Y
     // locales (e.g. "Jul 9, 2026, 13:07"). 24-hour time, no AM/PM.
     return new Date(iso).toLocaleString(undefined, {

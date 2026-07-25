@@ -19,6 +19,9 @@ _LAYER_DESCRIPTOR_INSERT_RE = re.compile(
     re.IGNORECASE)
 _CONTENT_BEGIN_TEXT = "BEGIN: commentable-html - CONTENT"
 _CONTENT_ROOT_RE = re.compile(r'<main\b[^>]*?\bid\s*=\s*(["\'])commentRoot\1[^>]*>', re.IGNORECASE)
+# An existing data-generated attribute on the content-root <main>, replaced (or added when absent) so
+# every shipped example reports the build's release date rather than an authored in-story date.
+_DATA_GENERATED_RE = re.compile(r'\s+data-generated\s*=\s*(["\'])[^"\']*\1', re.IGNORECASE)
 
 # The mermaid loader bootstrap lives in <head>, OUTSIDE the swappable CSS/COMMENT UI/JS regions, so
 # a bare region swap never reaches it (CMH-MMD-09). upgrade.py re-emits it into already-generated
@@ -231,10 +234,35 @@ def _stamp_content_root_hook(text):
     return text[:match.start() + len("<main")] + " data-cmh-content-root" + text[match.start() + len("<main"):]
 
 
-def regen_example(example_html, portable_html, version, mermaid_version, where="<example>"):
+def _stamp_generated_date(text, generated_date):
+    """Set data-generated=<generated_date> on the content-root <main id="commentRoot">, replacing any
+    authored in-story date (e.g. the taxi report's 2014-12-31) and adding it where absent, so every
+    shipped example's sidebar "Generated on" line reports the build's release date and stays in sync.
+    The root is the last matching <main> BEFORE the CONTENT marker (mirroring _stamp_content_root_hook),
+    so a decoy <main id="commentRoot"> string inside the authored content is never stamped instead."""
+    if not generated_date:
+        return text
+    marker = text.find(_CONTENT_BEGIN_TEXT)
+    end = marker if marker != -1 else len(text)
+    matches = list(_CONTENT_ROOT_RE.finditer(text, 0, end))
+    if not matches:
+        return text
+    m = matches[-1]
+    tag = m.group(0)
+    attr = ' data-generated="' + generated_date + '"'
+    if _DATA_GENERATED_RE.search(tag):
+        new_tag = _DATA_GENERATED_RE.sub(lambda _: attr, tag, count=1)
+    else:
+        new_tag = tag[:len("<main")] + attr + tag[len("<main"):]
+    return text[:m.start()] + new_tag + text[m.end():]
+
+
+def regen_example(example_html, portable_html, version, mermaid_version, where="<example>",
+                  generated_date=None):
     """Return the example with its CSS/COMMENT UI/JS regions replaced by the current
-    layer from portable_html, its <meta> version re-stamped, and its mermaid CDN pin
-    rewritten to the single source. The report's content and embedded comments are
+    layer from portable_html, its <meta> version re-stamped, its mermaid CDN pin
+    rewritten to the single source, and (when generated_date is given) its content-root
+    data-generated stamped to the release date. The report's content and embedded comments are
     preserved."""
     out = example_html
     for name in _LAYER_REGIONS:
@@ -250,17 +278,18 @@ def regen_example(example_html, portable_html, version, mermaid_version, where="
     out = _stamp_vendored_rich_libs(out, portable_html)
     out = _stamp_layer_descriptor(out, version, "portable")
     out = _stamp_content_root_hook(out)
+    out = _stamp_generated_date(out, generated_date)
     out = _stamp_mermaid_loader(out, portable_html)
     out = _MERMAID_CDN_RE.sub(lambda m: m.group(1) + mermaid_version + m.group(2), out)
     return out
 
 
-def build_examples(portable_html, version, mermaid_version, examples_dir):
+def build_examples(portable_html, version, mermaid_version, examples_dir, generated_date=None):
     """Regenerate every report-*.html and deck-*.html under examples_dir from its INDEPENDENT
     content source in dev/examples/src/ (not from the shipped file itself). Returns {out_path: text}.
     An absent examples_dir (e.g. a temp-dir build) or an absent source dir yields no entries.
     Assembling from an independent source is what lets --check catch a stale or hand-edited example
-    instead of comparing it to itself."""
+    instead of comparing it to itself. generated_date is stamped into each example's content root."""
     result = {}
     if not os.path.isdir(examples_dir) or not os.path.isdir(EXAMPLES_SRC):
         return result
@@ -269,7 +298,8 @@ def build_examples(portable_html, version, mermaid_version, examples_dir):
             continue
         src_path = os.path.join(EXAMPLES_SRC, name)
         out_path = os.path.join(examples_dir, name)
-        result[out_path] = regen_example(read(src_path), portable_html, version, mermaid_version, name)
+        result[out_path] = regen_example(read(src_path), portable_html, version, mermaid_version, name,
+                                         generated_date=generated_date)
     return result
 
 
@@ -309,6 +339,7 @@ def build_all(assets_dir=None, out_dir=None, examples_dir=None):
     dist_dir = os.path.join(out_dir, "dist")
     css, js, shell, version = load_sources(assets_dir)
     mermaid_version = read_mermaid_version()
+    generated_date = read_release_date(version)
     vendored_rich_libs_json = build_vendored_rich_libs_json(assets_dir or ASSETS)
     js = _stamp_const(js, version, "commentable-html.js")
     css_name, js_name, assets_name = _names()
@@ -331,6 +362,6 @@ def build_all(assets_dir=None, out_dir=None, examples_dir=None):
         os.path.join(dist_dir, "manifest.json"): json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         os.path.join(dist_dir, "NONPORTABLE.html"): build_nonportable(shell, version, mermaid_version, vendored_rich_libs_json),
     }
-    outputs.update(build_examples(portable, version, mermaid_version, examples_dir))
+    outputs.update(build_examples(portable, version, mermaid_version, examples_dir, generated_date))
     outputs.update(build_prompt_examples(examples_dir))
     return outputs, version

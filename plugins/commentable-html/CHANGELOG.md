@@ -4,6 +4,27 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.246.0] - 2026-07-25
+
+### Fixed
+
+- The shipped example reports and the showcase deck now report the build's release date on the sidebar
+  "Generated on" line, stamped by `build.py` from the current version's dated `CHANGELOG.md` heading.
+  Previously the date was an authored in-story value that was wrong and out of sync across examples (the
+  NYC Taxi report showed `Dec 31, 2014`, the deck showed `Jul 14, 2026`, some reports showed no date at
+  all); every example now shows the same, correct build date. (CMH-BUILD-15)
+- The sidebar "Generated on" line now renders a date-only value (`YYYY-MM-DD`) as a calendar date in the
+  viewer's local time with no time-of-day, so it shows the same day in every timezone. Previously a bare
+  date was parsed as UTC midnight and shifted to the previous evening for viewers west of UTC (the
+  spurious "..., 02:00" / previous-day display), which would have undercut the release-date stamp above.
+  (CMH-SIDE-03)
+
+### Changed
+
+- The sidebar now draws a divider rule above the "Generated on" / "Last comment" metadata block,
+  separating it from the Copy all / Export button row and mirroring the header's own rule under the
+  "Commenting as" identity line. (CMH-SIDE-03)
+
 ## [1.245.0] - 2026-07-25
 
 ### Changed

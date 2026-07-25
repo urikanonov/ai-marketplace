@@ -31,6 +31,26 @@ def _read(path):
         return fh.read()
 
 
+CHANGELOG = os.path.join(_paths.PLUGIN_ROOT, "CHANGELOG.md")
+
+
+def _read_release_date():
+    """The current version's release date (YYYY-MM-DD) from the dated CHANGELOG heading."""
+    version = _read_version()
+    m = re.search(r"(?m)^## \[" + re.escape(version) + r"\][ \t]*-[ \t]*(\d{4}-\d{2}-\d{2})[ \t]*$",
+                  _read(CHANGELOG))
+    if not m:
+        raise AssertionError("no dated CHANGELOG heading '## [%s] - <date>'" % version)
+    return m.group(1)
+
+
+def _all_example_docs():
+    ex_dir = _paths.EXAMPLES
+    return sorted(
+        os.path.join(ex_dir, name) for name in os.listdir(ex_dir)
+        if (name.startswith("report-") or name.startswith("deck-")) and name.endswith(".html"))
+
+
 def _report_paths():
     ex_dir = _paths.EXAMPLES
     return sorted(
@@ -44,9 +64,14 @@ def _companion_prompt(report_path):
 
 
 def _active_root_attr(html, attr):
-    matches = list(re.finditer(r'<main\b[^>]*\bid="commentRoot"[^>]*\b' + re.escape(attr) + r'="([^"]*)"', html))
+    # Scope to before the CONTENT marker (mirroring the build's _stamp_content_root_hook /
+    # _stamp_generated_date), so a decoy <main id="commentRoot"> inside authored content never
+    # shadows the real container root.
+    marker = html.find("BEGIN: commentable-html - CONTENT")
+    head = html[:marker] if marker != -1 else html
+    matches = list(re.finditer(r'<main\b[^>]*\bid="commentRoot"[^>]*\b' + re.escape(attr) + r'="([^"]*)"', head))
     if not matches:
-        matches = list(re.finditer(r'<main\b[^>]*\b' + re.escape(attr) + r'="([^"]*)"[^>]*\bid="commentRoot"', html))
+        matches = list(re.finditer(r'<main\b[^>]*\b' + re.escape(attr) + r'="([^"]*)"[^>]*\bid="commentRoot"', head))
     return matches[-1].group(1) if matches else None
 
 
@@ -134,6 +159,25 @@ class ExampleTests(unittest.TestCase):
                              "%s <meta> version is stale (run build.py)" % os.path.basename(path))
             self.assertEqual(const.group(1), version,
                              "%s CMH_VERSION is stale (run build.py)" % os.path.basename(path))
+
+    def test_examples_generated_date_is_release_date_and_in_sync(self):
+        # CMH-BUILD-15: build.py stamps every shipped example's content-root data-generated with the
+        # current release date (single-sourced from CHANGELOG), so the sidebar "Generated on" line is
+        # correct (not an authored in-story date like the taxi report's 2014) and identical across all
+        # examples. An authored data-generated in a source is overridden, and one is added where absent.
+        release_date = _read_release_date()
+        docs = _all_example_docs()
+        self.assertTrue(docs, "no shipped examples found")
+        seen = {}
+        for path in docs:
+            generated = _active_root_attr(_read(path), "data-generated")
+            self.assertEqual(
+                generated, release_date,
+                "%s data-generated is %r, expected the release date %r (run build.py)"
+                % (os.path.basename(path), generated, release_date))
+            seen[generated] = seen.get(generated, 0) + 1
+        self.assertEqual(list(seen), [release_date],
+                         "example generated dates are out of sync: %r" % seen)
 
     def test_build_check_catches_example_drift(self):
         # Regenerate a self-contained temp tree, confirm --check passes, then poison an

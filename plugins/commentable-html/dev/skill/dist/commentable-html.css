@@ -550,7 +550,7 @@ body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) +
 /* Stacked, labelled metadata rows (Generated, then Last activity), followed by the identity row.
    The header is a flex column with a 0.4rem gap, so matching cm-side-info's internal gap to it and
    zeroing the margins gives an even rhythm across all three metadata lines. */
-.cm-sidebar .cm-side-info { flex-flow: column nowrap; align-items: flex-start; gap: var(--cp-chrome-gap); margin: 0; }
+.cm-sidebar .cm-side-info { flex-flow: column nowrap; align-items: flex-start; gap: var(--cp-chrome-gap); margin: 0; border-top: 1px solid var(--cp-border); padding-top: var(--cp-chrome-gap); }
 .cm-sidebar .cm-identity { margin-top: 0; font-size: var(--cp-chrome-tiny-font); }
 /* The identity display line matches the tiny metadata rows above it, but its edit-mode name input
    keeps the larger small-font so the field stays comfortable to read and type in. */

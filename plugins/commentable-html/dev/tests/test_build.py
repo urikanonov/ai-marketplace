@@ -822,5 +822,81 @@ class PackageTests(unittest.TestCase):
                 build.build_resources_zip_bytes(stage)
 
 
+class ReleaseDateTests(unittest.TestCase):
+    """read_release_date single-sources the examples' 'Generated on' build date from the dated
+    CHANGELOG heading, deterministically (CMH-BUILD-15)."""
+
+    def _changelog(self, body):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        path = os.path.join(d, "CHANGELOG.md")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(body)
+        return path
+
+    def test_reads_iso_date_of_the_current_version_heading(self):
+        path = self._changelog(
+            "# Changelog\n\n## [1.245.0] - 2026-07-25\n\n### Fixed\n\n- x\n\n"
+            "## [1.244.0] - 2026-07-20\n")
+        self.assertEqual(build.read_release_date("1.245.0", path), "2026-07-25")
+        self.assertEqual(build.read_release_date("1.244.0", path), "2026-07-20")
+
+    def test_missing_or_undated_heading_fails_loudly(self):
+        # A version with no heading, and a heading with no date, both hard-fail so a bump that forgets
+        # the CHANGELOG date cannot silently ship a wrong "Generated on" line.
+        undated = self._changelog("# Changelog\n\n## [1.245.0]\n")
+        with self.assertRaises(SystemExit):
+            build.read_release_date("1.245.0", undated)
+        with self.assertRaises(SystemExit):
+            build.read_release_date("9.9.9", undated)
+
+    def test_date_must_be_on_the_heading_line_not_a_following_bullet(self):
+        # The date is matched with horizontal whitespace only, so an undated heading followed by a
+        # bullet that is exactly a date does not leak across the newline into a false match (the old
+        # `\s*` regex, which spans newlines, WOULD have matched this bullet).
+        leaky = self._changelog("# Changelog\n\n## [1.245.0]\n\n- 2026-07-25\n")
+        with self.assertRaises(SystemExit):
+            build.read_release_date("1.245.0", leaky)
+
+    def test_calendar_invalid_date_fails_loudly(self):
+        bad = self._changelog("# Changelog\n\n## [1.245.0] - 2026-99-99\n")
+        with self.assertRaises(SystemExit):
+            build.read_release_date("1.245.0", bad)
+
+    def test_committed_changelog_has_a_date_for_the_current_version(self):
+        version = build.read_version()
+        self.assertRegex(build.read_release_date(version), r"^\d{4}-\d{2}-\d{2}$")
+
+
+class StampGeneratedDateTests(unittest.TestCase):
+    """_stamp_generated_date targets the real content root and is quote/idempotent-safe (CMH-BUILD-15)."""
+
+    def test_replaces_an_authored_date_in_place(self):
+        text = '<main id="commentRoot" data-generated="2014-12-31">x</main>'
+        out = build._stamp_generated_date(text, "2026-07-25")
+        self.assertEqual(out, '<main id="commentRoot" data-generated="2026-07-25">x</main>')
+
+    def test_adds_the_attribute_when_absent(self):
+        text = '<main id="commentRoot">x</main>'
+        out = build._stamp_generated_date(text, "2026-07-25")
+        self.assertEqual(out, '<main data-generated="2026-07-25" id="commentRoot">x</main>')
+
+    def test_targets_root_before_content_marker_not_a_decoy(self):
+        # A decoy <main id="commentRoot"> AFTER the CONTENT marker (e.g. in authored example content)
+        # must not be stamped instead of the real container root before the marker.
+        real = '<main id="commentRoot" data-generated="2014-12-31">'
+        decoy = '<main id="commentRoot">'
+        text = real + "\n// BEGIN: commentable-html - CONTENT\nbody " + decoy + " more"
+        out = build._stamp_generated_date(text, "2026-07-25")
+        self.assertIn('<main id="commentRoot" data-generated="2026-07-25">', out)
+        self.assertTrue(out.endswith("body " + decoy + " more"))
+        self.assertEqual(out.count("data-generated="), 1)
+
+    def test_empty_date_is_a_noop(self):
+        text = '<main id="commentRoot">x</main>'
+        self.assertEqual(build._stamp_generated_date(text, None), text)
+        self.assertEqual(build._stamp_generated_date(text, ""), text)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -52,6 +52,7 @@ present in --out-dir against a fresh build.
 """
 import argparse
 import base64
+import datetime
 import gzip
 import hashlib
 import io
@@ -191,6 +192,10 @@ def read_vendored_license(vendor_dir, license_name):
 # --------------------------------------------------------------------------- #
 VERSION_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION")
 PACKAGE_JSON = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "package.json")
+# The plugin CHANGELOG sits at the plugin root (a sibling of dev/); its dated heading for the current
+# version is the single, deterministic source for the examples' "Generated on" build date.
+CHANGELOG_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "CHANGELOG.md")
 VENDOR_DIR = os.path.join(ASSETS, "vendor")
 _SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 # The mermaid CDN import in the shipped templates/examples, so build can stamp it
@@ -214,6 +219,33 @@ def read_version(version_file=None):
     if not _SEMVER_RE.match(v):
         raise SystemExit("build: VERSION must be a semver like 1.2.3, got %r" % v)
     return v
+
+
+def read_release_date(version, changelog_file=None):
+    """The ISO date (YYYY-MM-DD) of the current version's dated CHANGELOG heading
+    (`## [<version>] - <date>`). This is the single, deterministic source for the "Generated on"
+    build date that build stamps into every shipped example, so the sidebar line reflects the
+    release and stays identical across examples (and --check stays stable, unlike a wall-clock now).
+    The heading and its date are matched on a SINGLE line (horizontal whitespace only) and the date
+    is calendar-validated, so an undated heading, a date on a following line, or an impossible date
+    (e.g. 2026-99-99) fails loudly rather than stamping a wrong value."""
+    changelog_file = CHANGELOG_FILE if changelog_file is None else changelog_file
+    with open(changelog_file, "r", encoding="utf-8") as fh:
+        text = fh.read()
+    m = re.search(r"(?m)^## \[" + re.escape(version) + r"\][ \t]*-[ \t]*(\d{4}-\d{2}-\d{2})[ \t]*$",
+                  text)
+    if not m:
+        raise SystemExit(
+            "build: CHANGELOG.md has no dated heading '## [%s] - <YYYY-MM-DD>' for the current version"
+            % version)
+    date = m.group(1)
+    try:
+        datetime.date.fromisoformat(date)
+    except ValueError:
+        raise SystemExit(
+            "build: CHANGELOG.md heading for %s has an invalid date %r (expected YYYY-MM-DD)"
+            % (version, date))
+    return date
 
 
 def read_mermaid_version(package_json=None):

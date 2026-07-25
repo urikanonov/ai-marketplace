@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.245.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.246.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,6 +457,18 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.246.0] - 2026-07-25</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The shipped example reports and the showcase deck now report the build&#x27;s release date on the sidebar &quot;Generated on&quot; line, stamped by <code>build.py</code> from the current version&#x27;s dated <code>CHANGELOG.md</code> heading. Previously the date was an authored in-story value that was wrong and out of sync across examples (the NYC Taxi report showed <code>Dec 31, 2014</code>, the deck showed <code>Jul 14, 2026</code>, some reports showed no date at all); every example now shows the same, correct build date. (CMH-BUILD-15)</li>
+              <li>The sidebar &quot;Generated on&quot; line now renders a date-only value (<code>YYYY-MM-DD</code>) as a calendar date in the viewer&#x27;s local time with no time-of-day, so it shows the same day in every timezone. Previously a bare date was parsed as UTC midnight and shifted to the previous evening for viewers west of UTC (the spurious &quot;..., 02:00&quot; / previous-day display), which would have undercut the release-date stamp above. (CMH-SIDE-03)</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The sidebar now draws a divider rule above the &quot;Generated on&quot; / &quot;Last comment&quot; metadata block, separating it from the Copy all / Export button row and mirroring the header&#x27;s own rule under the &quot;Commenting as&quot; identity line. (CMH-SIDE-03)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.245.0] - 2026-07-25</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -464,6 +476,8 @@
               <li>Deck layout: every deck the skill produces now keeps a stable header baseline - the deck CSS reserves a consistent title band (em-sized) so a slide&#x27;s subtitle/body starts at the same height regardless of whether the title is one or two lines, and content slides top-align so the title starts at the same height on every slide; the header no longer jumps when navigating. Showcase content slides pin that header at the top and center the body in the space below it, so a light slide no longer leaves a large empty band at the bottom. Section/divider slides still center. (CMH-DECK-42, CMH-DECK-SHOWCASE-12)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.244.0] - 2026-07-25</h3></div>
             <div class="group-label">Changed</div>
@@ -473,8 +487,6 @@
               <li>The comment search field is now hidden by default and appears only when the reader opens it with the <code>Search</code> button (previously it appeared automatically whenever comments existed).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.243.0] - 2026-07-25</h3></div>
             <div class="group-label">Fixed</div>
@@ -511,18 +523,7 @@
               <li>Rebalanced the code / notes / decide slides so each uses its space: the &quot;Supported syntax labels&quot; card moved onto the &quot;Code, KQL, and diffs&quot; slide, the review checklist moved beside the notes demo, and the decision-board slide gained a short widget caption. (CMH-DECK-SHOWCASE-08, CMH-DECK-SHOWCASE-19)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.238.0] - 2026-07-25</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>The showcase deck (<code>examples/deck-showcase.html</code>) now demonstrates the full set of user-facing areas: a new &quot;Discuss, find, and keep it tidy&quot; slide covers threaded inline replies and colored author pills, rich-text comment formatting, per-section review badges plus the section menu and search/filter, and the storage manager plus commentable widgets - each framed as a live &quot;Try it&quot; invitation, since the deck runs the real runtime. This closes the gap between the deck and the documented feature set. (CMH-DECK-SHOWCASE-18)</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Governance: the doc-surface registry in <code>dev/SPEC.md</code> now tracks a required <code>Deck</code> dimension alongside the reader-doc surface. Every new user-facing feature must declare that it is demonstrated on a showcase-deck slide (<code>deck</code>) or record an explicit <code>opt-out: &lt;reason&gt;</code>, checked by <code>scripts/check_doc_surfaces.py</code> (run in the required validate job and the pre-push hook) and encoded in AGENTS.md, so the deck stays a fourth documentation surface that cannot silently fall behind.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">202 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">203 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
