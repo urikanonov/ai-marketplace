@@ -27,10 +27,9 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
     // Bigger, bolder text so the most-used action is easy to find and click (was ~0.78rem, normal weight).
     expect(font).toBeGreaterThanOrEqual(14);
     expect(weight).toBeGreaterThanOrEqual(700);
-    // A larger click target than the small sort arrows beside it.
-    const copyBox = await copy.boundingBox();
-    const sortBox = await page.locator("#btnSortAsc").boundingBox();
-    expect(copyBox.height).toBeGreaterThan(sortBox.height);
+    // Copy all is more prominent than the compact Sort ribbon button beside it: a larger label.
+    const sortCapFont = await page.locator("#btnSort .cm-ribbon-cap").evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+    expect(font).toBeGreaterThan(sortCapFont);
   });
 
   test("comment timestamps use an unambiguous month name (not a numeric M/D)", async ({ page }) => {
@@ -55,7 +54,7 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
     expect(bundle).toMatch(/Pinpoint:/);
   });
 
-  test("sort arrows order comments oldest/newest first and toggle aria-pressed", async ({ page }) => {
+  test("the Sort button cycles document -> newest -> oldest -> document and the tooltip tracks state (CMH-SIDE-02)", async ({ page }) => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section p", "older one", 0);
     const olderCreatedAt = (await storedComments(page))[0].createdAt;
@@ -63,27 +62,43 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
     await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "newer one", 0);
 
     const firstCardText = () => page.locator(".cm-card").first().innerText();
+    const sort = page.locator("#btnSort");
+    // The shared tooltip layer may hold the tip in `title` (until adopted) or in `data-cmh-tip`.
+    const tip = () => sort.evaluate((el) => el.getAttribute("data-cmh-tip") || el.getAttribute("title") || "");
 
-    await page.click("#btnSortAsc");
-    await expect(page.locator("#btnSortAsc")).toHaveAttribute("aria-pressed", "true");
-    expect(await firstCardText()).toContain("older one");
+    // Default: document position order; the accessible name + tooltip name the current state.
+    await expect(sort).toHaveAttribute("data-sort", "pos");
+    await expect(sort).toHaveAttribute("aria-label", /document order/i);
+    expect(await tip()).toMatch(/document position\. Click to sort newest first/i);
 
-    await page.click("#btnSortDesc");
-    await expect(page.locator("#btnSortDesc")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator("#btnSortAsc")).toHaveAttribute("aria-pressed", "false");
+    // 1st click -> newest first.
+    await sort.click();
+    await expect(sort).toHaveAttribute("data-sort", "time-desc");
+    await expect(sort).toHaveAttribute("aria-label", /newest first/i);
+    expect(await tip()).toMatch(/newest first\. Click to sort oldest first/i);
     expect(await firstCardText()).toContain("newer one");
 
-    // Clicking the active arrow again returns to document (position) order.
-    await page.click("#btnSortDesc");
-    await expect(page.locator("#btnSortDesc")).toHaveAttribute("aria-pressed", "false");
+    // 2nd click -> oldest first.
+    await sort.click();
+    await expect(sort).toHaveAttribute("data-sort", "time-asc");
+    await expect(sort).toHaveAttribute("aria-label", /oldest first/i);
+    expect(await tip()).toMatch(/oldest first\. Click to return to document order/i);
+    expect(await firstCardText()).toContain("older one");
+
+    // 3rd click -> back to document order. It never uses aria-pressed (it is a cycle, not a toggle).
+    await sort.click();
+    await expect(sort).toHaveAttribute("data-sort", "pos");
+    await expect(sort).toHaveAttribute("aria-label", /document order/i);
+    expect(await sort.getAttribute("aria-pressed")).toBeNull();
   });
 
-  test("the sort choice persists across reload", async ({ page }) => {
+  test("the sort choice persists across reload (CMH-SIDE-02)", async ({ page }) => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section p", "persist sort");
-    await page.click("#btnSortDesc");
+    await page.click("#btnSort"); // -> newest first (time-desc)
     await page.reload();
-    await expect(page.locator("#btnSortDesc")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#btnSort")).toHaveAttribute("data-sort", "time-desc");
+    await expect(page.locator("#btnSort")).toHaveAttribute("aria-label", /newest first/i);
   });
 
 
@@ -236,6 +251,35 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
     await addTextComment(page, "#commentRoot section p", "sets last comment");
     await expect(page.locator("#cmLastComment")).toContainText("Last comment:");
     await expect(page.locator("#cmLastComment")).not.toContainText("none yet");
+  });
+
+  test("the three metadata lines are evenly spaced (CMH-SIDE-03)", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "spacing note");
+    await openSidebarPanel(page);
+    const gaps = await page.evaluate(() => {
+      const textRect = (el) => { const r = document.createRange(); r.selectNodeContents(el); return r.getBoundingClientRect(); };
+      const gen = textRect(document.getElementById("cmGenerated"));
+      const last = textRect(document.getElementById("cmLastComment"));
+      const ident = textRect(document.querySelector(".cm-sidebar .cm-identity .cm-identity-label"));
+      return { a: last.top - gen.bottom, b: ident.top - last.bottom };
+    });
+    // The visible whitespace gap Generated -> Last comment and Last comment -> Commenting-as match
+    // (both are the header's flex gap); the old layout differed by ~8px.
+    expect(Math.abs(gaps.a - gaps.b)).toBeLessThanOrEqual(3);
+  });
+
+  test("the identity edit input stays legible and is not shrunk to the tiny metadata size (CMH-SIDE-03)", async ({ page }) => {
+    await openKitchenSink(page);
+    await openSidebarPanel(page);
+    // The display line matches the tiny metadata rows, but the edit-mode input keeps a larger,
+    // legible size (it must not inherit the tiny display font).
+    const tinyFont = await page.evaluate(() =>
+      parseFloat(getComputedStyle(document.getElementById("cmGenerated")).fontSize));
+    if (await page.locator("#cmIdentityEdit").isHidden()) await page.click("#btnEditIdentity");
+    const inputFont = await page.evaluate(() =>
+      parseFloat(getComputedStyle(document.getElementById("cmIdentityInput")).fontSize));
+    expect(inputFont).toBeGreaterThan(tinyFont);
   });
 
   test("clicking a section heading deep-links it in the URL", async ({ page }) => {

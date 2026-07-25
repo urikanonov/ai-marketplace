@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.241.0";
+const CMH_VERSION = "1.242.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -6050,9 +6050,33 @@ function updateSideInfo() {
   }
 }
 function updateSortUi() {
-  const a = document.getElementById("btnSortAsc"), d = document.getElementById("btnSortDesc");
-  if (a) a.setAttribute("aria-pressed", commentSort === "time-asc" ? "true" : "false");
-  if (d) d.setAttribute("aria-pressed", commentSort === "time-desc" ? "true" : "false");
+  const b = document.getElementById("btnSort");
+  if (!b) return;
+  const state = (commentSort === "time-desc" || commentSort === "time-asc") ? commentSort : "pos";
+  const svg = 'viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"'
+    + ' fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+  const ICONS = {
+    "pos": '<svg class="cm-ui-ico" ' + svg + '><path d="M7 4v16M7 4l-3 3M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3"/></svg>',
+    "time-desc": '<svg class="cm-ui-ico" ' + svg + '><path d="M4 6h11M4 12h7M4 18h4M18 7v10M15 14l3 3 3-3"/></svg>',
+    "time-asc": '<svg class="cm-ui-ico" ' + svg + '><path d="M4 6h4M4 12h7M4 18h11M18 17V7M15 10l3-3 3 3"/></svg>',
+  };
+  const TITLES = {
+    "pos": "Sorted by document position. Click to sort newest first.",
+    "time-desc": "Sorted newest first. Click to sort oldest first.",
+    "time-asc": "Sorted oldest first. Click to return to document order.",
+  };
+  // This is a 3-state cycle, not a binary toggle, so it exposes state via data-sort + a dynamic
+  // aria-label rather than aria-pressed (which screen readers would announce ambiguously).
+  b.setAttribute("data-sort", state);
+  // Adopt-aware tooltip (mirrors 70-mode-badge.js): once the shared tooltip layer has taken the
+  // title into data-cmh-tip it removes title so the native browser tooltip cannot also fire; keep
+  // whichever attribute it is using current, and never re-add title after adoption.
+  if (b.hasAttribute("data-cmh-tip")) { b.setAttribute("data-cmh-tip", TITLES[state]); b.removeAttribute("title"); }
+  else b.setAttribute("title", TITLES[state]);
+  const ARIA = { "pos": "document order", "time-desc": "newest first", "time-asc": "oldest first" };
+  b.setAttribute("aria-label", "Sort comments (currently: " + ARIA[state] + ")");
+  const icon = document.getElementById("cmSortIcon");
+  if (icon && ICONS[state]) icon.innerHTML = ICONS[state];
 }
 function renderComments() {
   // Test/perf hook: renderComments runs two full-document tree walks, so a spec pins that the
@@ -9013,7 +9037,7 @@ async function exportMarkdown() {
   const md = buildMarkdownDoc();
   const filename = _mdFilename();
   _downloadTextFile(md, filename, "text/markdown");
-  showToast(`Markdown downloaded as ${filename}.`);
+  showToast(`Markdown downloaded as ${filename}.`, { center: true });
 }
 ["btnExportMd", "btnExportMdTop"].forEach((id) => {
   const b = document.getElementById(id);
@@ -9854,7 +9878,7 @@ async function saveHtml() {
   const n = exportComments.length;
   const noun = "comment" + (n === 1 ? "" : "s");
   _downloadHtml(text, filename);
-  showToast(`Downloaded ${filename} with ${n} embedded ${noun}. Replace the original on disk to make them stick.`);
+  showToast(`Downloaded ${filename} with ${n} embedded ${noun}. Replace the original on disk to make them stick.`, { center: true });
 }
 /* ---------- Save as plain HTML (strip the comment layer) ---------- */
 // Produces a standalone copy of the document with the commenting *ability* removed but
@@ -9924,7 +9948,7 @@ async function saveAsPlain() {
   catch (e) { showToast(e.message); return; }
   const filename = _suggestedPlainFilename();
   _downloadHtml(text, filename);
-  showToast("Downloaded " + filename + " (plain HTML, comment layer removed).");
+  showToast("Downloaded " + filename + " (plain HTML, comment layer removed).", { center: true });
 }
 const _btnSaveHtml = document.getElementById("btnSaveHtml");
 const _btnSaveHtmlTop = document.getElementById("btnSaveHtmlTop");
@@ -10128,7 +10152,7 @@ async function saveStandalone() {
   const filename = _suggestedFilename();
   const n = exportComments.length;
   _downloadHtml(text, filename);
-  showToast(`Downloaded ${filename} - one portable file, ${n} comment${n === 1 ? "" : "s"} embedded, no companion files needed.`);
+  showToast(`Downloaded ${filename} - one portable file, ${n} comment${n === 1 ? "" : "s"} embedded, no companion files needed.`, { center: true });
 }
 /* ---------- Export Offline (portable + zero-network rich-content embedding) ---------- */
 function _offlineDocFromHtml(html) {
@@ -10451,7 +10475,7 @@ async function saveOffline() {
   catch (e) { showToast(e.message); return; }
   const filename = _suggestedOfflineFilename();
   _downloadHtml(text, filename);
-  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded.");
+  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded.", { center: true });
 }
 ["btnExportOffline", "btnExportOfflineTop"].forEach(function (id) {
   const b = document.getElementById(id);
@@ -10906,18 +10930,18 @@ function showHelp(restoreEl) {
   });
 });
 /* ---------- Sort comments by time ---------- */
-// The two arrow buttons toggle time-ascending / time-descending order; clicking the
-// active one again returns to document (anchor position) order. The choice persists.
-["btnSortAsc", "btnSortDesc"].forEach(function (id) {
-  const b = document.getElementById(id);
+// A single 3-state cycle button: document (anchor position) order -> newest first (time-desc)
+// -> oldest first (time-asc) -> back to document order. The choice persists.
+(function () {
+  const b = document.getElementById("btnSort");
   if (!b) return;
+  const NEXT = { "pos": "time-desc", "time-desc": "time-asc", "time-asc": "pos" };
   b.addEventListener("click", function () {
-    const mode = (id === "btnSortAsc") ? "time-asc" : "time-desc";
-    commentSort = (commentSort === mode) ? "pos" : mode;
+    commentSort = NEXT[commentSort] || "time-desc";
     try { localStorage.setItem(COMMENT_KEY + "::commentSort", commentSort); } catch (e) { /* private mode */ }
     renderComments();
   });
-});
+})();
 
 /* ---------- Table-of-contents side menu (wide screens) ---------- */
 // When the document carries a table of contents (an author `.cm-toc`, else h2/h3
@@ -12330,6 +12354,9 @@ function showToast(msg, opts) {
   // not announced by most screen readers. Errors upgrade to an assertive alert.
   if (opts.alert) { toast.setAttribute("role", "alert"); toast.setAttribute("aria-live", "assertive"); }
   else { toast.setAttribute("role", "status"); toast.setAttribute("aria-live", "polite"); }
+  // A centered toast is used for export confirmations so it is impossible to miss.
+  if (opts.center) toast.classList.add("cm-toast-center");
+  else toast.classList.remove("cm-toast-center");
   toast.textContent = "";
   const span = document.createElement("span");
   span.textContent = msg;
@@ -12353,6 +12380,32 @@ function showToast(msg, opts) {
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(hideToast, opts.duration || 3000);
 }
+
+// Announce each export with a centered toast so it is obvious which export is running. A single
+// capture-phase listener covers every export code path (both the sidebar Export menu and the
+// collapsed toolbar overflow menu), and fires before the export handler so the toast is visible
+// even for the synchronous print dialog.
+(function () {
+  const EXPORT_LABELS = {
+    btnSaveHtml: "Portable", btnSaveHtmlTop: "Portable",
+    btnExportOffline: "Offline", btnExportOfflineTop: "Offline",
+    btnExportMd: "Markdown", btnExportMdTop: "Markdown",
+    btnSavePlain: "Plain HTML", btnSavePlainTop: "Plain HTML",
+    btnPrint: "PDF", btnPrintTop: "PDF",
+  };
+  document.addEventListener("click", function (e) {
+    const btn = e.target && e.target.closest ? e.target.closest("button[id]") : null;
+    if (!btn) return;
+    const label = EXPORT_LABELS[btn.id];
+    if (!label) return;
+    // An open comment popover swallows an outside pointer click (detail > 0) to close itself
+    // (53-comment-popover.js _popoverDismiss), so the export handler never runs. Mirror that
+    // exact condition here so the intent toast is not shown for an export that will not happen.
+    // A keyboard-activated click (detail 0) is allowed through, so it still announces.
+    if (e.detail > 0 && document.querySelector(".cm-comment-popover")) return;
+    showToast("Exporting as " + label + "...", { center: true, duration: 2500 });
+  }, true);
+})();
 
 /* ---------- Handled-id pruning + startup ---------- */
 function getHandledIds() {

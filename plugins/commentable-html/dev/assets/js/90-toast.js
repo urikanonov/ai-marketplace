@@ -16,6 +16,9 @@ function showToast(msg, opts) {
   // not announced by most screen readers. Errors upgrade to an assertive alert.
   if (opts.alert) { toast.setAttribute("role", "alert"); toast.setAttribute("aria-live", "assertive"); }
   else { toast.setAttribute("role", "status"); toast.setAttribute("aria-live", "polite"); }
+  // A centered toast is used for export confirmations so it is impossible to miss.
+  if (opts.center) toast.classList.add("cm-toast-center");
+  else toast.classList.remove("cm-toast-center");
   toast.textContent = "";
   const span = document.createElement("span");
   span.textContent = msg;
@@ -39,4 +42,30 @@ function showToast(msg, opts) {
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(hideToast, opts.duration || 3000);
 }
+
+// Announce each export with a centered toast so it is obvious which export is running. A single
+// capture-phase listener covers every export code path (both the sidebar Export menu and the
+// collapsed toolbar overflow menu), and fires before the export handler so the toast is visible
+// even for the synchronous print dialog.
+(function () {
+  const EXPORT_LABELS = {
+    btnSaveHtml: "Portable", btnSaveHtmlTop: "Portable",
+    btnExportOffline: "Offline", btnExportOfflineTop: "Offline",
+    btnExportMd: "Markdown", btnExportMdTop: "Markdown",
+    btnSavePlain: "Plain HTML", btnSavePlainTop: "Plain HTML",
+    btnPrint: "PDF", btnPrintTop: "PDF",
+  };
+  document.addEventListener("click", function (e) {
+    const btn = e.target && e.target.closest ? e.target.closest("button[id]") : null;
+    if (!btn) return;
+    const label = EXPORT_LABELS[btn.id];
+    if (!label) return;
+    // An open comment popover swallows an outside pointer click (detail > 0) to close itself
+    // (53-comment-popover.js _popoverDismiss), so the export handler never runs. Mirror that
+    // exact condition here so the intent toast is not shown for an export that will not happen.
+    // A keyboard-activated click (detail 0) is allowed through, so it still announces.
+    if (e.detail > 0 && document.querySelector(".cm-comment-popover")) return;
+    showToast("Exporting as " + label + "...", { center: true, duration: 2500 });
+  }, true);
+})();
 

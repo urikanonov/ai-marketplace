@@ -66,7 +66,7 @@ async function saveAsPlain() {
   catch (e) { showToast(e.message); return; }
   const filename = _suggestedPlainFilename();
   _downloadHtml(text, filename);
-  showToast("Downloaded " + filename + " (plain HTML, comment layer removed).");
+  showToast("Downloaded " + filename + " (plain HTML, comment layer removed).", { center: true });
 }
 const _btnSaveHtml = document.getElementById("btnSaveHtml");
 const _btnSaveHtmlTop = document.getElementById("btnSaveHtmlTop");

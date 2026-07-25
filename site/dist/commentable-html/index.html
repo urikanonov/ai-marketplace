@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.241.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.242.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,12 +457,28 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.242.0] - 2026-07-25</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Replaced the two sidebar Sort arrows with a single <code>Sort</code> button that cycles document order -&gt; newest first -&gt; oldest first -&gt; document order; its icon and tooltip reflect the current state and what the next click does.</li>
+              <li>Reworded the export &quot;Retain authoring session provenance&quot; checkbox to &quot;Keep AI session id in exports&quot; and added a tooltip explaining it (exports strip the AI session/agent id by default).</li>
+              <li>Restyled the Export and More dropdown menus as clean, content-width menu items (matching the collapsed toolbar menu) instead of full-ribbon-width bordered buttons.</li>
+              <li>The author pill now aligns to the note&#x27;s text bottom so there is no whitespace gap beneath it, and the three metadata lines (Generated, Last comment, Commenting as) are evenly spaced.</li>
+            </ul>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Each export action now shows a centered toast naming which export is running.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.241.0] - 2026-07-25</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>Deck: a comments-off (present-only) deck no longer silently re-enables commenting when a review NOTE is edited, a CHECKLIST item is toggled, or a widget layout changes. While in the comments-off mode a deck no longer auto-opens the sidebar on such a non-comment change (it still does in a non-deck document, and in a comments-enabled deck it surfaces the change card); the change is still tracked. The deck comment-model observer was also hardened so that neither slide movement nor an incidental sidebar open from a non-comment change re-enables commenting - such an incidental open is reverted rather than flipping <code>off</code> to <code>open</code>. Two things still leave <code>off</code>: an explicit comment-options re-selection, and a real comment actually landing while off (a composer left open when off was chosen, then saved) - because <code>off</code> is only valid at zero comments, that comment exits to <code>open</code> so it is not stranded. (CMH-DECK-25, issue #659)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.240.0] - 2026-07-25</h3></div>
             <div class="group-label">Changed</div>
@@ -471,8 +487,6 @@
               <li>Rebalanced the code / notes / decide slides so each uses its space: the &quot;Supported syntax labels&quot; card moved onto the &quot;Code, KQL, and diffs&quot; slide, the review checklist moved beside the notes demo, and the decision-board slide gained a short widget caption. (CMH-DECK-SHOWCASE-08, CMH-DECK-SHOWCASE-19)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.238.0] - 2026-07-25</h3></div>
             <div class="group-label">Added</div>
@@ -511,14 +525,7 @@
               <li>Moved Manage storage and Clear all comments into a new sidebar More menu (kebab); the Export menu now holds only the five file formats.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.234.0] - 2026-07-24</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Rendered mermaid diagrams are now keyboard-commentable, mirroring the image keyboard path: focusing a diagram reveals the whole-diagram &quot;Comment on diagram&quot; button and Enter opens the whole-diagram composer, so a keyboard-only user never has to tab to the disjointed floating button. Every diagram gets exactly one comment tab stop - a standalone host, or the card inside a <code>.cmh-diagram-gallery</code> (fitting or overflowing, desktop or mobile). A bubbled Enter/Space from a descendant control (a <code>figcaption</code> link/button) keeps its native action, and on an overflowing gallery card Space and the arrow keys are left to native horizontal scrolling (WCAG 2.1.1). (CMH-MMD-11)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">198 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">199 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

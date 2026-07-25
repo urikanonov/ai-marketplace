@@ -412,7 +412,7 @@ async function exportMarkdown() {
   const md = buildMarkdownDoc();
   const filename = _mdFilename();
   _downloadTextFile(md, filename, "text/markdown");
-  showToast(`Markdown downloaded as ${filename}.`);
+  showToast(`Markdown downloaded as ${filename}.`, { center: true });
 }
 ["btnExportMd", "btnExportMdTop"].forEach((id) => {
   const b = document.getElementById(id);

@@ -239,6 +239,112 @@ test.describe("Save comments / Export plain", () => {
     await expect(composer.locator("textarea")).toHaveValue("draft kept behind export menu");
   });
 
+  test("the export menu is content-width with clean menu-item buttons (CMH-EXP-13)", async ({ page }) => {
+    await openInline(page);
+    await addTextComment(page, "#commentRoot section p", "styling note");
+    await openSidebarExportMenu(page);
+    const m = await page.evaluate(() => {
+      const ribbon = document.querySelector(".cm-sidebar .head-ribbon");
+      const menu = document.getElementById("sidebarExportMenu");
+      const btn = menu.querySelector("button");
+      const label = menu.querySelector("label");
+      return {
+        ribbonWidth: ribbon.getBoundingClientRect().width,
+        menuWidth: menu.getBoundingClientRect().width,
+        menuRight: menu.getBoundingClientRect().right,
+        viewportWidth: window.innerWidth,
+        btnBg: getComputedStyle(btn).backgroundColor,
+        btnPadLeft: getComputedStyle(btn).paddingLeft,
+        labelPadLeft: getComputedStyle(label).paddingLeft,
+      };
+    });
+    // The menu is sized to its content, not stretched to the full ribbon width (the old behavior).
+    expect(m.menuWidth).toBeLessThan(m.ribbonWidth - 8);
+    // It never extends past the right edge of the viewport (docked-right sidebar).
+    expect(m.menuRight).toBeLessThanOrEqual(m.viewportWidth + 1);
+    // Menu-item buttons are transparent at rest (a clean dropdown item, not a bordered button).
+    expect(["rgba(0, 0, 0, 0)", "transparent"]).toContain(m.btnBg);
+    // The provenance setting label shares the buttons' left padding so it lines up with them
+    // instead of sitting flush against the menu edge.
+    expect(m.labelPadLeft).toBe(m.btnPadLeft);
+  });
+
+  test("each export shows a centered toast naming the export (CMH-EXP-15)", async ({ page }) => {
+    await openInline(page);
+    await addTextComment(page, "#commentRoot section p", "toast note");
+    // Stub window.print so the PDF export opens no real dialog, and record whether the export toast
+    // was already showing (centered, naming PDF) at the moment print was invoked - proving the
+    // capture-phase listener fires BEFORE the export handler.
+    await page.evaluate(() => {
+      window.__toastAtPrint = null;
+      window.print = function () {
+        const t = document.getElementById("toast");
+        window.__toastAtPrint = {
+          show: t.classList.contains("show"),
+          center: t.classList.contains("cm-toast-center"),
+          text: t.textContent || "",
+        };
+      };
+    });
+    await openSidebarExportMenu(page);
+    // PDF is the one export with no success toast, so its centered "Exporting as PDF" toast (from the
+    // capture-phase listener) is the ONLY toast - a non-vacuous check of the announcement itself.
+    await clickSidebarExport(page, "#btnPrint");
+    const toast = page.locator("#toast");
+    await expect(toast).toHaveClass(/\bshow\b/);
+    await expect(toast).toHaveClass(/cm-toast-center/);
+    await expect(toast).toContainText("Exporting as PDF");
+    const atPrint = await page.evaluate(() => window.__toastAtPrint);
+    expect(atPrint, "the export toast must be showing before window.print is called").not.toBeNull();
+    expect(atPrint.show).toBe(true);
+    expect(atPrint.center).toBe(true);
+    expect(atPrint.text).toContain("Exporting as PDF");
+  });
+
+  test("the export toast is suppressed when an open comment popover swallows the click (CMH-EXP-15)", async ({ page }) => {
+    await openInline(page);
+    await addTextComment(page, "#commentRoot section p", "popover guard note");
+    // Stub window.print so a PDF export never opens a dialog, and record whether it actually ran.
+    await page.evaluate(() => {
+      window.__printed = 0;
+      window.print = () => { window.__printed += 1; };
+    });
+    // Open the on-screen comment popover (hover the highlight, click its bubble).
+    const cid = await page.locator("mark.cm-hl").first().getAttribute("data-cid");
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    await expect(page.locator(".cm-comment-popover")).toBeVisible();
+
+    // A pointer click (detail > 0) on an export button while the popover is open is swallowed by
+    // the popover's outside-click dismiss (it closes the popover and stops propagation), so the
+    // export never runs. The intent toast must NOT falsely announce it.
+    await page.evaluate(() => {
+      document.getElementById("btnPrint").dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+    });
+    await expect(page.locator(".cm-comment-popover")).toHaveCount(0);
+    expect(await page.evaluate(() => window.__printed)).toBe(0);
+    await expect(page.locator("#toast")).not.toHaveClass(/\bshow\b/);
+
+    // With no popover open, the same click runs the export and the intent toast appears.
+    await page.evaluate(() => {
+      document.getElementById("btnPrint").dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+    });
+    expect(await page.evaluate(() => window.__printed)).toBe(1);
+    await expect(page.locator("#toast")).toHaveClass(/cm-toast-center/);
+    await expect(page.locator("#toast")).toContainText("Exporting as PDF");
+  });
+
+  test("the provenance checkbox has a clear label and explanatory tooltip (CMH-SEC-05)", async ({ page }) => {
+    await openInline(page);
+    await addTextComment(page, "#commentRoot section p", "provenance label note");
+    await openSidebarExportMenu(page);
+    const label = page.locator("label:has(#cmhRetainSessionProvenanceSidebar)");
+    await expect(label).toContainText("Keep AI session id in exports");
+    await expect(label).toHaveAttribute("title", /AI session and agent/i);
+  });
+
   test("Save, Portable, and Offline exports exclude comments already listed as handled", async ({ page }) => {
     const inline = stageContent("<section><p>Handled comments must stay gone.</p></section>", {
       key: "cmh-handled-export-inline",

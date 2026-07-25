@@ -277,7 +277,7 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
     await expect(page.locator("#btnMoreMenu")).toHaveAttribute("aria-expanded", "false");
   });
 
-  test("on a phone the Sort arrows expose a >=44px touch target (CMH-SIDE-12)", async ({ page }) => {
+  test("on a phone the Sort button exposes a >=44px touch target (CMH-SIDE-12)", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openInline(page);
     await page.evaluate(() => {
@@ -285,17 +285,12 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
       const sb = document.getElementById("sidebar");
       if (sb) sb.inert = false;
     });
-    const boxes = await page.evaluate(() => {
-      const ids = ["btnSortAsc", "btnSortDesc"];
-      return ids.map((id) => {
-        const b = document.getElementById(id).getBoundingClientRect();
-        return { w: b.width, h: b.height };
-      });
+    const b = await page.locator("#btnSort").evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return { w: r.width, h: r.height };
     });
-    for (const b of boxes) {
-      expect(b.w).toBeGreaterThanOrEqual(44);
-      expect(b.h).toBeGreaterThanOrEqual(44);
-    }
+    expect(b.w).toBeGreaterThanOrEqual(44);
+    expect(b.h).toBeGreaterThanOrEqual(44);
   });
 
   test("the Search button reveals and focuses the filter field (CMH-SEARCH-08)", async ({ page }) => {
