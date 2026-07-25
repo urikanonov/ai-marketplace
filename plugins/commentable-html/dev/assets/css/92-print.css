@@ -284,6 +284,15 @@
     table-layout: auto !important;
   }
 
+  /* Long unbreakable cell text (an id, url, or token) wraps rather than forcing the table wider than
+     the page, so on a driver that CANNOT grow the page (a non-honoring driver paginating onto fixed
+     paper) a wide cell wraps instead of being clipped off the sheet edge. */
+  #commentRoot td,
+  #commentRoot th {
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
   #commentRoot img,
   #commentRoot svg,
   #commentRoot canvas {

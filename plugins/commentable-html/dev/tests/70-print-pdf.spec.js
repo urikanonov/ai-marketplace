@@ -342,7 +342,7 @@ test("CMH-PRINT-05: print re-lights dark-theme code/KQL tokens so they stay legi
 });
 
 test("CMH-PRINT-06: an eligible flat document prints as a single continuous no-break page", async ({ page }) => {
-  test.setTimeout(120000); // several real page.pdf renders (eligible + guard + deck + narrow) plus settle
+  test.setTimeout(180000); // several real page.pdf renders (eligible + guard + deck + narrow + probes) plus settle
   await routeRichContentLocal(page);
   // report-taxi (tables + inline charts) and report-community-garden (prose + a mermaid diagram +
   // a code diff) both paginate to many Letter pages by default; the single-page print path collapses
@@ -385,28 +385,236 @@ test("CMH-PRINT-06: an eligible flat document prints as a single continuous no-b
     }
   }
 
+  // A diagram gallery (`.cmh-diagram-gallery`) is ALSO a block-stacking container: print CSS reflows
+  // it grid->block and drops its per-card height cap, so its printed height cannot be measured before
+  // the @page lock. A document containing one must therefore stay on normal pagination (not collapse
+  // to a single page), even when it has no `.visual-grid`. Stage a minimal eligible taxi copy with a
+  // bare gallery injected and assert the single-page path does NOT apply (no injected @page).
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const gallerySrc = fs.readFileSync(path.join(EXAMPLES, "report-taxi.html"), "utf8");
+  const gallery = '<section><h2>Diagram gallery</h2><div class="cmh-diagram-gallery">'
+    + '<figure><pre class="mermaid cm-skip">flowchart TD\n  A[One] --&gt; B[Two]</pre></figure></div></section>';
+  const galleryHtml = gallerySrc.includes("</main>")
+    ? gallerySrc.replace("</main>", gallery + "</main>")
+    : gallerySrc.replace("</body>", gallery + "</body>");
+  const galleryFile = path.join(os.tmpdir(), `cmh-print-gallery-${process.pid}.html`);
+  fs.writeFileSync(galleryFile, galleryHtml);
+  tmpCopies.push(galleryFile);
+  await openForPrint(page, galleryFile);
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  const galleryApplied = await page.evaluate(() => {
+    const el = document.getElementById("cmhPrintSinglePage");
+    return !!(el && /@page\{size:/.test(el.textContent || ""));
+  });
+  await page.emulateMedia({ media: null });
+  expect(galleryApplied,
+    "a document with a diagram gallery stays on normal pagination (single-page path not applied)").toBe(false);
+
+  // Recheck at PRINT time, not only at setup (pins the apply()-time eligibility recheck): a diagram
+  // gallery inserted AFTER runtime setup (so the setup-time guard at registration already passed and
+  // the single-page path is wired up) must STILL fall back to normal pagination, because apply()
+  // re-checks `hasBlockStackingContainer()` on every print. Without that recheck the late gallery
+  // would wrongly receive the single-page @page (its print-time grid->block reflow cannot be
+  // pre-measured). First confirm the eligible document DID arm the single-page path (a custom @page
+  // applies), so the later fallback is attributable to the apply()-time recheck and not the setup
+  // guard, then inject the gallery and print again.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openForPrint(page, path.join(EXAMPLES, "report-taxi.html"));
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  const baselineApplied = await page.evaluate(() => {
+    const el = document.getElementById("cmhPrintSinglePage");
+    return !!(el && /@page\{size:/.test(el.textContent || ""));
+  });
+  await page.evaluate(() => window.dispatchEvent(new Event("afterprint"))); // reset the once-per-print latch
+  await page.emulateMedia({ media: null });
+  expect(baselineApplied,
+    "premise: the eligible document armed the single-page path before a late gallery was added").toBe(true);
+  await page.evaluate(() => {
+    const root = document.getElementById("commentRoot") || document.body;
+    const sec = document.createElement("section");
+    sec.innerHTML = '<h2>Late gallery</h2><div class="cmh-diagram-gallery">'
+      + '<figure><pre class="mermaid cm-skip">flowchart TD\n  A[One] --&gt; B[Two]</pre></figure></div>';
+    root.appendChild(sec);
+  });
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  const lateGalleryApplied = await page.evaluate(() => {
+    const el = document.getElementById("cmhPrintSinglePage");
+    return !!(el && /@page\{size:/.test(el.textContent || ""));
+  });
+  await page.emulateMedia({ media: null });
+  expect(lateGalleryApplied,
+    "a diagram gallery inserted AFTER setup makes apply() re-check and fall back (no custom @page)").toBe(false);
+
   // The single-page logic is scoped to flat documents: a deck is unaffected and still prints one
   // landscape page PER SLIDE (see CMH-PRINT-03), never collapsed to a single page.
   const deckPdf = await renderSinglePagePdf(page, path.join(EXAMPLES, "deck-showcase.html"));
   const deck = await analyzePdf(deckPdf);
   expect(deck.pages.length, "deck is unaffected: still one page per slide, not a single page").toBeGreaterThan(1);
 
-  // At a NARROW viewport the single page grows to cover content wider than the reading column (a
-  // wide table) instead of clipping it off the right edge: after the print sizing runs, no content
-  // overflows the pinned page width. report-taxi has a wide monthly-volume table.
+  // Grow-to-fit (the overflow-growth loop): content with an explicit width ABOVE the portable cap
+  // (816px) must GROW the honored @page past the cap so it is never clipped, instead of staying at the
+  // capped/portable width. This PINS the growth loop: a fixed 1000px-wide block is wider than both the
+  // narrow viewport AND the 816px cap, so without the loop apply() would leave the content column
+  // capped, the block would overflow it, and apply() would FALL BACK to normal pagination (no custom
+  // @page at all). Assert the parsed @page width GREW above the cap and still covers the content.
   await page.setViewportSize({ width: 480, height: 900 });
+  await openForPrint(page, path.join(EXAMPLES, "report-taxi.html"));
+  await page.evaluate(() => {
+    const root = document.getElementById("commentRoot") || document.body;
+    const d = document.createElement("div");
+    // A fixed width well above the 816px portable cap, un-capped so it truly overflows the column.
+    d.setAttribute("style", "width:1000px;max-width:none;height:40px;background:#eee");
+    d.textContent = "wide-probe-content";
+    root.appendChild(d);
+  });
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  const narrow = await page.evaluate(() => {
+    const el = document.getElementById("cmhPrintSinglePage");
+    const css = el ? el.textContent : "";
+    const m = css.match(/@page\{size:(\d+(?:\.\d+)?)px/);
+    return {
+      scrollW: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
+      pageW: m ? parseFloat(m[1]) : 0,
+    };
+  });
+  await page.emulateMedia({ media: null });
+  expect(narrow.pageW,
+    "content wider than the 816px portable cap grows the honored @page ABOVE the cap (not capped-and-clipped)")
+    .toBeGreaterThan(820);
+  expect(narrow.scrollW,
+    "the grown single @page still covers the widest content (no right-edge clip on the honored page)")
+    .toBeLessThanOrEqual(narrow.pageW + 2);
+
+  // Portable page + generic across ALL drivers: at a WIDE viewport the honored single @page is sized
+  // to a standard, portable page width (US Letter, ~816px) rather than the on-screen reading column
+  // (~1280px on a wide screen), AND the injected print CSS uses width:auto - it does NOT force a fixed
+  // body width. That progressive degradation is what makes it generic: a browser that HONORS the
+  // custom @page (Chromium's native vector "Save as PDF") fills the portable-width page as one tall
+  // page, while a driver that IGNORES it (Microsoft Print to PDF, physical printers, browsers without
+  // custom-@page support) reflows the content into its OWN real Letter/A4 printable area instead of
+  // being downscaled to fit an oversized forced body width (the old bug: poor quality, side
+  // whitespace, stranded diagrams).
+  const PORTABLE_MAX_W = 820; // US Letter width (816px) + slack
+  await page.setViewportSize({ width: 1280, height: 900 });
   await openForPrint(page, path.join(EXAMPLES, "report-taxi.html"));
   await page.emulateMedia({ media: "print" });
   await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
-  const narrow = await page.evaluate(() => ({
+  const wide = await page.evaluate(() => {
+    const el = document.getElementById("cmhPrintSinglePage");
+    const css = el ? el.textContent : "";
+    const m = css.match(/@page\{size:(\d+(?:\.\d+)?)px (\d+(?:\.\d+)?)px/);
+    return {
+      applied: !!(css && /@page\{size:/.test(css)),
+      pageW: m ? parseFloat(m[1]) : 0,
+      pageH: m ? parseFloat(m[2]) : 0,
+      // Genericity contract: content width is auto (flows into the real page), never a forced px width.
+      // The only px dimensions allowed are inside the @page rule (the page size and margin).
+      usesAutoWidth: /html,body,\.app\{width:auto/.test(css),
+      forcesFixedWidth: /width:\s*\d+px/.test(css.replace(/@page\{[^}]*\}/g, "")),
+    };
+  });
+  await page.emulateMedia({ media: null });
+  expect(wide.applied, "wide-viewport taxi still uses the single continuous-page path").toBe(true);
+  expect(wide.pageW, "the honored single @page is sized to a portable standard page width")
+    .toBeLessThanOrEqual(PORTABLE_MAX_W);
+  expect(wide.pageH, "the honored single @page is still a tall continuous canvas")
+    .toBeGreaterThan(PORTABLE_MAX_W * 3);
+  expect(wide.usesAutoWidth,
+    "print CSS uses width:auto so honoring and non-honoring drivers alike flow into their real page")
+    .toBe(true);
+  expect(wide.forcesFixedWidth,
+    "print CSS must NOT force a fixed (oversized) body/content width - that is what downscales non-honoring drivers")
+    .toBe(false);
+
+  // Non-honoring-driver proxy: at a standard printable viewport width the print layout must not
+  // overflow horizontally, i.e. there is no forced oversized body width, so a driver that ignores the
+  // custom @page (Microsoft Print to PDF, physical printers) reflows cleanly rather than downscaling.
+  // 744px approximates a US Letter sheet minus typical default margins.
+  await page.setViewportSize({ width: 744, height: 900 });
+  await openForPrint(page, path.join(EXAMPLES, "report-taxi.html"));
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  const letterFit = await page.evaluate(() => ({
     scrollW: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
-    pageW: parseFloat(getComputedStyle(document.body).width),
+    vw: window.innerWidth,
   }));
   await page.emulateMedia({ media: null });
-  expect(narrow.pageW, "narrow single page has a pinned width").toBeGreaterThan(0);
-  expect(narrow.scrollW,
-    "narrow single-page print grew the page to fit the widest content (no right-edge clip)")
-    .toBeLessThanOrEqual(narrow.pageW + 2);
+  expect(letterFit.scrollW,
+    "print layout fits a standard printable width with no forced oversized body width (generic across drivers)")
+    .toBeLessThanOrEqual(letterFit.vw + 2);
+
+  // Fixed-paper cell wrapping (pins the print-only `#commentRoot td,th{overflow-wrap}` rule in
+  // 92-print.css): a table cell whose SCREEN styling defeats wrapping (an inline overflow-wrap:normal
+  // that overrides the inherited `anywhere`) holds a long unbreakable token, so it overflows on
+  // screen. In PRINT media the print stylesheet's `!important` td/th wrap must override that inline
+  // rule so the token wraps and the layout stays within a standard printable width - otherwise a
+  // driver paginating onto fixed paper (Microsoft Print to PDF, a physical printer) clips the token
+  // off the sheet edge. `measureCss` is applied only transiently DURING measurement and is replaced by
+  // the final print CSS before this reads the layout, so the wrap here comes from 92-print.css: remove
+  // that rule and this goes red.
+  await page.setViewportSize({ width: 744, height: 900 });
+  const cellSrc = fs.readFileSync(path.join(EXAMPLES, "report-taxi.html"), "utf8");
+  const longTok = "X".repeat(240);
+  const cellFrag = '<section><h2>Long token</h2><table><tbody><tr>'
+    + '<td style="overflow-wrap:normal;word-break:keep-all;">' + longTok + '</td>'
+    + '</tr></tbody></table></section>';
+  const cellHtml = cellSrc.includes("</main>")
+    ? cellSrc.replace("</main>", cellFrag + "</main>")
+    : cellSrc.replace("</body>", cellFrag + "</body>");
+  const cellFile = path.join(os.tmpdir(), `cmh-print-cell-${process.pid}.html`);
+  fs.writeFileSync(cellFile, cellHtml);
+  tmpCopies.push(cellFile);
+  await openForPrint(page, cellFile);
+  // Premise: on SCREEN the inline overflow-wrap:normal wins, so the long token does not wrap and the
+  // cell forces horizontal overflow.
+  const screenCellOverflow = await page.evaluate(() =>
+    Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth);
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  const printCellFit = await page.evaluate(() => ({
+    scrollW: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
+    vw: window.innerWidth,
+  }));
+  await page.emulateMedia({ media: null });
+  expect(screenCellOverflow,
+    "premise: the synthetic non-wrapping long-token cell overflows on screen").toBeGreaterThan(0);
+  expect(printCellFit.scrollW,
+    "print media wraps the long-token cell so it fits the printable width (no fixed-paper right-edge clip)")
+    .toBeLessThanOrEqual(printCellFit.vw + 2);
+
+  // Comment/reply-heavy document must still print as ONE page: the print-only box model of the
+  // comments appendix (per-comment margin/padding/border and the indented replies) is mirrored in the
+  // screen-media measurement, so a heavily-commented document is measured accurately and does not
+  // under-count its height and spill a near-blank overflow page. Seed many threaded comments, then
+  // render like a real Save-as-PDF.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openForPrint(page, path.join(EXAMPLES, "report-taxi.html"));
+  await page.evaluate(() => {
+    const t = Date.now();
+    const rows = [];
+    for (let i = 0; i < 12; i++) {
+      rows.push({ id: "cprintroot" + i, anchorType: "document",
+        note: "Review comment " + i + " with enough text to wrap across a couple of lines in the printed appendix so its box model matters.",
+        author: "Reviewer", createdAt: new Date(t + i * 2000).toISOString() });
+      rows.push({ id: "cprintrep" + i, parentId: "cprintroot" + i,
+        note: "Reply to comment " + i + " END_COMMENT_MARKER_" + i,
+        author: "Author", createdAt: new Date(t + i * 2000 + 500).toISOString() });
+    }
+    window.__cmhStorageCodec.write(rows);
+  });
+  await page.reload({ waitUntil: "load" });
+  await ready(page);
+  await waitForRichContent(page);
+  const commented = await analyzePdf(await page.pdf({ printBackground: true, preferCSSPageSize: true }));
+  expect(commented.total,
+    "a comment/reply-heavy eligible document still prints as a single page (appendix measured accurately, no spill)")
+    .toBe(1);
+  expect(commented.text, "the final seeded review comment lands on the single page")
+    .toContain("END_COMMENT_MARKER_11");
 
   // Oversized eligible document: taller than Chromium's ~200in page clamp (MAX_PAGE_PX = 18000px).
   // The single-page path must FALL BACK to normal pagination rather than clamp/clip the page, so the
