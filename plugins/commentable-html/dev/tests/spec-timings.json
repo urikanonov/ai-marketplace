@@ -56,6 +56,7 @@
   "51-charts-mobile.spec.js": 2890,
   "52-deck.spec.js": 45904,
   "52-region-guard.spec.js": 3847,
+  "52-static-server-close.spec.js": 300,
   "53-audit.spec.js": 4487,
   "53-more-examples.spec.js": 8049,
   "54-export-body-normalize.spec.js": 5513,

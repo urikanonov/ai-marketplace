@@ -409,7 +409,17 @@ export async function startStaticServer(dir) {
   });
   await new Promise((r) => server.listen(0, r));
   const port = server.address().port;
-  return { url: `http://localhost:${port}`, close: () => new Promise((r) => server.close(r)) };
+  // Chromium holds HTTP keep-alive (and speculative preconnect) sockets open to this server after
+  // loading the document and its companion assets. Node's server.close() resolves only once every
+  // connection has ended, and such an idle socket can linger indefinitely, so a bare server.close()
+  // intermittently never resolves and stalls a test's teardown until the whole test times out
+  // (issue #677). Destroy the open sockets so close() always resolves promptly
+  // (server.closeAllConnections is Node >=18.2).
+  const close = () => new Promise((r) => {
+    server.close(r);
+    if (typeof server.closeAllConnections === "function") server.closeAllConnections();
+  });
+  return { url: `http://localhost:${port}`, close };
 }
 
 // Serve mermaid's CDN import (and its chunk imports) from the locally vendored
