@@ -379,6 +379,7 @@ test("CMH-PRINT-06: an eligible flat document prints as a single continuous no-b
   // Getting exactly one page TALLER than a Letter sheet pins the collapse (a doc that trivially fit a
   // single sheet, or that regressed to normal pagination, would not).
   for (const name of ["report-checklist.html", "report-notes.html"]) {
+    await page.setViewportSize({ width: 1280, height: 900 });
     const report = await analyzePdf(await renderSinglePagePdf(page, path.join(EXAMPLES, name)));
     expect(report.pages.length, `${name} prints as a single page`).toBe(1);
     const pg = report.pages[0];
@@ -386,7 +387,25 @@ test("CMH-PRINT-06: an eligible flat document prints as a single continuous no-b
     expect(pg.height, `${name} single page is taller than one Letter sheet (genuine collapse, not a short doc)`).toBeGreaterThan(792);
     expect(pg.ink, `${name} single page is not blank`).toBeGreaterThan(MIN_INK);
     expect(report.text.length, `${name} single page carries its content`).toBeGreaterThan(200);
+
+    // Generic across print drivers (not just the honored-@page path): at a standard printable viewport
+    // the print layout must not overflow horizontally, so a driver that IGNORES the custom @page
+    // (Microsoft Print to PDF, physical printers) reflows into its own printable area rather than
+    // downscaling an oversized forced width. 744px approximates a US Letter sheet minus typical default
+    // margins. Asserted PER example so checklist/notes content is covered, not only report-taxi.
+    await page.setViewportSize({ width: 744, height: 900 });
+    await openForPrint(page, path.join(EXAMPLES, name));
+    await page.emulateMedia({ media: "print" });
+    await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+    const fit = await page.evaluate(() => ({
+      scrollW: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
+      vw: window.innerWidth,
+    }));
+    await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
+    await page.emulateMedia({ media: null });
+    expect(fit.scrollW, `${name} print layout fits a standard printable width with no forced oversized body width (generic across drivers)`).toBeLessThanOrEqual(fit.vw + 2);
   }
+  await page.setViewportSize({ width: 1280, height: 900 });
 
   // Scope guard: a document with a block-stacking container - report-metrics has multi-column chart
   // galleries (.visual-grid), report-triage has a grid kanban board - is intentionally LEFT ON
