@@ -164,7 +164,7 @@ function _clAfterChange() {
   // Surface a newly-detected change: open the panel once on the 0 -> >0 transition so the
   // per-list card (which is not a comment) is not missed, matching the widget state card.
   const has = checklistChanges().length > 0;
-  if (has && !_clHadChanges && typeof openSidebar === "function") openSidebar();
+  if (has && !_clHadChanges && !document.body.classList.contains("cmh-deck-comments-off") && typeof openSidebar === "function") openSidebar();
   _clHadChanges = has;
 }
 function _clCycleItem(item) {

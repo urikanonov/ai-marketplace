@@ -972,6 +972,165 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(page.locator("body")).toHaveClass(/cmh-deck-comments-off/);
   });
 
+  test("CMH-DECK-25: note/checklist changes never re-enable commenting in a comments-off deck (issue #659)", async ({ page }) => {
+    // A deck with checklists (and a note) but ZERO comments, so "Comments off" stays selectable.
+    const NC_SLIDES =
+      '<section class="slide active" data-slide-id="slide-00000001"><h2>One</h2><p>Alpha slide one content</p>' +
+      '<ul class="cmh-checklist" data-cmh-checklist="rel" data-cmh-checklist-label="Release"><li data-cmh-item="backend" data-cmh-state="blank">Backend</li><li data-cmh-item="fe" data-cmh-state="blank">Frontend</li></ul>' +
+      '<div class="cmh-note" data-cmh-note="risk" data-cmh-note-label="Risk">No blocking risks yet.</div>' +
+      '</section>' +
+      '<section class="slide" data-slide-id="slide-00000002"><h2>Two</h2><p>Beta slide two content</p>' +
+      '<ul class="cmh-checklist" data-cmh-checklist="rel2" data-cmh-checklist-label="Release2"><li data-cmh-item="db" data-cmh-state="blank">DB</li></ul>' +
+      '</section>';
+    const { html } = stageDeck(NC_SLIDES, { key: "cmh-deck-off-note-checklist" });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    const mode = () => page.evaluate(() => window.__cmhDeck.deckMode());
+    const sidebarOpen = () => page.locator("body").evaluate((b) => b.classList.contains("sidebar-open"));
+    const assertPresentOnly = async () => {
+      expect(await mode()).toBe("off");
+      expect(await sidebarOpen()).toBe(false);
+      expect(await page.locator("body").evaluate((b) => b.classList.contains("cmh-deck-comments-off"))).toBe(true);
+      await expect(page.locator("#sidebar")).toBeHidden();
+    };
+
+    // Turn comments off (allowed - a changed checklist/note is not a comment).
+    const menu = await openDeckModeMenu(page);
+    await menu.locator(".cmh-deck-mode-off-item").click();
+    await assertPresentOnly();
+
+    // Toggle checklist items WHILE off: must NOT open the sidebar or re-enable commenting.
+    await page.locator('[data-cmh-item="backend"] .cmh-check').first().click();
+    await expect(page.locator('[data-cmh-item="backend"] .cmh-check')).toHaveAttribute("data-cmh-check-state", "check");
+    await assertPresentOnly();
+    await page.locator('[data-cmh-item="fe"] .cmh-check').first().click();
+    await expect(page.locator('[data-cmh-item="fe"] .cmh-check')).toHaveAttribute("data-cmh-check-state", "check");
+    await assertPresentOnly();
+
+    // User's exact repro: navigate to another slide, then change a checklist there again.
+    await page.evaluate(() => window.__cmhDeck.showSlide(1));
+    expect(await activeId(page)).toBe("slide-00000002");
+    await assertPresentOnly();
+    await page.locator('[data-cmh-item="db"] .cmh-check').first().click();
+    await expect(page.locator('[data-cmh-item="db"] .cmh-check')).toHaveAttribute("data-cmh-check-state", "check");
+    await assertPresentOnly();
+
+    // A NOTE edit while off must not re-enable commenting either.
+    await page.evaluate(() => window.__cmhDeck.showSlide(0));
+    expect(await activeId(page)).toBe("slide-00000001");
+    const noteField = page.locator('[data-cmh-note="risk"] .cmh-note-input');
+    await noteField.click();
+    await noteField.fill("Edited risk note while presenting");
+    await page.waitForTimeout(400);
+    await assertPresentOnly();
+
+    // The changes were still tracked (persistence intact) - only the panel did not open.
+    expect(await page.locator('[data-cmh-item="backend"] .cmh-check').getAttribute("data-cmh-check-state")).toBe("check");
+
+    // They persist to storage and "off" survives a reload (not just an in-memory attribute).
+    await page.reload();
+    await ready(page);
+    expect(await mode()).toBe("off");
+    await expect(page.locator("body")).toHaveClass(/cmh-deck-comments-off/);
+    await expect(page.locator('[data-cmh-item="backend"] .cmh-check')).toHaveAttribute("data-cmh-check-state", "check");
+
+    // Only an explicit comment-options re-selection re-enables commenting.
+    const menu2 = await openDeckModeMenu(page);
+    await menu2.locator('.cmh-deck-mode-radio[data-deck-mode="open"]').click();
+    expect(await mode()).toBe("open");
+    await expect(page.locator("#sidebar")).toBeVisible();
+  });
+
+  test("CMH-DECK-25: an incidental sidebar-open never leaves off with no comment (issue #659)", async ({ page }) => {
+    await openDeck(page, "", "cmh-deck-off-observer");
+    const mode = () => page.evaluate(() => window.__cmhDeck.deckMode());
+    const menu = await openDeckModeMenu(page);
+    await menu.locator(".cmh-deck-mode-off-item").click();
+    expect(await mode()).toBe("off");
+    // The deck comment-model observer must NOT promote "off" to "open" for an incidental sidebar
+    // open that carries no comment (0 comments); instead it REVERTS the open so the deck stays
+    // truly present-only - this pins the hardening that fixes the reset.
+    await page.evaluate(() => document.body.classList.add("sidebar-open"));
+    await page.waitForTimeout(80); // allow the MutationObserver microtask to run
+    expect(await mode()).toBe("off");
+    expect(await page.evaluate(() => document.body.classList.contains("sidebar-open"))).toBe(false);
+    await expect(page.locator("#sidebar")).toBeHidden();
+  });
+
+  test("CMH-DECK-25: a comment saved while off exits the present-only lock to open (issue #659)", async ({ page }) => {
+    await openDeck(page, "", "cmh-deck-off-strand");
+    const mode = () => page.evaluate(() => window.__cmhDeck.deckMode());
+    // Author a comment in the default closed mode: select text -> popup -> composer.
+    const composer = await openComposerFor(page, ".slide.active p");
+    await composer.locator("textarea").fill("authored while presenting");
+    // While the composer is still open (0 SAVED comments, so "off" is allowed), turn comments off.
+    const menu = await openDeckModeMenu(page);
+    await menu.locator(".cmh-deck-mode-off-item").click();
+    expect(await mode()).toBe("off");
+    // Saving the pending comment must NOT strand it behind the present-only lock: because "off" is
+    // only valid with zero comments, a real comment landing exits "off" to "open" so it is visible.
+    await composer.locator('[data-act="save"]').click();
+    await expect(page.locator("mark.cm-hl")).toHaveCount(1);
+    expect(await mode()).toBe("open");
+    await expect(page.locator("#sidebar")).toBeVisible();
+  });
+
+  test("CMH-DECK-25: a note/checklist change opens the panel in a comments-ENABLED deck (issue #659)", async ({ page }) => {
+    // The off-mode suppression is scoped to present-only mode: in the default comments-enabled
+    // (closed) mode a checklist change still surfaces its card by opening the review panel, so the
+    // guard cannot silently swallow the change in a normal review deck.
+    const CL_SLIDES =
+      '<section class="slide active" data-slide-id="slide-00000001"><h2>One</h2><p>Alpha slide one content</p>' +
+      '<ul class="cmh-checklist" data-cmh-checklist="rel" data-cmh-checklist-label="Release"><li data-cmh-item="backend" data-cmh-state="blank">Backend</li></ul>' +
+      '</section>' +
+      '<section class="slide" data-slide-id="slide-00000002"><h2>Two</h2><p>Beta slide two content</p></section>';
+    const { html } = stageDeck(CL_SLIDES, { key: "cmh-deck-closed-checklist" });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    const mode = () => page.evaluate(() => window.__cmhDeck.deckMode());
+    expect(await mode()).toBe("closed");
+    await page.locator('[data-cmh-item="backend"] .cmh-check').first().click();
+    await expect(page.locator('[data-cmh-item="backend"] .cmh-check')).toHaveAttribute("data-cmh-check-state", "check");
+    await expect.poll(mode).toBe("open");
+    await expect(page.locator("#sidebar")).toBeVisible();
+  });
+
+  test("CMH-DECK-25: a widget layout change never re-enables commenting in a comments-off deck (issue #659)", async ({ page }) => {
+    // A deck slide carrying a draggable board (data-cm-part cards) but ZERO comments.
+    const W_SLIDES =
+      '<section class="slide active" data-slide-id="slide-00000001"><h2>Board</h2>' +
+      '<div class="board cm-skip" data-cm-widget="triage" data-cm-draggable aria-label="Triage board" id="board">' +
+      '<div class="col" data-cm-slot="Now" id="now"><div class="card" data-cm-part="a" data-cm-part-label="Card A">Card A</div></div>' +
+      '<div class="col" data-cm-slot="Later" id="later"><div class="card" data-cm-part="b" data-cm-part-label="Card B">Card B</div></div>' +
+      '</div></section>' +
+      '<section class="slide" data-slide-id="slide-00000002"><h2>Two</h2><p>Beta slide two content</p></section>';
+    const { html } = stageDeck(W_SLIDES, { key: "cmh-deck-off-widget" });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    const mode = () => page.evaluate(() => window.__cmhDeck.deckMode());
+    const moveCard = async (part, targetId) => {
+      await page.evaluate(({ part, targetId }) => {
+        document.getElementById(targetId).appendChild(document.querySelector('[data-cm-part="' + part + '"]'));
+      }, { part, targetId });
+      // The widget change is detected on a requestAnimationFrame; wait two frames then settle.
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      await page.waitForTimeout(60);
+    };
+
+    const menu = await openDeckModeMenu(page);
+    await menu.locator(".cmh-deck-mode-off-item").click();
+    expect(await mode()).toBe("off");
+
+    // Move a board card WHILE off: a widget layout change must not open the sidebar or re-enable
+    // commenting - the deck stays present-only.
+    await moveCard("a", "later");
+    expect(await mode()).toBe("off");
+    expect(await page.evaluate(() => document.body.classList.contains("sidebar-open"))).toBe(false);
+    await expect(page.locator("#sidebar")).toBeHidden();
+    // The move was still tracked (the card really moved).
+    await expect(page.locator('#later [data-cm-part="a"]')).toHaveCount(1);
+  });
+
   test("CMH-DECK-25: comments-off persists across every slide-navigation path (issue #659)", async ({ page }) => {
     await openDeck(page, "", "cmh-deck-off-nav");
     const mode = () => page.evaluate(() => window.__cmhDeck.deckMode());

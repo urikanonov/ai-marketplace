@@ -1099,10 +1099,19 @@ function setupDeck() {
   // Keep deckMode in step with any OTHER code path that opens or closes the panel (adding a
   // comment opens the sidebar; the sidebar header Close button closes it). applyDeckMode leaves
   // body.sidebar-open consistent with deckMode, so this observer never fights its own writes.
+  // "off" is an EXPLICIT present-only lock: an incidental sidebar open that carries NO comment
+  // (e.g. a note/checklist/widget change surfacing a card) must never silently re-enable
+  // commenting (issue #659). Such an incidental open is instead REVERTED (closeSidebar) so the deck
+  // stays truly present-only - leaving sidebar-open set would reserve an empty layout gutter and,
+  // worse, make a later openSidebar() a no-op mutation that the observer never sees (stranding a
+  // subsequently saved comment). The one promotion out of "off" is a real comment actually landing
+  // (a composer left open when "off" was chosen, then saved): "off" is only valid with zero
+  // comments, so that comment must not be stranded - it exits to "open" so it is visible.
   if (typeof MutationObserver === "function") {
     new MutationObserver(() => {
       const open = document.body.classList.contains("sidebar-open");
-      if (open && deckMode !== "open") setDeckMode("open");
+      if (open && (deckMode === "closed" || (deckMode === "off" && commentCount() > 0))) setDeckMode("open");
+      else if (open && deckMode === "off") closeSidebar();
       else if (!open && deckMode === "open") setDeckMode("closed");
     }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
   }

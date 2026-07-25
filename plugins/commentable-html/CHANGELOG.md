@@ -4,6 +4,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.241.0] - 2026-07-25
+
+### Fixed
+
+- Deck: a comments-off (present-only) deck no longer silently re-enables commenting when a review
+  NOTE is edited, a CHECKLIST item is toggled, or a widget layout changes. While in the comments-off
+  mode a deck no longer auto-opens the sidebar on such a non-comment change (it still does in a
+  non-deck document, and in a comments-enabled deck it surfaces the change card); the change is still
+  tracked. The deck comment-model observer was also hardened so that neither slide movement nor an
+  incidental sidebar open from a non-comment change re-enables commenting - such an incidental open is
+  reverted rather than flipping `off` to `open`. Two things still leave `off`: an explicit
+  comment-options re-selection, and a real comment actually landing while off (a composer left open
+  when off was chosen, then saved) - because `off` is only valid at zero comments, that comment exits
+  to `open` so it is not stranded. (CMH-DECK-25, issue #659)
+
 ## [1.240.0] - 2026-07-25
 
 ### Changed
