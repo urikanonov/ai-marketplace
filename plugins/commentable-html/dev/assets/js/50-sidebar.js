@@ -40,9 +40,37 @@ function updateSideInfo() {
   }
 }
 function updateSortUi() {
-  const a = document.getElementById("btnSortAsc"), d = document.getElementById("btnSortDesc");
-  if (a) a.setAttribute("aria-pressed", commentSort === "time-asc" ? "true" : "false");
-  if (d) d.setAttribute("aria-pressed", commentSort === "time-desc" ? "true" : "false");
+  const b = document.getElementById("btnSort");
+  if (!b) return;
+  const state = (commentSort === "time-desc" || commentSort === "time-asc") ? commentSort : "pos";
+  const svg = 'viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"'
+    + ' fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+  const ICONS = {
+    "pos": '<svg class="cm-ui-ico" ' + svg + '><path d="M7 4v16M7 4l-3 3M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3"/></svg>',
+    "time-desc": '<svg class="cm-ui-ico" ' + svg + '><path d="M4 6h11M4 12h7M4 18h4M18 7v10M15 14l3 3 3-3"/></svg>',
+    "time-asc": '<svg class="cm-ui-ico" ' + svg + '><path d="M4 6h4M4 12h7M4 18h11M18 17V7M15 10l3-3 3 3"/></svg>',
+  };
+  const TITLES = {
+    "pos": "Sorted by document position. Click to sort newest first.",
+    "time-desc": "Sorted newest first. Click to sort oldest first.",
+    "time-asc": "Sorted oldest first. Click to return to document order.",
+  };
+  // This is a 3-state cycle, not a binary toggle, so it exposes state via data-sort + a dynamic
+  // aria-label rather than aria-pressed (which screen readers would announce ambiguously).
+  b.setAttribute("data-sort", state);
+  // Adopt-aware tooltip (mirrors 70-mode-badge.js): once the shared tooltip layer has taken the
+  // title into data-cmh-tip it removes title so the native browser tooltip cannot also fire; keep
+  // whichever attribute it is using current, and never re-add title after adoption.
+  if (b.hasAttribute("data-cmh-tip")) { b.setAttribute("data-cmh-tip", TITLES[state]); b.removeAttribute("title"); }
+  else b.setAttribute("title", TITLES[state]);
+  const ARIA = { "pos": "document order", "time-desc": "newest first", "time-asc": "oldest first" };
+  b.setAttribute("aria-label", "Sort comments (currently: " + ARIA[state] + ")");
+  const icon = document.getElementById("cmSortIcon");
+  if (icon && ICONS[state]) icon.innerHTML = ICONS[state];
+  // If the shared tooltip bubble is currently showing for this button (a keyboard user focuses it,
+  // then presses Enter to cycle the state), refresh it in place so it does not describe the old
+  // state until focus moves.
+  if (window.__cmhRefreshTip) window.__cmhRefreshTip(b);
 }
 function renderComments() {
   // Test/perf hook: renderComments runs two full-document tree walks, so a spec pins that the

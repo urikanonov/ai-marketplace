@@ -81,6 +81,7 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-AUTHOR-03 | opt-out: agent-facing Copy all attribution format and injection hardening | opt-out: agent-facing Copy all attribution format, not a deck topic |
 | CMH-MMD-11 | opt-out: keyboard-accessibility parity (WCAG 2.1.1) for the already-documented diagram commenting, mirroring the image keyboard path; no new user-facing capability to document | opt-out: keyboard-accessibility parity for the already-shown diagram commenting, not a separate slide topic |
 | CMH-SEARCH-08 | tutorial, help | deck |
+| CMH-EXP-15 | opt-out: a transient confirmation toast on the already-documented export actions; not a separately documented capability | opt-out: a transient export-confirmation toast, nothing to demonstrate on a slide |
 | CMH-SIDE-11 | tutorial, help | opt-out: sidebar More-menu grouping detail; the storage manager it houses is shown on the deck, but the menu grouping is not a slide topic |
 | CMH-SIDE-12 | opt-out: responsive touch-target sizing for the already-documented Sort control; a mobile accessibility refinement, not a new user-facing capability | opt-out: responsive touch-target refinement, not a deck topic |
 | CMH-LINK-05 | opt-out: an authoring-time validator warning (agent/author-facing) that enforces the already-documented new-tab link behavior; no new reader-facing capability | opt-out: authoring-time validator warning (agent/author-facing), not a deck topic |

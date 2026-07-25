@@ -4,6 +4,24 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.242.0] - 2026-07-25
+
+### Changed
+
+- Replaced the two sidebar Sort arrows with a single `Sort` button that cycles document order ->
+  newest first -> oldest first -> document order; its icon and tooltip reflect the current state and
+  what the next click does.
+- Reworded the export "Retain authoring session provenance" checkbox to "Keep AI session id in
+  exports" and added a tooltip explaining it (exports strip the AI session/agent id by default).
+- Restyled the Export and More dropdown menus as clean, content-width menu items (matching the
+  collapsed toolbar menu) instead of full-ribbon-width bordered buttons.
+- The author pill now aligns to the note's text bottom so there is no whitespace gap beneath it, and
+  the three metadata lines (Generated, Last comment, Commenting as) are evenly spaced.
+
+### Added
+
+- Each export action now shows a centered toast naming which export is running.
+
 ## [1.241.0] - 2026-07-25
 
 ### Fixed

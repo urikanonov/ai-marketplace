@@ -21,7 +21,7 @@ CONTENT_END = "<!-- END: commentable-html - CONTENT -->"
 REQUIRED_IDS = [
     "sidebar", "commentList", "contextMenu", "mermaidAddBtn", "diffAddBtn", "imageAddBtn", "linkAddBtn", "hlBubble", "toast",
     "toolbarCount", "sidebarCount",
-    "btnToggleSidebar", "btnCopyAll", "btnCopyAllTop", "btnClearAll",
+    "btnToggleSidebar", "btnCopyAll", "btnCopyAllTop", "btnClearAll", "btnSort",
     "btnCloseSidebar", "menuComment",
     "btnToolbarMenu", "toolbarMenu",
     "btnMoreMenu", "sidebarMoreMenu", "btnSearchToggle",

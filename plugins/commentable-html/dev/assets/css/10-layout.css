@@ -61,10 +61,6 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   border-radius: 0.6rem;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
 }
-/* Sort-by-time arrows sit at the far right of the header row (Copy all stays next to the count). */
-.cm-sidebar .head-top .cm-sort { margin-left: auto; display: inline-flex; gap: calc(var(--cp-chrome-button-gap) * 0.5); }
-.cm-sidebar .head-top .cm-sort-btn { padding: var(--cp-chrome-sort-y) var(--cp-chrome-sort-x); font-size: var(--cp-chrome-tiny-font); line-height: 1; color: var(--cp-text-soft); }
-.cm-sidebar .head-top .cm-sort-btn[aria-pressed="true"] { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); }
 /* Informational "Generated on / Last comment" line under the header. */
 .cm-side-info { display: flex; flex-flow: row wrap; align-items: baseline; gap: 0.1rem var(--cp-chrome-button-x); font-size: var(--cp-chrome-tiny-font); color: var(--cp-text-soft); margin: 0.15rem 0 var(--cp-chrome-button-y); }
 .cm-side-info > span { white-space: nowrap; }
@@ -248,12 +244,10 @@ body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) +
 .cm-sidebar .cm-ribbon-cap { font-size: var(--cp-chrome-tiny-font); }
 .cm-sidebar .cm-sidebar-export, .cm-sidebar .cm-sidebar-more { display: flex; }
 
-.cm-sidebar .head-ribbon .cm-sort { position: relative; cursor: default; }
-.cm-sidebar .head-ribbon .cm-sort .cm-ribbon-ico { display: inline-flex; }
-.cm-sidebar .head-ribbon .cm-sort-btns { display: inline-flex; gap: 2px; margin-top: 2px; }
-.cm-sidebar .head-ribbon .cm-sort-btn { padding: 0 0.28rem; font-size: var(--cp-chrome-tiny-font); line-height: 1.4; color: var(--cp-text-soft); background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: pointer; }
-.cm-sidebar .head-ribbon .cm-sort-btn:hover { color: var(--cp-accent); background: var(--cp-accent-soft); }
-.cm-sidebar .head-ribbon .cm-sort-btn[aria-pressed="true"] { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); }
+/* The Sort ribbon button cycles document -> newest-first -> oldest-first; a non-default sort
+   keeps the accent highlight so the active state reads at a glance. */
+.cm-sidebar .head-ribbon .cm-sort-cycle[data-sort="time-desc"],
+.cm-sidebar .head-ribbon .cm-sort-cycle[data-sort="time-asc"] { color: var(--cp-accent); background: var(--cp-accent-soft); }
 
 .cm-sidebar .head-primary { display: flex; gap: var(--cp-chrome-gap); }
 .cm-sidebar .head-primary > button { flex: 1 1 50%; display: inline-flex; align-items: center; justify-content: center; gap: var(--cp-chrome-button-gap); padding: var(--cp-chrome-control-y) var(--cp-chrome-control-x); border-radius: 0.6rem; font-family: inherit; font-size: var(--cp-chrome-body-font); cursor: pointer; }
@@ -263,15 +257,16 @@ body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) +
 .cm-sidebar .head-primary .cm-search-toggle:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
 .cm-sidebar .head-primary .cm-search-toggle[aria-expanded="true"] { border-color: var(--cp-accent); color: var(--cp-accent); background: var(--cp-accent-soft); }
 
-/* Stacked, labelled metadata rows (Generated, then Last activity), followed by the identity row. */
-.cm-sidebar .cm-side-info { flex-flow: column nowrap; align-items: flex-start; gap: 0.1rem; }
+/* Stacked, labelled metadata rows (Generated, then Last activity), followed by the identity row.
+   The header is a flex column with a 0.4rem gap, so matching cm-side-info's internal gap to it and
+   zeroing the margins gives an even rhythm across all three metadata lines. */
+.cm-sidebar .cm-side-info { flex-flow: column nowrap; align-items: flex-start; gap: var(--cp-chrome-gap); margin: 0; }
+.cm-sidebar .cm-identity { margin-top: 0; font-size: var(--cp-chrome-tiny-font); }
+/* The identity display line matches the tiny metadata rows above it, but its edit-mode name input
+   keeps the larger small-font so the field stays comfortable to read and type in. */
+.cm-sidebar .cm-identity .cm-identity-input { font-size: var(--cp-chrome-small-font); }
 
-/* On phones the Sort arrows and every ribbon action get a comfortable >=44px touch target. */
+/* On phones every ribbon action (Sort included) gets a comfortable >=44px touch target. */
 @media (max-width: 640px) {
   .cm-sidebar .cm-ribbon-btn { min-height: 44px; }
-  .cm-sidebar .head-ribbon .cm-sort-btn {
-    min-width: 44px; min-height: 44px; padding: 0 0.5rem;
-    display: inline-flex; align-items: center; justify-content: center;
-  }
-  .cm-sidebar .head-ribbon .cm-sort-btns { gap: 0.35rem; }
 }

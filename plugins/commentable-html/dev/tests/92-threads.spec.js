@@ -106,6 +106,30 @@ test.describe("collaboration: author attribution and threads", () => {
     expect(await pill.evaluate((el) => el.style.getPropertyValue("--cm-author-hue"))).not.toBe("");
   });
 
+  test("the author pill sits on the text baseline with no gap beneath it (CMH-AUTHOR-02)", async ({ page }) => {
+    await openKitchenSink(page);
+    await setReviewerName(page, "Zoe");
+    await addTextComment(page, "#commentRoot section p", "baseline note", 0);
+    await openSidebarPanel(page);
+    const card = page.locator('.cm-card[data-cid]', { hasText: "baseline note" });
+    const pill = card.locator(".cm-entry-root .cm-author-pill");
+    await expect(pill).toHaveText("Zoe");
+    // The pill's bottom reaches the note text's first-line bottom, with no whitespace gap beneath it
+    // within the line (a rendered-geometry check, not a re-statement of the CSS value).
+    const overhang = await pill.evaluate((el) => {
+      const note = el.closest(".note") || el.parentElement;
+      const textNode = Array.prototype.find.call(note.childNodes,
+        (n) => n.nodeType === 3 && n.textContent.trim());
+      if (!textNode) return null;
+      const r = document.createRange();
+      r.selectNodeContents(textNode);
+      return el.getBoundingClientRect().bottom - r.getBoundingClientRect().bottom;
+    });
+    // Pill bottom sits at the text bottom (within ~2px), never floating above it with a gap.
+    expect(overhang).not.toBeNull();
+    expect(Math.abs(overhang)).toBeLessThanOrEqual(2);
+  });
+
   test("Copy all attributes each note and neutralizes a hostile author name (CMH-AUTHOR-03)", async ({ page }) => {
     await openKitchenSink(page);
     // A name that tries to smuggle backticks and a tilde run used by the note fence.

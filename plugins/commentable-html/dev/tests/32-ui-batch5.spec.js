@@ -254,6 +254,36 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
     await expect(page.locator("#sidebarExportMenu #btnStorage")).toHaveCount(0);
   });
 
+  test("the sidebar More menu is content-width, right-anchored, and viewport-safe (CMH-SIDE-11)", async ({ page }) => {
+    await openInline(page);
+    await page.evaluate(() => {
+      document.body.classList.add("sidebar-open");
+      const sb = document.getElementById("sidebar");
+      if (sb) sb.inert = false;
+    });
+    await page.click("#btnMoreMenu");
+    await expect(page.locator("#sidebarMoreMenu")).toBeVisible();
+    const m = await page.evaluate(() => {
+      const ribbon = document.querySelector(".cm-sidebar .head-ribbon");
+      const menu = document.getElementById("sidebarMoreMenu");
+      const btn = menu.querySelector("button");
+      const rr = ribbon.getBoundingClientRect();
+      const mr = menu.getBoundingClientRect();
+      return {
+        ribbonWidth: rr.width, menuWidth: mr.width,
+        ribbonRight: rr.right, menuRight: mr.right,
+        viewportWidth: window.innerWidth,
+        btnBg: getComputedStyle(btn).backgroundColor,
+      };
+    });
+    // Content-width (not the full ribbon), transparent menu-item buttons, and anchored to the
+    // ribbon's RIGHT edge so a right-docked sidebar never pushes it off-screen.
+    expect(m.menuWidth).toBeLessThan(m.ribbonWidth - 8);
+    expect(m.menuRight).toBeLessThanOrEqual(m.viewportWidth + 1);
+    expect(Math.abs(m.menuRight - m.ribbonRight)).toBeLessThanOrEqual(1);
+    expect(["rgba(0, 0, 0, 0)", "transparent"]).toContain(m.btnBg);
+  });
+
   test("opening either sidebar disclosure closes the sibling one (CMH-SIDE-11)", async ({ page }) => {
     await openInline(page);
     await page.evaluate(() => {
@@ -277,7 +307,7 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
     await expect(page.locator("#btnMoreMenu")).toHaveAttribute("aria-expanded", "false");
   });
 
-  test("on a phone the Sort arrows expose a >=44px touch target (CMH-SIDE-12)", async ({ page }) => {
+  test("on a phone the Sort button exposes a >=44px touch target (CMH-SIDE-12)", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openInline(page);
     await page.evaluate(() => {
@@ -285,17 +315,12 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
       const sb = document.getElementById("sidebar");
       if (sb) sb.inert = false;
     });
-    const boxes = await page.evaluate(() => {
-      const ids = ["btnSortAsc", "btnSortDesc"];
-      return ids.map((id) => {
-        const b = document.getElementById(id).getBoundingClientRect();
-        return { w: b.width, h: b.height };
-      });
+    const b = await page.locator("#btnSort").evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return { w: r.width, h: r.height };
     });
-    for (const b of boxes) {
-      expect(b.w).toBeGreaterThanOrEqual(44);
-      expect(b.h).toBeGreaterThanOrEqual(44);
-    }
+    expect(b.w).toBeGreaterThanOrEqual(44);
+    expect(b.h).toBeGreaterThanOrEqual(44);
   });
 
   test("the Search button reveals and focuses the filter field (CMH-SEARCH-08)", async ({ page }) => {

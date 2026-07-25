@@ -319,7 +319,7 @@ async function saveOffline() {
   catch (e) { showToast(e.message); return; }
   const filename = _suggestedOfflineFilename();
   _downloadHtml(text, filename);
-  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded.");
+  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded.", { center: true });
 }
 ["btnExportOffline", "btnExportOfflineTop"].forEach(function (id) {
   const b = document.getElementById(id);

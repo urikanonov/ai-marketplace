@@ -11,7 +11,7 @@
   padding: 0.05em 0.5em;
   margin-right: 0.4em;
   border-radius: 999px;
-  vertical-align: baseline;
+  vertical-align: text-bottom;
   white-space: nowrap;
   max-width: 12rem;
   overflow: hidden;

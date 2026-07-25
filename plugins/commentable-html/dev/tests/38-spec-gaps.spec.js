@@ -148,7 +148,7 @@ test("persistence sidecar keys are written under the document key (CMH-PERSIST-0
   await openFromRoute(page, "http://localhost/embedded-sidecar.html", withEmbeddedComments([comment]));
   const key = await page.locator("#commentRoot").evaluate((root) => root.dataset.commentKey);
   await expect(page.locator(".cm-card")).toHaveCount(1);
-  await page.locator("#btnSortAsc").click();
+  await page.locator("#btnSort").click();
   await page.locator(".cmh-diff-toggle").first().click();
   await page.locator(".cmh-diff-hltoggle").first().click();
   await page.locator("#commentRoot table.cmh-sortable thead th", { hasText: "Requests" }).locator(".cmh-sort-ctrl").click();
@@ -171,7 +171,7 @@ test("persistence sidecar keys are written under the document key (CMH-PERSIST-0
   expect(state.commentCount).toBe(0);   // the modern ::z store holds the (now empty) comment array
   expect(state.legacy).toBeNull();       // the legacy base key was reclaimed
   expect(state.deleted).toContain(comment.id);
-  expect(state.commentSort).toBe("time-asc");
+  expect(state.commentSort).toBe("time-desc");
   expect(state.diffLayout).toBe("inline");
   expect(state.diffSyntax).toBe("off");
   expect(Object.values(state.tableSort)).toContainEqual({ col: 1, dir: "asc" });
@@ -194,7 +194,7 @@ test("invalid localStorage JSON degrades to defaults without breaking startup (C
 
   await expect(page.locator(".cm-card")).toHaveCount(0);
   await expect(page.locator(".cmh-diff-view").first()).toHaveClass(/cmh-diff-split/);
-  await expect(page.locator("#btnSortAsc")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("#btnSort")).toHaveAttribute("data-sort", "pos");
   expect(pageErrors).toEqual([]);
 });
 
