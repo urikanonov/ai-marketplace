@@ -95,6 +95,7 @@
   "78-chart-tick-cap.spec.js": 1557,
   "79-code-caps.spec.js": 4056,
   "80-selection-anchor.spec.js": 4934,
+  "80-shot-clip.spec.js": 15470,
   "90-section-review.spec.js": 25151,
   "91-upgrade-review.spec.js": 3437,
   "92-threads.spec.js": 23635

@@ -163,6 +163,45 @@ producing a CI-failing artifact. If your change does not affect the shots, resto
 `git checkout origin/main -- plugins/commentable-html/docs/assets` and confirm with
 `npm run shots:check`.
 
+#### Why a shot can drift by a few pixels with no content change (CMH-BUILD-17)
+
+The drift is FONT METRICS, not the browser. Issue #698 probed `.cmh-checklist` under the exact capture
+context on a Windows host and in the pinned container, with an identical lockfile-pinned chromium and
+identical CSS (`font-size: 15px`, `line-height: 23.25px`):
+
+| measurement | Windows | pinned container |
+| --- | --- | --- |
+| element `offsetHeight` | 228 CSS px | 230 CSS px |
+| per-row rendered height | 23.250 | 23.391 |
+| resulting PNG | 2444x456 | 2444x460 |
+
+The example reports use the native-UI font stack
+(`"Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif`), which has no entry
+present on every OS, so Windows resolves Segoe UI and Linux falls through to its generic sans-serif.
+That only moves ELEMENT-clipped shots, whose clip height comes from the element's content-derived
+`offsetHeight`; full-viewport clips are stable by construction. `deviceScaleFactor: 2` then doubles a
+2 CSS px rounding difference into the 4 device px PNG delta.
+
+`tools/shot_clip.mjs` closes this: every content-derived clip height is snapped onto `CLIP_QUANTUM`,
+so the drift collapses onto one value and both renderers emit the same dimensions (the checklist scene
+is 2444x464 on either). A clip bounded by the viewport or a panel is quantized LAST and DOWNWARD
+(`clampedClipHeight`), so a clamped clip lands on the grid too - quantizing up and then clamping would
+leave an off-grid height, and an element that clamps on one renderer but not the other would then
+differ by an arbitrary sub-quantum amount, which is the same bug moved rather than fixed. The
+guarantee holds while the per-shot drift stays UNDER one quantum (about 0.6% of a clip height for the
+measured font pair, so roughly 5.4 px at the 900 px viewport ceiling); a wider gap moves two quanta and
+fails loudly, which is the signal to raise the quantum, not to widen the budget.
+
+Because no pure function of a drifting measurement can be boundary-free - two heights either side of a
+grid line land one quantum apart - the `--check` height comparison allows exactly two values, `0` or
+one whole quantum (`DIMENSION_DELTA_PX`), rather than a tolerance band: a band would also wave through
+a sub-quantum delta, which is real content added or removed at the bottom edge and is invisible to the
+overlap-cropped pixel diff, whereas quantizing already absorbs sub-quantum content changes into an
+IDENTICAL height, where the pixel diff does see them. Width is not quantized (it comes from the fixed
+viewport) and keeps its own strict budget. The comparison itself lives once in `tools/shot_compare.mjs`
+and is imported by both the capture tool and the heavy freshness spec. Do not re-declare any of these
+at a call site; import them (`--print-paths` reports them, and a test asserts the tool agrees).
+
 - **Highlighter golden tests.** After changing the highlighter, regenerate the goldens with
   `python build_highlight_fixtures.py` (from the commentable-html dev tests) so the `.sample`/`.html`
   goldens match the new output.
