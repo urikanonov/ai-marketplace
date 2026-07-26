@@ -181,11 +181,12 @@ jobs:
   playwright-heavy:
     needs: [changes, discover]
     if: ${{ needs.changes.outputs.run_plugin == 'true' && needs.discover.outputs.plugins != '[]' && needs.discover.outputs.plugins != '' && contains(fromJSON(needs.discover.outputs.plugins), 'plugins/commentable-html') }}
-    # Pinned, not ubuntu-latest: this job renders and validates the committed tutorial screenshots,
-    # so its Ubuntu release IS the rendering authority. tools/shots_linux.py regenerates them in the
-    # matching mcr.microsoft.com/playwright:v<ver>-noble image, and a test couples the two - letting
-    # this float would silently change the authority when GitHub advances the runner.
-    runs-on: ubuntu-24.04
+    # This job VALIDATES the committed tutorial screenshots, but it does not render them: the
+    # `shots:check` step below runs the capture inside the same digest-pinned Playwright image
+    # tools/shots_linux.py uses locally. The runner's own Ubuntu release (and the font packages
+    # GitHub updates in it over time) therefore no longer decides a single pixel, so this job
+    # tracks ubuntu-latest like every other one.
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -240,7 +241,21 @@ jobs:
       - name: Verify committed test fixtures (once)
         if: matrix.shard == '1/3'
         run: node tests/fixtures/generate.mjs --check
-      - name: Verify tutorial screenshots (once)
+      # The screenshot gate renders inside the digest-pinned Playwright image, the same one
+      # `npm run shots` uses on a developer machine, so the renderer is ONE fixed environment
+      # instead of two that have to agree. Pull it as its own step to keep the cost of that
+      # decision measurable in the job log (the render step then hits a warm local image).
+      - name: Pull the pinned screenshot renderer (timed)
+        if: matrix.shard == '1/3'
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="$(python tools/shots_linux.py --print-image)"
+          echo "Pinned renderer: $image"
+          start=$SECONDS
+          docker pull --platform linux/amd64 "$image"
+          echo "::notice title=Pinned renderer pull::$((SECONDS - start))s for $image"
+      - name: Verify tutorial screenshots in the pinned container (once)
         if: matrix.shard == '1/3'
         run: npm run shots:check
       # workers=3 (below the runner's 4 vCPUs): each heavy test spawns its OWN capture chromium

@@ -88,53 +88,59 @@ fail in CI unless the fixture is regenerated in the same change:
   required `plugin-tests` job (`fixtures --check`) but are NOT covered by `build.py --check` or the
   pre-push hook, so a bump that regenerates `dist/` and `site/` can still fail CI on stale fixtures.
 
-### Regenerating the tutorial screenshots (Linux-rendered - CMH-BUILD-16)
+### Regenerating the tutorial screenshots (container-rendered - CMH-BUILD-16)
 
 The committed tutorial PNGs under `plugins/commentable-html/docs/assets/` are produced by a real
-browser, and font rasterization differs per operating system and font set. **Never regenerate them
-with the host renderer on Windows or macOS.** Doing so rewrites every shot with that machine's
-rasterization, and the trap used to be that it looked correct locally: the local verifiers re-render
-with the same host renderer, so they agreed and went green, and only the required `playwright-heavy`
-CI job (which renders on Linux) reported `<name>.png differs`.
+browser, and font rasterization is decided by the OS image that browser runs on - not by the browser
+version. So there is exactly ONE renderer, on both sides: the digest-pinned
+`mcr.microsoft.com/playwright` container renders and verifies them on every developer machine AND in
+the required `playwright-heavy` CI job. Nothing renders them with a host browser.
 
 Use the npm scripts, from `plugins/commentable-html/dev`:
 
 ```bash
-npm run shots                # regenerate: native on Linux, pinned container elsewhere
-npm run shots:check          # verify; skips with a note where the host cannot match CI
-npm run shots:linux          # force the pinned container (e.g. a non-Ubuntu Linux host)
-npm run shots:linux:check    # force the pinned container, verify only
+npm run shots                # regenerate in the pinned container
+npm run shots:check          # verify; skips with a note when Docker is unavailable
+npm run shots:digest         # re-pin the container by digest (after a @playwright/test bump)
 ```
 
-All four route through `tools/shots_linux.py`, so the short, habitual command is the safe one.
+All of them route through `tools/shots_linux.py`, so the short, habitual command is the safe one,
+and extra `capture_tutorial.mjs` arguments (`[example] [outDir] [prefix]`, `--print-paths`) pass
+straight through - a single-scene recapture never has to leave the guarded path.
 
-- It renders **natively only where the host IS the CI platform** (x86_64 Ubuntu matching the pinned
-  runner release, probed via `/etc/os-release`). Docker is not involved there.
-- **Every other host** - Windows, macOS, and any Linux on a different distro, release, or
-  architecture - falls back to `mcr.microsoft.com/playwright:v<version>-noble` **automatically**;
-  there is no flag to remember. The image is pinned on two axes: the `@playwright/test` version
+- **The image is pinned on both axes that decide the pixels**: the `@playwright/test` version
   resolved in `package-lock.json` (the chromium binary) and the Ubuntu release in the image variant
-  (the FONTS - the axis that actually causes a mismatch). The run also pins `--platform linux/amd64`,
-  so an Apple Silicon host does not render with the arm64 stack, and `--user` on a Linux host so the
-  container leaves no root-owned files. Do not hardcode the tag anywhere.
-- **Docker is therefore only required where the host is not the CI platform.** It is not needed for
-  normal development, for any test suite (`npm test` skips the check where it would be meaningless),
-  or by CI. When it is missing the wrapper fails with an explicit message naming the image, why the
-  CI renderer is required, and the alternatives.
+  (the FONTS). Neither is hardcoded at a call site - CI resolves the reference with
+  `python tools/shots_linux.py --print-image`.
+- **It is pinned by DIGEST, not merely by tag.** `tools/shots-image.lock` records the sha256 the tag
+  resolved to, so a registry rebuild of `v<version>-noble` on a newer base OS (different font
+  packages) cannot silently change the renderer. After bumping `@playwright/test`, run
+  `npm run shots:digest` and commit the lock; until you do, the tool falls back to the tag with a
+  loud note (a bump degrades the pin, it never breaks the render), and
+  `test_the_committed_lock_pins_the_version_the_package_lock_resolves` reds until it is re-recorded.
+- The run also pins `--platform linux/amd64`, so an Apple Silicon host does not render with the
+  arm64 stack, and `--user` on a Linux host (including the CI runner) so the container leaves no
+  root-owned files in the worktree.
+- **Docker is required only by the shots commands** - never for normal development or for the test
+  suites. `npm run shots:check` (which `npm test` runs) SKIPS with a note when Docker is missing or
+  its daemon is down, so a developer without Docker is never blocked. It NEVER skips in CI, where it
+  is the required drift gate, and the write direction never skips anywhere. Each precondition
+  failure names what is missing and what to do (Docker absent, daemon down, `node_modules` missing).
+- `--native` renders with the host browser. It is an explicit, non-authoritative escape hatch that
+  warns on every run; no npm script uses it and CI must never use it.
 
-**Scope of the guarantee.** Matching distro, release and architecture is a BEST-EFFORT match, not a
-proof: `/etc/os-release` says nothing about installed font/fontconfig package versions, and the
-GitHub runner image is itself updated over time. Likewise the container matches CI by AGREEMENT, not
-by construction - CI does not run inside that image. So the `playwright-heavy` job is pinned to
-`ubuntu-24.04` (not `ubuntu-latest`) to match the `-noble` variant, and `test_shots_linux.py` asserts
-that job's own `runs-on` equals the release the image variant names; if you move one, move the other
-in the same change. **CI remains the authoritative gate** - this tooling exists to make a local
-regeneration almost always agree with it, and to make a wrong-renderer run loud instead of silent.
+**Scope of the guarantee.** This is equivalence by CONSTRUCTION, not by agreement: both sides
+execute the same image content-addressed by digest, so a GitHub runner-image update (which used to
+be able to move the CI renderer under a `runs-on: ubuntu-24.04` label without any change in this
+repo) can no longer affect a single pixel. That is why `playwright-heavy` tracks `ubuntu-latest`
+again and the old runner/variant coupling test is gone. CI remains the authoritative GATE - it is
+the run that must be green - but it is no longer a second RENDERER that has to agree with yours.
 
-`rebuild_all.py` skips the screenshot step entirely on a non-Linux host, with a note pointing here, so
-it can no longer produce a CI-failing artifact by accident. If your change does not affect the shots,
-restore them with `git checkout origin/main -- plugins/commentable-html/docs/assets` and confirm with
-`npm run shots:linux:check`.
+`rebuild_all.py` drives the same wrapper, so it now regenerates the screenshots correctly on any
+host with Docker; without Docker it skips that one step with a note pointing here rather than
+producing a CI-failing artifact. If your change does not affect the shots, restore them with
+`git checkout origin/main -- plugins/commentable-html/docs/assets` and confirm with
+`npm run shots:check`.
 
 - **Highlighter golden tests.** After changing the highlighter, regenerate the goldens with
   `python build_highlight_fixtures.py` (from the commentable-html dev tests) so the `.sample`/`.html`

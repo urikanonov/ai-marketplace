@@ -102,9 +102,9 @@ class DockerCommandTests(unittest.TestCase):
     def test_extra_capture_arguments_reach_the_capture_script(self):
         # capture_tutorial.mjs accepts [example] [outDir] [prefix] and --print-paths. Without
         # passthrough a single-scene recapture would still need the raw, unguarded command.
-        with mock.patch.object(S, "host_matches_ci_renderer", return_value=True), \
-                mock.patch.object(S, "_in_ci", return_value=False), \
-                mock.patch.object(S.shutil, "which", return_value="/usr/bin/node"), \
+        with mock.patch.object(S, "_in_ci", return_value=False), \
+                mock.patch.object(S.shutil, "which", return_value="/usr/bin/docker"), \
+                mock.patch.object(S, "_docker_daemon_ok", return_value=True), \
                 mock.patch.object(S, "_deps_installed", return_value=True), \
                 mock.patch.object(S, "_run", return_value=0) as run:
             rc = S.main(["shots_linux.py", "--print-paths", "examples/report-checklist.html"])
@@ -114,105 +114,79 @@ class DockerCommandTests(unittest.TestCase):
         self.assertIn("examples/report-checklist.html", joined)
 
 
-class HostDispatchTests(unittest.TestCase):
-    UBUNTU_2404 = {"ID": "ubuntu", "VERSION_ID": "24.04"}
+class RendererDispatchTests(unittest.TestCase):
+    """ONE renderer by construction: the pinned container renders on every host, CI included."""
 
-    def test_only_the_exact_ci_platform_renders_natively(self):
-        # `sys.platform.startswith("linux")` is NOT enough: Fedora, an older Ubuntu, or an ARM Linux
-        # host has different fonts or a different rasterizer, so rendering natively there
-        # reintroduces the very bug this tool exists to prevent.
-        self.assertTrue(S.host_matches_ci_renderer("linux", "x86_64", self.UBUNTU_2404))
-        self.assertTrue(S.host_matches_ci_renderer("linux", "AMD64", self.UBUNTU_2404))
-        self.assertFalse(S.host_matches_ci_renderer("win32", "x86_64", self.UBUNTU_2404))
-        self.assertFalse(S.host_matches_ci_renderer("darwin", "arm64", {}))
-        self.assertFalse(S.host_matches_ci_renderer("linux", "aarch64", self.UBUNTU_2404),
-                         "an ARM Linux host does not match the x86_64 CI runner")
-        self.assertFalse(S.host_matches_ci_renderer("linux", "x86_64",
-                                                    {"ID": "ubuntu", "VERSION_ID": "22.04"}),
-                         "a different Ubuntu release has a different font set")
-        self.assertFalse(S.host_matches_ci_renderer("linux", "x86_64",
-                                                    {"ID": "fedora", "VERSION_ID": "40"}))
-        self.assertFalse(S.host_matches_ci_renderer("linux", "x86_64", {}),
-                         "an unreadable /etc/os-release must fail closed, not assume a match")
-
-    def test_the_pinned_release_is_derived_from_the_same_constant_as_the_image(self):
-        self.assertTrue(S.UBUNTU_RELEASES[S.IMAGE_VARIANT].endswith(S.CI_UBUNTU_VERSION))
-
-    def test_a_ci_matching_host_captures_natively_and_never_needs_docker(self):
-        # Docker must NOT become a blanket requirement: where the host renderer already matches CI,
-        # the tool runs node directly.
-        with mock.patch.object(S, "host_matches_ci_renderer", return_value=True), \
-                mock.patch.object(S, "_in_ci", return_value=False), \
-                mock.patch.object(S.shutil, "which", side_effect=lambda n: None if n == "docker" else "/usr/bin/" + n), \
+    def _dispatch(self, argv, ci=False, docker=True):
+        def which(name):
+            if name == "docker" and not docker:
+                return None
+            return "/usr/bin/" + name
+        with mock.patch.object(S, "_in_ci", return_value=ci), \
+                mock.patch.object(S.shutil, "which", side_effect=which), \
+                mock.patch.object(S, "_docker_daemon_ok", return_value=True), \
                 mock.patch.object(S, "_deps_installed", return_value=True), \
                 mock.patch.object(S, "_run", return_value=0) as run:
-            rc = S.main(["shots_linux.py"])
+            rc = S.main(argv)
+        return rc, run
+
+    def test_every_host_renders_in_the_pinned_container(self):
+        # There is no host fast path any more: Windows, macOS and Linux all render in the same
+        # image, so no host's font/fontconfig packages can decide the pixels.
+        for host in ("win32", "darwin", "linux"):
+            with mock.patch.object(S.sys, "platform", host):
+                rc, run = self._dispatch(["shots_linux.py"])
+            self.assertEqual(rc, 0, host)
+            self.assertEqual(run.call_args[0][0][0], "docker", host)
+
+    def test_ci_renders_in_the_same_container_a_developer_uses(self):
+        # The heart of this design: CI is no longer a SECOND renderer that must agree with the
+        # container by convention (a pinned runner LABEL is not an immutable image, and GitHub
+        # updates that image's fonts over time). It IS the container, so drift is impossible.
+        rc_ci, ci_run = self._dispatch(["shots_linux.py", "--check"], ci=True)
+        rc_dev, dev_run = self._dispatch(["shots_linux.py", "--check"], ci=False)
+        self.assertEqual((rc_ci, rc_dev), (0, 0))
+        self.assertEqual(ci_run.call_args[0][0], dev_run.call_args[0][0])
+        self.assertEqual(ci_run.call_args[0][0][0], "docker")
+        self.assertIn("mcr.microsoft.com/playwright", " ".join(ci_run.call_args[0][0]))
+
+    def test_the_host_platform_probe_is_gone(self):
+        # `host_matches_ci_renderer()` accepted ANY x86_64 Ubuntu 24.04 host as "the CI renderer",
+        # but /etc/os-release says nothing about the installed font/fontconfig/rasterizer packages.
+        # Structural guard: the probe must not come back as a silent fast path.
+        self.assertFalse(hasattr(S, "host_matches_ci_renderer"))
+        self.assertFalse(hasattr(S, "UBUNTU_RELEASES"))
+
+    def test_native_rendering_is_an_explicit_opt_in_that_declares_itself_unofficial(self):
+        import io
+        import contextlib
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            rc, run = self._dispatch(["shots_linux.py", "--native"])
         self.assertEqual(rc, 0)
         cmd = run.call_args[0][0]
         self.assertNotIn("docker", cmd[0])
         self.assertIn("capture_tutorial.mjs", " ".join(cmd))
+        warning = err.getvalue().lower()
+        self.assertIn("--native", warning)
+        self.assertIn("not the authoritative renderer", warning)
 
-    def test_a_non_matching_linux_host_falls_back_to_the_container_automatically(self):
-        # The user must not have to remember --container on Fedora/ARM/22.04; getting it wrong is
-        # silent, so the tool decides.
-        with mock.patch.object(S, "host_matches_ci_renderer", return_value=False), \
-                mock.patch.object(S, "_in_ci", return_value=False), \
-                mock.patch.object(S.shutil, "which", return_value="/usr/bin/docker"), \
-                mock.patch.object(S, "_docker_daemon_ok", return_value=True), \
-                mock.patch.object(S, "_deps_installed", return_value=True), \
-                mock.patch.object(S, "_run", return_value=0) as run:
-            rc = S.main(["shots_linux.py"])
-        self.assertEqual(rc, 0)
-        self.assertEqual(run.call_args[0][0][0], "docker")
-
-    def test_ci_always_renders_natively_even_if_the_probe_cannot_confirm_the_platform(self):
-        # Fail-closed on a dev box, fail-OPEN in CI: if /etc/os-release ever changes shape, the
-        # required CI check must still RUN rather than silently skip and lose the gate.
-        with mock.patch.object(S, "host_matches_ci_renderer", return_value=False), \
-                mock.patch.object(S, "_in_ci", return_value=True), \
-                mock.patch.object(S.shutil, "which", return_value="/usr/bin/node"), \
-                mock.patch.object(S, "_deps_installed", return_value=True), \
-                mock.patch.object(S, "_run", return_value=0) as run:
-            rc = S.main(["shots_linux.py", "--check", "--skip-unless-ci-renderer"])
-        self.assertEqual(rc, 0)
-        run.assert_called_once()
-        self.assertIn("capture_tutorial.mjs", " ".join(run.call_args[0][0]))
-
-    def test_the_ci_escape_hatch_is_scoped_to_a_linux_runner(self):
-        # A bare truthy CI is not enough: a Windows/macOS CI job (or a local shell exporting CI=1)
-        # would otherwise bypass the platform guard and rewrite the PNGs with the wrong renderer.
-        with mock.patch.dict(os.environ, {"CI": "true"}, clear=False), \
-                mock.patch.object(S.sys, "platform", "win32"):
-            self.assertFalse(S._in_ci())
-        with mock.patch.dict(os.environ, {"CI": "true"}, clear=False), \
-                mock.patch.object(S.sys, "platform", "linux"):
-            self.assertTrue(S._in_ci())
+    def test_a_truthy_ci_env_is_what_forbids_skipping(self):
+        # _in_ci() no longer picks a renderer - it only means "this is a gate that must not skip".
+        for truthy in ("true", "1", "yes"):
+            with mock.patch.dict(os.environ, {"CI": truthy}, clear=False):
+                self.assertTrue(S._in_ci(), "CI=%r is a CI runner" % truthy)
         for falsy in ("", "0", "false", "no"):
-            with mock.patch.dict(os.environ, {"CI": falsy}, clear=False), \
-                    mock.patch.object(S.sys, "platform", "linux"):
+            with mock.patch.dict(os.environ, {"CI": falsy}, clear=False):
                 self.assertFalse(S._in_ci(), "CI=%r must not count as a CI runner" % falsy)
-
-    def test_a_non_linux_host_uses_the_pinned_container(self):
-        with mock.patch.object(S, "host_matches_ci_renderer", return_value=False), \
-                mock.patch.object(S, "_in_ci", return_value=False), \
-                mock.patch.object(S.shutil, "which", return_value="/usr/bin/docker"), \
-                mock.patch.object(S, "_docker_daemon_ok", return_value=True), \
-                mock.patch.object(S, "_deps_installed", return_value=True), \
-                mock.patch.object(S, "_run", return_value=0) as run:
-            rc = S.main(["shots_linux.py", "--check"])
-        self.assertEqual(rc, 0)
-        cmd = run.call_args[0][0]
-        self.assertEqual(cmd[0], "docker")
-        self.assertIn("mcr.microsoft.com/playwright:v", " ".join(cmd))
-        self.assertIn("--check", " ".join(cmd))
 
 
 class IndicativeErrorTests(unittest.TestCase):
     """Each failure mode must name what is missing AND what to do about it."""
 
     def setUp(self):
-        # Hermetic: these cases exercise the CONTAINER branch, which `_in_ci()` would short-circuit
-        # to the native path when the suite itself runs on a CI runner.
+        # Hermetic: `_in_ci()` is true when this suite runs on a CI runner, and CI is forbidden to
+        # skip - these cases assert the DEVELOPER-facing failure text, not the CI gate.
         patcher = mock.patch.object(S, "_in_ci", return_value=False)
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -222,11 +196,10 @@ class IndicativeErrorTests(unittest.TestCase):
         import contextlib
         err = io.StringIO()
         with contextlib.redirect_stderr(err):
-            with mock.patch.object(S, "host_matches_ci_renderer", return_value=False):
-                with contextlib.ExitStack() as stack:
-                    for target, kwargs in patches.items():
-                        stack.enter_context(mock.patch.object(S, target, **kwargs))
-                    rc = S.main(["shots_linux.py"])
+            with contextlib.ExitStack() as stack:
+                for target, kwargs in patches.items():
+                    stack.enter_context(mock.patch.object(S, target, **kwargs))
+                rc = S.main(["shots_linux.py"])
         return rc, err.getvalue()
 
     def test_missing_docker_explains_why_it_is_needed_and_how_to_proceed(self):
@@ -235,9 +208,10 @@ class IndicativeErrorTests(unittest.TestCase):
         self.assertNotEqual(rc, 0)
         self.assertIn("Docker", msg)
         self.assertIn("not installed", msg.lower())
-        # It must say WHY docker is involved at all, name the exact image, and offer the escape hatch.
-        self.assertIn("Linux", msg)
-        self.assertIn("mcr.microsoft.com/playwright:v", msg)
+        # It must say WHY docker is involved at all, name the exact image, and offer the way out.
+        self.assertIn("pinned", msg.lower())
+        self.assertIn("mcr.microsoft.com/playwright", msg)
+        self.assertIn("npm run shots", msg)
         self.assertIn("docs/testing-guidelines.md", msg)
 
     def test_a_stopped_docker_daemon_is_distinguished_from_a_missing_docker(self):
@@ -263,14 +237,14 @@ class IndicativeErrorTests(unittest.TestCase):
 
 
 class NpmScriptWiringTests(unittest.TestCase):
-    def test_package_json_exposes_shots_linux_and_its_check_variant(self):
+    def test_package_json_exposes_one_shots_command_and_the_digest_recorder(self):
         with open(os.path.join(_paths.DEV, "package.json"), encoding="utf-8") as fh:
             scripts = json.load(fh)["scripts"]
-        self.assertIn("shots:linux", scripts)
-        self.assertIn("shots:linux:check", scripts)
-        for name in ("shots:linux", "shots:linux:check"):
+        for name in ("shots", "shots:check", "shots:digest"):
+            self.assertIn(name, scripts)
             self.assertIn("shots_linux.py", scripts[name])
-        self.assertIn("--check", scripts["shots:linux:check"])
+        self.assertIn("--check", scripts["shots:check"])
+        self.assertIn("--record-digest", scripts["shots:digest"])
 
     def test_the_habitual_shots_scripts_route_through_the_guard(self):
         # The motivating trap was that the SHORT, habitual command silently produced host-rendered
@@ -280,9 +254,12 @@ class NpmScriptWiringTests(unittest.TestCase):
             scripts = json.load(fh)["scripts"]
         self.assertIn("shots_linux.py", scripts["shots"])
         self.assertIn("shots_linux.py", scripts["shots:check"])
-        # `npm test` runs shots:check; it must not hard-fail (or demand Docker) on a dev laptop.
-        self.assertIn("--skip-unless-ci-renderer", scripts["shots:check"])
+        # `npm test` runs shots:check; it must not hard-fail on a dev laptop with no Docker.
+        self.assertIn("--skip-without-renderer", scripts["shots:check"])
         self.assertIn("shots:check", scripts["test"])
+        # No script may opt out of the one renderer behind the maintainer's back.
+        for name, body in scripts.items():
+            self.assertNotIn("--native", body, "%s must not bake in the unofficial renderer" % name)
 
     def test_no_script_or_doc_hardcodes_the_container_image_tag(self):
         # A hardcoded tag is the drift this tool exists to prevent: it would keep pointing at an old
@@ -290,83 +267,170 @@ class NpmScriptWiringTests(unittest.TestCase):
         with open(os.path.join(_paths.DEV, "package.json"), encoding="utf-8") as fh:
             raw = fh.read()
         self.assertNotIn("mcr.microsoft.com/playwright", raw)
+        self.assertNotIn("mcr.microsoft.com/playwright", _workflow_text(),
+                         "CI must resolve the image through the tool, not pin a second tag")
 
 
-class SkipOffLinuxTests(unittest.TestCase):
-    def setUp(self):
-        # Hermetic: `_in_ci()` is true when this suite runs on a CI runner, which would flip the
-        # dispatch to the native path and invalidate every case below.
-        patcher = mock.patch.object(S, "_in_ci", return_value=False)
-        patcher.start()
-        self.addCleanup(patcher.stop)
-
-    def test_check_skips_cleanly_when_the_host_cannot_match_ci(self):
-        # `npm test` runs this. On Windows the committed (Linux-rendered) PNGs never match the host
-        # renderer, so a real check would FALSE-FAIL and its remediation text would point at the
-        # unsafe capture. Skip with a note and exit 0 instead; CI (Linux) still runs it for real.
+class SkipWithoutRendererTests(unittest.TestCase):
+    def _check(self, argv, ci=False, docker=True, daemon=True):
         import io
         import contextlib
-        buf = io.StringIO()
-        with mock.patch.object(S, "host_matches_ci_renderer", return_value=False), \
+        out, err = io.StringIO(), io.StringIO()
+
+        def which(name):
+            if name == "docker" and not docker:
+                return None
+            return "/usr/bin/" + name
+        with mock.patch.object(S, "_in_ci", return_value=ci), \
+                mock.patch.object(S.shutil, "which", side_effect=which), \
+                mock.patch.object(S, "_docker_daemon_ok", return_value=daemon), \
                 mock.patch.object(S, "_deps_installed", return_value=True), \
-                mock.patch.object(S, "_run") as run:
-            with contextlib.redirect_stdout(buf):
-                rc = S.main(["shots_linux.py", "--check", "--skip-unless-ci-renderer"])
+                mock.patch.object(S, "_run", return_value=0) as run:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = S.main(argv)
+        return rc, run, out.getvalue(), err.getvalue()
+
+    def test_check_skips_cleanly_when_the_pinned_renderer_cannot_run(self):
+        # `npm test` runs this. Docker stays an OPTIONAL developer dependency: without it the
+        # check skips with a note instead of hard-failing a suite that has nothing to do with it.
+        rc, run, out, _ = self._check(
+            ["shots_linux.py", "--check", "--skip-without-renderer"], docker=False)
         self.assertEqual(rc, 0)
         run.assert_not_called()
-        out = buf.getvalue()
         self.assertIn("skipped", out.lower())
-        self.assertIn("shots:linux", out)
+        self.assertIn("docker", out.lower())
+        self.assertIn("npm run shots:check", out)
 
-    def test_skip_flag_still_runs_natively_on_the_ci_platform(self):
-        with mock.patch.object(S, "host_matches_ci_renderer", return_value=True), \
-                mock.patch.object(S, "_deps_installed", return_value=True), \
-                mock.patch.object(S.shutil, "which", return_value="/usr/bin/node"), \
-                mock.patch.object(S, "_run", return_value=0) as run:
-            rc = S.main(["shots_linux.py", "--check", "--skip-unless-ci-renderer"])
+    def test_a_stopped_daemon_also_skips_rather_than_false_failing(self):
+        rc, run, out, _ = self._check(
+            ["shots_linux.py", "--check", "--skip-without-renderer"], daemon=False)
+        self.assertEqual(rc, 0)
+        run.assert_not_called()
+        self.assertIn("skipped", out.lower())
+
+    def test_ci_never_skips_the_required_gate(self):
+        # Fail CLOSED where it matters: in CI a renderer that cannot start must RED the job, never
+        # quietly pass, or the drift gate silently disappears.
+        rc, run, out, err = self._check(
+            ["shots_linux.py", "--check", "--skip-without-renderer"], ci=True, docker=False)
+        self.assertNotEqual(rc, 0)
+        run.assert_not_called()
+        self.assertNotIn("skipped", out.lower())
+        self.assertIn("Docker", err)
+
+    def test_the_renderer_still_runs_when_docker_is_present(self):
+        rc, run, _, _ = self._check(["shots_linux.py", "--check", "--skip-without-renderer"])
         self.assertEqual(rc, 0)
         run.assert_called_once()
 
     def test_the_write_path_never_silently_skips(self):
         # Regenerating is the dangerous direction: it must produce a correct PNG or refuse loudly.
-        with mock.patch.object(S, "host_matches_ci_renderer", return_value=False), \
-                mock.patch.object(S, "_deps_installed", return_value=True), \
-                mock.patch.object(S.shutil, "which", return_value=None):
-            rc = S.main(["shots_linux.py", "--skip-unless-ci-renderer"])
+        rc, run, _, _ = self._check(["shots_linux.py", "--skip-without-renderer"], docker=False)
         self.assertNotEqual(rc, 0)
+        run.assert_not_called()
 
 
 class ContainerPinningTests(unittest.TestCase):
+    TAG = "mcr.microsoft.com/playwright:v1.61.1-noble"
+    DIGEST = "sha256:" + "a" * 64
+
     def test_the_container_run_pins_the_amd64_platform(self):
         # The playwright image is multi-arch. On Apple Silicon docker would otherwise select arm64
-        # and render with a different rasterizer than the x86_64 CI runner.
+        # and render with a different rasterizer than the x86_64 image CI runs.
         cmd = S.docker_command("/repo", "plugins/commentable-html/dev", "img:tag", [])
         self.assertIn("--platform", cmd)
         self.assertEqual(cmd[cmd.index("--platform") + 1], "linux/amd64")
 
-    def test_container_flag_forces_the_container_even_on_linux(self):
-        # A Linux host that is NOT the CI Ubuntu release (Fedora, an older WSL distro) has its own
-        # fonts, so it needs the same escape hatch a Windows host uses.
-        with mock.patch.object(S, "host_matches_ci_renderer", return_value=True), \
-                mock.patch.object(S, "_deps_installed", return_value=True), \
+    def test_a_matching_lock_pins_the_renderer_by_digest(self):
+        # A tag is mutable - the registry can rebuild v<ver>-noble on a newer base OS with different
+        # font packages. The digest makes the renderer immutable on BOTH sides.
+        ref, warning = S.resolved_image(self.TAG, {"image": self.TAG, "digest": self.DIGEST})
+        self.assertEqual(ref, "mcr.microsoft.com/playwright@" + self.DIGEST)
+        self.assertIsNone(warning)
+
+    def test_a_stale_lock_falls_back_to_the_tag_and_says_how_to_repin(self):
+        # A @playwright/test bump must not HARD-BREAK rendering; it degrades to the tag and says so.
+        ref, warning = S.resolved_image(
+            self.TAG, {"image": "mcr.microsoft.com/playwright:v1.60.0-noble", "digest": self.DIGEST})
+        self.assertEqual(ref, self.TAG)
+        self.assertIn("shots:digest", warning)
+
+    def test_a_malformed_digest_is_never_used(self):
+        for bad in ("", "latest", "sha256:nothex", "sha256:" + "a" * 63, "sha512:" + "a" * 64):
+            ref, warning = S.resolved_image(self.TAG, {"image": self.TAG, "digest": bad})
+            self.assertEqual(ref, self.TAG, bad)
+            self.assertTrue(warning, bad)
+
+    def test_the_committed_lock_pins_the_version_the_package_lock_resolves(self):
+        lock = S.read_image_lock()
+        self.assertEqual(lock.get("image"), S.image_ref(S.pinned_playwright_version(_paths.DEV)),
+                         "after a @playwright/test bump, re-record the renderer digest with "
+                         "'npm run shots:digest' so both sides keep using ONE immutable image")
+        ref, warning = S.resolved_image(lock["image"], lock)
+        self.assertIsNone(warning)
+        self.assertIn("@sha256:", ref)
+
+    def test_a_repo_digest_is_parsed_only_for_the_pinned_repository(self):
+        self.assertEqual(S.parse_repo_digest(["mcr.microsoft.com/playwright@" + self.DIGEST]),
+                         self.DIGEST)
+        self.assertIsNone(S.parse_repo_digest(["evil.example.com/playwright@" + self.DIGEST]))
+        self.assertIsNone(S.parse_repo_digest([]))
+        self.assertIsNone(S.parse_repo_digest(["mcr.microsoft.com/playwright:v1.61.1-noble"]))
+
+    def test_the_lock_round_trips_through_disk(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "shots-image.lock")
+            self.assertEqual(S.read_image_lock(path), {},
+                             "a missing lock is 'no digest recorded', never an error")
+            S.write_image_lock(path, self.TAG, self.DIGEST)
+            self.assertEqual(S.read_image_lock(path),
+                             {"image": self.TAG, "digest": self.DIGEST})
+
+    def test_the_container_run_uses_the_resolved_digest_reference(self):
+        with mock.patch.object(S, "_in_ci", return_value=False), \
+                mock.patch.object(S, "read_image_lock",
+                                  return_value={"image": S.image_ref(
+                                      S.pinned_playwright_version(_paths.DEV)),
+                                      "digest": self.DIGEST}), \
                 mock.patch.object(S.shutil, "which", return_value="/usr/bin/docker"), \
                 mock.patch.object(S, "_docker_daemon_ok", return_value=True), \
+                mock.patch.object(S, "_deps_installed", return_value=True), \
                 mock.patch.object(S, "_run", return_value=0) as run:
-            rc = S.main(["shots_linux.py", "--container"])
+            rc = S.main(["shots_linux.py", "--check"])
         self.assertEqual(rc, 0)
-        self.assertEqual(run.call_args[0][0][0], "docker")
+        self.assertIn("mcr.microsoft.com/playwright@" + self.DIGEST, run.call_args[0][0])
 
-    def test_the_image_variant_matches_the_ubuntu_release_the_shots_ci_job_pins(self):
-        # The container is only equivalent to CI while the two name the SAME Ubuntu release. CI does
-        # NOT run inside this image (it installs chromium on a bare runner), so the correspondence is
-        # by agreement, not by construction - this guard makes a future runner bump a conscious,
-        # two-sided edit instead of a silent divergence.
+    def test_print_image_reports_the_resolved_reference_without_rendering(self):
+        # CI pulls exactly what the tool will run (and times it), so the pull can never warm a
+        # DIFFERENT image than the render uses.
+        import io
+        import contextlib
+        buf = io.StringIO()
+        with mock.patch.object(S, "_deps_installed", return_value=True), \
+                mock.patch.object(S, "_run") as run:
+            with contextlib.redirect_stdout(buf):
+                rc = S.main(["shots_linux.py", "--print-image"])
+        self.assertEqual(rc, 0)
+        run.assert_not_called()
+        printed = buf.getvalue().strip()
+        self.assertTrue(printed.startswith("mcr.microsoft.com/playwright@sha256:"), printed)
+
+    def test_the_ci_screenshot_gate_runs_in_the_pinned_container(self):
+        # The acceptance criterion of issue #701: the required job VALIDATES the screenshots in the
+        # same image the local tooling renders with, so the authority is one fixed environment.
+        block = _shots_job_block(_workflow_text())
+        self.assertIn("npm run shots:check", block)
+        self.assertNotIn("--native", block)
+        self.assertNotIn("capture_tutorial.mjs", block)
+        self.assertIn("--print-image", block)
+
+    def test_the_ci_job_no_longer_pins_a_runner_release_as_the_renderer(self):
+        # With the container as the renderer, the runner's own Ubuntu release (and its font
+        # packages, which GitHub updates over time) no longer decides a single pixel.
         block = _shots_job_block(_workflow_text())
         runs_on = [ln.split(":", 1)[1].strip() for ln in block.split("\n")
                    if ln.strip().startswith("runs-on:")]
-        self.assertEqual(runs_on, [S.UBUNTU_RELEASES[S.IMAGE_VARIANT]],
-                         "the screenshot-validating job must pin exactly the Ubuntu release the "
-                         "container image variant names")
+        self.assertEqual(runs_on, ["ubuntu-latest"])
 
     def test_the_job_block_helper_really_isolates_that_job(self):
         # The guard above is only meaningful if the block it inspects is the playwright-heavy job

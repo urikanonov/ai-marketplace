@@ -27,10 +27,10 @@ class OrchestrationTests(unittest.TestCase):
         # present regardless of whether node is installed on the host. Without this the test
         # raises StopIteration on a node-less machine (no "Tutorial screenshots" label), which
         # is exactly what made a node-less pre-push run fail spuriously and tempt a bypass.
-        # The host is pinned to Linux for the same reason: the screenshots step is Linux-only
-        # (CMH-BUILD-16), so on a Windows/macOS dev box the label would legitimately be absent.
+        # The pinned renderer is mocked available for the same reason: on a machine without Docker
+        # the screenshots step (CMH-BUILD-16) would legitimately be absent.
         with mock.patch.object(rebuild_all.shutil, "which", return_value="/usr/bin/node"), \
-                mock.patch.object(rebuild_all, "_host_renders_ci_shots", return_value=True), \
+                mock.patch.object(rebuild_all, "_pinned_renderer_available", return_value=True), \
                 mock.patch.object(rebuild_all, "_tutorial_deps_installed", return_value=True):
             rc = rebuild_all.main(["rebuild_all.py", "--check"])
         self.assertEqual(rc, 0)
@@ -70,7 +70,7 @@ class OrchestrationTests(unittest.TestCase):
         import io
         import contextlib
         with mock.patch.object(rebuild_all.shutil, "which", return_value="/usr/bin/node"), \
-                mock.patch.object(rebuild_all, "_host_renders_ci_shots", return_value=True), \
+                mock.patch.object(rebuild_all, "_pinned_renderer_available", return_value=True), \
                 mock.patch.object(rebuild_all, "_tutorial_deps_installed", return_value=False):
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
@@ -101,7 +101,7 @@ class OrchestrationTests(unittest.TestCase):
         import io
         import contextlib
         with mock.patch.object(rebuild_all.shutil, "which", return_value="/usr/bin/node"), \
-                mock.patch.object(rebuild_all, "_host_renders_ci_shots", return_value=True), \
+                mock.patch.object(rebuild_all, "_pinned_renderer_available", return_value=True), \
                 mock.patch.object(rebuild_all, "_tutorial_deps_installed", return_value=True), \
                 mock.patch.object(rebuild_all.os.path, "exists", return_value=False):
             buf = io.StringIO()
@@ -110,11 +110,12 @@ class OrchestrationTests(unittest.TestCase):
             out = buf.getvalue()
         self.assertEqual(rc, 0)
         self.assertIn(
-            "Tutorial screenshots (capture_tutorial.mjs) == skipped (capture script not found)", out)
+            "Tutorial screenshots (shots_linux.py) == skipped (capture script not found)", out)
 
-    def test_the_shared_predicate_fails_closed_when_the_tool_cannot_be_imported(self):
-        # Guessing "this host renders like CI" when the shared guard is unavailable is exactly how
-        # wrong PNGs got committed, so an import failure must mean "skip", not "go ahead".
+    def test_the_renderer_probe_fails_closed_when_the_tool_cannot_be_imported(self):
+        # Guessing "the pinned renderer is available" when the shared helper is unavailable would
+        # run the capture with whatever this host has, which is exactly how wrong PNGs got
+        # committed, so an import failure must mean "skip", not "go ahead".
         with mock.patch.dict(sys.modules, {"shots_linux": None}), \
                 mock.patch.object(rebuild_all, "SHOTS_TOOL_DIR", "/nonexistent"):
             import builtins
@@ -122,21 +123,20 @@ class OrchestrationTests(unittest.TestCase):
 
             def boom(name, *args, **kwargs):
                 if name == "shots_linux":
-                    raise ImportError("no shared predicate")
+                    raise ImportError("no shared helper")
                 return real_import(name, *args, **kwargs)
 
             with mock.patch.object(builtins, "__import__", boom):
-                self.assertFalse(rebuild_all._host_renders_ci_shots())
+                self.assertFalse(rebuild_all._pinned_renderer_available())
 
-    def test_screenshots_are_skipped_on_a_non_linux_host_with_an_actionable_note(self):
-        # CMH-BUILD-16: the committed PNGs are Linux-rendered. On another OS this step would
-        # re-render them with the HOST rasterizer, and --check would compare against that same
-        # host renderer - so the run goes green locally and then fails the required
-        # playwright-heavy job. Skip it and name the tool that does it correctly.
+    def test_screenshots_are_skipped_when_the_pinned_renderer_cannot_run(self):
+        # CMH-BUILD-16: the committed PNGs are rendered in the pinned container on BOTH sides.
+        # Without Docker that renderer cannot start, and re-rendering with the host browser would
+        # go green locally and then fail the required playwright-heavy job - so skip and say how.
         import io
         import contextlib
         with mock.patch.object(rebuild_all.shutil, "which", return_value="/usr/bin/node"), \
-                mock.patch.object(rebuild_all, "_host_renders_ci_shots", return_value=False), \
+                mock.patch.object(rebuild_all, "_pinned_renderer_available", return_value=False), \
                 mock.patch.object(rebuild_all, "_tutorial_deps_installed", return_value=True):
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
@@ -145,11 +145,24 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         labels = [c[0] for c in self.calls]
         self.assertFalse(any("Tutorial screenshots" in lbl for lbl in labels))
-        # Names the command that renders correctly, and says WHY this host cannot.
+        # Names what is missing, what it is for, and the command that renders correctly.
+        self.assertIn("Docker", out)
         self.assertIn("npm run shots", out)
         self.assertIn("renderer", out)
         # The skip is surgical - every other generator still runs.
         self.assertTrue(any(lbl.startswith("GitHub Pages site") for lbl in labels))
+
+    def test_screenshots_run_through_the_pinned_container_wrapper_on_any_host(self):
+        # The whole point of the container renderer: rebuild_all no longer refuses to regenerate
+        # the shots off Linux, it drives the SAME image CI validates with.
+        with mock.patch.object(rebuild_all.shutil, "which", return_value="/usr/bin/node"), \
+                mock.patch.object(rebuild_all, "_pinned_renderer_available", return_value=True), \
+                mock.patch.object(rebuild_all, "_tutorial_deps_installed", return_value=True):
+            rc = rebuild_all.main(["rebuild_all.py"])
+        self.assertEqual(rc, 0)
+        cmd = next(c for lbl, c in self.calls if lbl.startswith("Tutorial screenshots"))
+        self.assertIn("shots_linux.py", " ".join(cmd))
+        self.assertNotIn("--native", cmd)
 
 
 if __name__ == "__main__":
