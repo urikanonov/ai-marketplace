@@ -56,6 +56,25 @@ test.describe("runtime code-highlight fallback (CMH-HL-01)", () => {
     await expect(xmlCode.locator("span.cmh-code-com").first()).toBeVisible();
   });
 
+  test("an unbaked language-jsonc block is highlighted on load with keys, values and comments (CMH-HL-05)", async ({ page }) => {
+    const src = '{ /* blk */\n  "name": "cmh", // note\n  "n": 3\n}';
+    await open(page,
+      "<h1>Config</h1>"
+      + '<pre><code class="language-jsonc">' + src.replace(/</g, "&lt;") + "</code></pre>",
+      "cmh-hl-fallback-jsonc");
+
+    const code = page.locator("#commentRoot pre code.language-jsonc");
+    // The property keys are their own token class, distinct from the string VALUE.
+    const keys = code.locator("span.cmh-code-key");
+    expect(await keys.allTextContents()).toEqual(['"name"', '"n"']);
+    const strings = code.locator("span.cmh-code-str");
+    expect(await strings.allTextContents()).toEqual(['"cmh"']);
+    // Both JSONC comment forms are comments.
+    expect(await code.locator("span.cmh-code-com").allTextContents()).toEqual(["/* blk */", "// note"]);
+    // Highlighting never changes the block's text.
+    expect(await code.textContent()).toBe(src);
+  });
+
   test("an already-highlighted (baked) block is not re-highlighted", async ({ page }) => {
     await open(page,
       "<h1>Baked</h1>"

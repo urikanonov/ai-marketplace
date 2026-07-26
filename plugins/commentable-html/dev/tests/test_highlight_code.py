@@ -74,6 +74,7 @@ ROUNDTRIP_SNIPPETS = dict(SNIPPETS, **{
     "exs": SNIPPETS["elixir"],
     "bat": SNIPPETS["batch"],
     "cmd": SNIPPETS["batch"],
+    "jsonc": '{ /* block */ "flag": true, "s": "hi"} // comment\n',
 })
 
 TOKEN_CASES = {
@@ -373,6 +374,52 @@ class HighlightCodeSanitizationTests(unittest.TestCase):
         self.assertIn("&lt;", block)
         self.assertIn("&gt;", block)
         self.assertEqual(_text_content(block), code)
+
+
+class HighlightCodeJsonTests(unittest.TestCase):
+    """CMH-HL-05: JSON/JSONC property keys, comments, and the `jsonc` label."""
+
+    def test_jsonc_label_resolves_to_the_json_config(self):
+        block = H.highlight_block("jsonc", '{"a": 1}')
+        self.assertIn('<code class="language-json">', block)
+        self.assertIn('<span class="cmh-code-key">"a"</span>', block)
+
+    def test_property_key_and_string_value_get_distinct_tokens(self):
+        inner = H.highlight_code("json", '{"name": "cmh"}')
+        self.assertIn('<span class="cmh-code-key">"name"</span>', inner)
+        self.assertIn('<span class="cmh-code-str">"cmh"</span>', inner)
+
+    def test_key_is_detected_across_whitespace_before_the_colon(self):
+        inner = H.highlight_code("json", '{\n  "name"\n  : "cmh"\n}')
+        self.assertIn('<span class="cmh-code-key">"name"</span>', inner)
+
+    def test_json_line_and_block_comments_are_comments(self):
+        inner = H.highlight_code("jsonc", '{ // one\n  /* two */ "a": 1 }')
+        self.assertIn('<span class="cmh-code-com">// one</span>', inner)
+        self.assertIn('<span class="cmh-code-com">/* two */</span>', inner)
+
+    def test_a_key_like_string_inside_a_comment_is_not_a_key(self):
+        self.assertNotIn("cmh-code-key", H.highlight_code("jsonc", '// "a": 1\n'))
+
+    def test_an_escaped_quote_inside_a_key_does_not_end_it(self):
+        inner = H.highlight_code("json", '{"a\\"b": 1}')
+        self.assertIn('<span class="cmh-code-key">"a\\"b"</span>', inner)
+
+    def test_a_string_value_containing_a_colon_is_not_a_key(self):
+        inner = H.highlight_code("json", '{"a": "b: c"}')
+        self.assertIn('<span class="cmh-code-str">"b: c"</span>', inner)
+
+    def test_non_json_languages_have_no_key_token(self):
+        for language, code in (("javascript", '({"name": "cmh"})'),
+                               ("typescript", '({"name": "cmh"})'),
+                               ("python", '{"name": "cmh"}'),
+                               ("yaml", '"name": cmh')):
+            with self.subTest(language=language):
+                self.assertNotIn("cmh-code-key", H.highlight_code(language, code))
+
+    def test_json_output_roundtrips_to_the_original_text(self):
+        code = '{ // c\n  "a": "b", /* d */ "n": [1, 2] }\n'
+        self.assertEqual(_text_content(H.highlight_block("jsonc", code)), code)
 
 
 class HighlightCodeListExactTests(unittest.TestCase):

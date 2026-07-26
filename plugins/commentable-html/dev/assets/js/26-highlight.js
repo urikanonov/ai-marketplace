@@ -21,7 +21,8 @@ function setDiffSyntaxOn(on) {
 const _HL_FAMILY = {
   javascript: "c", js: "c", jsx: "c", typescript: "c", ts: "c", tsx: "c", java: "c", c: "c", cpp: "c",
   "c++": "c", cs: "c", csharp: "c", go: "c", golang: "c", rust: "c", rs: "c", php: "c", swift: "c",
-  kotlin: "c", kt: "c", scala: "c", dart: "c", json: "c", groovy: "c", objectivec: "c", objc: "c",
+  kotlin: "c", kt: "c", scala: "c", dart: "c", groovy: "c", objectivec: "c", objc: "c",
+  json: "json", jsonc: "json",
   python: "hash", py: "hash", ruby: "hash", rb: "hash", shell: "hash", bash: "hash", sh: "hash",
   yaml: "hash", yml: "hash", toml: "hash", perl: "hash", pl: "hash", r: "hash", elixir: "hash", ex: "hash", exs: "hash",
   sql: "sql",
@@ -34,7 +35,7 @@ const _EXT_LANG = {
   py: "python", js: "javascript", jsx: "javascript", mjs: "javascript", ts: "typescript", tsx: "typescript",
   java: "java", c: "c", h: "c", cpp: "cpp", cc: "cpp", hpp: "cpp", cs: "csharp", go: "go", rs: "rust",
   rb: "ruby", php: "php", swift: "swift", kt: "kotlin", scala: "scala", sql: "sql", sh: "shell",
-  bash: "shell", yml: "yaml", yaml: "yaml", toml: "toml", json: "json", css: "css", lua: "lua",
+  bash: "shell", yml: "yaml", yaml: "yaml", toml: "toml", json: "json", jsonc: "json", css: "css", lua: "lua",
   hs: "haskell", ex: "elixir", exs: "elixir", ps1: "powershell", bat: "batch", cmd: "batch",
   groovy: "groovy", gradle: "groovy", pl: "perl", r: "r", m: "objectivec", mm: "objectivec",
 };
@@ -58,7 +59,17 @@ const _HL_KW_SET = new Set(("abstract as async await base bool boolean break byt
 const _HL_MARKUP_KW = new Set(("a article body button code div footer h1 h2 h3 head header html img "
   + "input label li link main meta nav ol option p pre script section select span style table tbody "
   + "td template textarea th thead title tr ul xml version encoding root item node element").split(" "));
+// JSON has exactly three barewords; using the broad C-family set here would tint an invalid stray
+// identifier as a keyword and diverge from the author-time json config.
+const _HL_JSON_KW = new Set(["true", "false", "null"]);
 const _hlCache = {};
+// A JSON string token is a property KEY when the next non-whitespace character is a colon. The
+// author-time highlighter applies the same rule via a `(?=\s*:)` lookahead, so the two agree.
+function _jsonKeyFollows(text, from) {
+  let j = from;
+  while (j < text.length && /\s/.test(text[j])) j++;
+  return text.charAt(j) === ":";
+}
 function _hlTokenRe(fam) {
   if (_hlCache[fam]) { _hlCache[fam].lastIndex = 0; return _hlCache[fam]; }
   // Unrolled, linear-time string forms (a failed/unterminated match resolves in one pass instead of
@@ -77,6 +88,7 @@ function _hlTokenRe(fam) {
   else if (fam === "powershell") { com = "<#[\\s\\S]*?(?:#>|$)|#[^\\n]*"; str = dq + "|" + sq; flags = "gi"; }
   else if (fam === "batch") { com = "(?:rem\\b|::)[^\\n]*"; str = dq; flags = "gi"; }
   else if (fam === "markup") { com = "<!--[\\s\\S]*?(?:-->|$)"; str = dq + "|" + sq; flags = "gi"; }
+  else if (fam === "json") { com = "/\\*[\\s\\S]*?(?:\\*/|$)|//[^\\n]*"; str = dq; }
   else { com = "/\\*[\\s\\S]*?(?:\\*/|$)|//[^\\n]*"; str = dq + "|" + sq + "|" + bt; }
   const num = "0[xX][0-9a-fA-F]+|\\d[\\d_]*(?:\\.\\d+)?(?:[eE][+-]?\\d+)?";
   const id = "[A-Za-z_$][A-Za-z0-9_$]*";
@@ -94,9 +106,9 @@ function cmhHighlightCode(text, lang) {
     const t = m[0], g = m.groups;
     let cls = null;
     if (g.com) cls = "com";
-    else if (g.str) cls = "str";
+    else if (g.str) cls = (fam === "json" && _jsonKeyFollows(text, re.lastIndex)) ? "key" : "str";
     else if (g.num) cls = "num";
-    else if (g.id) cls = (fam === "markup" ? _HL_MARKUP_KW : _HL_KW_SET).has(re.ignoreCase ? t.toLowerCase() : t) ? "kw" : (text[re.lastIndex] === "(" ? "fn" : null);
+    else if (g.id) cls = (fam === "markup" ? _HL_MARKUP_KW : fam === "json" ? _HL_JSON_KW : _HL_KW_SET).has(re.ignoreCase ? t.toLowerCase() : t) ? "kw" : (text[re.lastIndex] === "(" ? "fn" : null);
     else if (g.op) cls = "op";
     out += cls ? ('<span class="cmh-code-' + cls + '">' + escapeHtml(t) + "</span>") : escapeHtml(t);
     last = re.lastIndex;

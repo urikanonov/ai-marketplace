@@ -73,6 +73,23 @@
       "com": ["<!-- x -->"],
       "kw": ["item"],
       "notKw": ["name"]
+    },
+    {
+      "lang": "json",
+      "code": "{\"name\": \"cmh\", \"ok\": true, \"n\": 3}",
+      "key": ["\"name\"", "\"ok\"", "\"n\""],
+      "str": ["\"cmh\""],
+      "kw": ["true"],
+      "notStr": ["\"name\"", "\"ok\""],
+      "notKey": ["\"cmh\""]
+    },
+    {
+      "lang": "jsonc",
+      "code": "{ /* blk */ \"a\": \"b: c\" } // note",
+      "key": ["\"a\""],
+      "str": ["\"b: c\""],
+      "com": ["/* blk */", "// note"],
+      "notKey": ["\"b: c\""]
     }
   ]
 }

@@ -4,6 +4,36 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.247.0] - 2026-07-26
+
+### Fixed
+
+- A `jsonc` code block is highlighted instead of rendering as plain monochrome text. `jsonc` was not a
+  known label on either path - it was missing from the author-time highlighter's alias table and from
+  the runtime tokenizer's language map - so a `language-jsonc` block was baked as escaped plain text and
+  the runtime fallback declined to touch it. It is now a first-class label that resolves to `json`.
+  (CMH-HL-05)
+- A `/* ... */` block comment in a JSON/JSONC block is highlighted as a comment. The author-time `json`
+  config declared only `//` line comments, so a block comment was tokenized as operators plus plain text
+  - and silently disagreed with the runtime, which did treat it as a comment. (CMH-HL-05)
+
+### Added
+
+- JSON property keys are tinted apart from string values. A double-quoted string whose next
+  non-whitespace character is `:` now emits a `cmh-code-key` token instead of `cmh-code-str`, so a JSON
+  document reads the way every mainstream JSON highlighter renders it rather than as one wall of green
+  strings. The token ships colors for the light theme, the dark theme, deck mode, and the dark-theme
+  print re-light, and it is JSON-only - no other language gains a key token. (CMH-HL-05)
+- The showcase deck's syntax-highlighting slide now carries a live JSONC block demonstrating keys,
+  values, and comments. (CMH-HL-05)
+
+### Changed
+
+- The runtime/author-time highlighter drift guard now also requires the runtime to know every author-time
+  ALIAS, not just every canonical language. `diffLangKnown()` looks the raw `language-XXX` label up with
+  no alias resolution, so an alias-only language was highlightable at author time and monochrome at
+  runtime - the exact hole that let `jsonc` ship unhighlighted. (CMH-HL-03)
+
 ## [1.246.0] - 2026-07-25
 
 ### Fixed

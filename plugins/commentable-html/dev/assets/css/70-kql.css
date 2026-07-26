@@ -130,15 +130,19 @@ html[data-theme="dark"] #commentRoot .cmh-kql-str { color: #7ee787; }
 html[data-theme="dark"] #commentRoot .cmh-kql-num { color: #ffa657; }
 
 /* General code syntax token colors (baked at author time by tools/highlight_code.py;
-   same primer palette as the KQL tokens). Plain identifiers inherit --cp-text. */
+   same primer palette as the KQL tokens). Plain identifiers inherit --cp-text. The `key`
+   token is a JSON property name, tinted apart from a string VALUE the way every mainstream
+   JSON highlighter renders it. */
 #commentRoot .cmh-code-kw  { color: #8250df; font-weight: 600; }
 #commentRoot .cmh-code-fn  { color: #0550ae; }
+#commentRoot .cmh-code-key { color: #0550ae; }
 #commentRoot .cmh-code-str { color: #0a7d33; }
 #commentRoot .cmh-code-num { color: #953800; }
 #commentRoot .cmh-code-com { color: var(--cp-text-soft); font-style: italic; }
 #commentRoot .cmh-code-op  { color: var(--cp-text-muted); }
 html[data-theme="dark"] #commentRoot .cmh-code-kw  { color: #d2a8ff; }
 html[data-theme="dark"] #commentRoot .cmh-code-fn  { color: #79c0ff; }
+html[data-theme="dark"] #commentRoot .cmh-code-key { color: #79c0ff; }
 html[data-theme="dark"] #commentRoot .cmh-code-str { color: #7ee787; }
 html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
 
