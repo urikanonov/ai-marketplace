@@ -87,6 +87,55 @@ fail in CI unless the fixture is regenerated in the same change:
   `plugins/commentable-html/dev` run `node tests/fixtures/generate.mjs`. The fixtures are gated by the
   required `plugin-tests` job (`fixtures --check`) but are NOT covered by `build.py --check` or the
   pre-push hook, so a bump that regenerates `dist/` and `site/` can still fail CI on stale fixtures.
+
+### Regenerating the tutorial screenshots (Linux-rendered - CMH-BUILD-16)
+
+The committed tutorial PNGs under `plugins/commentable-html/docs/assets/` are produced by a real
+browser, and font rasterization differs per operating system and font set. **Never regenerate them
+with the host renderer on Windows or macOS.** Doing so rewrites every shot with that machine's
+rasterization, and the trap used to be that it looked correct locally: the local verifiers re-render
+with the same host renderer, so they agreed and went green, and only the required `playwright-heavy`
+CI job (which renders on Linux) reported `<name>.png differs`.
+
+Use the npm scripts, from `plugins/commentable-html/dev`:
+
+```bash
+npm run shots                # regenerate: native on Linux, pinned container elsewhere
+npm run shots:check          # verify; skips with a note where the host cannot match CI
+npm run shots:linux          # force the pinned container (e.g. a non-Ubuntu Linux host)
+npm run shots:linux:check    # force the pinned container, verify only
+```
+
+All four route through `tools/shots_linux.py`, so the short, habitual command is the safe one.
+
+- It renders **natively only where the host IS the CI platform** (x86_64 Ubuntu matching the pinned
+  runner release, probed via `/etc/os-release`). Docker is not involved there.
+- **Every other host** - Windows, macOS, and any Linux on a different distro, release, or
+  architecture - falls back to `mcr.microsoft.com/playwright:v<version>-noble` **automatically**;
+  there is no flag to remember. The image is pinned on two axes: the `@playwright/test` version
+  resolved in `package-lock.json` (the chromium binary) and the Ubuntu release in the image variant
+  (the FONTS - the axis that actually causes a mismatch). The run also pins `--platform linux/amd64`,
+  so an Apple Silicon host does not render with the arm64 stack, and `--user` on a Linux host so the
+  container leaves no root-owned files. Do not hardcode the tag anywhere.
+- **Docker is therefore only required where the host is not the CI platform.** It is not needed for
+  normal development, for any test suite (`npm test` skips the check where it would be meaningless),
+  or by CI. When it is missing the wrapper fails with an explicit message naming the image, why the
+  CI renderer is required, and the alternatives.
+
+**Scope of the guarantee.** Matching distro, release and architecture is a BEST-EFFORT match, not a
+proof: `/etc/os-release` says nothing about installed font/fontconfig package versions, and the
+GitHub runner image is itself updated over time. Likewise the container matches CI by AGREEMENT, not
+by construction - CI does not run inside that image. So the `playwright-heavy` job is pinned to
+`ubuntu-24.04` (not `ubuntu-latest`) to match the `-noble` variant, and `test_shots_linux.py` asserts
+that job's own `runs-on` equals the release the image variant names; if you move one, move the other
+in the same change. **CI remains the authoritative gate** - this tooling exists to make a local
+regeneration almost always agree with it, and to make a wrong-renderer run loud instead of silent.
+
+`rebuild_all.py` skips the screenshot step entirely on a non-Linux host, with a note pointing here, so
+it can no longer produce a CI-failing artifact by accident. If your change does not affect the shots,
+restore them with `git checkout origin/main -- plugins/commentable-html/docs/assets` and confirm with
+`npm run shots:linux:check`.
+
 - **Highlighter golden tests.** After changing the highlighter, regenerate the goldens with
   `python build_highlight_fixtures.py` (from the commentable-html dev tests) so the `.sample`/`.html`
   goldens match the new output.

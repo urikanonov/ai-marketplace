@@ -36,6 +36,7 @@ PKG_DIR = os.path.join(ROOT, "plugins", "commentable-html", "pkg", "skills", "co
 EXAMPLES_DIR = os.path.join(ROOT, "plugins", "commentable-html", "examples")
 FIXTURES_GEN = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tests", "fixtures", "generate.mjs")
 TUTORIAL_SHOTS = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tools", "capture_tutorial.mjs")
+SHOTS_TOOL_DIR = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tools")
 # capture_tutorial.mjs imports @playwright/test, so it needs the commentable-html dev node_modules
 # installed (run scripts/setup_dev.py). When they are absent the step is skipped with a note rather
 # than failing with a cryptic ERR_MODULE_NOT_FOUND.
@@ -46,6 +47,25 @@ SITE_DATA = os.path.join(ROOT, "scripts", "build_site_data.py")
 
 def _tutorial_deps_installed():
     return os.path.isdir(TUTORIAL_DEPS)
+
+
+def _host_renders_ci_shots():
+    """True when this host renders the tutorial screenshots the way the CI job does.
+
+    The committed PNGs are rendered on a pinned Ubuntu runner, and font rasterization is decided by
+    the OS image, so "is this Linux?" is too broad - a different distro, release, or architecture
+    still renders differently. Delegate to the single predicate in the plugin's shots_linux tool so
+    this orchestrator and `npm run shots` can never disagree; fall back to a conservative
+    platform check only if that tool cannot be imported.
+    """
+    try:
+        sys.path.insert(0, SHOTS_TOOL_DIR)
+        import shots_linux
+        return shots_linux.host_matches_ci_renderer()
+    except Exception:
+        # Fail CLOSED: without the shared predicate we cannot tell whether this host renders like
+        # CI, and guessing "yes" is what silently produced wrong PNGs in the first place.
+        return False
 
 
 def _run(label, cmd):
@@ -74,7 +94,14 @@ def main(argv=None):
         steps.append(("Playwright fixtures (generate.mjs)", [node, FIXTURES_GEN] + check))
     else:
         print("== Playwright fixtures (generate.mjs) == skipped (node not found; CI plugin-tests runs it)")
-    if node and os.path.exists(TUTORIAL_SHOTS) and _tutorial_deps_installed():
+    if not _host_renders_ci_shots():
+        print("== Tutorial screenshots (capture_tutorial.mjs) == skipped (this host does not render "
+              "the committed screenshots the way the CI job does - they are rendered on a pinned "
+              "x86_64 Ubuntu runner - so regenerating or checking them here would use the wrong "
+              "renderer). Run 'npm run shots' from plugins/commentable-html/dev to render them "
+              "correctly (it uses the pinned container automatically where needed); CI plugin-tests "
+              "remains the authoritative gate.")
+    elif node and os.path.exists(TUTORIAL_SHOTS) and _tutorial_deps_installed():
         steps.append(("Tutorial screenshots (capture_tutorial.mjs)", [node, TUTORIAL_SHOTS] + check))
     elif node and os.path.exists(TUTORIAL_SHOTS):
         print("== Tutorial screenshots (capture_tutorial.mjs) == skipped "
