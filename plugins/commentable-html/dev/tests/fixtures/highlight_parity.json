@@ -117,6 +117,49 @@
       "code": "// \"notakey\": 1",
       "com": ["// \"notakey\": 1"],
       "notKey": ["\"notakey\""]
+    },
+    {
+      "lang": "markdown",
+      "code": "## Findings and next steps",
+      "kw": ["## Findings and next steps"]
+    },
+    {
+      "lang": "markdown",
+      "code": "a **strong** and *soft* claim with `code` inline",
+      "kw": ["**strong**"],
+      "com": ["*soft*"],
+      "str": ["`code`"],
+      "notKw": ["claim", "inline"]
+    },
+    {
+      "lang": "markdown",
+      "code": "see [the spec](https://x.dev/a_b) <!-- note --> and <https://x.dev/p>",
+      "str": ["https://x.dev/a_b", "<https://x.dev/p>"],
+      "com": ["<!-- note -->"],
+      "notKw": ["spec", "note"]
+    },
+    {
+      "lang": "markdown",
+      "code": "> quoted `code` with ~~old~~ text",
+      "str": ["`code`"],
+      "com": ["~~old~~"]
+    },
+    {
+      "lang": "markdown",
+      "code": "a **bold ** and *soft * stay plain",
+      "notKw": ["**bold **", "bold"],
+      "notStr": ["*soft *"]
+    },
+    {
+      "lang": "markdown",
+      "code": "> > deeply quoted with ```a``b``` inline",
+      "str": ["```a``b```"]
+    },
+    {
+      "lang": "md",
+      "code": "# Title with `md` alias",
+      "kw": ["# Title with `md` alias"],
+      "notStr": ["`md`"]
     }
   ]
 }

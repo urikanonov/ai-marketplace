@@ -4,6 +4,25 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.249.0] - 2026-07-26
+
+### Added
+
+- Markdown is now a supported syntax-highlighting language (`markdown`, aliases `md`, `mdown`, `mkd`).
+  Markdown carries no keywords, so it gets a dedicated line-oriented tokenizer that reuses the six
+  shipped token classes: headings, setext underlines, bold and a fence info string read as keywords;
+  emphasis, strikethrough and HTML comments read as comments; inline code spans, fenced-code bodies,
+  autolinks and link destinations read as strings; link text, reference labels and footnote references
+  read as function names; ordered-list digits read as numbers; and fence delimiters, blockquote markers,
+  list bullets, task checkboxes, thematic breaks, table pipes, link brackets and inline HTML tags read
+  as punctuation. An intraword underscore (`some_long_name`) never starts emphasis, a backslash-escaped
+  marker stays literal, an unterminated marker is left plain, and a fenced body is opaque. (CMH-HL-07)
+- The runtime mirrors the same Markdown tokenizer, so an unbaked `language-markdown` block self-heals
+  on load and a `.md` / `.markdown` / `.mkd` file in a unified diff is highlighted from its filename.
+  (CMH-HL-08)
+- The showcase demo report ships a highlighted Markdown block (the volunteer handbook page), and the
+  showcase deck's supported-syntax slide lists Markdown. (CMH-DEMO-07)
+
 ## [1.248.0] - 2026-07-26
 
 ### Fixed

@@ -844,11 +844,12 @@ test("CMH-DECK-SHOWCASE-08: the showcase deck includes supported syntax labels, 
     // Supported syntax labels live on the code / KQL / diff slide (slide 11).
     await showSlideWith(page, ".show-supported-panel");
     const labels = page.locator(".slide.active");
-    await expect(labels.locator(".show-supported-pills .show-pill")).toHaveCount(11);
+    await expect(labels.locator(".show-supported-pills .show-pill")).toHaveCount(12);
     await expect(labels.locator(".show-supported-panel")).toContainText("Python");
     await expect(labels.locator(".show-supported-panel")).toContainText("TypeScript");
     await expect(labels.locator(".show-supported-panel")).toContainText("PowerShell");
-    await expect(labels.locator(".show-supported-panel")).toContainText("+37 more");
+    await expect(labels.locator(".show-supported-panel")).toContainText("Markdown");
+    await expect(labels.locator(".show-supported-panel")).toContainText("+44 more");
     // The rebalanced code/diff slide still fits the fixed 1080px stage (no overflow/clipping).
     expect(await labels.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(4);
     // Live editable notes and the review checklist share the notes slide (slide 12).

@@ -61,6 +61,19 @@ It emits a `<pre><code class="language-<lang>">...</code></pre>` block whose tok
 
 JSON gets two extras: a property key is tokenized as `key` so it is tinted apart from a string value, and `jsonc` is accepted as a label (it resolves to `json`, whose `//` and `/* */` comments are highlighted as comments).
 
+**Markdown** (`markdown`, aliases `md`, `mdown`, `mkd`) is supported too. It carries no keywords, so it uses a dedicated line-oriented tokenizer that maps onto the same six classes:
+
+| Class | Markdown constructs |
+| --- | --- |
+| `kw` | ATX headings, setext `=` underlines, bold (`**x**`, `__x__`), bold-italic, a fence info string |
+| `com` | emphasis (`*x*`, `_x_`), strikethrough (`~~x~~`), HTML comments |
+| `str` | inline code spans, fenced-code bodies, autolinks, link / image / reference destinations |
+| `fn` | link and image text, reference labels, footnote references |
+| `num` | ordered-list marker digits |
+| `op` | fence delimiters, blockquote `>`, list bullets, task checkboxes, thematic breaks, table pipes and delimiter rows, link brackets, inline HTML tags |
+
+A fenced body is opaque - its content is colored as one embedded-code run, never re-tokenized in the fence's own language - an HTML comment carries across lines like a fence, an intraword underscore (`some_long_name`) never starts emphasis, a backslash-escaped marker stays literal, and an unterminated or space-padded marker (`**bold **`) is left plain. A 4-space indented code block and YAML front matter are tokenized as prose (telling them apart from nested list content needs full block parsing). The runtime mirrors the same mapping, so an unbaked `language-markdown` block self-heals on load and a `.md` file in a diff is highlighted from its filename.
+
 ### Highlighting is baked and verified automatically
 
 Never ship a `language-XXX` block that renders as plain monochrome text. Three layers make that hard to get wrong:

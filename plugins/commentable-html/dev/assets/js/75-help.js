@@ -138,6 +138,7 @@ function showHelp(restoreEl) {
           '<li><strong>Code, KQL and charts</strong> are framed for readability; every code block has an always-visible <em>Copy</em> button, and a KQL caption title copies the cluster name.</li>' +
           '<li><strong>Syntax highlighting</strong> covers 50+ language labels, including <code>json</code> and <code>jsonc</code> - a JSON property name is tinted apart from its value, and <code>//</code> or <code>/* */</code> comments read as comments.</li>' +
           '<li><strong>Diffs</strong> are syntax-highlighted with a per-document <em>Syntax</em> toggle (green when on, red when off).</li>' +
+          '<li><strong>Markdown</strong> blocks are highlighted like any other language - headings, bold and italic, links, lists, tables, and fenced code - and a diff of a <code>.md</code> file reads the same way.</li>' +
           '<li>Long content wraps inside its box and never overflows.</li>' +
         '</ul>') +
       T('Tips and shortcuts',

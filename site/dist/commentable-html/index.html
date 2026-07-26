@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.248.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.249.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,12 +457,23 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.249.0] - 2026-07-26</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Markdown is now a supported syntax-highlighting language (<code>markdown</code>, aliases <code>md</code>, <code>mdown</code>, <code>mkd</code>). Markdown carries no keywords, so it gets a dedicated line-oriented tokenizer that reuses the six shipped token classes: headings, setext underlines, bold and a fence info string read as keywords; emphasis, strikethrough and HTML comments read as comments; inline code spans, fenced-code bodies, autolinks and link destinations read as strings; link text, reference labels and footnote references read as function names; ordered-list digits read as numbers; and fence delimiters, blockquote markers, list bullets, task checkboxes, thematic breaks, table pipes, link brackets and inline HTML tags read as punctuation. An intraword underscore (<code>some_long_name</code>) never starts emphasis, a backslash-escaped marker stays literal, an unterminated marker is left plain, and a fenced body is opaque. (CMH-HL-07)</li>
+              <li>The runtime mirrors the same Markdown tokenizer, so an unbaked <code>language-markdown</code> block self-heals on load and a <code>.md</code> / <code>.markdown</code> / <code>.mkd</code> file in a unified diff is highlighted from its filename. (CMH-HL-08)</li>
+              <li>The showcase demo report ships a highlighted Markdown block (the volunteer handbook page), and the showcase deck&#x27;s supported-syntax slide lists Markdown. (CMH-DEMO-07)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.248.0] - 2026-07-26</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The floating per-link <code>Add Comment</code> button that appears when hovering a commentable link now wears the shared crimson accent pill (background, label color, rounded shape, shadow, hover and active states) like every other add-comment affordance. <code>.cm-link-add</code> had been left out of the shared pill rule, so the link button rendered as a plain default browser button. (CMH-UI-04)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.247.0] - 2026-07-26</h3></div>
             <div class="group-label">Fixed</div>
@@ -480,8 +491,6 @@
               <li>The runtime/author-time highlighter drift guard now also requires the runtime to know every author-time ALIAS, not just every canonical language. <code>diffLangKnown()</code> looks the raw <code>language-XXX</code> label up with no alias resolution, so an alias-only language was highlightable at author time and monochrome at runtime - the exact hole that let <code>jsonc</code> ship unhighlighted. (CMH-HL-03)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.246.0] - 2026-07-25</h3></div>
             <div class="group-label">Fixed</div>
@@ -518,21 +527,7 @@
               <li>Print / Save-as-PDF single continuous page is now generic across ALL print destinations, not just Chromium&#x27;s native &quot;Save as PDF&quot;. Previously it forced the body to the on-screen reading-column width (~1280px on a wide screen) and sized a giant custom <code>@page</code> to match. Chromium&#x27;s native vector &quot;Save as PDF&quot; honors that custom page, but a driver that ignores it (Microsoft Print to PDF, physical printers, browsers without custom-<code>@page</code> support) paginated onto standard paper while the body stayed forced to ~1280px, so it downscaled to fit (poor quality), left wide side whitespace, and stranded tall diagrams. The single page is now sized to a portable standard page (US Letter, 816px) and, crucially, the print CSS uses <code>width: auto</code> with the inset provided by the <code>@page</code> margin instead of a forced body width: a browser that honors the custom <code>@page</code> fills it as one tall page, while any driver that ignores it reflows the content into its OWN real Letter/A4 printable area and paginates normally, never downscaled. The height is measured at the exact content width the page renders at, so it is accurate (fixing a box-model skew and a double-counted page margin that had bloated the page and, on a multi-diagram document, spilled a near-blank overflow page). A document with genuinely wide content (a wide table) still grows the page so nothing is clipped.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.242.0] - 2026-07-25</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Replaced the two sidebar Sort arrows with a single <code>Sort</code> button that cycles document order -&gt; newest first -&gt; oldest first -&gt; document order; its icon and tooltip reflect the current state and what the next click does.</li>
-              <li>Reworded the export &quot;Retain authoring session provenance&quot; checkbox to &quot;Keep AI session id in exports&quot; and added a tooltip explaining it (exports strip the AI session/agent id by default).</li>
-              <li>Restyled the Export and More dropdown menus as clean, content-width menu items (matching the collapsed toolbar menu) instead of full-ribbon-width bordered buttons.</li>
-              <li>The author pill now aligns to the note&#x27;s text bottom so there is no whitespace gap beneath it, and the three metadata lines (Generated, Last comment, Commenting as) are evenly spaced.</li>
-            </ul>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Each export action now shows a centered toast naming which export is running.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">205 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">206 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

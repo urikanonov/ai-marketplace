@@ -282,6 +282,15 @@ return then true until while
         "block_comments": (("/*", "*/"),),
         "string_styles": ("single", "double"),
     },
+    "markdown": {
+        # Markdown is structural and line-oriented, not keyword-based, so it opts out of the shared
+        # comment/string/keyword tokenizer and is highlighted by _highlight_markdown() below.
+        "tokenizer": "markdown",
+        "keywords": frozenset(),
+        "line_comments": (),
+        "block_comments": (),
+        "string_styles": (),
+    },
     "groovy": {
         "keywords": _words("""
 abstract as assert boolean break byte case catch char class const continue def
@@ -378,6 +387,9 @@ ALIASES = {
     "bat": "batch",
     "cmd": "batch",
     "jsonc": "json",
+    "md": "markdown",
+    "mdown": "markdown",
+    "mkd": "markdown",
 }
 
 _IDENTIFIER_RE = r"@?[A-Za-z_$][A-Za-z0-9_$]*"
@@ -514,12 +526,236 @@ def _token_re(language):
     return token_re
 
 
+# ---------------------------------------------------------------------------
+# Markdown
+#
+# Markdown carries no keywords, so it gets its own line-oriented tokenizer. Block constructs are
+# classified per line (with one carried-over state: an open fenced code block), then the remainder
+# of a line runs through the inline scanner. The runtime mirror is cmhHighlightMarkdown() in
+# assets/js/26-highlight.js; the two are pinned together by tests/fixtures/highlight_parity.json.
+#
+# Token mapping (reusing the six shipped classes): headings, setext underlines, bold and a fence
+# info string -> kw; emphasis, strikethrough and HTML comments -> com; code spans, fenced code
+# bodies, autolinks and link destinations -> str; link text, reference labels and footnote
+# references -> fn; ordered-list numbers -> num; structural punctuation -> op.
+# ---------------------------------------------------------------------------
+
+_MD_FENCE_RE = re.compile(r"([ \t]{0,3})(`{3,}|~{3,})([ \t]*)(.*)$")
+_MD_HEADING_RE = re.compile(r"([ \t]{0,3})(#{1,6}(?:[ \t].*)?)$")
+_MD_SETEXT_RE = re.compile(r"[ \t]{0,3}=+[ \t]*$")
+# A dash run under a paragraph is a setext H2 underline, not a thematic break. A single `-` stays a
+# list marker (an empty list item is far more common in a draft than a one-character underline).
+_MD_SETEXT_DASH_RE = re.compile(r"[ \t]{0,3}-{2,}[ \t]*$")
+_MD_BREAK_RE = re.compile(r"[ \t]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$")
+_MD_TABLE_RULE_RE = re.compile(r"[ \t]{0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-*:?[ \t]*)+\|?[ \t]*$")
+_MD_LIST_RE = re.compile(r"([-*+]|\d{1,9}[.)])([ \t]+|$)")
+_MD_TASK_RE = re.compile(r"\[[ xX]\](?=[ \t]|$)")
+_MD_REFDEF_RE = re.compile(r"(\[)([^\]\n]+)(\]:)([ \t]*)(\S+)(.*)$")
+_MD_WORD_RE = re.compile(r"[A-Za-z0-9_]")
+# Precedence matters: the first alternative that matches at the leftmost position wins, so a code
+# span shields its contents from emphasis, and an autolink is tried before a generic inline tag.
+# Every scan that could fail is LENGTH-CAPPED: an uncapped `[^\]\n]*` retried from each of 32k `[`
+# characters is quadratic, and this tokenizer runs in the browser on authored content. A construct
+# longer than its cap simply is not highlighted.
+_MD_INLINE_RE = re.compile(
+    r"(?P<esc>\\[\\`*_{}\[\]()#+.!|~>-])"
+    r"|(?P<code>```[^\n]*?```|``[^\n]*?``|`[^`\n]+`)"
+    r"|(?P<auto><[A-Za-z][A-Za-z0-9+.-]{0,30}:[^<>\s]{0,500}>|<[^<>\s@]{1,200}@[^<>\s]{1,200}>)"
+    r"|(?P<htmlcom><!--[\s\S]*?(?:-->|$))"
+    r"|(?P<tag></?[A-Za-z][^<>\n]{0,500}>)"
+    r"|(?P<link>(?P<link_open>!?\[)(?P<link_text>[^\]\n]{0,200})(?P<link_mid>\]\()(?P<link_dest>[^)\n]{0,500})(?P<link_end>\)))"
+    r"|(?P<ref>(?P<ref_open>!?\[)(?P<ref_text>[^\]\n]{0,200})(?P<ref_mid>\]\[)(?P<ref_label>[^\]\n]{0,200})(?P<ref_end>\]))"
+    r"|(?P<note>\[\^[^\]\n]{1,200}\])"
+    r"|(?P<strong>\*\*\*[^\s*](?:[^\n]{0,500}?[^\s*])?\*\*\*|___[^\s_](?:[^\n]{0,500}?[^\s_])?___"
+    r"|\*\*[^\s*](?:[^\n]{0,500}?[^\s*])?\*\*|__[^\s_](?:[^\n]{0,500}?[^\s_])?__)"
+    r"|(?P<strike>~~[^\s~](?:[^\n]{0,500}?[^\s~])?~~)"
+    r"|(?P<em>\*[^\s*](?:[^*\n]*?[^\s*])?\*|_[^\s_](?:[^_\n]*?[^\s_])?_)"
+    r"|(?P<pipe>\|)")
+
+
+def _md_word_at(text, index):
+    return 0 <= index < len(text) and bool(_MD_WORD_RE.match(text[index]))
+
+
+def _md_intraword(text, match):
+    """True when an underscore-delimited emphasis run sits inside a word (some_long_name), where
+    Markdown does not start emphasis."""
+    if not match.group().startswith("_"):
+        return False
+    return _md_word_at(text, match.start() - 1) or _md_word_at(text, match.end())
+
+
+def _md_inline_token(match, text, pipes):
+    """The HTML for one inline match, or None to reject it and rescan from the next character."""
+    if match.group("esc") is not None:
+        return _esc(match.group())
+    if match.group("code") is not None or match.group("auto") is not None:
+        return _span("str", match.group())
+    if match.group("htmlcom") is not None:
+        return _span("com", match.group())
+    if match.group("tag") is not None:
+        return _span("op", match.group())
+    if match.group("link") is not None:
+        text_part, dest = match.group("link_text"), match.group("link_dest")
+        return (_span("op", match.group("link_open"))
+                + (_span("fn", text_part) if text_part else "")
+                + _span("op", match.group("link_mid"))
+                + (_span("str", dest) if dest else "")
+                + _span("op", match.group("link_end")))
+    if match.group("ref") is not None:
+        text_part, label = match.group("ref_text"), match.group("ref_label")
+        return (_span("op", match.group("ref_open"))
+                + (_span("fn", text_part) if text_part else "")
+                + _span("op", match.group("ref_mid"))
+                + (_span("fn", label) if label else "")
+                + _span("op", match.group("ref_end")))
+    if match.group("note") is not None:
+        return _span("fn", match.group())
+    if match.group("strong") is not None:
+        return None if _md_intraword(text, match) else _span("kw", match.group())
+    if match.group("strike") is not None:
+        return _span("com", match.group())
+    if match.group("em") is not None:
+        return None if _md_intraword(text, match) else _span("com", match.group())
+    return _span("op", "|") if pipes else None
+
+
+def _md_inline(text, pipes=False):
+    """(html, open_comment) - open_comment is True when the line ends inside an unclosed HTML
+    comment, so the caller can carry the comment across lines the way it carries a fence."""
+    out = []
+    pos = 0
+    open_comment = False
+    while pos < len(text):
+        match = _MD_INLINE_RE.search(text, pos)
+        if match is None:
+            break
+        if match.start() > pos:
+            out.append(_esc(text[pos:match.start()]))
+        rendered = _md_inline_token(match, text, pipes)
+        if rendered is None:
+            out.append(_esc(text[match.start()]))
+            pos = match.start() + 1
+            continue
+        if match.group("htmlcom") is not None and not match.group().endswith("-->"):
+            open_comment = True
+        out.append(rendered)
+        pos = match.end()
+    if pos < len(text):
+        out.append(_esc(text[pos:]))
+    return "".join(out), open_comment
+
+
+def _md_closes_fence(line, char, length):
+    body = line.lstrip(" \t")
+    if len(line) - len(body) > 3:
+        return False
+    body = body.rstrip(" \t")
+    return len(body) >= length and set(body) == {char}
+
+
+def _md_prefixed(line):
+    """(html, open_comment) - blockquote markers, a list marker and an optional task checkbox,
+    then inline content."""
+    out = []
+    index, size = 0, len(line)
+    while index < size and line[index] in " \t":
+        index += 1
+    out.append(_esc(line[:index]))
+    while index < size and line[index] == ">":
+        out.append(_span("op", ">"))
+        index += 1
+        start = index
+        while index < size and line[index] in " \t":
+            index += 1
+        out.append(_esc(line[start:index]))
+    match = _MD_LIST_RE.match(line, index)
+    if match:
+        marker = match.group(1)
+        if marker[0].isdigit():
+            out.append(_span("num", marker[:-1]))
+            out.append(_span("op", marker[-1]))
+        else:
+            out.append(_span("op", marker))
+        out.append(_esc(match.group(2)))
+        index = match.end()
+        task = _MD_TASK_RE.match(line, index)
+        if task:
+            out.append(_span("op", task.group()))
+            index = task.end()
+    rest = line[index:]
+    refdef = _MD_REFDEF_RE.match(rest)
+    if refdef and not refdef.group(2).startswith("^"):
+        tail, open_comment = _md_inline(refdef.group(6))
+        out.append(_span("op", refdef.group(1)))
+        out.append(_span("fn", refdef.group(2)))
+        out.append(_span("op", refdef.group(3)))
+        out.append(_esc(refdef.group(4)))
+        out.append(_span("str", refdef.group(5)))
+        out.append(tail)
+        return "".join(out), open_comment
+    tail, open_comment = _md_inline(rest, rest.count("|") >= 2)
+    out.append(tail)
+    return "".join(out), open_comment
+
+
+def _md_line(line, fence, in_comment, prev_para):
+    """(html, fence, in_comment, paragraph) for one line. `fence` is the open (char, length) fenced
+    block or None; `in_comment` is True while an HTML comment opened on an earlier line is still
+    open; `prev_para` says whether the PREVIOUS line was plain paragraph text, which is what turns a
+    dash run into a setext underline rather than a thematic break."""
+    if fence is not None:
+        if _md_closes_fence(line, fence[0], fence[1]):
+            return _span("op", line), None, False, False
+        return (_span("str", line) if line else ""), fence, False, False
+    if in_comment:
+        end = line.find("-->")
+        if end < 0:
+            return (_span("com", line) if line else ""), None, True, False
+        rest = line[end + 3:]
+        tail, still_open = _md_inline(rest, rest.count("|") >= 2)
+        return _span("com", line[:end + 3]) + tail, None, still_open, False
+    match = _MD_FENCE_RE.match(line)
+    if match and not (match.group(2)[0] == "`" and "`" in match.group(4)):
+        info = match.group(4)
+        html = (_esc(match.group(1)) + _span("op", match.group(2)) + _esc(match.group(3))
+                + (_span("kw", info) if info else ""))
+        return html, (match.group(2)[0], len(match.group(2))), False, False
+    match = _MD_HEADING_RE.match(line)
+    if match:
+        return _esc(match.group(1)) + _span("kw", match.group(2)), None, False, False
+    if prev_para and _MD_SETEXT_DASH_RE.match(line):
+        return _span("kw", line), None, False, False
+    if _MD_BREAK_RE.match(line):
+        return _span("op", line), None, False, False
+    if _MD_SETEXT_RE.match(line):
+        return _span("kw", line), None, False, False
+    if _MD_TABLE_RULE_RE.match(line):
+        return _span("op", line), None, False, False
+    indent = len(line) - len(line.lstrip(" \t"))
+    paragraph = bool(line.strip()) and line[indent:indent + 1] != ">" and not _MD_LIST_RE.match(line, indent)
+    html, open_comment = _md_prefixed(line)
+    return html, None, open_comment, paragraph
+
+
+def _highlight_markdown(src):
+    out, fence, in_comment, para = [], None, False, False
+    for index, line in enumerate(src.split("\n")):
+        if index:
+            out.append("\n")
+        html, fence, in_comment, para = _md_line(line, fence, in_comment, para)
+        out.append(html)
+    return "".join(out)
+
+
 def highlight_code(language, code):
     """Return escaped code with token spans and no wrapper."""
     src = _normalize_code(code)
     lang = _normalize_language(language)
     if lang not in LANGUAGE_CONFIGS:
         return _esc(src)
+    if LANGUAGE_CONFIGS[lang].get("tokenizer") == "markdown":
+        return _highlight_markdown(src)
     out = []
     for match in _token_re(lang).finditer(src):
         kind = match.lastgroup

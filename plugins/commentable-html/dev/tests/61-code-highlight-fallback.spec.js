@@ -145,6 +145,44 @@ test.describe("runtime code-highlight fallback (CMH-HL-01)", () => {
     expect((await view.locator("span.cmh-code-str").allTextContents())).toContain('"name"');
   });
 
+  test("an unbaked language-markdown block is highlighted on load (CMH-HL-08)", async ({ page }) => {
+    const source = [
+      "## Findings",
+      "",
+      "A *soft* and **hard** point, see [the spec](https://x.dev/a).",
+      "",
+      "1. first `step`",
+      "- [ ] some_long_name stays plain",
+      "",
+      "```js",
+      "const a = 1;",
+      "```",
+    ].join("\n");
+    await open(page, "<h1>Markdown</h1>" + '<pre><code class="language-markdown">' + source + "</code></pre>",
+      "cmh-hl-fallback-markdown");
+
+    const md = page.locator("#commentRoot pre code.language-markdown");
+    const joined = async (cls) => (await md.locator("span.cmh-code-" + cls).allTextContents()).join("\u0000");
+    // Headings and bold read as keywords; emphasis reads as a comment (the italic token class).
+    expect(await joined("kw")).toContain("## Findings");
+    expect(await joined("kw")).toContain("**hard**");
+    expect(await joined("com")).toContain("*soft*");
+    // Link text vs destination, the inline code span, the fenced body and its info string.
+    expect(await joined("fn")).toContain("the spec");
+    expect(await joined("str")).toContain("https://x.dev/a");
+    expect(await joined("str")).toContain("`step`");
+    expect(await joined("kw")).toContain("js");
+    expect(await joined("str")).toContain("const a = 1;");
+    // An ordered-list marker colors its digits as a number.
+    expect(await joined("num")).toContain("1");
+    // An intraword underscore is not emphasis: the com class IS populated (asserted above), and no
+    // comment token covers the underscored run.
+    await expect(md.locator("span.cmh-code-com", { hasText: "_long_" })).toHaveCount(0);
+    expect(await joined("com")).not.toContain("_long_");
+    // Highlighting only adds structure: the block's text is untouched.
+    expect(await md.textContent()).toBe(source);
+  });
+
   test("an already-highlighted (baked) block is not re-highlighted", async ({ page }) => {
     await open(page,
       "<h1>Baked</h1>"

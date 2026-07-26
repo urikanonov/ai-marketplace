@@ -523,4 +523,30 @@ for %%a in (%*) do (
 echo Processed !count! item(s)
 endlocal
 ''',
+    "markdown": '''\
+# Release notes
+
+The **2.0** release focuses on *review speed*; see [the guide](https://x.dev/guide "Guide").
+
+## Highlights
+
+1. Faster indexing (about `3x` on a cold cache).
+2. A new `--check` flag, documented in [the guide][guide].
+- [x] Ship the indexer
+- [ ] Backfill the ~~legacy~~ archive
+
+> Upgrading is safe: the on-disk format is unchanged.
+
+| Flag | Default | Notes |
+| --- | :---: | --- |
+| `--check` | off | fails on drift |
+
+```bash
+python tools/build.py --check   # verify, do not write
+```
+
+<!-- internal: rotate the token before publishing -->
+
+[guide]: https://x.dev/guide
+''',
 }

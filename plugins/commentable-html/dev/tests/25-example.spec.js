@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import fs from "fs";
 import path from "path";
 import {
   SKILL, fileUrl, ready, lastCopied, installClipboardCapture,
@@ -21,6 +22,23 @@ test.describe("showcase example: features work on the shipped example HTML", () 
     await expect(page.locator('#commentRoot pre code.language-python')).toHaveCount(1);
     await expect(page.locator('#commentRoot pre code.language-csharp')).toHaveCount(1);
     await expect(page.locator('#commentRoot code.language-csharp .cmh-code-kw').first()).toBeVisible();
+  });
+
+  test("ships an author-time highlighted Markdown snippet (CMH-DEMO-07)", async ({ page }) => {
+    // Baked at author time, so it stays highlighted with scripts disabled and in a Plain HTML export.
+    const shipped = fs.readFileSync(EXAMPLE, "utf8");
+    expect(shipped).toContain('<pre><code class="language-markdown"><span class="cmh-code-kw">');
+
+    await openExample(page);
+    const md = page.locator("#commentRoot pre code.language-markdown");
+    await expect(md).toHaveCount(1);
+    const joined = async (cls) => (await md.locator(".cmh-code-" + cls).allTextContents()).join("\u0000");
+    expect(await joined("kw")).toContain("# Watering week");   // heading
+    expect(await joined("kw")).toContain("**Monday**");        // bold
+    expect(await joined("com")).toContain("*up*");             // emphasis
+    expect(await joined("fn")).toContain("rainfall log");      // link text
+    expect(await joined("str")).toContain("https://example.org/rain");
+    expect(await joined("num")).toContain("1");                // ordered-list marker
   });
 
   test("the runtime attribution footer appears", async ({ page }) => {
