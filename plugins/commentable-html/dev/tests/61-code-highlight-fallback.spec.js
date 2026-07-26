@@ -77,15 +77,22 @@ test.describe("runtime code-highlight fallback (CMH-HL-01)", () => {
 
   test("a raw newline inside a JSON string produces no key span, matching the author-time tokenizer (CMH-HL-05)", async ({ page }) => {
     // A raw newline is illegal inside a JSON string. If the runtime scanned across it, it would claim
-    // one multi-line key span where highlight_code.py emits two unterminated string tokens.
+    // one multi-line key span where highlight_code.py emits two unterminated string tokens. The second
+    // block pins the sibling shape: an UNTERMINATED string followed by a colon is a string, not a key,
+    // because the author-time key pattern requires the closing quote.
     await open(page,
       "<h1>Broken</h1>"
-      + '<pre><code class="language-json">{"a\nb": 1}</code></pre>',
+      + '<pre><code class="language-json">{"a\nb": 1}</code></pre>'
+      + '<pre><code class="language-jsonc">{"a\n: 1}</code></pre>',
       "cmh-hl-fallback-json-newline");
 
     const code = page.locator("#commentRoot pre code.language-json");
     await expect(code.locator("span.cmh-code-key")).toHaveCount(0);
     expect(await code.locator("span.cmh-code-str").allTextContents()).toEqual(['"a', '": 1}']);
+
+    const truncated = page.locator("#commentRoot pre code.language-jsonc");
+    await expect(truncated.locator("span.cmh-code-key")).toHaveCount(0);
+    expect(await truncated.locator("span.cmh-code-str").allTextContents()).toEqual(['"a']);
   });
 
   test("an already-highlighted (baked) block is not re-highlighted", async ({ page }) => {

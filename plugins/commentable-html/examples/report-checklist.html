@@ -5962,8 +5962,13 @@ const _HL_MARKUP_KW = new Set(("a article body button code div footer h1 h2 h3 h
 // identifier as a keyword and diverge from the author-time json config.
 const _HL_JSON_KW = new Set(["true", "false", "null"]);
 const _hlCache = {};
-// A JSON string token is a property KEY when the next non-whitespace character is a colon. The
-// author-time highlighter applies the same rule via a `(?=\s*:)` lookahead, so the two agree.
+// A JSON string token is a property KEY when it is CLOSED and the next non-whitespace character is a
+// colon. The author-time highlighter applies the same rule via a `"..."(?=\s*:)` lookahead whose closing
+// quote is REQUIRED, so the two agree; without the terminated check an unterminated `{"a\n: 1}` would be
+// a key at runtime and a string at author time.
+function _jsonKeyIsTerminated(token) {
+  return token.length > 1 && token.charAt(token.length - 1) === '"';
+}
 function _jsonKeyFollows(text, from) {
   let j = from;
   while (j < text.length && /\s/.test(text[j])) j++;
@@ -6008,7 +6013,7 @@ function cmhHighlightCode(text, lang) {
     const t = m[0], g = m.groups;
     let cls = null;
     if (g.com) cls = "com";
-    else if (g.str) cls = (fam === "json" && _jsonKeyFollows(text, re.lastIndex)) ? "key" : "str";
+    else if (g.str) cls = (fam === "json" && _jsonKeyIsTerminated(t) && _jsonKeyFollows(text, re.lastIndex)) ? "key" : "str";
     else if (g.num) cls = "num";
     else if (g.id) cls = (fam === "markup" ? _HL_MARKUP_KW : fam === "json" ? _HL_JSON_KW : _HL_KW_SET).has(re.ignoreCase ? t.toLowerCase() : t) ? "kw" : (text[re.lastIndex] === "(" ? "fn" : null);
     else if (g.op) cls = "op";

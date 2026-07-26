@@ -311,6 +311,27 @@ class HighlightCodeCommentAndStringEdgeTests(unittest.TestCase):
         out = H.highlight_code("javascript", '"a \\\nb"')
         self.assertIn('<span class="cmh-code-str">"a \\\nb"</span>', out)
 
+    def test_an_operator_run_never_swallows_a_comment_opener(self):
+        # `_OP_RE` is greedy and several comment openers start with an operator character, so an
+        # operator directly abutting a comment used to absorb the opener and the comment BODY was
+        # then highlighted as live code (`{/*` tokenized as one operator).
+        for language, code, comment in (
+                ("jsonc", '{/* "a": 1 */"b":2}', '/* "a": 1 */'),
+                ("javascript", "x=1;/*c*/", "/*c*/"),
+                ("csharp", "int x=1;//n", "//n"),
+                ("haskell", "f x={-c-}x", "{-c-}"),
+                ("powershell", "$a=1<#c#>", "&lt;#c#&gt;"),
+                ("lua", "x=1--c", "--c"),
+                ("css", "a{b:c}/*d*/", "/*d*/")):
+            with self.subTest(language=language):
+                self.assertIn('<span class="cmh-code-com">%s</span>' % comment,
+                              H.highlight_code(language, code))
+
+    def test_a_non_comment_operator_pair_is_still_an_operator(self):
+        # The guard is built from each language's OWN comment prefixes, so Python floor division
+        # (`//`, not a comment there) must still tokenize as a single operator run.
+        self.assertIn('<span class="cmh-code-op">//</span>', H.highlight_code("python", "a = b//c"))
+
     def test_unterminated_block_comment_highlights_to_end(self):
         out = H.highlight_code("c", "int x; /* todo: finish")
         self.assertIn('<span class="cmh-code-com">/* todo: finish</span>', out)
@@ -414,6 +435,14 @@ class HighlightCodeJsonTests(unittest.TestCase):
         # or the runtime would claim one multi-line key span where the author-time tool emits several
         # tokens - a parity break. The runtime `json` family uses a newline-free string form for this.
         inner = H.highlight_code("json", '{"a\nb": 1}')
+        self.assertNotIn("cmh-code-key", inner)
+        self.assertIn('<span class="cmh-code-str">"a</span>', inner)
+
+    def test_an_unterminated_string_before_a_colon_is_not_a_key(self):
+        # `_KEY_STRING_RE` REQUIRES the closing quote, so a truncated string that happens to be
+        # followed by a colon stays a string. The runtime mirrors this with its terminated check;
+        # without it the two tokenizers disagreed on exactly this shape.
+        inner = H.highlight_code("json", '{"a\n: 1}')
         self.assertNotIn("cmh-code-key", inner)
         self.assertIn('<span class="cmh-code-str">"a</span>', inner)
 

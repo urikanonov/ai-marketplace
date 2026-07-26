@@ -16,6 +16,13 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 - A `/* ... */` block comment in a JSON/JSONC block is highlighted as a comment. The author-time `json`
   config declared only `//` line comments, so a block comment was tokenized as operators plus plain text
   - and silently disagreed with the runtime, which did treat it as a comment. (CMH-HL-05)
+- A comment that directly abuts an operator, with no whitespace between them, is highlighted as a
+  comment. The author-time tokenizer's greedy operator run absorbed the comment's opener (`{/*` became
+  one operator token), so the comment BODY was then highlighted as live code - which the new JSON block
+  comments made visible as `{/* "a": 1 */}` colouring `"a"` as a property key. The operator run is now
+  guarded per language by that language's own comment prefixes, so `x=1;/*c*/`, `int x=1;//n`,
+  `f x={-c-}`, `$a=1<#c#>` and `x=1--c` all highlight correctly while an operator pair that is not a
+  comment in that language (Python floor division `//`) is untouched. (CMH-HL-06)
 
 ### Added
 
