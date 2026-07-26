@@ -108,22 +108,28 @@ npm run shots:linux:check    # force the pinned container, verify only
 
 All four route through `tools/shots_linux.py`, so the short, habitual command is the safe one.
 
-- On a **Linux** host the capture runs natively and Docker is not involved at all. CI does the same
-  thing (it installs chromium on a bare runner), so a matching Ubuntu release renders identically.
-- On any other host it runs inside `mcr.microsoft.com/playwright:v<version>-noble`, pinned on two
-  axes: the `@playwright/test` version resolved in `package-lock.json` (which fixes the chromium
-  binary) and the Ubuntu release in the image variant (which fixes the FONTS - the axis that actually
-  causes a mismatch). The run also pins `--platform linux/amd64`, so an Apple Silicon host does not
-  render with the arm64 stack. Do not hardcode the tag anywhere.
-- **Docker is therefore only required to regenerate screenshots on a non-Linux host.** It is not
-  needed for normal development, for any test suite (`npm test` skips the check where it would be
-  meaningless), or by CI. When it is missing the wrapper fails with an explicit message naming the
-  image, why Linux rendering is required, and the alternatives.
+- It renders **natively only where the host IS the CI platform** (x86_64 Ubuntu matching the pinned
+  runner release, probed via `/etc/os-release`). Docker is not involved there.
+- **Every other host** - Windows, macOS, and any Linux on a different distro, release, or
+  architecture - falls back to `mcr.microsoft.com/playwright:v<version>-noble` **automatically**;
+  there is no flag to remember. The image is pinned on two axes: the `@playwright/test` version
+  resolved in `package-lock.json` (the chromium binary) and the Ubuntu release in the image variant
+  (the FONTS - the axis that actually causes a mismatch). The run also pins `--platform linux/amd64`,
+  so an Apple Silicon host does not render with the arm64 stack, and `--user` on a Linux host so the
+  container leaves no root-owned files. Do not hardcode the tag anywhere.
+- **Docker is therefore only required where the host is not the CI platform.** It is not needed for
+  normal development, for any test suite (`npm test` skips the check where it would be meaningless),
+  or by CI. When it is missing the wrapper fails with an explicit message naming the image, why the
+  CI renderer is required, and the alternatives.
 
-**The container matches CI by agreement, not by construction** - CI does not run inside that image.
-So the `playwright-heavy` job is pinned to `ubuntu-24.04` (not `ubuntu-latest`) to match the `-noble`
-variant, and `test_shots_linux.py` couples the two. If you ever move one, move the other in the same
-change; the guard will fail until you do.
+**Scope of the guarantee.** Matching distro, release and architecture is a BEST-EFFORT match, not a
+proof: `/etc/os-release` says nothing about installed font/fontconfig package versions, and the
+GitHub runner image is itself updated over time. Likewise the container matches CI by AGREEMENT, not
+by construction - CI does not run inside that image. So the `playwright-heavy` job is pinned to
+`ubuntu-24.04` (not `ubuntu-latest`) to match the `-noble` variant, and `test_shots_linux.py` asserts
+that job's own `runs-on` equals the release the image variant names; if you move one, move the other
+in the same change. **CI remains the authoritative gate** - this tooling exists to make a local
+regeneration almost always agree with it, and to make a wrong-renderer run loud instead of silent.
 
 `rebuild_all.py` skips the screenshot step entirely on a non-Linux host, with a note pointing here, so
 it can no longer produce a CI-failing artifact by accident. If your change does not affect the shots,

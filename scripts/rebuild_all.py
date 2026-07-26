@@ -63,7 +63,9 @@ def _host_renders_ci_shots():
         import shots_linux
         return shots_linux.host_matches_ci_renderer()
     except Exception:
-        return sys.platform.startswith("linux")
+        # Fail CLOSED: without the shared predicate we cannot tell whether this host renders like
+        # CI, and guessing "yes" is what silently produced wrong PNGs in the first place.
+        return False
 
 
 def _run(label, cmd):
@@ -93,10 +95,12 @@ def main(argv=None):
     else:
         print("== Playwright fixtures (generate.mjs) == skipped (node not found; CI plugin-tests runs it)")
     if not _host_renders_ci_shots():
-        print("== Tutorial screenshots (capture_tutorial.mjs) == skipped (this host is not Linux; the "
-              "committed shots are Linux-rendered, so regenerating or checking them here would compare "
-              "against the wrong renderer). Run 'npm run shots:linux' from plugins/commentable-html/dev "
-              "to regenerate them in the pinned container; CI plugin-tests remains the authoritative gate.")
+        print("== Tutorial screenshots (capture_tutorial.mjs) == skipped (this host does not render "
+              "the committed screenshots the way the CI job does - they are rendered on a pinned "
+              "x86_64 Ubuntu runner - so regenerating or checking them here would use the wrong "
+              "renderer). Run 'npm run shots' from plugins/commentable-html/dev to render them "
+              "correctly (it uses the pinned container automatically where needed); CI plugin-tests "
+              "remains the authoritative gate.")
     elif node and os.path.exists(TUTORIAL_SHOTS) and _tutorial_deps_installed():
         steps.append(("Tutorial screenshots (capture_tutorial.mjs)", [node, TUTORIAL_SHOTS] + check))
     elif node and os.path.exists(TUTORIAL_SHOTS):

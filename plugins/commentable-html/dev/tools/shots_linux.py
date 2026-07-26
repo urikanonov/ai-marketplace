@@ -10,13 +10,20 @@ they agree and go green, and only the required ``playwright-heavy`` CI job (on L
 
 This tool makes the regeneration deterministic and one-command everywhere:
 
-* On a LINUX host it runs the capture natively. Docker is NOT required - the host renderer already
-  matches CI (which itself renders on a pinned ubuntu-24.04 runner, not in a container). Pass
-  ``--container`` when the Linux host is a DIFFERENT distro or release, whose fonts may still differ.
-* On any other host it runs the capture inside the pinned Playwright container. Two axes are pinned:
-  the ``@playwright/test`` version resolved in ``package-lock.json`` (which fixes the chromium
-  binary) and the Ubuntu release in the image variant (which fixes the FONTS - the axis that actually
-  caused the original mismatch). Neither is hardcoded at a call site.
+* It renders NATIVELY only where the host IS the CI platform (x86_64 Ubuntu matching the pinned
+  runner release). Docker is not involved there.
+* EVERY other host - Windows, macOS, and any Linux that is a different distro, release, or
+  architecture - falls back to the pinned Playwright container AUTOMATICALLY. There is no flag to
+  remember, because getting it wrong is silent. Two axes are pinned: the ``@playwright/test``
+  version resolved in ``package-lock.json`` (which fixes the chromium binary) and the Ubuntu release
+  in the image variant (which fixes the FONTS - the axis that actually caused the original
+  mismatch). Neither is hardcoded at a call site.
+
+Scope of the guarantee: matching distro, release and architecture is a BEST-EFFORT match, not a
+proof - ``/etc/os-release`` says nothing about installed font or fontconfig package versions, and the
+GitHub runner image itself is updated over time. CI remains the authoritative gate; this tool exists
+to make a local regeneration almost always agree with it, and to make a disagreement loud instead of
+silent.
 
 The container is equivalent to CI by AGREEMENT, not by construction: CI does not run inside this
 image, it installs chromium on a bare runner. That is why the runner is pinned to the release named
@@ -25,8 +32,8 @@ divergence, so the guard forces a conscious, two-sided edit.
 
 Usage (from ``plugins/commentable-html/dev``)::
 
-    npm run shots                # regenerate (native on Linux, container elsewhere)
-    npm run shots:check          # verify; skips with a note where the host cannot match CI
+    npm run shots                # regenerate (native where the host is the CI platform, container otherwise)
+    npm run shots:check          # verify; skips with a note where the host cannot render like CI
     npm run shots:linux          # force the pinned container
     npm run shots:linux:check    # force the pinned container, verify only
 
@@ -98,7 +105,16 @@ def host_matches_ci_renderer(platform_name=None, machine=None, os_release=None):
 
 
 def _in_ci():
-    return bool(os.environ.get("CI"))
+    """True only for a CI runner that could BE the renderer.
+
+    Scoped deliberately: a bare truthy `CI` is not enough, because a Windows or macOS CI job (or a
+    local shell that exports CI=1) would otherwise bypass the platform guard and rewrite the PNGs
+    with the wrong renderer - the exact failure this tool prevents. `CI=false`/`0` is honoured.
+    """
+    value = os.environ.get("CI", "").strip().lower()
+    if value in ("", "0", "false", "no"):
+        return False
+    return sys.platform.startswith("linux")
 
 
 def pinned_playwright_version(dev_dir):

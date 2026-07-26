@@ -178,6 +178,20 @@ class HostDispatchTests(unittest.TestCase):
         run.assert_called_once()
         self.assertIn("capture_tutorial.mjs", " ".join(run.call_args[0][0]))
 
+    def test_the_ci_escape_hatch_is_scoped_to_a_linux_runner(self):
+        # A bare truthy CI is not enough: a Windows/macOS CI job (or a local shell exporting CI=1)
+        # would otherwise bypass the platform guard and rewrite the PNGs with the wrong renderer.
+        with mock.patch.dict(os.environ, {"CI": "true"}, clear=False), \
+                mock.patch.object(S.sys, "platform", "win32"):
+            self.assertFalse(S._in_ci())
+        with mock.patch.dict(os.environ, {"CI": "true"}, clear=False), \
+                mock.patch.object(S.sys, "platform", "linux"):
+            self.assertTrue(S._in_ci())
+        for falsy in ("", "0", "false", "no"):
+            with mock.patch.dict(os.environ, {"CI": falsy}, clear=False), \
+                    mock.patch.object(S.sys, "platform", "linux"):
+                self.assertFalse(S._in_ci(), "CI=%r must not count as a CI runner" % falsy)
+
     def test_a_non_linux_host_uses_the_pinned_container(self):
         with mock.patch.object(S, "host_matches_ci_renderer", return_value=False), \
                 mock.patch.object(S, "_in_ci", return_value=False), \

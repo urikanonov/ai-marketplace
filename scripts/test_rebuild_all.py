@@ -112,6 +112,22 @@ class OrchestrationTests(unittest.TestCase):
         self.assertIn(
             "Tutorial screenshots (capture_tutorial.mjs) == skipped (capture script not found)", out)
 
+    def test_the_shared_predicate_fails_closed_when_the_tool_cannot_be_imported(self):
+        # Guessing "this host renders like CI" when the shared guard is unavailable is exactly how
+        # wrong PNGs got committed, so an import failure must mean "skip", not "go ahead".
+        with mock.patch.dict(sys.modules, {"shots_linux": None}), \
+                mock.patch.object(rebuild_all, "SHOTS_TOOL_DIR", "/nonexistent"):
+            import builtins
+            real_import = builtins.__import__
+
+            def boom(name, *args, **kwargs):
+                if name == "shots_linux":
+                    raise ImportError("no shared predicate")
+                return real_import(name, *args, **kwargs)
+
+            with mock.patch.object(builtins, "__import__", boom):
+                self.assertFalse(rebuild_all._host_renders_ci_shots())
+
     def test_screenshots_are_skipped_on_a_non_linux_host_with_an_actionable_note(self):
         # CMH-BUILD-16: the committed PNGs are Linux-rendered. On another OS this step would
         # re-render them with the HOST rasterizer, and --check would compare against that same
@@ -129,8 +145,9 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         labels = [c[0] for c in self.calls]
         self.assertFalse(any("Tutorial screenshots" in lbl for lbl in labels))
-        self.assertIn("shots:linux", out)
-        self.assertIn("Linux", out)
+        # Names the command that renders correctly, and says WHY this host cannot.
+        self.assertIn("npm run shots", out)
+        self.assertIn("renderer", out)
         # The skip is surgical - every other generator still runs.
         self.assertTrue(any(lbl.startswith("GitHub Pages site") for lbl in labels))
 
