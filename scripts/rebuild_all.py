@@ -100,17 +100,17 @@ def main(argv=None):
               "with this machine's browser would pass every local check and then fail that job). "
               "Start Docker and run 'npm run shots' from plugins/commentable-html/dev; CI "
               "plugin-tests remains the authoritative gate.")
-    elif node and os.path.exists(TUTORIAL_SHOTS) and _tutorial_deps_installed():
+    elif not os.path.exists(TUTORIAL_SHOTS):
+        print("== Tutorial screenshots (shots_linux.py) == skipped (capture script not found)")
+    elif _tutorial_deps_installed():
+        # The container brings its own node, so this step needs Docker and the mounted
+        # node_modules - not a node on the host PATH.
         steps.append(("Tutorial screenshots (shots_linux.py)",
                       [sys.executable, TUTORIAL_SHOTS] + check))
-    elif node and os.path.exists(TUTORIAL_SHOTS):
+    else:
         print("== Tutorial screenshots (shots_linux.py) == skipped "
               "(commentable-html dev node_modules not installed; run 'python scripts/setup_dev.py'; "
               "CI plugin-tests runs it)")
-    elif not node:
-        print("== Tutorial screenshots (shots_linux.py) == skipped (node not found; CI plugin-tests runs it)")
-    else:
-        print("== Tutorial screenshots (shots_linux.py) == skipped (capture script not found)")
     steps.append(("GitHub Pages site (build_site_data.py)", [sys.executable, SITE_DATA] + check))
 
     failed = []

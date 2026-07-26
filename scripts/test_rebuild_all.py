@@ -164,6 +164,16 @@ class OrchestrationTests(unittest.TestCase):
         self.assertIn("shots_linux.py", " ".join(cmd))
         self.assertNotIn("--native", cmd)
 
+    def test_the_container_shots_step_does_not_need_node_on_the_host(self):
+        # The container brings its own node; only the (unused here) native path needs a host node.
+        # Gating the step on host node would print a misleading skip on a Docker-capable machine.
+        with mock.patch.object(rebuild_all.shutil, "which", return_value=None), \
+                mock.patch.object(rebuild_all, "_pinned_renderer_available", return_value=True), \
+                mock.patch.object(rebuild_all, "_tutorial_deps_installed", return_value=True):
+            rc = rebuild_all.main(["rebuild_all.py", "--check"])
+        self.assertEqual(rc, 0)
+        self.assertTrue(any(lbl.startswith("Tutorial screenshots") for lbl, _ in self.calls))
+
 
 if __name__ == "__main__":
     unittest.main()

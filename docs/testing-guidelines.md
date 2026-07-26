@@ -115,12 +115,21 @@ straight through - a single-scene recapture never has to leave the guarded path.
 - **It is pinned by DIGEST, not merely by tag.** `tools/shots-image.lock` records the sha256 the tag
   resolved to, so a registry rebuild of `v<version>-noble` on a newer base OS (different font
   packages) cannot silently change the renderer. After bumping `@playwright/test`, run
-  `npm run shots:digest` and commit the lock; until you do, the tool falls back to the tag with a
-  loud note (a bump degrades the pin, it never breaks the render), and
+  `npm run shots:digest` and commit the lock; until you do, a developer run falls back to the tag
+  with a loud note (a bump degrades the pin, it never blocks a local regeneration) while **CI
+  refuses to render at all** rather than validate against whatever the registry serves that day, and
   `test_the_committed_lock_pins_the_version_the_package_lock_resolves` reds until it is re-recorded.
+  The lock is only as honest as the command that wrote it: nothing re-verifies a hand-edited digest
+  against the registry, so always re-record it with `npm run shots:digest` rather than editing it.
 - The run also pins `--platform linux/amd64`, so an Apple Silicon host does not render with the
   arm64 stack, and `--user` on a Linux host (including the CI runner) so the container leaves no
-  root-owned files in the worktree.
+  root-owned files in the worktree. In CI it also forwards `CI=true`, which is what makes the
+  capture double its settle deadlines - docker inherits no host environment, so without it the
+  required gate would silently get the tighter, flakier timings.
+- **The container brings the browser and the fonts; the JS comes from the mounted `node_modules`.**
+  That half is pinned by `package-lock.json`, not by digest, so install it with `npm ci` (or
+  `python scripts/setup_dev.py`) - a hand-drifted `node_modules` is the one input the image does not
+  fix for you.
 - **Docker is required only by the shots commands** - never for normal development or for the test
   suites. `npm run shots:check` (which `npm test` runs) SKIPS with a note when Docker is missing or
   its daemon is down, so a developer without Docker is never blocked. It NEVER skips in CI, where it

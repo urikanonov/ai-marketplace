@@ -162,13 +162,15 @@ def resolved_image(tag, lock=None):
     return tag, warning
 
 
-def docker_command(repo_root, dev_rel, image, extra_args, uid_gid=None):
+def docker_command(repo_root, dev_rel, image, extra_args, uid_gid=None, ci=False):
     """The docker argv that runs the capture inside the pinned image against the mounted worktree.
 
     The repo is mounted (not copied) so the regenerated PNGs land straight back in the worktree.
     On a Linux host (including the CI runner, whose workspace is owned by the runner user) the
     container runs as the invoking user, otherwise every PNG it rewrites - and the scratch dir it
-    creates - would be left root-owned.
+    creates - would be left root-owned. `ci` forwards the CI marker the capture script reads to
+    double its settle deadlines; docker inherits no host environment, so without it a CI run would
+    silently get the tighter, flakier timings.
     """
     workdir = "/repo/" + dev_rel.replace("\\", "/")
     inner = "node " + shlex.quote(CAPTURE.replace("\\", "/"))
@@ -177,6 +179,8 @@ def docker_command(repo_root, dev_rel, image, extra_args, uid_gid=None):
     cmd = ["docker", "run", "--rm", "--platform", IMAGE_PLATFORM]
     if uid_gid:
         cmd += ["--user", "%s:%s" % uid_gid]
+    if ci:
+        cmd += ["-e", "CI=true"]
     cmd += [
         "-v", "%s:/repo" % repo_root,
         "-w", workdir,
@@ -285,6 +289,21 @@ def _skip_message(reason, image):
             "container as the authoritative gate." % (reason, image))
 
 
+def _report_pin(warning):
+    """Print a digest-pin warning; return False when it must be FATAL instead.
+
+    Degrading to a mutable tag is a developer convenience so a @playwright/test bump never leaves a
+    contributor unable to regenerate. In CI it is not acceptable: the gate must validate against the
+    exact recorded image, not whatever the registry serves that day.
+    """
+    if _in_ci():
+        sys.stderr.write(warning.replace("falling back to the MUTABLE tag",
+                                         "REFUSING to fall back to the MUTABLE tag in CI") + "\n")
+        return False
+    sys.stderr.write(warning + "\n")
+    return True
+
+
 def record_digest(tag, lock_path=None):
     """Pull the pinned tag and record the sha256 it resolves to, so the renderer is immutable."""
     lock_path = IMAGE_LOCK if lock_path is None else lock_path
@@ -315,6 +334,7 @@ def main(argv=None):
     argv = sys.argv if argv is None else argv
     parser = argparse.ArgumentParser(
         prog="shots_linux.py",
+        allow_abbrev=False,  # unknown args are forwarded; abbreviation would swallow capture flags
         description="Render or verify the tutorial screenshots in the pinned container.")
     parser.add_argument("--check", action="store_true",
                         help="verify the committed screenshots instead of rewriting them")
@@ -330,6 +350,8 @@ def main(argv=None):
     parser.add_argument("--record-digest", action="store_true",
                         help="pull the pinned tag and record its sha256 in tools/shots-image.lock")
     ns, passthrough = parser.parse_known_args(argv[1:])
+    if ns.print_image and ns.record_digest:
+        return _fail("shots_linux: --print-image and --record-digest are mutually exclusive.")
     # capture_tutorial.mjs takes optional [example] [outDir] [prefix] and --print-paths; forward
     # them so a single-scene recapture does not have to fall back to the raw, unguarded command.
     extra = (["--check"] if ns.check else []) + list(passthrough)
@@ -342,8 +364,8 @@ def main(argv=None):
         if ns.record_digest:
             return record_digest(tag)
         ref, warning = resolved_image(tag)
-        if warning:
-            sys.stderr.write(warning + "\n")
+        if warning and not _report_pin(warning):
+            return 2
         print(ref)
         return 0
 
@@ -361,8 +383,8 @@ def main(argv=None):
         ref, warning = resolved_image(image_ref(pinned_playwright_version(DEV_DIR)))
     except ShotsError as exc:
         return _fail("shots_linux: " + str(exc))
-    if warning:
-        sys.stderr.write(warning + "\n")
+    if warning and not _report_pin(warning):
+        return 2
 
     # The skip applies to the CHECK direction on a developer machine only. Regenerating is the
     # dangerous direction (it must produce a correct PNG or refuse loudly), and in CI this IS the
@@ -381,7 +403,7 @@ def main(argv=None):
 
     dev_rel = os.path.relpath(DEV_DIR, REPO_ROOT).replace("\\", "/")
     print("shots_linux: %s in %s" % ("checking" if ns.check else "regenerating", ref), flush=True)
-    return _run(docker_command(REPO_ROOT, dev_rel, ref, extra, _host_uid_gid()))
+    return _run(docker_command(REPO_ROOT, dev_rel, ref, extra, _host_uid_gid(), _in_ci()))
 
 
 if __name__ == "__main__":

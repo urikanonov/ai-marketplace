@@ -90,6 +90,15 @@ class DockerCommandTests(unittest.TestCase):
         cmd = S.docker_command("/repo", "plugins/commentable-html/dev", "img:tag", ["--check; rm -rf /"])
         self.assertIn("'--check; rm -rf /'", cmd[-1])
 
+    def test_a_ci_run_forwards_the_ci_marker_into_the_container(self):
+        # capture_tutorial.mjs doubles its settle deadlines when CI is set. Docker does not inherit
+        # the host environment, so without this the CI render would silently get the SHORTER
+        # deadlines - the tighter, flakier setting - on the required gate.
+        cmd = S.docker_command("/repo", "dev", "img:tag", [], None, ci=True)
+        self.assertIn("-e", cmd)
+        self.assertIn("CI=true", cmd)
+        self.assertNotIn("CI=true", S.docker_command("/repo", "dev", "img:tag", [], None))
+
     def test_a_linux_host_runs_the_container_as_the_invoking_user(self):
         # Otherwise every PNG the container rewrites, and the scratch dir it creates, is left
         # root-owned in the worktree and a later native run cannot clean up after it.
@@ -98,6 +107,21 @@ class DockerCommandTests(unittest.TestCase):
         self.assertEqual(cmd[cmd.index("--user") + 1], "1000:1000")
         # Docker Desktop already maps ownership, so no --user is passed where uid/gid do not exist.
         self.assertNotIn("--user", S.docker_command("/repo", "dev", "img:tag", [], None))
+
+    def test_wrapper_flags_are_not_matched_by_abbreviation(self):
+        # Unknown args are forwarded to capture_tutorial.mjs. With argparse's default abbreviation
+        # matching, a future capture flag that merely PREFIXES a wrapper flag ('--nat', '--rec')
+        # would be swallowed by the wrapper instead of reaching the capture script.
+        with mock.patch.object(S, "_in_ci", return_value=False), \
+                mock.patch.object(S.shutil, "which", return_value="/usr/bin/docker"), \
+                mock.patch.object(S, "_docker_daemon_ok", return_value=True), \
+                mock.patch.object(S, "_deps_installed", return_value=True), \
+                mock.patch.object(S, "_run", return_value=0) as run:
+            rc = S.main(["shots_linux.py", "--nat"])
+        self.assertEqual(rc, 0)
+        cmd = run.call_args[0][0]
+        self.assertEqual(cmd[0], "docker", "--nat must not be read as --native")
+        self.assertIn("--nat", cmd[-1])
 
     def test_extra_capture_arguments_reach_the_capture_script(self):
         # capture_tutorial.mjs accepts [example] [outDir] [prefix] and --print-paths. Without
@@ -146,9 +170,12 @@ class RendererDispatchTests(unittest.TestCase):
         rc_ci, ci_run = self._dispatch(["shots_linux.py", "--check"], ci=True)
         rc_dev, dev_run = self._dispatch(["shots_linux.py", "--check"], ci=False)
         self.assertEqual((rc_ci, rc_dev), (0, 0))
-        self.assertEqual(ci_run.call_args[0][0], dev_run.call_args[0][0])
-        self.assertEqual(ci_run.call_args[0][0][0], "docker")
-        self.assertIn("mcr.microsoft.com/playwright", " ".join(ci_run.call_args[0][0]))
+        ci_cmd, dev_cmd = ci_run.call_args[0][0], dev_run.call_args[0][0]
+        self.assertEqual(ci_cmd[0], "docker")
+        self.assertIn("mcr.microsoft.com/playwright", " ".join(ci_cmd))
+        # Identical apart from the CI marker that only scales the capture's settle deadlines: same
+        # image, same platform, same mount, same command line.
+        self.assertEqual([a for a in ci_cmd if a not in ("-e", "CI=true")], dev_cmd)
 
     def test_the_host_platform_probe_is_gone(self):
         # `host_matches_ci_renderer()` accepted ANY x86_64 Ubuntu 24.04 host as "the CI renderer",
@@ -355,6 +382,50 @@ class ContainerPinningTests(unittest.TestCase):
         self.assertEqual(ref, self.TAG)
         self.assertIn("shots:digest", warning)
 
+    def test_ci_refuses_to_render_with_an_unpinned_tag(self):
+        # Degrading to a mutable tag is a developer convenience, never a CI behaviour: in CI the
+        # renderer must be the exact recorded image or the job fails loudly, so a run can never
+        # validate the screenshots against whatever the registry is serving that day.
+        import io
+        import contextlib
+        err = io.StringIO()
+        with mock.patch.object(S, "_in_ci", return_value=True), \
+                mock.patch.object(S, "read_image_lock", return_value={}), \
+                mock.patch.object(S.shutil, "which", return_value="/usr/bin/docker"), \
+                mock.patch.object(S, "_docker_daemon_ok", return_value=True), \
+                mock.patch.object(S, "_deps_installed", return_value=True), \
+                mock.patch.object(S, "_run", return_value=0) as run:
+            with contextlib.redirect_stderr(err):
+                rc = S.main(["shots_linux.py", "--check", "--skip-without-renderer"])
+        self.assertNotEqual(rc, 0)
+        run.assert_not_called()
+        self.assertIn("shots:digest", err.getvalue())
+        # --print-image fails the same way, so the CI pull step reds before the render is attempted.
+        err = io.StringIO()
+        with mock.patch.object(S, "_in_ci", return_value=True), \
+                mock.patch.object(S, "read_image_lock", return_value={}):
+            with contextlib.redirect_stderr(err):
+                rc = S.main(["shots_linux.py", "--print-image"])
+        self.assertNotEqual(rc, 0)
+
+    def test_a_developer_can_still_render_after_a_bump_before_re_recording(self):
+        # Outside CI the same situation is a WARNING plus a render on the tag, so a Playwright bump
+        # never leaves a contributor unable to regenerate.
+        import io
+        import contextlib
+        err = io.StringIO()
+        with mock.patch.object(S, "_in_ci", return_value=False), \
+                mock.patch.object(S, "read_image_lock", return_value={}), \
+                mock.patch.object(S.shutil, "which", return_value="/usr/bin/docker"), \
+                mock.patch.object(S, "_docker_daemon_ok", return_value=True), \
+                mock.patch.object(S, "_deps_installed", return_value=True), \
+                mock.patch.object(S, "_run", return_value=0) as run:
+            with contextlib.redirect_stderr(err):
+                rc = S.main(["shots_linux.py"])
+        self.assertEqual(rc, 0)
+        run.assert_called_once()
+        self.assertIn("shots:digest", err.getvalue())
+
     def test_a_malformed_digest_is_never_used(self):
         for bad in ("", "latest", "sha256:nothex", "sha256:" + "a" * 63, "sha512:" + "a" * 64):
             ref, warning = S.resolved_image(self.TAG, {"image": self.TAG, "digest": bad})
@@ -423,6 +494,22 @@ class ContainerPinningTests(unittest.TestCase):
         self.assertNotIn("--native", block)
         self.assertNotIn("capture_tutorial.mjs", block)
         self.assertIn("--print-image", block)
+
+    def test_the_screenshot_gate_is_reachable_on_a_shard_that_exists(self):
+        # A string match alone would not notice an unreachable step: a typo'd `if:` (a shard the
+        # matrix never produces) would silently DROP the drift gate while the job still went green.
+        # Pin the shots steps to the SAME condition as the sibling fixtures check, and pin that
+        # condition to a shard the matrix actually runs.
+        block = _shots_job_block(_workflow_text())
+        conditions = [ln.strip() for ln in block.split("\n") if ln.strip().startswith("if: matrix.")]
+        self.assertTrue(conditions, "the once-only steps must carry a shard condition")
+        self.assertEqual(len(set(conditions)), 1,
+                         "the fixtures, pull and shots:check steps must share one shard condition")
+        shard = conditions[0].split("==", 1)[1].strip().strip("'\"")
+        self.assertIn('"%s"' % shard, block.replace("'", '"'),
+                      "the once-only steps run on a shard the matrix never produces")
+        # There are three of them (fixtures, pull, shots:check) - none silently lost its guard.
+        self.assertEqual(len(conditions), 3)
 
     def test_the_ci_job_no_longer_pins_a_runner_release_as_the_renderer(self):
         # With the container as the renderer, the runner's own Ubuntu release (and its font
