@@ -547,7 +547,10 @@ _MD_SETEXT_RE = re.compile(r"[ \t]{0,3}=+[ \t]*$")
 # list marker (an empty list item is far more common in a draft than a one-character underline).
 _MD_SETEXT_DASH_RE = re.compile(r"[ \t]{0,3}-{2,}[ \t]*$")
 _MD_BREAK_RE = re.compile(r"[ \t]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$")
-_MD_TABLE_RULE_RE = re.compile(r"[ \t]{0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-*:?[ \t]*)+\|?[ \t]*$")
+# Each cell is `|`-terminated so no two whitespace runs are adjacent: an ambiguous
+# `(?:\|[ \t]*:?-*:?[ \t]*)+` backtracks exponentially on a line of `|\t` repetitions (CodeQL
+# "inefficient regular expression"), and this pattern runs on every line of every markdown block.
+_MD_TABLE_RULE_RE = re.compile(r"[ \t]{0,3}\|?(?:[ \t]*:?-+:?[ \t]*\|)+(?:[ \t]*:?-+:?[ \t]*)?$")
 _MD_LIST_RE = re.compile(r"([-*+]|\d{1,9}[.)])([ \t]+|$)")
 _MD_TASK_RE = re.compile(r"\[[ xX]\](?=[ \t]|$)")
 _MD_REFDEF_RE = re.compile(r"(\[)([^\]\n]+)(\]:)([ \t]*)(\S+)(.*)$")

@@ -6028,7 +6028,10 @@ const _MD_SETEXT_RE = /^[ \t]{0,3}=+[ \t]*$/;
 // list marker (an empty list item is far more common in a draft than a one-character underline).
 const _MD_SETEXT_DASH_RE = /^[ \t]{0,3}-{2,}[ \t]*$/;
 const _MD_BREAK_RE = /^[ \t]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/;
-const _MD_TABLE_RULE_RE = /^[ \t]{0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-*:?[ \t]*)+\|?[ \t]*$/;
+// Each cell is `|`-terminated so no two whitespace runs are adjacent: an ambiguous
+// `(?:\|[ \t]*:?-*:?[ \t]*)+` backtracks exponentially on a line of `|\t` repetitions (CodeQL
+// "inefficient regular expression"), and this pattern runs on every line of every markdown block.
+const _MD_TABLE_RULE_RE = /^[ \t]{0,3}\|?(?:[ \t]*:?-+:?[ \t]*\|)+(?:[ \t]*:?-+:?[ \t]*)?$/;
 const _MD_LIST_RE = /^([-*+]|\d{1,9}[.)])([ \t]+|$)/;
 const _MD_TASK_RE = /^\[[ xX]\](?=[ \t]|$)/;
 const _MD_REFDEF_RE = /^(\[)([^\]\n]+)(\]:)([ \t]*)(\S+)(.*)$/;

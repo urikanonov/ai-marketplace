@@ -254,7 +254,8 @@ class MarkdownPerformanceTests(unittest.TestCase):
         # bracket / tag openers cannot be re-scanned to end of line from every position (which took
         # tens of seconds before the caps and would freeze the browser on the runtime path).
         for hostile in ("[" * 30000, "<" * 30000, "![" * 15000, "`" * 30000,
-                        "**x " * 8000, "~~x " * 8000, "__x " * 8000, "*x " * 10000):
+                        "**x " * 8000, "~~x " * 8000, "__x " * 8000, "*x " * 10000,
+                        "|-" + "|\t" * 4000 + "x", "|" * 30000, "-" * 30000 + "|x"):
             with self.subTest(head=hostile[:2]):
                 start = time.time()
                 rendered = render(hostile)
