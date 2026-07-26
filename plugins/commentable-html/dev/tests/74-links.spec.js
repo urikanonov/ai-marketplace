@@ -135,6 +135,9 @@ test.describe("link handling", () => {
     // so the link button must not fall back to the browser's default button chrome.
     const image = await pill("#imageAddBtn");
     expect(link).toEqual(image);
+    // Pin one absolute trait too, so deleting the shared rule outright (which would leave both
+    // buttons on the identical UA default) cannot pass by mere equality.
+    expect(link.radius).toBe("999px");
     expect(link.bg).not.toBe("rgba(0, 0, 0, 0)");
     await btn.hover();
     const hovered = await btn.evaluate((el) => getComputedStyle(el).backgroundColor);
