@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.254.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.255.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,6 +457,22 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.255.0] - 2026-07-26</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The authoring validator&#x27;s single-pass script scanner now models REGEX LITERALS. A <code>/.../</code> literal containing a backtick, a single quote, or a double quote used to flip the scanner into a phantom string/template state that blanked the rest of the script, hiding real code from every check that reads it - a Markdown fence regex holding a backtick made the shipped showcase deck fail with &quot;a <code>&lt;canvas&gt;</code> is present but no renderer was found&quot; because the chart&#x27;s <code>.getContext(</code> had been blanked. A <code>/</code> inside a <code>[...]</code> character class no longer ends the literal, escapes are honored, and division is told apart from a literal by the usual prev-significant-token heuristic (ambiguity and an unterminated literal both resolve to division, so the scanner never blanks live code). A <code>new Chart(</code> that appears only inside a regex is correctly not counted as executable init. (CMH-VAL-17)</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The Markdown fence regex in the runtime highlighter spells its backtick literally again; the <code>\x60</code> workaround that the old scanner limitation forced is no longer needed.</li>
+            </ul>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>A fenced code block inside a Markdown block is now highlighted in its OWN language instead of being colored as one flat run: the first word of the fence info string selects the language (aliases resolved, so a <code>py</code> label and a <code>python title=&quot;x.py&quot;</code> label both select Python), and an unknown or absent label keeps the previous opaque body. The body is highlighted as a whole, so a multi-line construct inside it (a block comment, a triple-quoted string) reads exactly as it would in a standalone block of that language. A <code>markdown</code>-labelled body re-reads as Markdown up to a small depth bound and stays opaque past it, so a hostile document cannot drive unbounded recursion. (CMH-HL-07, CMH-HL-08)</li>
+              <li>The author-time highlighter now knows the common short labels <code>js</code>, <code>jsx</code>, <code>mjs</code>, <code>py</code>, <code>ts</code> and <code>tsx</code>. They were runtime-only, so a <code>js</code>-labelled block was highlighted by the runtime but baked as plain text - and, with nested fences, would have nested on one path and stayed flat on the other. A second drift guard now fails in that direction too, so the author-time and runtime label sets cannot diverge again. (CMH-HL-03)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.254.0] - 2026-07-26</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -470,6 +486,8 @@
               <li>A comment is now editable in exactly one place at a time: opening a second editor for a note that already has an unsaved draft elsewhere (the panel card, the in-document dialog, another highlight&#x27;s dialog, or the floating composer reached by re-selecting the text) hands the reader back to the draft instead of duplicating it - previously two editors could exist and the last save silently overwrote the other. (CMH-CORE-16)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.253.0] - 2026-07-26</h3></div>
             <div class="group-label">Added</div>
@@ -478,8 +496,6 @@
               <li>The author-time highlighter now knows the common short labels <code>js</code>, <code>jsx</code>, <code>mjs</code>, <code>py</code>, <code>ts</code> and <code>tsx</code>. They were runtime-only, so a <code>js</code>-labelled block was highlighted by the runtime but baked as plain text - and, with nested fences, would have nested on one path and stayed flat on the other. A second drift guard now fails in that direction too, so the author-time and runtime label sets cannot diverge again. (CMH-HL-03)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.252.0] - 2026-07-26</h3></div>
             <div class="group-label">Fixed</div>
@@ -520,19 +536,7 @@
               <li>The runtime/author-time highlighter drift guard now also requires the runtime to know every author-time ALIAS, not just every canonical language. <code>diffLangKnown()</code> looks the raw <code>language-XXX</code> label up with no alias resolution, so an alias-only language was highlightable at author time and monochrome at runtime - the exact hole that let <code>jsonc</code> ship unhighlighted. (CMH-HL-03)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.246.0] - 2026-07-25</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The shipped example reports and the showcase deck now report the build&#x27;s release date on the sidebar &quot;Generated on&quot; line, stamped by <code>build.py</code> from the current version&#x27;s dated <code>CHANGELOG.md</code> heading. Previously the date was an authored in-story value that was wrong and out of sync across examples (the NYC Taxi report showed <code>Dec 31, 2014</code>, the deck showed <code>Jul 14, 2026</code>, some reports showed no date at all); every example now shows the same, correct build date. (CMH-BUILD-15)</li>
-              <li>The sidebar &quot;Generated on&quot; line now renders a date-only value (<code>YYYY-MM-DD</code>) as a calendar date in the viewer&#x27;s local time with no time-of-day, so it shows the same day in every timezone. Previously a bare date was parsed as UTC midnight and shifted to the previous evening for viewers west of UTC (the spurious &quot;..., 02:00&quot; / previous-day display), which would have undercut the release-date stamp above. (CMH-SIDE-03)</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The sidebar now draws a divider rule above the &quot;Generated on&quot; / &quot;Last comment&quot; metadata block, separating it from the Copy all / Export button row and mirroring the header&#x27;s own rule under the &quot;Commenting as&quot; identity line. (CMH-SIDE-03)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">209 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">210 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

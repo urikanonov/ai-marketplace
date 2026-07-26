@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.254.0";
+const CMH_VERSION = "1.255.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -2014,14 +2014,11 @@ function _hlTokenRe(fam) {
 // of the line runs through the inline scanner. The diff highlighter tokenizes ONE line at a time,
 // so a diffed Markdown file degrades to per-line constructs (no fence carry-over), which is still
 // far better than monochrome.
-// The fence regex spells a backtick as \x60 on purpose: the authoring validator's script scanner
-// does not model regex literals, so a bare backtick there would read as a template-literal opener
-// and blank the rest of the layer (hiding, for example, the chart renderer from its canvas check).
 // `[\s\S]*` rather than `.*` on purpose: JavaScript's `.` does NOT match U+2028 / U+2029, but
 // Python's does, so a line carrying a Unicode line separator would open a fence at author time and
 // not at runtime. Lines never contain a newline here (the input is split on one), so the classes
 // are otherwise equivalent.
-const _MD_FENCE_RE = /^([ \t]{0,3})(\x60{3,}|~{3,})([ \t]*)([\s\S]*)$/;
+const _MD_FENCE_RE = /^([ \t]{0,3})(`{3,}|~{3,})([ \t]*)([\s\S]*)$/;
 const _MD_HEADING_RE = /^([ \t]{0,3})(#{1,6}(?:[ \t][\s\S]*)?)$/;
 const _MD_SETEXT_RE = /^[ \t]{0,3}=+[ \t]*$/;
 // A dash run under a paragraph is a setext H2 underline, not a thematic break. A single `-` stays a
