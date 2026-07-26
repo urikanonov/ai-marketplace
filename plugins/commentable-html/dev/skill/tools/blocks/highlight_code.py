@@ -560,20 +560,39 @@ _MD_WORD_RE = re.compile(r"[A-Za-z0-9_]")
 # Every scan that could fail is LENGTH-CAPPED: an uncapped `[^\]\n]*` retried from each of 32k `[`
 # characters is quadratic, and this tokenizer runs in the browser on authored content. A construct
 # longer than its cap simply is not highlighted.
+# Each emphasis form is spelled as a one-character and a two-or-more-character alternative so the
+# character before the CLOSER can exclude a backslash: `**bold\**` has no valid closer (the first
+# `*` is escaped) and must stay literal. Doing that with a lookbehind would be shorter but would
+# throw at regex-construction time on Safari < 16.4 and take the whole layer down with it.
 _MD_INLINE_RE = re.compile(
     r"(?P<esc>\\[\\`*_{}\[\]()#+.!|~>-])"
     r"|(?P<code>```[^\n]*?```|``[^\n]*?``|`[^`\n]+`)"
     r"|(?P<auto><[A-Za-z][A-Za-z0-9+.-]{0,30}:[^<>\s]{0,500}>|<[^<>\s@]{1,200}@[^<>\s]{1,200}>)"
-    r"|(?P<htmlcom><!--[\s\S]*?(?:-->|$))"
+    r"|(?P<htmlcom><!--[\s\S]*?(?:--!?>|$))"
     r"|(?P<tag></?[A-Za-z][^<>\n]{0,500}>)"
     r"|(?P<link>(?P<link_open>!?\[)(?P<link_text>[^\]\n]{0,200})(?P<link_mid>\]\()(?P<link_dest>[^)\n]{0,500})(?P<link_end>\)))"
     r"|(?P<ref>(?P<ref_open>!?\[)(?P<ref_text>[^\]\n]{0,200})(?P<ref_mid>\]\[)(?P<ref_label>[^\]\n]{0,200})(?P<ref_end>\]))"
     r"|(?P<note>\[\^[^\]\n]{1,200}\])"
-    r"|(?P<strong>\*\*\*[^\s*](?:[^\n]{0,500}?[^\s*])?\*\*\*|___[^\s_](?:[^\n]{0,500}?[^\s_])?___"
-    r"|\*\*[^\s*](?:[^\n]{0,500}?[^\s*])?\*\*|__[^\s_](?:[^\n]{0,500}?[^\s_])?__)"
-    r"|(?P<strike>~~[^\s~](?:[^\n]{0,500}?[^\s~])?~~)"
-    r"|(?P<em>\*[^\s*](?:[^*\n]*?[^\s*])?\*|_[^\s_](?:[^_\n]*?[^\s_])?_)"
+    r"|(?P<strong>\*\*\*[^\s*\\]\*\*\*|\*\*\*[^\s*][^\n]{0,500}?[^\s*\\]\*\*\*"
+    r"|___[^\s_\\]___|___[^\s_][^\n]{0,500}?[^\s_\\]___"
+    r"|\*\*[^\s*\\]\*\*|\*\*[^\s*][^\n]{0,500}?[^\s*\\]\*\*"
+    r"|__[^\s_\\]__|__[^\s_][^\n]{0,500}?[^\s_\\]__)"
+    r"|(?P<strike>~~[^\s~\\]~~|~~[^\s~][^\n]{0,500}?[^\s~\\]~~)"
+    r"|(?P<em>\*[^\s*\\]\*|\*[^\s*][^*\n]{0,500}?[^\s*\\]\*"
+    r"|_[^\s_\\]_|_[^\s_][^_\n]{0,500}?[^\s_\\]_)"
     r"|(?P<pipe>\|)")
+# HTML tolerates `--!>` as a comment terminator as well as `-->`.
+_MD_COMMENT_ENDS = ("-->", "--!>")
+
+
+def _md_comment_end(line):
+    """(index, length) of the earliest HTML comment terminator in `line`, or (-1, 0)."""
+    best, size = -1, 0
+    for token in _MD_COMMENT_ENDS:
+        at = line.find(token)
+        if at >= 0 and (best < 0 or at < best):
+            best, size = at, len(token)
+    return best, size
 
 
 def _md_word_at(text, index):
@@ -640,7 +659,7 @@ def _md_inline(text, pipes=False):
             out.append(_esc(text[match.start()]))
             pos = match.start() + 1
             continue
-        if match.group("htmlcom") is not None and not match.group().endswith("-->"):
+        if match.group("htmlcom") is not None and not match.group().endswith(_MD_COMMENT_ENDS):
             open_comment = True
         out.append(rendered)
         pos = match.end()
@@ -712,12 +731,12 @@ def _md_line(line, fence, in_comment, prev_para):
             return _span("op", line), None, False, False
         return (_span("str", line) if line else ""), fence, False, False
     if in_comment:
-        end = line.find("-->")
+        end, size = _md_comment_end(line)
         if end < 0:
             return (_span("com", line) if line else ""), None, True, False
-        rest = line[end + 3:]
+        rest = line[end + size:]
         tail, still_open = _md_inline(rest, rest.count("|") >= 2)
-        return _span("com", line[:end + 3]) + tail, None, still_open, False
+        return _span("com", line[:end + size]) + tail, None, still_open, False
     match = _MD_FENCE_RE.match(line)
     if match and not (match.group(2)[0] == "`" and "`" in match.group(4)):
         info = match.group(4)

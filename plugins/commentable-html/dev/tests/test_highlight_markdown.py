@@ -127,6 +127,13 @@ class MarkdownBlockTokenTests(unittest.TestCase):
         self.assertEqual(classes["kw"], ["**bold**"])
         self.assertEqual(text_of(render(code)), code)
 
+    def test_the_html_tolerated_comment_terminator_also_closes(self):
+        # HTML accepts `--!>` as well as `-->`; both end the comment on one line and across lines.
+        self.assertEqual(spans("text <!-- hidden --!> more"), [("com", "<!-- hidden --!>")])
+        classes = by_class("<!-- open\nstill --!>\n# heading")
+        self.assertEqual(classes["com"], ["<!-- open", "still --!>"])
+        self.assertEqual(classes["kw"], ["# heading"])
+
     def test_an_html_comment_inside_a_code_span_does_not_open_a_comment(self):
         code = "a `<!-- x` b\n# real heading"
         classes = by_class(code)
@@ -197,6 +204,18 @@ class MarkdownFalsePositiveTests(unittest.TestCase):
 
     def test_a_backslash_escaped_marker_is_not_emphasis(self):
         self.assertEqual(spans(r"literal \*stars\* stay"), [])
+
+    def test_an_escaped_closing_delimiter_does_not_close_emphasis(self):
+        # The first `*` of the apparent closer is escaped, so there is no valid closer.
+        for line in (r"a **bold\** b", r"a *soft\* b", r"a __bold\__ b", r"a ~~gone\~~ b",
+                     r"a ***both\*** b", r"a **\** b"):
+            with self.subTest(line=line):
+                self.assertEqual(spans(line), [])
+
+    def test_an_escaped_backslash_before_a_closer_still_closes(self):
+        # Conservative: a literal backslash immediately before the closer is not highlighted either,
+        # which keeps the scan escape-aware without a lookbehind. Pinned so the choice is deliberate.
+        self.assertEqual(spans(r"a **bold\\** b"), [])
 
     def test_an_unterminated_marker_is_left_plain(self):
         for line in ("an unpaired ` backtick", "an unpaired * star", "an unpaired _ score"):

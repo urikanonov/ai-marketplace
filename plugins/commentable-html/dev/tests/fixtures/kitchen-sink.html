@@ -6061,20 +6061,33 @@ const _MD_WORD_RE = /[A-Za-z0-9_]/;
 // emphasis and an autolink is tried before a generic inline tag. Every scan that could fail is
 // LENGTH-CAPPED: an uncapped [^\]\n]* retried from each of 32k `[` characters is quadratic, and this
 // runs in the browser on authored content. A construct longer than its cap is simply not highlighted.
+// Each emphasis form is spelled as a one-character and a two-or-more-character alternative so the
+// character before the CLOSER can exclude a backslash: `**bold\**` has no valid closer (the first
+// `*` is escaped) and must stay literal. A lookbehind would be shorter but throws at regex
+// construction on Safari < 16.4, which would take the whole layer down.
 const _MD_INLINE_RE = new RegExp(
   "(?<esc>\\\\[\\\\`*_{}\\[\\]()#+.!|~>-])"
   + "|(?<code>```[^\\n]*?```|``[^\\n]*?``|`[^`\\n]+`)"
   + "|(?<auto><[A-Za-z][A-Za-z0-9+.-]{0,30}:[^<>\\s]{0,500}>|<[^<>\\s@]{1,200}@[^<>\\s]{1,200}>)"
-  + "|(?<htmlcom><!--[\\s\\S]*?(?:-->|$))"
+  + "|(?<htmlcom><!--[\\s\\S]*?(?:--!?>|$))"
   + "|(?<tag></?[A-Za-z][^<>\\n]{0,500}>)"
   + "|(?<link>(?<link_open>!?\\[)(?<link_text>[^\\]\\n]{0,200})(?<link_mid>\\]\\()(?<link_dest>[^)\\n]{0,500})(?<link_end>\\)))"
   + "|(?<ref>(?<ref_open>!?\\[)(?<ref_text>[^\\]\\n]{0,200})(?<ref_mid>\\]\\[)(?<ref_label>[^\\]\\n]{0,200})(?<ref_end>\\]))"
   + "|(?<note>\\[\\^[^\\]\\n]{1,200}\\])"
-  + "|(?<strong>\\*\\*\\*[^\\s*](?:[^\\n]{0,500}?[^\\s*])?\\*\\*\\*|___[^\\s_](?:[^\\n]{0,500}?[^\\s_])?___"
-  + "|\\*\\*[^\\s*](?:[^\\n]{0,500}?[^\\s*])?\\*\\*|__[^\\s_](?:[^\\n]{0,500}?[^\\s_])?__)"
-  + "|(?<strike>~~[^\\s~](?:[^\\n]{0,500}?[^\\s~])?~~)"
-  + "|(?<em>\\*[^\\s*](?:[^*\\n]*?[^\\s*])?\\*|_[^\\s_](?:[^_\\n]*?[^\\s_])?_)"
+  + "|(?<strong>\\*\\*\\*[^\\s*\\\\]\\*\\*\\*|\\*\\*\\*[^\\s*][^\\n]{0,500}?[^\\s*\\\\]\\*\\*\\*"
+  + "|___[^\\s_\\\\]___|___[^\\s_][^\\n]{0,500}?[^\\s_\\\\]___"
+  + "|\\*\\*[^\\s*\\\\]\\*\\*|\\*\\*[^\\s*][^\\n]{0,500}?[^\\s*\\\\]\\*\\*"
+  + "|__[^\\s_\\\\]__|__[^\\s_][^\\n]{0,500}?[^\\s_\\\\]__)"
+  + "|(?<strike>~~[^\\s~\\\\]~~|~~[^\\s~][^\\n]{0,500}?[^\\s~\\\\]~~)"
+  + "|(?<em>\\*[^\\s*\\\\]\\*|\\*[^\\s*][^*\\n]{0,500}?[^\\s*\\\\]\\*"
+  + "|_[^\\s_\\\\]_|_[^\\s_][^_\\n]{0,500}?[^\\s_\\\\]_)"
   + "|(?<pipe>\\|)", "g");
+// HTML tolerates `--!>` as a comment terminator as well as `-->`.
+const _MD_COMMENT_END_RE = /--!?>/;
+function _mdCommentEnd(line) {
+  const m = _MD_COMMENT_END_RE.exec(line);
+  return m ? { at: m.index, size: m[0].length } : { at: -1, size: 0 };
+}
 function _hlSpan(cls, text) {
   return '<span class="cmh-code-' + cls + '">' + escapeHtml(text) + "</span>";
 }
@@ -6123,7 +6136,7 @@ function _mdInline(text, pipes) {
       pos = m.index + 1;
       continue;
     }
-    if (m.groups.htmlcom !== undefined && !/-->$/.test(m[0])) openComment = true;
+    if (m.groups.htmlcom !== undefined && !/--!?>$/.test(m[0])) openComment = true;
     out += rendered;
     pos = m.index + m[0].length;
   }
@@ -6194,11 +6207,11 @@ function cmhHighlightMarkdown(text) {
       continue;
     }
     if (inComment) {
-      const end = line.indexOf("-->");
-      if (end < 0) { if (line) out += _hlSpan("com", line); continue; }
-      const rest = line.slice(end + 3);
+      const end = _mdCommentEnd(line);
+      if (end.at < 0) { if (line) out += _hlSpan("com", line); continue; }
+      const rest = line.slice(end.at + end.size);
       const tail = _mdInline(rest, (rest.match(/\|/g) || []).length >= 2);
-      out += _hlSpan("com", line.slice(0, end + 3)) + tail.html;
+      out += _hlSpan("com", line.slice(0, end.at + end.size)) + tail.html;
       inComment = tail.openComment;
       continue;
     }

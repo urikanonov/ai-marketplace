@@ -156,6 +156,12 @@
       "str": ["```a``b```"]
     },
     {
+      "lang": "markdown",
+      "code": "a **bold\\** and *soft\\* stay literal",
+      "notKw": ["**bold\\**", "bold"],
+      "notStr": ["*soft\\*"]
+    },
+    {
       "lang": "md",
       "code": "# Title with `md` alias",
       "kw": ["# Title with `md` alias"],
