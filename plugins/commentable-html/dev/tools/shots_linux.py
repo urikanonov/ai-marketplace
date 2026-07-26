@@ -11,15 +11,24 @@ they agree and go green, and only the required ``playwright-heavy`` CI job (on L
 This tool makes the regeneration deterministic and one-command everywhere:
 
 * On a LINUX host it runs the capture natively. Docker is NOT required - the host renderer already
-  matches CI.
-* On any other host it runs the capture inside the pinned Playwright container. The image tag is
-  DERIVED from the ``@playwright/test`` version resolved in ``package-lock.json``, so the container's
-  browser can never drift from the one the suite runs; a hardcoded tag would.
+  matches CI (which itself renders on a pinned ubuntu-24.04 runner, not in a container). Pass
+  ``--container`` when the Linux host is a DIFFERENT distro or release, whose fonts may still differ.
+* On any other host it runs the capture inside the pinned Playwright container. Two axes are pinned:
+  the ``@playwright/test`` version resolved in ``package-lock.json`` (which fixes the chromium
+  binary) and the Ubuntu release in the image variant (which fixes the FONTS - the axis that actually
+  caused the original mismatch). Neither is hardcoded at a call site.
+
+The container is equivalent to CI by AGREEMENT, not by construction: CI does not run inside this
+image, it installs chromium on a bare runner. That is why the runner is pinned to the release named
+in ``UBUNTU_RELEASES`` and a test couples the two - moving one without the other is a silent
+divergence, so the guard forces a conscious, two-sided edit.
 
 Usage (from ``plugins/commentable-html/dev``)::
 
-    npm run shots:linux          # regenerate
-    npm run shots:linux:check    # verify only, no writes
+    npm run shots                # regenerate (native on Linux, container elsewhere)
+    npm run shots:check          # verify; skips with a note where the host cannot match CI
+    npm run shots:linux          # force the pinned container
+    npm run shots:linux:check    # force the pinned container, verify only
 
 Standard library only.
 """
@@ -38,6 +47,14 @@ CAPTURE = os.path.join("tools", "capture_tutorial.mjs")
 # it is read from the lockfile - see image_ref().
 IMAGE_REPO = "mcr.microsoft.com/playwright"
 IMAGE_VARIANT = "noble"
+# The image variant and the CI runner must name the SAME Ubuntu release. CI does NOT run inside this
+# image - the playwright-heavy job installs chromium on a bare runner - so the container is only
+# equivalent to CI while the two agree. A test pins this mapping against the workflow so a future
+# runner bump has to be a conscious, two-sided edit.
+UBUNTU_RELEASES = {"noble": "ubuntu-24.04"}
+# The image is multi-arch; without this an Apple Silicon host would render with the arm64 stack while
+# CI renders on x86_64.
+IMAGE_PLATFORM = "linux/amd64"
 LOCK_KEY = "node_modules/@playwright/test"
 GUIDE = "docs/testing-guidelines.md"
 
@@ -86,6 +103,7 @@ def docker_command(repo_root, dev_rel, image, extra_args):
         inner += " " + " ".join(shlex.quote(a) for a in extra_args)
     return [
         "docker", "run", "--rm",
+        "--platform", IMAGE_PLATFORM,
         "-v", "%s:/repo" % repo_root,
         "-w", workdir,
         image,
@@ -128,11 +146,13 @@ def _docker_missing_message(image):
         "  Options:\n"
         "    1. Install Docker Desktop / Docker Engine, then re-run 'npm run shots:linux'.\n"
         "       It runs the pinned image %s (tag derived from package-lock.json).\n"
-        "    2. Regenerate on any Linux machine or WSL with 'npm run shots' - no Docker needed there.\n"
+        "    2. Regenerate on a Linux machine or WSL running %s with 'npm run shots' - no Docker\n"
+        "       needed there. Another distro or release has its own fonts and may still differ.\n"
         "    3. Leave the PNGs untouched: if your change does not affect them, restore them with\n"
         "       'git checkout origin/main -- plugins/commentable-html/docs/assets'.\n"
         "\n"
-        "  See %s ('Regenerating the tutorial screenshots')." % (sys.platform, image, GUIDE))
+        "  See %s ('Regenerating the tutorial screenshots')."
+        % (sys.platform, image, UBUNTU_RELEASES[IMAGE_VARIANT], GUIDE))
 
 
 def _daemon_down_message(image):
@@ -165,14 +185,31 @@ def main(argv=None):
         description="Regenerate the tutorial screenshots with the renderer CI uses.")
     parser.add_argument("--check", action="store_true",
                         help="verify the committed screenshots instead of rewriting them")
+    parser.add_argument("--container", action="store_true",
+                        help="force the pinned container even on Linux (use when this Linux host is "
+                             "not the Ubuntu release CI runs)")
+    parser.add_argument("--skip-off-linux", action="store_true",
+                        help="with --check, skip (exit 0) instead of running when the host renderer "
+                             "cannot match CI; used by 'npm run shots:check' so 'npm test' neither "
+                             "false-fails nor requires Docker")
     ns = parser.parse_args(argv[1:])
     extra = ["--check"] if ns.check else []
+
+    native = host_is_linux() and not ns.container
+    # --skip-off-linux applies to the CHECK direction only. Regenerating is the dangerous direction:
+    # it must produce a correct PNG or refuse loudly, never silently do nothing.
+    if ns.skip_off_linux and ns.check and not native:
+        print("shots_linux: screenshot check skipped (this host does not render the committed "
+              "Linux PNGs identically, so the result would be meaningless). Run "
+              "'npm run shots:linux:check' to verify in the pinned container; CI is the "
+              "authoritative gate.")
+        return 0
 
     if not _deps_installed():
         return _fail(_deps_missing_message())
 
     node = shutil.which("node")
-    if host_is_linux():
+    if native:
         # The host renderer already matches CI - no container, no Docker dependency.
         if not node:
             return _fail("shots_linux: node is not on PATH; run 'python scripts/setup_dev.py'.")

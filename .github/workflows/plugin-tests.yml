@@ -181,7 +181,11 @@ jobs:
   playwright-heavy:
     needs: [changes, discover]
     if: ${{ needs.changes.outputs.run_plugin == 'true' && needs.discover.outputs.plugins != '[]' && needs.discover.outputs.plugins != '' && contains(fromJSON(needs.discover.outputs.plugins), 'plugins/commentable-html') }}
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: this job renders and validates the committed tutorial screenshots,
+    # so its Ubuntu release IS the rendering authority. tools/shots_linux.py regenerates them in the
+    # matching mcr.microsoft.com/playwright:v<ver>-noble image, and a test couples the two - letting
+    # this float would silently change the authority when GitHub advances the runner.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false

@@ -91,28 +91,39 @@ fail in CI unless the fixture is regenerated in the same change:
 ### Regenerating the tutorial screenshots (Linux-rendered - CMH-BUILD-16)
 
 The committed tutorial PNGs under `plugins/commentable-html/docs/assets/` are produced by a real
-browser, and font rasterization differs per operating system. **Never regenerate them with the host
-renderer on Windows or macOS.** Doing so rewrites every shot with that machine's rasterization, and
-the trap is that it looks correct locally: both `npm run shots:check` and `rebuild_all.py --check`
-re-render with the same host renderer, so they agree and go green. Only the required
-`playwright-heavy` CI job (which runs on Linux) reports `<name>.png differs`.
+browser, and font rasterization differs per operating system and font set. **Never regenerate them
+with the host renderer on Windows or macOS.** Doing so rewrites every shot with that machine's
+rasterization, and the trap used to be that it looked correct locally: the local verifiers re-render
+with the same host renderer, so they agreed and went green, and only the required `playwright-heavy`
+CI job (which renders on Linux) reported `<name>.png differs`.
 
-Use the wrapper, from `plugins/commentable-html/dev`:
+Use the npm scripts, from `plugins/commentable-html/dev`:
 
 ```bash
-npm run shots:linux          # regenerate with the renderer CI uses
-npm run shots:linux:check    # verify only, no writes
+npm run shots                # regenerate: native on Linux, pinned container elsewhere
+npm run shots:check          # verify; skips with a note where the host cannot match CI
+npm run shots:linux          # force the pinned container (e.g. a non-Ubuntu Linux host)
+npm run shots:linux:check    # force the pinned container, verify only
 ```
 
-- On a **Linux** host it runs the capture natively - Docker is not involved at all.
-- On any other host it runs the capture inside the pinned Playwright container. The image tag is
-  DERIVED from the `@playwright/test` version resolved in `package-lock.json`
-  (`mcr.microsoft.com/playwright:v<version>-noble`), so the container's browser cannot drift from the
-  one the suite runs. Do not hardcode the tag anywhere - that drift is the whole point of deriving it.
+All four route through `tools/shots_linux.py`, so the short, habitual command is the safe one.
+
+- On a **Linux** host the capture runs natively and Docker is not involved at all. CI does the same
+  thing (it installs chromium on a bare runner), so a matching Ubuntu release renders identically.
+- On any other host it runs inside `mcr.microsoft.com/playwright:v<version>-noble`, pinned on two
+  axes: the `@playwright/test` version resolved in `package-lock.json` (which fixes the chromium
+  binary) and the Ubuntu release in the image variant (which fixes the FONTS - the axis that actually
+  causes a mismatch). The run also pins `--platform linux/amd64`, so an Apple Silicon host does not
+  render with the arm64 stack. Do not hardcode the tag anywhere.
 - **Docker is therefore only required to regenerate screenshots on a non-Linux host.** It is not
-  needed for normal development, for any test suite, or by CI. When it is missing the wrapper fails
-  with an explicit message naming the image, why Linux rendering is required, and the alternatives
-  (install Docker, use a Linux box or WSL, or leave the PNGs untouched).
+  needed for normal development, for any test suite (`npm test` skips the check where it would be
+  meaningless), or by CI. When it is missing the wrapper fails with an explicit message naming the
+  image, why Linux rendering is required, and the alternatives.
+
+**The container matches CI by agreement, not by construction** - CI does not run inside that image.
+So the `playwright-heavy` job is pinned to `ubuntu-24.04` (not `ubuntu-latest`) to match the `-noble`
+variant, and `test_shots_linux.py` couples the two. If you ever move one, move the other in the same
+change; the guard will fail until you do.
 
 `rebuild_all.py` skips the screenshot step entirely on a non-Linux host, with a note pointing here, so
 it can no longer produce a CI-failing artifact by accident. If your change does not affect the shots,

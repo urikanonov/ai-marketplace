@@ -171,12 +171,105 @@ class NpmScriptWiringTests(unittest.TestCase):
             self.assertIn("shots_linux.py", scripts[name])
         self.assertIn("--check", scripts["shots:linux:check"])
 
+    def test_the_habitual_shots_scripts_route_through_the_guard(self):
+        # The motivating trap was that the SHORT, habitual command silently produced host-rendered
+        # PNGs. Leaving `shots` pointed straight at the raw capture would re-open it, so both
+        # legacy scripts go through shots_linux.py.
+        with open(os.path.join(_paths.DEV, "package.json"), encoding="utf-8") as fh:
+            scripts = json.load(fh)["scripts"]
+        self.assertIn("shots_linux.py", scripts["shots"])
+        self.assertIn("shots_linux.py", scripts["shots:check"])
+        # `npm test` runs shots:check; it must not hard-fail (or demand Docker) on a dev laptop.
+        self.assertIn("--skip-off-linux", scripts["shots:check"])
+        self.assertIn("shots:check", scripts["test"])
+
     def test_no_script_or_doc_hardcodes_the_container_image_tag(self):
         # A hardcoded tag is the drift this tool exists to prevent: it would keep pointing at an old
         # renderer after a Playwright bump.
         with open(os.path.join(_paths.DEV, "package.json"), encoding="utf-8") as fh:
             raw = fh.read()
         self.assertNotIn("mcr.microsoft.com/playwright", raw)
+
+
+class SkipOffLinuxTests(unittest.TestCase):
+    def test_check_skips_cleanly_off_linux_instead_of_failing_or_needing_docker(self):
+        # `npm test` runs this. On Windows the committed (Linux-rendered) PNGs never match the host
+        # renderer, so a real check would FALSE-FAIL and its remediation text would point at the
+        # unsafe capture. Skip with a note and exit 0 instead; CI (Linux) still runs it for real.
+        import io
+        import contextlib
+        buf = io.StringIO()
+        with mock.patch.object(S, "host_is_linux", return_value=False), \
+                mock.patch.object(S, "_deps_installed", return_value=True), \
+                mock.patch.object(S, "_run") as run:
+            with contextlib.redirect_stdout(buf):
+                rc = S.main(["shots_linux.py", "--check", "--skip-off-linux"])
+        self.assertEqual(rc, 0)
+        run.assert_not_called()
+        out = buf.getvalue()
+        self.assertIn("skipped", out.lower())
+        self.assertIn("shots:linux", out)
+
+    def test_skip_off_linux_still_runs_natively_on_linux(self):
+        with mock.patch.object(S, "host_is_linux", return_value=True), \
+                mock.patch.object(S, "_deps_installed", return_value=True), \
+                mock.patch.object(S.shutil, "which", return_value="/usr/bin/node"), \
+                mock.patch.object(S, "_run", return_value=0) as run:
+            rc = S.main(["shots_linux.py", "--check", "--skip-off-linux"])
+        self.assertEqual(rc, 0)
+        run.assert_called_once()
+
+    def test_the_write_path_never_silently_skips(self):
+        # Regenerating is the dangerous direction: it must produce a correct PNG or refuse loudly.
+        with mock.patch.object(S, "host_is_linux", return_value=False), \
+                mock.patch.object(S, "_deps_installed", return_value=True), \
+                mock.patch.object(S.shutil, "which", return_value=None):
+            rc = S.main(["shots_linux.py", "--skip-off-linux"])
+        self.assertNotEqual(rc, 0)
+
+
+class ContainerPinningTests(unittest.TestCase):
+    def test_the_container_run_pins_the_amd64_platform(self):
+        # The playwright image is multi-arch. On Apple Silicon docker would otherwise select arm64
+        # and render with a different rasterizer than the x86_64 CI runner.
+        cmd = S.docker_command("/repo", "plugins/commentable-html/dev", "img:tag", [])
+        self.assertIn("--platform", cmd)
+        self.assertEqual(cmd[cmd.index("--platform") + 1], "linux/amd64")
+
+    def test_container_flag_forces_the_container_even_on_linux(self):
+        # A Linux host that is NOT the CI Ubuntu release (Fedora, an older WSL distro) has its own
+        # fonts, so it needs the same escape hatch a Windows host uses.
+        with mock.patch.object(S, "host_is_linux", return_value=True), \
+                mock.patch.object(S, "_deps_installed", return_value=True), \
+                mock.patch.object(S.shutil, "which", return_value="/usr/bin/docker"), \
+                mock.patch.object(S, "_docker_daemon_ok", return_value=True), \
+                mock.patch.object(S, "_run", return_value=0) as run:
+            rc = S.main(["shots_linux.py", "--container"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(run.call_args[0][0][0], "docker")
+
+    def test_the_image_variant_matches_the_ubuntu_release_the_shots_ci_job_pins(self):
+        # The container is only equivalent to CI while the two name the SAME Ubuntu release. CI does
+        # NOT run inside this image (it installs chromium on a bare runner), so the correspondence is
+        # by agreement, not by construction - this guard makes a future runner bump a conscious,
+        # two-sided edit instead of a silent divergence.
+        workflow = os.path.join(_paths.PLUGIN_ROOT, "..", "..", ".github", "workflows",
+                                "plugin-tests.yml")
+        with open(os.path.normpath(workflow), encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn("ubuntu-24.04", text,
+                      "the screenshot-validating job must pin an explicit Ubuntu release")
+        self.assertEqual(S.UBUNTU_RELEASES[S.IMAGE_VARIANT], "ubuntu-24.04")
+        self.assertNotIn("runs-on: ubuntu-latest", _shots_job_block(text),
+                         "the shots job must not float on ubuntu-latest")
+
+
+def _shots_job_block(text):
+    """The playwright-heavy job block (the one that runs the screenshot freshness check)."""
+    start = text.index("  playwright-heavy:")
+    rest = text[start + 1:]
+    end = rest.find("\n  ", 1)
+    return rest[:end] if end != -1 else rest
 
 
 if __name__ == "__main__":

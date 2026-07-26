@@ -505,9 +505,12 @@ version order (see "Maximizing concurrency"); if a newer merge takes your versio
 The one artifact `rebuild_all.py` does NOT regenerate on a non-Linux host is the tutorial
 screenshots: they are Linux-rendered, so re-rendering them on Windows/macOS produces a shot that
 passes every local check and then fails the required `playwright-heavy` job. `rebuild_all.py` skips
-that step there with a note. Regenerate them with `npm run shots:linux` (or verify with
-`npm run shots:linux:check`) from `plugins/commentable-html/dev` - native on Linux, and in the pinned
-Playwright container otherwise, so Docker is needed ONLY for that one case. See "Regenerating the
+that step there with a note. Regenerate them with `npm run shots` (or verify with
+`npm run shots:check`) from `plugins/commentable-html/dev`: every shots script routes through
+`tools/shots_linux.py`, which renders natively on Linux and in the pinned Playwright container
+otherwise, so Docker is needed ONLY for that one case. Because CI renders on a bare runner rather
+than in that image, the `playwright-heavy` job is pinned to `ubuntu-24.04` to match the image
+variant and a test couples the two - move one and you must move the other. See "Regenerating the
 tutorial screenshots" in [docs/testing-guidelines.md](docs/testing-guidelines.md).
 
 Enable the git hooks once per clone so they run automatically (this is one of the steps
