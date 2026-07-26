@@ -110,6 +110,19 @@ class RuntimeLanguageCoverageTests(unittest.TestCase):
                          "runtime _HL_FAMILY must cover every author-time alias; missing: %r "
                          "(add them to _HL_FAMILY in assets/js/26-highlight.js)" % missing)
 
+    def test_author_time_knows_every_runtime_label(self):
+        # CMH-HL-03, the REVERSE direction. A label the runtime knows but the author-time tool does
+        # not is highlighted at runtime and baked as plain text - and, since a markdown fence picks
+        # its nested language from this same table (CMH-HL-07/08), it would also nest on one path
+        # and stay opaque on the other. Keeping the two tables identical is what makes the nested
+        # fence language a shared decision rather than a per-implementation guess.
+        author = set(H.LANGUAGE_CONFIGS) | set(H.ALIASES)
+        missing = sorted(runtime_known_languages() - author)
+        self.assertEqual(missing, [],
+                         "highlight_code must know every runtime _HL_FAMILY label; missing: %r "
+                         "(add them to LANGUAGE_CONFIGS or ALIASES in tools/blocks/highlight_code.py)"
+                         % missing)
+
 
 if __name__ == "__main__":
     unittest.main()

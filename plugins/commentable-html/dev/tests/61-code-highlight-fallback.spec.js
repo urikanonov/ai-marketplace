@@ -172,7 +172,10 @@ test.describe("runtime code-highlight fallback (CMH-HL-01)", () => {
     expect(await joined("str")).toContain("https://x.dev/a");
     expect(await joined("str")).toContain("`step`");
     expect(await joined("kw")).toContain("js");
-    expect(await joined("str")).toContain("const a = 1;");
+    // The fenced body is tokenized in its own language (CMH-HL-08), so `const` reads as a keyword
+    // rather than the whole line being one opaque string run.
+    expect(await joined("kw")).toContain("const");
+    expect(await joined("str")).not.toContain("const a = 1;");
     // An ordered-list marker colors its digits as a number.
     expect(await joined("num")).toContain("1");
     // An intraword underscore is not emphasis: the com class IS populated (asserted above), and no
@@ -180,6 +183,74 @@ test.describe("runtime code-highlight fallback (CMH-HL-01)", () => {
     await expect(md.locator("span.cmh-code-com", { hasText: "_long_" })).toHaveCount(0);
     expect(await joined("com")).not.toContain("_long_");
     // Highlighting only adds structure: the block's text is untouched.
+    expect(await md.textContent()).toBe(source);
+  });
+
+  test("a fenced block inside a markdown block is highlighted in its own language (CMH-HL-08)", async ({ page }) => {
+    const source = [
+      "Intro **bold** line.",
+      "",
+      "```python",
+      'def area(r):  # note',
+      '    return "hi"',
+      "```",
+      "",
+      "```kusto",
+      "StormEvents | take 5",
+      "```",
+    ].join("\n");
+    await open(page, "<h1>Nested</h1>" + '<pre><code class="language-markdown">' + source + "</code></pre>",
+      "cmh-hl-fallback-md-nested");
+
+    const md = page.locator("#commentRoot pre code.language-markdown");
+    const joined = async (cls) => (await md.locator("span.cmh-code-" + cls).allTextContents()).join("\u0000");
+    // The python body is tokenized AS PYTHON, not as one opaque run.
+    expect(await joined("kw")).toContain("def");
+    expect(await joined("kw")).toContain("return");
+    expect(await joined("com")).toContain("# note");
+    expect(await joined("str")).toContain('"hi"');
+    expect(await joined("str")).not.toContain('def area(r):  # note');
+    // An info string the tokenizer does not know keeps the opaque body.
+    expect(await joined("str")).toContain("StormEvents | take 5");
+    // Surrounding markdown still reads as markdown, and the text is untouched.
+    expect(await joined("kw")).toContain("**bold**");
+    expect(await md.textContent()).toBe(source);
+  });
+
+  test("a nested fenced body is highlighted as a whole and markdown nesting is depth-bounded (CMH-HL-08)", async ({ page }) => {
+    // Two runtime-only behaviors that a per-line tokenizer would get wrong: a construct spanning
+    // body lines, and the recursion bound on markdown-inside-markdown.
+    const deep = (levels) => {
+      let code = "# deep heading";
+      for (let i = 0; i < levels; i++) {
+        const fence = "`".repeat(3 + i);
+        code = fence + "markdown\n" + code + "\n" + fence;
+      }
+      return code;
+    };
+    const source = [
+      "```js",
+      "/* open",
+      "still comment",
+      "*/",
+      "let a = 1;",
+      "```",
+      "",
+      deep(3),   // at the cap: the innermost heading is still tokenized
+      "",
+      deep(4),   // past the cap: that body stays one opaque run
+    ].join("\n");
+    await open(page, "<h1>Deep</h1>" + '<pre><code class="language-markdown">' + source + "</code></pre>",
+      "cmh-hl-fallback-md-deep");
+
+    const md = page.locator("#commentRoot pre code.language-markdown");
+    const texts = async (cls) => await md.locator("span.cmh-code-" + cls).allTextContents();
+    // The block comment is ONE comment token spanning three lines, not three fragments.
+    expect(await texts("com")).toContain("/* open\nstill comment\n*/");
+    // The heading nested at the cap is tokenized; the one past the cap is inside an opaque run.
+    const headings = (await texts("kw")).filter((t) => t === "# deep heading");
+    expect(headings).toHaveLength(1);
+    expect((await texts("str")).some((t) => t.includes("# deep heading"))).toBe(true);
     expect(await md.textContent()).toBe(source);
   });
 

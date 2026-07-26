@@ -4,6 +4,24 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.253.0] - 2026-07-26
+
+### Added
+
+- A fenced code block inside a Markdown block is now highlighted in its OWN language instead of being
+  colored as one flat run: the first word of the fence info string selects the language (aliases
+  resolved, so a `py` label and a `python title="x.py"` label both select Python), and an unknown or
+  absent label keeps the previous opaque body. The body is highlighted as a whole, so a multi-line
+  construct inside it (a block comment, a triple-quoted string) reads exactly as it would in a
+  standalone block of that language. A `markdown`-labelled body re-reads as Markdown up to a small
+  depth bound and stays opaque past it, so a hostile document cannot drive unbounded recursion.
+  (CMH-HL-07, CMH-HL-08)
+- The author-time highlighter now knows the common short labels `js`, `jsx`, `mjs`, `py`, `ts` and
+  `tsx`. They were runtime-only, so a `js`-labelled block was highlighted by the runtime but baked as
+  plain text - and, with nested fences, would have nested on one path and stayed flat on the other. A
+  second drift guard now fails in that direction too, so the author-time and runtime label sets
+  cannot diverge again. (CMH-HL-03)
+
 ## [1.252.0] - 2026-07-26
 
 ### Fixed

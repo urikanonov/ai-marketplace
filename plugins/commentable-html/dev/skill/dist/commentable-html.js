@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.252.0";
+const CMH_VERSION = "1.253.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -1915,7 +1915,7 @@ function setDiffSyntaxOn(on) {
   try { localStorage.setItem(CMH_DIFF_HL_KEY, on ? "on" : "off"); } catch (e) { /* non-persistent */ }
 }
 const _HL_FAMILY = {
-  javascript: "c", js: "c", jsx: "c", typescript: "c", ts: "c", tsx: "c", java: "c", c: "c", cpp: "c",
+  javascript: "c", js: "c", jsx: "c", mjs: "c", typescript: "c", ts: "c", tsx: "c", java: "c", c: "c", cpp: "c",
   "c++": "c", cs: "c", csharp: "c", go: "c", golang: "c", rust: "c", rs: "c", php: "c", swift: "c",
   kotlin: "c", kt: "c", scala: "c", dart: "c", groovy: "c", objectivec: "c", objc: "c",
   json: "json", jsonc: "json",
@@ -2017,8 +2017,12 @@ function _hlTokenRe(fam) {
 // The fence regex spells a backtick as \x60 on purpose: the authoring validator's script scanner
 // does not model regex literals, so a bare backtick there would read as a template-literal opener
 // and blank the rest of the layer (hiding, for example, the chart renderer from its canvas check).
-const _MD_FENCE_RE = /^([ \t]{0,3})(\x60{3,}|~{3,})([ \t]*)(.*)$/;
-const _MD_HEADING_RE = /^([ \t]{0,3})(#{1,6}(?:[ \t].*)?)$/;
+// `[\s\S]*` rather than `.*` on purpose: JavaScript's `.` does NOT match U+2028 / U+2029, but
+// Python's does, so a line carrying a Unicode line separator would open a fence at author time and
+// not at runtime. Lines never contain a newline here (the input is split on one), so the classes
+// are otherwise equivalent.
+const _MD_FENCE_RE = /^([ \t]{0,3})(\x60{3,}|~{3,})([ \t]*)([\s\S]*)$/;
+const _MD_HEADING_RE = /^([ \t]{0,3})(#{1,6}(?:[ \t][\s\S]*)?)$/;
 const _MD_SETEXT_RE = /^[ \t]{0,3}=+[ \t]*$/;
 // A dash run under a paragraph is a setext H2 underline, not a thematic break. A single `-` stays a
 // list marker (an empty list item is far more common in a draft than a one-character underline).
@@ -2030,7 +2034,7 @@ const _MD_BREAK_RE = /^[ \t]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*)
 const _MD_TABLE_RULE_RE = /^[ \t]{0,3}\|?(?:[ \t]*:?-+:?[ \t]*\|)+(?:[ \t]*:?-+:?[ \t]*)?$/;
 const _MD_LIST_RE = /^([-*+]|\d{1,9}[.)])([ \t]+|$)/;
 const _MD_TASK_RE = /^\[[ xX]\](?=[ \t]|$)/;
-const _MD_REFDEF_RE = /^(\[)([^\]\n]+)(\]:)([ \t]*)(\S+)(.*)$/;
+const _MD_REFDEF_RE = /^(\[)([^\]\n]+)(\]:)([ \t]*)([^ \t]+)([\s\S]*)$/;
 const _MD_WORD_RE = /[A-Za-z0-9_]/;
 // Precedence matters: the leftmost-first alternative wins, so a code span shields its contents from
 // emphasis and an autolink is tried before a generic inline tag. Every scan that could fail is
@@ -2168,47 +2172,85 @@ function _mdPrefixed(line) {
   const tail = _mdInline(rest, (rest.match(/\|/g) || []).length >= 2);
   return { html: out + tail.html, openComment: tail.openComment };
 }
-function cmhHighlightMarkdown(text) {
-  const lines = String(text == null ? "" : text).split("\n");
-  let out = "", fence = null, inComment = false, para = false;
+// The language a fenced block's info string selects, or null when the label is unknown. Only the
+// first word counts, so `python title="x.py"` still selects Python. The author-time mirror reads the
+// SAME table (a drift guard keeps the two label sets identical), so both paths nest a fenced body for
+// exactly the same set of info strings.
+// `[ \t]` explicitly rather than trim()/strip(): the two languages disagree on what counts as
+// whitespace (JS trims U+FEFF, Python does not; Python strips U+0085, JS does not), and that would
+// make one path nest a fenced body while the other left it opaque.
+function _mdFenceLanguage(info) {
+  const label = String(info == null ? "" : info).replace(/^[ \t]+|[ \t]+$/g, "").split(/[ \t]/)[0].toLowerCase();
+  return label && _HL_FAMILY[label] ? label : null;
+}
+// How deep a ```markdown fence may nest inside a markdown block before its body is left opaque.
+// Markdown is the only language whose tokenizer can re-enter itself, so this constant is what bounds
+// the recursion an authored document can drive.
+const _MD_MAX_NESTING = 3;
+// The html for a fenced block's buffered body lines. A body with a known language is tokenized as ONE
+// unit so a multi-line construct (a C-style block comment, a Python triple-quoted string) reads
+// exactly as it would in a standalone block of that language.
+function _mdFencedBody(lang, lines, depth) {
+  const text = lines.join("\n");
+  if (!text) return "";
+  if (_HL_FAMILY[lang] === "markdown") {
+    return depth >= _MD_MAX_NESTING ? _hlSpan("str", text) : cmhHighlightMarkdown(text, depth + 1);
+  }
+  return cmhHighlightCode(text, lang);
+}
+function cmhHighlightMarkdown(text, depth) {
+  // Normalize line endings the way the author-time tool does before splitting: the DOM already
+  // gives LF, but the diff path and any programmatic caller may not, and a stray \r would hide a
+  // fence delimiter from _MD_FENCE_RE and silently drop the whole nested-body behavior.
+  const lines = String(text == null ? "" : text).replace(/\r\n?/g, "\n").split("\n");
+  const level = depth || 0;
+  const parts = [];
+  let fence = null, inComment = false, para = false, body = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const prevPara = para;
     para = false;
-    if (i) out += "\n";
     if (fence) {
-      if (_mdClosesFence(line, fence.ch, fence.len)) { out += _hlSpan("op", line); fence = null; }
-      else if (line) out += _hlSpan("str", line);
+      if (_mdClosesFence(line, fence.ch, fence.len)) {
+        if (body.length) { parts.push(_mdFencedBody(fence.lang, body, level)); body = []; }
+        parts.push(_hlSpan("op", line));
+        fence = null;
+      } else if (fence.lang) {
+        body.push(line);
+      } else {
+        parts.push(line ? _hlSpan("str", line) : "");
+      }
       continue;
     }
     if (inComment) {
       const end = _mdCommentEnd(line);
-      if (end.at < 0) { if (line) out += _hlSpan("com", line); continue; }
+      if (end.at < 0) { parts.push(line ? _hlSpan("com", line) : ""); continue; }
       const rest = line.slice(end.at + end.size);
       const tail = _mdInline(rest, (rest.match(/\|/g) || []).length >= 2);
-      out += _hlSpan("com", line.slice(0, end.at + end.size)) + tail.html;
+      parts.push(_hlSpan("com", line.slice(0, end.at + end.size)) + tail.html);
       inComment = tail.openComment;
       continue;
     }
     let m = _MD_FENCE_RE.exec(line);
     if (m && !(m[2].charAt(0) === "`" && m[4].indexOf("`") >= 0)) {
-      fence = { ch: m[2].charAt(0), len: m[2].length };
-      out += escapeHtml(m[1]) + _hlSpan("op", m[2]) + escapeHtml(m[3]) + (m[4] ? _hlSpan("kw", m[4]) : "");
+      fence = { ch: m[2].charAt(0), len: m[2].length, lang: _mdFenceLanguage(m[4]) };
+      parts.push(escapeHtml(m[1]) + _hlSpan("op", m[2]) + escapeHtml(m[3]) + (m[4] ? _hlSpan("kw", m[4]) : ""));
       continue;
     }
     m = _MD_HEADING_RE.exec(line);
-    if (m) { out += escapeHtml(m[1]) + _hlSpan("kw", m[2]); continue; }
-    if (prevPara && _MD_SETEXT_DASH_RE.test(line)) { out += _hlSpan("kw", line); continue; }
-    if (_MD_BREAK_RE.test(line)) { out += _hlSpan("op", line); continue; }
-    if (_MD_SETEXT_RE.test(line)) { out += _hlSpan("kw", line); continue; }
-    if (_MD_TABLE_RULE_RE.test(line)) { out += _hlSpan("op", line); continue; }
+    if (m) { parts.push(escapeHtml(m[1]) + _hlSpan("kw", m[2])); continue; }
+    if (prevPara && _MD_SETEXT_DASH_RE.test(line)) { parts.push(_hlSpan("kw", line)); continue; }
+    if (_MD_BREAK_RE.test(line)) { parts.push(_hlSpan("op", line)); continue; }
+    if (_MD_SETEXT_RE.test(line)) { parts.push(_hlSpan("kw", line)); continue; }
+    if (_MD_TABLE_RULE_RE.test(line)) { parts.push(_hlSpan("op", line)); continue; }
     const indent = line.length - line.replace(/^[ \t]+/, "").length;
     para = !!line.trim() && line.charAt(indent) !== ">" && !_MD_LIST_RE.test(line.slice(indent));
-    const body = _mdPrefixed(line);
-    out += body.html;
-    inComment = body.openComment;
+    const bodyLine = _mdPrefixed(line);
+    parts.push(bodyLine.html);
+    inComment = bodyLine.openComment;
   }
-  return out;
+  if (body.length) parts.push(_mdFencedBody(fence.lang, body, level)); // unterminated fence
+  return parts.join("\n");
 }
 function cmhHighlightCode(text, lang) {
   const fam = _HL_FAMILY[String(lang || "").toLowerCase()] || "c";

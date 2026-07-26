@@ -387,6 +387,12 @@ ALIASES = {
     "bat": "batch",
     "cmd": "batch",
     "jsonc": "json",
+    "js": "javascript",
+    "jsx": "javascript",
+    "mjs": "javascript",
+    "py": "python",
+    "ts": "typescript",
+    "tsx": "typescript",
     "md": "markdown",
     "mdown": "markdown",
     "mkd": "markdown",
@@ -535,9 +541,12 @@ def _token_re(language):
 # assets/js/26-highlight.js; the two are pinned together by tests/fixtures/highlight_parity.json.
 #
 # Token mapping (reusing the six shipped classes): headings, setext underlines, bold and a fence
-# info string -> kw; emphasis, strikethrough and HTML comments -> com; code spans, fenced code
-# bodies, autolinks and link destinations -> str; link text, reference labels and footnote
-# references -> fn; ordered-list numbers -> num; structural punctuation -> op.
+# info string -> kw; emphasis, strikethrough and HTML comments -> com; code spans, a fenced body
+# whose info string names no known language, autolinks and link destinations -> str; link text,
+# reference labels and footnote references -> fn; ordered-list numbers -> num; structural
+# punctuation -> op. A fenced body WITH a known info-string language is BUFFERED and tokenized in
+# that language as one unit when the fence closes (_md_fence_language, _md_fenced_body), so a
+# construct spanning lines survives; markdown-in-markdown recurses through _MD_MAX_NESTING.
 # ---------------------------------------------------------------------------
 
 _MD_FENCE_RE = re.compile(r"([ \t]{0,3})(`{3,}|~{3,})([ \t]*)(.*)$")
@@ -553,8 +562,12 @@ _MD_BREAK_RE = re.compile(r"[ \t]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ 
 _MD_TABLE_RULE_RE = re.compile(r"[ \t]{0,3}\|?(?:[ \t]*:?-+:?[ \t]*\|)+(?:[ \t]*:?-+:?[ \t]*)?$")
 _MD_LIST_RE = re.compile(r"([-*+]|\d{1,9}[.)])([ \t]+|$)")
 _MD_TASK_RE = re.compile(r"\[[ xX]\](?=[ \t]|$)")
-_MD_REFDEF_RE = re.compile(r"(\[)([^\]\n]+)(\]:)([ \t]*)(\S+)(.*)$")
+_MD_REFDEF_RE = re.compile(r"(\[)([^\]\n]+)(\]:)([ \t]*)([^ \t]+)(.*)$")
 _MD_WORD_RE = re.compile(r"[A-Za-z0-9_]")
+# How deep a ```markdown fence may nest inside a markdown block before its body is left opaque.
+# Markdown is the only language whose tokenizer can re-enter itself, so this constant is what bounds
+# the recursion an authored document can drive.
+_MD_MAX_NESTING = 3
 # Precedence matters: the first alternative that matches at the leftmost position wins, so a code
 # span shields its contents from emphasis, and an autolink is tried before a generic inline tag.
 # Every scan that could fail is LENGTH-CAPPED: an uncapped `[^\]\n]*` retried from each of 32k `[`
@@ -721,15 +734,39 @@ def _md_prefixed(line):
     return "".join(out), open_comment
 
 
-def _md_line(line, fence, in_comment, prev_para):
-    """(html, fence, in_comment, paragraph) for one line. `fence` is the open (char, length) fenced
-    block or None; `in_comment` is True while an HTML comment opened on an earlier line is still
-    open; `prev_para` says whether the PREVIOUS line was plain paragraph text, which is what turns a
-    dash run into a setext underline rather than a thematic break."""
-    if fence is not None:
-        if _md_closes_fence(line, fence[0], fence[1]):
-            return _span("op", line), None, False, False
-        return (_span("str", line) if line else ""), fence, False, False
+def _md_fence_language(info):
+    """The language a fenced block's info string selects, or None when the label is unknown. Only
+    the first word counts, so `python title="x.py"` still selects Python. The runtime mirror reads
+    the SAME table (a drift guard keeps the two label sets identical), so both paths nest a fenced
+    body for exactly the same set of info strings."""
+    label = (info or "").strip(" \t").split(" ")[0].split("\t")[0]
+    lang = _normalize_language(label)
+    return lang if lang in LANGUAGE_CONFIGS else None
+
+
+def _md_fenced_body(lang, lines, depth):
+    """The html for a fenced block's buffered body lines. A body with a known language is tokenized
+    as ONE unit so a multi-line construct (a C-style block comment, a Python triple-quoted string)
+    reads exactly as it would in a standalone block of that language. Markdown is the one language
+    that can nest into itself, so it recurses through a DEPTH BOUND: past it the body stays opaque,
+    which keeps a hostile document (thousands of ```markdown openers) from exhausting the stack."""
+    text = "\n".join(lines)
+    if not text:
+        return ""
+    if LANGUAGE_CONFIGS[lang].get("tokenizer") == "markdown":
+        if depth >= _MD_MAX_NESTING:
+            return _span("str", text)
+        return _highlight_markdown(text, depth + 1)
+    return highlight_code(lang, text)
+
+
+def _md_line(line, in_comment, prev_para):
+    """(html, fence, in_comment, paragraph) for one line OUTSIDE a fenced block - the caller owns an
+    open fence, because a fenced body is buffered and highlighted as a unit. `fence` is the
+    (char, length, language) block this line OPENS, or None; `in_comment` is True while an HTML
+    comment opened on an earlier line is still open; `prev_para` says whether the PREVIOUS line was
+    plain paragraph text, which is what turns a dash run into a setext underline rather than a
+    thematic break."""
     if in_comment:
         end, size = _md_comment_end(line)
         if end < 0:
@@ -742,7 +779,8 @@ def _md_line(line, fence, in_comment, prev_para):
         info = match.group(4)
         html = (_esc(match.group(1)) + _span("op", match.group(2)) + _esc(match.group(3))
                 + (_span("kw", info) if info else ""))
-        return html, (match.group(2)[0], len(match.group(2))), False, False
+        opened = (match.group(2)[0], len(match.group(2)), _md_fence_language(info))
+        return html, opened, False, False
     match = _MD_HEADING_RE.match(line)
     if match:
         return _esc(match.group(1)) + _span("kw", match.group(2)), None, False, False
@@ -760,14 +798,29 @@ def _md_line(line, fence, in_comment, prev_para):
     return html, None, open_comment, paragraph
 
 
-def _highlight_markdown(src):
-    out, fence, in_comment, para = [], None, False, False
-    for index, line in enumerate(src.split("\n")):
-        if index:
-            out.append("\n")
-        html, fence, in_comment, para = _md_line(line, fence, in_comment, para)
-        out.append(html)
-    return "".join(out)
+def _highlight_markdown(src, depth=0):
+    parts, fence, in_comment, para, body = [], None, False, False, []
+    for line in src.split("\n"):
+        if fence is not None:
+            if _md_closes_fence(line, fence[0], fence[1]):
+                if body:
+                    parts.append(_md_fenced_body(fence[2], body, depth))
+                    body = []
+                parts.append(_span("op", line))
+                fence = None
+            elif fence[2]:
+                # Buffered: the whole body is tokenized at once when the fence closes, so a nested
+                # language's multi-line constructs survive.
+                body.append(line)
+            else:
+                parts.append(_span("str", line) if line else "")
+            para = False
+            continue
+        html, fence, in_comment, para = _md_line(line, in_comment, para)
+        parts.append(html)
+    if body:  # an unterminated fence still renders its body
+        parts.append(_md_fenced_body(fence[2], body, depth))
+    return "\n".join(parts)
 
 
 def highlight_code(language, code):

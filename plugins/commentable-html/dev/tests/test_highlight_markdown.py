@@ -76,14 +76,84 @@ class MarkdownBlockTokenTests(unittest.TestCase):
         # A list item is not a paragraph, so a rule below one stays a break.
         self.assertEqual(by_class("- item\n-----")["op"], ["-", "-----"])
 
-    def test_fence_delimiters_info_string_and_body(self):
-        code = "```python\nx = 1\n```\nafter"
+    def test_fence_delimiters_and_an_unlabeled_opaque_body(self):
+        code = "```\nx = 1\n```\nafter"
         classes = by_class(code)
         self.assertIn("```", classes["op"])
-        self.assertEqual(classes["kw"], ["python"])
         self.assertEqual(classes["str"], ["x = 1"])
-        # The body is opaque: no inline markdown is tokenized inside a fenced block.
+        # With no info string the body is opaque: no inline markdown is tokenized inside a fence.
         self.assertEqual(spans("```\n**not bold**\n```")[1], ("str", "**not bold**"))
+
+    def test_a_fenced_body_is_tokenized_in_its_info_string_language(self):
+        code = '```python\ndef area(r):\n    return "hi"  # note\n```'
+        classes = by_class(code)
+        self.assertEqual(classes["kw"][0], "python")          # the info string itself
+        self.assertIn("def", classes["kw"])                   # tokenized as Python, not opaque
+        self.assertIn("return", classes["kw"])
+        self.assertIn('"hi"', classes["str"])
+        self.assertIn("# note", classes["com"])
+        self.assertNotIn('def area(r):', classes.get("str", []))
+        self.assertEqual(text_of(render(code)), code)
+
+    def test_an_info_string_alias_resolves_like_the_full_label(self):
+        for info in ("js", "mjs", "javascript"):
+            with self.subTest(info=info):
+                classes = by_class("```%s\nconst a = 1; // n\n```" % info)
+                self.assertIn("const", classes["kw"])
+                self.assertIn("// n", classes["com"])
+
+    def test_only_the_first_word_of_the_info_string_selects_the_language(self):
+        classes = by_class('```python title="x.py"\ndef f(): pass\n```')
+        self.assertIn("def", classes["kw"])
+
+    def test_an_unknown_info_string_keeps_an_opaque_body(self):
+        for info in ("kusto", "text", "brainfuck"):
+            with self.subTest(info=info):
+                classes = by_class("```%s\nlet x = 1 // not a comment\n```" % info)
+                self.assertEqual(classes["str"], ["let x = 1 // not a comment"])
+
+    def test_a_nested_markdown_fence_is_highlighted_as_markdown_without_recursing(self):
+        code = "````markdown\n# Inner heading\n```python\ndef f(): pass\n```\n````"
+        classes = by_class(code)
+        self.assertIn("# Inner heading", classes["kw"])
+        self.assertIn("```", classes["op"])
+        self.assertEqual(text_of(render(code)), code)
+
+    def test_a_multiline_construct_in_a_nested_body_is_not_cut_at_the_line_break(self):
+        # The body is tokenized as ONE unit, so a construct that spans lines reads the same as it
+        # would in a standalone block of that language.
+        js = by_class("```js\n/* open\nstill comment\n*/\nlet a = 1;\n```")
+        self.assertIn("/* open\nstill comment\n*/", js["com"])
+        py = by_class('```python\ns = """one\ntwo"""\n```')
+        self.assertIn('"""one\ntwo"""', py["str"])
+
+    def test_markdown_nesting_is_depth_bounded(self):
+        # Markdown is the only language whose tokenizer can re-enter itself, so a hostile document
+        # (thousands of ```markdown openers) must not recurse without bound. Past the depth cap the
+        # body stays opaque; the text still round-trips exactly either way.
+        hostile = "```markdown\n" * 5000
+        rendered = render(hostile)
+        self.assertEqual(text_of(rendered), hostile)
+
+        def nest(levels):
+            """A ```markdown fence nested `levels` deep around a `# deep` heading."""
+            code = "# deep"
+            for level in range(levels):
+                fence = "`" * (3 + level)
+                code = "%smarkdown\n%s\n%s" % (fence, code, fence)
+            return code
+
+        # At the cap the innermost heading is still tokenized as markdown; one level deeper the body
+        # is left as a single opaque run instead of recursing again.
+        self.assertIn("# deep", by_class(nest(H._MD_MAX_NESTING))["kw"])
+        deeper = by_class(nest(H._MD_MAX_NESTING + 1))
+        self.assertNotIn("# deep", deeper.get("kw", []))
+        self.assertTrue(any("# deep" in run for run in deeper["str"]))
+
+    def test_a_fenced_body_line_that_looks_like_markdown_is_not_markdown(self):
+        classes = by_class("```python\n# heading? no, a python comment\n```")
+        self.assertIn("# heading? no, a python comment", classes["com"])
+        self.assertNotIn("# heading? no, a python comment", classes.get("kw", []))
 
     def test_a_tilde_fence_is_not_closed_by_a_backtick_fence(self):
         classes = by_class("~~~\n```\nstill code\n~~~")
@@ -274,7 +344,8 @@ class MarkdownPerformanceTests(unittest.TestCase):
         # tens of seconds before the caps and would freeze the browser on the runtime path).
         for hostile in ("[" * 30000, "<" * 30000, "![" * 15000, "`" * 30000,
                         "**x " * 8000, "~~x " * 8000, "__x " * 8000, "*x " * 10000,
-                        "|-" + "|\t" * 4000 + "x", "|" * 30000, "-" * 30000 + "|x"):
+                        "|-" + "|\t" * 4000 + "x", "|" * 30000, "-" * 30000 + "|x",
+                        "```markdown\n" * 5000, "```python\n" + "x = 1  # c\n" * 8000 + "```"):
             with self.subTest(head=hostile[:2]):
                 start = time.time()
                 rendered = render(hostile)
@@ -294,6 +365,25 @@ class MarkdownRuntimeCoverageTests(unittest.TestCase):
         for alias in ("md", "markdown", "mdown", "mkd"):
             with self.subTest(alias=alias):
                 self.assertRegex(ext.group(1), r'\b%s:\s*"markdown"' % alias)
+
+    def test_the_runtime_markdown_tokenizer_normalizes_line_endings(self):
+        # The author-time tool normalizes CRLF before splitting lines; the runtime must too, or a
+        # stray \r hides a fence delimiter from _MD_FENCE_RE and the nested-body behavior silently
+        # disappears. The DOM already hands the runtime LF, so this is not reachable from a browser
+        # test - the source-level guard is the coverage.
+        with open(os.path.join(_paths.ASSETS, "js", "26-highlight.js"), "r", encoding="utf-8") as fh:
+            src = fh.read()
+        body = re.search(r"function cmhHighlightMarkdown\([^)]*\)\s*\{(.*?)\n\}", src, re.S)
+        self.assertTrue(body, "could not locate cmhHighlightMarkdown()")
+        self.assertRegex(body.group(1), r"\.replace\(/\\r\\n\?/g,\s*\"\\n\"\)")
+
+    def test_the_runtime_uses_the_same_markdown_nesting_depth_cap(self):
+        # The spec promises a nested ```markdown body recurses through the SAME bound on both paths.
+        # Nothing else pins the two constants together, and a silent divergence would leave one path
+        # recursing deeper than the other on the same document.
+        with open(os.path.join(_paths.ASSETS, "js", "26-highlight.js"), "r", encoding="utf-8") as fh:
+            src = fh.read()
+        self.assertRegex(src, r"const _MD_MAX_NESTING\s*=\s*%d;" % H._MD_MAX_NESTING)
 
 
 if __name__ == "__main__":
