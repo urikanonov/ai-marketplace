@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.248.0] - 2026-07-26
+
+### Fixed
+
+- The floating per-link `Add Comment` button that appears when hovering a commentable link now wears
+  the shared crimson accent pill (background, label color, rounded shape, shadow, hover and active
+  states) like every other add-comment affordance. `.cm-link-add` had been left out of the shared pill
+  rule, so the link button rendered as a plain default browser button. (CMH-UI-04)
+
 ## [1.247.0] - 2026-07-26
 
 ### Fixed

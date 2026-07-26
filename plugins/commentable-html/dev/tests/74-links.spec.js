@@ -39,12 +39,16 @@ async function stage(page, { init } = {}) {
   return html;
 }
 
-async function commentLink(page, id, note) {
+async function hoverLink(page, id) {
   await page.evaluate((sel) => {
     const a = document.querySelector(sel);
     a.scrollIntoView({ block: "center" });
     a.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
   }, "#" + id);
+}
+
+async function commentLink(page, id, note) {
+  await hoverLink(page, id);
   await expect(page.locator("#linkAddBtn")).toBeVisible();
   await page.locator("#linkAddBtn").click();
   const composer = page.locator(".cm-composer").last();
@@ -115,6 +119,26 @@ test.describe("link handling", () => {
     const card = page.locator(".cm-card").filter({ hasText: "this reference is stale" });
     await expect(card).toHaveCount(1);
     await expect(card).toContainText(/link 1/);
+  });
+
+  test("the link add button wears the shared accent pill and hover (CMH-UI-04)", async ({ page }) => {
+    await stage(page);
+    await hoverLink(page, "ext");
+    const btn = page.locator("#linkAddBtn");
+    await expect(btn).toBeVisible();
+    const pill = (sel) => page.locator(sel).evaluate((el) => {
+      const c = getComputedStyle(el);
+      return { bg: c.backgroundColor, fg: c.color, radius: c.borderTopLeftRadius, weight: c.fontWeight };
+    });
+    const link = await pill("#linkAddBtn");
+    // #imageAddBtn is the reference affordance: every add-comment control shares one pill look,
+    // so the link button must not fall back to the browser's default button chrome.
+    const image = await pill("#imageAddBtn");
+    expect(link).toEqual(image);
+    expect(link.bg).not.toBe("rgba(0, 0, 0, 0)");
+    await btn.hover();
+    const hovered = await btn.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(hovered).not.toBe(link.bg);
   });
 
   test("a link comment survives reload (ring restored) (CMH-LINK-02)", async ({ page }) => {
