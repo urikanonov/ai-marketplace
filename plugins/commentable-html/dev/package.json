@@ -13,6 +13,8 @@
     "fixtures": "node tests/fixtures/generate.mjs",
     "fixtures:check": "node tests/fixtures/generate.mjs --check",
     "shots": "node tools/capture_tutorial.mjs",
+    "shots:linux": "python tools/shots_linux.py",
+    "shots:linux:check": "python tools/shots_linux.py --check",
     "shots:check": "node tools/capture_tutorial.mjs --check",
     "shots:quality": "node tools/check_shot_quality.mjs",
     "shard:timings": "node tests/refresh-spec-timings.mjs",

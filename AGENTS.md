@@ -502,6 +502,14 @@ lanes still apply: assign distinct `dev/VERSION` values to concurrent PRs up fro
 version order (see "Maximizing concurrency"); if a newer merge takes your version, re-bump and rerun
 `rebuild_all.py`.
 
+The one artifact `rebuild_all.py` does NOT regenerate on a non-Linux host is the tutorial
+screenshots: they are Linux-rendered, so re-rendering them on Windows/macOS produces a shot that
+passes every local check and then fails the required `playwright-heavy` job. `rebuild_all.py` skips
+that step there with a note. Regenerate them with `npm run shots:linux` (or verify with
+`npm run shots:linux:check`) from `plugins/commentable-html/dev` - native on Linux, and in the pinned
+Playwright container otherwise, so Docker is needed ONLY for that one case. See "Regenerating the
+tutorial screenshots" in [docs/testing-guidelines.md](docs/testing-guidelines.md).
+
 Enable the git hooks once per clone so they run automatically (this is one of the steps
 `scripts/setup_dev.py` performs; skip a single commit with `git commit --no-verify`, or a single
 push with `git push --no-verify`):

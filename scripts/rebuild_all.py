@@ -48,6 +48,17 @@ def _tutorial_deps_installed():
     return os.path.isdir(TUTORIAL_DEPS)
 
 
+def _host_renders_ci_shots():
+    """True when this host's browser rasterizes the tutorial screenshots the way CI does.
+
+    The committed PNGs are LINUX-rendered. On another OS both the capture and its --check use the
+    HOST renderer, so a regenerated shot looks correct locally and then fails the required
+    playwright-heavy job. Rather than produce (or bless) a wrong artifact, the step is skipped and
+    the caller is pointed at tools/shots_linux.py, which runs the capture in the pinned container.
+    """
+    return sys.platform.startswith("linux")
+
+
 def _run(label, cmd):
     print("== " + label + " ==")
     proc = subprocess.run(cmd, cwd=ROOT)
@@ -74,7 +85,12 @@ def main(argv=None):
         steps.append(("Playwright fixtures (generate.mjs)", [node, FIXTURES_GEN] + check))
     else:
         print("== Playwright fixtures (generate.mjs) == skipped (node not found; CI plugin-tests runs it)")
-    if node and os.path.exists(TUTORIAL_SHOTS) and _tutorial_deps_installed():
+    if not _host_renders_ci_shots():
+        print("== Tutorial screenshots (capture_tutorial.mjs) == skipped (this host is not Linux; the "
+              "committed shots are Linux-rendered, so regenerating or checking them here would compare "
+              "against the wrong renderer). Run 'npm run shots:linux' from plugins/commentable-html/dev "
+              "to regenerate them in the pinned container; CI plugin-tests remains the authoritative gate.")
+    elif node and os.path.exists(TUTORIAL_SHOTS) and _tutorial_deps_installed():
         steps.append(("Tutorial screenshots (capture_tutorial.mjs)", [node, TUTORIAL_SHOTS] + check))
     elif node and os.path.exists(TUTORIAL_SHOTS):
         print("== Tutorial screenshots (capture_tutorial.mjs) == skipped "

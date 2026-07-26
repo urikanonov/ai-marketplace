@@ -87,6 +87,38 @@ fail in CI unless the fixture is regenerated in the same change:
   `plugins/commentable-html/dev` run `node tests/fixtures/generate.mjs`. The fixtures are gated by the
   required `plugin-tests` job (`fixtures --check`) but are NOT covered by `build.py --check` or the
   pre-push hook, so a bump that regenerates `dist/` and `site/` can still fail CI on stale fixtures.
+
+### Regenerating the tutorial screenshots (Linux-rendered - CMH-BUILD-16)
+
+The committed tutorial PNGs under `plugins/commentable-html/docs/assets/` are produced by a real
+browser, and font rasterization differs per operating system. **Never regenerate them with the host
+renderer on Windows or macOS.** Doing so rewrites every shot with that machine's rasterization, and
+the trap is that it looks correct locally: both `npm run shots:check` and `rebuild_all.py --check`
+re-render with the same host renderer, so they agree and go green. Only the required
+`playwright-heavy` CI job (which runs on Linux) reports `<name>.png differs`.
+
+Use the wrapper, from `plugins/commentable-html/dev`:
+
+```bash
+npm run shots:linux          # regenerate with the renderer CI uses
+npm run shots:linux:check    # verify only, no writes
+```
+
+- On a **Linux** host it runs the capture natively - Docker is not involved at all.
+- On any other host it runs the capture inside the pinned Playwright container. The image tag is
+  DERIVED from the `@playwright/test` version resolved in `package-lock.json`
+  (`mcr.microsoft.com/playwright:v<version>-noble`), so the container's browser cannot drift from the
+  one the suite runs. Do not hardcode the tag anywhere - that drift is the whole point of deriving it.
+- **Docker is therefore only required to regenerate screenshots on a non-Linux host.** It is not
+  needed for normal development, for any test suite, or by CI. When it is missing the wrapper fails
+  with an explicit message naming the image, why Linux rendering is required, and the alternatives
+  (install Docker, use a Linux box or WSL, or leave the PNGs untouched).
+
+`rebuild_all.py` skips the screenshot step entirely on a non-Linux host, with a note pointing here, so
+it can no longer produce a CI-failing artifact by accident. If your change does not affect the shots,
+restore them with `git checkout origin/main -- plugins/commentable-html/docs/assets` and confirm with
+`npm run shots:linux:check`.
+
 - **Highlighter golden tests.** After changing the highlighter, regenerate the goldens with
   `python build_highlight_fixtures.py` (from the commentable-html dev tests) so the `.sample`/`.html`
   goldens match the new output.

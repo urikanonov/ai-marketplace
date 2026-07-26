@@ -27,7 +27,10 @@ class OrchestrationTests(unittest.TestCase):
         # present regardless of whether node is installed on the host. Without this the test
         # raises StopIteration on a node-less machine (no "Tutorial screenshots" label), which
         # is exactly what made a node-less pre-push run fail spuriously and tempt a bypass.
+        # The host is pinned to Linux for the same reason: the screenshots step is Linux-only
+        # (CMH-BUILD-16), so on a Windows/macOS dev box the label would legitimately be absent.
         with mock.patch.object(rebuild_all.shutil, "which", return_value="/usr/bin/node"), \
+                mock.patch.object(rebuild_all, "_host_renders_ci_shots", return_value=True), \
                 mock.patch.object(rebuild_all, "_tutorial_deps_installed", return_value=True):
             rc = rebuild_all.main(["rebuild_all.py", "--check"])
         self.assertEqual(rc, 0)
@@ -67,6 +70,7 @@ class OrchestrationTests(unittest.TestCase):
         import io
         import contextlib
         with mock.patch.object(rebuild_all.shutil, "which", return_value="/usr/bin/node"), \
+                mock.patch.object(rebuild_all, "_host_renders_ci_shots", return_value=True), \
                 mock.patch.object(rebuild_all, "_tutorial_deps_installed", return_value=False):
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
@@ -97,6 +101,7 @@ class OrchestrationTests(unittest.TestCase):
         import io
         import contextlib
         with mock.patch.object(rebuild_all.shutil, "which", return_value="/usr/bin/node"), \
+                mock.patch.object(rebuild_all, "_host_renders_ci_shots", return_value=True), \
                 mock.patch.object(rebuild_all, "_tutorial_deps_installed", return_value=True), \
                 mock.patch.object(rebuild_all.os.path, "exists", return_value=False):
             buf = io.StringIO()
@@ -106,6 +111,28 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn(
             "Tutorial screenshots (capture_tutorial.mjs) == skipped (capture script not found)", out)
+
+    def test_screenshots_are_skipped_on_a_non_linux_host_with_an_actionable_note(self):
+        # CMH-BUILD-16: the committed PNGs are Linux-rendered. On another OS this step would
+        # re-render them with the HOST rasterizer, and --check would compare against that same
+        # host renderer - so the run goes green locally and then fails the required
+        # playwright-heavy job. Skip it and name the tool that does it correctly.
+        import io
+        import contextlib
+        with mock.patch.object(rebuild_all.shutil, "which", return_value="/usr/bin/node"), \
+                mock.patch.object(rebuild_all, "_host_renders_ci_shots", return_value=False), \
+                mock.patch.object(rebuild_all, "_tutorial_deps_installed", return_value=True):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = rebuild_all.main(["rebuild_all.py", "--check"])
+            out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        labels = [c[0] for c in self.calls]
+        self.assertFalse(any("Tutorial screenshots" in lbl for lbl in labels))
+        self.assertIn("shots:linux", out)
+        self.assertIn("Linux", out)
+        # The skip is surgical - every other generator still runs.
+        self.assertTrue(any(lbl.startswith("GitHub Pages site") for lbl in labels))
 
 
 if __name__ == "__main__":
