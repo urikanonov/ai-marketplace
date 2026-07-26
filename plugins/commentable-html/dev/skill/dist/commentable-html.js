@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.249.0";
+const CMH_VERSION = "1.250.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -5098,9 +5098,60 @@ if (menu) {
     hideMenu();
   });
 }
-function showMenuForRange(range) {
+// The node the end boundary sits immediately after, so a backward walk starts at the boundary
+// rather than at the end container's own position in document order.
+function _nodeBeforeRangeEnd(range) {
+  const n = range.endContainer;
+  if (n.nodeType !== 1) return n;
+  if (range.endOffset > 0) {
+    let c = n.childNodes[range.endOffset - 1];
+    while (c && c.lastChild) c = c.lastChild;
+    return c || n;
+  }
+  return n;
+}
+// The rect of the LAST VISIBLE GLYPH the selection covers. A whole-line or whole-paragraph
+// selection (double-click on the trailing word, triple-click, a drag past the end of the block)
+// is normalized by the browser past the end of that block, so `range.getClientRects()` ends with
+// a rect covering the ENTIRE following block - a chart figure, an image, a table. Anchoring on
+// that trailing rect put the popup at the following block's bottom-right, hundreds of pixels from
+// the selected words. Walking back from the end boundary to the last selected non-whitespace
+// character measures what the reader actually highlighted instead.
+function selectionAnchorRect(range) {
+  const scope = range.commonAncestorContainer;
+  const scopeEl = scope.nodeType === 1 ? scope : scope.parentNode;
+  if (scopeEl && document.createTreeWalker) {
+    try {
+      const walker = document.createTreeWalker(scopeEl, NodeFilter.SHOW_TEXT, null);
+      let node = _nodeBeforeRangeEnd(range);
+      if (node && node.nodeType === 3) walker.currentNode = node;
+      else { walker.currentNode = node || scopeEl; node = walker.previousNode(); }
+      let steps = 0;
+      while (node && steps++ < 2000) {
+        // Walking backwards, so the first node that lies entirely before the selection start
+        // means every remaining node does too.
+        if (range.comparePoint(node, node.data.length) < 0) break;
+        const from = (node === range.startContainer) ? range.startOffset : 0;
+        const to = (node === range.endContainer) ? range.endOffset : node.data.length;
+        const trimmed = to > from ? node.data.slice(from, to).replace(/\s+$/, "") : "";
+        if (trimmed) {
+          const r = document.createRange();
+          r.setStart(node, from + trimmed.length - 1);
+          r.setEnd(node, from + trimmed.length);
+          const rects = r.getClientRects();
+          if (rects.length) return rects[rects.length - 1];
+          const box = r.getBoundingClientRect();
+          if (box.width || box.height) return box;
+        }
+        node = walker.previousNode();
+      }
+    } catch (_e) { /* fall through to the raw rects below */ }
+  }
   const rects = range.getClientRects();
-  const last = rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
+  return rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
+}
+function showMenuForRange(range) {
+  const last = selectionAnchorRect(range);
   const x = last.right;
   const y = last.bottom + 6;
   showMenu(x, y);

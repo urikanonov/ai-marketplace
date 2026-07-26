@@ -4,6 +4,18 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.250.0] - 2026-07-26
+
+### Fixed
+
+- The floating `Add Comment` popup no longer jumps to the bottom-right of the following block. A
+  whole-line or whole-paragraph selection (a double-click on the trailing word, a triple-click, or a
+  drag past the end of the block) is normalized by the browser past the end of that block, so the raw
+  range's last client rect covered the ENTIRE next element - a chart figure, an image, a table - and
+  the popup landed hundreds of pixels below the selected words. The popup now anchors to the last
+  VISIBLE GLYPH the selection covers, on both the desktop `mouseup` path and the coarse-pointer
+  `selectionchange` (touch) path, and stays clamped to the viewport. (CMH-SEL-03)
+
 ## [1.249.0] - 2026-07-26
 
 ### Added
