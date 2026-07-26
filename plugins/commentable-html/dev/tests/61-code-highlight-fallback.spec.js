@@ -83,16 +83,66 @@ test.describe("runtime code-highlight fallback (CMH-HL-01)", () => {
     await open(page,
       "<h1>Broken</h1>"
       + '<pre><code class="language-json">{"a\nb": 1}</code></pre>'
-      + '<pre><code class="language-jsonc">{"a\n: 1}</code></pre>',
+      + '<pre><code class="language-jsonc">{"a\n: 1}</code></pre>'
+      + '<pre><code class="language-json">{"a\\"\n: 1}</code></pre>',
       "cmh-hl-fallback-json-newline");
 
-    const code = page.locator("#commentRoot pre code.language-json");
+    const code = page.locator("#commentRoot pre code.language-json").first();
     await expect(code.locator("span.cmh-code-key")).toHaveCount(0);
     expect(await code.locator("span.cmh-code-str").allTextContents()).toEqual(['"a', '": 1}']);
 
     const truncated = page.locator("#commentRoot pre code.language-jsonc");
     await expect(truncated.locator("span.cmh-code-key")).toHaveCount(0);
     expect(await truncated.locator("span.cmh-code-str").allTextContents()).toEqual(['"a']);
+
+    // The trailing quote of `"a\"` belongs to an escape, so the token is still unterminated and must
+    // not become a key either.
+    const escaped = page.locator("#commentRoot pre code.language-json").nth(1);
+    await expect(escaped.locator("span.cmh-code-key")).toHaveCount(0);
+  });
+
+  test("the JSON key token is tinted apart from a string value in light, dark and print (CMH-HL-05)", async ({ page }) => {
+    // CMH-HL-05 promises the key token is VISIBLY distinct, not just classified apart, in every mode
+    // the layer CSS covers. Token classification alone would stay green while the CSS regressed.
+    await open(page,
+      "<h1>Config</h1>"
+      + '<pre><code class="language-json">{"name": "cmh"}</code></pre>',
+      "cmh-hl-key-color");
+
+    const read = () => page.evaluate(() => ({
+      key: getComputedStyle(document.querySelector("#commentRoot .cmh-code-key")).color,
+      str: getComputedStyle(document.querySelector("#commentRoot .cmh-code-str")).color,
+    }));
+
+    const light = await read();
+    expect(light.key, "the key token is tinted apart from a string value (light)").not.toBe(light.str);
+
+    await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
+    const dark = await read();
+    expect(dark.key, "the key token is tinted apart from a string value (dark)").not.toBe(dark.str);
+    expect(dark.key, "the dark key color is a real dark-theme override").not.toBe(light.key);
+
+    // A dark-theme reader keeps data-theme="dark" when printing, so the key must be re-lit for the
+    // white paper background the way the other tinted tokens are.
+    await page.emulateMedia({ media: "print" });
+    const printed = await read();
+    await page.emulateMedia({ media: null });
+    expect(printed.key, "the key token is re-lit for print, not left as the dark pastel").toBe(light.key);
+  });
+
+  test("in a diff a key whose colon is on the next line stays a string (line-independent tokenizing) (CMH-HL-05)", async ({ page }) => {
+    // The diff highlighter tokenizes each line on its own, so the "next non-whitespace character"
+    // key rule cannot see a colon that sits on the following line. CMH-HL-05 narrows the contract to
+    // this; the test pins the limitation so it cannot change silently.
+    await open(page,
+      "<h1>Diff</h1>"
+      + '<pre class="cmh-diff" data-diff-lang="json" data-diff-label="a.json">'
+      + '@@ -1 +1 @@\n-old\n+  "name"\n+  : "cmh"</pre>',
+      "cmh-hl-key-diff");
+
+    const view = page.locator(".cmh-diff-view");
+    await expect(view.locator("span.cmh-code-key")).toHaveCount(0);
+    expect((await view.locator("span.cmh-code-str").allTextContents())).toContain('"name"');
   });
 
   test("an already-highlighted (baked) block is not re-highlighted", async ({ page }) => {

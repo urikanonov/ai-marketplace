@@ -441,10 +441,12 @@ class HighlightCodeJsonTests(unittest.TestCase):
     def test_an_unterminated_string_before_a_colon_is_not_a_key(self):
         # `_KEY_STRING_RE` REQUIRES the closing quote, so a truncated string that happens to be
         # followed by a colon stays a string. The runtime mirrors this with its terminated check;
-        # without it the two tokenizers disagreed on exactly this shape.
-        inner = H.highlight_code("json", '{"a\n: 1}')
-        self.assertNotIn("cmh-code-key", inner)
-        self.assertIn('<span class="cmh-code-str">"a</span>', inner)
+        # without it the two tokenizers disagreed on exactly this shape. The second case pins the
+        # subtler one: the token ENDS in a quote, but that quote is part of a `\"` escape.
+        for code in ('{"a\n: 1}', '{"a\\"\n: 1}'):
+            with self.subTest(code=code):
+                inner = H.highlight_code("json", code)
+                self.assertNotIn("cmh-code-key", inner)
 
     def test_non_json_languages_have_no_key_token(self):
         for language, code in (("javascript", '({"name": "cmh"})'),

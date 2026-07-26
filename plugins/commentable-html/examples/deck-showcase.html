@@ -6860,9 +6860,13 @@ const _hlCache = {};
 // A JSON string token is a property KEY when it is CLOSED and the next non-whitespace character is a
 // colon. The author-time highlighter applies the same rule via a `"..."(?=\s*:)` lookahead whose closing
 // quote is REQUIRED, so the two agree; without the terminated check an unterminated `{"a\n: 1}` would be
-// a key at runtime and a string at author time.
+// a key at runtime and a string at author time. The trailing quote must also be UNESCAPED - `{"a\"\n: 1}`
+// ends in a quote that is part of a `\"` escape, so the token is still unterminated.
 function _jsonKeyIsTerminated(token) {
-  return token.length > 1 && token.charAt(token.length - 1) === '"';
+  if (token.length < 2 || token.charAt(token.length - 1) !== '"') return false;
+  let slashes = 0;
+  for (let i = token.length - 2; i >= 0 && token.charAt(i) === "\\"; i--) slashes++;
+  return slashes % 2 === 0;
 }
 function _jsonKeyFollows(text, from) {
   let j = from;

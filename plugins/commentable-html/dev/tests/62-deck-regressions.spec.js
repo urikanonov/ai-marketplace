@@ -467,6 +467,30 @@ test("CMH-DECK-21: showcase deck table cells gain a hover highlight without losi
   }
 });
 
+test("CMH-HL-05: the deck JSON key token inherits the slide theme's function-token color", async ({ page }) => {
+  // The deck rule is `var(--cmh-deck-tok-key, var(--cmh-deck-tok-fn, ...))`. No deck theme declares
+  // --cmh-deck-tok-key, so the CHAINED fallback to the theme's own fn token is what keeps a JSON key
+  // legible on the light deck themes; the literal fallback would be a pale blue on near-white paper.
+  const server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, ".show-code-stack");
+    const colors = await page.locator(".slide.active .show-code-stack").evaluate((stack) => {
+      const probe = (cls) => {
+        const el = document.createElement("span");
+        el.className = cls;
+        stack.appendChild(el);
+        const color = getComputedStyle(el).color;
+        el.remove();
+        return color;
+      };
+      return { key: probe("cmh-code-key"), fn: probe("cmh-code-fn") };
+    });
+    expect(colors.key, "the deck key token resolves through to the theme's fn token").toBe(colors.fn);
+  } finally {
+    await server.close();
+  }
+});
+
 test("CMH-DECK-13: showcase deck code, KQL, and diff blocks keep readable contrast", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
