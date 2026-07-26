@@ -9078,7 +9078,9 @@ if (menu) {
 // rather than at the end container's own position in document order.
 function _nodeBeforeRangeEnd(range) {
   const n = range.endContainer;
-  if (n.nodeType !== 1) return n;
+  const t = n.nodeType;
+  // Character data: the boundary is an offset INSIDE this node, so it is the node itself.
+  if (t === 3 || t === 4 || t === 8) return n;
   if (range.endOffset > 0) {
     let c = n.childNodes[range.endOffset - 1];
     while (c && c.lastChild) c = c.lastChild;
@@ -9095,7 +9097,10 @@ function _nodeBeforeRangeEnd(range) {
 // character measures what the reader actually highlighted instead.
 function selectionAnchorRect(range) {
   const scope = range.commonAncestorContainer;
-  const scopeEl = scope.nodeType === 1 ? scope : scope.parentNode;
+  // A text/CDATA/comment node cannot root a TreeWalker; a Document or DocumentFragment can, and
+  // taking its (null) parent would have dropped the whole walk back to the raw-rect fallback.
+  const t = scope.nodeType;
+  const scopeEl = (t === 3 || t === 4 || t === 8) ? scope.parentNode : scope;
   if (scopeEl && document.createTreeWalker) {
     try {
       const walker = document.createTreeWalker(scopeEl, NodeFilter.SHOW_TEXT, null);
@@ -9109,7 +9114,9 @@ function selectionAnchorRect(range) {
         if (range.comparePoint(node, node.data.length) < 0) break;
         const from = (node === range.startContainer) ? range.startOffset : 0;
         const to = (node === range.endContainer) ? range.endOffset : node.data.length;
-        const trimmed = to > from ? node.data.slice(from, to).replace(/\s+$/, "") : "";
+        // Collapsible whitespace and the newlines the normalization drags in are not glyphs, but a
+        // non-breaking space IS one the reader sees, so it stays an anchorable character.
+        const trimmed = to > from ? node.data.slice(from, to).replace(/[^\S\u00a0]+$/, "") : "";
         if (trimmed) {
           const r = document.createRange();
           r.setStart(node, from + trimmed.length - 1);
