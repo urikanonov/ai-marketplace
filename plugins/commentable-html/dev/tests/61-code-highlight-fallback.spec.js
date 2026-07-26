@@ -75,6 +75,19 @@ test.describe("runtime code-highlight fallback (CMH-HL-01)", () => {
     expect(await code.textContent()).toBe(src);
   });
 
+  test("a raw newline inside a JSON string produces no key span, matching the author-time tokenizer (CMH-HL-05)", async ({ page }) => {
+    // A raw newline is illegal inside a JSON string. If the runtime scanned across it, it would claim
+    // one multi-line key span where highlight_code.py emits two unterminated string tokens.
+    await open(page,
+      "<h1>Broken</h1>"
+      + '<pre><code class="language-json">{"a\nb": 1}</code></pre>',
+      "cmh-hl-fallback-json-newline");
+
+    const code = page.locator("#commentRoot pre code.language-json");
+    await expect(code.locator("span.cmh-code-key")).toHaveCount(0);
+    expect(await code.locator("span.cmh-code-str").allTextContents()).toEqual(['"a', '": 1}']);
+  });
+
   test("an already-highlighted (baked) block is not re-highlighted", async ({ page }) => {
     await open(page,
       "<h1>Baked</h1>"

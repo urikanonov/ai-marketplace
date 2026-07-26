@@ -409,6 +409,14 @@ class HighlightCodeJsonTests(unittest.TestCase):
         inner = H.highlight_code("json", '{"a": "b: c"}')
         self.assertIn('<span class="cmh-code-str">"b: c"</span>', inner)
 
+    def test_a_raw_newline_inside_a_string_yields_no_key(self):
+        # A raw newline is illegal inside a JSON string. Both tokenizers must refuse to scan across it,
+        # or the runtime would claim one multi-line key span where the author-time tool emits several
+        # tokens - a parity break. The runtime `json` family uses a newline-free string form for this.
+        inner = H.highlight_code("json", '{"a\nb": 1}')
+        self.assertNotIn("cmh-code-key", inner)
+        self.assertIn('<span class="cmh-code-str">"a</span>', inner)
+
     def test_non_json_languages_have_no_key_token(self):
         for language, code in (("javascript", '({"name": "cmh"})'),
                                ("typescript", '({"name": "cmh"})'),

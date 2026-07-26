@@ -88,7 +88,10 @@ function _hlTokenRe(fam) {
   else if (fam === "powershell") { com = "<#[\\s\\S]*?(?:#>|$)|#[^\\n]*"; str = dq + "|" + sq; flags = "gi"; }
   else if (fam === "batch") { com = "(?:rem\\b|::)[^\\n]*"; str = dq; flags = "gi"; }
   else if (fam === "markup") { com = "<!--[\\s\\S]*?(?:-->|$)"; str = dq + "|" + sq; flags = "gi"; }
-  else if (fam === "json") { com = "/\\*[\\s\\S]*?(?:\\*/|$)|//[^\\n]*"; str = dq; }
+  // JSON strings cannot contain a raw newline, and the author-time `double` style excludes one. The
+  // shared dq form does NOT, so reusing it here would let the runtime swallow a multi-line span (and,
+  // with the key lookahead, call it a key) where the author-time tool emits several tokens.
+  else if (fam === "json") { com = "/\\*[\\s\\S]*?(?:\\*/|$)|//[^\\n]*"; str = "\"[^\"\\\\\\n]*(?:\\\\[\\s\\S][^\"\\\\\\n]*)*\"?"; }
   else { com = "/\\*[\\s\\S]*?(?:\\*/|$)|//[^\\n]*"; str = dq + "|" + sq + "|" + bt; }
   const num = "0[xX][0-9a-fA-F]+|\\d[\\d_]*(?:\\.\\d+)?(?:[eE][+-]?\\d+)?";
   const id = "[A-Za-z_$][A-Za-z0-9_$]*";

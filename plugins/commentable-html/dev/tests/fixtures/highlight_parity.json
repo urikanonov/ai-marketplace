@@ -90,6 +90,25 @@
       "str": ["\"b: c\""],
       "com": ["/* blk */", "// note"],
       "notKey": ["\"b: c\""]
+    },
+    {
+      "lang": "json",
+      "code": "{\"a\\\"b\": 1, \"c:d\": 2}",
+      "key": ["\"a\\\"b\"", "\"c:d\""],
+      "notStr": ["\"c:d\"", "\"a\\\"b\""]
+    },
+    {
+      "lang": "json",
+      "code": "{\"\": \"v\"}",
+      "str": ["\"v\""],
+      "notStr": ["\"\""],
+      "notKey": ["\"v\""]
+    },
+    {
+      "lang": "jsonc",
+      "code": "// \"notakey\": 1",
+      "com": ["// \"notakey\": 1"],
+      "notKey": ["\"notakey\""]
     }
   ]
 }
