@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.249.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.252.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,6 +457,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.252.0] - 2026-07-26</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The floating <code>Add Comment</code> popup no longer jumps to the bottom-right of the following block. A whole-line or whole-paragraph selection (a double-click on the trailing word, a triple-click, or a drag past the end of the block) is normalized by the browser past the end of that block, so the raw range&#x27;s last client rect covered the ENTIRE next element - a chart figure, an image, a table - and the popup landed hundreds of pixels below the selected words. The popup now anchors to the last RENDERED character the selection covers, measured rather than guessed from the character class, so a preformatted space, a non-breaking space and a narrow no-break space all still anchor it while collapsed and zero-width characters do not. It works on both the desktop <code>mouseup</code> path and the coarse-pointer <code>selectionchange</code> (touch) path, and stays clamped to the viewport. (CMH-SEL-03)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.249.0] - 2026-07-26</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -465,6 +472,8 @@
               <li>The showcase demo report ships a highlighted Markdown block (the volunteer handbook page), and the showcase deck&#x27;s supported-syntax slide lists Markdown. (CMH-DEMO-07)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.248.0] - 2026-07-26</h3></div>
             <div class="group-label">Fixed</div>
@@ -472,8 +481,6 @@
               <li>The floating per-link <code>Add Comment</code> button that appears when hovering a commentable link now wears the shared crimson accent pill (background, label color, rounded shape, shadow, hover and active states) like every other add-comment affordance. <code>.cm-link-add</code> had been left out of the shared pill rule, so the link button rendered as a plain default browser button. (CMH-UI-04)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.247.0] - 2026-07-26</h3></div>
             <div class="group-label">Fixed</div>
@@ -520,14 +527,7 @@
               <li>The comment search field is now hidden by default and appears only when the reader opens it with the <code>Search</code> button (previously it appeared automatically whenever comments existed).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.243.0] - 2026-07-25</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Print / Save-as-PDF single continuous page is now generic across ALL print destinations, not just Chromium&#x27;s native &quot;Save as PDF&quot;. Previously it forced the body to the on-screen reading-column width (~1280px on a wide screen) and sized a giant custom <code>@page</code> to match. Chromium&#x27;s native vector &quot;Save as PDF&quot; honors that custom page, but a driver that ignores it (Microsoft Print to PDF, physical printers, browsers without custom-<code>@page</code> support) paginated onto standard paper while the body stayed forced to ~1280px, so it downscaled to fit (poor quality), left wide side whitespace, and stranded tall diagrams. The single page is now sized to a portable standard page (US Letter, 816px) and, crucially, the print CSS uses <code>width: auto</code> with the inset provided by the <code>@page</code> margin instead of a forced body width: a browser that honors the custom <code>@page</code> fills it as one tall page, while any driver that ignores it reflows the content into its OWN real Letter/A4 printable area and paginates normally, never downscaled. The height is measured at the exact content width the page renders at, so it is accurate (fixing a box-model skew and a double-counted page margin that had bloated the page and, on a multi-diagram document, spilled a near-blank overflow page). A document with genuinely wide content (a wide table) still grows the page so nothing is clipped.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">206 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">207 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -276,9 +276,79 @@ if (menu) {
     hideMenu();
   });
 }
-function showMenuForRange(range) {
+// The node the end boundary sits immediately after, so a backward walk starts at the boundary
+// rather than at the end container's own position in document order.
+function _nodeBeforeRangeEnd(range) {
+  const n = range.endContainer;
+  const t = n.nodeType;
+  // Character data: the boundary is an offset INSIDE this node, so it is the node itself.
+  if (t === 3 || t === 4 || t === 8) return n;
+  if (range.endOffset > 0) {
+    let c = n.childNodes[range.endOffset - 1];
+    while (c && c.lastChild) c = c.lastChild;
+    return c || n;
+  }
+  return n;
+}
+// The rect of the last RENDERED character in a text node's selected slice, or null when the slice
+// renders nothing. Visibility is measured, not guessed from the character class: a collapsed space
+// and a zero-width character measure a zero-width rect, while a preformatted space, a non-breaking
+// space and a narrow no-break space all measure a real advance and are therefore anchorable.
+function _lastVisibleRectIn(node, from, to) {
+  if (to <= from) return null;
+  const r = document.createRange();
+  r.setStart(node, from);
+  r.setEnd(node, to);
+  // Nothing of this node renders (the indentation whitespace between two blocks): skip it whole.
+  if (!r.getClientRects().length) return null;
+  const stop = Math.max(from, to - 400);
+  for (let i = to; i > stop; i--) {
+    r.setStart(node, i - 1);
+    r.setEnd(node, i);
+    const rects = r.getClientRects();
+    for (let k = rects.length - 1; k >= 0; k--) {
+      if (rects[k].width > 0) return rects[k];
+    }
+  }
+  return null;
+}
+// The rect of the LAST VISIBLE GLYPH the selection covers. A whole-line or whole-paragraph
+// selection (double-click on the trailing word, triple-click, a drag past the end of the block)
+// is normalized by the browser past the end of that block, so `range.getClientRects()` ends with
+// a rect covering the ENTIRE following block - a chart figure, an image, a table. Anchoring on
+// that trailing rect put the popup at the following block's bottom-right, hundreds of pixels from
+// the selected words. Walking back from the end boundary to the last rendered selected character
+// measures what the reader actually highlighted instead.
+function selectionAnchorRect(range) {
+  const scope = range.commonAncestorContainer;
+  // A text/CDATA/comment node cannot root a TreeWalker; a Document or DocumentFragment can, and
+  // taking its (null) parent would have dropped the whole walk back to the raw-rect fallback.
+  const t = scope.nodeType;
+  const scopeEl = (t === 3 || t === 4 || t === 8) ? scope.parentNode : scope;
+  if (scopeEl && document.createTreeWalker) {
+    try {
+      const walker = document.createTreeWalker(scopeEl, NodeFilter.SHOW_TEXT, null);
+      let node = _nodeBeforeRangeEnd(range);
+      if (node && node.nodeType === 3) walker.currentNode = node;
+      else { walker.currentNode = node || scopeEl; node = walker.previousNode(); }
+      let steps = 0;
+      while (node && steps++ < 2000) {
+        // Walking backwards, so the first node that lies entirely before the selection start
+        // means every remaining node does too.
+        if (range.comparePoint(node, node.data.length) < 0) break;
+        const from = (node === range.startContainer) ? range.startOffset : 0;
+        const to = (node === range.endContainer) ? range.endOffset : node.data.length;
+        const hit = _lastVisibleRectIn(node, from, to);
+        if (hit) return hit;
+        node = walker.previousNode();
+      }
+    } catch (_e) { /* fall through to the raw rects below */ }
+  }
   const rects = range.getClientRects();
-  const last = rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
+  return rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
+}
+function showMenuForRange(range) {
+  const last = selectionAnchorRect(range);
   const x = last.right;
   const y = last.bottom + 6;
   showMenu(x, y);
