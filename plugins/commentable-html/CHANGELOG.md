@@ -23,6 +23,11 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 
 - Clicking inside an inline reply or note editor no longer also fires the comment card's
   jump-to-anchor, which scrolled the document away mid-edit. (CMH-THREAD-10)
+- A comment is now editable in exactly one place at a time: opening a second editor for a note that
+  already has an unsaved draft elsewhere (the panel card, the in-document dialog, another highlight's
+  dialog, or the floating composer reached by re-selecting the text) hands the reader back to the
+  draft instead of duplicating it - previously two editors could exist and the last save silently
+  overwrote the other. (CMH-CORE-16)
 
 ## [1.253.0] - 2026-07-26
 

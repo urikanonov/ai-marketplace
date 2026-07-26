@@ -308,6 +308,7 @@ function performClearAll() {
     Array.from(openEditComposers.values()).forEach((elc) => closeComposerElement(elc));
   }
   const tombstoneIds = comments.map(c => c.id);
+  if (typeof cmhClosePopoverForIds === "function") cmhClosePopoverForIds(tombstoneIds);
   const tombstoneOk = _tombstoneEmbedded(tombstoneIds);
   comments.forEach(c => removeHighlight(c));
   comments = [];

@@ -461,6 +461,22 @@ function _closeActiveInlineEditor() {
   _activeInlineEditor = null;
   if (a && typeof a.restore === "function") { try { a.restore(); } catch (e) {} }
 }
+// Cross-surface edit coordination: the in-document comment dialog can edit the same note in place,
+// so each surface asks the other whether it already owns this comment's edit. Reports the active
+// sidebar editor for `cid`, whether it holds unsaved text, and how to focus or drop it, so exactly
+// one editor exists per comment and a dirty draft is never silently overwritten.
+function cmhSidebarNoteEditor(cid) {
+  const a = _activeInlineEditor;
+  if (!a || a.targetId !== cid || (a.kind !== "edit" && a.kind !== "edit-root")) return null;
+  const ta = a.el && a.el.querySelector("textarea");
+  const c = comments.find(function (x) { return x.id === cid; });
+  const original = (c && c.note != null) ? String(c.note) : "";
+  return {
+    dirty: !!ta && ta.value.trim() !== original.trim(),
+    focus: function () { if (a.el && a.el._focus) a.el._focus(); },
+    close: function () { _closeActiveInlineEditor(); },
+  };
+}
 function _focusInList(sel) {
   const el = listEl.querySelector(sel);
   // preventScroll: refocusing a rebuilt panel control must never scroll the DOCUMENT (inline
@@ -539,6 +555,20 @@ function openInlineNoteEdit(entry, cid) {
   if (typeof openEditComposers !== "undefined" && openEditComposers.get(cid)) {
     if (typeof openComposerForEdit === "function") openComposerForEdit(rc);
     return;
+  }
+  // Same rule across surfaces: the in-document dialog may already be editing this note. Hand a
+  // dirty draft back to it (never open a second editor whose save would silently overwrite it);
+  // an untouched one is simply closed so editing continues here.
+  if (typeof cmhPopoverNoteEditor === "function") {
+    const pop = cmhPopoverNoteEditor(cid);
+    if (pop) {
+      if (pop.dirty) {
+        pop.focus();
+        showToast("This comment is already open for editing on the page - finish or cancel that edit first.", { duration: 5000 });
+        return;
+      }
+      pop.close();
+    }
   }
   const kind = isRootNote ? "edit-root" : "edit";
   const editBtnSel = isRootNote ? '[data-act="edit"]' : '[data-act="reply-edit"]';
@@ -666,6 +696,7 @@ listEl.addEventListener("click", (e) => {
       const tombstoneOk = _tombstoneEmbedded(ids);
       const drop = new Set(ids);
       ids.forEach((tid) => { const oc = openEditComposers.get(tid); if (oc) closeComposerElement(oc); });
+      if (typeof cmhClosePopoverForIds === "function") cmhClosePopoverForIds(ids);
       comments = comments.filter(x => !drop.has(x.id));
       removeHighlight(c);
       const commentsOk = saveComments();

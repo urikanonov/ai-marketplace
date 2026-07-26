@@ -467,6 +467,7 @@
             <div class="group-label">Fixed</div>
             <ul>
               <li>Clicking inside an inline reply or note editor no longer also fires the comment card&#x27;s jump-to-anchor, which scrolled the document away mid-edit. (CMH-THREAD-10)</li>
+              <li>A comment is now editable in exactly one place at a time: opening a second editor for a note that already has an unsaved draft elsewhere (the panel card, the in-document dialog, another highlight&#x27;s dialog, or the floating composer reached by re-selecting the text) hands the reader back to the draft instead of duplicating it - previously two editors could exist and the last save silently overwrote the other. (CMH-CORE-16)</li>
             </ul>
           </div>
           <div class="release">

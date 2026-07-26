@@ -5,6 +5,33 @@ import {
 } from "./helpers.js";
 
 test.describe("comment interactions", () => {
+  // Select EXACTLY an existing highlight's text and pop the menu, so the layer resolves it to that
+  // comment (the same stored offsets) and re-opens it for editing instead of starting a new one.
+  async function reselectHighlight(page, cid) {
+    await page.evaluate((id) => {
+      // A comment's range can span several inline elements, so it paints as SEVERAL marks sharing
+      // the cid: select from the first one's first text node to the last one's last text node.
+      const marks = Array.prototype.slice.call(document.querySelectorAll(`mark.cm-hl[data-cid="${id}"]`));
+      if (!marks.length) throw new Error("no highlight for cid " + id);
+      const textIn = (el, last) => {
+        const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        let n = w.nextNode(), found = n;
+        while (last && (n = w.nextNode())) found = n;
+        return found;
+      };
+      marks[0].scrollIntoView({ block: "center" });
+      const first = textIn(marks[0], false);
+      const end = textIn(marks[marks.length - 1], true);
+      const range = document.createRange();
+      range.setStart(first, 0);
+      range.setEnd(end, end.data.length);
+      const s = window.getSelection();
+      s.removeAllRanges();
+      s.addRange(range);
+      marks[0].dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 40, clientY: 40 }));
+    }, cid);
+  }
+
   test("a genuine pointer drag selects text and pops the Add-comment menu", async ({ page }) => {
     await openKitchenSink(page);
     // No synthetic selection: a real mouse down/move/up produces the browser
@@ -194,6 +221,10 @@ test.describe("comment interactions", () => {
     await pop.locator('[data-act="edit"]').click();
     const ta = pop.locator(".cm-comment-popover-edit textarea");
     await expect(ta).toBeFocused();
+    // The editor replaces the described note, so the stale description is dropped; the field carries
+    // its own accessible name instead.
+    await expect(pop).not.toHaveAttribute("aria-describedby", /.*/);
+    await expect(ta).toHaveAttribute("aria-label", "Edit comment");
     // The editor opens WHERE the reader clicked: same dialog, same anchor column, no scrolling.
     const after = await pop.boundingBox();
     expect(Math.abs(after.x - before.x)).toBeLessThan(2);
@@ -211,6 +242,7 @@ test.describe("comment interactions", () => {
     await expect(pop).toBeVisible();
     await expect(pop.locator(".cm-comment-popover-edit")).toHaveCount(0);
     await expect(pop.locator(".cm-comment-popover-note")).toContainText("edit me in place");
+    await expect(pop).toHaveAttribute("aria-describedby", /.+/);
     await expect(pop.locator('[data-act="edit"]')).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(pop).toBeHidden();
@@ -227,6 +259,132 @@ test.describe("comment interactions", () => {
     await expect(pop.locator(".cm-comment-popover-meta")).toContainText("(edited)");
     await expect(page.locator("#commentList")).toContainText("edited in the dialog");
     expect((await storedComments(page))[0].note).toBe("edited in the dialog");
+  });
+
+  test("CMH-CORE-16: a dirty in-place edit is not swallowed, switched away, or duplicated (CMH-THREAD-10)", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "first note", 0);
+    await addTextComment(page, "#commentRoot section p", "second note", 1);
+    const cids = await allCids(page);
+    expect(cids.length).toBe(2);
+    // A probe link outside the dialog whose activation is observable.
+    await page.evaluate(() => {
+      const a = document.createElement("a");
+      a.id = "cmh-eprobe"; a.href = "#edited-probe"; a.textContent = "probe";
+      a.style.position = "fixed"; a.style.top = "4px"; a.style.left = "4px"; a.style.zIndex = "5";
+      document.body.appendChild(a);
+    });
+    await page.locator(`mark.cm-hl[data-cid="${cids[0]}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await pop.locator('[data-act="edit"]').click();
+    const ta = pop.locator(".cm-comment-popover-edit textarea");
+    await ta.fill("dirty draft");
+
+    // An outside click mid-edit keeps the draft AND is not swallowed (the probe link activates).
+    await page.locator("#cmh-eprobe").click();
+    await expect.poll(() => page.evaluate(() => location.hash)).toBe("#edited-probe");
+    await expect(ta).toHaveValue("dirty draft");
+
+    // Clicking another highlight's bubble does not silently discard the draft.
+    await page.locator(`mark.cm-hl[data-cid="${cids[1]}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    await expect(ta).toHaveValue("dirty draft");
+    await expect(pop.locator(".cm-comment-popover-edit")).toHaveCount(1);
+
+    // Nor does the panel's own edit action: it hands the draft back instead of opening a second editor.
+    await page.locator(`.cm-card[data-cid="${cids[0]}"] .cm-entry-root [data-act="edit"]`).click();
+    await expect(page.locator(".cm-entry-root .cm-reply-compose")).toHaveCount(0);
+    await expect(ta).toHaveValue("dirty draft");
+
+    // Saving from the dialog is what commits it.
+    await pop.locator('[data-act="edit-save"]').click();
+    expect((await storedComments(page)).find((c) => c.id === cids[0]).note).toBe("dirty draft");
+  });
+
+  test("CMH-CORE-16: a dirty panel edit is not duplicated by the in-document dialog (CMH-THREAD-10)", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "panel owns this", 0);
+    const cid = (await allCids(page))[0];
+    const card = page.locator(`.cm-card[data-cid="${cid}"]`);
+    await card.locator('.cm-entry-root [data-act="edit"]').click();
+    await card.locator(".cm-entry-root .cm-reply-compose textarea").fill("panel draft");
+
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await pop.locator('[data-act="edit"]').click();
+    // The dialog defers to the panel's dirty draft rather than opening a second editor, and closes
+    // so it cannot swallow the reader's next click in the panel.
+    await expect(pop).toBeHidden();
+    await expect(card.locator(".cm-entry-root .cm-reply-compose textarea")).toHaveValue("panel draft");
+    await expect(card.locator(".cm-entry-root .cm-reply-compose textarea")).toBeFocused();
+    await card.locator(".cm-entry-root .cm-reply-compose .cm-reply-save").click();
+    expect((await storedComments(page))[0].note).toBe("panel draft");
+  });
+
+  test("CMH-CORE-16: the dialog defers to an open floating edit composer for the same note (CMH-THREAD-10)", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "composer owns this", 0);
+    const cid = (await allCids(page))[0];
+    // Re-selecting exactly the commented text re-opens that comment in the floating composer.
+    await reselectHighlight(page, cid);
+    await page.locator("#menuComment").click();
+    const composer = page.locator(".cm-composer");
+    await expect(composer).toHaveCount(1);
+    await expect(composer.locator("textarea")).toHaveValue("composer owns this");
+    await composer.locator("textarea").fill("composer draft");
+    // Move it clear of the highlight so the dialog below can be clicked.
+    const handle = composer.locator(".cm-composer-handle");
+    const box = await handle.boundingBox();
+    await page.mouse.move(box.x + 5, box.y + 5);
+    await page.mouse.down();
+    await page.mouse.move(900, 560, { steps: 5 });
+    await page.mouse.up();
+
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await pop.locator('[data-act="edit"]').click();
+    // The dialog hands back to the composer instead of opening a second editor of the same note.
+    await expect(pop).toBeHidden();
+    await expect(page.locator(".cm-comment-popover-edit")).toHaveCount(0);
+    await expect(composer).toHaveCount(1);
+    await expect(composer.locator("textarea")).toHaveValue("composer draft");
+    await composer.locator('[data-act="save"]').click();
+    expect((await storedComments(page))[0].note).toBe("composer draft");
+  });
+
+  test("CMH-CORE-16: a dirty inline draft is not duplicated by the floating composer (CMH-THREAD-10)", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "panel holds it", 0);
+    const cid = (await allCids(page))[0];
+    const card = page.locator(".cm-card[data-cid]").first();
+    await card.locator('.cm-entry-root [data-act="edit"]').click();
+    await card.locator(".cm-entry-root .cm-reply-compose textarea").fill("inline draft");
+    // Re-selecting the commented text would open the floating editor; the dirty inline draft wins.
+    await reselectHighlight(page, cid);
+    await page.locator("#menuComment").click();
+    await expect(page.locator(".cm-composer")).toHaveCount(0);
+    await expect(card.locator(".cm-entry-root .cm-reply-compose textarea")).toHaveValue("inline draft");
+    await expect(page.locator(".cm-toast")).toContainText("already open for editing");
+    await card.locator(".cm-entry-root .cm-reply-compose .cm-reply-save").click();
+    expect((await storedComments(page))[0].note).toBe("inline draft");
+  });
+
+  test("CMH-CORE-16: deleting a comment closes the dialog that is editing it", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "delete under edit", 0);
+    const cid = (await allCids(page))[0];
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await pop.locator('[data-act="edit"]').click();
+    await pop.locator(".cm-comment-popover-edit textarea").fill("doomed draft");
+    page.once("dialog", (d) => d.accept());
+    await page.locator(`.cm-card[data-cid="${cid}"] [data-act="del"]`).click();
+    await expect(pop).toBeHidden();
+    expect((await storedComments(page)).length).toBe(0);
   });
 
   test("CMH-UI-12: the Open comment hover bubble is a comfortably large click target", async ({ page }) => {

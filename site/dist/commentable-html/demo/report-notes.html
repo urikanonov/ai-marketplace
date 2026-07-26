@@ -10073,6 +10073,22 @@ function openComposerForEdit(comment) {
     existing.querySelector("textarea").focus();
     return existing;
   }
+  // Another surface may already hold an UNSAVED edit of this note (the panel card's inline editor or
+  // the in-document dialog). Hand the reviewer back to that draft instead of opening a second editor
+  // whose save would silently overwrite it; an untouched editor is simply closed.
+  const other = (typeof cmhSidebarNoteEditor === "function" && cmhSidebarNoteEditor(comment.id))
+    || (typeof cmhPopoverNoteEditor === "function" && cmhPopoverNoteEditor(comment.id))
+    || null;
+  if (other) {
+    if (other.dirty) {
+      other.focus();
+      if (typeof showToast === "function") {
+        showToast("This comment is already open for editing - finish or cancel that edit first.", { duration: 5000 });
+      }
+      return null;
+    }
+    other.close();
+  }
   return createComposerElement({ mode: "edit", comment });
 }
 
@@ -10797,6 +10813,22 @@ function _closeActiveInlineEditor() {
   _activeInlineEditor = null;
   if (a && typeof a.restore === "function") { try { a.restore(); } catch (e) {} }
 }
+// Cross-surface edit coordination: the in-document comment dialog can edit the same note in place,
+// so each surface asks the other whether it already owns this comment's edit. Reports the active
+// sidebar editor for `cid`, whether it holds unsaved text, and how to focus or drop it, so exactly
+// one editor exists per comment and a dirty draft is never silently overwritten.
+function cmhSidebarNoteEditor(cid) {
+  const a = _activeInlineEditor;
+  if (!a || a.targetId !== cid || (a.kind !== "edit" && a.kind !== "edit-root")) return null;
+  const ta = a.el && a.el.querySelector("textarea");
+  const c = comments.find(function (x) { return x.id === cid; });
+  const original = (c && c.note != null) ? String(c.note) : "";
+  return {
+    dirty: !!ta && ta.value.trim() !== original.trim(),
+    focus: function () { if (a.el && a.el._focus) a.el._focus(); },
+    close: function () { _closeActiveInlineEditor(); },
+  };
+}
 function _focusInList(sel) {
   const el = listEl.querySelector(sel);
   // preventScroll: refocusing a rebuilt panel control must never scroll the DOCUMENT (inline
@@ -10875,6 +10907,20 @@ function openInlineNoteEdit(entry, cid) {
   if (typeof openEditComposers !== "undefined" && openEditComposers.get(cid)) {
     if (typeof openComposerForEdit === "function") openComposerForEdit(rc);
     return;
+  }
+  // Same rule across surfaces: the in-document dialog may already be editing this note. Hand a
+  // dirty draft back to it (never open a second editor whose save would silently overwrite it);
+  // an untouched one is simply closed so editing continues here.
+  if (typeof cmhPopoverNoteEditor === "function") {
+    const pop = cmhPopoverNoteEditor(cid);
+    if (pop) {
+      if (pop.dirty) {
+        pop.focus();
+        showToast("This comment is already open for editing on the page - finish or cancel that edit first.", { duration: 5000 });
+        return;
+      }
+      pop.close();
+    }
   }
   const kind = isRootNote ? "edit-root" : "edit";
   const editBtnSel = isRootNote ? '[data-act="edit"]' : '[data-act="reply-edit"]';
@@ -11002,6 +11048,7 @@ listEl.addEventListener("click", (e) => {
       const tombstoneOk = _tombstoneEmbedded(ids);
       const drop = new Set(ids);
       ids.forEach((tid) => { const oc = openEditComposers.get(tid); if (oc) closeComposerElement(oc); });
+      if (typeof cmhClosePopoverForIds === "function") cmhClosePopoverForIds(ids);
       comments = comments.filter(x => !drop.has(x.id));
       removeHighlight(c);
       const commentsOk = saveComments();
@@ -11490,6 +11537,30 @@ function _popoverComment() {
   return id ? comments.find((x) => x.id === id) : null;
 }
 
+// A deleted comment's dialog must not linger (its Save would have nothing to write), so a delete or
+// a clear-all closes the dialog when it shows one of the removed comments.
+function cmhClosePopoverForIds(ids) {
+  if (!commentPopover || !ids) return;
+  const shown = commentPopover.getAttribute("data-cid");
+  const list = Array.isArray(ids) ? ids : [ids];
+  if (shown && list.indexOf(shown) !== -1) closeCommentPopover();
+}
+
+// Cross-surface edit coordination (see cmhSidebarNoteEditor): reports the dialog's own in-place
+// editor for `cid`, whether it holds unsaved text, and how to focus or cancel it.
+function cmhPopoverNoteEditor(cid) {
+  if (!commentPopover || !_popoverEditing) return null;
+  if (commentPopover.getAttribute("data-cid") !== cid) return null;
+  const ta = commentPopover.querySelector("textarea");
+  const c = _popoverComment();
+  const original = (c && c.note != null) ? String(c.note) : "";
+  return {
+    dirty: !!ta && ta.value.trim() !== original.trim(),
+    focus: function () { if (ta) { try { ta.focus(); } catch (e) {} } },
+    close: function () { _cancelCommentPopoverEdit(); },
+  };
+}
+
 function _renderCommentPopoverView(c) {
   const el = commentPopover;
   if (!el) return;
@@ -11511,7 +11582,31 @@ function _renderCommentPopoverView(c) {
   el.querySelector('[data-act="edit"]').addEventListener("click", (e) => {
     e.preventDefault(); e.stopPropagation();
     const cur = _popoverComment();
-    if (cur) _renderCommentPopoverEdit(cur);
+    if (!cur) return;
+    // A floating edit composer for this note may already be open (re-selecting the highlighted text
+    // opens one); reuse it rather than editing the same note in two places.
+    if (typeof openEditComposers !== "undefined" && openEditComposers.get(cur.id)) {
+      closeCommentPopover();
+      if (typeof openComposerForEdit === "function") openComposerForEdit(cur);
+      return;
+    }
+    // The comments panel may already be editing this note (see cmhSidebarNoteEditor): hand a dirty
+    // draft back to it rather than opening a second editor whose save would overwrite it.
+    if (typeof cmhSidebarNoteEditor === "function") {
+      const side = cmhSidebarNoteEditor(cur.id);
+      if (side) {
+        if (side.dirty) {
+          // Nothing left for the dialog to do: point the reader at the panel's draft and get out of
+          // the way (a dialog left open would swallow their next click).
+          closeCommentPopover();
+          side.focus();
+          showToast("This comment is already open for editing in the comments panel - finish or cancel that edit first.", { duration: 5000 });
+          return;
+        }
+        side.close();
+      }
+    }
+    _renderCommentPopoverEdit(cur);
   });
   el.querySelector('[data-act="close"]').addEventListener("click", (e) => {
     e.preventDefault(); e.stopPropagation();
@@ -11520,11 +11615,13 @@ function _renderCommentPopoverView(c) {
   _positionCommentPopover(_popoverAnchorMark);
 }
 
-// Cancel an in-progress edit: back to the note view with focus on Edit, dialog left open.
+// Cancel an in-progress edit: back to the note view with focus on Edit, dialog left open (unless
+// its anchor scrolled away meanwhile, in which case the normal clip-aware close applies again).
 function _cancelCommentPopoverEdit() {
   const cur = _popoverComment();
   if (!cur) { closeCommentPopover(); return; }
   _renderCommentPopoverView(cur);
+  _syncCommentPopoverToAnchor();
   _focusPopoverEditButton();
 }
 
@@ -11571,6 +11668,9 @@ function _renderCommentPopoverEdit(c) {
     const ok = saveComments();
     renderComments();
     _renderCommentPopoverView(cur);
+    // Editing suspended the clip-aware close; with the edit done, re-apply it (the anchor may have
+    // scrolled out of view meanwhile) so the dialog is never stranded away from its highlight.
+    _syncCommentPopoverToAnchor();
     _focusPopoverEditButton();
     if (typeof _afterInlineSaveQuota === "function") _afterInlineSaveQuota(ok, "edit");
   }
@@ -11591,6 +11691,14 @@ function _renderCommentPopoverEdit(c) {
 }
 
 function openCommentPopover(id, mark) {
+  // Never discard an in-progress edit because another highlight was clicked: a dirty dialog keeps
+  // its draft and its focus, and the reader finishes or cancels it first.
+  const openEditor = commentPopover ? cmhPopoverNoteEditor(commentPopover.getAttribute("data-cid")) : null;
+  if (openEditor && openEditor.dirty) {
+    openEditor.focus();
+    showToast("Finish or cancel the comment you are editing first.", { duration: 5000 });
+    return;
+  }
   closeCommentPopover();
   const c = comments.find((x) => x.id === id);
   if (!c) return;
@@ -11624,10 +11732,17 @@ function openCommentPopover(id, mark) {
   };
   _popoverKeydown = (e) => {
     if (e.key !== "Escape") return;
+    if (_popoverEditing) {
+      // Escape belongs to the editor only while focus is inside it: another overlay's Escape (a
+      // Help panel, a confirm dialog) must not silently discard the draft sitting behind it.
+      if (!(e.target && e.target.closest && e.target.closest(".cm-comment-popover"))) return;
+      e.preventDefault(); e.stopPropagation();
+      // Escape cancels an in-progress edit first (back to the note); a second Escape closes.
+      _cancelCommentPopoverEdit();
+      return;
+    }
     e.preventDefault(); e.stopPropagation();
-    // Escape cancels an in-progress edit first (back to the note); a second Escape closes.
-    if (_popoverEditing) _cancelCommentPopoverEdit();
-    else closeCommentPopover();
+    closeCommentPopover();
   };
   // Register on the next tick so the opening click (on the bubble) does not immediately close it.
   setTimeout(() => {
@@ -13928,6 +14043,7 @@ function performClearAll() {
     Array.from(openEditComposers.values()).forEach((elc) => closeComposerElement(elc));
   }
   const tombstoneIds = comments.map(c => c.id);
+  if (typeof cmhClosePopoverForIds === "function") cmhClosePopoverForIds(tombstoneIds);
   const tombstoneOk = _tombstoneEmbedded(tombstoneIds);
   comments.forEach(c => removeHighlight(c));
   comments = [];

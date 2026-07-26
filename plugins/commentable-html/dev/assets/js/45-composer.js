@@ -370,6 +370,22 @@ function openComposerForEdit(comment) {
     existing.querySelector("textarea").focus();
     return existing;
   }
+  // Another surface may already hold an UNSAVED edit of this note (the panel card's inline editor or
+  // the in-document dialog). Hand the reviewer back to that draft instead of opening a second editor
+  // whose save would silently overwrite it; an untouched editor is simply closed.
+  const other = (typeof cmhSidebarNoteEditor === "function" && cmhSidebarNoteEditor(comment.id))
+    || (typeof cmhPopoverNoteEditor === "function" && cmhPopoverNoteEditor(comment.id))
+    || null;
+  if (other) {
+    if (other.dirty) {
+      other.focus();
+      if (typeof showToast === "function") {
+        showToast("This comment is already open for editing - finish or cancel that edit first.", { duration: 5000 });
+      }
+      return null;
+    }
+    other.close();
+  }
   return createComposerElement({ mode: "edit", comment });
 }
 
