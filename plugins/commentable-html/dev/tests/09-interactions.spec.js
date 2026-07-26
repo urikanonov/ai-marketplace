@@ -387,6 +387,29 @@ test.describe("comment interactions", () => {
     expect((await storedComments(page)).length).toBe(0);
   });
 
+  test("CMH-CORE-16: an Escape meant for another overlay does not discard the dialog draft", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "keep my draft", 0);
+    const cid = (await allCids(page))[0];
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await pop.locator('[data-act="edit"]').click();
+    const ta = pop.locator(".cm-comment-popover-edit textarea");
+    await ta.fill("draft behind the help panel");
+
+    // Opening Help mid-edit is an outside click: it works, and the editor stays.
+    await page.click("#btnHelp");
+    await expect(page.locator(".cm-help")).toBeVisible();
+    // Escape belongs to the panel in front; the draft behind it must survive.
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".cm-help")).toHaveCount(0);
+    await expect(pop).toBeVisible();
+    await expect(ta).toHaveValue("draft behind the help panel");
+    await pop.locator('[data-act="edit-save"]').click();
+    expect((await storedComments(page))[0].note).toBe("draft behind the help panel");
+  });
+
   test("CMH-UI-12: the Open comment hover bubble is a comfortably large click target", async ({ page }) => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "bubble target");

@@ -11691,7 +11691,10 @@ function cmhPopoverNoteEditor(cid) {
   return {
     dirty: !!ta && ta.value.trim() !== original.trim(),
     focus: function () { if (ta) { try { ta.focus(); } catch (e) {} } },
-    close: function () { _cancelCommentPopoverEdit(); },
+    // Yielding ownership CLOSES the dialog rather than dropping back to its note view: a lingering
+    // view-mode dialog would re-arm the capture-phase outside-click swallow and eat the reader's
+    // first click on the editor that just took over.
+    close: function () { closeCommentPopover(); },
   };
 }
 
@@ -11867,6 +11870,9 @@ function openCommentPopover(id, mark) {
   };
   _popoverKeydown = (e) => {
     if (e.key !== "Escape") return;
+    // Mid-IME-composition Escape dismisses the candidate window; it must not cancel the edit
+    // (the sidebar and composer editors ignore composition for the same reason).
+    if (e.isComposing) return;
     if (_popoverEditing) {
       // Escape belongs to the editor only while focus is inside it: another overlay's Escape (a
       // Help panel, a confirm dialog) must not silently discard the draft sitting behind it.
