@@ -486,6 +486,17 @@ class ContainerPinningTests(unittest.TestCase):
             self.assertEqual(ref, self.TAG, bad)
             self.assertTrue(warning, bad)
 
+    def test_a_non_string_lock_value_degrades_instead_of_crashing(self):
+        # A syntactically valid but wrongly typed lock (hand-edited, or written by another tool)
+        # must take the documented mutable-tag path, not hand a developer or CI a traceback.
+        for bad in (123, None, [], {}, True):
+            ref, warning = S.resolved_image(self.TAG, {"image": self.TAG, "digest": bad})
+            self.assertEqual(ref, self.TAG, repr(bad))
+            self.assertTrue(warning, repr(bad))
+            ref, warning = S.resolved_image(self.TAG, {"image": bad, "digest": self.DIGEST})
+            self.assertEqual(ref, self.TAG, repr(bad))
+            self.assertTrue(warning, repr(bad))
+
     def test_the_committed_lock_pins_the_version_the_package_lock_resolves(self):
         lock = S.read_image_lock()
         self.assertEqual(lock.get("image"), S.image_ref(S.pinned_playwright_version(_paths.DEV)),

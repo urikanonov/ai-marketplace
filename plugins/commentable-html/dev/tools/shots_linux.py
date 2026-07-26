@@ -123,7 +123,13 @@ def read_image_lock(path=None):
         return {}
     if not isinstance(data, dict):
         return {}
-    return {"image": data.get("image"), "digest": data.get("digest")} if data else {}
+    # Keep only well-typed values: a hand-edited or tool-written lock with a non-string digest must
+    # take the documented mutable-tag path, never raise on a caller that expects text.
+    return {"image": _text(data.get("image")), "digest": _text(data.get("digest"))} if data else {}
+
+
+def _text(value):
+    return value if isinstance(value, str) else None
 
 
 def write_image_lock(path, image, digest):
@@ -154,8 +160,8 @@ def resolved_image(tag, lock=None):
     warning names the exact command that restores the immutable pin.
     """
     lock = read_image_lock() if lock is None else (lock or {})
-    recorded = lock.get("image")
-    digest = (lock.get("digest") or "").strip()
+    recorded = _text(lock.get("image"))
+    digest = (_text(lock.get("digest")) or "").strip()
     if recorded == tag and DIGEST_RE.match(digest):
         return "%s@%s" % (IMAGE_REPO, digest), None
     if recorded == tag:
