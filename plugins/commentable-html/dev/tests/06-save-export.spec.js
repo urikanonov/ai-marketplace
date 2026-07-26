@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import {
-  openInline, addTextComment, openToolbarMenu, readDownload, fileUrl, ready,
+  openInline, addTextComment, openComposerFor, openToolbarMenu, readDownload, fileUrl, ready,
   stageContent, stageNonPortable,
   openSidebarExportMenu, installClipboardCapture, lastCopied,
   clickSidebarExport, startStaticServer,
@@ -228,8 +228,7 @@ test.describe("Save comments / Export plain", () => {
   test("Escape closes only the sidebar export disclosure before a composer draft (CMH-EXP-13)", async ({ page }) => {
     await openInline(page);
     await addTextComment(page, "#commentRoot section p", "menu priority note");
-    await page.locator('.cm-card [data-act="edit"]').first().click();
-    const composer = page.locator(".cm-composer").last();
+    const composer = await openComposerFor(page, "#commentRoot section p", { index: 1 });
     await composer.locator("textarea").fill("draft kept behind export menu");
     await openSidebarExportMenu(page);
     await page.keyboard.press("Escape");

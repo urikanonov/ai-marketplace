@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import {
   openKitchenSink, addTextComment, openComposerFor, selectText, distinctCids, realDragSelect,
-  allCids, stageContent, fileUrl, ready,
+  allCids, stageContent, fileUrl, ready, storedComments,
 } from "./helpers.js";
 
 test.describe("comment interactions", () => {
@@ -51,10 +51,10 @@ test.describe("comment interactions", () => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section p", "original note");
     await page.locator('.cm-card [data-act="edit"]').first().click();
-    const composer = page.locator(".cm-composer").last();
-    await expect(composer.locator("textarea")).toHaveValue("original note");
-    await composer.locator("textarea").fill("edited note");
-    await composer.locator('[data-act="save"]').click();
+    const editor = page.locator(".cm-card .cm-entry-root .cm-reply-compose");
+    await expect(editor.locator("textarea")).toHaveValue("original note");
+    await editor.locator("textarea").fill("edited note");
+    await editor.locator(".cm-reply-save").click();
     await expect(page.locator("#commentList")).toContainText("edited note");
     await expect(page.locator("#commentList")).not.toContainText("original note");
     await expect(page.locator(".cm-card .meta")).toContainText(/edited/i);
@@ -72,9 +72,9 @@ test.describe("comment interactions", () => {
     await page.evaluate(() => { document.documentElement.dir = "rtl"; });
     await addTextComment(page, "#commentRoot section p", "RTL timestamp");
     await page.locator('.cm-card [data-act="edit"]').first().click();
-    const composer = page.locator(".cm-composer").last();
-    await composer.locator("textarea").fill("RTL timestamp edited");
-    await composer.locator('[data-act="save"]').click();
+    const rtlEditor = page.locator(".cm-card .cm-entry-root .cm-reply-compose");
+    await rtlEditor.locator("textarea").fill("RTL timestamp edited");
+    await rtlEditor.locator(".cm-reply-save").click();
 
     const cardMeta = page.locator(".cm-card .meta > span").first();
     await expect(cardMeta.locator("bdi")).toHaveCount(1);
@@ -173,11 +173,75 @@ test.describe("comment interactions", () => {
     // The existing sidebar jump still fires alongside the dialog.
     await expect(page.locator(".cm-card.active")).toContainText("inline dialog note");
 
-    // Edit opens the composer for that comment and closes the dialog.
+    // Edit turns the dialog into an editor IN PLACE - it does not close, and no floating composer opens.
     await pop.locator('[data-act="edit"]').click();
+    await expect(pop).toBeVisible();
+    await expect(page.locator(".cm-composer")).toHaveCount(0);
+    await expect(pop.locator(".cm-comment-popover-edit textarea")).toHaveValue("inline dialog note");
+  });
+
+  test("CMH-CORE-16: the dialog Edit edits in place, stays put, and Escape cancels back to the note", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "edit me in place");
+    const cid = (await allCids(page))[0];
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await expect(pop).toBeVisible();
+    const before = await pop.boundingBox();
+    const scrollBefore = await page.evaluate(() => window.scrollY);
+
+    await pop.locator('[data-act="edit"]').click();
+    const ta = pop.locator(".cm-comment-popover-edit textarea");
+    await expect(ta).toBeFocused();
+    // The editor opens WHERE the reader clicked: same dialog, same anchor column, no scrolling.
+    const after = await pop.boundingBox();
+    expect(Math.abs(after.x - before.x)).toBeLessThan(2);
+    expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
+
+    // A click outside does not close (or discard) the dialog while it is being edited.
+    await ta.fill("dialog draft");
+    await page.mouse.click(5, 5);
+    await expect(pop).toBeVisible();
+    await expect(ta).toHaveValue("dialog draft");
+
+    // Escape cancels the edit back to the note view (the dialog stays open); Escape again closes it.
+    await ta.focus();
+    await page.keyboard.press("Escape");
+    await expect(pop).toBeVisible();
+    await expect(pop.locator(".cm-comment-popover-edit")).toHaveCount(0);
+    await expect(pop.locator(".cm-comment-popover-note")).toContainText("edit me in place");
+    await expect(pop.locator('[data-act="edit"]')).toBeFocused();
+    await page.keyboard.press("Escape");
     await expect(pop).toBeHidden();
-    const composer = page.locator(".cm-composer").last();
-    await expect(composer.locator("textarea")).toHaveValue("inline dialog note");
+
+    // Saving in place updates the note, the sidebar card, and storage, and returns to the note view.
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    await pop.locator('[data-act="edit"]').click();
+    await pop.locator(".cm-comment-popover-edit textarea").fill("edited in the dialog");
+    await pop.locator('[data-act="edit-save"]').click();
+    await expect(pop).toBeVisible();
+    await expect(pop.locator(".cm-comment-popover-edit")).toHaveCount(0);
+    await expect(pop.locator(".cm-comment-popover-note")).toContainText("edited in the dialog");
+    await expect(pop.locator(".cm-comment-popover-meta")).toContainText("(edited)");
+    await expect(page.locator("#commentList")).toContainText("edited in the dialog");
+    expect((await storedComments(page))[0].note).toBe("edited in the dialog");
+  });
+
+  test("CMH-UI-12: the Open comment hover bubble is a comfortably large click target", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "bubble target");
+    const cid = (await allCids(page))[0];
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    const bubble = page.locator("#hlBubble");
+    await expect(bubble).toBeVisible();
+    const box = await bubble.boundingBox();
+    expect(box.width).toBeGreaterThanOrEqual(28);
+    expect(box.height).toBeGreaterThanOrEqual(28);
+    // The glyph grows with it, so the bigger button is not a small icon in a large disc.
+    const icon = await bubble.locator("svg").boundingBox();
+    expect(icon.width).toBeGreaterThanOrEqual(15);
   });
 
   test("CMH-CORE-16: clicking anywhere else closes the inline dialog and swallows the click", async ({ page }) => {

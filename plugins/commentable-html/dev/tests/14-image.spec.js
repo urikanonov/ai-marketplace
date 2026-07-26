@@ -223,21 +223,20 @@ test.describe("image comments", () => {
       await card.locator('[data-act="jump"]').click();
       await expect.poll(async () => page.evaluate(() => window.scrollY)).toBeGreaterThan(600);
 
+      // Editing the card is inline in the sidebar; the reordered anchor must survive it, so the
+      // ring stays on the FIRST image and the stored anchor metadata is untouched.
       await card.locator('[data-act="edit"]').click();
-      const distances = await page.evaluate(() => {
-        const composer = document.querySelector(".cm-composer");
-        const first = document.querySelector('img[src="first-image.png"]');
-        const second = document.querySelector('img[src="second-image.png"]');
-        const mid = (el) => {
-          const r = el.getBoundingClientRect();
-          return r.top + r.height / 2;
-        };
-        return {
-          first: Math.abs(mid(composer) - mid(first)),
-          second: Math.abs(mid(composer) - mid(second)),
-        };
-      });
-      expect(distances.first).toBeLessThan(distances.second);
+      const editor = card.locator(".cm-entry-root .cm-reply-compose");
+      await editor.locator("textarea").fill("target the first image (edited)");
+      await editor.locator(".cm-reply-save").click();
+      await expect(page.locator(`.cm-card[data-cid="${cid}"] .note`)).toContainText("target the first image (edited)");
+      await expect(page.locator('img[src="first-image.png"].cm-img-hl')).toHaveCount(1);
+      await expect(page.locator('img[src="second-image.png"].cm-img-hl')).toHaveCount(0);
+      const stillFirst = await page.evaluate((id) => {
+        const el = document.querySelector(`img[data-cid="${id}"]`);
+        return el ? el.getAttribute("src") : null;
+      }, cid);
+      expect(stillFirst).toBe("first-image.png");
     } finally {
       fs.rmSync(staged.dir, { recursive: true, force: true });
     }

@@ -236,17 +236,14 @@ test("noise: a random sequence of add/edit/delete/clear keeps every invariant", 
       if (stored.length === 0 || roll < 0.55) {
         await addRandomComment(page, "op " + step);
       } else if (roll < 0.75) {
-        // edit a random comment (scroll its highlight into view so the composer,
-        // which anchors near the highlight, opens within the viewport)
+        // edit a random comment IN the sidebar card (root edits are inline, no floating composer)
         const idx = Math.floor((await page.evaluate(() => window.__rng())) * stored.length);
         const card = page.locator(".cm-card").nth(idx);
-        const cid = await card.getAttribute("data-cid");
-        await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().scrollIntoViewIfNeeded().catch(() => {});
         await card.locator('[data-act="edit"]').click();
-        const composer = page.locator(".cm-composer").last();
-        await composer.locator("textarea").fill("edited " + step);
-        await composer.locator('[data-act="save"]').click();
-        await expect(composer).toHaveCount(0);
+        const editor = card.locator(".cm-entry-root .cm-reply-compose");
+        await editor.locator("textarea").fill("edited " + step);
+        await editor.locator(".cm-reply-save").click();
+        await expect(editor).toHaveCount(0);
       } else if (roll < 0.92) {
         const idx = Math.floor((await page.evaluate(() => window.__rng())) * stored.length);
         await page.locator(".cm-card").nth(idx).locator('[data-act="del"]').click();
