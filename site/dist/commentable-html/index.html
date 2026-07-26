@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.247.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.248.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,6 +457,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.248.0] - 2026-07-26</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The floating per-link <code>Add Comment</code> button that appears when hovering a commentable link now wears the shared crimson accent pill (background, label color, rounded shape, shadow, hover and active states) like every other add-comment affordance. <code>.cm-link-add</code> had been left out of the shared pill rule, so the link button rendered as a plain default browser button. (CMH-UI-04)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.247.0] - 2026-07-26</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -473,6 +480,8 @@
               <li>The runtime/author-time highlighter drift guard now also requires the runtime to know every author-time ALIAS, not just every canonical language. <code>diffLangKnown()</code> looks the raw <code>language-XXX</code> label up with no alias resolution, so an alias-only language was highlightable at author time and monochrome at runtime - the exact hole that let <code>jsonc</code> ship unhighlighted. (CMH-HL-03)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.246.0] - 2026-07-25</h3></div>
             <div class="group-label">Fixed</div>
@@ -485,8 +494,6 @@
               <li>The sidebar now draws a divider rule above the &quot;Generated on&quot; / &quot;Last comment&quot; metadata block, separating it from the Copy all / Export button row and mirroring the header&#x27;s own rule under the &quot;Commenting as&quot; identity line. (CMH-SIDE-03)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.245.0] - 2026-07-25</h3></div>
             <div class="group-label">Changed</div>
@@ -525,14 +532,7 @@
               <li>Each export action now shows a centered toast naming which export is running.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.241.0] - 2026-07-25</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Deck: a comments-off (present-only) deck no longer silently re-enables commenting when a review NOTE is edited, a CHECKLIST item is toggled, or a widget layout changes. While in the comments-off mode a deck no longer auto-opens the sidebar on such a non-comment change (it still does in a non-deck document, and in a comments-enabled deck it surfaces the change card); the change is still tracked. The deck comment-model observer was also hardened so that neither slide movement nor an incidental sidebar open from a non-comment change re-enables commenting - such an incidental open is reverted rather than flipping <code>off</code> to <code>open</code>. Two things still leave <code>off</code>: an explicit comment-options re-selection, and a real comment actually landing while off (a composer left open when off was chosen, then saved) - because <code>off</code> is only valid at zero comments, that comment exits to <code>open</code> so it is not stranded. (CMH-DECK-25, issue #659)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">204 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">205 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

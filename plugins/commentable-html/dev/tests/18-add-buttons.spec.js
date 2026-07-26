@@ -29,7 +29,7 @@ async function waitForStableTop(page, selector) {
 test.describe("add-comment affordances", () => {
   test("every add-comment control reads \"Add Comment\"", async ({ page }) => {
     await openInline(page);
-    for (const id of ["menuComment", "imageAddBtn", "diffAddBtn", "mermaidAddBtn"]) {
+    for (const id of ["menuComment", "imageAddBtn", "diffAddBtn", "mermaidAddBtn", "linkAddBtn"]) {
       const txt = (await page.locator("#" + id).evaluate((el) => el.textContent)).trim();
       expect(txt, id).toBe("Add Comment");
     }

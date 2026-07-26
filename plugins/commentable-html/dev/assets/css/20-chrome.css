@@ -239,19 +239,19 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-menu button { justify-content: center; }
 
 /* Add-comment affordances: the text-selection menu button and the floating
-   image / diff / mermaid buttons all share ONE accent-pill look + hover, so the
+   image / link / diff / mermaid buttons all share ONE accent-pill look + hover, so the
    "Add Comment" control is visually identical wherever it appears. */
-.cm-menu button, .cm-mermaid-add, .cm-diff-add, .cm-image-add, .cm-widget-add {
+.cm-menu button, .cm-mermaid-add, .cm-diff-add, .cm-image-add, .cm-link-add, .cm-widget-add {
   background: var(--cp-accent); color: var(--cp-accent-fg);
   border: none; border-radius: 999px; padding: var(--cp-chrome-add-y) var(--cp-chrome-add-x);
   font-family: inherit; font-size: var(--cp-chrome-body-font); font-weight: 600; line-height: 1.2;
   cursor: pointer; box-shadow: var(--cp-shadow);
   display: inline-flex; align-items: center; gap: var(--cp-chrome-gap); white-space: nowrap;
 }
-.cm-menu button:hover, .cm-mermaid-add:hover, .cm-diff-add:hover, .cm-image-add:hover, .cm-widget-add:hover {
+.cm-menu button:hover, .cm-mermaid-add:hover, .cm-diff-add:hover, .cm-image-add:hover, .cm-link-add:hover, .cm-widget-add:hover {
   background: var(--cp-accent-hover); color: var(--cp-accent-fg);
 }
-.cm-menu button:active, .cm-mermaid-add:active, .cm-diff-add:active, .cm-image-add:active, .cm-widget-add:active {
+.cm-menu button:active, .cm-mermaid-add:active, .cm-diff-add:active, .cm-image-add:active, .cm-link-add:active, .cm-widget-add:active {
   transform: translateY(1px);
 }
 
