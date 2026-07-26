@@ -73,6 +73,50 @@
       "com": ["<!-- x -->"],
       "kw": ["item"],
       "notKw": ["name"]
+    },
+    {
+      "lang": "json",
+      "code": "{\"name\": \"cmh\", \"ok\": true, \"n\": 3}",
+      "key": ["\"name\"", "\"ok\"", "\"n\""],
+      "str": ["\"cmh\""],
+      "kw": ["true"],
+      "notStr": ["\"name\"", "\"ok\""],
+      "notKey": ["\"cmh\""]
+    },
+    {
+      "lang": "jsonc",
+      "code": "{ /* blk */ \"a\": \"b: c\" } // note",
+      "key": ["\"a\""],
+      "str": ["\"b: c\""],
+      "com": ["/* blk */", "// note"],
+      "notKey": ["\"b: c\""]
+    },
+    {
+      "lang": "json",
+      "code": "{\"a\\\"b\": 1, \"c:d\": 2}",
+      "key": ["\"a\\\"b\"", "\"c:d\""],
+      "notStr": ["\"c:d\"", "\"a\\\"b\""]
+    },
+    {
+      "lang": "json",
+      "code": "{\"\": \"v\"}",
+      "key": ["\"\""],
+      "str": ["\"v\""],
+      "notStr": ["\"\""],
+      "notKey": ["\"v\""]
+    },
+    {
+      "lang": "jsonc",
+      "code": "{\"a\":1}/*c*/",
+      "key": ["\"a\""],
+      "com": ["/*c*/"],
+      "notKey": ["/*c*/"]
+    },
+    {
+      "lang": "jsonc",
+      "code": "// \"notakey\": 1",
+      "com": ["// \"notakey\": 1"],
+      "notKey": ["\"notakey\""]
     }
   ]
 }

@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.246.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.247.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,6 +457,23 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.247.0] - 2026-07-26</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A <code>jsonc</code> code block is highlighted instead of rendering as plain monochrome text. <code>jsonc</code> was not a known label on either path - it was missing from the author-time highlighter&#x27;s alias table and from the runtime tokenizer&#x27;s language map - so a <code>language-jsonc</code> block was baked as escaped plain text and the runtime fallback declined to touch it. It is now a first-class label that resolves to <code>json</code>. (CMH-HL-05)</li>
+              <li>A <code>/* ... */</code> block comment in a JSON/JSONC block is highlighted as a comment. The author-time <code>json</code> config declared only <code>//</code> line comments, so a block comment was tokenized as operators plus plain text - and silently disagreed with the runtime, which did treat it as a comment. (CMH-HL-05)</li>
+              <li>A comment that directly abuts an operator, with no whitespace between them, is highlighted as a comment. The author-time tokenizer&#x27;s greedy operator run absorbed the comment&#x27;s opener (<code>{/*</code> became one operator token), so the comment BODY was then highlighted as live code - which the new JSON block comments made visible as <code>{/* &quot;a&quot;: 1 */}</code> colouring <code>&quot;a&quot;</code> as a property key. The operator run is now guarded per language by that language&#x27;s own comment prefixes, so <code>x=1;/*c*/</code>, <code>int x=1;//n</code>, <code>f x={-c-}</code>, <code>$a=1&lt;#c#&gt;</code> and <code>x=1--c</code> all highlight correctly while an operator pair that is not a comment in that language (Python floor division <code>//</code>) is untouched. (CMH-HL-06)</li>
+            </ul>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>JSON property keys are tinted apart from string values. A double-quoted string whose next non-whitespace character is <code>:</code> now emits a <code>cmh-code-key</code> token instead of <code>cmh-code-str</code>, so a JSON document reads the way every mainstream JSON highlighter renders it rather than as one wall of green strings. The token ships colors for the light theme, the dark theme, deck mode, and the dark-theme print re-light, and it is JSON-only - no other language gains a key token. (CMH-HL-05)</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The runtime/author-time highlighter drift guard now also requires the runtime to know every author-time ALIAS, not just every canonical language. <code>diffLangKnown()</code> looks the raw <code>language-XXX</code> label up with no alias resolution, so an alias-only language was highlightable at author time and monochrome at runtime - the exact hole that let <code>jsonc</code> ship unhighlighted. (CMH-HL-03)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.246.0] - 2026-07-25</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -468,6 +485,8 @@
               <li>The sidebar now draws a divider rule above the &quot;Generated on&quot; / &quot;Last comment&quot; metadata block, separating it from the Copy all / Export button row and mirroring the header&#x27;s own rule under the &quot;Commenting as&quot; identity line. (CMH-SIDE-03)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.245.0] - 2026-07-25</h3></div>
             <div class="group-label">Changed</div>
@@ -476,8 +495,6 @@
               <li>Deck layout: every deck the skill produces now keeps a stable header baseline - the deck CSS reserves a consistent title band (em-sized) so a slide&#x27;s subtitle/body starts at the same height regardless of whether the title is one or two lines, and content slides top-align so the title starts at the same height on every slide; the header no longer jumps when navigating. Showcase content slides pin that header at the top and center the body in the space below it, so a light slide no longer leaves a large empty band at the bottom. Section/divider slides still center. (CMH-DECK-42, CMH-DECK-SHOWCASE-12)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.244.0] - 2026-07-25</h3></div>
             <div class="group-label">Changed</div>
@@ -515,15 +532,7 @@
               <li>Deck: a comments-off (present-only) deck no longer silently re-enables commenting when a review NOTE is edited, a CHECKLIST item is toggled, or a widget layout changes. While in the comments-off mode a deck no longer auto-opens the sidebar on such a non-comment change (it still does in a non-deck document, and in a comments-enabled deck it surfaces the change card); the change is still tracked. The deck comment-model observer was also hardened so that neither slide movement nor an incidental sidebar open from a non-comment change re-enables commenting - such an incidental open is reverted rather than flipping <code>off</code> to <code>open</code>. Two things still leave <code>off</code>: an explicit comment-options re-selection, and a real comment actually landing while off (a composer left open when off was chosen, then saved) - because <code>off</code> is only valid at zero comments, that comment exits to <code>open</code> so it is not stranded. (CMH-DECK-25, issue #659)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.240.0] - 2026-07-25</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Showcase deck polish. Link pills (<code>.show-link-pill</code>) keep their rounded pill shape on hover in deck comment mode - the authored deck CSS overrides the runtime link-comment hover so the dashed outline hugs the pill instead of squaring it (deck-wide, e.g. &quot;View Live Demo&quot; and the install/link pills). The primary &quot;View Live Demo&quot; label gains a subtle text-shadow for legibility on the crimson accent, and the four slide-9 feature cards lift on hover (translateY + shadow), matching the pill lift.</li>
-              <li>Rebalanced the code / notes / decide slides so each uses its space: the &quot;Supported syntax labels&quot; card moved onto the &quot;Code, KQL, and diffs&quot; slide, the review checklist moved beside the notes demo, and the decision-board slide gained a short widget caption. (CMH-DECK-SHOWCASE-08, CMH-DECK-SHOWCASE-19)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">203 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">204 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

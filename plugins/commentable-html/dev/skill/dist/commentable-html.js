@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.246.0";
+const CMH_VERSION = "1.247.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -1917,7 +1917,8 @@ function setDiffSyntaxOn(on) {
 const _HL_FAMILY = {
   javascript: "c", js: "c", jsx: "c", typescript: "c", ts: "c", tsx: "c", java: "c", c: "c", cpp: "c",
   "c++": "c", cs: "c", csharp: "c", go: "c", golang: "c", rust: "c", rs: "c", php: "c", swift: "c",
-  kotlin: "c", kt: "c", scala: "c", dart: "c", json: "c", groovy: "c", objectivec: "c", objc: "c",
+  kotlin: "c", kt: "c", scala: "c", dart: "c", groovy: "c", objectivec: "c", objc: "c",
+  json: "json", jsonc: "json",
   python: "hash", py: "hash", ruby: "hash", rb: "hash", shell: "hash", bash: "hash", sh: "hash",
   yaml: "hash", yml: "hash", toml: "hash", perl: "hash", pl: "hash", r: "hash", elixir: "hash", ex: "hash", exs: "hash",
   sql: "sql",
@@ -1930,7 +1931,7 @@ const _EXT_LANG = {
   py: "python", js: "javascript", jsx: "javascript", mjs: "javascript", ts: "typescript", tsx: "typescript",
   java: "java", c: "c", h: "c", cpp: "cpp", cc: "cpp", hpp: "cpp", cs: "csharp", go: "go", rs: "rust",
   rb: "ruby", php: "php", swift: "swift", kt: "kotlin", scala: "scala", sql: "sql", sh: "shell",
-  bash: "shell", yml: "yaml", yaml: "yaml", toml: "toml", json: "json", css: "css", lua: "lua",
+  bash: "shell", yml: "yaml", yaml: "yaml", toml: "toml", json: "json", jsonc: "json", css: "css", lua: "lua",
   hs: "haskell", ex: "elixir", exs: "elixir", ps1: "powershell", bat: "batch", cmd: "batch",
   groovy: "groovy", gradle: "groovy", pl: "perl", r: "r", m: "objectivec", mm: "objectivec",
 };
@@ -1954,7 +1955,26 @@ const _HL_KW_SET = new Set(("abstract as async await base bool boolean break byt
 const _HL_MARKUP_KW = new Set(("a article body button code div footer h1 h2 h3 head header html img "
   + "input label li link main meta nav ol option p pre script section select span style table tbody "
   + "td template textarea th thead title tr ul xml version encoding root item node element").split(" "));
+// JSON has exactly three barewords; using the broad C-family set here would tint an invalid stray
+// identifier as a keyword and diverge from the author-time json config.
+const _HL_JSON_KW = new Set(["true", "false", "null"]);
 const _hlCache = {};
+// A JSON string token is a property KEY when it is CLOSED and the next non-whitespace character is a
+// colon. The author-time highlighter applies the same rule via a `"..."(?=\s*:)` lookahead whose closing
+// quote is REQUIRED, so the two agree; without the terminated check an unterminated `{"a\n: 1}` would be
+// a key at runtime and a string at author time. The trailing quote must also be UNESCAPED - `{"a\"\n: 1}`
+// ends in a quote that is part of a `\"` escape, so the token is still unterminated.
+function _jsonKeyIsTerminated(token) {
+  if (token.length < 2 || token.charAt(token.length - 1) !== '"') return false;
+  let slashes = 0;
+  for (let i = token.length - 2; i >= 0 && token.charAt(i) === "\\"; i--) slashes++;
+  return slashes % 2 === 0;
+}
+function _jsonKeyFollows(text, from) {
+  let j = from;
+  while (j < text.length && /\s/.test(text[j])) j++;
+  return text.charAt(j) === ":";
+}
 function _hlTokenRe(fam) {
   if (_hlCache[fam]) { _hlCache[fam].lastIndex = 0; return _hlCache[fam]; }
   // Unrolled, linear-time string forms (a failed/unterminated match resolves in one pass instead of
@@ -1973,6 +1993,10 @@ function _hlTokenRe(fam) {
   else if (fam === "powershell") { com = "<#[\\s\\S]*?(?:#>|$)|#[^\\n]*"; str = dq + "|" + sq; flags = "gi"; }
   else if (fam === "batch") { com = "(?:rem\\b|::)[^\\n]*"; str = dq; flags = "gi"; }
   else if (fam === "markup") { com = "<!--[\\s\\S]*?(?:-->|$)"; str = dq + "|" + sq; flags = "gi"; }
+  // JSON strings cannot contain a raw newline, and the author-time `double` style excludes one. The
+  // shared dq form does NOT, so reusing it here would let the runtime swallow a multi-line span (and,
+  // with the key lookahead, call it a key) where the author-time tool emits several tokens.
+  else if (fam === "json") { com = "/\\*[\\s\\S]*?(?:\\*/|$)|//[^\\n]*"; str = "\"[^\"\\\\\\n]*(?:\\\\[\\s\\S][^\"\\\\\\n]*)*\"?"; }
   else { com = "/\\*[\\s\\S]*?(?:\\*/|$)|//[^\\n]*"; str = dq + "|" + sq + "|" + bt; }
   const num = "0[xX][0-9a-fA-F]+|\\d[\\d_]*(?:\\.\\d+)?(?:[eE][+-]?\\d+)?";
   const id = "[A-Za-z_$][A-Za-z0-9_$]*";
@@ -1990,9 +2014,9 @@ function cmhHighlightCode(text, lang) {
     const t = m[0], g = m.groups;
     let cls = null;
     if (g.com) cls = "com";
-    else if (g.str) cls = "str";
+    else if (g.str) cls = (fam === "json" && _jsonKeyIsTerminated(t) && _jsonKeyFollows(text, re.lastIndex)) ? "key" : "str";
     else if (g.num) cls = "num";
-    else if (g.id) cls = (fam === "markup" ? _HL_MARKUP_KW : _HL_KW_SET).has(re.ignoreCase ? t.toLowerCase() : t) ? "kw" : (text[re.lastIndex] === "(" ? "fn" : null);
+    else if (g.id) cls = (fam === "markup" ? _HL_MARKUP_KW : fam === "json" ? _HL_JSON_KW : _HL_KW_SET).has(re.ignoreCase ? t.toLowerCase() : t) ? "kw" : (text[re.lastIndex] === "(" ? "fn" : null);
     else if (g.op) cls = "op";
     out += cls ? ('<span class="cmh-code-' + cls + '">' + escapeHtml(t) + "</span>") : escapeHtml(t);
     last = re.lastIndex;
@@ -10833,6 +10857,7 @@ function showHelp(restoreEl) {
         '<ul>' +
           '<li><strong>Sortable tables:</strong> click a column header to sort (numeric-aware), cycling ascending, descending, original.</li>' +
           '<li><strong>Code, KQL and charts</strong> are framed for readability; every code block has an always-visible <em>Copy</em> button, and a KQL caption title copies the cluster name.</li>' +
+          '<li><strong>Syntax highlighting</strong> covers 50+ language labels, including <code>json</code> and <code>jsonc</code> - a JSON property name is tinted apart from its value, and <code>//</code> or <code>/* */</code> comments read as comments.</li>' +
           '<li><strong>Diffs</strong> are syntax-highlighted with a per-document <em>Syntax</em> toggle (green when on, red when off).</li>' +
           '<li>Long content wraps inside its box and never overflows.</li>' +
         '</ul>') +

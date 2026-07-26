@@ -75,9 +75,15 @@ class HighlightParityPythonTests(unittest.TestCase):
                 for tok in case.get("kw", []):
                     self.assertIn(tok, spans.get("kw", ""),
                                   "%s: %r should be a keyword token" % (lang, tok))
+                for tok in case.get("key", []):
+                    self.assertIn(tok, spans.get("key", ""),
+                                  "%s: %r should be a property-key token" % (lang, tok))
                 for tok in case.get("notStr", []):
                     self.assertNotIn(tok, spans.get("str", ""),
                                      "%s: %r must NOT be swallowed as a string" % (lang, tok))
+                for tok in case.get("notKey", []):
+                    self.assertNotIn(tok, spans.get("key", ""),
+                                     "%s: %r must NOT be a property-key token" % (lang, tok))
 
 
 class RuntimeLanguageCoverageTests(unittest.TestCase):
@@ -91,6 +97,17 @@ class RuntimeLanguageCoverageTests(unittest.TestCase):
         missing = sorted(set(H.LANGUAGE_CONFIGS) - known)
         self.assertEqual(missing, [],
                          "runtime _HL_FAMILY must cover every author-time language; missing: %r "
+                         "(add them to _HL_FAMILY in assets/js/26-highlight.js)" % missing)
+
+    def test_runtime_knows_every_author_time_alias(self):
+        # CMH-HL-03: the guard above covers LANGUAGE_CONFIGS, but an ALIAS is just as reachable from a
+        # `language-XXX` label, and the runtime resolves nothing - diffLangKnown() looks the RAW label
+        # up in _HL_FAMILY. So an alias the runtime does not know renders monochrome even though the
+        # author-time tool highlights it. That is exactly how `language-jsonc` shipped as plain text.
+        known = runtime_known_languages()
+        missing = sorted(set(H.ALIASES) - known)
+        self.assertEqual(missing, [],
+                         "runtime _HL_FAMILY must cover every author-time alias; missing: %r "
                          "(add them to _HL_FAMILY in assets/js/26-highlight.js)" % missing)
 
 

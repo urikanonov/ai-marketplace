@@ -136,6 +136,7 @@ function showHelp(restoreEl) {
         '<ul>' +
           '<li><strong>Sortable tables:</strong> click a column header to sort (numeric-aware), cycling ascending, descending, original.</li>' +
           '<li><strong>Code, KQL and charts</strong> are framed for readability; every code block has an always-visible <em>Copy</em> button, and a KQL caption title copies the cluster name.</li>' +
+          '<li><strong>Syntax highlighting</strong> covers 50+ language labels, including <code>json</code> and <code>jsonc</code> - a JSON property name is tinted apart from its value, and <code>//</code> or <code>/* */</code> comments read as comments.</li>' +
           '<li><strong>Diffs</strong> are syntax-highlighted with a per-document <em>Syntax</em> toggle (green when on, red when off).</li>' +
           '<li>Long content wraps inside its box and never overflows.</li>' +
         '</ul>') +

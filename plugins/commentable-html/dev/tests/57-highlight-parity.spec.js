@@ -42,6 +42,8 @@ test("the runtime diff highlighter matches the shared parity fixture (GH-REGRESS
       const str = await joined("str");
       const com = await joined("com");
       const kw = await joined("kw");
+      const key = await joined("key");
+      const keyTokens = await view.locator(".cmh-code-key").allTextContents();
       const kwTokens = await view.locator(".cmh-code-kw").allTextContents();
       for (const tok of c.str || []) {
         expect(str, c.lang + ": " + JSON.stringify(tok) + " should be a string token").toContain(tok);
@@ -59,6 +61,13 @@ test("the runtime diff highlighter matches the shared parity fixture (GH-REGRESS
           expect(kwTokens, c.lang + ": " + JSON.stringify(tok) + " must NOT be wrapped as a keyword")
             .not.toContain(text);
         }
+      }
+      for (const tok of c.key || []) {
+        expect(key, c.lang + ": " + JSON.stringify(tok) + " should be a property-key token").toContain(tok);
+      }
+      for (const tok of c.notKey || []) {
+        expect(keyTokens, c.lang + ": " + JSON.stringify(tok) + " must NOT be a property-key token")
+          .not.toContain(tok);
       }
       for (const tok of c.notStr || []) {
         expect(str, c.lang + ": " + JSON.stringify(tok) + " must NOT be swallowed as a string").not.toContain(tok);

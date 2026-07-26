@@ -49,7 +49,7 @@ type typeof undefined unique unknown var void while with yield
     "json": {
         "keywords": _words("false null true"),
         "line_comments": ("//",),
-        "block_comments": (),
+        "block_comments": (("/*", "*/"),),
         "string_styles": ("double",),
     },
     "bash": {
@@ -351,6 +351,13 @@ for _lang in CHAR_LITERAL_LANGUAGES:
         "char" if _style == "single" else _style
         for _style in LANGUAGE_CONFIGS[_lang]["string_styles"])
 
+# Languages whose object/mapping syntax makes a quoted string before a `:` a PROPERTY KEY rather than a
+# value. They get an extra "key" token class so a JSON document reads the way every mainstream JSON
+# highlighter renders it (key and value tinted differently) instead of as one wall of string tokens.
+# Only JSON qualifies today: in JavaScript or Python a `"x":` can also be a slice/label/type context, so
+# widening this set needs its own analysis rather than a blanket lookahead.
+KEY_STRING_LANGUAGES = frozenset({"json"})
+
 ALIASES = {
     "sh": "bash",
     "shell": "bash",
@@ -370,11 +377,17 @@ ALIASES = {
     "exs": "elixir",
     "bat": "batch",
     "cmd": "batch",
+    "jsonc": "json",
 }
 
 _IDENTIFIER_RE = r"@?[A-Za-z_$][A-Za-z0-9_$]*"
 _NUMBER_RE = r"\b(?:0[xX][0-9A-Fa-f_]+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[A-Za-z0-9_]*)\b"
-_OP_RE = r"[=!<>+\-*/%&|^~?:;.,()\[\]{}#]+"
+_OP_CHAR_RE = r"[=!<>+\-*/%&|^~?:;.,()\[\]{}#]"
+_OP_RE = _OP_CHAR_RE + "+"
+# A property KEY: the same unrolled double-quoted string as the "double" style, but with a REQUIRED
+# closer and a following `:` (whitespace and newlines allowed between). The closer must be required
+# here so an unterminated string cannot scan ahead and claim a later colon.
+_KEY_STRING_RE = r'"[^"\\\n]*(?:\\[\s\S][^"\\\n]*)*"(?=\s*:)'
 _TOKEN_RE_CACHE = {}
 
 _STRING_PATTERNS = {
@@ -453,6 +466,24 @@ def _keyword_pattern(config):
     return r"(?<![A-Za-z0-9_$])(?:%s)(?![A-Za-z0-9_$])" % "|".join(keywords)
 
 
+def _op_pattern(config):
+    """The operator run, guarded so it can never swallow this language's own comment opener.
+
+    `_OP_RE` is greedy and several comment openers begin with an operator character (`/*`, `//`,
+    `--`, `::`, `<#`, `{-`). Without the guard an operator that directly precedes a comment - with
+    no whitespace between them - absorbs the opener, so the comment is never recognized at all:
+    `{/* c */}` tokenized `{/*` as one operator and then highlighted the comment BODY as live code.
+    The guard is built from the language's OWN comment prefixes, so a `//` that is not a comment
+    (Python floor division) still tokenizes as an operator.
+    """
+    openers = [start for start, _end in config["block_comments"]]
+    openers += [p for p in config["line_comments"] if p[:1] and not p[:1].isalnum()]
+    if not openers:
+        return _OP_RE
+    guard = "(?!%s)" % "|".join(re.escape(p) for p in sorted(set(openers), key=len, reverse=True))
+    return r"(?:%s%s)+" % (guard, _OP_CHAR_RE)
+
+
 def _token_re(language):
     if language in _TOKEN_RE_CACHE:
         return _TOKEN_RE_CACHE[language]
@@ -463,6 +494,8 @@ def _token_re(language):
     keywords = _keyword_pattern(config)
     if comments:
         parts.append("(?P<com>%s)" % comments)
+    if language in KEY_STRING_LANGUAGES:
+        parts.append("(?P<key>%s)" % _KEY_STRING_RE)
     if strings:
         parts.append("(?P<str>%s)" % strings)
     parts.append("(?P<num>%s)" % _NUMBER_RE)
@@ -471,7 +504,7 @@ def _token_re(language):
     parts.extend((
         "(?P<fn>%s(?=\\())" % _IDENTIFIER_RE,
         "(?P<ident>%s)" % _IDENTIFIER_RE,
-        "(?P<op>%s)" % _OP_RE,
+        "(?P<op>%s)" % _op_pattern(config),
         r"(?P<ws>\s+)",
         r"(?P<other>.)",
     ))
@@ -491,7 +524,7 @@ def highlight_code(language, code):
     for match in _token_re(lang).finditer(src):
         kind = match.lastgroup
         text = match.group()
-        if kind in {"kw", "fn", "str", "num", "op"}:
+        if kind in {"kw", "fn", "str", "num", "op", "key"}:
             out.append(_span(kind, text))
         elif kind == "com":
             out.append(_span("com", text))

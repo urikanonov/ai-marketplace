@@ -57,7 +57,9 @@ python tools/blocks/highlight_code.py <language> < snippet.txt # or piped on std
 python tools/blocks/highlight_code.py --list # supported languages
 ```
 
-It emits a `<pre><code class="language-<lang>">...</code></pre>` block whose tokens are wrapped in `<span class="cmh-code-...">` (kw, fn, str, num, com, op). The spans only add structure, so `textContent` is the exact original code (LF-normalized), selecting and commenting still see raw code, and every character is HTML-escaped. The layer CSS ships token colors for light and dark themes. Unknown languages fall back to a safely escaped unhighlighted block.
+It emits a `<pre><code class="language-<lang>">...</code></pre>` block whose tokens are wrapped in `<span class="cmh-code-...">` (kw, fn, str, num, com, op, and `key` for a JSON property name). The spans only add structure, so `textContent` is the exact original code (LF-normalized), selecting and commenting still see raw code, and every character is HTML-escaped. The layer CSS ships token colors for light and dark themes. Unknown languages fall back to a safely escaped unhighlighted block.
+
+JSON gets two extras: a property key is tokenized as `key` so it is tinted apart from a string value, and `jsonc` is accepted as a label (it resolves to `json`, whose `//` and `/* */` comments are highlighted as comments).
 
 ### Highlighting is baked and verified automatically
 
