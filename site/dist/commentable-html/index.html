@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.250.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.251.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,10 +457,10 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
-            <div class="rel-head"><h3>[1.250.0] - 2026-07-26</h3></div>
+            <div class="rel-head"><h3>[1.251.0] - 2026-07-26</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
-              <li>The floating <code>Add Comment</code> popup no longer jumps to the bottom-right of the following block. A whole-line or whole-paragraph selection (a double-click on the trailing word, a triple-click, or a drag past the end of the block) is normalized by the browser past the end of that block, so the raw range&#x27;s last client rect covered the ENTIRE next element - a chart figure, an image, a table - and the popup landed hundreds of pixels below the selected words. The popup now anchors to the last VISIBLE GLYPH the selection covers, on both the desktop <code>mouseup</code> path and the coarse-pointer <code>selectionchange</code> (touch) path, and stays clamped to the viewport. (CMH-SEL-03)</li>
+              <li>The floating <code>Add Comment</code> popup no longer jumps to the bottom-right of the following block. A whole-line or whole-paragraph selection (a double-click on the trailing word, a triple-click, or a drag past the end of the block) is normalized by the browser past the end of that block, so the raw range&#x27;s last client rect covered the ENTIRE next element - a chart figure, an image, a table - and the popup landed hundreds of pixels below the selected words. The popup now anchors to the last RENDERED character the selection covers, measured rather than guessed from the character class, so a preformatted space, a non-breaking space and a narrow no-break space all still anchor it while collapsed and zero-width characters do not. It works on both the desktop <code>mouseup</code> path and the coarse-pointer <code>selectionchange</code> (touch) path, and stays clamped to the viewport. (CMH-SEL-03)</li>
             </ul>
           </div>
           <div class="release">

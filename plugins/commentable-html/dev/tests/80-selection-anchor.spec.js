@@ -20,7 +20,8 @@ const DOC = `
       <canvas id="anchor-canvas-2" style="width: 100%; height: 100%;"></canvas>
     </div>
     <figcaption id="chart-cap2">Latency percentiles by hour.</figcaption>
-  </figure>`;
+  </figure>
+  <pre id="pre">retry budget exhausted   </pre>`;
 
 // Reproduce the browser's whole-line/paragraph normalization: the range starts inside the
 // paragraph's text node and ENDS in the following block at offset 0, so getClientRects()
@@ -168,6 +169,53 @@ test("a trailing non-breaking space is a visible glyph, so the popup anchors pas
     sel.removeAllRanges();
     sel.addRange(range);
     p.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, button: 0, clientX: 100, clientY: 100 }));
+  });
+  await expect(page.locator("#contextMenu")).toBeVisible();
+
+  const box = await menuBox(page);
+  expect(box.top).toBeLessThanOrEqual(words.bottom + 24);
+  expect(box.left).toBeGreaterThanOrEqual(words.right - 4);
+  expect(box.left).toBeLessThanOrEqual(words.right + 24);
+});
+
+test("preformatted trailing spaces are rendered, so the popup anchors past them (CMH-SEL-03)", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await installClipboardCapture(page);
+  const { html } = stageContent(DOC, { key: "cmh-sel-anchor-pre", source: "sel-anchor-pre.html" });
+  await page.goto(fileUrl(html));
+  await ready(page);
+
+  // A commentable <pre> renders with white-space: pre-wrap, so its trailing spaces are visible
+  // and selected - the anchor must be measured, not assumed from the character class.
+  expect(await page.locator("#pre").evaluate((el) => getComputedStyle(el).whiteSpace)).toMatch(/^pre/);
+  const words = await page.evaluate(() => {
+    const el = document.getElementById("pre");
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+    let t = null, n;
+    while ((n = w.nextNode())) t = n;
+    const r = document.createRange();
+    r.setStart(t, 0);
+    r.setEnd(t, t.data.length);
+    const box = r.getBoundingClientRect();
+    const tail = document.createRange();
+    tail.setStart(t, t.data.length - 3);
+    tail.setEnd(t, t.data.length);
+    return { bottom: box.bottom, right: box.right, tailWidth: tail.getBoundingClientRect().width };
+  });
+  expect(words.tailWidth).toBeGreaterThan(8);
+
+  await page.evaluate(() => {
+    const el = document.getElementById("pre");
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+    let t = null, n;
+    while ((n = w.nextNode())) t = n;
+    const range = document.createRange();
+    range.setStart(t, 0);
+    range.setEnd(t, t.data.length);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, button: 0, clientX: 100, clientY: 100 }));
   });
   await expect(page.locator("#contextMenu")).toBeVisible();
 

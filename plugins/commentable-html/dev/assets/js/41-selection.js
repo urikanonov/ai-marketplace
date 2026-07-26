@@ -290,13 +290,35 @@ function _nodeBeforeRangeEnd(range) {
   }
   return n;
 }
+// The rect of the last RENDERED character in a text node's selected slice, or null when the slice
+// renders nothing. Visibility is measured, not guessed from the character class: a collapsed space
+// and a zero-width character measure a zero-width rect, while a preformatted space, a non-breaking
+// space and a narrow no-break space all measure a real advance and are therefore anchorable.
+function _lastVisibleRectIn(node, from, to) {
+  if (to <= from) return null;
+  const r = document.createRange();
+  r.setStart(node, from);
+  r.setEnd(node, to);
+  // Nothing of this node renders (the indentation whitespace between two blocks): skip it whole.
+  if (!r.getClientRects().length) return null;
+  const stop = Math.max(from, to - 400);
+  for (let i = to; i > stop; i--) {
+    r.setStart(node, i - 1);
+    r.setEnd(node, i);
+    const rects = r.getClientRects();
+    for (let k = rects.length - 1; k >= 0; k--) {
+      if (rects[k].width > 0) return rects[k];
+    }
+  }
+  return null;
+}
 // The rect of the LAST VISIBLE GLYPH the selection covers. A whole-line or whole-paragraph
 // selection (double-click on the trailing word, triple-click, a drag past the end of the block)
 // is normalized by the browser past the end of that block, so `range.getClientRects()` ends with
 // a rect covering the ENTIRE following block - a chart figure, an image, a table. Anchoring on
 // that trailing rect put the popup at the following block's bottom-right, hundreds of pixels from
-// the selected words. Walking back from the end boundary to the last selected non-whitespace
-// character measures what the reader actually highlighted instead.
+// the selected words. Walking back from the end boundary to the last rendered selected character
+// measures what the reader actually highlighted instead.
 function selectionAnchorRect(range) {
   const scope = range.commonAncestorContainer;
   // A text/CDATA/comment node cannot root a TreeWalker; a Document or DocumentFragment can, and
@@ -316,18 +338,8 @@ function selectionAnchorRect(range) {
         if (range.comparePoint(node, node.data.length) < 0) break;
         const from = (node === range.startContainer) ? range.startOffset : 0;
         const to = (node === range.endContainer) ? range.endOffset : node.data.length;
-        // Collapsible whitespace and the newlines the normalization drags in are not glyphs, but a
-        // non-breaking space IS one the reader sees, so it stays an anchorable character.
-        const trimmed = to > from ? node.data.slice(from, to).replace(/[^\S\u00a0]+$/, "") : "";
-        if (trimmed) {
-          const r = document.createRange();
-          r.setStart(node, from + trimmed.length - 1);
-          r.setEnd(node, from + trimmed.length);
-          const rects = r.getClientRects();
-          if (rects.length) return rects[rects.length - 1];
-          const box = r.getBoundingClientRect();
-          if (box.width || box.height) return box;
-        }
+        const hit = _lastVisibleRectIn(node, from, to);
+        if (hit) return hit;
         node = walker.previousNode();
       }
     } catch (_e) { /* fall through to the raw rects below */ }
