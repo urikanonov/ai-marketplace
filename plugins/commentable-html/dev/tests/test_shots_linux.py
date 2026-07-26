@@ -196,6 +196,13 @@ class HostDispatchTests(unittest.TestCase):
 class IndicativeErrorTests(unittest.TestCase):
     """Each failure mode must name what is missing AND what to do about it."""
 
+    def setUp(self):
+        # Hermetic: these cases exercise the CONTAINER branch, which `_in_ci()` would short-circuit
+        # to the native path when the suite itself runs on a CI runner.
+        patcher = mock.patch.object(S, "_in_ci", return_value=False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def _stderr_of(self, **patches):
         import io
         import contextlib
@@ -272,6 +279,13 @@ class NpmScriptWiringTests(unittest.TestCase):
 
 
 class SkipOffLinuxTests(unittest.TestCase):
+    def setUp(self):
+        # Hermetic: `_in_ci()` is true when this suite runs on a CI runner, which would flip the
+        # dispatch to the native path and invalidate every case below.
+        patcher = mock.patch.object(S, "_in_ci", return_value=False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_check_skips_cleanly_when_the_host_cannot_match_ci(self):
         # `npm test` runs this. On Windows the committed (Linux-rendered) PNGs never match the host
         # renderer, so a real check would FALSE-FAIL and its remediation text would point at the
