@@ -207,6 +207,12 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: plugins/commentable-html/dev/package-lock.json
+      # `npm run shots:check` is a Python entrypoint (tools/shots_linux.py), so declare Python
+      # rather than relying on the runner image happening to provide `python`.
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
       - name: Install dependencies (no lifecycle scripts)
         run: npm ci --ignore-scripts
       - name: Resolve Playwright cache key inputs

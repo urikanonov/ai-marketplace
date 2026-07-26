@@ -36,6 +36,7 @@ PKG_DIR = os.path.join(ROOT, "plugins", "commentable-html", "pkg", "skills", "co
 EXAMPLES_DIR = os.path.join(ROOT, "plugins", "commentable-html", "examples")
 FIXTURES_GEN = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tests", "fixtures", "generate.mjs")
 TUTORIAL_SHOTS = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tools", "capture_tutorial.mjs")
+SHOTS_TOOL_DIR = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tools")
 # capture_tutorial.mjs imports @playwright/test, so it needs the commentable-html dev node_modules
 # installed (run scripts/setup_dev.py). When they are absent the step is skipped with a note rather
 # than failing with a cryptic ERR_MODULE_NOT_FOUND.
@@ -49,14 +50,20 @@ def _tutorial_deps_installed():
 
 
 def _host_renders_ci_shots():
-    """True when this host's browser rasterizes the tutorial screenshots the way CI does.
+    """True when this host renders the tutorial screenshots the way the CI job does.
 
-    The committed PNGs are LINUX-rendered. On another OS both the capture and its --check use the
-    HOST renderer, so a regenerated shot looks correct locally and then fails the required
-    playwright-heavy job. Rather than produce (or bless) a wrong artifact, the step is skipped and
-    the caller is pointed at tools/shots_linux.py, which runs the capture in the pinned container.
+    The committed PNGs are rendered on a pinned Ubuntu runner, and font rasterization is decided by
+    the OS image, so "is this Linux?" is too broad - a different distro, release, or architecture
+    still renders differently. Delegate to the single predicate in the plugin's shots_linux tool so
+    this orchestrator and `npm run shots` can never disagree; fall back to a conservative
+    platform check only if that tool cannot be imported.
     """
-    return sys.platform.startswith("linux")
+    try:
+        sys.path.insert(0, SHOTS_TOOL_DIR)
+        import shots_linux
+        return shots_linux.host_matches_ci_renderer()
+    except Exception:
+        return sys.platform.startswith("linux")
 
 
 def _run(label, cmd):

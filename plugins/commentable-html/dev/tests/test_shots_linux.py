@@ -90,12 +90,59 @@ class DockerCommandTests(unittest.TestCase):
         cmd = S.docker_command("/repo", "plugins/commentable-html/dev", "img:tag", ["--check; rm -rf /"])
         self.assertIn("'--check; rm -rf /'", cmd[-1])
 
+    def test_a_linux_host_runs_the_container_as_the_invoking_user(self):
+        # Otherwise every PNG the container rewrites, and the scratch dir it creates, is left
+        # root-owned in the worktree and a later native run cannot clean up after it.
+        cmd = S.docker_command("/repo", "dev", "img:tag", [], (1000, 1000))
+        self.assertIn("--user", cmd)
+        self.assertEqual(cmd[cmd.index("--user") + 1], "1000:1000")
+        # Docker Desktop already maps ownership, so no --user is passed where uid/gid do not exist.
+        self.assertNotIn("--user", S.docker_command("/repo", "dev", "img:tag", [], None))
+
+    def test_extra_capture_arguments_reach_the_capture_script(self):
+        # capture_tutorial.mjs accepts [example] [outDir] [prefix] and --print-paths. Without
+        # passthrough a single-scene recapture would still need the raw, unguarded command.
+        with mock.patch.object(S, "host_matches_ci_renderer", return_value=True), \
+                mock.patch.object(S, "_in_ci", return_value=False), \
+                mock.patch.object(S.shutil, "which", return_value="/usr/bin/node"), \
+                mock.patch.object(S, "_deps_installed", return_value=True), \
+                mock.patch.object(S, "_run", return_value=0) as run:
+            rc = S.main(["shots_linux.py", "--print-paths", "examples/report-checklist.html"])
+        self.assertEqual(rc, 0)
+        joined = " ".join(run.call_args[0][0])
+        self.assertIn("--print-paths", joined)
+        self.assertIn("examples/report-checklist.html", joined)
+
 
 class HostDispatchTests(unittest.TestCase):
-    def test_a_linux_host_captures_natively_and_never_needs_docker(self):
+    UBUNTU_2404 = {"ID": "ubuntu", "VERSION_ID": "24.04"}
+
+    def test_only_the_exact_ci_platform_renders_natively(self):
+        # `sys.platform.startswith("linux")` is NOT enough: Fedora, an older Ubuntu, or an ARM Linux
+        # host has different fonts or a different rasterizer, so rendering natively there
+        # reintroduces the very bug this tool exists to prevent.
+        self.assertTrue(S.host_matches_ci_renderer("linux", "x86_64", self.UBUNTU_2404))
+        self.assertTrue(S.host_matches_ci_renderer("linux", "AMD64", self.UBUNTU_2404))
+        self.assertFalse(S.host_matches_ci_renderer("win32", "x86_64", self.UBUNTU_2404))
+        self.assertFalse(S.host_matches_ci_renderer("darwin", "arm64", {}))
+        self.assertFalse(S.host_matches_ci_renderer("linux", "aarch64", self.UBUNTU_2404),
+                         "an ARM Linux host does not match the x86_64 CI runner")
+        self.assertFalse(S.host_matches_ci_renderer("linux", "x86_64",
+                                                    {"ID": "ubuntu", "VERSION_ID": "22.04"}),
+                         "a different Ubuntu release has a different font set")
+        self.assertFalse(S.host_matches_ci_renderer("linux", "x86_64",
+                                                    {"ID": "fedora", "VERSION_ID": "40"}))
+        self.assertFalse(S.host_matches_ci_renderer("linux", "x86_64", {}),
+                         "an unreadable /etc/os-release must fail closed, not assume a match")
+
+    def test_the_pinned_release_is_derived_from_the_same_constant_as_the_image(self):
+        self.assertTrue(S.UBUNTU_RELEASES[S.IMAGE_VARIANT].endswith(S.CI_UBUNTU_VERSION))
+
+    def test_a_ci_matching_host_captures_natively_and_never_needs_docker(self):
         # Docker must NOT become a blanket requirement: where the host renderer already matches CI,
         # the tool runs node directly.
-        with mock.patch.object(S, "host_is_linux", return_value=True), \
+        with mock.patch.object(S, "host_matches_ci_renderer", return_value=True), \
+                mock.patch.object(S, "_in_ci", return_value=False), \
                 mock.patch.object(S.shutil, "which", side_effect=lambda n: None if n == "docker" else "/usr/bin/" + n), \
                 mock.patch.object(S, "_deps_installed", return_value=True), \
                 mock.patch.object(S, "_run", return_value=0) as run:
@@ -105,8 +152,35 @@ class HostDispatchTests(unittest.TestCase):
         self.assertNotIn("docker", cmd[0])
         self.assertIn("capture_tutorial.mjs", " ".join(cmd))
 
+    def test_a_non_matching_linux_host_falls_back_to_the_container_automatically(self):
+        # The user must not have to remember --container on Fedora/ARM/22.04; getting it wrong is
+        # silent, so the tool decides.
+        with mock.patch.object(S, "host_matches_ci_renderer", return_value=False), \
+                mock.patch.object(S, "_in_ci", return_value=False), \
+                mock.patch.object(S.shutil, "which", return_value="/usr/bin/docker"), \
+                mock.patch.object(S, "_docker_daemon_ok", return_value=True), \
+                mock.patch.object(S, "_deps_installed", return_value=True), \
+                mock.patch.object(S, "_run", return_value=0) as run:
+            rc = S.main(["shots_linux.py"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(run.call_args[0][0][0], "docker")
+
+    def test_ci_always_renders_natively_even_if_the_probe_cannot_confirm_the_platform(self):
+        # Fail-closed on a dev box, fail-OPEN in CI: if /etc/os-release ever changes shape, the
+        # required CI check must still RUN rather than silently skip and lose the gate.
+        with mock.patch.object(S, "host_matches_ci_renderer", return_value=False), \
+                mock.patch.object(S, "_in_ci", return_value=True), \
+                mock.patch.object(S.shutil, "which", return_value="/usr/bin/node"), \
+                mock.patch.object(S, "_deps_installed", return_value=True), \
+                mock.patch.object(S, "_run", return_value=0) as run:
+            rc = S.main(["shots_linux.py", "--check", "--skip-unless-ci-renderer"])
+        self.assertEqual(rc, 0)
+        run.assert_called_once()
+        self.assertIn("capture_tutorial.mjs", " ".join(run.call_args[0][0]))
+
     def test_a_non_linux_host_uses_the_pinned_container(self):
-        with mock.patch.object(S, "host_is_linux", return_value=False), \
+        with mock.patch.object(S, "host_matches_ci_renderer", return_value=False), \
+                mock.patch.object(S, "_in_ci", return_value=False), \
                 mock.patch.object(S.shutil, "which", return_value="/usr/bin/docker"), \
                 mock.patch.object(S, "_docker_daemon_ok", return_value=True), \
                 mock.patch.object(S, "_deps_installed", return_value=True), \
@@ -127,7 +201,7 @@ class IndicativeErrorTests(unittest.TestCase):
         import contextlib
         err = io.StringIO()
         with contextlib.redirect_stderr(err):
-            with mock.patch.object(S, "host_is_linux", return_value=False):
+            with mock.patch.object(S, "host_matches_ci_renderer", return_value=False):
                 with contextlib.ExitStack() as stack:
                     for target, kwargs in patches.items():
                         stack.enter_context(mock.patch.object(S, target, **kwargs))
@@ -160,6 +234,12 @@ class IndicativeErrorTests(unittest.TestCase):
         self.assertNotEqual(rc, 0)
         self.assertIn("setup_dev.py", msg)
 
+    def test_the_deps_message_does_not_mention_the_container_on_the_native_path(self):
+        # A fresh-clone Linux contributor never touches Docker; telling them the container reuses
+        # their node_modules is confusing and wrong.
+        self.assertNotIn("container", S._deps_missing_message(native=True))
+        self.assertIn("container", S._deps_missing_message(native=False))
+
 
 class NpmScriptWiringTests(unittest.TestCase):
     def test_package_json_exposes_shots_linux_and_its_check_variant(self):
@@ -180,7 +260,7 @@ class NpmScriptWiringTests(unittest.TestCase):
         self.assertIn("shots_linux.py", scripts["shots"])
         self.assertIn("shots_linux.py", scripts["shots:check"])
         # `npm test` runs shots:check; it must not hard-fail (or demand Docker) on a dev laptop.
-        self.assertIn("--skip-off-linux", scripts["shots:check"])
+        self.assertIn("--skip-unless-ci-renderer", scripts["shots:check"])
         self.assertIn("shots:check", scripts["test"])
 
     def test_no_script_or_doc_hardcodes_the_container_image_tag(self):
@@ -192,39 +272,39 @@ class NpmScriptWiringTests(unittest.TestCase):
 
 
 class SkipOffLinuxTests(unittest.TestCase):
-    def test_check_skips_cleanly_off_linux_instead_of_failing_or_needing_docker(self):
+    def test_check_skips_cleanly_when_the_host_cannot_match_ci(self):
         # `npm test` runs this. On Windows the committed (Linux-rendered) PNGs never match the host
         # renderer, so a real check would FALSE-FAIL and its remediation text would point at the
         # unsafe capture. Skip with a note and exit 0 instead; CI (Linux) still runs it for real.
         import io
         import contextlib
         buf = io.StringIO()
-        with mock.patch.object(S, "host_is_linux", return_value=False), \
+        with mock.patch.object(S, "host_matches_ci_renderer", return_value=False), \
                 mock.patch.object(S, "_deps_installed", return_value=True), \
                 mock.patch.object(S, "_run") as run:
             with contextlib.redirect_stdout(buf):
-                rc = S.main(["shots_linux.py", "--check", "--skip-off-linux"])
+                rc = S.main(["shots_linux.py", "--check", "--skip-unless-ci-renderer"])
         self.assertEqual(rc, 0)
         run.assert_not_called()
         out = buf.getvalue()
         self.assertIn("skipped", out.lower())
         self.assertIn("shots:linux", out)
 
-    def test_skip_off_linux_still_runs_natively_on_linux(self):
-        with mock.patch.object(S, "host_is_linux", return_value=True), \
+    def test_skip_flag_still_runs_natively_on_the_ci_platform(self):
+        with mock.patch.object(S, "host_matches_ci_renderer", return_value=True), \
                 mock.patch.object(S, "_deps_installed", return_value=True), \
                 mock.patch.object(S.shutil, "which", return_value="/usr/bin/node"), \
                 mock.patch.object(S, "_run", return_value=0) as run:
-            rc = S.main(["shots_linux.py", "--check", "--skip-off-linux"])
+            rc = S.main(["shots_linux.py", "--check", "--skip-unless-ci-renderer"])
         self.assertEqual(rc, 0)
         run.assert_called_once()
 
     def test_the_write_path_never_silently_skips(self):
         # Regenerating is the dangerous direction: it must produce a correct PNG or refuse loudly.
-        with mock.patch.object(S, "host_is_linux", return_value=False), \
+        with mock.patch.object(S, "host_matches_ci_renderer", return_value=False), \
                 mock.patch.object(S, "_deps_installed", return_value=True), \
                 mock.patch.object(S.shutil, "which", return_value=None):
-            rc = S.main(["shots_linux.py", "--skip-off-linux"])
+            rc = S.main(["shots_linux.py", "--skip-unless-ci-renderer"])
         self.assertNotEqual(rc, 0)
 
 
@@ -239,7 +319,7 @@ class ContainerPinningTests(unittest.TestCase):
     def test_container_flag_forces_the_container_even_on_linux(self):
         # A Linux host that is NOT the CI Ubuntu release (Fedora, an older WSL distro) has its own
         # fonts, so it needs the same escape hatch a Windows host uses.
-        with mock.patch.object(S, "host_is_linux", return_value=True), \
+        with mock.patch.object(S, "host_matches_ci_renderer", return_value=True), \
                 mock.patch.object(S, "_deps_installed", return_value=True), \
                 mock.patch.object(S.shutil, "which", return_value="/usr/bin/docker"), \
                 mock.patch.object(S, "_docker_daemon_ok", return_value=True), \
@@ -253,23 +333,46 @@ class ContainerPinningTests(unittest.TestCase):
         # NOT run inside this image (it installs chromium on a bare runner), so the correspondence is
         # by agreement, not by construction - this guard makes a future runner bump a conscious,
         # two-sided edit instead of a silent divergence.
-        workflow = os.path.join(_paths.PLUGIN_ROOT, "..", "..", ".github", "workflows",
-                                "plugin-tests.yml")
-        with open(os.path.normpath(workflow), encoding="utf-8") as fh:
-            text = fh.read()
-        self.assertIn("ubuntu-24.04", text,
-                      "the screenshot-validating job must pin an explicit Ubuntu release")
-        self.assertEqual(S.UBUNTU_RELEASES[S.IMAGE_VARIANT], "ubuntu-24.04")
-        self.assertNotIn("runs-on: ubuntu-latest", _shots_job_block(text),
-                         "the shots job must not float on ubuntu-latest")
+        block = _shots_job_block(_workflow_text())
+        runs_on = [ln.split(":", 1)[1].strip() for ln in block.split("\n")
+                   if ln.strip().startswith("runs-on:")]
+        self.assertEqual(runs_on, [S.UBUNTU_RELEASES[S.IMAGE_VARIANT]],
+                         "the screenshot-validating job must pin exactly the Ubuntu release the "
+                         "container image variant names")
+
+    def test_the_job_block_helper_really_isolates_that_job(self):
+        # The guard above is only meaningful if the block it inspects is the playwright-heavy job
+        # and nothing else - a helper that returned one line, or the whole file, would make the
+        # assertion vacuous.
+        block = _shots_job_block(_workflow_text())
+        self.assertTrue(block.startswith("  playwright-heavy:"))
+        self.assertIn("runs-on:", block)
+        self.assertNotIn("\n  playwright:", block)
+        self.assertNotIn("\n  python:", block)
+
+
+def _workflow_text():
+    path = os.path.normpath(os.path.join(_paths.PLUGIN_ROOT, "..", "..", ".github", "workflows",
+                                         "plugin-tests.yml"))
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
 
 
 def _shots_job_block(text):
-    """The playwright-heavy job block (the one that runs the screenshot freshness check)."""
-    start = text.index("  playwright-heavy:")
-    rest = text[start + 1:]
-    end = rest.find("\n  ", 1)
-    return rest[:end] if end != -1 else rest
+    """The full `playwright-heavy:` top-level job block (the job that validates the screenshots).
+
+    Top-level jobs are indented two spaces; every line INSIDE a job is indented further. So the
+    block ends at the next line that starts with exactly two spaces followed by a non-space.
+    """
+    lines = text.split("\n")
+    start = next(i for i, ln in enumerate(lines) if ln.startswith("  playwright-heavy:"))
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        ln = lines[i]
+        if ln.startswith("  ") and not ln.startswith("   ") and ln.strip():
+            end = i
+            break
+    return "\n".join(lines[start:end])
 
 
 if __name__ == "__main__":

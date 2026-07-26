@@ -144,9 +144,9 @@ examples. Regenerate all of them with one command from `dev/`:
 npm run shots
 ```
 
-`npm run shots` runs `tools/capture_tutorial.mjs` with no arguments: it drives all four scenes and
-writes `garden-01-top-light.png` through `garden-13-comment-search.png`, plus `triage-01-board.png`,
-`checklist-01-checklist.png`, and `note-01-note.png`, into
+`npm run shots` runs `tools/shots_linux.py`, which drives `tools/capture_tutorial.mjs` over all four
+scenes and writes `garden-01-top-light.png` through `garden-13-comment-search.png`, plus
+`triage-01-board.png`, `checklist-01-checklist.png`, and `note-01-note.png`, into
 `../docs/assets/` at a fixed 1320x900 viewport (2x scale). It pins the
 capture clock, random seed, viewport, locale, timezone, reduced motion, browser font rendering flags,
 and capture fonts, then writes each shot to disk raw and full-resolution (crisp and true-color). The
@@ -158,6 +158,16 @@ committed files. Check committed screenshots for drift without rewriting them:
 npm run shots:check
 ```
 
+**The committed PNGs are rendered on the pinned CI Ubuntu runner, and font rasterization differs per
+OS, distro, release, and architecture.** So `npm run shots` renders natively only when this host IS
+that platform, and otherwise runs the capture inside the matching
+`mcr.microsoft.com/playwright:v<version>-noble` container (Docker required only in that case; the
+image tag is derived from `package-lock.json`, never hardcoded). For the same reason
+`npm run shots:check` SKIPS with a note where the host cannot render like CI - a real comparison
+there would be meaningless - and `python scripts/rebuild_all.py` skips the screenshot step too.
+Force the container explicitly with `npm run shots:linux` / `npm run shots:linux:check`. See
+"Regenerating the tutorial screenshots" in `../../../docs/testing-guidelines.md`.
+
 A separate quality gate rejects a blurry, faded/color-quantized, under-resolved, whitespace-heavy
 (oversized-clip), or load-flash yellow-cast shot so a low-quality screenshot can never reach the
 published tutorial. It reads the committed PNG bytes (deterministic across platforms):
@@ -168,19 +178,17 @@ npm run shots:quality
 
 `npm test` runs both the drift check and the quality gate (`tests/55-shot-quality.spec.js`).
 
-To capture a single scene of a different example, pass overrides (the prefix selects the capture
-recipe: `garden`, `triage`, `checklist`, or `note`):
+To capture a single scene of a different example, pass overrides through the same wrapper (the prefix
+selects the capture recipe: `garden`, `triage`, `checklist`, or `note`) so the render still happens on
+the correct platform:
 
 ```powershell
-node tools\capture_tutorial.mjs <example.html> <outDir> <prefix>
+npm run shots -- <example.html> <outDir> <prefix>
 ```
 
-Screenshot rendering is environment-specific (fonts and anti-aliasing differ across operating
-systems), so regenerate on the canonical environment where the images are maintained. After
-regenerating, rebuild the site so its synced tutorial images stay current: run
-`python scripts/rebuild_all.py` from the repo root. `npm test` and
-`python scripts/rebuild_all.py --check` both run the screenshot drift check. The determinism is
-covered by `tests/54-tutorial-shots.spec.js`.
+After regenerating, rebuild the site so its synced tutorial images stay current: run
+`python scripts/rebuild_all.py` from the repo root. CI's `playwright-heavy` job is the authoritative
+drift gate. The determinism is covered by `tests/54-tutorial-shots.spec.js`.
 
 ## Fixtures workflow
 

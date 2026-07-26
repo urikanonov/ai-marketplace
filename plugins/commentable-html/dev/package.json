@@ -13,7 +13,7 @@
     "fixtures": "node tests/fixtures/generate.mjs",
     "fixtures:check": "node tests/fixtures/generate.mjs --check",
     "shots": "python tools/shots_linux.py",
-    "shots:check": "python tools/shots_linux.py --check --skip-off-linux",
+    "shots:check": "python tools/shots_linux.py --check --skip-unless-ci-renderer",
     "shots:linux": "python tools/shots_linux.py --container",
     "shots:linux:check": "python tools/shots_linux.py --container --check",
     "shots:quality": "node tools/check_shot_quality.mjs",

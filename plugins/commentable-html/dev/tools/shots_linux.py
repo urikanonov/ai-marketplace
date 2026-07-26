@@ -35,6 +35,7 @@ Standard library only.
 import argparse
 import json
 import os
+import platform
 import shlex
 import shutil
 import subprocess
@@ -55,6 +56,7 @@ UBUNTU_RELEASES = {"noble": "ubuntu-24.04"}
 # The image is multi-arch; without this an Apple Silicon host would render with the arm64 stack while
 # CI renders on x86_64.
 IMAGE_PLATFORM = "linux/amd64"
+CI_UBUNTU_VERSION = UBUNTU_RELEASES[IMAGE_VARIANT].split("-", 1)[1]
 LOCK_KEY = "node_modules/@playwright/test"
 GUIDE = "docs/testing-guidelines.md"
 
@@ -63,8 +65,40 @@ class ShotsError(Exception):
     """A precondition failed with an operator-actionable explanation."""
 
 
-def host_is_linux():
-    return sys.platform.startswith("linux")
+def _os_release(path="/etc/os-release"):
+    data = {}
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            for line in handle:
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    data[key.strip()] = value.strip().strip('"').strip("'")
+    except OSError:
+        return {}
+    return data
+
+
+def host_matches_ci_renderer(platform_name=None, machine=None, os_release=None):
+    """True only for the EXACT platform the CI screenshot job renders on.
+
+    Font rasterization is decided by the OS image and its font packages, not by the browser version,
+    so "is this Linux?" is far too broad: Fedora, an older Ubuntu, or an ARM Linux host all render
+    differently from the pinned x86_64 ubuntu-24.04 runner. Anything that does not match falls back
+    to the container automatically - the user must not have to remember a flag, because getting it
+    wrong is silent. Fails CLOSED when the platform cannot be confirmed.
+    """
+    platform_name = sys.platform if platform_name is None else platform_name
+    if not platform_name.startswith("linux"):
+        return False
+    machine = (platform.machine() if machine is None else machine).lower()
+    if machine not in ("x86_64", "amd64"):
+        return False
+    release = _os_release() if os_release is None else os_release
+    return release.get("ID") == "ubuntu" and release.get("VERSION_ID") == CI_UBUNTU_VERSION
+
+
+def _in_ci():
+    return bool(os.environ.get("CI"))
 
 
 def pinned_playwright_version(dev_dir):
@@ -91,24 +125,35 @@ def image_ref(version):
     return "%s:v%s-%s" % (IMAGE_REPO, version, IMAGE_VARIANT)
 
 
-def docker_command(repo_root, dev_rel, image, extra_args):
+def docker_command(repo_root, dev_rel, image, extra_args, uid_gid=None):
     """The docker argv that runs the capture inside the pinned image against the mounted worktree.
 
     The repo is mounted (not copied) so the regenerated PNGs land straight back in the worktree.
-    Paths are quoted with shlex because a checkout path routinely contains spaces on Windows.
+    On a Linux host the container is run as the invoking user, otherwise every PNG it rewrites (and
+    the scratch dir it creates) would be left root-owned in the worktree.
     """
     workdir = "/repo/" + dev_rel.replace("\\", "/")
     inner = "node " + shlex.quote(CAPTURE.replace("\\", "/"))
     if extra_args:
         inner += " " + " ".join(shlex.quote(a) for a in extra_args)
-    return [
-        "docker", "run", "--rm",
-        "--platform", IMAGE_PLATFORM,
+    cmd = ["docker", "run", "--rm", "--platform", IMAGE_PLATFORM]
+    if uid_gid:
+        cmd += ["--user", "%s:%s" % uid_gid]
+    cmd += [
         "-v", "%s:/repo" % repo_root,
         "-w", workdir,
         image,
         "bash", "-lc", "cd " + shlex.quote(workdir) + " && " + inner,
     ]
+    return cmd
+
+
+def _host_uid_gid():
+    getuid = getattr(os, "getuid", None)
+    getgid = getattr(os, "getgid", None)
+    if getuid is None or getgid is None:
+        return None  # Windows/macOS Docker Desktop already maps ownership for the bind mount.
+    return (getuid(), getgid())
 
 
 def _deps_installed(dev_dir=None):
@@ -166,16 +211,19 @@ def _daemon_down_message(image):
         "  See %s ('Regenerating the tutorial screenshots')." % (image, GUIDE))
 
 
-def _deps_missing_message():
+def _deps_missing_message(native):
+    where = ("capture_tutorial.mjs imports @playwright/test."
+             if native else
+             "capture_tutorial.mjs imports @playwright/test, and the container reuses the mounted\n"
+             "  node_modules rather than installing its own.")
     return (
         "shots_linux: the commentable-html dev node_modules are not installed.\n"
         "\n"
-        "  capture_tutorial.mjs imports @playwright/test, and the container reuses the mounted\n"
-        "  node_modules rather than installing its own. Run:\n"
+        "  %s Run:\n"
         "\n"
         "    python scripts/setup_dev.py\n"
         "\n"
-        "  then re-run 'npm run shots:linux'.")
+        "  then re-run the same command." % where)
 
 
 def main(argv=None):
@@ -186,27 +234,31 @@ def main(argv=None):
     parser.add_argument("--check", action="store_true",
                         help="verify the committed screenshots instead of rewriting them")
     parser.add_argument("--container", action="store_true",
-                        help="force the pinned container even on Linux (use when this Linux host is "
-                             "not the Ubuntu release CI runs)")
-    parser.add_argument("--skip-off-linux", action="store_true",
-                        help="with --check, skip (exit 0) instead of running when the host renderer "
-                             "cannot match CI; used by 'npm run shots:check' so 'npm test' neither "
+                        help="force the pinned container even where the host would match CI")
+    parser.add_argument("--skip-unless-ci-renderer", action="store_true",
+                        help="with --check, skip (exit 0) instead of running when this host cannot "
+                             "render like CI; used by 'npm run shots:check' so 'npm test' neither "
                              "false-fails nor requires Docker")
-    ns = parser.parse_args(argv[1:])
-    extra = ["--check"] if ns.check else []
+    ns, passthrough = parser.parse_known_args(argv[1:])
+    # capture_tutorial.mjs takes optional [example] [outDir] [prefix] and --print-paths; forward
+    # them so a single-scene recapture does not have to fall back to the raw, unguarded command.
+    extra = (["--check"] if ns.check else []) + list(passthrough)
 
-    native = host_is_linux() and not ns.container
-    # --skip-off-linux applies to the CHECK direction only. Regenerating is the dangerous direction:
-    # it must produce a correct PNG or refuse loudly, never silently do nothing.
-    if ns.skip_off_linux and ns.check and not native:
+    # In CI the runner IS the authority, so always render natively there - if the platform probe
+    # ever fails to recognise the runner, the required check must still RUN rather than skip and
+    # silently lose the gate (fail closed on a dev box, fail OPEN in CI).
+    native = not ns.container and (_in_ci() or host_matches_ci_renderer())
+    # The skip applies to the CHECK direction only. Regenerating is the dangerous direction: it must
+    # produce a correct PNG or refuse loudly, never silently do nothing.
+    if ns.skip_unless_ci_renderer and ns.check and not native:
         print("shots_linux: screenshot check skipped (this host does not render the committed "
-              "Linux PNGs identically, so the result would be meaningless). Run "
+              "screenshots the way CI does, so the result would be meaningless). Run "
               "'npm run shots:linux:check' to verify in the pinned container; CI is the "
-              "authoritative gate.")
+              "authoritative gate.", flush=True)
         return 0
 
     if not _deps_installed():
-        return _fail(_deps_missing_message())
+        return _fail(_deps_missing_message(native))
 
     node = shutil.which("node")
     if native:
@@ -226,8 +278,8 @@ def main(argv=None):
         return _fail(_daemon_down_message(image))
 
     dev_rel = os.path.relpath(DEV_DIR, REPO_ROOT).replace("\\", "/")
-    print("shots_linux: %s in %s" % ("checking" if ns.check else "regenerating", image))
-    return _run(docker_command(REPO_ROOT, dev_rel, image, extra))
+    print("shots_linux: %s in %s" % ("checking" if ns.check else "regenerating", image), flush=True)
+    return _run(docker_command(REPO_ROOT, dev_rel, image, extra, _host_uid_gid()))
 
 
 if __name__ == "__main__":
