@@ -31,8 +31,6 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   document reads the way every mainstream JSON highlighter renders it rather than as one wall of green
   strings. The token ships colors for the light theme, the dark theme, deck mode, and the dark-theme
   print re-light, and it is JSON-only - no other language gains a key token. (CMH-HL-05)
-- The showcase deck's syntax-highlighting slide now carries a live JSON block demonstrating property
-  keys, values, and a JSONC `//` comment. (CMH-HL-05)
 
 ### Changed
 
