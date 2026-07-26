@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.248.0";
+const CMH_VERSION = "1.249.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -1926,6 +1926,7 @@ const _HL_FAMILY = {
   powershell: "powershell", ps1: "powershell", ps: "powershell",
   batch: "batch", bat: "batch", cmd: "batch",
   html: "markup", xml: "markup",
+  markdown: "markdown", md: "markdown", mdown: "markdown", mkd: "markdown",
 };
 const _EXT_LANG = {
   py: "python", js: "javascript", jsx: "javascript", mjs: "javascript", ts: "typescript", tsx: "typescript",
@@ -1934,6 +1935,7 @@ const _EXT_LANG = {
   bash: "shell", yml: "yaml", yaml: "yaml", toml: "toml", json: "json", jsonc: "json", css: "css", lua: "lua",
   hs: "haskell", ex: "elixir", exs: "elixir", ps1: "powershell", bat: "batch", cmd: "batch",
   groovy: "groovy", gradle: "groovy", pl: "perl", r: "r", m: "objectivec", mm: "objectivec",
+  md: "markdown", markdown: "markdown", mdown: "markdown", mkd: "markdown",
 };
 function inferDiffLang(el, label) {
   const explicit = (el.getAttribute("data-diff-lang") || "").trim().toLowerCase();
@@ -2005,8 +2007,212 @@ function _hlTokenRe(fam) {
   _hlCache[fam] = re;
   return re;
 }
+// Markdown carries no keywords, so it gets its own line-oriented tokenizer instead of the token
+// regex above. Mirror of _highlight_markdown() in tools/blocks/highlight_code.py - the parity
+// fixture (tests/fixtures/highlight_parity.json) pins the two implementations together. Block
+// constructs are classified per line (carrying one state, an open fenced code block), then the rest
+// of the line runs through the inline scanner. The diff highlighter tokenizes ONE line at a time,
+// so a diffed Markdown file degrades to per-line constructs (no fence carry-over), which is still
+// far better than monochrome.
+// The fence regex spells a backtick as \x60 on purpose: the authoring validator's script scanner
+// does not model regex literals, so a bare backtick there would read as a template-literal opener
+// and blank the rest of the layer (hiding, for example, the chart renderer from its canvas check).
+const _MD_FENCE_RE = /^([ \t]{0,3})(\x60{3,}|~{3,})([ \t]*)(.*)$/;
+const _MD_HEADING_RE = /^([ \t]{0,3})(#{1,6}(?:[ \t].*)?)$/;
+const _MD_SETEXT_RE = /^[ \t]{0,3}=+[ \t]*$/;
+// A dash run under a paragraph is a setext H2 underline, not a thematic break. A single `-` stays a
+// list marker (an empty list item is far more common in a draft than a one-character underline).
+const _MD_SETEXT_DASH_RE = /^[ \t]{0,3}-{2,}[ \t]*$/;
+const _MD_BREAK_RE = /^[ \t]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/;
+// Each cell is `|`-terminated so no two whitespace runs are adjacent: an ambiguous
+// `(?:\|[ \t]*:?-*:?[ \t]*)+` backtracks exponentially on a line of `|\t` repetitions (CodeQL
+// "inefficient regular expression"), and this pattern runs on every line of every markdown block.
+const _MD_TABLE_RULE_RE = /^[ \t]{0,3}\|?(?:[ \t]*:?-+:?[ \t]*\|)+(?:[ \t]*:?-+:?[ \t]*)?$/;
+const _MD_LIST_RE = /^([-*+]|\d{1,9}[.)])([ \t]+|$)/;
+const _MD_TASK_RE = /^\[[ xX]\](?=[ \t]|$)/;
+const _MD_REFDEF_RE = /^(\[)([^\]\n]+)(\]:)([ \t]*)(\S+)(.*)$/;
+const _MD_WORD_RE = /[A-Za-z0-9_]/;
+// Precedence matters: the leftmost-first alternative wins, so a code span shields its contents from
+// emphasis and an autolink is tried before a generic inline tag. Every scan that could fail is
+// LENGTH-CAPPED: an uncapped [^\]\n]* retried from each of 32k `[` characters is quadratic, and this
+// runs in the browser on authored content. A construct longer than its cap is simply not highlighted.
+// Each emphasis form is spelled as a one-character and a two-or-more-character alternative so the
+// character before the CLOSER can exclude a backslash: `**bold\**` has no valid closer (the first
+// `*` is escaped) and must stay literal. A lookbehind would be shorter but throws at regex
+// construction on Safari < 16.4, which would take the whole layer down.
+const _MD_INLINE_RE = new RegExp(
+  "(?<esc>\\\\[\\\\`*_{}\\[\\]()#+.!|~>-])"
+  + "|(?<code>```[^\\n]*?```|``[^\\n]*?``|`[^`\\n]+`)"
+  + "|(?<auto><[A-Za-z][A-Za-z0-9+.-]{0,30}:[^<>\\s]{0,500}>|<[^<>\\s@]{1,200}@[^<>\\s]{1,200}>)"
+  + "|(?<htmlcom><!--[\\s\\S]*?(?:--!?>|$))"
+  + "|(?<tag></?[A-Za-z][^<>\\n]{0,500}>)"
+  + "|(?<link>(?<link_open>!?\\[)(?<link_text>[^\\]\\n]{0,200})(?<link_mid>\\]\\()(?<link_dest>[^)\\n]{0,500})(?<link_end>\\)))"
+  + "|(?<ref>(?<ref_open>!?\\[)(?<ref_text>[^\\]\\n]{0,200})(?<ref_mid>\\]\\[)(?<ref_label>[^\\]\\n]{0,200})(?<ref_end>\\]))"
+  + "|(?<note>\\[\\^[^\\]\\n]{1,200}\\])"
+  + "|(?<strong>\\*\\*\\*[^\\s*\\\\]\\*\\*\\*|\\*\\*\\*[^\\s*][^\\n]{0,500}?[^\\s*\\\\]\\*\\*\\*"
+  + "|___[^\\s_\\\\]___|___[^\\s_][^\\n]{0,500}?[^\\s_\\\\]___"
+  + "|\\*\\*[^\\s*\\\\]\\*\\*|\\*\\*[^\\s*][^\\n]{0,500}?[^\\s*\\\\]\\*\\*"
+  + "|__[^\\s_\\\\]__|__[^\\s_][^\\n]{0,500}?[^\\s_\\\\]__)"
+  + "|(?<strike>~~[^\\s~\\\\]~~|~~[^\\s~][^\\n]{0,500}?[^\\s~\\\\]~~)"
+  + "|(?<em>\\*[^\\s*\\\\]\\*|\\*[^\\s*][^*\\n]{0,500}?[^\\s*\\\\]\\*"
+  + "|_[^\\s_\\\\]_|_[^\\s_][^_\\n]{0,500}?[^\\s_\\\\]_)"
+  + "|(?<pipe>\\|)", "g");
+// HTML tolerates `--!>` as a comment terminator as well as `-->`.
+const _MD_COMMENT_END_RE = /--!?>/;
+function _mdCommentEnd(line) {
+  const m = _MD_COMMENT_END_RE.exec(line);
+  return m ? { at: m.index, size: m[0].length } : { at: -1, size: 0 };
+}
+function _hlSpan(cls, text) {
+  return '<span class="cmh-code-' + cls + '">' + escapeHtml(text) + "</span>";
+}
+function _mdWordAt(text, index) {
+  return index >= 0 && index < text.length && _MD_WORD_RE.test(text.charAt(index));
+}
+function _mdIntraword(text, m) {
+  // Markdown does not start emphasis on an underscore inside a word (some_long_name, MAX_BUF_SIZE).
+  if (m[0].charAt(0) !== "_") return false;
+  return _mdWordAt(text, m.index - 1) || _mdWordAt(text, m.index + m[0].length);
+}
+function _mdInlineToken(m, text, pipes) {
+  const g = m.groups;
+  if (g.esc !== undefined) return escapeHtml(m[0]);
+  if (g.code !== undefined || g.auto !== undefined) return _hlSpan("str", m[0]);
+  if (g.htmlcom !== undefined) return _hlSpan("com", m[0]);
+  if (g.tag !== undefined) return _hlSpan("op", m[0]);
+  if (g.link !== undefined) {
+    return _hlSpan("op", g.link_open) + (g.link_text ? _hlSpan("fn", g.link_text) : "")
+      + _hlSpan("op", g.link_mid) + (g.link_dest ? _hlSpan("str", g.link_dest) : "")
+      + _hlSpan("op", g.link_end);
+  }
+  if (g.ref !== undefined) {
+    return _hlSpan("op", g.ref_open) + (g.ref_text ? _hlSpan("fn", g.ref_text) : "")
+      + _hlSpan("op", g.ref_mid) + (g.ref_label ? _hlSpan("fn", g.ref_label) : "")
+      + _hlSpan("op", g.ref_end);
+  }
+  if (g.note !== undefined) return _hlSpan("fn", m[0]);
+  if (g.strong !== undefined) return _mdIntraword(text, m) ? null : _hlSpan("kw", m[0]);
+  if (g.strike !== undefined) return _hlSpan("com", m[0]);
+  if (g.em !== undefined) return _mdIntraword(text, m) ? null : _hlSpan("com", m[0]);
+  return pipes ? _hlSpan("op", "|") : null;
+}
+// Returns { html, openComment }: openComment is true when the line ends inside an unclosed HTML
+// comment, so the caller can carry it across lines the way it carries a fence.
+function _mdInline(text, pipes) {
+  let out = "", pos = 0, openComment = false;
+  while (pos < text.length) {
+    _MD_INLINE_RE.lastIndex = pos;
+    const m = _MD_INLINE_RE.exec(text);
+    if (!m) break;
+    if (m.index > pos) out += escapeHtml(text.slice(pos, m.index));
+    const rendered = _mdInlineToken(m, text, pipes);
+    if (rendered === null) { // rejected - emit one literal character and rescan
+      out += escapeHtml(text.charAt(m.index));
+      pos = m.index + 1;
+      continue;
+    }
+    if (m.groups.htmlcom !== undefined && !/--!?>$/.test(m[0])) openComment = true;
+    out += rendered;
+    pos = m.index + m[0].length;
+  }
+  if (pos < text.length) out += escapeHtml(text.slice(pos));
+  return { html: out, openComment: openComment };
+}
+function _mdClosesFence(line, ch, len) {
+  const body = line.replace(/^[ \t]+/, "");
+  if (line.length - body.length > 3) return false;
+  const core = body.replace(/[ \t]+$/, "");
+  if (core.length < len) return false;
+  for (let i = 0; i < core.length; i++) if (core.charAt(i) !== ch) return false;
+  return true;
+}
+function _mdPrefixed(line) {
+  let out = "", i = 0;
+  const n = line.length;
+  const isSpace = (ch) => ch === " " || ch === "\t";
+  while (i < n && isSpace(line.charAt(i))) i++;
+  out += escapeHtml(line.slice(0, i));
+  while (i < n && line.charAt(i) === ">") {
+    out += _hlSpan("op", ">");
+    i++;
+    const start = i;
+    while (i < n && isSpace(line.charAt(i))) i++;
+    out += escapeHtml(line.slice(start, i));
+  }
+  let rest = line.slice(i);
+  const list = _MD_LIST_RE.exec(rest);
+  if (list) {
+    const marker = list[1];
+    if (marker.charAt(0) >= "0" && marker.charAt(0) <= "9") {
+      out += _hlSpan("num", marker.slice(0, -1)) + _hlSpan("op", marker.slice(-1));
+    } else {
+      out += _hlSpan("op", marker);
+    }
+    out += escapeHtml(list[2]);
+    rest = rest.slice(list[0].length);
+    const task = _MD_TASK_RE.exec(rest);
+    if (task) {
+      out += _hlSpan("op", task[0]);
+      rest = rest.slice(task[0].length);
+    }
+  }
+  const ref = _MD_REFDEF_RE.exec(rest);
+  if (ref && ref[2].charAt(0) !== "^") {
+    const tail = _mdInline(ref[6], false);
+    return {
+      html: out + _hlSpan("op", ref[1]) + _hlSpan("fn", ref[2]) + _hlSpan("op", ref[3])
+        + escapeHtml(ref[4]) + _hlSpan("str", ref[5]) + tail.html,
+      openComment: tail.openComment,
+    };
+  }
+  const tail = _mdInline(rest, (rest.match(/\|/g) || []).length >= 2);
+  return { html: out + tail.html, openComment: tail.openComment };
+}
+function cmhHighlightMarkdown(text) {
+  const lines = String(text == null ? "" : text).split("\n");
+  let out = "", fence = null, inComment = false, para = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const prevPara = para;
+    para = false;
+    if (i) out += "\n";
+    if (fence) {
+      if (_mdClosesFence(line, fence.ch, fence.len)) { out += _hlSpan("op", line); fence = null; }
+      else if (line) out += _hlSpan("str", line);
+      continue;
+    }
+    if (inComment) {
+      const end = _mdCommentEnd(line);
+      if (end.at < 0) { if (line) out += _hlSpan("com", line); continue; }
+      const rest = line.slice(end.at + end.size);
+      const tail = _mdInline(rest, (rest.match(/\|/g) || []).length >= 2);
+      out += _hlSpan("com", line.slice(0, end.at + end.size)) + tail.html;
+      inComment = tail.openComment;
+      continue;
+    }
+    let m = _MD_FENCE_RE.exec(line);
+    if (m && !(m[2].charAt(0) === "`" && m[4].indexOf("`") >= 0)) {
+      fence = { ch: m[2].charAt(0), len: m[2].length };
+      out += escapeHtml(m[1]) + _hlSpan("op", m[2]) + escapeHtml(m[3]) + (m[4] ? _hlSpan("kw", m[4]) : "");
+      continue;
+    }
+    m = _MD_HEADING_RE.exec(line);
+    if (m) { out += escapeHtml(m[1]) + _hlSpan("kw", m[2]); continue; }
+    if (prevPara && _MD_SETEXT_DASH_RE.test(line)) { out += _hlSpan("kw", line); continue; }
+    if (_MD_BREAK_RE.test(line)) { out += _hlSpan("op", line); continue; }
+    if (_MD_SETEXT_RE.test(line)) { out += _hlSpan("kw", line); continue; }
+    if (_MD_TABLE_RULE_RE.test(line)) { out += _hlSpan("op", line); continue; }
+    const indent = line.length - line.replace(/^[ \t]+/, "").length;
+    para = !!line.trim() && line.charAt(indent) !== ">" && !_MD_LIST_RE.test(line.slice(indent));
+    const body = _mdPrefixed(line);
+    out += body.html;
+    inComment = body.openComment;
+  }
+  return out;
+}
 function cmhHighlightCode(text, lang) {
   const fam = _HL_FAMILY[String(lang || "").toLowerCase()] || "c";
+  if (fam === "markdown") return cmhHighlightMarkdown(text);
   const re = _hlTokenRe(fam);
   let out = "", last = 0, m;
   while ((m = re.exec(text)) !== null) {
@@ -10859,6 +11065,7 @@ function showHelp(restoreEl) {
           '<li><strong>Code, KQL and charts</strong> are framed for readability; every code block has an always-visible <em>Copy</em> button, and a KQL caption title copies the cluster name.</li>' +
           '<li><strong>Syntax highlighting</strong> covers 50+ language labels, including <code>json</code> and <code>jsonc</code> - a JSON property name is tinted apart from its value, and <code>//</code> or <code>/* */</code> comments read as comments.</li>' +
           '<li><strong>Diffs</strong> are syntax-highlighted with a per-document <em>Syntax</em> toggle (green when on, red when off).</li>' +
+          '<li><strong>Markdown</strong> blocks are highlighted like any other language - headings, bold and italic, links, lists, tables, and fenced code - and a diff of a <code>.md</code> file reads the same way.</li>' +
           '<li>Long content wraps inside its box and never overflows.</li>' +
         '</ul>') +
       T('Tips and shortcuts',

@@ -53,6 +53,8 @@ SNIPPETS = {
     "haskell": 'foo :: Int -> String\nfoo x = let s = "hi" in bar 42 -- comment\n{- block -}\n',
     "objectivec": '- (void)foo { char *s = "hi"; bar(42); // comment\n/* block */ }\n',
     "batch": '@echo off\nset MSG="hi"\necho 42\nrem comment\n',
+    "markdown": '# Title\n\nA *soft* and **hard** point, see [docs](https://x.dev/a).\n\n'
+                '1. first `step`\n- [x] done ~~old~~\n\n> quoted\n\n```js\nlet a = 1;\n```\n',
 }
 
 ROUNDTRIP_SNIPPETS = dict(SNIPPETS, **{
@@ -75,6 +77,9 @@ ROUNDTRIP_SNIPPETS = dict(SNIPPETS, **{
     "bat": SNIPPETS["batch"],
     "cmd": SNIPPETS["batch"],
     "jsonc": '{ /* block */ "flag": true, "s": "hi"} // comment\n',
+    "md": SNIPPETS["markdown"],
+    "mdown": SNIPPETS["markdown"],
+    "mkd": SNIPPETS["markdown"],
 })
 
 TOKEN_CASES = {
@@ -110,6 +115,9 @@ TOKEN_CASES = {
     "haskell": ("let", '"hi"', "-- comment", "42", "{- block -}"),
     "objectivec": ("void", '"hi"', "// comment", "42", "/* block */"),
     "batch": ("echo", '"hi"', "rem comment", "42", None),
+    # markdown reuses the six classes structurally: bold -> kw, code span -> str, emphasis and
+    # strikethrough -> com, ordered-list marker digits -> num.
+    "markdown": ("**hard**", "`step`", "*soft*", "1", "~~old~~"),
 }
 
 

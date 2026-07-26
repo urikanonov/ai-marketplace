@@ -93,3 +93,6 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-DECK-42 | site | deck |
 | CMH-HL-05 | help | opt-out: the syntax-highlighting slide is at its fixed 1080px stage capacity - a third code block overflows it on CI - and JSON is already named in that slide's supported-syntax pills |
 | CMH-HL-06 | opt-out: a correctness fix to the already-documented syntax highlighting (a comment abutting an operator was mis-tokenized); no new reader-facing capability | opt-out: a tokenizer correctness fix, not a deck topic |
+| CMH-HL-07 | help | deck |
+| CMH-HL-08 | help | deck |
+| CMH-DEMO-07 | opt-out: shipped demo content (a Markdown block in the showcase report) that exercises the documented Markdown highlighting (CMH-HL-07), not a separately documented capability | opt-out: demo-report content; the Markdown language itself is shown on the supported-labels slide |

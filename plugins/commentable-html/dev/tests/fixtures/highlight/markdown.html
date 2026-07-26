@@ -1,0 +1,24 @@
+<span class="cmh-code-kw"># Release notes</span>
+
+The <span class="cmh-code-kw">**2.0**</span> release focuses on <span class="cmh-code-com">*review speed*</span>; see <span class="cmh-code-op">[</span><span class="cmh-code-fn">the guide</span><span class="cmh-code-op">](</span><span class="cmh-code-str">https://x.dev/guide "Guide"</span><span class="cmh-code-op">)</span>.
+
+<span class="cmh-code-kw">## Highlights</span>
+
+<span class="cmh-code-num">1</span><span class="cmh-code-op">.</span> Faster indexing (about <span class="cmh-code-str">`3x`</span> on a cold cache).
+<span class="cmh-code-num">2</span><span class="cmh-code-op">.</span> A new <span class="cmh-code-str">`--check`</span> flag, documented in <span class="cmh-code-op">[</span><span class="cmh-code-fn">the guide</span><span class="cmh-code-op">][</span><span class="cmh-code-fn">guide</span><span class="cmh-code-op">]</span>.
+<span class="cmh-code-op">-</span> <span class="cmh-code-op">[x]</span> Ship the indexer
+<span class="cmh-code-op">-</span> <span class="cmh-code-op">[ ]</span> Backfill the <span class="cmh-code-com">~~legacy~~</span> archive
+
+<span class="cmh-code-op">&gt;</span> Upgrading is safe: the on-disk format is unchanged.
+
+<span class="cmh-code-op">|</span> Flag <span class="cmh-code-op">|</span> Default <span class="cmh-code-op">|</span> Notes <span class="cmh-code-op">|</span>
+<span class="cmh-code-op">| --- | :---: | --- |</span>
+<span class="cmh-code-op">|</span> <span class="cmh-code-str">`--check`</span> <span class="cmh-code-op">|</span> off <span class="cmh-code-op">|</span> fails on drift <span class="cmh-code-op">|</span>
+
+<span class="cmh-code-op">```</span><span class="cmh-code-kw">bash</span>
+<span class="cmh-code-str">python tools/build.py --check   # verify, do not write</span>
+<span class="cmh-code-op">```</span>
+
+<span class="cmh-code-com">&lt;!-- internal: rotate the token before publishing --&gt;</span>
+
+<span class="cmh-code-op">[</span><span class="cmh-code-fn">guide</span><span class="cmh-code-op">]:</span> <span class="cmh-code-str">https://x.dev/guide</span>
