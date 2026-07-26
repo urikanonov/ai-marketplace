@@ -11526,6 +11526,11 @@ let _popoverAnchorMark = null;
 let _popoverDismiss = null;
 let _popoverKeydown = null;
 let _popoverEditing = false;
+// The dialog's identity is kept in JS state, never re-read from its own DOM attributes: the note id
+// is interpolated into the dialog markup, and a value that round-trips through the DOM is both a
+// needless trust boundary and an injection sink.
+let _popoverCid = null;
+let _popoverNoteId = null;
 
 function _positionCommentPopover(mark) {
   if (!commentPopover || !mark) return false;
@@ -11555,29 +11560,29 @@ function closeCommentPopover() {
   commentPopover = null;
   _popoverAnchorMark = null;
   _popoverEditing = false;
+  _popoverCid = null;
+  _popoverNoteId = null;
 }
 
 // The comment the open dialog is showing, re-read from the live array so a delete or an edit made
 // elsewhere is never written back from a stale copy.
 function _popoverComment() {
-  const id = commentPopover ? commentPopover.getAttribute("data-cid") : null;
-  return id ? comments.find((x) => x.id === id) : null;
+  return _popoverCid ? comments.find((x) => x.id === _popoverCid) : null;
 }
 
 // A deleted comment's dialog must not linger (its Save would have nothing to write), so a delete or
 // a clear-all closes the dialog when it shows one of the removed comments.
 function cmhClosePopoverForIds(ids) {
   if (!commentPopover || !ids) return;
-  const shown = commentPopover.getAttribute("data-cid");
   const list = Array.isArray(ids) ? ids : [ids];
-  if (shown && list.indexOf(shown) !== -1) closeCommentPopover();
+  if (_popoverCid && list.indexOf(_popoverCid) !== -1) closeCommentPopover();
 }
 
 // Cross-surface edit coordination (see cmhSidebarNoteEditor): reports the dialog's own in-place
 // editor for `cid`, whether it holds unsaved text, and how to focus or cancel it.
 function cmhPopoverNoteEditor(cid) {
   if (!commentPopover || !_popoverEditing) return null;
-  if (commentPopover.getAttribute("data-cid") !== cid) return null;
+  if (_popoverCid !== cid) return null;
   const ta = commentPopover.querySelector("textarea");
   const c = _popoverComment();
   const original = (c && c.note != null) ? String(c.note) : "";
@@ -11593,7 +11598,7 @@ function _renderCommentPopoverView(c) {
   if (!el) return;
   _popoverEditing = false;
   el.classList.remove("is-editing");
-  const noteId = el.getAttribute("data-note-id");
+  const noteId = _popoverNoteId;
   el.innerHTML =
     '<div class="cm-comment-popover-note cmh-rich" id="' + noteId + '"></div>'
     + '<div class="cm-comment-popover-meta"></div>'
@@ -11737,9 +11742,10 @@ function openCommentPopover(id, mark) {
   el.setAttribute("role", "dialog");
   el.setAttribute("aria-label", "Comment");
   el.setAttribute("data-cid", id);
-  el.setAttribute("data-note-id", "cmh-pop-note-" + Math.random().toString(36).slice(2, 9));
   document.body.appendChild(el);
   commentPopover = el;
+  _popoverCid = id;
+  _popoverNoteId = "cmh-pop-note-" + Math.random().toString(36).slice(2, 9);
   _renderCommentPopoverView(c);
   if (!_positionCommentPopover(_popoverAnchorMark)) { closeCommentPopover(); return; }
 
