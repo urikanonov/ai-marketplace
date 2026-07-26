@@ -100,6 +100,9 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-HL-06 | opt-out: a correctness fix to the already-documented syntax highlighting (a comment abutting an operator was mis-tokenized); no new reader-facing capability | opt-out: a tokenizer correctness fix, not a deck topic |
 | CMH-HL-07 | help | deck |
 | CMH-HL-08 | help | deck |
+| CMH-HL-09 | opt-out: an internal authoring-tool invariant (highlighting is reversible) that enables agent-side content editing; readers see no new capability | opt-out: a round-trip guarantee for tooling, with nothing to show on a slide |
+| CMH-HL-10 | opt-out: an internal robustness guard that refuses to rewrite hand-written markup in a code block; no reader-facing capability | opt-out: a safety invariant for tooling, not a deck topic |
+| CMH-HL-11 | opt-out: an internal refactor unifying the two highlighters' emission point; output bytes are unchanged and readers see no difference | opt-out: an internal refactor with no visible behavior change |
 | CMH-DEMO-07 | opt-out: shipped demo content (a Markdown block in the showcase report) that exercises the documented Markdown highlighting (CMH-HL-07), not a separately documented capability | opt-out: demo-report content; the Markdown language itself is shown on the supported-labels slide |
 | CMH-SEL-03 | opt-out: a placement fix for the already-documented Add Comment popup - it appears next to the selected text as the tutorial already shows; no new reader-facing capability | opt-out: a popup-placement correctness invariant for the already-shown text commenting, not a separate slide topic |
 | CMH-VAL-17 | opt-out: an authoring-time validator internal (the script scanner's regex-literal handling); agent/author-facing robustness, no new reader-facing capability | opt-out: authoring-time validator internal, not a deck topic |
