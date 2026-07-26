@@ -511,7 +511,9 @@ any host WITH Docker and skips just that step where Docker is unavailable. Regen
 shots script routes through `tools/shots_linux.py`, which always renders in the pinned container -
 so Docker is needed by the shots commands only, never for development or the test suites. After
 bumping `@playwright/test`, re-pin the renderer with `npm run shots:digest` and commit
-`dev/tools/shots-image.lock`. See "Regenerating the tutorial screenshots" in
+`dev/tools/shots-image.lock`. Note the trade: the habitual commands now render in a container
+wherever Docker exists (they used to skip off Linux), so the first run pulls ~900 MB and `npm test`
+is minutes slower. See "Regenerating the tutorial screenshots" in
 [docs/testing-guidelines.md](docs/testing-guidelines.md).
 
 Enable the git hooks once per clone so they run automatically (this is one of the steps

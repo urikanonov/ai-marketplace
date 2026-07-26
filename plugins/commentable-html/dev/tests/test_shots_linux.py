@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""CMH-BUILD-16: tests for tools/shots_linux.py (CI-identical tutorial screenshot regeneration).
+"""CMH-BUILD-16: tests for tools/shots_linux.py (one container renderer, locally and in CI).
 
-The committed tutorial PNGs are LINUX-rendered. Regenerating them on another OS silently produces a
-different rasterization that passes every local check (both `npm run shots:check` and
-`rebuild_all.py --check` compare against the HOST renderer) and then fails the required
-`playwright-heavy` job. This tool is the deterministic, one-command way to regenerate them anywhere.
+The committed tutorial PNGs are rendered by a browser, and font rasterization is decided by the OS
+image that browser runs on. So there is exactly ONE renderer on both sides - the digest-pinned
+Playwright container - and these tests pin that: no host fast path, no second CI renderer, an
+immutable digest rather than a mutable tag, and a required gate that cannot skip itself.
 """
 import json
 import os
@@ -52,7 +52,7 @@ class PinnedVersionTests(unittest.TestCase):
 
 
 class ImageRefTests(unittest.TestCase):
-    def test_tag_is_derived_from_the_version_and_pins_the_ci_ubuntu_release(self):
+    def test_tag_is_derived_from_the_version_and_the_pinned_ubuntu_variant(self):
         self.assertEqual(S.image_ref("1.61.1"), "mcr.microsoft.com/playwright:v1.61.1-noble")
 
     def test_a_different_pinned_version_yields_a_different_image(self):
@@ -108,6 +108,29 @@ class DockerCommandTests(unittest.TestCase):
         # Docker Desktop already maps ownership, so no --user is passed where uid/gid do not exist.
         self.assertNotIn("--user", S.docker_command("/repo", "dev", "img:tag", [], None))
 
+    def test_only_a_linux_host_maps_the_invoking_user(self):
+        # os.getuid EXISTS on macOS, so keying on it alone would hand Docker Desktop a uid (501)
+        # that has no passwd entry in the image. Ownership of the bind mount only needs fixing on a
+        # native Linux daemon; everywhere else the desktop VM already maps it.
+        with mock.patch.object(S.sys, "platform", "darwin"), \
+                mock.patch.object(S.os, "getuid", create=True, return_value=501), \
+                mock.patch.object(S.os, "getgid", create=True, return_value=20):
+            self.assertIsNone(S._host_uid_gid())
+        with mock.patch.object(S.sys, "platform", "linux"), \
+                mock.patch.object(S.os, "getuid", create=True, return_value=1001), \
+                mock.patch.object(S.os, "getgid", create=True, return_value=1001):
+            self.assertEqual(S._host_uid_gid(), (1001, 1001))
+
+    def test_every_run_pins_a_writable_home_and_shares_the_hosts_ipc(self):
+        # HOME: with --user the invoking uid may have no passwd entry, and docker then points HOME
+        # at an unwritable "/" - pinning it keeps every run (CI included) identical and writable,
+        # instead of depending on the runner uid happening to match a user in the image.
+        # --ipc=host: the image's documented invocation. The default 64MB /dev/shm can crash
+        # chromium mid-capture, which would red the required gate with an unreproducible stack.
+        cmd = S.docker_command("/repo", "dev", "img:tag", [])
+        self.assertIn("HOME=/tmp", cmd)
+        self.assertIn("--ipc=host", cmd)
+
     def test_wrapper_flags_are_not_matched_by_abbreviation(self):
         # Unknown args are forwarded to capture_tutorial.mjs. With argparse's default abbreviation
         # matching, a future capture flag that merely PREFIXES a wrapper flag ('--nat', '--rec')
@@ -156,12 +179,33 @@ class RendererDispatchTests(unittest.TestCase):
 
     def test_every_host_renders_in_the_pinned_container(self):
         # There is no host fast path any more: Windows, macOS and Linux all render in the same
-        # image, so no host's font/fontconfig packages can decide the pixels.
-        for host in ("win32", "darwin", "linux"):
-            with mock.patch.object(S.sys, "platform", host):
+        # image, so no host's font/fontconfig packages can decide the pixels. Only the ownership
+        # mapping differs, and only on Linux.
+        for host, uid_gid in (("win32", None), ("darwin", None), ("linux", (1001, 1001))):
+            with mock.patch.object(S.sys, "platform", host), \
+                    mock.patch.object(S, "_host_uid_gid", return_value=uid_gid):
                 rc, run = self._dispatch(["shots_linux.py"])
             self.assertEqual(rc, 0, host)
-            self.assertEqual(run.call_args[0][0][0], "docker", host)
+            cmd = run.call_args[0][0]
+            self.assertEqual(cmd[0], "docker", host)
+            self.assertEqual("--user" in cmd, uid_gid is not None, host)
+
+    def test_the_capture_script_is_told_which_renderer_invoked_it(self):
+        # capture_tutorial.mjs refuses to touch the COMMITTED screenshots unless a renderer marker
+        # says the guarded wrapper drove it, so a raw `node capture_tutorial.mjs` cannot rewrite or
+        # "verify" them with this machine's fonts. Both wrapper paths therefore set the marker.
+        cmd = S.docker_command("/repo", "dev", "img:tag", [])
+        self.assertIn("%s=container" % S.RENDERER_ENV, cmd)
+        with mock.patch.object(S, "_in_ci", return_value=False), \
+                mock.patch.object(S.shutil, "which", return_value="/usr/bin/node"), \
+                mock.patch.object(S, "_deps_installed", return_value=True), \
+                mock.patch.object(S, "_run", return_value=0) as run:
+            import io
+            import contextlib
+            with contextlib.redirect_stderr(io.StringIO()):
+                rc = S.main(["shots_linux.py", "--native"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(run.call_args[1]["env"][S.RENDERER_ENV], "native")
 
     def test_ci_renders_in_the_same_container_a_developer_uses(self):
         # The heart of this design: CI is no longer a SECOND renderer that must agree with the
@@ -175,7 +219,10 @@ class RendererDispatchTests(unittest.TestCase):
         self.assertIn("mcr.microsoft.com/playwright", " ".join(ci_cmd))
         # Identical apart from the CI marker that only scales the capture's settle deadlines: same
         # image, same platform, same mount, same command line.
-        self.assertEqual([a for a in ci_cmd if a not in ("-e", "CI=true")], dev_cmd)
+        stripped = list(ci_cmd)
+        i = stripped.index("CI=true")
+        del stripped[i - 1:i + 1]
+        self.assertEqual(stripped, dev_cmd)
 
     def test_the_host_platform_probe_is_gone(self):
         # `host_matches_ci_renderer()` accepted ANY x86_64 Ubuntu 24.04 host as "the CI renderer",
@@ -248,6 +295,13 @@ class IndicativeErrorTests(unittest.TestCase):
         self.assertNotEqual(rc, 0)
         self.assertIn("daemon", msg.lower())
         self.assertNotIn("not installed", msg.lower())
+
+    def test_a_wedged_daemon_probe_gives_up_instead_of_hanging(self):
+        # `docker version` against a wedged or remote daemon can block forever; in CI that would
+        # burn the whole job timeout instead of failing fast with the actionable message.
+        with mock.patch.object(S.subprocess, "run",
+                               side_effect=S.subprocess.TimeoutExpired("docker", 20)):
+            self.assertFalse(S._docker_daemon_ok())
 
     def test_missing_node_modules_points_at_setup_dev(self):
         rc, msg = self._stderr_of(shutil=dict(which=mock.Mock(return_value="/usr/bin/docker")),
@@ -490,26 +544,41 @@ class ContainerPinningTests(unittest.TestCase):
         # The acceptance criterion of issue #701: the required job VALIDATES the screenshots in the
         # same image the local tooling renders with, so the authority is one fixed environment.
         block = _shots_job_block(_workflow_text())
-        self.assertIn("npm run shots:check", block)
+        self.assertIn("shots_linux.py --check", block)
         self.assertNotIn("--native", block)
         self.assertNotIn("capture_tutorial.mjs", block)
         self.assertIn("--print-image", block)
 
+    def test_the_ci_gate_cannot_skip_itself_by_construction(self):
+        # `npm run shots:check` carries --skip-without-renderer, whose only brake is reading the CI
+        # environment variable. GitHub always sets it, but a self-hosted or container runner with a
+        # scrubbed environment would silently turn the required drift gate into exit 0. The CI step
+        # therefore calls the tool WITHOUT the skip flag: it cannot skip, whatever the environment.
+        # Comments are stripped - only what the job RUNS counts.
+        block = "\n".join(ln for ln in _shots_job_block(_workflow_text()).split("\n")
+                          if not ln.strip().startswith("#"))
+        self.assertNotIn("--skip-without-renderer", block)
+        self.assertNotIn("npm run shots:check", block)
+
     def test_the_screenshot_gate_is_reachable_on_a_shard_that_exists(self):
         # A string match alone would not notice an unreachable step: a typo'd `if:` (a shard the
-        # matrix never produces) would silently DROP the drift gate while the job still went green.
-        # Pin the shots steps to the SAME condition as the sibling fixtures check, and pin that
-        # condition to a shard the matrix actually runs.
+        # matrix never produces, or a property that does not exist) would silently DROP the drift
+        # gate while the job still went green. Pin the shots steps to the SAME condition as the
+        # sibling fixtures check, and check that value against the MATRIX LIST only - matching it
+        # against the whole block would find it in the `if:` line itself and prove nothing.
         block = _shots_job_block(_workflow_text())
         conditions = [ln.strip() for ln in block.split("\n") if ln.strip().startswith("if: matrix.")]
         self.assertTrue(conditions, "the once-only steps must carry a shard condition")
         self.assertEqual(len(set(conditions)), 1,
                          "the fixtures, pull and shots:check steps must share one shard condition")
-        shard = conditions[0].split("==", 1)[1].strip().strip("'\"")
-        self.assertIn('"%s"' % shard, block.replace("'", '"'),
-                      "the once-only steps run on a shard the matrix never produces")
-        # There are three of them (fixtures, pull, shots:check) - none silently lost its guard.
+        # There are three of them (fixtures, pull, shots check) - none silently lost its guard.
         self.assertEqual(len(conditions), 3)
+        prop, _, value = conditions[0][len("if: "):].partition("==")
+        self.assertEqual(prop.strip(), "matrix.shard",
+                         "a condition on any other property is never true and skips the gate")
+        matrix_line = next(ln for ln in block.split("\n") if ln.strip().startswith("shard:"))
+        self.assertIn('"%s"' % value.strip().strip("'\""), matrix_line.replace("'", '"'),
+                      "the once-only steps run on a shard the matrix never produces")
 
     def test_the_ci_job_no_longer_pins_a_runner_release_as_the_renderer(self):
         # With the container as the renderer, the runner's own Ubuntu release (and its font

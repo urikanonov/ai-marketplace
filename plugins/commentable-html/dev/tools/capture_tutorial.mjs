@@ -40,6 +40,25 @@ const DEFAULT_OUT = path.join(PLUGIN, "docs", "assets");
 const htmlArg = positional[0] || DEFAULT_GARDEN;
 const outDir = positional[1] || DEFAULT_OUT;
 const prefix = path.basename(positional[2] || "garden");
+// The COMMITTED screenshots have exactly one renderer: the digest-pinned container that
+// tools/shots_linux.py drives (CMH-BUILD-16). Rendering or verifying them straight from this
+// script would use THIS machine's fonts, which looks right locally and then fails the required CI
+// gate, so refuse unless a guarded renderer invoked us. Capturing into any other directory (what
+// the test suite does) is unaffected.
+const RENDERER_ENV = "CMH_SHOTS_RENDERER";
+if (!printPaths && path.resolve(outDir) === path.resolve(DEFAULT_OUT) && !process.env[RENDERER_ENV]) {
+  console.error(
+    "capture_tutorial: refusing to " + (checkMode ? "verify" : "rewrite") + " the committed" +
+    " screenshots directly.\n" +
+    "  They are rendered ONLY in the pinned Playwright container, because font rasterization is\n" +
+    "  decided by the OS image. Run this through the guarded wrapper instead, from dev/:\n" +
+    "\n" +
+    "    npm run " + (checkMode ? "shots:check" : "shots") + "\n" +
+    "\n" +
+    "  (capture into some other directory to use this script directly, or see 'Regenerating the\n" +
+    "  tutorial screenshots' in docs/testing-guidelines.md).");
+  process.exit(2);
+}
 // The community-garden walkthrough shots (docs/TUTORIAL.md embeds them as garden-*.png).
 const GARDEN_SHOTS = [
   "01-top-light", "02-kql", "03-chart", "04-diff", "05-composer",

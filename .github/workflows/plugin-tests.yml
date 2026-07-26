@@ -181,11 +181,12 @@ jobs:
   playwright-heavy:
     needs: [changes, discover]
     if: ${{ needs.changes.outputs.run_plugin == 'true' && needs.discover.outputs.plugins != '[]' && needs.discover.outputs.plugins != '' && contains(fromJSON(needs.discover.outputs.plugins), 'plugins/commentable-html') }}
-    # This job VALIDATES the committed tutorial screenshots, but it does not render them: the
-    # `shots:check` step below runs the capture inside the same digest-pinned Playwright image
+    # This job VALIDATES the committed tutorial screenshots, but it does not render them itself:
+    # the shots step below runs the capture inside the same digest-pinned Playwright image
     # tools/shots_linux.py uses locally. The runner's own Ubuntu release (and the font packages
     # GitHub updates in it over time) therefore no longer decides a single pixel, so this job
-    # tracks ubuntu-latest like every other one.
+    # tracks ubuntu-latest like every other one. An amd64 runner is still a precondition: the
+    # container is pinned to linux/amd64, so an arm64 runner would emulate it.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -208,8 +209,8 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: plugins/commentable-html/dev/package-lock.json
-      # `npm run shots:check` is a Python entrypoint (tools/shots_linux.py), so declare Python
-      # rather than relying on the runner image happening to provide `python`.
+      # The shots entrypoint is a Python script (tools/shots_linux.py), so declare Python rather
+      # than relying on the runner image happening to provide `python`.
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -257,7 +258,10 @@ jobs:
           echo "::notice title=Pinned renderer pull::$((SECONDS - start))s for $image"
       - name: Verify tutorial screenshots in the pinned container (once)
         if: matrix.shard == '1/3'
-        run: npm run shots:check
+        # NOT `npm run shots:check`: that carries --skip-without-renderer, whose only brake is the
+        # CI environment variable. Calling the tool directly means the required drift gate cannot
+        # skip itself by construction, whatever the runner's environment looks like.
+        run: python tools/shots_linux.py --check
       # workers=3 (below the runner's 4 vCPUs): each heavy test spawns its OWN capture chromium
       # subprocess, so 3 workers keep the peak concurrent-browser count off the OS-thrash ceiling
       # that could flake the wall-clock settle deadlines. The heavy specs isolate their scratch per

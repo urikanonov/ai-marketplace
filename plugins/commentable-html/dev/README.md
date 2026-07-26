@@ -165,8 +165,11 @@ not the browser version.** So `npm run shots` always runs the capture inside
 `package-lock.json` and the exact sha256 from `tools/shots-image.lock`, never hardcoded). Because
 Docker stays optional for everything else, `npm run shots:check` SKIPS with a note when Docker is
 unavailable - though never in CI - and `python scripts/rebuild_all.py` skips just that step. After
-bumping `@playwright/test`, re-pin the renderer with `npm run shots:digest` and commit the lock. See
-"Regenerating the tutorial screenshots" in `../../../docs/testing-guidelines.md`.
+bumping `@playwright/test`, re-pin the renderer with `npm run shots:digest` and commit the lock.
+`capture_tutorial.mjs` itself refuses to render or verify the committed PNGs unless the wrapper
+invoked it, so the raw command cannot rewrite them with this machine's fonts (capturing into any
+other directory still works). See "Regenerating the tutorial screenshots" in
+`../../../docs/testing-guidelines.md`.
 
 A separate quality gate rejects a blurry, faded/color-quantized, under-resolved, whitespace-heavy
 (oversized-clip), or load-flash yellow-cast shot so a low-quality screenshot can never reach the

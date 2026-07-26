@@ -129,7 +129,8 @@ straight through - a single-scene recapture never has to leave the guarded path.
 - **The container brings the browser and the fonts; the JS comes from the mounted `node_modules`.**
   That half is pinned by `package-lock.json`, not by digest, so install it with `npm ci` (or
   `python scripts/setup_dev.py`) - a hand-drifted `node_modules` is the one input the image does not
-  fix for you.
+  fix for you. The run also pins a writable `HOME` and `--ipc=host` (the image's documented
+  invocation - the default 64 MB `/dev/shm` can crash chromium mid-capture).
 - **Docker is required only by the shots commands** - never for normal development or for the test
   suites. `npm run shots:check` (which `npm test` runs) SKIPS with a note when Docker is missing or
   its daemon is down, so a developer without Docker is never blocked. It NEVER skips in CI, where it
@@ -142,8 +143,19 @@ straight through - a single-scene recapture never has to leave the guarded path.
 execute the same image content-addressed by digest, so a GitHub runner-image update (which used to
 be able to move the CI renderer under a `runs-on: ubuntu-24.04` label without any change in this
 repo) can no longer affect a single pixel. That is why `playwright-heavy` tracks `ubuntu-latest`
-again and the old runner/variant coupling test is gone. CI remains the authoritative GATE - it is
-the run that must be green - but it is no longer a second RENDERER that has to agree with yours.
+again and the old runner/variant coupling test is gone (an amd64 runner is still a precondition -
+the container is pinned to `linux/amd64`). CI remains the authoritative GATE - it is the run that
+must be green - but it is no longer a second RENDERER that has to agree with yours. Two honest
+caveats: the drift comparison itself is deliberately COARSE (`capture_tutorial.mjs` downsamples,
+quantizes and tolerates a pixel-diff ratio, a budget sized back when two renderers had to agree), so
+the container pin removes the ambiguity rather than tightening that threshold; and running the
+container is not free - `npm test` and `rebuild_all.py` now render on any Docker-capable machine
+where they used to skip, and the first run pulls ~900 MB.
+
+`capture_tutorial.mjs` refuses to render or verify the COMMITTED screenshots unless the wrapper
+invoked it (it sets a renderer marker in the environment), so a raw
+`node tools/capture_tutorial.mjs` cannot rewrite them with the host's fonts. Capturing into any
+other directory - what the test suite does - is unaffected.
 
 `rebuild_all.py` drives the same wrapper, so it now regenerates the screenshots correctly on any
 host with Docker; without Docker it skips that one step with a note pointing here rather than

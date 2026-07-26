@@ -57,6 +57,14 @@ LOCK_KEY = "node_modules/@playwright/test"
 IMAGE_LOCK = os.path.join(DEV_DIR, "tools", "shots-image.lock")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 GUIDE = "docs/testing-guidelines.md"
+# Set for the capture script so it knows a guarded renderer invoked it; capture_tutorial.mjs
+# refuses to render or verify the COMMITTED screenshots without it, which is what stops a raw
+# `node capture_tutorial.mjs` from rewriting them with the host's fonts.
+RENDERER_ENV = "CMH_SHOTS_RENDERER"
+# With --user the invoking uid may have no passwd entry in the image, and docker then points HOME
+# at an unwritable "/". Pinning it keeps every run identical and writable rather than depending on
+# the runner's uid happening to match a user the image ships.
+CONTAINER_HOME = "/tmp"
 
 NATIVE_WARNING = (
     "shots_linux: --native renders with THIS machine's browser and fonts, which is NOT the "
@@ -176,9 +184,12 @@ def docker_command(repo_root, dev_rel, image, extra_args, uid_gid=None, ci=False
     inner = "node " + shlex.quote(CAPTURE.replace("\\", "/"))
     if extra_args:
         inner += " " + " ".join(shlex.quote(a) for a in extra_args)
-    cmd = ["docker", "run", "--rm", "--platform", IMAGE_PLATFORM]
+    # --ipc=host is the image's documented invocation: the default 64MB /dev/shm can crash chromium
+    # mid-capture, which on the required gate would mean an unreproducible stack trace.
+    cmd = ["docker", "run", "--rm", "--platform", IMAGE_PLATFORM, "--ipc=host"]
     if uid_gid:
         cmd += ["--user", "%s:%s" % uid_gid]
+    cmd += ["-e", "HOME=" + CONTAINER_HOME, "-e", "%s=container" % RENDERER_ENV]
     if ci:
         cmd += ["-e", "CI=true"]
     cmd += [
@@ -191,10 +202,18 @@ def docker_command(repo_root, dev_rel, image, extra_args, uid_gid=None, ci=False
 
 
 def _host_uid_gid():
+    """The uid:gid to run the container as, or None to leave docker's default.
+
+    Only a native Linux daemon needs this: it writes bind-mounted files as the container user, so
+    without it every regenerated PNG is left root-owned. Docker Desktop (Windows/macOS) already maps
+    ownership, and passing it a host uid that has no passwd entry in the image is actively harmful.
+    """
+    if not sys.platform.startswith("linux"):
+        return None
     getuid = getattr(os, "getuid", None)
     getgid = getattr(os, "getgid", None)
     if getuid is None or getgid is None:
-        return None  # Windows/macOS Docker Desktop already maps ownership for the bind mount.
+        return None
     return (getuid(), getgid())
 
 
@@ -206,8 +225,10 @@ def _deps_installed(dev_dir=None):
 def _docker_daemon_ok():
     try:
         proc = subprocess.run(["docker", "version"], stdout=subprocess.DEVNULL,
-                              stderr=subprocess.DEVNULL)
-    except OSError:
+                              stderr=subprocess.DEVNULL, timeout=20)
+    except (OSError, subprocess.TimeoutExpired):
+        # A wedged or unreachable daemon must fail fast: hanging here would burn a CI job's whole
+        # timeout instead of printing the actionable message.
         return False
     return proc.returncode == 0
 
@@ -221,8 +242,8 @@ def renderer_available():
     return bool(shutil.which("docker")) and _docker_daemon_ok()
 
 
-def _run(cmd):
-    return subprocess.run(cmd).returncode
+def _run(cmd, env=None):
+    return subprocess.run(cmd, env=env).returncode
 
 
 def _capture(cmd):
@@ -377,7 +398,8 @@ def main(argv=None):
         sys.stderr.write(NATIVE_WARNING)
         if not node:
             return _fail("shots_linux: node is not on PATH; run 'python scripts/setup_dev.py'.")
-        return _run([node, os.path.join(DEV_DIR, "tools", "capture_tutorial.mjs")] + extra)
+        return _run([node, os.path.join(DEV_DIR, "tools", "capture_tutorial.mjs")] + extra,
+                    env=dict(os.environ, **{RENDERER_ENV: "native"}))
 
     try:
         ref, warning = resolved_image(image_ref(pinned_playwright_version(DEV_DIR)))
