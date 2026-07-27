@@ -12,13 +12,31 @@
 import fs from "fs";
 import { MAX_WIDTH_DELTA, heightDeltaAllowed } from "./shot_clip.mjs";
 
-// Normalization applied to BOTH images before diffing: downsample then upsample nearest (to erase
-// the sub-pixel font antialiasing that differs across platforms) and quantize colors. The committed
-// PNGs are written to disk raw and crisp; this degradation exists only for the comparison.
-export const PNG_QUANTIZE_STEP = 64;
-export const PNG_DOWNSAMPLE = 2;
-export const PIXEL_CHANNEL_TOLERANCE = 96;
-export const MAX_PIXEL_DIFF_RATIO = 0.2;
+// The comparison is EXACT: no differing pixels are allowed (CMH-BUILD-19). It used to downsample 2x,
+// quantize colors onto a 64-step ladder and tolerate a channel delta of 96 across up to 20% of the
+// pixels, because two DIFFERENT renderers (a local host browser and a bare CI runner) had to agree
+// on the same PNGs. Since the renderer became a single digest-pinned container (issue #701) there is
+// no cross-renderer antialiasing jitter left to absorb, and it was measured: two independent renders
+// of all 19 committed shots are BYTE-IDENTICAL, in the container and on a host browser alike - also
+// under four concurrent captures and a 6-worker stress run. So no normalization is applied at all.
+//
+// The volatile build stamps (the version badge, the "Generated on" date) that would otherwise force
+// a re-render on every release are neutralized at CAPTURE time instead of being bought off with a
+// pixel allowance here (see shot_stamps.mjs), because an allowance applies to the WHOLE image: a
+// budget wide enough for a repainted version badge is also wide enough to hide a small real
+// regression - exactly the class of miss this change removes - and the same comparison drives the
+// write path, so `npm run shots` would refuse to update a shot whose intended change fell inside it.
+export const MAX_DIFF_PIXELS = 0;
+// The one deliberate slack. A pixel counts as different when any channel differs by MORE than this.
+// Within one machine the measured difference is zero, so this is not sized from observed drift: it
+// is insurance for the single input the digest pin does NOT fix, the host CPU. Chromium rasterizes
+// in software and Skia dispatches on CPU features, so a runner with a different SIMD level could in
+// principle round a blended edge pixel by a least significant bit or two. Two 8-bit steps are
+// invisible (0.8% of the channel range) and far below any real change: the smallest regression this
+// still catches is a delta-3 wash, where the retired budget waved through a delta-96 one. If a
+// cross-host difference ever exceeds it, the gate fails loudly with a measured count (compareImages
+// reports it) - re-size this from THAT measurement rather than widening it pre-emptively.
+export const PIXEL_CHANNEL_TOLERANCE = 2;
 
 // PNG dimensions live in the IHDR chunk: width at byte 16, height at byte 20, both big-endian.
 export function pngSize(file) {
@@ -33,44 +51,32 @@ export function dimensionsMatch(expectedSize, actualSize) {
   return heightDeltaAllowed(expectedSize.height, actualSize.height);
 }
 
+// The budget, applied to one counted diff. Kept out of the browser (and out of imagesMatch) so the
+// rule itself is directly testable without decoding a PNG.
+export function withinPixelBudget(different, total) {
+  if (!Number.isFinite(different) || !Number.isFinite(total) || total <= 0) return false;
+  return different <= MAX_DIFF_PIXELS;
+}
+
+function describeSize(size) {
+  return size ? `${size.width}x${size.height}` : "unreadable";
+}
+
 // Runs in the browser: no closure over module scope, so it survives being serialized to page.evaluate.
-function diffRatio({ expectedBase64, actualBase64, tolerance, scale, step }) {
+function countDifferences({ expectedBase64, actualBase64, tolerance }) {
   async function decode(base64) {
     const img = new Image();
     img.src = "data:image/png;base64," + base64;
     await img.decode();
     return img;
   }
-  function normalize(img, width, height) {
+  function pixels(img, width, height) {
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     ctx.drawImage(img, 0, 0);
-    if (scale > 1) {
-      const small = document.createElement("canvas");
-      small.width = Math.max(1, Math.ceil(width / scale));
-      small.height = Math.max(1, Math.ceil(height / scale));
-      const sctx = small.getContext("2d");
-      sctx.imageSmoothingEnabled = true;
-      sctx.drawImage(canvas, 0, 0, small.width, small.height);
-      ctx.clearRect(0, 0, width, height);
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(small, 0, 0, width, height);
-    }
-    const image = ctx.getImageData(0, 0, width, height);
-    const d = image.data;
-    for (let i = 0; i < d.length; i += 4) {
-      d[i] = Math.round(d[i] / step) * step;
-      d[i + 1] = Math.round(d[i + 1] / step) * step;
-      d[i + 2] = Math.round(d[i + 2] / step) * step;
-      if (d[i] === d[i + 1] && d[i + 1] === d[i + 2] && d[i] >= 192) {
-        d[i] = 255;
-        d[i + 1] = 255;
-        d[i + 2] = 255;
-      }
-    }
-    return d;
+    return ctx.getImageData(0, 0, width, height).data;
   }
   return (async () => {
     try {
@@ -78,8 +84,8 @@ function diffRatio({ expectedBase64, actualBase64, tolerance, scale, step }) {
       const actualImg = await decode(actualBase64);
       const width = Math.min(expectedImg.naturalWidth, actualImg.naturalWidth);
       const height = Math.min(expectedImg.naturalHeight, actualImg.naturalHeight);
-      const expectedData = normalize(expectedImg, width, height);
-      const actualData = normalize(actualImg, width, height);
+      const expectedData = pixels(expectedImg, width, height);
+      const actualData = pixels(actualImg, width, height);
       let different = 0;
       const total = width * height;
       for (let i = 0; i < expectedData.length; i += 4) {
@@ -91,22 +97,46 @@ function diffRatio({ expectedBase64, actualBase64, tolerance, scale, step }) {
         );
         if (maxChannelDelta > tolerance) different += 1;
       }
-      return different / total;
+      return { different, total };
     } catch {
-      return 1;
+      return null;
     }
   })();
 }
 
-export async function imagesMatch(comparePage, expected, actual) {
-  if (!fs.existsSync(expected) || !fs.existsSync(actual)) return false;
-  if (!dimensionsMatch(pngSize(expected), pngSize(actual))) return false;
-  const ratio = await comparePage.evaluate(diffRatio, {
+export async function compareImages(comparePage, expected, actual) {
+  if (!fs.existsSync(expected)) return { ok: false, reason: "expected file missing" };
+  if (!fs.existsSync(actual)) return { ok: false, reason: "actual file missing" };
+  const expectedSize = pngSize(expected);
+  const actualSize = pngSize(actual);
+  if (!dimensionsMatch(expectedSize, actualSize)) {
+    return {
+      ok: false,
+      reason: `dimensions ${describeSize(expectedSize)} vs ${describeSize(actualSize)}`,
+      expectedSize,
+      actualSize,
+    };
+  }
+  const counted = await comparePage.evaluate(countDifferences, {
     expectedBase64: fs.readFileSync(expected).toString("base64"),
     actualBase64: fs.readFileSync(actual).toString("base64"),
     tolerance: PIXEL_CHANNEL_TOLERANCE,
-    scale: PNG_DOWNSAMPLE,
-    step: PNG_QUANTIZE_STEP,
   });
-  return ratio <= MAX_PIXEL_DIFF_RATIO;
+  if (!counted) return { ok: false, reason: "one of the images could not be decoded" };
+  const { different, total } = counted;
+  const ok = withinPixelBudget(different, total);
+  return {
+    ok,
+    reason: ok ? "" : `${different} differing px of ${total} (ratio ${(different / total).toExponential(2)}), `
+      + `budget ${MAX_DIFF_PIXELS} px at channel tolerance ${PIXEL_CHANNEL_TOLERANCE}`,
+    expectedSize,
+    actualSize,
+    different,
+    total,
+  };
 }
+
+export async function imagesMatch(comparePage, expected, actual) {
+  return (await compareImages(comparePage, expected, actual)).ok;
+}
+

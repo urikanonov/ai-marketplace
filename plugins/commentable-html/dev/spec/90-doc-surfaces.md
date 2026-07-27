@@ -96,6 +96,7 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-BUILD-16 | opt-out: build/authoring tooling for maintainers (how to regenerate the tutorial screenshots with the CI renderer); documented in docs/testing-guidelines.md, not a reader-facing capability | opt-out: maintainer build tooling, not a deck topic |
 | CMH-BUILD-17 | opt-out: internal capture geometry that keeps the tutorial screenshots dimension-stable across renderers; documented in docs/testing-guidelines.md, not a reader-facing capability | opt-out: maintainer build tooling, not a deck topic |
 | CMH-BUILD-18 | opt-out: CI diagnostics for maintainers and contributors (the drift gate's evidence artifact); documented in docs/testing-guidelines.md, not a reader-facing capability | opt-out: maintainer build tooling, not a deck topic |
+| CMH-BUILD-19 | opt-out: internal drift-gate budget for the tutorial screenshots (how strictly the committed PNGs are compared); documented in docs/testing-guidelines.md, not a reader-facing capability | opt-out: maintainer build tooling, not a deck topic |
 | CMH-HL-05 | help | opt-out: the syntax-highlighting slide is at its fixed 1080px stage capacity - a third code block overflows it on CI - and JSON is already named in that slide's supported-syntax pills |
 | CMH-HL-06 | opt-out: a correctness fix to the already-documented syntax highlighting (a comment abutting an operator was mis-tokenized); no new reader-facing capability | opt-out: a tokenizer correctness fix, not a deck topic |
 | CMH-HL-07 | help | deck |
