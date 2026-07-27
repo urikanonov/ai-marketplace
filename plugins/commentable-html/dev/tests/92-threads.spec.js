@@ -200,7 +200,7 @@ test.describe("collaboration: author attribution and threads", () => {
     expect(md2.replace(fencedNote, "")).not.toMatch(/^# forgedmd/m);
   });
 
-  test("deleting a reply drops its open inline editor, and Clear all closes an open root edit composer (CMH-THREAD-05)", async ({ page }) => {
+  test("deleting a reply drops its open inline editor, and Clear all drops an open root inline editor (CMH-THREAD-05)", async ({ page }) => {
     await openKitchenSink(page);
     await setReviewerName(page, "Alice");
     await addTextComment(page, "#commentRoot section p", "a root", 0);
@@ -215,12 +215,13 @@ test.describe("collaboration: author attribution and threads", () => {
     await expect(page.locator(".cm-reply-compose")).toHaveCount(0);
     expect((await storedComments(page)).filter((c) => c.parentId).length).toBe(0);
 
-    // Clear all still closes an open ROOT edit composer (root edits use the floating composer).
+    // Clear all also drops an open ROOT inline editor (root edits are inline in the card).
     await page.locator(".cm-card .cm-entry-root [data-act='edit']").first().click();
-    await expect(page.locator(".cm-composer")).toHaveCount(1);
+    await expect(page.locator(".cm-entry-root .cm-reply-compose")).toHaveCount(1);
     await clickClearAll(page);
     await expect(page.locator(".cm-modal")).toBeVisible();
     await page.locator(".cm-modal").getByRole("button", { name: "OK", exact: true }).click();
+    await expect(page.locator(".cm-reply-compose")).toHaveCount(0);
     await expect(page.locator(".cm-composer")).toHaveCount(0);
     expect((await storedComments(page)).length).toBe(0);
   });
@@ -267,8 +268,10 @@ test.describe("collaboration: author attribution and threads", () => {
     const card = page.locator(".cm-card[data-cid]").first();
     await card.locator(".cm-reply-btn").click();
     await card.locator(".cm-reply-compose textarea").fill("draft in progress");
-    // A re-render triggered by re-sorting the comment list must NOT drop the open draft.
-    await page.evaluate(() => { if (typeof renderComments === "function") renderComments(); });
+    // A re-render triggered by re-sorting the comment list must NOT drop the open draft. (The
+    // runtime is an IIFE, so a page.evaluate of renderComments() is not reachable - drive the
+    // real Sort control instead.)
+    await page.click("#btnSort");
     await expect(card.locator(".cm-reply-compose textarea")).toHaveValue("draft in progress");
     // The rehydrated editor still saves normally.
     await card.locator(".cm-reply-compose .cm-reply-save").click();
@@ -291,6 +294,62 @@ test.describe("collaboration: author attribution and threads", () => {
     await editor.locator(".cm-reply-save").click();
     await expect(card.locator(".cm-reply")).toContainText("edited reply");
     await expect(card.locator(".cm-reply")).toContainText("(edited)");
+  });
+
+  test("editing a ROOT comment edits IN the sidebar card without jumping to the anchor (CMH-THREAD-10)", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(1) p", "original root note", 0);
+    await openSidebarPanel(page);
+    // Park the document where the anchor is off-screen: the OLD behavior scrolled to the anchor
+    // before opening a floating composer, so an unchanged scroll position proves it does not.
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    const offBefore = await page.locator("mark.cm-hl").first().evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return r.bottom < 0 || r.top > window.innerHeight;
+    });
+    expect(offBefore, "highlight is off-screen before edit").toBe(true);
+    const scrollBefore = await page.evaluate(() => window.scrollY);
+
+    const card = page.locator(".cm-card[data-cid]").first();
+    await card.locator('.cm-entry-root [data-act="edit"]').click();
+    const editor = card.locator(".cm-entry-root .cm-reply-compose");
+    await expect(editor).toHaveCount(1);
+    await expect(page.locator(".cm-composer")).toHaveCount(0);
+    await expect(editor.locator("textarea")).toHaveValue("original root note");
+    // The rendered note is hidden while its inline editor is open (no duplicate copy of the text).
+    await expect(card.locator(".cm-entry-root .note")).toBeHidden();
+    expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
+
+    // Cancel restores the card untouched.
+    await editor.locator(".cm-reply-cancel").click();
+    await expect(card.locator(".cm-entry-root .cm-reply-compose")).toHaveCount(0);
+    await expect(card.locator(".cm-entry-root .note")).toBeVisible();
+    expect((await storedComments(page))[0].note).toBe("original root note");
+
+    // Saving updates the note in place, marks it edited, and persists.
+    await card.locator('.cm-entry-root [data-act="edit"]').click();
+    await card.locator(".cm-entry-root .cm-reply-compose textarea").fill("edited root note");
+    await card.locator(".cm-entry-root .cm-reply-compose .cm-reply-save").click();
+    await expect(card.locator(".cm-entry-root .note")).toContainText("edited root note");
+    await expect(card.locator(".cm-entry-root .meta")).toContainText("(edited)");
+    await expect(page.locator(".cm-composer")).toHaveCount(0);
+    expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
+    const stored = await storedComments(page);
+    expect(stored[0].note).toBe("edited root note");
+    expect(stored[0].updatedAt).toBeTruthy();
+  });
+
+  test("an in-progress ROOT edit draft survives a re-render (CMH-THREAD-09)", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "root draft base", 0);
+    await openSidebarPanel(page);
+    const card = page.locator(".cm-card[data-cid]").first();
+    await card.locator('.cm-entry-root [data-act="edit"]').click();
+    await card.locator(".cm-entry-root .cm-reply-compose textarea").fill("root draft in progress");
+    await page.click("#btnSort");
+    await expect(card.locator(".cm-entry-root .cm-reply-compose textarea")).toHaveValue("root draft in progress");
+    await card.locator(".cm-entry-root .cm-reply-compose .cm-reply-save").click();
+    await expect(card.locator(".cm-entry-root .note")).toContainText("root draft in progress");
   });
 
   test("the first reply without a name prompts for a username, and still saves if declined (CMH-THREAD-08)", async ({ page }) => {

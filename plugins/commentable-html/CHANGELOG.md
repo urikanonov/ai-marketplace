@@ -4,6 +4,31 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.254.0] - 2026-07-26
+
+### Changed
+
+- Editing a comment note now happens INLINE, where the reviewer already is, instead of jumping them
+  somewhere else. The sidebar card's `edit` action opens an editor inside that card (exactly like a
+  reply), so the document is no longer scrolled to the anchor and no floating composer opens.
+  (CMH-THREAD-10)
+- `Edit` in the inline comment dialog (opened from the orange "Open comment" hover bubble) turns that
+  dialog into an editor in place, so the note is edited right where the reader clicked. While it is
+  being edited the dialog stays open (an outside click or the anchor scrolling away no longer discards
+  the draft), Escape cancels back to the note view, and a second Escape closes it. (CMH-CORE-16)
+- The orange "Open comment" hover bubble is bigger (28px with a 16px glyph), so it is an easier click
+  target. (CMH-UI-12)
+
+### Fixed
+
+- Clicking inside an inline reply or note editor no longer also fires the comment card's
+  jump-to-anchor, which scrolled the document away mid-edit. (CMH-THREAD-10)
+- A comment is now editable in exactly one place at a time: opening a second editor for a note that
+  already has an unsaved draft elsewhere (the panel card, the in-document dialog, another highlight's
+  dialog, or the floating composer reached by re-selecting the text) hands the reader back to the
+  draft instead of duplicating it - previously two editors could exist and the last save silently
+  overwrote the other. (CMH-CORE-16)
+
 ## [1.253.0] - 2026-07-26
 
 ### Added

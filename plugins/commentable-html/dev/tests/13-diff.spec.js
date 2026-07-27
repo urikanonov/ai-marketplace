@@ -409,9 +409,9 @@ test.describe("diff comment lifecycle", () => {
     }, cid);
 
     await page.locator(`.cm-card[data-cid="${cid}"] [data-act="edit"]`).click();
-    const composer = page.locator(".cm-composer").last();
-    await composer.locator("textarea").fill("edited note");
-    await composer.locator('[data-act="save"]').click();
+    const editor = page.locator(`.cm-card[data-cid="${cid}"] .cm-entry-root .cm-reply-compose`);
+    await editor.locator("textarea").fill("edited note");
+    await editor.locator(".cm-reply-save").click();
 
     await expect(page.locator(`.cm-card[data-cid="${cid}"] .note`)).toHaveText("edited note");
     const after = await page.evaluate((id) => {

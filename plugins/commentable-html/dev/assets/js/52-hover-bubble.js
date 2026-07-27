@@ -10,7 +10,7 @@ function positionHlBubble(mark) {
   if (!visible) {
     hlBubble.hidden = true; hlBubbleCid = null; hlBubbleMark = null; return;
   }
-  const bw = hlBubble.offsetWidth || 22, bh = hlBubble.offsetHeight || 22;
+  const bw = hlBubble.offsetWidth || 28, bh = hlBubble.offsetHeight || 28;
   const bounds = _floatingBounds(mark);
   let left = visible.right - bw / 2;
   let top  = visible.top - bh + 4;

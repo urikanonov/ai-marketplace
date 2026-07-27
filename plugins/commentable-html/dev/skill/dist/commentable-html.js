@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.253.0";
+const CMH_VERSION = "1.254.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -6089,6 +6089,22 @@ function openComposerForEdit(comment) {
     existing.querySelector("textarea").focus();
     return existing;
   }
+  // Another surface may already hold an UNSAVED edit of this note (the panel card's inline editor or
+  // the in-document dialog). Hand the reviewer back to that draft instead of opening a second editor
+  // whose save would silently overwrite it; an untouched editor is simply closed.
+  const other = (typeof cmhSidebarNoteEditor === "function" && cmhSidebarNoteEditor(comment.id))
+    || (typeof cmhPopoverNoteEditor === "function" && cmhPopoverNoteEditor(comment.id))
+    || null;
+  if (other) {
+    if (other.dirty) {
+      other.focus();
+      if (typeof showToast === "function") {
+        showToast("This comment is already open for editing - finish or cancel that edit first.", { duration: 5000 });
+      }
+      return null;
+    }
+    other.close();
+  }
   return createComposerElement({ mode: "edit", comment });
 }
 
@@ -6627,7 +6643,10 @@ function _reopenInlineDraft(snap) {
     if (card) openInlineReply(card, snap.targetId);
   } else if (snap.kind === "edit") {
     const entry = listEl.querySelector('[data-reply-cid="' + snap.targetId + '"]');
-    if (entry) openInlineReplyEdit(entry, snap.targetId);
+    if (entry) openInlineNoteEdit(entry, snap.targetId);
+  } else if (snap.kind === "edit-root") {
+    const entry = listEl.querySelector('.cm-card[data-cid="' + snap.targetId + '"] .cm-entry-root');
+    if (entry) openInlineNoteEdit(entry, snap.targetId);
   }
   if (_activeInlineEditor && _activeInlineEditor.el) {
     const ta = _activeInlineEditor.el.querySelector("textarea");
@@ -6761,20 +6780,22 @@ function expandCollapsedAncestors(el) {
     sec = sec.parentElement && sec.parentElement.closest && sec.parentElement.closest("section.cmh-section-collapsed");
   }
 }
-// ---- Inline reply composing (issue #644) ----
-// Replies are composed and edited IN the sidebar thread card (Word-style), not in a floating popup.
-// A NEW reply box starts EMPTY - it never prepopulates with the comment being replied to. Editing an
-// existing reply prefills with that reply's OWN text. renderComments() rebuilds the list, so these
+// ---- Inline reply composing (issue #644) and inline note editing (issue #703) ----
+// Replies AND comment notes are composed and edited IN the sidebar thread card (Word-style), not in
+// a floating popup: editing never scrolls the document to the anchor. A NEW reply box starts EMPTY -
+// it never prepopulates with the comment being replied to. Editing an existing note (a thread root or
+// a reply) prefills with that entry's OWN text. renderComments() rebuilds the list, so these
 // transient editors are naturally cleared on save.
 let _activeInlineEditor = null;
-function _buildInlineReplyEditor(initialText, saveLabel, onSave, onCancel) {
+function _buildInlineReplyEditor(initialText, saveLabel, onSave, onCancel, opts) {
+  const o = opts || {};
   const wrap = document.createElement("div");
   wrap.className = "cm-reply-compose";
   const ta = document.createElement("textarea");
   ta.className = "cm-reply-input";
   ta.setAttribute("rows", "2");
-  ta.setAttribute("aria-label", "Write a reply");
-  ta.placeholder = "Write a reply...";
+  ta.setAttribute("aria-label", o.label || "Write a reply");
+  ta.placeholder = o.placeholder || "Write a reply...";
   ta.value = initialText || "";
   const actions = document.createElement("div");
   actions.className = "cm-reply-compose-actions";
@@ -6808,9 +6829,27 @@ function _closeActiveInlineEditor() {
   _activeInlineEditor = null;
   if (a && typeof a.restore === "function") { try { a.restore(); } catch (e) {} }
 }
+// Cross-surface edit coordination: the in-document comment dialog can edit the same note in place,
+// so each surface asks the other whether it already owns this comment's edit. Reports the active
+// sidebar editor for `cid`, whether it holds unsaved text, and how to focus or drop it, so exactly
+// one editor exists per comment and a dirty draft is never silently overwritten.
+function cmhSidebarNoteEditor(cid) {
+  const a = _activeInlineEditor;
+  if (!a || a.targetId !== cid || (a.kind !== "edit" && a.kind !== "edit-root")) return null;
+  const ta = a.el && a.el.querySelector("textarea");
+  const c = comments.find(function (x) { return x.id === cid; });
+  const original = (c && c.note != null) ? String(c.note) : "";
+  return {
+    dirty: !!ta && ta.value.trim() !== original.trim(),
+    focus: function () { if (a.el && a.el._focus) a.el._focus(); },
+    close: function () { _closeActiveInlineEditor(); },
+  };
+}
 function _focusInList(sel) {
   const el = listEl.querySelector(sel);
-  if (el) { try { el.focus(); } catch (e) {} }
+  // preventScroll: refocusing a rebuilt panel control must never scroll the DOCUMENT (inline
+  // editing deliberately leaves the reader's place in the page alone).
+  if (el) { try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (e2) {} } }
 }
 // First-reply identity prompt (issue #645), tracked separately from the first-COMMENT nudge so that a
 // reviewer whose first attributable action is a reply is still prompted even if an earlier comment
@@ -6872,23 +6911,50 @@ function openInlineReply(card, rootId) {
   // First-reply identity prompt (issue #645).
   _nudgeIdentityOnReply();
 }
-function openInlineReplyEdit(entry, replyId) {
+function openInlineNoteEdit(entry, cid) {
   if (!entry) return;
-  const rc = comments.find(function (x) { return x.id === replyId && isReply(x); });
+  const rc = comments.find(function (x) { return x.id === cid; });
   if (!rc) return;
   const noteEl = entry.querySelector(".note");
   if (!noteEl) return;
-  // Re-clicking edit on a reply already being edited just refocuses it (never resets the draft).
-  if (_activeInlineEditor && _activeInlineEditor.kind === "edit" && _activeInlineEditor.targetId === replyId) {
+  const isRootNote = (typeof isReply === "function") ? !isReply(rc) : !rc.parentId;
+  // A floating edit composer for this same note may already be open (re-selecting the highlighted
+  // text opens one). Reuse it rather than editing the same note in two places at once.
+  if (typeof openEditComposers !== "undefined" && openEditComposers.get(cid)) {
+    if (typeof openComposerForEdit === "function") openComposerForEdit(rc);
+    return;
+  }
+  // Same rule across surfaces: the in-document dialog may already be editing this note. Hand a
+  // dirty draft back to it (never open a second editor whose save would silently overwrite it);
+  // an untouched one is simply closed so editing continues here.
+  if (typeof cmhPopoverNoteEditor === "function") {
+    const pop = cmhPopoverNoteEditor(cid);
+    if (pop) {
+      if (pop.dirty) {
+        pop.focus();
+        showToast("This comment is already open for editing on the page - finish or cancel that edit first.", { duration: 5000 });
+        return;
+      }
+      pop.close();
+    }
+  }
+  const kind = isRootNote ? "edit-root" : "edit";
+  const editBtnSel = isRootNote ? '[data-act="edit"]' : '[data-act="reply-edit"]';
+  const focusSel = isRootNote
+    ? '.cm-card[data-cid="' + cid + '"] .cm-entry-root [data-act="edit"]'
+    : '[data-reply-cid="' + cid + '"] [data-act="reply-edit"]';
+  // Re-clicking edit on a note already being edited just refocuses it (never resets the draft).
+  if (_activeInlineEditor && _activeInlineEditor.kind === kind && _activeInlineEditor.targetId === cid) {
     if (_activeInlineEditor.el && _activeInlineEditor.el._focus) _activeInlineEditor.el._focus();
     return;
   }
   _closeActiveInlineEditor();
   const editor = _buildInlineReplyEditor(rc.note == null ? "" : rc.note, "Save",
     function (val) {
-      const c = comments.find(function (x) { return x.id === replyId; });
+      const c = comments.find(function (x) { return x.id === cid; });
       if (!c) {
-        showToast("The reply you were editing was deleted - your change was not saved.", { alert: true, duration: 6000 });
+        showToast("The " + (isRootNote ? "comment" : "reply") + " you were editing was deleted - your change was not saved.",
+          { alert: true, duration: 6000 });
         _activeInlineEditor = null;
         renderComments();
         return;
@@ -6897,23 +6963,29 @@ function openInlineReplyEdit(entry, replyId) {
       const ok = saveComments();
       _activeInlineEditor = null;
       renderComments();
-      _focusInList('[data-reply-cid="' + replyId + '"] [data-act="reply-edit"]');
+      _focusInList(focusSel);
       _afterInlineSaveQuota(ok, "edit");
     },
-    function () { _closeActiveInlineEditor(); });
+    function () { _closeActiveInlineEditor(); },
+    { label: isRootNote ? "Edit comment" : "Write a reply",
+      placeholder: isRootNote ? "Edit this comment..." : "Write a reply..." });
   entry.classList.add("cm-reply-editing");
   noteEl.hidden = true;
   noteEl.insertAdjacentElement("afterend", editor);
-  _activeInlineEditor = { el: editor, kind: "edit", targetId: replyId, restore: function () {
+  _activeInlineEditor = { el: editor, kind: kind, targetId: cid, restore: function () {
     editor.remove();
     noteEl.hidden = false;
     entry.classList.remove("cm-reply-editing");
-    const eb = entry.querySelector('[data-act="reply-edit"]');
+    const eb = entry.querySelector(editBtnSel);
     if (eb) { try { eb.focus(); } catch (e) {} }
   } };
   editor._focus();
 }
 listEl.addEventListener("click", (e) => {
+  // A click inside an inline reply/edit editor belongs to that editor (its textarea and its
+  // Save/Cancel buttons); it must never also fire the card's jump-to-anchor fall-through, which
+  // would scroll the document away while the reviewer is editing in the panel.
+  if (e.target.closest && e.target.closest(".cm-reply-compose")) return;
   // Checklist change cards are not comments: jump focuses the checklist, Reset reverts it to
   // the authored state. Handle before the .cm-card comment path (a checklist card is a .cm-card).
   const clCard = e.target.closest(".cm-card-checklist");
@@ -6975,7 +7047,7 @@ listEl.addEventListener("click", (e) => {
   if (act === "reply-edit") {
     const entry = e.target.closest("[data-reply-cid]");
     const rid = entry && entry.getAttribute("data-reply-cid");
-    openInlineReplyEdit(entry, rid);
+    openInlineNoteEdit(entry, rid);
     return;
   }
   if (act === "del") {
@@ -6992,6 +7064,7 @@ listEl.addEventListener("click", (e) => {
       const tombstoneOk = _tombstoneEmbedded(ids);
       const drop = new Set(ids);
       ids.forEach((tid) => { const oc = openEditComposers.get(tid); if (oc) closeComposerElement(oc); });
+      if (typeof cmhClosePopoverForIds === "function") cmhClosePopoverForIds(ids);
       comments = comments.filter(x => !drop.has(x.id));
       removeHighlight(c);
       const commentsOk = saveComments();
@@ -7001,8 +7074,9 @@ listEl.addEventListener("click", (e) => {
     return;
   }
   if (act === "edit") {
-    const c = comments.find(c => c.id === id);
-    if (c) { scrollToAnchor(c); openComposerForEdit(c); }   // jump first, then edit
+    // Edit the note IN the card (issue #703): no scroll to the anchor, no floating composer.
+    const entry = e.target.closest(".cm-entry-root") || card.querySelector(".cm-entry-root");
+    openInlineNoteEdit(entry, id);
     return;
   }
   const c = comments.find(x => x.id === id);
@@ -7196,7 +7270,7 @@ function positionHlBubble(mark) {
   if (!visible) {
     hlBubble.hidden = true; hlBubbleCid = null; hlBubbleMark = null; return;
   }
-  const bw = hlBubble.offsetWidth || 22, bh = hlBubble.offsetHeight || 22;
+  const bw = hlBubble.offsetWidth || 28, bh = hlBubble.offsetHeight || 28;
   const bounds = _floatingBounds(mark);
   let left = visible.right - bw / 2;
   let top  = visible.top - bh + 4;
@@ -7429,14 +7503,23 @@ function setupSidebarResize() {
 }
 /* ---------- Inline comment dialog (opened from the hover bubble) ----------
    Clicking the hover bubble opens a small on-screen dialog next to the highlight showing the
-   comment note and an Edit button (which opens the composer for that comment). A click anywhere
-   else closes the dialog; a pointer click there is also swallowed so it performs no other action
-   (for example it does not follow a link the highlight sits on), while a keyboard-activated click
-   still reaches its target. The sidebar jump still runs alongside this from 52-hover-bubble.js. */
+   comment note and an Edit button. Edit turns the dialog itself into an editor IN PLACE, so the
+   reviewer edits exactly where they clicked instead of being sent to a floating composer. A click
+   anywhere else closes the dialog; a pointer click there is also swallowed so it performs no other
+   action (for example it does not follow a link the highlight sits on), while a keyboard-activated
+   click still reaches its target. While the dialog is being edited it stays open (an outside click
+   or the anchor scrolling away would discard the draft). The sidebar jump still runs alongside this
+   from 52-hover-bubble.js. */
 let commentPopover = null;
 let _popoverAnchorMark = null;
 let _popoverDismiss = null;
 let _popoverKeydown = null;
+let _popoverEditing = false;
+// The dialog's identity is kept in JS state, never re-read from its own DOM attributes: the note id
+// is interpolated into the dialog markup, and a value that round-trips through the DOM is both a
+// needless trust boundary and an injection sink.
+let _popoverCid = null;
+let _popoverNoteId = null;
 
 function _positionCommentPopover(mark) {
   if (!commentPopover || !mark) return false;
@@ -7465,9 +7548,181 @@ function closeCommentPopover() {
   commentPopover.remove();
   commentPopover = null;
   _popoverAnchorMark = null;
+  _popoverEditing = false;
+  _popoverCid = null;
+  _popoverNoteId = null;
+}
+
+// The comment the open dialog is showing, re-read from the live array so a delete or an edit made
+// elsewhere is never written back from a stale copy.
+function _popoverComment() {
+  return _popoverCid ? comments.find((x) => x.id === _popoverCid) : null;
+}
+
+// A deleted comment's dialog must not linger (its Save would have nothing to write), so a delete or
+// a clear-all closes the dialog when it shows one of the removed comments.
+function cmhClosePopoverForIds(ids) {
+  if (!commentPopover || !ids) return;
+  const list = Array.isArray(ids) ? ids : [ids];
+  if (_popoverCid && list.indexOf(_popoverCid) !== -1) closeCommentPopover();
+}
+
+// Cross-surface edit coordination (see cmhSidebarNoteEditor): reports the dialog's own in-place
+// editor for `cid`, whether it holds unsaved text, and how to focus or cancel it.
+function cmhPopoverNoteEditor(cid) {
+  if (!commentPopover || !_popoverEditing) return null;
+  if (_popoverCid !== cid) return null;
+  const ta = commentPopover.querySelector("textarea");
+  const c = _popoverComment();
+  const original = (c && c.note != null) ? String(c.note) : "";
+  return {
+    dirty: !!ta && ta.value.trim() !== original.trim(),
+    focus: function () { if (ta) { try { ta.focus(); } catch (e) {} } },
+    // Yielding ownership CLOSES the dialog rather than dropping back to its note view: a lingering
+    // view-mode dialog would re-arm the capture-phase outside-click swallow and eat the reader's
+    // first click on the editor that just took over.
+    close: function () { closeCommentPopover(); },
+  };
+}
+
+function _renderCommentPopoverView(c) {
+  const el = commentPopover;
+  if (!el) return;
+  _popoverEditing = false;
+  el.classList.remove("is-editing");
+  const noteId = _popoverNoteId;
+  el.innerHTML =
+    '<div class="cm-comment-popover-note cmh-rich" id="' + noteId + '"></div>'
+    + '<div class="cm-comment-popover-meta"></div>'
+    + '<div class="cm-comment-popover-acts">'
+    + '<button type="button" data-act="close">Close</button>'
+    + '<button type="button" class="primary" data-act="edit">Edit</button>'
+    + "</div>";
+  el.setAttribute("aria-describedby", noteId);
+  el.querySelector(".cm-comment-popover-note").innerHTML = renderRichNote(c.note);
+  el.querySelector(".cm-comment-popover-meta").innerHTML =
+    "<bdi>" + escapeHtml(formatTime(c.updatedAt || c.createdAt)) + "</bdi>"
+    + (c.updatedAt ? " (edited)" : "");
+  el.querySelector('[data-act="edit"]').addEventListener("click", (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const cur = _popoverComment();
+    if (!cur) return;
+    // A floating edit composer for this note may already be open (re-selecting the highlighted text
+    // opens one); reuse it rather than editing the same note in two places.
+    if (typeof openEditComposers !== "undefined" && openEditComposers.get(cur.id)) {
+      closeCommentPopover();
+      if (typeof openComposerForEdit === "function") openComposerForEdit(cur);
+      return;
+    }
+    // The comments panel may already be editing this note (see cmhSidebarNoteEditor): hand a dirty
+    // draft back to it rather than opening a second editor whose save would overwrite it.
+    if (typeof cmhSidebarNoteEditor === "function") {
+      const side = cmhSidebarNoteEditor(cur.id);
+      if (side) {
+        if (side.dirty) {
+          // Nothing left for the dialog to do: point the reader at the panel's draft and get out of
+          // the way (a dialog left open would swallow their next click).
+          closeCommentPopover();
+          side.focus();
+          showToast("This comment is already open for editing in the comments panel - finish or cancel that edit first.", { duration: 5000 });
+          return;
+        }
+        side.close();
+      }
+    }
+    _renderCommentPopoverEdit(cur);
+  });
+  el.querySelector('[data-act="close"]').addEventListener("click", (e) => {
+    e.preventDefault(); e.stopPropagation();
+    closeCommentPopover();
+  });
+  _positionCommentPopover(_popoverAnchorMark);
+}
+
+// Cancel an in-progress edit: back to the note view with focus on Edit, dialog left open (unless
+// its anchor scrolled away meanwhile, in which case the normal clip-aware close applies again).
+function _cancelCommentPopoverEdit() {
+  const cur = _popoverComment();
+  if (!cur) { closeCommentPopover(); return; }
+  _renderCommentPopoverView(cur);
+  _syncCommentPopoverToAnchor();
+  _focusPopoverEditButton();
+}
+
+function _focusPopoverEditButton() {
+  const eb = commentPopover && commentPopover.querySelector('[data-act="edit"]');
+  if (eb) { try { eb.focus(); } catch (e) {} }
+}
+
+function _renderCommentPopoverEdit(c) {
+  const el = commentPopover;
+  if (!el) return;
+  _popoverEditing = true;
+  el.classList.add("is-editing");
+  // The described note element is replaced by the editor, so its description no longer applies.
+  el.removeAttribute("aria-describedby");
+  el.innerHTML =
+    '<div class="cm-comment-popover-edit">'
+    + '<textarea class="cm-comment-popover-input" rows="4" aria-label="Edit comment"></textarea>'
+    + "</div>"
+    + '<div class="cm-comment-popover-acts">'
+    + '<button type="button" data-act="edit-cancel">Cancel</button>'
+    + '<button type="button" class="primary" data-act="edit-save">Save</button>'
+    + "</div>";
+  const ta = el.querySelector("textarea");
+  ta.value = c.note == null ? "" : c.note;
+  function doSave() {
+    const val = ta.value.trim();
+    if (!val) {
+      // Blank note: mark the field invalid (announced to screen readers) instead of silently
+      // doing nothing, matching the composer.
+      ta.setAttribute("aria-invalid", "true");
+      ta.classList.add("cm-invalid");
+      ta.focus();
+      return;
+    }
+    const cur = _popoverComment();
+    if (!cur) {
+      showToast("The comment you were editing was deleted - your change was not saved.", { alert: true, duration: 6000 });
+      closeCommentPopover();
+      return;
+    }
+    cur.note = val;
+    cur.updatedAt = new Date().toISOString();
+    const ok = saveComments();
+    renderComments();
+    _renderCommentPopoverView(cur);
+    // Editing suspended the clip-aware close; with the edit done, re-apply it (the anchor may have
+    // scrolled out of view meanwhile) so the dialog is never stranded away from its highlight.
+    _syncCommentPopoverToAnchor();
+    _focusPopoverEditButton();
+    if (typeof _afterInlineSaveQuota === "function") _afterInlineSaveQuota(ok, "edit");
+  }
+  el.querySelector('[data-act="edit-save"]').addEventListener("click", (e) => {
+    e.preventDefault(); e.stopPropagation();
+    doSave();
+  });
+  el.querySelector('[data-act="edit-cancel"]').addEventListener("click", (e) => {
+    e.preventDefault(); e.stopPropagation();
+    _cancelCommentPopoverEdit();
+  });
+  ta.addEventListener("keydown", (e) => {
+    if (e.isComposing) return;
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doSave(); }
+  });
+  _positionCommentPopover(_popoverAnchorMark);
+  setTimeout(() => { try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {} }, 0);
 }
 
 function openCommentPopover(id, mark) {
+  // Never discard an in-progress edit because another highlight was clicked: a dirty dialog keeps
+  // its draft and its focus, and the reader finishes or cancels it first.
+  const openEditor = commentPopover ? cmhPopoverNoteEditor(commentPopover.getAttribute("data-cid")) : null;
+  if (openEditor && openEditor.dirty) {
+    openEditor.focus();
+    showToast("Finish or cancel the comment you are editing first.", { duration: 5000 });
+    return;
+  }
   closeCommentPopover();
   const c = comments.find((x) => x.id === id);
   if (!c) return;
@@ -7478,32 +7733,13 @@ function openCommentPopover(id, mark) {
   el.className = "cm-comment-popover cm-skip";
   el.setAttribute("role", "dialog");
   el.setAttribute("aria-label", "Comment");
-  const noteId = "cmh-pop-note-" + Math.random().toString(36).slice(2, 9);
-  el.setAttribute("aria-describedby", noteId);
-  el.innerHTML =
-    '<div class="cm-comment-popover-note cmh-rich" id="' + noteId + '"></div>'
-    + '<div class="cm-comment-popover-meta"></div>'
-    + '<div class="cm-comment-popover-acts">'
-    + '<button type="button" data-act="close">Close</button>'
-    + '<button type="button" class="primary" data-act="edit">Edit</button>'
-    + "</div>";
-  el.querySelector(".cm-comment-popover-note").innerHTML = renderRichNote(c.note);
-  el.querySelector(".cm-comment-popover-meta").innerHTML =
-    "<bdi>" + escapeHtml(formatTime(c.updatedAt || c.createdAt)) + "</bdi>"
-    + (c.updatedAt ? " (edited)" : "");
+  el.setAttribute("data-cid", id);
   document.body.appendChild(el);
   commentPopover = el;
+  _popoverCid = id;
+  _popoverNoteId = "cmh-pop-note-" + Math.random().toString(36).slice(2, 9);
+  _renderCommentPopoverView(c);
   if (!_positionCommentPopover(_popoverAnchorMark)) { closeCommentPopover(); return; }
-
-  el.querySelector('[data-act="edit"]').addEventListener("click", (e) => {
-    e.preventDefault(); e.stopPropagation();
-    closeCommentPopover();
-    openComposerForEdit(c);
-  });
-  el.querySelector('[data-act="close"]').addEventListener("click", (e) => {
-    e.preventDefault(); e.stopPropagation();
-    closeCommentPopover();
-  });
 
   // A click outside the dialog closes it. A pointer click (detail > 0) is also swallowed
   // (capture-phase preventDefault + stopPropagation) so it performs no other action - for
@@ -7513,11 +7749,28 @@ function openCommentPopover(id, mark) {
   _popoverDismiss = (e) => {
     if (!commentPopover) return;
     if (e.target && e.target.closest && e.target.closest(".cm-comment-popover")) return;
+    // Mid-edit the dialog stays open (closing it would silently discard the draft) and the click
+    // is left alone, so the rest of the page keeps working while the editor is up.
+    if (_popoverEditing) return;
     if (e.detail > 0) { e.preventDefault(); e.stopPropagation(); }
     closeCommentPopover();
   };
   _popoverKeydown = (e) => {
-    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeCommentPopover(); }
+    if (e.key !== "Escape") return;
+    // Mid-IME-composition Escape dismisses the candidate window; it must not cancel the edit
+    // (the sidebar and composer editors ignore composition for the same reason).
+    if (e.isComposing) return;
+    if (_popoverEditing) {
+      // Escape belongs to the editor only while focus is inside it: another overlay's Escape (a
+      // Help panel, a confirm dialog) must not silently discard the draft sitting behind it.
+      if (!(e.target && e.target.closest && e.target.closest(".cm-comment-popover"))) return;
+      e.preventDefault(); e.stopPropagation();
+      // Escape cancels an in-progress edit first (back to the note); a second Escape closes.
+      _cancelCommentPopoverEdit();
+      return;
+    }
+    e.preventDefault(); e.stopPropagation();
+    closeCommentPopover();
   };
   // Register on the next tick so the opening click (on the bubble) does not immediately close it.
   setTimeout(() => {
@@ -7531,15 +7784,15 @@ function openCommentPopover(id, mark) {
 }
 
 // Keep the dialog pinned to its highlight while scrolling / resizing; close it if the anchor goes
-// away or scrolls out of view (matching the hover bubble's clip-aware behavior).
-window.addEventListener("scroll", () => {
+// away or scrolls out of view (matching the hover bubble's clip-aware behavior) - unless it is
+// being edited, in which case it stays where it is rather than discarding the draft.
+function _syncCommentPopoverToAnchor() {
   if (!commentPopover) return;
-  if (!(_popoverAnchorMark && root.contains(_popoverAnchorMark) && _positionCommentPopover(_popoverAnchorMark))) closeCommentPopover();
-}, true);
-window.addEventListener("resize", () => {
-  if (!commentPopover) return;
-  if (!(_popoverAnchorMark && root.contains(_popoverAnchorMark) && _positionCommentPopover(_popoverAnchorMark))) closeCommentPopover();
-});
+  const pinned = _popoverAnchorMark && root.contains(_popoverAnchorMark) && _positionCommentPopover(_popoverAnchorMark);
+  if (!pinned && !_popoverEditing) closeCommentPopover();
+}
+window.addEventListener("scroll", _syncCommentPopoverToAnchor, true);
+window.addEventListener("resize", _syncCommentPopoverToAnchor);
 /* ---------- Sidebar open/close ---------- */
 function updateSidebarToggle() {
   const btn = document.getElementById("btnToggleSidebar");
@@ -9818,6 +10071,7 @@ function performClearAll() {
     Array.from(openEditComposers.values()).forEach((elc) => closeComposerElement(elc));
   }
   const tombstoneIds = comments.map(c => c.id);
+  if (typeof cmhClosePopoverForIds === "function") cmhClosePopoverForIds(tombstoneIds);
   const tombstoneOk = _tombstoneEmbedded(tombstoneIds);
   comments.forEach(c => removeHighlight(c));
   comments = [];
@@ -11110,7 +11364,8 @@ function showHelp(restoreEl) {
         '</ul>') +
       T('Managing comments',
         '<ul>' +
-          '<li><strong>Edit</strong> or <strong>Delete</strong> a comment from its card in the panel.</li>' +
+          '<li><strong>Edit</strong> a comment from its card: the editor opens <em>inline</em> in the card, so the document stays exactly where you left it. <kbd>Ctrl/Cmd</kbd>+<kbd>Enter</kbd> saves and <kbd>Esc</kbd> cancels. <strong>Delete</strong> sits beside it.</li>' +
+          '<li><strong>Edit from the document:</strong> hover a highlight and click the orange <em>Open comment</em> bubble to see the note right there, then click <strong>Edit</strong> to edit it in place in that little dialog - no jumping to another part of the page.</li>' +
           '<li><strong>Jump</strong> from a card to its highlight (collapsed sections auto-expand first).</li>' +
           '<li><strong>Sort</strong> the cards oldest-first or newest-first with the arrows, or click again for document order.</li>' +
           '<li><strong>Clear all comments</strong> (in the <strong>More</strong> menu) deletes every comment and always asks for confirmation first (Cancel is the default).</li>' +

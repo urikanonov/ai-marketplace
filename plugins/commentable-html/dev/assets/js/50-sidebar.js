@@ -275,7 +275,10 @@ function _reopenInlineDraft(snap) {
     if (card) openInlineReply(card, snap.targetId);
   } else if (snap.kind === "edit") {
     const entry = listEl.querySelector('[data-reply-cid="' + snap.targetId + '"]');
-    if (entry) openInlineReplyEdit(entry, snap.targetId);
+    if (entry) openInlineNoteEdit(entry, snap.targetId);
+  } else if (snap.kind === "edit-root") {
+    const entry = listEl.querySelector('.cm-card[data-cid="' + snap.targetId + '"] .cm-entry-root');
+    if (entry) openInlineNoteEdit(entry, snap.targetId);
   }
   if (_activeInlineEditor && _activeInlineEditor.el) {
     const ta = _activeInlineEditor.el.querySelector("textarea");
@@ -409,20 +412,22 @@ function expandCollapsedAncestors(el) {
     sec = sec.parentElement && sec.parentElement.closest && sec.parentElement.closest("section.cmh-section-collapsed");
   }
 }
-// ---- Inline reply composing (issue #644) ----
-// Replies are composed and edited IN the sidebar thread card (Word-style), not in a floating popup.
-// A NEW reply box starts EMPTY - it never prepopulates with the comment being replied to. Editing an
-// existing reply prefills with that reply's OWN text. renderComments() rebuilds the list, so these
+// ---- Inline reply composing (issue #644) and inline note editing (issue #703) ----
+// Replies AND comment notes are composed and edited IN the sidebar thread card (Word-style), not in
+// a floating popup: editing never scrolls the document to the anchor. A NEW reply box starts EMPTY -
+// it never prepopulates with the comment being replied to. Editing an existing note (a thread root or
+// a reply) prefills with that entry's OWN text. renderComments() rebuilds the list, so these
 // transient editors are naturally cleared on save.
 let _activeInlineEditor = null;
-function _buildInlineReplyEditor(initialText, saveLabel, onSave, onCancel) {
+function _buildInlineReplyEditor(initialText, saveLabel, onSave, onCancel, opts) {
+  const o = opts || {};
   const wrap = document.createElement("div");
   wrap.className = "cm-reply-compose";
   const ta = document.createElement("textarea");
   ta.className = "cm-reply-input";
   ta.setAttribute("rows", "2");
-  ta.setAttribute("aria-label", "Write a reply");
-  ta.placeholder = "Write a reply...";
+  ta.setAttribute("aria-label", o.label || "Write a reply");
+  ta.placeholder = o.placeholder || "Write a reply...";
   ta.value = initialText || "";
   const actions = document.createElement("div");
   actions.className = "cm-reply-compose-actions";
@@ -456,9 +461,27 @@ function _closeActiveInlineEditor() {
   _activeInlineEditor = null;
   if (a && typeof a.restore === "function") { try { a.restore(); } catch (e) {} }
 }
+// Cross-surface edit coordination: the in-document comment dialog can edit the same note in place,
+// so each surface asks the other whether it already owns this comment's edit. Reports the active
+// sidebar editor for `cid`, whether it holds unsaved text, and how to focus or drop it, so exactly
+// one editor exists per comment and a dirty draft is never silently overwritten.
+function cmhSidebarNoteEditor(cid) {
+  const a = _activeInlineEditor;
+  if (!a || a.targetId !== cid || (a.kind !== "edit" && a.kind !== "edit-root")) return null;
+  const ta = a.el && a.el.querySelector("textarea");
+  const c = comments.find(function (x) { return x.id === cid; });
+  const original = (c && c.note != null) ? String(c.note) : "";
+  return {
+    dirty: !!ta && ta.value.trim() !== original.trim(),
+    focus: function () { if (a.el && a.el._focus) a.el._focus(); },
+    close: function () { _closeActiveInlineEditor(); },
+  };
+}
 function _focusInList(sel) {
   const el = listEl.querySelector(sel);
-  if (el) { try { el.focus(); } catch (e) {} }
+  // preventScroll: refocusing a rebuilt panel control must never scroll the DOCUMENT (inline
+  // editing deliberately leaves the reader's place in the page alone).
+  if (el) { try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (e2) {} } }
 }
 // First-reply identity prompt (issue #645), tracked separately from the first-COMMENT nudge so that a
 // reviewer whose first attributable action is a reply is still prompted even if an earlier comment
@@ -520,23 +543,50 @@ function openInlineReply(card, rootId) {
   // First-reply identity prompt (issue #645).
   _nudgeIdentityOnReply();
 }
-function openInlineReplyEdit(entry, replyId) {
+function openInlineNoteEdit(entry, cid) {
   if (!entry) return;
-  const rc = comments.find(function (x) { return x.id === replyId && isReply(x); });
+  const rc = comments.find(function (x) { return x.id === cid; });
   if (!rc) return;
   const noteEl = entry.querySelector(".note");
   if (!noteEl) return;
-  // Re-clicking edit on a reply already being edited just refocuses it (never resets the draft).
-  if (_activeInlineEditor && _activeInlineEditor.kind === "edit" && _activeInlineEditor.targetId === replyId) {
+  const isRootNote = (typeof isReply === "function") ? !isReply(rc) : !rc.parentId;
+  // A floating edit composer for this same note may already be open (re-selecting the highlighted
+  // text opens one). Reuse it rather than editing the same note in two places at once.
+  if (typeof openEditComposers !== "undefined" && openEditComposers.get(cid)) {
+    if (typeof openComposerForEdit === "function") openComposerForEdit(rc);
+    return;
+  }
+  // Same rule across surfaces: the in-document dialog may already be editing this note. Hand a
+  // dirty draft back to it (never open a second editor whose save would silently overwrite it);
+  // an untouched one is simply closed so editing continues here.
+  if (typeof cmhPopoverNoteEditor === "function") {
+    const pop = cmhPopoverNoteEditor(cid);
+    if (pop) {
+      if (pop.dirty) {
+        pop.focus();
+        showToast("This comment is already open for editing on the page - finish or cancel that edit first.", { duration: 5000 });
+        return;
+      }
+      pop.close();
+    }
+  }
+  const kind = isRootNote ? "edit-root" : "edit";
+  const editBtnSel = isRootNote ? '[data-act="edit"]' : '[data-act="reply-edit"]';
+  const focusSel = isRootNote
+    ? '.cm-card[data-cid="' + cid + '"] .cm-entry-root [data-act="edit"]'
+    : '[data-reply-cid="' + cid + '"] [data-act="reply-edit"]';
+  // Re-clicking edit on a note already being edited just refocuses it (never resets the draft).
+  if (_activeInlineEditor && _activeInlineEditor.kind === kind && _activeInlineEditor.targetId === cid) {
     if (_activeInlineEditor.el && _activeInlineEditor.el._focus) _activeInlineEditor.el._focus();
     return;
   }
   _closeActiveInlineEditor();
   const editor = _buildInlineReplyEditor(rc.note == null ? "" : rc.note, "Save",
     function (val) {
-      const c = comments.find(function (x) { return x.id === replyId; });
+      const c = comments.find(function (x) { return x.id === cid; });
       if (!c) {
-        showToast("The reply you were editing was deleted - your change was not saved.", { alert: true, duration: 6000 });
+        showToast("The " + (isRootNote ? "comment" : "reply") + " you were editing was deleted - your change was not saved.",
+          { alert: true, duration: 6000 });
         _activeInlineEditor = null;
         renderComments();
         return;
@@ -545,23 +595,29 @@ function openInlineReplyEdit(entry, replyId) {
       const ok = saveComments();
       _activeInlineEditor = null;
       renderComments();
-      _focusInList('[data-reply-cid="' + replyId + '"] [data-act="reply-edit"]');
+      _focusInList(focusSel);
       _afterInlineSaveQuota(ok, "edit");
     },
-    function () { _closeActiveInlineEditor(); });
+    function () { _closeActiveInlineEditor(); },
+    { label: isRootNote ? "Edit comment" : "Write a reply",
+      placeholder: isRootNote ? "Edit this comment..." : "Write a reply..." });
   entry.classList.add("cm-reply-editing");
   noteEl.hidden = true;
   noteEl.insertAdjacentElement("afterend", editor);
-  _activeInlineEditor = { el: editor, kind: "edit", targetId: replyId, restore: function () {
+  _activeInlineEditor = { el: editor, kind: kind, targetId: cid, restore: function () {
     editor.remove();
     noteEl.hidden = false;
     entry.classList.remove("cm-reply-editing");
-    const eb = entry.querySelector('[data-act="reply-edit"]');
+    const eb = entry.querySelector(editBtnSel);
     if (eb) { try { eb.focus(); } catch (e) {} }
   } };
   editor._focus();
 }
 listEl.addEventListener("click", (e) => {
+  // A click inside an inline reply/edit editor belongs to that editor (its textarea and its
+  // Save/Cancel buttons); it must never also fire the card's jump-to-anchor fall-through, which
+  // would scroll the document away while the reviewer is editing in the panel.
+  if (e.target.closest && e.target.closest(".cm-reply-compose")) return;
   // Checklist change cards are not comments: jump focuses the checklist, Reset reverts it to
   // the authored state. Handle before the .cm-card comment path (a checklist card is a .cm-card).
   const clCard = e.target.closest(".cm-card-checklist");
@@ -623,7 +679,7 @@ listEl.addEventListener("click", (e) => {
   if (act === "reply-edit") {
     const entry = e.target.closest("[data-reply-cid]");
     const rid = entry && entry.getAttribute("data-reply-cid");
-    openInlineReplyEdit(entry, rid);
+    openInlineNoteEdit(entry, rid);
     return;
   }
   if (act === "del") {
@@ -640,6 +696,7 @@ listEl.addEventListener("click", (e) => {
       const tombstoneOk = _tombstoneEmbedded(ids);
       const drop = new Set(ids);
       ids.forEach((tid) => { const oc = openEditComposers.get(tid); if (oc) closeComposerElement(oc); });
+      if (typeof cmhClosePopoverForIds === "function") cmhClosePopoverForIds(ids);
       comments = comments.filter(x => !drop.has(x.id));
       removeHighlight(c);
       const commentsOk = saveComments();
@@ -649,8 +706,9 @@ listEl.addEventListener("click", (e) => {
     return;
   }
   if (act === "edit") {
-    const c = comments.find(c => c.id === id);
-    if (c) { scrollToAnchor(c); openComposerForEdit(c); }   // jump first, then edit
+    // Edit the note IN the card (issue #703): no scroll to the anchor, no floating composer.
+    const entry = e.target.closest(".cm-entry-root") || card.querySelector(".cm-entry-root");
+    openInlineNoteEdit(entry, id);
     return;
   }
   const c = comments.find(x => x.id === id);

@@ -57,13 +57,13 @@ text.cm-mermaid-hl, .cm-mermaid-hl > text { fill: var(--cp-accent) !important; f
 .cm-hl-bubble {
   position: fixed; z-index: 210;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; padding: 0;
+  width: 28px; height: 28px; padding: 0;
   background: var(--cp-warning); color: #fff;
   border: 1.5px solid #fff; border-radius: 999px;
   cursor: pointer; box-shadow: var(--cp-shadow); line-height: 0;
 }
 .cm-hl-bubble:hover { filter: brightness(1.08); }
-.cm-hl-bubble svg { width: 12px; height: 12px; display: block; }
+.cm-hl-bubble svg { width: 16px; height: 16px; display: block; }
 
 /* Portability status badge (shown in the toolbar overflow menu). */
 .cm-mode-badge {

@@ -331,6 +331,14 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   max-height: 40vh; overflow-y: auto;
 }
 .cm-comment-popover-meta { color: var(--cp-text-muted); font-size: var(--cp-chrome-small-font); }
+.cm-comment-popover-edit { display: flex; flex-direction: column; }
+.cm-comment-popover-input {
+  width: 100%; box-sizing: border-box; resize: vertical; min-height: 5rem;
+  padding: 0.35rem 0.5rem; font: inherit; font-size: var(--cp-chrome-body-font);
+  line-height: 1.5; border: 1px solid var(--cp-border); border-radius: 6px;
+  background: var(--cp-surface); color: var(--cp-text);
+}
+.cm-comment-popover-input.cm-invalid { border-color: var(--cp-danger, #dc2626); }
 .cm-comment-popover-acts { display: flex; justify-content: flex-end; gap: var(--cp-chrome-gap); }
 .cm-comment-popover button {
   background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);

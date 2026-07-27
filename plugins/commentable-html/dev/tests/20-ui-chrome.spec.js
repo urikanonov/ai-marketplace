@@ -175,9 +175,9 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     // Edit the comment: its updatedAt changes, so the embedded copy is now stale.
     const card = page.locator("#commentList .cm-card").first();
     await card.locator('[data-act="edit"]').click();
-    const composer = page.locator(".cm-composer").last();
-    await composer.locator("textarea").fill("edited text");
-    await composer.locator('[data-act="save"]').click();
+    const editor = card.locator(".cm-entry-root .cm-reply-compose");
+    await editor.locator("textarea").fill("edited text");
+    await editor.locator(".cm-reply-save").click();
     await expect(page.locator("#cmTypeBadge")).toHaveText("Not portable");
   });
 
