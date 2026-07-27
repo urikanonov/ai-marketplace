@@ -27,6 +27,56 @@ HIGHLIGHT_JS = os.path.join(_paths.ASSETS, "js", "26-highlight.js")
 # A key inside the _HL_FAMILY object literal: a bareword (javascript) or a quoted token ("c++")
 # immediately before a colon. Values ("c", "hash") never precede a colon, so they are not captured.
 _HL_FAMILY_KEY_RE = re.compile(r'("[^"]+"|[A-Za-z_$][A-Za-z0-9_$+.#-]*)\s*:')
+# One `<family>: new Set(("a b " + "c d").split(" "))` entry of the _HL_FAM_KW map.
+_FAM_KW_ENTRY_RE = re.compile(r'([A-Za-z_$][A-Za-z0-9_$]*)\s*:\s*new Set\(\((.*?)\)\.split\(" "\)\)', re.S)
+_JS_STRING_RE = re.compile(r'"([^"]*)"')
+# The families _hlTokenRe() gives dedicated comment/string patterns to (`fam === "xxx"`).
+_FAM_BRANCH_RE = re.compile(r'fam === "([a-z]+)"')
+# Families that are deliberately keyword-shared: `hash` and `c` are multi-language buckets (python,
+# ruby, shell, yaml ... / every C-family language), so no single author-time keyword list describes
+# them and they keep the broad shared set. `markdown` carries no keywords at all.
+SHARED_KEYWORD_FAMILIES = {"hash", "c", "markdown"}
+# Each dedicated family and the author-time language(s) whose keywords it must mirror.
+FAMILY_LANGUAGES = {
+    "sql": ("sql",),
+    "css": ("css",),
+    "lua": ("lua",),
+    "haskell": ("haskell",),
+    "powershell": ("powershell",),
+    "batch": ("batch",),
+    "json": ("json",),
+    "markup": ("html", "xml"),
+}
+
+
+def _highlight_js():
+    with open(HIGHLIGHT_JS, "r", encoding="utf-8") as fh:
+        return fh.read()
+
+
+def runtime_family_keywords():
+    """{family: set(keywords)} parsed from the _HL_FAM_KW map in assets/js/26-highlight.js."""
+    src = _highlight_js()
+    m = re.search(r"const _HL_FAM_KW\s*=\s*\{(.*?)\n\};", src, re.S)
+    assert m, "could not locate the _HL_FAM_KW object literal in 26-highlight.js"
+    out = {}
+    for fam, body in _FAM_KW_ENTRY_RE.findall(m.group(1)):
+        words = "".join(_JS_STRING_RE.findall(body)).split()
+        out[fam] = set(words)
+    return out
+
+
+def runtime_shared_keywords():
+    """The broad, multi-language _HL_KW_SET the shared families fall back to."""
+    src = _highlight_js()
+    m = re.search(r"const _HL_KW_SET\s*=\s*new Set\(\((.*?)\)\.split\(\" \"\)\);", src, re.S)
+    assert m, "could not locate the _HL_KW_SET literal in 26-highlight.js"
+    return set("".join(_JS_STRING_RE.findall(m.group(1))).split())
+
+
+def runtime_dedicated_families():
+    """Families _hlTokenRe() gives their own comment/string patterns to."""
+    return set(_FAM_BRANCH_RE.findall(_highlight_js())) - SHARED_KEYWORD_FAMILIES
 
 
 def runtime_known_languages():
@@ -81,9 +131,65 @@ class HighlightParityPythonTests(unittest.TestCase):
                 for tok in case.get("notStr", []):
                     self.assertNotIn(tok, spans.get("str", ""),
                                      "%s: %r must NOT be swallowed as a string" % (lang, tok))
+                for tok in case.get("notKw", []):
+                    self.assertNotIn(tok, spans.get("kw", ""),
+                                     "%s: %r must NOT be a keyword token" % (lang, tok))
                 for tok in case.get("notKey", []):
                     self.assertNotIn(tok, spans.get("key", ""),
                                      "%s: %r must NOT be a property-key token" % (lang, tok))
+
+
+class FamilyKeywordParityTests(unittest.TestCase):
+    """CMH-HL-03: a family with its own patterns must also have its own keyword set.
+
+    The runtime keeps ONE broad keyword set for the multi-language `hash`/`c` buckets. A family that
+    gets dedicated comment/string patterns is 1:1 with an author-time language, so sharing that
+    broad set both UNDER-colors (no `select`/`insert`/`join` for sql, no `auto`/`inherit` for css)
+    and OVER-colors (`class` in lua, `def` in haskell - words the author-time tool never treats as
+    keywords there). Pin each dedicated family to the author-time list instead.
+    """
+
+    def test_every_dedicated_family_has_its_own_keyword_set(self):
+        # A future family with its own comment/string patterns must not silently inherit the broad
+        # set - that is exactly how `sql` shipped without SELECT.
+        missing = sorted(runtime_dedicated_families() - set(runtime_family_keywords()))
+        self.assertEqual(missing, [],
+                         "every family with dedicated patterns needs a _HL_FAM_KW entry; missing: %r"
+                         % missing)
+        unexpected = sorted(set(runtime_family_keywords()) - set(FAMILY_LANGUAGES))
+        self.assertEqual(unexpected, [],
+                         "a new _HL_FAM_KW family must also be mapped in FAMILY_LANGUAGES so this "
+                         "test knows which author-time language it mirrors; unmapped: %r" % unexpected)
+
+    def test_each_family_keyword_set_matches_the_author_time_config(self):
+        runtime = runtime_family_keywords()
+        for fam, langs in sorted(FAMILY_LANGUAGES.items()):
+            expected = set()
+            for lang in langs:
+                expected |= set(H.LANGUAGE_CONFIGS[lang]["keywords"])
+            with self.subTest(family=fam):
+                self.assertIn(fam, runtime)
+                self.assertEqual(runtime[fam], expected,
+                                 "runtime _HL_FAM_KW[%r] must mirror %s keywords exactly (only in "
+                                 "runtime: %r; only author-time: %r)"
+                                 % (fam, "+".join(langs),
+                                    sorted(runtime.get(fam, set()) - expected),
+                                    sorted(expected - runtime.get(fam, set()))))
+
+    def test_the_shared_keyword_set_is_not_widened(self):
+        # The fix must ADD per-family sets, never broaden the shared one: a SQL-only word like
+        # `select` would then tint a plain identifier in C, Python, Go and everything else.
+        shared = runtime_shared_keywords()
+        sql_only = set(H.LANGUAGE_CONFIGS["sql"]["keywords"]) - set(H.LANGUAGE_CONFIGS["python"]["keywords"])
+        for word in ("select", "insert", "join", "group", "order", "update", "table", "values"):
+            self.assertIn(word, sql_only)
+            self.assertNotIn(word, shared,
+                             "%r is SQL-specific and must not enter the shared keyword set" % word)
+        # Same for the other dedicated families' distinctive words.
+        for word in ("endlocal", "setlocal", "dynamicparam", "qualified", "infixl", "inherit"):
+            self.assertNotIn(word, shared,
+                             "%r belongs to one family's set, not the shared one" % word)
+
 
 
 class RuntimeLanguageCoverageTests(unittest.TestCase):

@@ -56,6 +56,29 @@ test.describe("runtime code-highlight fallback (CMH-HL-01)", () => {
     await expect(xmlCode.locator("span.cmh-code-com").first()).toBeVisible();
   });
 
+  test("an unbaked language-sql block colors its own keywords, not the shared set's (CMH-HL-03)", async ({ page }) => {
+    // Regression (#706): the sql family had dedicated comment/string patterns but shared the broad
+    // multi-language keyword set, which carries no SELECT/INSERT/JOIN/GROUP/ORDER - so an unbaked
+    // block rendered with strings and comments colored and almost every keyword plain, while the
+    // same block baked by highlight_code.py colored them.
+    await open(page,
+      "<h1>Query</h1>"
+      + '<pre><code class="language-sql">SELECT id FROM orders'
+      + " INNER JOIN customers ON customers.id = orders.cid"
+      + " GROUP BY id ORDER BY id -- note</code></pre>",
+      "cmh-hl-fallback-sql");
+
+    const code = page.locator("#commentRoot pre code.language-sql");
+    const kw = await code.locator("span.cmh-code-kw").allTextContents();
+    for (const word of ["SELECT", "FROM", "INNER", "JOIN", "ON", "GROUP", "BY", "ORDER"]) {
+      expect(kw, "SQL keyword " + word + " should be colored").toContain(word);
+    }
+    // Identifiers stay plain, and the comment still tokenizes.
+    expect(kw).not.toContain("orders");
+    expect(kw).not.toContain("customers");
+    expect(await code.locator("span.cmh-code-com").allTextContents()).toEqual(["-- note"]);
+  });
+
   test("an unbaked language-jsonc block is highlighted on load with keys, values and comments (CMH-HL-05)", async ({ page }) => {
     const src = '{ /* blk */\n  "name": "cmh", // note\n  "n": 3\n}';
     await open(page,

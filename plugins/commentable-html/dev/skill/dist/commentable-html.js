@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.255.0";
+const CMH_VERSION = "1.256.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -1951,15 +1951,37 @@ const _HL_KW_SET = new Set(("abstract as async await base bool boolean break byt
   + "ref return self short static struct super switch synchronized template this throw throws trait try type typedef "
   + "typeof union unsafe use using var virtual void volatile when where while with yield true false and "
   + "cond defmacro defmodule defp defstruct deriving elseif newtype quote unquote receive rescue repeat until").split(" "));
-// Markup (html/xml) tag/keyword set - mirrors the author-time highlighter's html+xml keyword lists
-// (tools/blocks/highlight_code.py) so a runtime-highlighted markup block colors tag names the same
-// way a baked one does, instead of using the C-family keyword set (where words like `class` collide).
-const _HL_MARKUP_KW = new Set(("a article body button code div footer h1 h2 h3 head header html img "
-  + "input label li link main meta nav ol option p pre script section select span style table tbody "
-  + "td template textarea th thead title tr ul xml version encoding root item node element").split(" "));
-// JSON has exactly three barewords; using the broad C-family set here would tint an invalid stray
-// identifier as a keyword and diverge from the author-time json config.
-const _HL_JSON_KW = new Set(["true", "false", "null"]);
+// A family that gets its own comment/string patterns in _hlTokenRe() is 1:1 with an author-time
+// language, so it also gets its own KEYWORD set mirroring that language's list in
+// tools/blocks/highlight_code.py. Sharing the broad set below both under-colors (it carries no
+// `select`/`insert`/`join` for sql, no `auto`/`inherit` for css) and over-colors (`class` in lua,
+// `def` in haskell). The multi-language `hash`/`c` buckets keep the shared set - no single
+// author-time list describes them - and widening that set instead would tint a stray `select`
+// identifier as a keyword in every other language. A parity test pins each set to its author-time
+// config, so a future dedicated family cannot silently inherit the shared one.
+const _HL_FAM_KW = {
+  // Markup (html + xml): tag names, so a runtime-highlighted markup block colors the same tokens a
+  // baked one does instead of using the C-family set (where words like `class` collide).
+  markup: new Set(("a article body button code div footer h1 h2 h3 head header html img "
+    + "input label li link main meta nav ol option p pre script section select span style table tbody "
+    + "td template textarea th thead title tr ul xml version encoding root item node element").split(" ")),
+  // JSON has exactly three barewords; the broad set would tint an invalid stray identifier.
+  json: new Set(("true false null").split(" ")),
+  sql: new Set(("all alter and as asc between by case cast create cross delete desc distinct drop "
+    + "else end exists false from full group having in inner insert into is join left "
+    + "like limit not null on or order outer right select set table then true union "
+    + "update values when where with").split(" ")),
+  css: new Set(("auto important inherit initial none unset revert").split(" ")),
+  lua: new Set(("and break do else elseif end false for function goto if in local nil not or repeat "
+    + "return then true until while").split(" ")),
+  haskell: new Set(("as case class data default deriving do else foreign hiding if import in infix infixl "
+    + "infixr instance let module newtype of qualified then type where").split(" ")),
+  powershell: new Set(("begin break catch class continue data default do dynamicparam else elseif end enum "
+    + "exit filter finally for foreach from function hidden if in param process return "
+    + "static switch throw trap try until using while").split(" ")),
+  batch: new Set(("call cd cls copy defined del do echo else endlocal errorlevel exist exit for goto "
+    + "if in md move not pause popd pushd rd ren set setlocal shift start title type").split(" ")),
+};
 const _hlCache = {};
 // A JSON string token is a property KEY when it is CLOSED and the next non-whitespace character is a
 // colon. The author-time highlighter applies the same rule via a `"..."(?=\s*:)` lookahead whose closing
@@ -1987,9 +2009,11 @@ function _hlTokenRe(fam) {
   const sq = "'[^'\\\\]*(?:\\\\[\\s\\S][^'\\\\]*)*'";
   const bt = "`[^`\\\\]*(?:\\\\[\\s\\S][^`\\\\]*)*`?";
   let com, str, flags = "g";
+  // sql/powershell/batch/css/markup match keywords case-insensitively, mirroring the author-time
+  // tool's CASE_INSENSITIVE_LANGUAGES - so `AUTO` in css and `SELECT` in sql color on both paths.
   if (fam === "hash") { com = "#[^\\n]*"; str = dq + "|" + sq; }
   else if (fam === "sql") { com = "/\\*[\\s\\S]*?(?:\\*/|$)|--[^\\n]*"; str = "'[^']*(?:''[^']*)*'"; flags = "gi"; }
-  else if (fam === "css") { com = "/\\*[\\s\\S]*?(?:\\*/|$)"; str = dq + "|" + sq; }
+  else if (fam === "css") { com = "/\\*[\\s\\S]*?(?:\\*/|$)"; str = dq + "|" + sq; flags = "gi"; }
   else if (fam === "lua") { com = "--\\[\\[[\\s\\S]*?(?:\\]\\]|$)|--[^\\n]*"; str = dq + "|" + sq; }
   else if (fam === "haskell") { com = "\\{-[\\s\\S]*?(?:-\\}|$)|--[^\\n]*"; str = dq; }
   else if (fam === "powershell") { com = "<#[\\s\\S]*?(?:#>|$)|#[^\\n]*"; str = dq + "|" + sq; flags = "gi"; }
@@ -2261,7 +2285,7 @@ function cmhHighlightCode(text, lang) {
     if (g.com) cls = "com";
     else if (g.str) cls = (fam === "json" && _jsonKeyIsTerminated(t) && _jsonKeyFollows(text, re.lastIndex)) ? "key" : "str";
     else if (g.num) cls = "num";
-    else if (g.id) cls = (fam === "markup" ? _HL_MARKUP_KW : fam === "json" ? _HL_JSON_KW : _HL_KW_SET).has(re.ignoreCase ? t.toLowerCase() : t) ? "kw" : (text[re.lastIndex] === "(" ? "fn" : null);
+    else if (g.id) cls = (_HL_FAM_KW[fam] || _HL_KW_SET).has(re.ignoreCase ? t.toLowerCase() : t) ? "kw" : (text[re.lastIndex] === "(" ? "fn" : null);
     else if (g.op) cls = "op";
     out += cls ? ('<span class="cmh-code-' + cls + '">' + escapeHtml(t) + "</span>") : escapeHtml(t);
     last = re.lastIndex;
