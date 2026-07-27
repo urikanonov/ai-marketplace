@@ -3,6 +3,8 @@ import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import { DEV, SKILL } from "./helpers.js";
+import { DIMENSION_DELTA_PX } from "../tools/shot_clip.mjs";
+import { imagesMatch } from "../tools/shot_compare.mjs";
 
 // These tests each spawn the capture tool (a browser-launching subprocess). They are data-safe to
 // run in parallel - the tool isolates its own scratch per process id, and each test below writes to
@@ -32,18 +34,12 @@ const REPO = path.resolve(DEV, "..", "..", "..");
 // Per-worker scratch root (process id) so parallel workers never share a dir - and so this file's
 // afterAll only ever removes ITS OWN worker's tree, never a dir another worker is writing into.
 const TEST_TMP = path.join(REPO, "tmp", "tutorial-shots-spec", String(process.pid));
-const PIXEL_CHANNEL_TOLERANCE = 96;
-// Match the tool's --check budget exactly (capture_tutorial.mjs MAX_PIXEL_DIFF_RATIO / MAX_DIMENSION_DELTA)
-// so this cross-run determinism assertion is never STRICTER than the freshness gate it mirrors: a
-// sub-pixel layout jitter that --check tolerates must not fail here.
-const MAX_PIXEL_DIFF_RATIO = 0.2;
-const MAX_DIMENSION_DELTA = 2;
-// The tool degrades BOTH images the same way before diffing (downsample by 2 then upsample nearest,
-// plus a step-64 color quantize) so cross-platform font antialiasing cannot fail the check. The
-// committed PNGs are saved raw/crisp now, so mirror that normalization here to keep this determinism
-// assertion aligned with (never stricter than) the tool's --check budget.
-const PNG_DOWNSAMPLE = 2;
-const PNG_QUANTIZE_STEP = 64;
+// Full-viewport clips are a fixed 1320x900 CSS px box, so their height is a constant rather than a
+// content-derived (font-metric dependent) measurement and is deliberately NOT quantized.
+const FULL_VIEWPORT_PX = 900 * 2;
+// The cross-run determinism assertions below diff images with the SAME comparator the --check
+// freshness gate uses (tools/shot_compare.mjs), imported rather than copied, so this suite can never
+// become stricter - or laxer - than the gate it mirrors.
 
 // Run the capture tool with the example + output dir (and, for the extra scenes, an explicit
 // prefix). With no prefix the tool defaults to "garden", so regenerating the garden tutorial
@@ -86,84 +82,6 @@ function freshDir(name) {
   return dir;
 }
 
-async function imagesMatch(comparePage, expected, actual) {
-  if (!fs.existsSync(expected) || !fs.existsSync(actual)) return false;
-  const ratio = await comparePage.evaluate(async ({ expectedBase64, actualBase64, tolerance, maxDimensionDelta, scale, step }) => {
-    async function decode(base64) {
-      const img = new Image();
-      img.src = "data:image/png;base64," + base64;
-      await img.decode();
-      return img;
-    }
-    // Degrade both images identically (downsample then upsample nearest + color-quantize) before
-    // diffing, exactly like capture_tutorial.mjs, so this determinism check is never stricter than
-    // the tool's --check even though the committed PNGs are now saved raw and crisp.
-    function normalize(img, width, height) {
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      ctx.drawImage(img, 0, 0);
-      if (scale > 1) {
-        const small = document.createElement("canvas");
-        small.width = Math.max(1, Math.ceil(width / scale));
-        small.height = Math.max(1, Math.ceil(height / scale));
-        const sctx = small.getContext("2d");
-        sctx.imageSmoothingEnabled = true;
-        sctx.drawImage(canvas, 0, 0, small.width, small.height);
-        ctx.clearRect(0, 0, width, height);
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(small, 0, 0, width, height);
-      }
-      const image = ctx.getImageData(0, 0, width, height);
-      const d = image.data;
-      for (let i = 0; i < d.length; i += 4) {
-        d[i] = Math.round(d[i] / step) * step;
-        d[i + 1] = Math.round(d[i + 1] / step) * step;
-        d[i + 2] = Math.round(d[i + 2] / step) * step;
-        if (d[i] === d[i + 1] && d[i + 1] === d[i + 2] && d[i] >= 192) {
-          d[i] = 255;
-          d[i + 1] = 255;
-          d[i + 2] = 255;
-        }
-      }
-      return d;
-    }
-    try {
-      const expectedImg = await decode(expectedBase64);
-      const actualImg = await decode(actualBase64);
-      if (Math.abs(expectedImg.naturalWidth - actualImg.naturalWidth) > maxDimensionDelta
-        || Math.abs(expectedImg.naturalHeight - actualImg.naturalHeight) > maxDimensionDelta) return 1;
-      const width = Math.min(expectedImg.naturalWidth, actualImg.naturalWidth);
-      const height = Math.min(expectedImg.naturalHeight, actualImg.naturalHeight);
-      const expectedData = normalize(expectedImg, width, height);
-      const actualData = normalize(actualImg, width, height);
-      let different = 0;
-      const total = width * height;
-      for (let i = 0; i < expectedData.length; i += 4) {
-        const maxChannelDelta = Math.max(
-          Math.abs(expectedData[i] - actualData[i]),
-          Math.abs(expectedData[i + 1] - actualData[i + 1]),
-          Math.abs(expectedData[i + 2] - actualData[i + 2]),
-          Math.abs(expectedData[i + 3] - actualData[i + 3]),
-        );
-        if (maxChannelDelta > tolerance) different += 1;
-      }
-      return different / total;
-    } catch {
-      return 1;
-    }
-  }, {
-    expectedBase64: fs.readFileSync(expected).toString("base64"),
-    actualBase64: fs.readFileSync(actual).toString("base64"),
-    tolerance: PIXEL_CHANNEL_TOLERANCE,
-    maxDimensionDelta: MAX_DIMENSION_DELTA,
-    scale: PNG_DOWNSAMPLE,
-    step: PNG_QUANTIZE_STEP,
-  });
-  return ratio <= MAX_PIXEL_DIFF_RATIO;
-}
-
 test.afterAll(() => {
   // Only this worker's own scratch tree. The capture tool cleans its own per-process check/generate
   // scratch (tmp/tutorial-shots-check/<pid>, tmp/tutorial-shots-generate/<pid>) on success, so do
@@ -199,6 +117,16 @@ test("regenerates every garden shot into a nested out dir, and --check passes on
   for (const name of SHOTS) {
     expect(fs.existsSync(path.join(outA, `garden-${name}.png`)), `missing garden-${name}.png`).toBe(true);
   }
+  // CMH-BUILD-17: the garden scene is the ONLY place the fixed-region clip (11-side-toc, 14-thread)
+  // and the comment-search clip run, so assert HERE, on freshly captured output, that every
+  // content-derived clip landed on the shared grid. Dropping quantization from any of those call
+  // sites turns this red without waiting for a rebaseline.
+  const offGrid = SHOTS
+    .map((name) => ({ name, height: pngHeight(path.join(outA, `garden-${name}.png`)) }))
+    .filter((s) => s.height % DIMENSION_DELTA_PX !== 0 && s.height !== FULL_VIEWPORT_PX)
+    .map((s) => `garden-${s.name} (h=${s.height})`);
+  expect(offGrid, "these fresh garden clips are neither on the clip grid nor the fixed full-viewport "
+    + "height, so their height can drift with the renderer's font metrics").toEqual([]);
   const clean = check(EXAMPLE, outA);
   expect(clean.error, String(clean.error)).toBeFalsy();
   expect(clean.status, clean.stderr).toBe(0);
@@ -339,6 +267,81 @@ for (const scene of EXTRA_SCENES) {
     expect(stale.stderr).toContain(`${firstShot} differs`);
   });
 }
+
+// The exact #698 symptom, end to end: the committed baseline was rendered by a DIFFERENT font stack,
+// so the same element measures a couple of CSS pixels shorter or taller there. Quantizing the clip
+// collapses that onto one grid value; a baseline that sits one grid line away is the residual
+// straddle case the budget allows. Cropping only removes bottom rows, so the overlap the comparator
+// comes down to is the same content.
+function pngHeight(file) {
+  // PNG dimensions live in the IHDR chunk: height is a big-endian uint32 at byte 20.
+  return fs.readFileSync(file).readUInt32BE(20);
+}
+
+async function cropPngHeight(page, srcFile, dstFile, cropDevicePx) {
+  const encoded = await page.evaluate(async ({ b64, crop }) => {
+    const img = new Image();
+    img.src = "data:image/png;base64," + b64;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth;
+    canvas.height = Math.max(1, img.naturalHeight - crop);
+    canvas.getContext("2d").drawImage(img, 0, 0);
+    return canvas.toDataURL("image/png").split(",")[1];
+  }, { b64: fs.readFileSync(srcFile).toString("base64"), crop: cropDevicePx });
+  fs.writeFileSync(dstFile, Buffer.from(encoded, "base64"));
+}
+
+test("a grid-line straddle in the baseline does not fail --check, a smaller shift does (CMH-BUILD-17)", async ({ browser }) => {
+  test.setTimeout(180000);
+  const scene = EXTRA_SCENES.find((s) => s.prefix === "checklist");
+  const shot = `${scene.prefix}-${scene.shots[0]}.png`;
+  const page = await browser.newPage();
+  try {
+    const straddled = path.join(freshDir("drift-tolerated"), "assets");
+    fs.mkdirSync(straddled, { recursive: true });
+    const seed = capture(scene.example, straddled, scene.prefix);
+    expect(seed.error, String(seed.error)).toBeFalsy();
+    expect(seed.status, seed.stderr).toBe(0);
+
+    // The capture itself is what makes the shot renderer-independent: an element clip must land on
+    // the shared grid, so the same scene yields the same height under either font stack.
+    const captured = path.join(straddled, shot);
+    expect(pngHeight(captured) % DIMENSION_DELTA_PX,
+      "the checklist element clip is not on the shared clip grid").toBe(0);
+    // Keep the PRISTINE capture: every case below must be built from it, so each crop is measured
+    // against the fresh capture at exactly its own delta. Deriving a case from an already-cropped
+    // copy would compound the crops, and a lax `delta <= one quantum` implementation would still
+    // pass because the compounded delta lands outside the band either way.
+    const pristine = path.join(freshDir("drift-pristine"), shot);
+    fs.mkdirSync(path.dirname(pristine), { recursive: true });
+    fs.copyFileSync(captured, pristine);
+
+    // Quantizing cannot be boundary-free: two heights either side of a grid line land exactly one
+    // quantum apart. That case must pass.
+    await cropPngHeight(page, pristine, captured, DIMENSION_DELTA_PX);
+    const tolerated = check(scene.example, straddled, scene.prefix);
+    expect(tolerated.error, String(tolerated.error)).toBeFalsy();
+    expect(tolerated.status, tolerated.stdout + tolerated.stderr).toBe(0);
+    expect(tolerated.stdout).toContain("tutorial screenshots are in sync");
+
+    // The allowance is that ONE exact value between two ON-GRID heights, not a tolerance band. A
+    // SUB-quantum shift is the case that distinguishes the two: a band would wave it through, but it
+    // can only be real content added or removed at the bottom edge, which the overlap-cropped pixel
+    // diff cannot see. An OVER-quantum shift must fail too, so the allowance is not simply a floor.
+    for (const crop of [DIMENSION_DELTA_PX - 1, DIMENSION_DELTA_PX + 1]) {
+      const broken = path.join(freshDir(`drift-rejected-${crop}`), "assets");
+      fs.mkdirSync(broken, { recursive: true });
+      await cropPngHeight(page, pristine, path.join(broken, shot), crop);
+      const rejected = check(scene.example, broken, scene.prefix);
+      expect(rejected.error, String(rejected.error)).toBeFalsy();
+      expect(rejected.status, `crop ${crop}: ${rejected.stdout}${rejected.stderr}`).toBe(1);
+      expect(rejected.stderr).toContain(`${shot} differs`);
+    }
+  } finally {
+    await page.close();
+  }
+});
 
 // The no-positional default run (`npm run shots` / rebuild_all) drives ALL scenes at once. This test
 // guards the tool/spec shot contract: a SCENE_ORDER drift that dropped a scene, or a shot added to

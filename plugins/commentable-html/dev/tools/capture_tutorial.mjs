@@ -12,6 +12,11 @@ import { chromium } from "@playwright/test";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath, pathToFileURL } from "url";
+import {
+  CLIP_QUANTUM, DEVICE_SCALE, DIMENSION_DELTA_PX, MAX_WIDTH_DELTA,
+  quantizeClipHeight, clampedClipHeight,
+} from "./shot_clip.mjs";
+import { imagesMatch } from "./shot_compare.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The in-browser layout/scroll settle loops throw on a wall-clock deadline that was sized for a
@@ -76,11 +81,6 @@ const TRIAGE_SHOTS = ["01-board"];
 // while a scene has been dropped from SCENE_ORDER.
 const SCENE_SHOTS = { garden: GARDEN_SHOTS, triage: TRIAGE_SHOTS, checklist: CHECKLIST_SHOTS, note: NOTE_SHOTS };
 const SCENE_ORDER = ["garden", "triage", "checklist", "note"];
-const PNG_QUANTIZE_STEP = 64;
-const PNG_DOWNSAMPLE = 2;
-const PIXEL_CHANNEL_TOLERANCE = 96;
-const MAX_PIXEL_DIFF_RATIO = 0.2;
-const MAX_DIMENSION_DELTA = 2;
 const ELEMENT_SHOT_TOP = 24;
 
 if (printPaths) {
@@ -89,7 +89,17 @@ if (printPaths) {
   // drops it here too, failing the test) instead of re-declaring the shot lists.
   const scenes = {};
   for (const key of SCENE_ORDER) scenes[key] = SCENE_SHOTS[key];
-  console.log(JSON.stringify({ example: htmlArg, outDir, prefix, check: checkMode, scenes }));
+  console.log(JSON.stringify({
+    example: htmlArg,
+    outDir,
+    prefix,
+    check: checkMode,
+    scenes,
+    clipQuantum: CLIP_QUANTUM,
+    deviceScale: DEVICE_SCALE,
+    maxWidthDelta: MAX_WIDTH_DELTA,
+    quantumStraddlePx: DIMENSION_DELTA_PX,
+  }));
   process.exit(0);
 }
 
@@ -226,7 +236,9 @@ function roundedClip(box, size, top = Math.floor(box.y)) {
     x: Math.floor(box.x),
     y: top,
     width: Math.max(1, size.width),
-    height: Math.max(1, size.height),
+    // Only the HEIGHT is content-derived (the layout width comes from the fixed viewport), so only
+    // the height is quantized - see tools/shot_clip.mjs.
+    height: quantizeClipHeight(size.height),
   };
 }
 
@@ -328,7 +340,7 @@ async function captureScene(scene, targetDir) {
   try {
     context = await browser.newContext({
       viewport: { width: 1320, height: 900 },
-      deviceScaleFactor: 2,
+      deviceScaleFactor: DEVICE_SCALE,
       colorScheme: "light",
       locale: "en-US",
       timezoneId: "UTC",
@@ -375,7 +387,9 @@ async function screenshotFixedRegion(page, locator, pathName, pad = 8) {
   const x = Math.max(0, Math.floor(box.x) - pad);
   const y = Math.max(0, Math.floor(box.y) - pad);
   const width = Math.max(1, Math.min(Math.ceil(box.width) + pad * 2, view.width - x));
-  const height = Math.max(1, Math.min(Math.ceil(box.height) + pad * 2, view.height - y));
+  // Quantized against the viewport bound so a clamped clip still lands on the grid - see
+  // tools/shot_clip.mjs (quantizing up and then clamping would leave an off-grid height).
+  const height = clampedClipHeight(Math.ceil(box.height) + pad * 2, view.height - y);
   await writeScreenshot(page, pathName, { clip: { x, y, width, height } });
 }
 
@@ -640,19 +654,22 @@ async function captureGarden(ctx) {
     if (searchInput) contentBottom = Math.max(contentBottom, searchInput.getBoundingClientRect().bottom);
     for (const card of cards) contentBottom = Math.max(contentBottom, card.getBoundingClientRect().bottom);
     const pad = 16;
-    const height = Math.min(sb.height, Math.max(1, contentBottom - sb.top + pad));
     return {
+      // The content-derived height is quantized (and clamped to the panel) in Node, so the clip grid
+      // lives in one place - tools/shot_clip.mjs - instead of being duplicated in page script.
+      panelHeight: Math.floor(sb.height),
       clip: {
         x: Math.max(0, Math.floor(sb.left)),
         y: Math.max(0, Math.floor(sb.top)),
         width: Math.ceil(sb.width),
-        height: Math.ceil(height),
+        height: Math.max(1, Math.ceil(contentBottom - sb.top + pad)),
       },
     };
   });
   if (searchClip.error) {
     throw new Error("capture: cannot capture garden-13-comment-search: " + searchClip.error);
   }
+  searchClip.clip.height = clampedClipHeight(searchClip.clip.height, searchClip.panelHeight);
   await writeScreenshot(page, shotPath(targetDir, P, "13-comment-search"), { clip: searchClip.clip });
 
   // Clear the query, then open and shoot the sidebar export menu.
@@ -791,88 +808,6 @@ function buildScenes() {
     shots: SCENE_DEFS[key].shots,
     capture: SCENE_DEFS[key].capture,
   }));
-}
-
-async function imagesMatch(comparePage, expected, actual) {
-  if (!fs.existsSync(expected) || !fs.existsSync(actual)) return false;
-  const ratio = await comparePage.evaluate(async ({ expectedBase64, actualBase64, tolerance, maxDimensionDelta, scale, step }) => {
-    async function decode(base64) {
-      const img = new Image();
-      img.src = "data:image/png;base64," + base64;
-      await img.decode();
-      return img;
-    }
-    // Normalize BOTH images the same way before diffing: downsample then upsample nearest (to erase
-    // the sub-pixel font antialiasing that differs across platforms) and quantize colors. This keeps
-    // the --check comparison deterministic across OSes WITHOUT degrading the committed PNGs, which
-    // are written to disk raw and crisp.
-    function normalize(img, width, height) {
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      ctx.drawImage(img, 0, 0);
-      if (scale > 1) {
-        const small = document.createElement("canvas");
-        small.width = Math.max(1, Math.ceil(width / scale));
-        small.height = Math.max(1, Math.ceil(height / scale));
-        const sctx = small.getContext("2d");
-        sctx.imageSmoothingEnabled = true;
-        sctx.drawImage(canvas, 0, 0, small.width, small.height);
-        ctx.clearRect(0, 0, width, height);
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(small, 0, 0, width, height);
-      }
-      const image = ctx.getImageData(0, 0, width, height);
-      const d = image.data;
-      for (let i = 0; i < d.length; i += 4) {
-        d[i] = Math.round(d[i] / step) * step;
-        d[i + 1] = Math.round(d[i + 1] / step) * step;
-        d[i + 2] = Math.round(d[i + 2] / step) * step;
-        if (d[i] === d[i + 1] && d[i + 1] === d[i + 2] && d[i] >= 192) {
-          d[i] = 255;
-          d[i + 1] = 255;
-          d[i + 2] = 255;
-        }
-      }
-      return d;
-    }
-    try {
-      const expectedImg = await decode(expectedBase64);
-      const actualImg = await decode(actualBase64);
-      const widthDelta = Math.abs(expectedImg.naturalWidth - actualImg.naturalWidth);
-      const heightDelta = Math.abs(expectedImg.naturalHeight - actualImg.naturalHeight);
-      if (widthDelta > maxDimensionDelta || heightDelta > maxDimensionDelta) return 1;
-      const width = Math.min(expectedImg.naturalWidth, actualImg.naturalWidth);
-      const height = Math.min(expectedImg.naturalHeight, actualImg.naturalHeight);
-      const expectedData = normalize(expectedImg, width, height);
-      const actualData = normalize(actualImg, width, height);
-      let different = 0;
-      const total = width * height;
-      for (let i = 0; i < expectedData.length; i += 4) {
-        const maxChannelDelta = Math.max(
-          Math.abs(expectedData[i] - actualData[i]),
-          Math.abs(expectedData[i + 1] - actualData[i + 1]),
-          Math.abs(expectedData[i + 2] - actualData[i + 2]),
-          Math.abs(expectedData[i + 3] - actualData[i + 3]),
-        );
-        if (maxChannelDelta > tolerance) {
-          different += 1;
-        }
-      }
-      return different / total;
-    } catch (e) {
-      return 1;
-    }
-  }, {
-    expectedBase64: fs.readFileSync(expected).toString("base64"),
-    actualBase64: fs.readFileSync(actual).toString("base64"),
-    tolerance: PIXEL_CHANNEL_TOLERANCE,
-    maxDimensionDelta: MAX_DIMENSION_DELTA,
-    scale: PNG_DOWNSAMPLE,
-    step: PNG_QUANTIZE_STEP,
-  });
-  return ratio <= MAX_PIXEL_DIFF_RATIO;
 }
 
 async function checkScreenshots(scenes) {
