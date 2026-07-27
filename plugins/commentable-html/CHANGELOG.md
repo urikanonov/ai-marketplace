@@ -4,6 +4,30 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.258.0] - 2026-07-27
+
+### Added
+
+- Content-scoped editing for the agent review loop. `tools/authoring/content_extract.py` prints ONLY
+  the fragment between the CONTENT markers - the 0.1 to 1.3 percent of a document an agent actually
+  edits - instead of making it read a 1.4 to 2.5 MB file, and hands back de-highlighted SOURCE so the
+  agent never has to hand-maintain token spans. A code block the highlight inverse refuses
+  (hand-written markup inside a `<pre><code>`) is passed through verbatim, so the loop never stalls on
+  the very blocks it exists to repair (CMH-CONTENT-01).
+- `tools/authoring/content_replace.py` writes a fragment back as ONE atomic transaction: check, swap,
+  re-bake (typography, section cards, highlighting, an existing TOC), strict-validate, re-stamp the
+  content-bound validated hash, and optionally mark Copy-all ids handled. Either every step succeeds
+  or the original file is left byte-for-byte unchanged with no temporary file surviving - there is no
+  half-finished state and no follow-up step to remember. A replacement that changes nothing does not
+  touch the file at all (CMH-CONTENT-02).
+- A content edit is LOCAL: a section the agent did not touch keeps a byte-identical hash, so its
+  Mark-reviewed marker survives, while an edited section hashes differently (CMH-CONTENT-03).
+- `tools/authoring/extract_comments.py` prints the embedded comment snapshot as JSON or fenced text
+  for the peer-review path, where a returned Portable file carries comments nobody pasted. It reports
+  what is baked into the file, never "all current comments" - a reviewer's newer edits can still sit
+  in browser `localStorage`, which no command-line tool can read - and it wraps every reviewer note in
+  an untrusted-note fence so a downstream agent treats it as data, not instructions (CMH-CONTENT-04).
+
 ## [1.257.0] - 2026-07-26
 
 ### Added

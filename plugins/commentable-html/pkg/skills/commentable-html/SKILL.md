@@ -5,7 +5,7 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.257.0`
+**Version:** `1.258.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
 
@@ -104,6 +104,17 @@ When the user pastes a **Copy all** bundle back:
 python tools/authoring/mark_handled.py <file.html> <id1> <id2> ...
 python tools/authoring/mark_handled.py <file.html> --from-bundle -
 ```
+
+**Edit the content, not the file.** A generated document is 1.4 - 2.5 MB, of which the CONTENT region is 0.1 - 1.3 percent. NEVER read or rewrite the whole file to change a paragraph - extract the content, edit that, and write it back:
+
+```bash
+python tools/authoring/content_extract.py <file.html> --out frag.html   # de-highlighted source
+# ...edit frag.html only...
+python tools/authoring/content_replace.py <file.html> --content frag.html \
+    --handled-from-bundle bundle.txt        # swap + re-bake + validate + stamp, atomically
+```
+
+`content_replace.py` is ONE transaction - it re-bakes, strict-validates and re-stamps internally, or leaves the file byte-for-byte unchanged - so there is no follow-up step to remember. Untouched sections keep their hashes, so Mark-reviewed markers survive an edit elsewhere. For a peer-review file that arrives with comments already embedded (nobody pasted a bundle), read them with `python tools/authoring/extract_comments.py <file.html> --text`; that prints the EMBEDDED snapshot only, since no tool can read a reviewer's browser `localStorage`.
 
 Tell the user to reload, using Ctrl+F5 if needed. Do not edit the user's `localStorage` directly. Details of the Copy-all payload live in [Copy payload format](references/copy-payload.md).
 
