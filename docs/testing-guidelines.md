@@ -171,8 +171,11 @@ and you get the `<pid>/<scene>/` tree the check rendered into `tmp/tutorial-shot
 runner, so compare each PNG in it against the committed
 `plugins/commentable-html/docs/assets/` file of the SAME NAME to see what actually moved - the check
 diffs in memory and writes no diff image, so those two PNGs are the whole comparison. The upload is
-tied to that gate step's own outcome, so a green run never pays for it, and a gate that failed
-before rendering anything simply uploads nothing.
+tied to that gate step's own outcome, so a green run never pays for it. What it can upload is what
+the check kept: a comparison that reported a stale or missing shot keeps its renders, while a gate
+that failed earlier (an unpinned digest, a docker error, a crash mid-capture) may leave nothing, so
+the step warns instead of failing a second time. The artifact is kept for 14 days, so grab it while
+the run is fresh; re-running the failed job replaces it rather than erroring on the existing one.
 
 #### Why a shot can drift by a few pixels with no content change (CMH-BUILD-17)
 

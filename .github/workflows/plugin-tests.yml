@@ -274,9 +274,13 @@ jobs:
         with:
           name: tutorial-shots-drift
           path: tmp/tutorial-shots-check/
-          # A gate that failed BEFORE rendering (a missing digest pin, a docker error) leaves
-          # nothing behind; warn rather than adding a second, misleading failure.
+          # A gate that failed BEFORE the comparison (a missing digest pin, a docker error, a crash
+          # mid-capture) leaves nothing behind; warn rather than adding a second, misleading failure.
           if-no-files-found: warn
+          # "Re-run failed jobs" keeps the run id, and an artifact name is unique per RUN, so
+          # without this the second attempt would die on "artifact already exists" instead of
+          # recording the fresh evidence.
+          overwrite: true
           retention-days: 14
       # workers=3 (below the runner's 4 vCPUs): each heavy test spawns its OWN capture chromium
       # subprocess, so 3 workers keep the peak concurrent-browser count off the OS-thrash ceiling

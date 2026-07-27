@@ -635,9 +635,14 @@ class DriftEvidenceArtifactTests(unittest.TestCase):
                            "the upload has to come AFTER the step whose outcome it reads")
         self.assertEqual(_with_field(upload, "path"), "tmp/tutorial-shots-check/",
                          "the check keeps the fresh PNGs there; nothing else is evidence")
+        self.assertEqual(_with_field(upload, "name"), "tutorial-shots-drift",
+                         "the guide names this artifact; a silent rename orphans the instructions")
         # A missing scratch dir (the gate failed before rendering) must not add a SECOND, confusing
         # failure on top of the real one.
-        self.assertIn(_with_field(upload, "if-no-files-found"), ("warn", "ignore"))
+        self.assertEqual(_with_field(upload, "if-no-files-found"), "warn")
+        # "Re-run failed jobs" reuses the run id, and an artifact name is unique per run.
+        self.assertEqual(_with_field(upload, "overwrite"), "true")
+        self.assertEqual(_with_field(upload, "retention-days"), "14")
 
     def test_the_evidence_upload_never_runs_on_a_green_job(self):
         # Uploading unconditionally would cost every green run the artifact packing time, and would
@@ -680,7 +685,13 @@ def _workflow_text():
 
 
 def _shots_job_steps(block):
-    """The job block split into its individual `- name:` steps (text, comments included)."""
+    """The job block split into its individual `- name:` steps.
+
+    Comment lines aligned with the `- name:` bullet belong to no step: they neither end the step
+    being read nor join it. Two assumptions, both true of this job: a step starts with its `name:`
+    (a `- uses:`-first step would be invisible here, so a failure below would read as "removed"
+    when it was only reordered), and values are single-line scalars (no `>` / `|` blocks).
+    """
     lines = block.split("\n")
     steps = []
     current = None
@@ -688,7 +699,10 @@ def _shots_job_steps(block):
         if line.startswith("      - name:"):
             current = [line]
             steps.append(current)
-        elif current is not None:
+            continue
+        if line.strip().startswith("#"):
+            continue
+        if current is not None:
             if line.strip() and not line.startswith("       "):
                 current = None
                 continue
@@ -731,11 +745,14 @@ def _with_field(step, key):
 
 
 def _scalar(raw):
-    value = raw.strip()
-    if value.startswith("${{") and value.endswith("}}"):
-        value = value[3:-2].strip()
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
-        value = value[1:-1]
+    value = raw.split("  #", 1)[0].strip()
+    for _ in range(2):
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1].strip()
+        elif value.startswith("${{") and value.endswith("}}"):
+            value = value[3:-2].strip()
+        else:
+            break
     return value
 
 
