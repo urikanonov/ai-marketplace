@@ -40,6 +40,7 @@ import content_extract  # noqa: E402
 import doc_stamp  # noqa: E402
 import finalize  # noqa: E402
 import generate_toc  # noqa: E402
+import kql_highlight  # noqa: E402
 import mark_handled  # noqa: E402
 import section_hash  # noqa: E402
 import validate  # noqa: E402
@@ -121,6 +122,40 @@ def restore_unchanged_blocks(new_fragment, old_fragment):
     return content_extract._PRE_CODE_RE.sub(repl, new_fragment)
 
 
+_KQL_FIGURE_RE = re.compile(r"<figure\b[^>]*\bclass=\"[^\"]*cmh-kql[^\"]*\"[^>]*>.*?</figure>",
+                            re.DOTALL | re.IGNORECASE)
+
+
+def refresh_kql_links(fragment):
+    """Rebuild the ADX Run link of every KQL figure whose query changed.
+
+    The link encodes the query INSIDE its href, so a figure whose code was edited would
+    otherwise keep running the pre-edit text - silently, since nothing validates the
+    payload. Rebuilding from the figure's own code block keeps the two in step.
+    """
+    def repl(m):
+        figure = m.group(0)
+        code = content_extract._PRE_CODE_RE.search(figure)
+        if not code:
+            return figure
+        source = _core_dehighlight(code.group(3))
+        if source is None:
+            return figure
+        try:
+            return kql_highlight.refresh_block(figure, source)
+        except ValueError:
+            return figure  # not a runnable figure: leave it exactly as authored
+
+    return _KQL_FIGURE_RE.sub(repl, fragment)
+
+
+def _core_dehighlight(inner):
+    """Return a KQL block's source whether it arrives highlighted or as raw source."""
+    import _highlight_core
+    source = _highlight_core.dehighlight(inner)
+    return source
+
+
 def splice(html, fragment):
     """Return `html` with its CONTENT region replaced by `fragment`."""
     start, end = content_extract.content_span(html)
@@ -187,6 +222,7 @@ def replace(path, fragment, handled_ids=None, strict=True):
     original = _read(path)
     start, end = content_extract.content_span(original)
     fragment = restore_unchanged_blocks(fragment, original[start:end])
+    fragment = refresh_kql_links(fragment)
     spliced = splice(original, fragment)
 
     work_fd, work = tempfile.mkstemp(prefix=".cmh-replace-", suffix=".html",

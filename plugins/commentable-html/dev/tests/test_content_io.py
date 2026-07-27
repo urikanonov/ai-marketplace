@@ -9,6 +9,7 @@ through verbatim rather than mangled, and untouched blocks never churn).
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -369,6 +370,33 @@ class CommentExtractionTests(_DocCase):
         _write(self.doc, doc[:start] + "\nnot json\n" + doc[end:])
         with self.assertRaises(extract_comments.ExtractCommentsError):
             extract_comments.extract_comments(_read(self.doc))
+
+
+class KqlEditLoopTests(_DocCase):
+    """CMH-KQL-10 end to end: editing a query through the loop refreshes its Run link."""
+
+    def test_editing_a_kql_query_regenerates_the_adx_link(self):
+        import kql_highlight
+        import kusto_link
+        from urllib.parse import unquote, urlparse
+        import html as _h
+
+        figure = kql_highlight.render_block(
+            "help.kusto.windows.net", "Samples", "Demo", "StormEvents | take 10")
+        _write(self.doc, _read(self.doc).replace("<pre><code", figure + "\n<pre><code", 1))
+        content_replace.finalize_document(self.doc)
+
+        frag = content_extract.extract(_read(self.doc)).replace(
+            "StormEvents | take 10", "StormEvents | take 99")
+        content_replace.replace(self.doc, frag)
+
+        after = _read(self.doc)
+        m = re.search(r'class="cmh-kql-run" href="([^"]*)"', after)
+        self.assertIsNotNone(m, "the Run link must survive the round trip")
+        parsed = urlparse(_h.unescape(m.group(1)))
+        payload = unquote(parsed.query.split("query=", 1)[1])
+        self.assertEqual(kusto_link.decode_query(payload), "StormEvents | take 99",
+                         "the Run button must not execute the pre-edit query")
 
 
 if __name__ == "__main__":

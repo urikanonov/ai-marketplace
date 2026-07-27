@@ -81,6 +81,17 @@ def encode_query(query):
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
+def decode_query(payload):
+    """Inverse of `encode_query`: base64-decode then gunzip back to the query text.
+
+    Lets a tool recover the query a deep link carries, so an edited query block can have
+    its link regenerated instead of silently continuing to run the pre-edit text.
+    """
+    raw = base64.b64decode(payload)
+    with gzip.GzipFile(fileobj=io.BytesIO(raw), mode="rb") as gz:
+        return gz.read().decode("utf-8")
+
+
 def kusto_link(cluster, database, query):
     """Build the full dataexplorer.azure.com deep link that runs `query`."""
     host = normalize_cluster(cluster)

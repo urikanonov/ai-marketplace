@@ -32,6 +32,7 @@ _toolpath.ensure()
 import _highlight_core as _core  # noqa: E402
 import highlight_code  # noqa: E402
 import highlight_document  # noqa: E402
+import kql_highlight  # noqa: E402
 import new_document  # noqa: E402
 
 # A block code element, matched exactly as highlight_document.py matches it so the two
@@ -65,8 +66,8 @@ def _reversible_source(code_attrs, inner):
     block back EXACTLY. Two ways that fails, both of which would silently corrupt the
     document rather than refuse:
 
-    - The label is one `highlight_document.py` does not bake (`language-text`,
-      `language-kusto`, an unknown label), so nothing would re-escape the source.
+    - The label is one `highlight_document.py` does not bake (`language-text`, an
+      unknown label), so nothing would re-escape the source.
     - The source contains a `<` immediately followed by a letter - `Array<string>`,
       `vector<int>`, `if x<y:` - which `highlight_document.py` refuses to re-highlight
       because it looks like markup. Extremely common in real code.
@@ -78,7 +79,8 @@ def _reversible_source(code_attrs, inner):
     if not raw:
         return None
     lang = highlight_code._normalize_language(raw)
-    if lang not in highlight_code.LANGUAGE_CONFIGS:
+    is_kql = lang in highlight_document._KQL_LANGUAGES
+    if not is_kql and lang not in highlight_code.LANGUAGE_CONFIGS:
         return None
     source = _core.dehighlight(inner)
     if source is None:
@@ -88,7 +90,9 @@ def _reversible_source(code_attrs, inner):
     # gets re-escaped, so check the real gate, not just the tokenizer.
     if highlight_document._TAG_RE.search(source):
         return None
-    if highlight_code.highlight_code(lang, source) != inner:
+    rebaked = (kql_highlight.highlight_inner(source) if is_kql
+               else highlight_code.highlight_code(lang, source))
+    if rebaked != inner:
         return None  # the re-bake would not reproduce this block, so do not touch it
     return source
 

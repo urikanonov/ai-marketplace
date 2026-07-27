@@ -4,6 +4,13 @@ that shipped without highlight spans)."""
 import _toolpath
 from .parsing import _CLASS_ATTR_RE, _CODE_TAG_RE, _PRE_TAG_RE
 
+_toolpath.ensure()
+import _highlight_core  # noqa: E402
+
+# Kusto labels the document highlight path bakes via the KQL tokenizer (CMH-KQL-09), so
+# an unhighlighted one is a real warning here rather than an ignorable label.
+_KQL_LANGUAGES = frozenset(("kusto", "kql"))
+
 
 def _highlight_language_table():
     """Import the author-time highlighter's language table (configs + aliases) from the sibling
@@ -50,10 +57,20 @@ def check_code_highlighting(html):
                 continue
             lang = raw_lang.strip().lower()
             lang = aliases.get(lang, lang)
-            if lang not in configs:
-                continue  # a non-highlightable label (language-text, language-kusto, ...) is fine
-            if "cmh-code-" in code_inner:
-                continue  # already highlighted
+            if lang not in configs and lang not in _KQL_LANGUAGES:
+                continue  # a non-highlightable label (language-text, ...) is fine
+            state = _highlight_core.classify(code_inner)
+            if state == "highlighted":
+                continue
+            if state == "hand-written":
+                # A substring probe for "cmh-code-" accepted malformed or hand-edited
+                # spans, which is exactly what the strict scanner exists to catch.
+                warnings.append(
+                    'a <pre><code class="language-%s"> block carries markup the highlighter '
+                    "did not emit (a nested, malformed, or hand-written span) - the authoring "
+                    "tools will refuse to rewrite it, so fix the markup or remove the "
+                    "language label" % raw_lang)
+                continue
             warnings.append(
                 'a <pre><code class="language-%s"> block is not syntax-highlighted (no cmh-code-* '
                 'spans) - run "python tools/highlight_code.py %s" over the code (or use '
