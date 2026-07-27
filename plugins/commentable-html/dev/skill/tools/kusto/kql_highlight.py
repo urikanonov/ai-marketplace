@@ -73,6 +73,9 @@ _TOKEN_RE = re.compile(r"""
 
 _esc = _core.esc
 
+# Bounded call lookahead (see highlight_inner): spaces/tabs then an open paren.
+_CALL_AHEAD_RE = re.compile(r"[ \t]*\(")
+
 
 def _span(cls, text):
     return _core.span(cls, text)
@@ -102,7 +105,11 @@ def highlight_inner(query):
             out.append(_span("cmh-kql-op", text))
         elif kind == "ident":
             low = text.lower()
-            is_call = src[m.end():].lstrip(" \t")[:1] == "("
+            # Look AHEAD with a bounded regex instead of slicing the whole tail on every
+            # identifier: `src[m.end():]` copied the rest of the query per token, which is
+            # quadratic on a large one. `[ \t]*` (not `\s*`) keeps the exact old semantics -
+            # a newline before the paren is NOT a call - so the golden output is unchanged.
+            is_call = _CALL_AHEAD_RE.match(src, m.end()) is not None
             if low in KEYWORDS:
                 out.append(_span("cmh-kql-kw", text))
             elif is_call or low in FUNCTIONS:

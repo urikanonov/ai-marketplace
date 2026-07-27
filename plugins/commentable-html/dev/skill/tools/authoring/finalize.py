@@ -50,124 +50,105 @@ def _write(path, html):
         fh.write(html)
 
 
-def _run_normalize(path):
-    source = _read(path)
-    rewritten, count = normalize_typography.normalize_typography(source)
-    changed = rewritten != source
-    if changed:
-        _write(path, rewritten)
-    return changed, count
+def _apply_normalize(html):
+    rewritten, count = normalize_typography.normalize_typography(html)
+    return rewritten, (rewritten != html), count
 
 
-def _run_toc(path):
-    source = _read(path)
-    rewritten = generate_toc.rewrite_html(source)
-    changed = rewritten != source
-    if changed:
-        _write(path, rewritten)
-    return changed
+def _apply_toc(html):
+    rewritten = generate_toc.rewrite_html(html)
+    return rewritten, (rewritten != html)
 
 
-def _run_fix_skip(path):
-    source = _read(path)
-    rewritten, count = fix_skip.fix(source)
-    changed = rewritten != source
-    if changed:
-        _write(path, rewritten)
-    return changed, count
+def _apply_fix_skip(html):
+    rewritten, count = fix_skip.fix(html)
+    return rewritten, (rewritten != html), count
 
 
-def _run_wrap_sections(path):
-    source = _read(path)
-    m = _KIND_META_RE.search(source)
-    kind = (m.group(1) if m else "").strip().lower()
-    if kind not in _SECTION_CARD_KINDS:
-        return False, 0
-    rewritten, count = wrap_sections.fix(source)
-    changed = rewritten != source
-    if changed:
-        _write(path, rewritten)
-    return changed, count
+def _document_kind(html):
+    m = _KIND_META_RE.search(html)
+    return (m.group(1) if m else "").strip().lower()
 
 
-def _run_inline_images(path, base_dir):
-    source = _read(path)
-    rewritten, inlined, missing = inline_images.inline_images(source, base_dir)
-    changed = rewritten != source
-    if changed:
-        _write(path, rewritten)
-    return changed, inlined, missing
+def _apply_wrap_sections(html):
+    if _document_kind(html) not in _SECTION_CARD_KINDS:
+        return html, False, 0
+    rewritten, count = wrap_sections.fix(html)
+    return rewritten, (rewritten != html), count
 
 
-def _run_highlight(path):
-    source = _read(path)
-    rewritten, count = highlight_document.highlight_document(source)
-    changed = rewritten != source
-    if changed:
-        _write(path, rewritten)
-    return changed, count
+def _apply_inline_images(html, base_dir):
+    rewritten, inlined, missing = inline_images.inline_images(html, base_dir)
+    return rewritten, (rewritten != html), inlined, missing
 
 
-def _run_toc_dedup(path):
-    source = _read(path)
-    rewritten, count = generate_toc.strip_toc_numbers(source)
-    changed = rewritten != source
-    if changed:
-        _write(path, rewritten)
-    return changed, count
+def _apply_highlight(html):
+    rewritten, count = highlight_document.highlight_document(html)
+    return rewritten, (rewritten != html), count
 
 
-def _run_stats(path):
-    source = _read(path)
-    m = _KIND_META_RE.search(source)
-    kind = (m.group(1) if m else "").strip().lower()
-    if kind not in _SECTION_CARD_KINDS:
-        return False, False
-    rewritten = doc_stats.rewrite_html(source)
-    changed = rewritten != source
-    if changed:
-        _write(path, rewritten)
-    return True, changed
+def _apply_toc_dedup(html):
+    rewritten, count = generate_toc.strip_toc_numbers(html)
+    return rewritten, (rewritten != html), count
+
+
+def _apply_stats(html):
+    if _document_kind(html) not in _SECTION_CARD_KINDS:
+        return html, False, False
+    rewritten = doc_stats.rewrite_html(html)
+    return rewritten, True, (rewritten != html)
 
 
 def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_base=None,
              run_highlight=True, run_wrap_sections=True, run_stats=True, run_normalize=True):
+    # Read ONCE, thread the document through the pure phase transforms in memory, write ONCE.
+    # Each phase used to re-read and re-write the whole file, so a 1.4 - 2.5 MB document paid
+    # about 8 reads, 8 writes and 8 independent full-document parses per finalize - and
+    # content_replace.py calls finalize on every write-back, so the agent edit loop paid it on
+    # each iteration. The phase ORDER and every transform are unchanged, so the output is
+    # byte-identical (pinned by tests/test_finalize_pipeline.py).
+    source = _read(path)
+    html = source
     steps = []
     if run_normalize:
-        changed, count = _run_normalize(path)
+        html, changed, count = _apply_normalize(html)
         status = "normalized %d AI char(s)" % count if changed else "unchanged"
         steps.append(("normalize", status))
     if run_toc:
-        changed = _run_toc(path)
+        html, changed = _apply_toc(html)
         steps.append(("toc", "updated" if changed else "unchanged"))
     if run_wrap_sections:
-        changed, count = _run_wrap_sections(path)
+        html, changed, count = _apply_wrap_sections(html)
         status = "wrapped %d section(s)" % count if changed else "unchanged"
         steps.append(("wrap-sections", status))
     if run_fix_skip:
-        changed, count = _run_fix_skip(path)
+        html, changed, count = _apply_fix_skip(html)
         status = "fixed %d block(s)" % count if changed else "unchanged"
         steps.append(("fix-skip", status))
     if run_inline:
         base = images_base or os.path.dirname(os.path.abspath(path))
-        changed, inlined, missing = _run_inline_images(path, base)
+        html, changed, inlined, missing = _apply_inline_images(html, base)
         status = "inlined %d image(s), %d missing" % (inlined, len(missing))
         if not changed and not inlined and not missing:
             status = "unchanged"
         steps.append(("inline-images", status))
     if run_highlight:
-        changed, count = _run_highlight(path)
+        html, changed, count = _apply_highlight(html)
         status = "highlighted %d block(s)" % count if changed else "unchanged"
         steps.append(("highlight", status))
     # Always de-duplicate an author-numbered ordered-list .cm-toc so it is never double-numbered.
-    changed, count = _run_toc_dedup(path)
+    html, changed, count = _apply_toc_dedup(html)
     if changed:
         steps.append(("toc-numbers", "stripped %d entry(ies)" % count))
     # Bake the section/word/reading-time overview strip for report/plan documents.
     if run_stats:
-        applicable, changed = _run_stats(path)
+        html, applicable, changed = _apply_stats(html)
         if applicable:
             steps.append(("doc-stats", "updated" if changed else "unchanged"))
+    # Validation reads the file, so the document has to be on disk first - but only when the
+    # pipeline actually changed it.
+    if html != source:
+        _write(path, html)
     errors, warnings = validate.validate(path)
     return {"steps": steps, "errors": errors, "warnings": warnings}
 
