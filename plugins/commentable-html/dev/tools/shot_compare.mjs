@@ -140,3 +140,85 @@ export async function imagesMatch(comparePage, expected, actual) {
   return (await compareImages(comparePage, expected, actual)).ok;
 }
 
+// Rendered in the browser page: paint the expected shot dimmed, then mark every pixel that differs
+// by more than the tolerance in magenta, so the eye lands on WHAT moved rather than on two
+// near-identical screenshots. Returns a base64 PNG, or null when either image cannot be decoded.
+function renderDiff({ expectedBase64, actualBase64, tolerance }) {
+  async function decode(base64) {
+    const img = new Image();
+    img.src = "data:image/png;base64," + base64;
+    await img.decode();
+    return img;
+  }
+  function ctxFor(img, width, height) {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0);
+    return ctx;
+  }
+  return (async () => {
+    try {
+      const expectedImg = await decode(expectedBase64);
+      const actualImg = await decode(actualBase64);
+      // Render on the MAXIMUM bounds, not the minimum: a dimension mismatch is a normal failing
+      // result from compareImages, and clipping to the overlap would discard the added or removed
+      // strip entirely - producing a faded image with ZERO magenta pixels for a real failure.
+      const width = Math.max(expectedImg.naturalWidth, actualImg.naturalWidth);
+      const height = Math.max(expectedImg.naturalHeight, actualImg.naturalHeight);
+      if (!width || !height) return null;
+      const expectedCtx = ctxFor(expectedImg, width, height);
+      const actualData = ctxFor(actualImg, width, height).getImageData(0, 0, width, height).data;
+      const out = expectedCtx.getImageData(0, 0, width, height);
+      const data = out.data;
+      const inExpected = (x, y) => x < expectedImg.naturalWidth && y < expectedImg.naturalHeight;
+      const inActual = (x, y) => x < actualImg.naturalWidth && y < actualImg.naturalHeight;
+      for (let i = 0; i < data.length; i += 4) {
+        const px = (i / 4) % width;
+        const py = Math.floor((i / 4) / width);
+        // A pixel present in only ONE image is a difference by definition - that is exactly the
+        // strip a dimension change adds or removes.
+        const onlyOne = inExpected(px, py) !== inActual(px, py);
+        const maxChannelDelta = Math.max(
+          Math.abs(data[i] - actualData[i]),
+          Math.abs(data[i + 1] - actualData[i + 1]),
+          Math.abs(data[i + 2] - actualData[i + 2]),
+          Math.abs(data[i + 3] - actualData[i + 3]),
+        );
+        if (onlyOne || maxChannelDelta > tolerance) {
+          data[i] = 255; data[i + 1] = 0; data[i + 2] = 255; data[i + 3] = 255;
+        } else {
+          // Fade the matching pixels so the marked ones read at a glance.
+          data[i] = 255 - (255 - data[i]) * 0.25;
+          data[i + 1] = 255 - (255 - data[i + 1]) * 0.25;
+          data[i + 2] = 255 - (255 - data[i + 2]) * 0.25;
+        }
+      }
+      expectedCtx.putImageData(out, 0, 0);
+      return expectedCtx.canvas.toDataURL("image/png").split(",")[1];
+    } catch {
+      return null;
+    }
+  })();
+}
+
+// Write a magenta-marked diff PNG for a failing pair. Returns true when one was written.
+// Fully best-effort: the WRITE is inside the try too, so a permissions, I/O or disk-space failure
+// returns false rather than throwing and aborting the remaining comparisons.
+export async function writeDiffImage(comparePage, expected, actual, outFile) {
+  if (!fs.existsSync(expected) || !fs.existsSync(actual)) return false;
+  try {
+    const base64 = await comparePage.evaluate(renderDiff, {
+      expectedBase64: fs.readFileSync(expected).toString("base64"),
+      actualBase64: fs.readFileSync(actual).toString("base64"),
+      tolerance: PIXEL_CHANNEL_TOLERANCE,
+    });
+    if (!base64) return false;
+    fs.writeFileSync(outFile, Buffer.from(base64, "base64"));
+    return true;
+  } catch {
+    return false;
+  }
+}
+

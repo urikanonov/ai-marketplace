@@ -218,12 +218,15 @@ failed run carries the evidence: the `playwright-heavy` job uploads the freshly 
 `tutorial-shots-drift` artifact (found under "Artifacts" on the failed run's summary page). Unzip it
 and you get the `<pid>/<scene>/` tree the check rendered into `tmp/tutorial-shots-check/` on the
 runner, so compare each PNG in it against the committed
-`plugins/commentable-html/docs/assets/` file of the SAME NAME to see what actually moved - the check
-diffs in memory and writes no diff image, so those two PNGs are the whole comparison. The upload is
-tied to that gate step's own outcome, so a green run never pays for it. What it can upload is what
-the check kept: a comparison that reported a stale or missing shot keeps its renders, while a gate
-that failed earlier (an unpinned digest, a docker error, a crash mid-capture) may leave nothing, so
-the step warns instead of failing a second time. The artifact is kept for 14 days, so grab it while
+`plugins/commentable-html/docs/assets/` file of the SAME NAME to see what actually moved. Start with
+the `<scene>-<name>.diff.png` beside each fresh PNG: the check paints every pixel that differs by
+more than the gate's own channel tolerance in magenta over a faded copy of the committed shot, so the
+change is visible at a glance instead of by eyeballing two near-identical screenshots. A diff is
+written only for a FAILING shot, and only when it can be rendered - it is evidence, never a verdict,
+so it cannot change the pass/fail outcome. The upload is tied to that gate step's own outcome, so a
+green run never pays for it. What it can upload is what the check kept, and the check now keeps its
+renders on ANY unsuccessful run - a stale or missing shot, and equally a crash mid-capture, which
+used to delete the shots it had already rendered. The artifact is kept for 14 days, so grab it while
 the run is fresh; re-running the failed job replaces it rather than erroring on the existing one.
 
 #### Why a shot can drift by a few pixels with no content change (CMH-BUILD-17)
