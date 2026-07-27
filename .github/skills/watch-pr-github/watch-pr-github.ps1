@@ -25,7 +25,12 @@ param(
     # Clears a previously persisted -NoMerge opt-out, re-enabling autonomous completion.
     [switch]$AllowMerge,
     # ONLY these exact logins are trusted as Copilot. A generic [bot] suffix is not enough.
-    [string[]]$CopilotLogins = @('copilot-pull-request-reviewer', 'copilot-pull-request-reviewer[bot]', 'copilot-swe-agent', 'copilot-swe-agent[bot]', 'Copilot')
+    [string[]]$CopilotLogins = @('copilot-pull-request-reviewer', 'copilot-pull-request-reviewer[bot]', 'copilot-swe-agent', 'copilot-swe-agent[bot]', 'Copilot'),
+    # Acknowledge event key(s) the PREVIOUS launch emitted. Delivery is at-least-once: a decided
+    # event is stored as `pending` and only becomes `seen` when the next launch acks it, so a
+    # watcher killed before the agent read the line re-fires instead of stranding the PR.
+    # The agent passes back the keys printed in the EVENT line's `ack=` field.
+    [string[]]$Ack = @()
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -55,13 +60,30 @@ function Load-Seen {
     if (Test-Path $StateFile) {
         $st = ConvertFrom-WatcherState -Json (Get-Content $StateFile -Raw)
         $script:StateNoMerge = [bool]$st.NoMerge
-        return @($st.Seen)
+        # Promote only the pending keys this launch ACKNOWLEDGES; the rest are dropped so their
+        # events re-fire. This is what makes delivery at-least-once (WPG-DELIVERY-01).
+        $resolved = Resolve-WatcherState -State $st -Ack @($Ack)
+        if (@($st.Pending).Count -gt 0) {
+            $dropped = @($st.Pending | Where-Object { $Ack -notcontains $_ })
+            if ($dropped.Count -gt 0) {
+                Write-Host "[$(Get-Date -Format o)] re-arming $($dropped.Count) unacknowledged event key(s): $($dropped -join ', ')"
+            }
+        }
+        return @($resolved.Seen)
     }
     return @()
 }
 function Save-Seen([object[]]$ids) {
     $tmp = "$StateFile.tmp"
-    [pscustomobject]@{ seen = @($ids); noMerge = $script:StateNoMerge } | ConvertTo-Json -Depth 4 | Set-Content -Path $tmp -Encoding utf8
+    ConvertTo-WatcherStateJson -Seen @($ids) -Pending @() -NoMerge $script:StateNoMerge | Set-Content -Path $tmp -Encoding utf8
+    Move-Item -Path $tmp -Destination $StateFile -Force
+}
+# Record a DECIDED-but-undelivered event key. It goes to `pending`, never straight to `seen`,
+# so a watcher killed before the agent consumes the printed line re-fires instead of stranding
+# the PR (the PR #718 failure).
+function Save-Pending([object[]]$seenIds, [object[]]$pendingIds) {
+    $tmp = "$StateFile.tmp"
+    ConvertTo-WatcherStateJson -Seen @($seenIds) -Pending @($pendingIds) -NoMerge $script:StateNoMerge | Set-Content -Path $tmp -Encoding utf8
     Move-Item -Path $tmp -Destination $StateFile -Force
 }
 
@@ -263,7 +285,17 @@ for ($i = 0; $i -lt $MaxIterations; $i++) {
             # Persist only when the decision actually added a seen key. Terminal
             # (PR_MERGED/PR_CLOSED) and the deliberately un-seen-guarded DISABLE_AUTO_MERGE
             # leave the seen-set unchanged and are not persisted, matching the original loop.
-            if ($decision.Changed) { Save-Seen $decision.Seen }
+            #
+            # The new key goes to PENDING, not seen: the event is only "delivered" once the
+            # agent acknowledges it on the next launch (-Ack). Committing it here is what let a
+            # killed watcher mark an event delivered that nobody ever received.
+            if ($decision.Changed) {
+                $newKeys = @(@($decision.Seen) | Where-Object { $seen -notcontains $_ })
+                Save-Pending -seenIds $seen -pendingIds $newKeys
+                # Printed on its OWN line so the EVENT= contract is unchanged. The agent passes
+                # these back as -Ack on the next launch to confirm it consumed the event.
+                if ($newKeys.Count -gt 0) { Write-Output ("ACK_KEYS=" + ($newKeys -join ',')) }
+            }
             Write-Output $decision.Event
             exit 0
         }
