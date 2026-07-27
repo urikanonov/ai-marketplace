@@ -586,6 +586,34 @@ Assert-True (@($dirty.Seen) -notcontains '') "an empty-string key is dropped rat
 Assert-True (@($dirty.Seen) -contains 'review:1') "real keys survive the cleanup"
 
 
+Write-Host "`nWPG-DELIVERY-01: an ack is DURABLE (the runnable Load-Seen persists the promotion)"
+# The assertions above drive the pure resolve in isolation, so they pass even if the runnable
+# watcher never writes the promotion back. That gap was real: the loop persists state only on
+# a decision or an opt-out change, so a launch that acked a key and then polled without a new
+# event left `pending` on disk, and the NEXT launch (carrying no -Ack) dropped it and re-fired
+# an event the agent had already handled - forever. So exercise the REAL persistence path.
+# -MaxIterations 0 skips the poll loop entirely, so no gh/network call is made.
+$stateProbe = Join-Path ([IO.Path]::GetTempPath()) ("wpg-test-" + [guid]::NewGuid().ToString('N') + ".json")
+try {
+    '{"seen":["review:1"],"pending":["ready:abc"],"noMerge":false}' | Set-Content $stateProbe -Encoding utf8
+    $runnable = Join-Path (Split-Path -Parent $PSScriptRoot) 'watch-pr-github.ps1'
+    $out = & pwsh -NoProfile -Command "
+        . '$runnable' -Owner o -Repo r -PrNumber 1 -MaxIterations 0 -StateFile '$stateProbe' -Ack @('ready:abc')
+        Load-Seen | ForEach-Object { `$_ }
+    " 2>&1
+    $returned = @($out | Where-Object { $_ -notlike 'EVENT=*' })
+    Assert-True ($returned -contains 'ready:abc') "the runnable Load-Seen returns the promoted key"
+
+    $onDisk = ConvertFrom-WatcherState (Get-Content $stateProbe -Raw)
+    Assert-True (@($onDisk.Seen) -contains 'ready:abc') "the promotion is PERSISTED, so the ack survives a launch that never decides again"
+    Assert-Eq 0 @($onDisk.Pending).Count "the pending set is cleared on disk, not just in memory"
+    Assert-True (@($onDisk.Seen) -contains 'review:1') "the pre-existing seen keys are preserved"
+    Assert-True (-not $onDisk.NoMerge) "the sticky opt-out is preserved across the durable write"
+} finally {
+    Remove-Item $stateProbe -Force -ErrorAction SilentlyContinue
+}
+
+
 if ($script:failures.Count -gt 0) {
     Write-Host "FAILED ($($script:failures.Count) assertion(s), $script:passes passed):" -ForegroundColor Red
     $script:failures | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }

@@ -29,7 +29,8 @@ param(
     # Acknowledge event key(s) the PREVIOUS launch emitted. Delivery is at-least-once: a decided
     # event is stored as `pending` and only becomes `seen` when the next launch acks it, so a
     # watcher killed before the agent read the line re-fires instead of stranding the PR.
-    # The agent passes back the keys printed in the EVENT line's `ack=` field.
+    # The agent passes back the keys the previous launch printed on its own `ACK_KEYS=` line
+    # (a separate line from `EVENT=`, whose format is unchanged).
     [string[]]$Ack = @()
 )
 Set-StrictMode -Version Latest
@@ -68,6 +69,14 @@ function Load-Seen {
             if ($dropped.Count -gt 0) {
                 Write-Host "[$(Get-Date -Format o)] re-arming $($dropped.Count) unacknowledged event key(s): $($dropped -join ', ')"
             }
+            # PERSIST the resolution immediately. Resolving only in memory made the ack
+            # non-durable: the loop writes state only when a decision or an opt-out change
+            # happens, so a launch that acked a key and then polled without a new event left
+            # `pending` on disk. The NEXT launch (which no longer carries -Ack) dropped it and
+            # re-fired an event the agent had already handled, indefinitely. Writing here is
+            # safe in both directions: acked keys are confirmed delivered, and dropped keys
+            # are deliberately re-armed, so an interrupted write still fails toward re-firing.
+            Save-Seen @($resolved.Seen)
         }
         return @($resolved.Seen)
     }
