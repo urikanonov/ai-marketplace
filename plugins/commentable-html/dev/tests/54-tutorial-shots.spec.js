@@ -60,6 +60,25 @@ function check(example, outDir, prefix) {
   return spawnSync("node", args, { encoding: "utf8", timeout: 150000, killSignal: "SIGKILL" });
 }
 
+// The COMMITTED screenshots may only be rendered by the guarded wrapper (the digest-pinned
+// container). Run the raw script against the default out dir with the renderer marker scrubbed, in
+// --check mode so a REGRESSION here cannot rewrite the committed PNGs: it can only fail this test.
+function rawAgainstCommitted() {
+  const env = { ...process.env };
+  delete env.CMH_SHOTS_RENDERER;
+  return spawnSync("node", [path.join(DEV, "tools", "capture_tutorial.mjs"), "--check"],
+                   { encoding: "utf8", timeout: 60000, killSignal: "SIGKILL", env });
+}
+
+test("the raw capture refuses to touch the committed screenshots without the guarded renderer (CMH-BUILD-16)", () => {
+  const res = rawAgainstCommitted();
+  expect(res.status).toBe(2);
+  const err = res.stderr || "";
+  expect(err).toContain("refusing");
+  expect(err).toContain("pinned Playwright container");
+  expect(err).toContain("npm run shots:check");
+});
+
 function freshDir(name) {
   const dir = path.join(TEST_TMP, name);
   fs.rmSync(dir, { recursive: true, force: true });

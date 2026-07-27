@@ -503,16 +503,18 @@ version order (see "Maximizing concurrency"); if a newer merge takes your versio
 `rebuild_all.py`.
 
 The one artifact `rebuild_all.py` does NOT regenerate on every host is the tutorial screenshots: they
-are rendered on a pinned x86_64 Ubuntu CI runner, and font rasterization differs per OS, distro,
-release and architecture, so re-rendering them elsewhere produces a shot that passes every local
-check and then fails the required `playwright-heavy` job. `rebuild_all.py` skips that step wherever
-the host is not the CI platform. Regenerate with `npm run shots` (or verify with
-`npm run shots:check`) from `plugins/commentable-html/dev`: every shots script routes through
-`tools/shots_linux.py`, which renders natively only where the host IS the CI platform and otherwise
-falls back to the pinned Playwright container automatically - so Docker is needed only in that
-fallback, never for development, the suites, or CI. See "Regenerating the tutorial screenshots" in
-[docs/testing-guidelines.md](docs/testing-guidelines.md) for the exact dispatch rule and the scope of
-the guarantee.
+are rendered in ONE digest-pinned Playwright container (the same renderer the required
+`playwright-heavy` job validates them with), because font rasterization is decided by the OS image
+the browser runs on. `rebuild_all.py` drives that container too, so it regenerates them correctly on
+any host WITH Docker and skips just that step where Docker is unavailable. Regenerate with
+`npm run shots` (or verify with `npm run shots:check`) from `plugins/commentable-html/dev`: every
+shots script routes through `tools/shots_linux.py`, which always renders in the pinned container -
+so Docker is needed by the shots commands only, never for development or the test suites. After
+bumping `@playwright/test`, re-pin the renderer with `npm run shots:digest` and commit
+`dev/tools/shots-image.lock`. Note the trade: the habitual commands now render in a container
+wherever Docker exists (they used to skip off Linux), so the first run pulls ~900 MB and `npm test`
+is minutes slower. See "Regenerating the tutorial screenshots" in
+[docs/testing-guidelines.md](docs/testing-guidelines.md).
 
 Enable the git hooks once per clone so they run automatically (this is one of the steps
 `scripts/setup_dev.py` performs; skip a single commit with `git commit --no-verify`, or a single

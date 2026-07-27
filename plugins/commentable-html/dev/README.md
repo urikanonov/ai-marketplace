@@ -158,15 +158,18 @@ committed files. Check committed screenshots for drift without rewriting them:
 npm run shots:check
 ```
 
-**The committed PNGs are rendered on the pinned CI Ubuntu runner, and font rasterization differs per
-OS, distro, release, and architecture.** So `npm run shots` renders natively only when this host IS
-that platform, and otherwise runs the capture inside the matching
-`mcr.microsoft.com/playwright:v<version>-noble` container (Docker required only in that case; the
-image tag is derived from `package-lock.json`, never hardcoded). For the same reason
-`npm run shots:check` SKIPS with a note where the host cannot render like CI - a real comparison
-there would be meaningless - and `python scripts/rebuild_all.py` skips the screenshot step too.
-Force the container explicitly with `npm run shots:linux` / `npm run shots:linux:check`. See
-"Regenerating the tutorial screenshots" in `../../../docs/testing-guidelines.md`.
+**The committed PNGs are rendered in ONE digest-pinned Playwright container - the same renderer the
+required CI job validates them with - because browser font rasterization is decided by the OS image,
+not the browser version.** So `npm run shots` always runs the capture inside
+`mcr.microsoft.com/playwright` (Docker required for the shots commands only; the tag comes from
+`package-lock.json` and the exact sha256 from `tools/shots-image.lock`, never hardcoded). Because
+Docker stays optional for everything else, `npm run shots:check` SKIPS with a note when Docker is
+unavailable - though never in CI - and `python scripts/rebuild_all.py` skips just that step. After
+bumping `@playwright/test`, re-pin the renderer with `npm run shots:digest` and commit the lock.
+`capture_tutorial.mjs` itself refuses to render or verify the committed PNGs unless the wrapper
+invoked it, so the raw command cannot rewrite them with this machine's fonts (capturing into any
+other directory still works). See "Regenerating the tutorial screenshots" in
+`../../../docs/testing-guidelines.md`.
 
 A separate quality gate rejects a blurry, faded/color-quantized, under-resolved, whitespace-heavy
 (oversized-clip), or load-flash yellow-cast shot so a low-quality screenshot can never reach the
@@ -179,8 +182,8 @@ npm run shots:quality
 `npm test` runs both the drift check and the quality gate (`tests/55-shot-quality.spec.js`).
 
 To capture a single scene of a different example, pass overrides through the same wrapper (the prefix
-selects the capture recipe: `garden`, `triage`, `checklist`, or `note`) so the render still happens on
-the correct platform:
+selects the capture recipe: `garden`, `triage`, `checklist`, or `note`) so the render still happens in
+the pinned container:
 
 ```powershell
 npm run shots -- <example.html> <outDir> <prefix>

@@ -8,7 +8,7 @@ gate" fixup commits. This is the single command that runs them all deterministic
   1. tools/build.py         - the commentable-html layer dist bundles + stamped manifests
   2. tools/build_spec.py    - the generated commentable-html dev/SPEC.md
   3. tests/fixtures/generate.mjs - the Playwright fixtures (embed the runtime version)
-  4. capture_tutorial.mjs - tutorial screenshots used by docs and the site
+  4. tools/shots_linux.py   - tutorial screenshots, rendered in the pinned container
   5. scripts/build_site_data.py  - the GitHub Pages site (pages, demos, sitemap, llms)
 
 Usage:
@@ -35,11 +35,12 @@ PKG_DIR = os.path.join(ROOT, "plugins", "commentable-html", "pkg", "skills", "co
 # The built demo reports/prompts live at the plugin top level (not shipped, not in the zip).
 EXAMPLES_DIR = os.path.join(ROOT, "plugins", "commentable-html", "examples")
 FIXTURES_GEN = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tests", "fixtures", "generate.mjs")
-TUTORIAL_SHOTS = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tools", "capture_tutorial.mjs")
+TUTORIAL_SHOTS = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tools", "shots_linux.py")
 SHOTS_TOOL_DIR = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tools")
-# capture_tutorial.mjs imports @playwright/test, so it needs the commentable-html dev node_modules
-# installed (run scripts/setup_dev.py). When they are absent the step is skipped with a note rather
-# than failing with a cryptic ERR_MODULE_NOT_FOUND.
+# capture_tutorial.mjs imports @playwright/test, and the container reuses the mounted node_modules
+# rather than installing its own, so the commentable-html dev deps must be installed (run
+# scripts/setup_dev.py). When they are absent the step is skipped with a note rather than failing
+# with a cryptic ERR_MODULE_NOT_FOUND.
 TUTORIAL_DEPS = os.path.join(ROOT, "plugins", "commentable-html", "dev", "node_modules",
                              "@playwright", "test")
 SITE_DATA = os.path.join(ROOT, "scripts", "build_site_data.py")
@@ -49,22 +50,20 @@ def _tutorial_deps_installed():
     return os.path.isdir(TUTORIAL_DEPS)
 
 
-def _host_renders_ci_shots():
-    """True when this host renders the tutorial screenshots the way the CI job does.
+def _pinned_renderer_available():
+    """True when the pinned screenshot container can actually run on this machine.
 
-    The committed PNGs are rendered on a pinned Ubuntu runner, and font rasterization is decided by
-    the OS image, so "is this Linux?" is too broad - a different distro, release, or architecture
-    still renders differently. Delegate to the single predicate in the plugin's shots_linux tool so
-    this orchestrator and `npm run shots` can never disagree; fall back to a conservative
-    platform check only if that tool cannot be imported.
+    The committed PNGs are rendered in ONE digest-pinned Playwright image on every host and in CI,
+    so the only local precondition is a working Docker. Delegate to the single helper in the
+    plugin's shots tool so this orchestrator and `npm run shots` can never disagree.
     """
     try:
         sys.path.insert(0, SHOTS_TOOL_DIR)
         import shots_linux
-        return shots_linux.host_matches_ci_renderer()
+        return shots_linux.renderer_available()
     except Exception:
-        # Fail CLOSED: without the shared predicate we cannot tell whether this host renders like
-        # CI, and guessing "yes" is what silently produced wrong PNGs in the first place.
+        # Fail CLOSED: without the shared helper we cannot tell whether the pinned renderer is
+        # available, and rendering with whatever this host has is what produced wrong PNGs.
         return False
 
 
@@ -94,23 +93,24 @@ def main(argv=None):
         steps.append(("Playwright fixtures (generate.mjs)", [node, FIXTURES_GEN] + check))
     else:
         print("== Playwright fixtures (generate.mjs) == skipped (node not found; CI plugin-tests runs it)")
-    if not _host_renders_ci_shots():
-        print("== Tutorial screenshots (capture_tutorial.mjs) == skipped (this host does not render "
-              "the committed screenshots the way the CI job does - they are rendered on a pinned "
-              "x86_64 Ubuntu runner - so regenerating or checking them here would use the wrong "
-              "renderer). Run 'npm run shots' from plugins/commentable-html/dev to render them "
-              "correctly (it uses the pinned container automatically where needed); CI plugin-tests "
-              "remains the authoritative gate.")
-    elif node and os.path.exists(TUTORIAL_SHOTS) and _tutorial_deps_installed():
-        steps.append(("Tutorial screenshots (capture_tutorial.mjs)", [node, TUTORIAL_SHOTS] + check))
-    elif node and os.path.exists(TUTORIAL_SHOTS):
-        print("== Tutorial screenshots (capture_tutorial.mjs) == skipped "
+    if not _pinned_renderer_available():
+        print("== Tutorial screenshots (shots_linux.py) == skipped (Docker is not available, and "
+              "the committed screenshots are rendered ONLY in the pinned Playwright container - "
+              "the same renderer the required CI job validates them with - so re-rendering them "
+              "with this machine's browser would pass every local check and then fail that job). "
+              "Start Docker and run 'npm run shots' from plugins/commentable-html/dev; CI "
+              "plugin-tests remains the authoritative gate.")
+    elif not os.path.exists(TUTORIAL_SHOTS):
+        print("== Tutorial screenshots (shots_linux.py) == skipped (capture script not found)")
+    elif _tutorial_deps_installed():
+        # The container brings its own node, so this step needs Docker and the mounted
+        # node_modules - not a node on the host PATH.
+        steps.append(("Tutorial screenshots (shots_linux.py)",
+                      [sys.executable, TUTORIAL_SHOTS] + check))
+    else:
+        print("== Tutorial screenshots (shots_linux.py) == skipped "
               "(commentable-html dev node_modules not installed; run 'python scripts/setup_dev.py'; "
               "CI plugin-tests runs it)")
-    elif not node:
-        print("== Tutorial screenshots (capture_tutorial.mjs) == skipped (node not found; CI plugin-tests runs it)")
-    else:
-        print("== Tutorial screenshots (capture_tutorial.mjs) == skipped (capture script not found)")
     steps.append(("GitHub Pages site (build_site_data.py)", [sys.executable, SITE_DATA] + check))
 
     failed = []
