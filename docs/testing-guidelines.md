@@ -163,6 +163,20 @@ producing a CI-failing artifact. If your change does not affect the shots, resto
 `git checkout origin/main -- plugins/commentable-html/docs/assets` and confirm with
 `npm run shots:check`.
 
+**When the CI drift gate fails, download the pixels it saw (CMH-BUILD-18).** Because the container
+is the only renderer, a contributor without Docker cannot reproduce a drift failure locally, so the
+failed run carries the evidence: the `playwright-heavy` job uploads the freshly rendered PNGs as the
+`tutorial-shots-drift` artifact (found under "Artifacts" on the failed run's summary page). Unzip it
+and you get the `<pid>/<scene>/` tree the check rendered into `tmp/tutorial-shots-check/` on the
+runner, so compare each PNG in it against the committed
+`plugins/commentable-html/docs/assets/` file of the SAME NAME to see what actually moved - the check
+diffs in memory and writes no diff image, so those two PNGs are the whole comparison. The upload is
+tied to that gate step's own outcome, so a green run never pays for it. What it can upload is what
+the check kept: a comparison that reported a stale or missing shot keeps its renders, while a gate
+that failed earlier (an unpinned digest, a docker error, a crash mid-capture) may leave nothing, so
+the step warns instead of failing a second time. The artifact is kept for 14 days, so grab it while
+the run is fresh; re-running the failed job replaces it rather than erroring on the existing one.
+
 #### Why a shot can drift by a few pixels with no content change (CMH-BUILD-17)
 
 The drift is FONT METRICS, not the browser. Issue #698 probed `.cmh-checklist` under the exact capture
