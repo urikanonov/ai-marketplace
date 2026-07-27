@@ -27,13 +27,17 @@ HIGHLIGHT_JS = os.path.join(_paths.ASSETS, "js", "26-highlight.js")
 # A key inside the _HL_FAMILY object literal: a bareword (javascript) or a quoted token ("c++")
 # immediately before a colon. Values ("c", "hash") never precede a colon, so they are not captured.
 _HL_FAMILY_KEY_RE = re.compile(r'("[^"]+"|[A-Za-z_$][A-Za-z0-9_$+.#-]*)\s*:')
-# A full `<label>: "<family>"` pair of that same literal.
-_HL_FAMILY_PAIR_RE = re.compile(r'("[^"]+"|[A-Za-z_$][A-Za-z0-9_$+.#-]*)\s*:\s*"([a-z]+)"')
+# A full `<label>: "<family>"` pair of that same literal. The family group is deliberately WIDE: a
+# name like `html5` or `c_like` must not slip past these guards just because it is not all-lowercase.
+_HL_FAMILY_PAIR_RE = re.compile(r'("[^"]+"|[A-Za-z_$][A-Za-z0-9_$+.#-]*)\s*:\s*"([A-Za-z0-9_$]+)"')
 # One `<family>: new Set(("a b " + "c d").split(" "))` entry of the _HL_FAM_KW map.
 _FAM_KW_ENTRY_RE = re.compile(r'([A-Za-z_$][A-Za-z0-9_$]*)\s*:\s*new Set\(\((.*?)\)\.split\(" "\)\)', re.S)
 _JS_STRING_RE = re.compile(r'"([^"]*)"')
 # The families _hlTokenRe() gives dedicated comment/string patterns to (`fam === "xxx"`).
-_FAM_BRANCH_RE = re.compile(r'fam === "([a-z]+)"')
+_FAM_BRANCH_RE = re.compile(r'fam === "([A-Za-z0-9_$]+)"')
+# A `flags = ...` assignment inside one of those branches; only a "g"/"gi" literal is readable.
+_FLAGS_ASSIGN_RE = re.compile(r'flags\s*(?:=|\+=|\|=)\s*([^;]+);')
+_JS_LINE_COMMENT_RE = re.compile(r"//[^\n]*")
 # Families that are deliberately keyword-shared: `hash` and `c` are multi-language buckets (python,
 # ruby, shell, yaml ... / every C-family language), so no single author-time keyword list describes
 # them and they keep the broad shared set. `markdown` carries no keywords at all.
@@ -59,8 +63,14 @@ def runtime_family_languages():
     src = _highlight_js()
     m = re.search(r"const _HL_FAMILY\s*=\s*\{(.*?)\};", src, re.S)
     assert m, "could not locate the _HL_FAMILY object literal in 26-highlight.js"
+    body = m.group(1)
+    pairs = _HL_FAMILY_PAIR_RE.findall(body)
+    # An entry this parser cannot read must FAIL here rather than quietly drop out of every guard.
+    assert len(pairs) == len(_HL_FAMILY_KEY_RE.findall(body)), (
+        "every _HL_FAMILY entry must parse as `<label>: \"<family>\"`; %d of %d parsed"
+        % (len(pairs), len(_HL_FAMILY_KEY_RE.findall(body))))
     out = {}
-    for label, fam in _HL_FAMILY_PAIR_RE.findall(m.group(1)):
+    for label, fam in pairs:
         out.setdefault(fam, set()).add(_canonical_language(label.strip('"').lower()))
     return out
 
@@ -86,19 +96,45 @@ def runtime_shared_keywords():
 
 
 def _token_re_body():
+    """The body of _hlTokenRe(), comment-free, sliced at its own terminator.
+
+    Slicing to "the next top-level function" used to over-span into the markdown constants below it,
+    so a `fam === "..."` or a `flags` assignment written there would be misread as a branch of this
+    function; and a `//` comment mentioning either could flip a family's parsed case rule.
+    """
     src = _highlight_js()
     start = src.index("function _hlTokenRe(")
-    end = src.index("\nfunction ", start + 1)
-    return src[start:end]
+    end = src.index("_hlCache[fam] = re;", start)
+    return _JS_LINE_COMMENT_RE.sub("", src[start:end])
+
+
+def _token_re_branches():
+    """[(families named in the condition, the block it guards)] for each `fam === "..."` branch."""
+    body = _token_re_body()
+    out = []
+    for m in re.finditer(r"if \(([^)]*fam === [^)]*)\)\s*\{([^}]*)\}", body):
+        fams = set(_FAM_BRANCH_RE.findall(m.group(1)))
+        if fams:
+            out.append((fams, m.group(2)))
+    return out
 
 
 def runtime_case_insensitive_families():
-    """{family} whose _hlTokenRe() branch compiles with the `i` flag."""
+    """{family} whose _hlTokenRe() branch compiles with the `i` flag.
+
+    Reads each branch's OWN block, so a neighbouring branch's flags cannot leak in. A `flags`
+    assignment that is not a plain "g"/"gi" literal is rejected rather than guessed at.
+    """
     out = set()
-    for stmt in re.split(r"\n\s*(?:else )?if ", _token_re_body()):
-        fams = set(_FAM_BRANCH_RE.findall(stmt))
-        if fams and re.search(r'flags = "gi"', stmt):
-            out |= fams
+    for fams, block in _token_re_branches():
+        for assign in _FLAGS_ASSIGN_RE.findall(block):
+            value = assign.strip()
+            assert value in ('"g"', '"gi"'), (
+                "flags for %s is assigned %r; this guard only understands a \"g\"/\"gi\" literal - "
+                "teach it the new form rather than leaving the case rule unchecked"
+                % (sorted(fams), value))
+            if value == '"gi"':
+                out |= fams
     return out
 
 
@@ -113,7 +149,10 @@ def runtime_dedicated_families():
 
 def runtime_branch_families():
     """Families _hlTokenRe() gives their own comment/string patterns to."""
-    return set(_FAM_BRANCH_RE.findall(_token_re_body())) - SHARED_KEYWORD_FAMILIES
+    fams = set()
+    for names, _ in _token_re_branches():
+        fams |= names
+    return fams - SHARED_KEYWORD_FAMILIES
 
 
 
@@ -214,10 +253,16 @@ class FamilyKeywordParityTests(unittest.TestCase):
         for fam, langs in sorted(runtime_family_languages().items()):
             if fam in SHARED_KEYWORD_FAMILIES:
                 continue
-            expected = set()
-            for lang in langs:
-                expected |= set(H.LANGUAGE_CONFIGS[lang]["keywords"])
+            keyword_sets = {frozenset(H.LANGUAGE_CONFIGS[lang]["keywords"]) for lang in langs}
             with self.subTest(family=fam):
+                # A dedicated family may only group languages that agree. Comparing against the
+                # UNION is what let `markup` ship as html+xml: the union matched, while an XML block
+                # coloured every HTML tag name. Requiring agreement makes such a family split itself.
+                self.assertEqual(len(keyword_sets), 1,
+                                 "family %r groups languages with different keyword lists (%r) - "
+                                 "split it, or the union will over-color each of them"
+                                 % (fam, sorted(langs)))
+                expected = set(keyword_sets.pop())
                 self.assertIn(fam, runtime)
                 self.assertEqual(runtime[fam], expected,
                                  "runtime _HL_FAM_KW[%r] must mirror %s keywords exactly (only in "

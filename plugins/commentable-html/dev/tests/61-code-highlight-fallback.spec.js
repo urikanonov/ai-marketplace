@@ -34,7 +34,7 @@ test.describe("runtime code-highlight fallback (CMH-HL-01)", () => {
     await expect(txt.locator("span.cmh-code-str, span.cmh-code-num, span.cmh-code-op, span.cmh-code-com")).toHaveCount(0);
   });
 
-  test("an unbaked language-html and language-xml block is highlighted on load (markup family) (CMH-HL-01)", async ({ page }) => {
+  test("an unbaked language-html and language-xml block is highlighted on load (markup and xml families) (CMH-HL-01)", async ({ page }) => {
     await open(page,
       "<h1>Markup</h1>"
       + '<pre><code class="language-html">&lt;div class="cmh-note" id="x"&gt;&lt;!-- c --&gt;hi&lt;/div&gt;</code></pre>'

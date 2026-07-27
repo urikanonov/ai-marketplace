@@ -93,6 +93,18 @@
       "notKw": ["class"]
     },
     {
+      "lang": "lua",
+      "code": "LOCAL = 1 -- lua is case-sensitive",
+      "com": ["-- lua is case-sensitive"],
+      "notKw": ["LOCAL"]
+    },
+    {
+      "lang": "json",
+      "code": "{ \"a\": TRUE }",
+      "key": ["\"a\""],
+      "notKw": ["TRUE"]
+    },
+    {
       "lang": "haskell",
       "code": "data T = T deriving Show -- note",
       "com": ["-- note"],
@@ -104,6 +116,12 @@
       "code": "def = 1 -- not a haskell keyword",
       "com": ["-- not a haskell keyword"],
       "notKw": ["def"]
+    },
+    {
+      "lang": "haskell",
+      "code": "DATA = 1 -- haskell is case-sensitive",
+      "com": ["-- haskell is case-sensitive"],
+      "notKw": ["DATA"]
     },
     {
       "lang": "batch",
