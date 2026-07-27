@@ -849,7 +849,7 @@ test("CMH-DECK-SHOWCASE-08: the showcase deck includes supported syntax labels, 
     await expect(labels.locator(".show-supported-panel")).toContainText("TypeScript");
     await expect(labels.locator(".show-supported-panel")).toContainText("PowerShell");
     await expect(labels.locator(".show-supported-panel")).toContainText("Markdown");
-    await expect(labels.locator(".show-supported-panel")).toContainText("+44 more");
+    await expect(labels.locator(".show-supported-panel")).toContainText("+50 more");
     // The rebalanced code/diff slide still fits the fixed 1080px stage (no overflow/clipping).
     expect(await labels.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(4);
     // Live editable notes and the review checklist share the notes slide (slide 12).
