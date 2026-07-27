@@ -17,7 +17,7 @@ import {
   quantizeClipHeight, clampedClipHeight,
 } from "./shot_clip.mjs";
 import {
-  compareImages, imagesMatch, MAX_DIFF_PIXELS, PIXEL_CHANNEL_TOLERANCE,
+  compareImages, imagesMatch, MAX_DIFF_PIXELS, PIXEL_CHANNEL_TOLERANCE, writeDiffImage,
 } from "./shot_compare.mjs";
 import { freezeBuildStamps, STAMP_DATE, STAMP_VERSION } from "./shot_stamps.mjs";
 
@@ -826,7 +826,12 @@ function buildScenes() {
 async function checkScreenshots(scenes) {
   const checkRoot = path.join(REPO, "tmp", "tutorial-shots-check", String(process.pid));
   fs.rmSync(checkRoot, { recursive: true, force: true });
-  let stale = false;
+  // Keep the scratch on ANY unsuccessful run, not only a comparison failure. `stale` used to be
+  // set only on the compare path, so an exception thrown mid-capture (a browser crash, a selector
+  // timeout) fell through the finally and DELETED the shots already rendered - leaving the CI
+  // drift-evidence artifact with nothing to upload for exactly the failure a contributor without
+  // Docker can least reproduce.
+  let clean = false;
   try {
     const problems = [];
     const compareBrowser = await chromium.launch();
@@ -835,6 +840,12 @@ async function checkScreenshots(scenes) {
       for (const scene of scenes) {
         const checkDir = path.join(checkRoot, scene.prefix);
         await captureScene(scene, checkDir);
+        // Test-only fault injection: forces a mid-capture failure AFTER at least one scene has
+        // been rendered, so a test can prove the already-rendered PNGs survive (CMH-BUILD-18).
+        // Unset in every real run.
+        if (process.env.CMH_SHOTS_FAIL_AFTER_SCENE) {
+          throw new Error("CMH_SHOTS_FAIL_AFTER_SCENE: simulated mid-capture failure");
+        }
         for (const name of scene.shots) {
           const file = `${scene.prefix}-${name}.png`;
           const expected = path.join(scene.outDir, file);
@@ -844,7 +855,16 @@ async function checkScreenshots(scenes) {
             // Report WHAT differed (dimensions, or the differing-pixel count against the budget) so
             // a red gate says how far off it is instead of only that it is off.
             const result = await compareImages(comparePage, expected, actual);
-            if (!result.ok) problems.push(`${file} differs: ${result.reason}`);
+            if (!result.ok) {
+              problems.push(`${file} differs: ${result.reason}`);
+              // Write a diff image beside the fresh PNG so a reviewer sees WHAT moved instead of
+              // eyeballing two screenshots. Best-effort: a diff we cannot render must not change
+              // the pass/fail outcome.
+              const diff = path.join(checkDir, `${scene.prefix}-${name}.diff.png`);
+              if (await writeDiffImage(comparePage, expected, actual, diff)) {
+                console.error(`  diff image: ${diff}`);
+              }
+            }
           }
         }
       }
@@ -853,16 +873,17 @@ async function checkScreenshots(scenes) {
       await compareBrowser.close();
     }
     if (problems.length) {
-      stale = true;
       for (const problem of problems) console.error(problem);
       console.error("capture_tutorial: tutorial screenshots are stale. Run npm run shots from plugins/commentable-html/dev.");
       console.error("capture_tutorial: fresh screenshots were kept in", checkRoot);
       return 1;
     }
     console.log("tutorial screenshots are in sync");
+    clean = true;
     return 0;
   } finally {
-    if (!stale) fs.rmSync(checkRoot, { recursive: true, force: true });
+    if (clean) fs.rmSync(checkRoot, { recursive: true, force: true });
+    else console.error("capture_tutorial: check scratch kept for evidence in", checkRoot);
   }
 }
 

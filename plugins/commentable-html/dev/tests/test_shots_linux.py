@@ -773,5 +773,127 @@ def _shots_job_block(text):
     return "\n".join(lines[start:end])
 
 
+
+class DriftEvidenceRetentionTests(unittest.TestCase):
+    """CMH-BUILD-18: the check keeps its scratch on ANY unsuccessful run, not only a
+    comparison failure. It used to set its keep-flag only on the compare path, so an
+    exception thrown mid-capture (a browser crash, a selector timeout) fell through the
+    `finally` and DELETED the shots already rendered - leaving the CI drift-evidence
+    artifact with nothing to upload for exactly the failure a contributor without Docker
+    can least reproduce."""
+
+    def setUp(self):
+        path = os.path.join(_paths.DEV, "tools", "capture_tutorial.mjs")
+        with open(path, "r", encoding="utf-8") as fh:
+            self.src = fh.read()
+
+    def _check_body(self):
+        start = self.src.index("async function checkScreenshots(")
+        end = self.src.index("\nasync function ", start + 1)
+        return self.src[start:end]
+
+    def test_the_scratch_is_removed_only_on_a_clean_pass(self):
+        body = self._check_body()
+        self.assertIn("if (clean) fs.rmSync(checkRoot", body,
+                      "the scratch must be deleted only when the run SUCCEEDED")
+        self.assertNotIn("if (!stale) fs.rmSync(checkRoot", body,
+                         "the old keep-flag deleted evidence when capture threw")
+
+    def test_the_clean_flag_is_set_only_after_the_comparison_passed(self):
+        body = self._check_body()
+        success = body.index("clean = true")
+        in_sync = body.index("tutorial screenshots are in sync")
+        self.assertGreater(success, in_sync,
+                           "clean must be set on the success path, after the comparison")
+
+    def test_a_failure_says_where_the_evidence_is(self):
+        self.assertIn("check scratch kept for evidence in", self._check_body())
+
+
+class DiffImageTests(unittest.TestCase):
+    """CMH-BUILD-18: a failing check writes a per-shot diff image beside the fresh PNG,
+    inside the tree the CI artifact already uploads, so a reviewer sees WHAT moved."""
+
+    def setUp(self):
+        with open(os.path.join(_paths.DEV, "tools", "capture_tutorial.mjs"),
+                  "r", encoding="utf-8") as fh:
+            self.capture = fh.read()
+        with open(os.path.join(_paths.DEV, "tools", "shot_compare.mjs"),
+                  "r", encoding="utf-8") as fh:
+            self.compare = fh.read()
+
+    def test_the_comparator_exports_a_diff_writer(self):
+        self.assertIn("export async function writeDiffImage(", self.compare)
+
+    def test_the_check_writes_a_diff_only_for_a_failing_shot(self):
+        # Producing one on every shot would cost a render per pass and change nothing.
+        start = self.capture.index("const result = await compareImages(")
+        window = self.capture[start:start + 900]
+        self.assertIn("if (!result.ok)", window)
+        self.assertIn("writeDiffImage(", window)
+
+    def test_the_diff_lands_inside_the_uploaded_scratch_tree(self):
+        # It must sit in tmp/tutorial-shots-check/<pid>/<scene>/ so the existing
+        # tutorial-shots-drift artifact carries it with no workflow change.
+        self.assertIn("path.join(checkDir,", self.capture)
+        self.assertIn(".diff.png", self.capture)
+
+    def test_a_diff_failure_cannot_change_the_gate_outcome(self):
+        # The diff is evidence, not a verdict: it is written after the problem is already
+        # recorded, and writeDiffImage swallows its own errors.
+        start = self.capture.index("const result = await compareImages(")
+        window = self.capture[start:start + 900]
+        self.assertLess(window.index("problems.push"), window.index("writeDiffImage("))
+        self.assertIn("return false;", self.compare[self.compare.index("export async function writeDiffImage("):])
+
+
+class MidCaptureCrashTests(unittest.TestCase):
+    """CMH-BUILD-18: force a REAL mid-capture failure in checkScreenshots and assert the PNGs
+    it had already rendered SURVIVE. Source-level assertions alone stay green through a
+    control-flow or filesystem regression, which is what issue #717 asked to be covered for
+    real; `CMH_SHOTS_FAIL_AFTER_SCENE` is a test-only hook that throws after the first scene
+    is on disk."""
+
+    def test_a_crash_after_the_first_scene_keeps_the_rendered_pngs(self):
+        import glob
+        import shutil
+        import subprocess
+
+        if shutil.which("node") is None:
+            self.skipTest("node is not on PATH")
+        dev = _paths.DEV
+        if not os.path.isdir(os.path.join(dev, "node_modules", "@playwright", "test")):
+            self.skipTest("playwright is not installed in this checkout")
+        # capture_tutorial refuses to run directly (CMH-BUILD-16): the shots render ONLY in the
+        # pinned container, so the check has to be driven through the wrapper, which needs docker
+        # (or a host that IS the CI platform). Skip cleanly where neither is available; CI has both.
+        if not S.renderer_available():
+            self.skipTest("no pinned renderer available (docker or the native CI platform)")
+
+        repo = os.path.abspath(os.path.join(dev, os.pardir, os.pardir, os.pardir))
+        scratch_root = os.path.join(repo, "tmp", "tutorial-shots-check")
+        before = set(glob.glob(os.path.join(scratch_root, "*")))
+        env = dict(os.environ, CMH_SHOTS_FAIL_AFTER_SCENE="1")
+        proc = subprocess.run(
+            [sys.executable, os.path.join(dev, "tools", "shots_linux.py"), "--check"],
+            capture_output=True, text=True, env=env, cwd=dev)
+        self.assertNotEqual(proc.returncode, 0, "the injected fault must fail the run")
+        new_dirs = [d for d in glob.glob(os.path.join(scratch_root, "*")) if d not in before]
+        try:
+            self.assertTrue(new_dirs, "the check must KEEP its scratch tree on a mid-capture crash")
+            pngs = glob.glob(os.path.join(new_dirs[0], "*", "*.png"))
+            self.assertTrue(pngs, "the PNGs rendered before the crash must survive in %s" % new_dirs[0])
+        finally:
+            for d in new_dirs:
+                shutil.rmtree(d, ignore_errors=True)
+
+    def test_the_fault_hook_is_unset_in_a_normal_run(self):
+        # The hook must be opt-in: a stray default would make every check fail.
+        with open(os.path.join(_paths.DEV, "tools", "capture_tutorial.mjs"),
+                  "r", encoding="utf-8") as fh:
+            body = fh.read()
+        self.assertIn("process.env.CMH_SHOTS_FAIL_AFTER_SCENE", body)
+        self.assertNotIn("CMH_SHOTS_FAIL_AFTER_SCENE = ", body)
+
 if __name__ == "__main__":
     unittest.main()

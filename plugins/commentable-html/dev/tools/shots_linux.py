@@ -196,6 +196,11 @@ def docker_command(repo_root, dev_rel, image, extra_args, uid_gid=None, ci=False
     if uid_gid:
         cmd += ["--user", "%s:%s" % uid_gid]
     cmd += ["-e", "HOME=" + CONTAINER_HOME, "-e", "%s=container" % RENDERER_ENV]
+    # Test-only fault injection (CMH-BUILD-18). docker inherits no host environment, so the
+    # hook that forces a mid-capture failure has to be passed through explicitly or the
+    # keep-the-evidence test could never drive the real check.
+    if os.environ.get("CMH_SHOTS_FAIL_AFTER_SCENE"):
+        cmd += ["-e", "CMH_SHOTS_FAIL_AFTER_SCENE=" + os.environ["CMH_SHOTS_FAIL_AFTER_SCENE"]]
     if ci:
         cmd += ["-e", "CI=true"]
     cmd += [
