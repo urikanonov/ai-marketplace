@@ -6,6 +6,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # this bucket
+import _highlight_core as _core  # noqa: E402
+
 
 def _words(text):
     return frozenset(text.split())
@@ -432,7 +435,7 @@ _STRING_PATTERNS = {
 
 
 def _normalize_code(code):
-    return code.replace("\r\n", "\n").replace("\r", "\n")
+    return _core.normalize_newlines(code)
 
 
 def _normalize_language(language):
@@ -445,12 +448,11 @@ def _class_language(language):
     return re.sub(r"[^A-Za-z0-9_+.-]+", "-", lang)
 
 
-def _esc(text):
-    return _html.escape(text, quote=False)
+_esc = _core.esc
 
 
 def _span(kind, text):
-    return '<span class="cmh-code-%s">%s</span>' % (kind, _esc(text))
+    return _core.span("cmh-code-%s" % kind, text)
 
 
 def _comment_pattern(config):

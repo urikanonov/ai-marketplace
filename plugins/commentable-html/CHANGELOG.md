@@ -4,6 +4,36 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.257.0] - 2026-07-26
+
+### Added
+
+- Syntax highlighting is now reversible. A new shared highlight core exposes `dehighlight()`, which
+  recovers the exact source a highlighted code block was built from, for every language including
+  KQL. The inverse is a LEFT inverse over newline-normalized input, because both emitters fold CRLF
+  and lone CR to LF; for content already stored highlighted, dehighlight followed by re-highlight is
+  byte-identical, so an untouched block never churns bytes. Escaped entities, a literal `</span>`
+  inside a string, multi-line tokens (docstrings, block comments, KQL verbatim strings), tabs and
+  astral Unicode all survive the round trip (CMH-HL-09).
+- The inverse is a strict single-pass scanner, so content the highlighters did not produce is
+  REFUSED rather than corrupted: hand-written markup in a code block, a nested or malformed span,
+  extra attributes, an unknown token kind, or non-canonical escaping the emitters never write
+  (`&quot;`, `&#x3C;`, `&eacute;`, a bare `&`) all return `None` from `dehighlight()`, and
+  `classify()` reports `raw` / `highlighted` / `hand-written` so callers can pass such a block
+  through untouched. The exact-escaping rule also makes an accidental double application refuse
+  instead of silently decoding source that legitimately contains `&amp;`. A repeated-substitution
+  loop is deliberately not used - it would peel nested spans from the inside out and hand back
+  plausible but corrupted source (CMH-HL-10).
+
+### Changed
+
+- The code highlighter and the KQL highlighter now share one emission point and one newline
+  normalizer, so the reversibility guarantee covers every language instead of being reimplemented
+  per tokenizer. The two tokenizers stay separate (their grammars genuinely differ) and both the
+  `cmh-code-*` and `cmh-kql-*` class vocabularies are retained, so output bytes are unchanged and
+  already-generated documents keep rendering exactly as before. Emitter output is now asserted flat,
+  pinning the property the inverse depends on (CMH-HL-11).
+
 ## [1.256.0] - 2026-07-27
 
 ### Fixed

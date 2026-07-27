@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 import _toolpath  # noqa: E402
 _toolpath.ensure()
 import kusto_link  # noqa: E402
+import _highlight_core as _core  # noqa: E402
 
 # KQL query/tabular operators and control keywords (lowercased). Hyphenated forms
 # (mv-expand, project-away, ...) are matched whole by the identifier rule below.
@@ -69,12 +70,11 @@ _TOKEN_RE = re.compile(r"""
 """ % _HKW_PAT, re.VERBOSE | re.DOTALL | re.IGNORECASE)
 
 
-def _esc(text):
-    return _html.escape(text, quote=False)
+_esc = _core.esc
 
 
 def _span(cls, text):
-    return '<span class="%s">%s</span>' % (cls, _esc(text))
+    return _core.span(cls, text)
 
 
 def highlight_inner(query):
@@ -84,7 +84,7 @@ def highlight_inner(query):
     normalized to LF), so the code stays faithful for selection, commenting, and
     the Copy bundle.
     """
-    src = query.replace("\r\n", "\n").replace("\r", "\n")
+    src = _core.normalize_newlines(query)
     out = []
     for m in _TOKEN_RE.finditer(src):
         kind = m.lastgroup
