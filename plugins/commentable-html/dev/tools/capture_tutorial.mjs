@@ -16,7 +16,10 @@ import {
   CLIP_QUANTUM, DEVICE_SCALE, DIMENSION_DELTA_PX, MAX_WIDTH_DELTA,
   quantizeClipHeight, clampedClipHeight,
 } from "./shot_clip.mjs";
-import { imagesMatch } from "./shot_compare.mjs";
+import {
+  compareImages, imagesMatch, MAX_DIFF_PIXELS, PIXEL_CHANNEL_TOLERANCE,
+} from "./shot_compare.mjs";
+import { freezeBuildStamps, STAMP_DATE, STAMP_VERSION } from "./shot_stamps.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The in-browser layout/scroll settle loops throw on a wall-clock deadline that was sized for a
@@ -99,6 +102,10 @@ if (printPaths) {
     deviceScale: DEVICE_SCALE,
     maxWidthDelta: MAX_WIDTH_DELTA,
     quantumStraddlePx: DIMENSION_DELTA_PX,
+    pixelChannelTolerance: PIXEL_CHANNEL_TOLERANCE,
+    maxDiffPixels: MAX_DIFF_PIXELS,
+    stampVersion: STAMP_VERSION,
+    stampDate: STAMP_DATE,
   }));
   process.exit(0);
 }
@@ -109,6 +116,9 @@ function shotPath(dir, pfx, name) { return path.join(dir, `${pfx}-${name}.png`);
 function screenshotOptions(extra = {}) { return { animations: "disabled", caret: "hide", ...extra }; }
 
 async function settlePaint(page) {
+  // Freeze the version/date stamps BEFORE the paint settles, so every clip measured after this
+  // (element and fixed-region shots) is measured on the layout that will actually be captured.
+  await freezeBuildStamps(page);
   await page.evaluate(async () => {
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -243,9 +253,12 @@ function roundedClip(box, size, top = Math.floor(box.y)) {
 }
 
 // Save the raw, full-resolution screenshot. The committed tutorial images must stay crisp and
-// true-color for the published tutorial, so the cross-platform determinism normalization (downsample
-// plus color quantize) is applied only when comparing images (see imagesMatch), never to disk.
+// true-color for the published tutorial, so nothing is degraded on the way to disk; the comparison
+// (see shot_compare.mjs) is channel-exact and needs no normalization. The volatile build stamps are
+// frozen first (belt and braces - settlePaint already froze them before any clip was measured) so a
+// release cannot repaint a shot that did not otherwise change.
 async function writeScreenshot(page, pathName, extra = {}) {
+  await freezeBuildStamps(page);
   const buffer = await page.screenshot(screenshotOptions(extra));
   fs.writeFileSync(pathName, buffer);
 }
@@ -827,7 +840,12 @@ async function checkScreenshots(scenes) {
           const expected = path.join(scene.outDir, file);
           const actual = path.join(checkDir, file);
           if (!fs.existsSync(expected)) problems.push(`${file} missing`);
-          else if (!await imagesMatch(comparePage, expected, actual)) problems.push(`${file} differs`);
+          else {
+            // Report WHAT differed (dimensions, or the differing-pixel count against the budget) so
+            // a red gate says how far off it is instead of only that it is off.
+            const result = await compareImages(comparePage, expected, actual);
+            if (!result.ok) problems.push(`${file} differs: ${result.reason}`);
+          }
         }
       }
     } finally {

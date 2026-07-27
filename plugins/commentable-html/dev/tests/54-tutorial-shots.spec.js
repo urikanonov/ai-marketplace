@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 import { DEV, SKILL } from "./helpers.js";
 import { DIMENSION_DELTA_PX } from "../tools/shot_clip.mjs";
-import { imagesMatch } from "../tools/shot_compare.mjs";
+import { compareImages } from "../tools/shot_compare.mjs";
 
 // These tests each spawn the capture tool (a browser-launching subprocess). They are data-safe to
 // run in parallel - the tool isolates its own scratch per process id, and each test below writes to
@@ -39,7 +39,9 @@ const TEST_TMP = path.join(REPO, "tmp", "tutorial-shots-spec", String(process.pi
 const FULL_VIEWPORT_PX = 900 * 2;
 // The cross-run determinism assertions below diff images with the SAME comparator the --check
 // freshness gate uses (tools/shot_compare.mjs), imported rather than copied, so this suite can never
-// become stricter - or laxer - than the gate it mirrors.
+// become stricter - or laxer - than the gate it mirrors. That budget is channel-exact now
+// (CMH-BUILD-19): two independent renders of the same scene are byte-identical, so these assertions
+// pass with the whole allowance to spare and only a real capture regression can move them.
 
 // Run the capture tool with the example + output dir (and, for the extra scenes, an explicit
 // prefix). With no prefix the tool defaults to "garden", so regenerating the garden tutorial
@@ -178,11 +180,12 @@ test("garden capture is deterministic across two independent runs (CMH-TUT-SHOTS
       expect(r.status, `capture ${label}: ${r.stderr}`).toBe(0);
     }
     for (const name of SHOTS) {
-      expect(await imagesMatch(
+      const result = await compareImages(
         comparePage,
         path.join(outA, `garden-${name}.png`),
         path.join(outB, `garden-${name}.png`),
-      ), `${name} drifted beyond the normalized screenshot diff budget`).toBe(true);
+      );
+      expect(result.ok, `${name} drifted between two runs: ${result.reason}`).toBe(true);
     }
   } finally {
     await comparePage.close();
@@ -240,11 +243,12 @@ for (const scene of EXTRA_SCENES) {
         expect(r.status, `capture ${label}: ${r.stderr}`).toBe(0);
       }
       for (const name of scene.shots) {
-        expect(await imagesMatch(
+        const result = await compareImages(
           comparePage,
           path.join(outA, `${scene.prefix}-${name}.png`),
           path.join(outB, `${scene.prefix}-${name}.png`),
-        ), `${scene.prefix}-${name} drifted beyond the normalized screenshot diff budget`).toBe(true);
+        );
+        expect(result.ok, `${scene.prefix}-${name} drifted between two runs: ${result.reason}`).toBe(true);
       }
     } finally {
       await comparePage.close();

@@ -145,12 +145,61 @@ be able to move the CI renderer under a `runs-on: ubuntu-24.04` label without an
 repo) can no longer affect a single pixel. That is why `playwright-heavy` tracks `ubuntu-latest`
 again and the old runner/variant coupling test is gone (an amd64 runner is still a precondition -
 the container is pinned to `linux/amd64`). CI remains the authoritative GATE - it is the run that
-must be green - but it is no longer a second RENDERER that has to agree with yours. Two honest
-caveats: the drift comparison itself is deliberately COARSE (`capture_tutorial.mjs` downsamples,
-quantizes and tolerates a pixel-diff ratio, a budget sized back when two renderers had to agree), so
-the container pin removes the ambiguity rather than tightening that threshold; and running the
-container is not free - `npm test` and `rebuild_all.py` now render on any Docker-capable machine
-where they used to skip, and the first run pulls ~900 MB.
+must be green - but it is no longer a second RENDERER that has to agree with yours. The honest
+caveat left is cost: running the container is not free - `npm test` and `rebuild_all.py` now render
+on any Docker-capable machine where they used to skip, and the first run pulls ~900 MB.
+
+#### What the drift comparison actually allows (CMH-BUILD-19)
+
+The comparison is EXACT: no differing pixels are allowed. It used to downsample 2x, quantize colors
+onto a 64-step ladder and tolerate a channel delta of 96 across up to 20% of the pixels - a budget
+sized back when two different renderers had to agree - which meant a real visual regression could
+pass unseen. With one pinned renderer that slack buys nothing, and issue #710 measured what the
+renderer actually gives: two independent renders of all 19 committed shots are **byte-identical**,
+in the container and on a host browser alike, including under four concurrent captures and a
+6-worker stress run. So `tools/shot_compare.mjs` applies no normalization at all and allows zero
+differing pixels (`MAX_DIFF_PIXELS = 0`).
+
+Two things make that practical rather than brittle:
+
+- **The volatile build stamps are frozen at capture time, not bought off with an allowance.** The
+  runtime paints its version badge (`v1.255.0`) and the document's "Generated on" date into its own
+  UI; both change on a release with no behavior change (and the date falls back to
+  `document.lastModified`, which is volatile per checkout). `tools/shot_stamps.mjs` rewrites them to
+  fixed placeholders (`v1.x`, `Jan 1, 2026`) just before each shot is measured and taken, so a
+  version bump never repaints a screenshot. Doing it this way rather than allowing a few thousand
+  differing pixels matters: an allowance applies to the WHOLE image (it would hide a small real
+  regression anywhere, which is the exact class of miss this change removes), and the same comparison
+  drives the WRITE path, so `npm run shots` would refuse to update a shot whose intended change fell
+  inside it. The freeze is deliberately NARROW - only the elements the runtime stamps those values
+  into, and only the value inside them - so rendered comment text that merely looks like a stamp is
+  never rewritten, the authored document (`#commentRoot`) is untouched, each label is kept, and a
+  value that is not a real date (`unknown`, a malformed stamp) is left alone so it still fails the
+  gate. The date VALUE itself is therefore deliberately un-gated by the screenshots; its formatting
+  is covered by the sidebar's own tests.
+- **A channel tolerance of 2 is kept as insurance, and only that.** A pixel counts as different when
+  any channel differs by more than 2. Nothing measured needs it (within a machine the difference is
+  zero); it covers the one input the container digest does not pin, the host CPU, since Chromium
+  rasterizes in software and Skia dispatches on CPU features, so another runner could round a blended
+  edge pixel by a least significant bit or two. Two steps out of 255 are invisible, and the smallest
+  regression still caught is a delta-3 wash - where the retired budget waved through delta 96.
+
+If a comparison ever fails for a reason that turns out to be renderer jitter rather than a real
+change, re-size the tolerance from THAT measurement rather than widening it pre-emptively:
+`compareImages` reports what differed - a dimension mismatch, or the differing-pixel count and ratio
+against the budget - so a red `--check` run or determinism assertion names the magnitude instead of
+only saying "differs". `--print-paths` reports the budget and the placeholders, and
+`tests/80-shot-clip.spec.js` asserts the tool and the suite agree, so the gate and the specs that
+mirror it cannot drift apart.
+
+One boundary worth stating plainly: byte-identical renders are measured EVIDENCE for one machine and
+one image, not a guarantee the container extends to every host. What the digest pin does guarantee is
+that the browser, the OS image and the fonts are the same everywhere. Note also that the heavy
+`54-tutorial-shots.spec.js` determinism tests run the capture with the RUNNER's own browser rather
+than in the container: they share the comparator with the `--check` gate, not the renderer, and they
+compare two runs in the same environment.
+
+
 
 `capture_tutorial.mjs` refuses to render or verify the COMMITTED screenshots unless the wrapper
 invoked it (it sets a renderer marker in the environment), so a raw
@@ -163,7 +212,7 @@ producing a CI-failing artifact. If your change does not affect the shots, resto
 `git checkout origin/main -- plugins/commentable-html/docs/assets` and confirm with
 `npm run shots:check`.
 
-**When the CI drift gate fails, download the pixels it saw (CMH-BUILD-18).** Because the container
+**When the CI drift gate fails, download the pixels it saw (CMH-BUILD-19).** Because the container
 is the only renderer, a contributor without Docker cannot reproduce a drift failure locally, so the
 failed run carries the evidence: the `playwright-heavy` job uploads the freshly rendered PNGs as the
 `tutorial-shots-drift` artifact (found under "Artifacts" on the failed run's summary page). Unzip it
