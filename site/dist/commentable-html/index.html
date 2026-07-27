@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.259.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.260.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,6 +457,18 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.260.0] - 2026-07-27</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A diff labelled <code>config.xml</code>, <code>page.html</code> or <code>main.dart</code> now highlights. <code>_EXT_LANG</code> had no entry for those extensions, so extension inference resolved to no language and the diff rendered monochrome unless the author passed <code>data-diff-lang</code> explicitly - even though both highlighters fully support them. A guard test now fails when any supported language has an obvious extension the table does not map, so the next language cannot ship with the same hole (CMH-HL-13).</li>
+              <li>The runtime <code>sql</code> family accepts double-quoted strings, matching its author-time config (<code>string_styles</code> is <code>sql_single</code> plus <code>double</code>). A double-quoted SQL identifier previously rendered as a string when baked and as plain text at runtime. The other dedicated families&#x27; string styles are now spot-checked against their configs by the same guard (CMH-HL-15).</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Runtime keyword lookup is per LANGUAGE rather than one broad bucket shared by 23 languages. The <code>hash</code> and <code>c</code> families shared a single approximate set, which both over-colored (a lowercase <code>true</code> in Python, <code>true</code>/<code>false</code>/<code>null</code> in R, <code>bool</code> in Objective-C) and under-colored (Python&#x27;s capitalized <code>True</code>/<code>False</code>/<code>None</code> never matched the case-sensitive lookup). Measured cost of splitting, on the built <code>commentable-html.js</code> rather than on the raw keyword text: 9,346 bytes (736,669 -&gt; 746,015, about 1.27 percent), against a divergence visible in every Python block. Each set is compared to its author-time config by test, so a future drift fails there instead of shipping as a block that renders one way baked and another way live (CMH-HL-14).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.259.0] - 2026-07-27</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -468,6 +480,8 @@
               <li><code>language-kusto</code> / <code>language-kql</code> blocks are baked by the same document highlight pass as every other language rather than being skipped. Only the dispatch and the emission are shared - KQL keeps its own tokenizer and <code>cmh-kql-*</code> class vocabulary - so output bytes are unchanged, and the agent edit loop can now serve KQL blocks like any other code (CMH-KQL-09).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.258.0] - 2026-07-27</h3></div>
             <div class="group-label">Added</div>
@@ -478,8 +492,6 @@
               <li><code>tools/authoring/extract_comments.py</code> prints the embedded comment snapshot as JSON or fenced text for the peer-review path, where a returned Portable file carries comments nobody pasted. It reports what is baked into the file, never &quot;all current comments&quot; - a reviewer&#x27;s newer edits can still sit in browser <code>localStorage</code>, which no command-line tool can read - and it wraps every reviewer note in an untrusted-note fence so a downstream agent treats it as data, not instructions (CMH-CONTENT-04).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.257.0] - 2026-07-26</h3></div>
             <div class="group-label">Added</div>
@@ -529,15 +541,7 @@
               <li>A comment is now editable in exactly one place at a time: opening a second editor for a note that already has an unsaved draft elsewhere (the panel card, the in-document dialog, another highlight&#x27;s dialog, or the floating composer reached by re-selecting the text) hands the reader back to the draft instead of duplicating it - previously two editors could exist and the last save silently overwrote the other. (CMH-CORE-16)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.253.0] - 2026-07-26</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>A fenced code block inside a Markdown block is now highlighted in its OWN language instead of being colored as one flat run: the first word of the fence info string selects the language (aliases resolved, so a <code>py</code> label and a <code>python title=&quot;x.py&quot;</code> label both select Python), and an unknown or absent label keeps the previous opaque body. The body is highlighted as a whole, so a multi-line construct inside it (a block comment, a triple-quoted string) reads exactly as it would in a standalone block of that language. A <code>markdown</code>-labelled body re-reads as Markdown up to a small depth bound and stays opaque past it, so a hostile document cannot drive unbounded recursion. (CMH-HL-07, CMH-HL-08)</li>
-              <li>The author-time highlighter now knows the common short labels <code>js</code>, <code>jsx</code>, <code>mjs</code>, <code>py</code>, <code>ts</code> and <code>tsx</code>. They were runtime-only, so a <code>js</code>-labelled block was highlighted by the runtime but baked as plain text - and, with nested fences, would have nested on one path and stayed flat on the other. A second drift guard now fails in that direction too, so the author-time and runtime label sets cannot diverge again. (CMH-HL-03)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">214 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">215 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

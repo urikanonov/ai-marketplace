@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.259.0";
+const CMH_VERSION = "1.260.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -1928,6 +1928,14 @@ const _HL_FAMILY = {
   html: "markup", xml: "xml",
   markdown: "markdown", md: "markdown", mdown: "markdown", mkd: "markdown",
 };
+// Short language aliases resolve to the canonical name the per-language keyword sets use,
+// mirroring the author-time ALIASES table.
+const _HL_LANG_ALIAS = {
+  js: "javascript", jsx: "javascript", mjs: "javascript", ts: "typescript", tsx: "typescript",
+  py: "python", rb: "ruby", sh: "shell", bash: "shell", yml: "yaml", pl: "perl",
+  ex: "elixir", exs: "elixir", rs: "rust", kt: "kotlin", cs: "csharp", "c++": "cpp",
+  golang: "go", objc: "objectivec",
+};
 const _EXT_LANG = {
   py: "python", js: "javascript", jsx: "javascript", mjs: "javascript", ts: "typescript", tsx: "typescript",
   java: "java", c: "c", h: "c", cpp: "cpp", cc: "cpp", hpp: "cpp", cs: "csharp", go: "go", rs: "rust",
@@ -1936,6 +1944,9 @@ const _EXT_LANG = {
   hs: "haskell", ex: "elixir", exs: "elixir", ps1: "powershell", bat: "batch", cmd: "batch",
   groovy: "groovy", gradle: "groovy", pl: "perl", r: "r", m: "objectivec", mm: "objectivec",
   md: "markdown", markdown: "markdown", mdown: "markdown", mkd: "markdown",
+  // Both highlighters fully support these, but without an entry here a diff labelled
+  // config.xml or page.html inferred no language and rendered monochrome.
+  html: "html", htm: "html", xml: "xml", dart: "dart",
 };
 function inferDiffLang(el, label) {
   const explicit = (el.getAttribute("data-diff-lang") || "").trim().toLowerCase();
@@ -1959,6 +1970,97 @@ const _HL_KW_SET = new Set(("abstract as async await base bool boolean break byt
 // author-time list describes them - and widening that set instead would tint a stray `select`
 // identifier as a keyword in every other language. A parity test pins each set to its author-time
 // config, so a future dedicated family cannot silently inherit the shared one.
+// Per-LANGUAGE keyword sets, mirroring each author-time config EXACTLY. The hash/c
+// families previously shared one broad set for 23 languages, which both over-colored (a
+// lowercase `true` in Python, `true`/`false`/`null` in R) and under-colored
+// (Python's capitalized `True`/`False`/`None` never matched the case-sensitive
+// lookup). Splitting costs about 5 KB on a 719 KB bundle; the divergence it removes is
+// visible in every Python block. tests/test_highlight_runtime_parity.py compares each set
+// to its author-time config, so a drift fails there instead of shipping.
+const _HL_LANG_KW = {
+  python: new Set(("False None True and as assert async await break class continue def del elif else except "
+    + "finally for from global if import in is lambda nonlocal not or pass raise return try while "
+    + "with yield").split(" ")),
+  ruby: new Set(("BEGIN END alias and begin break case class def defined do else elsif end ensure false for if "
+    + "in module next nil not or redo rescue retry return self super then true undef unless until "
+    + "when while yield").split(" ")),
+  shell: new Set(("case coproc do done elif else esac fi for function if in select then time until while").split(" ")),
+  yaml: new Set(("FALSE False NO NULL No Null OFF ON Off On TRUE True YES Yes false no null off on true yes").split(" ")),
+  toml: new Set(("false true").split(" ")),
+  perl: new Set(("and cmp do else elsif eq for foreach ge gt if last le local lt my ne next no not or our "
+    + "package redo require return sub unless until use while x").split(" ")),
+  r: new Set(("FALSE Inf NA NA_character_ NA_complex_ NA_integer_ NA_real_ NULL NaN TRUE break else for "
+    + "function if in next repeat while").split(" ")),
+  elixir: new Set(("after and case catch cond def defmacro defmodule defp defstruct do else end false fn for if "
+    + "import in nil not or quote raise receive require rescue true try unless unquote use when "
+    + "with").split(" ")),
+  javascript: new Set(("async await break case catch class const continue debugger default delete do else export "
+    + "extends false finally for from function get if import in instanceof let new null of return "
+    + "set static super switch this throw true try typeof undefined var void while with yield").split(" ")),
+  typescript: new Set(("abstract any as asserts async await bigint boolean break case catch class const continue "
+    + "debugger declare default delete do else enum export extends false finally for from function "
+    + "get if implements import in infer instanceof interface is keyof let module namespace never "
+    + "new null number object of private protected public readonly require return set static string "
+    + "super switch symbol this throw true try type typeof undefined unique unknown var void while "
+    + "with yield").split(" ")),
+  java: new Set(("abstract assert boolean break byte case catch char class const continue default do double "
+    + "else enum extends false final finally float for goto if implements import instanceof int "
+    + "interface long native new null package private protected public return short static strictfp "
+    + "super switch synchronized this throw throws transient true try void volatile while").split(" ")),
+  c: new Set(("auto break case char const continue default do double else enum extern float for goto if "
+    + "inline int long register restrict return short signed sizeof static struct switch typedef "
+    + "union unsigned void volatile while").split(" ")),
+  cpp: new Set(("alignas alignof and asm auto bool break case catch char class const constexpr continue "
+    + "decltype default delete do double else enum explicit export extern false float for friend "
+    + "goto if inline int long mutable namespace new noexcept not null nullptr operator or private "
+    + "protected public register reinterpret_cast requires return short signed sizeof static "
+    + "static_cast struct switch template this throw true try typedef typename union unsigned using "
+    + "virtual void volatile while").split(" ")),
+  csharp: new Set(("abstract as base bool break byte case catch char checked class const continue decimal "
+    + "default delegate do double else enum event explicit extern false finally fixed float for "
+    + "foreach goto if implicit in int interface internal is lock long namespace new null object "
+    + "operator out override params private protected public readonly ref return sbyte sealed short "
+    + "sizeof stackalloc static string struct switch this throw true try typeof uint ulong "
+    + "unchecked unsafe ushort using var virtual void volatile while").split(" ")),
+  go: new Set(("break case chan const continue default defer else fallthrough false for func go goto if "
+    + "import interface iota map nil package range return select struct switch true type var").split(" ")),
+  rust: new Set(("Self as async await break const continue crate dyn else enum extern false fn for if impl in "
+    + "let loop match mod move mut pub ref return self static struct super trait true type union "
+    + "unsafe use where while").split(" ")),
+  php: new Set(("abstract and array as break callable case catch class clone const continue declare default "
+    + "do echo else elseif empty enddeclare endfor endforeach endif endswitch endwhile enum extends "
+    + "false final finally fn for foreach function global goto if implements include include_once "
+    + "instanceof insteadof interface isset list match namespace new null or print private "
+    + "protected public readonly require require_once return static switch throw trait true try "
+    + "unset use var while xor yield").split(" ")),
+  swift: new Set(("Self as associatedtype break case catch class continue default defer deinit do else enum "
+    + "extension fallthrough false fileprivate for func guard if import in init inout internal is "
+    + "let nil open operator private protocol public repeat rethrows return self static struct "
+    + "subscript super switch throw throws true try typealias var where while").split(" ")),
+  kotlin: new Set(("abstract actual annotation as break by catch class companion const constructor continue "
+    + "crossinline data delegate do dynamic else enum external false final finally for fun get if "
+    + "import in infix init inline inner interface internal is lateinit lazy noinline null object "
+    + "open operator out override package private protected public reified return sealed super "
+    + "suspend this throw true try typealias typeof val var vararg when where while").split(" ")),
+  scala: new Set(("abstract case catch class def do else extends false final finally for forSome if implicit "
+    + "import lazy match new null object override package private protected return sealed super "
+    + "this throw trait true try type val var while with yield").split(" ")),
+  dart: new Set(("abstract as assert async await break case catch class const continue covariant default "
+    + "deferred do dynamic else enum export extends extension external factory false final finally "
+    + "for get hide if implements import in interface is late library mixin new null on operator "
+    + "part required rethrow return set show static super switch sync this throw true try typedef "
+    + "var void while with yield").split(" ")),
+  groovy: new Set(("abstract as assert boolean break byte case catch char class const continue def default do "
+    + "double else enum extends false final finally float for goto if implements import in "
+    + "instanceof int interface long native new null package private protected public return short "
+    + "static strictfp super switch synchronized this throw throws trait transient true try void "
+    + "volatile while").split(" ")),
+  objectivec: new Set(("@autoreleasepool @catch @class @encode @end @finally @implementation @interface @property "
+    + "@protocol @selector @synchronized @synthesize @throw @try BOOL NO YES auto break case char "
+    + "const continue default do double else enum extern float for goto id if inline int long nil "
+    + "register return self short signed sizeof static struct super switch typedef union unsigned "
+    + "void volatile while").split(" ")),
+};
 const _HL_FAM_KW = {
   // HTML tag names, so a runtime-highlighted markup block colors the same tokens a baked one does
   // instead of using the C-family set (where words like `class` collide). XML is its OWN family
@@ -2016,7 +2118,9 @@ function _hlTokenRe(fam) {
   // sql/powershell/batch/css/markup match keywords case-insensitively, mirroring the author-time
   // tool's CASE_INSENSITIVE_LANGUAGES - so `AUTO` in css and `SELECT` in sql color on both paths.
   if (fam === "hash") { com = "#[^\\n]*"; str = dq + "|" + sq; }
-  else if (fam === "sql") { com = "/\\*[\\s\\S]*?(?:\\*/|$)|--[^\\n]*"; str = "'[^']*(?:''[^']*)*'"; flags = "gi"; }
+  // The author-time sql config declares string_styles sql_single PLUS double, so a
+  // double-quoted identifier must be a string here too (it was plain text at runtime).
+  else if (fam === "sql") { com = "/\\*[\\s\\S]*?(?:\\*/|$)|--[^\\n]*"; str = "'[^']*(?:''[^']*)*'" + "|" + dq; flags = "gi"; }
   else if (fam === "css") { com = "/\\*[\\s\\S]*?(?:\\*/|$)"; str = dq + "|" + sq; flags = "gi"; }
   else if (fam === "lua") { com = "--\\[\\[[\\s\\S]*?(?:\\]\\]|$)|--[^\\n]*"; str = dq + "|" + sq; }
   else if (fam === "haskell") { com = "\\{-[\\s\\S]*?(?:-\\}|$)|--[^\\n]*"; str = dq; }
@@ -2032,7 +2136,10 @@ function _hlTokenRe(fam) {
   else if (fam === "json") { com = "/\\*[\\s\\S]*?(?:\\*/|$)|//[^\\n]*"; str = "\"[^\"\\\\\\n]*(?:\\\\[\\s\\S][^\"\\\\\\n]*)*\"?"; }
   else { com = "/\\*[\\s\\S]*?(?:\\*/|$)|//[^\\n]*"; str = dq + "|" + sq + "|" + bt; }
   const num = "0[xX][0-9a-fA-F]+|\\d[\\d_]*(?:\\.\\d+)?(?:[eE][+-]?\\d+)?";
-  const id = "[A-Za-z_$][A-Za-z0-9_$]*";
+  // Mirrors the author-time _IDENTIFIER_RE exactly, INCLUDING the optional leading `@`: without it
+  // Objective-C's `@interface` / `@property` split into a bare `@` plus a word that is not a keyword,
+  // so an exact per-language set would color less than the old approximate one did.
+  const id = "@?[A-Za-z_$][A-Za-z0-9_$]*";
   const op = "[+\\-*/%=<>!&|^~?:.,;(){}\\[\\]]";
   const re = new RegExp("(?<com>" + com + ")|(?<str>" + str + ")|(?<num>" + num + ")|(?<id>" + id + ")|(?<op>" + op + ")", flags);
   _hlCache[fam] = re;
@@ -2281,8 +2388,12 @@ function cmhHighlightMarkdown(text, depth) {
   return parts.join("\n");
 }
 function cmhHighlightCode(text, lang) {
-  const fam = _HL_FAMILY[String(lang || "").toLowerCase()] || "c";
+  const key = String(lang || "").toLowerCase();
+  const fam = _HL_FAMILY[key] || "c";
   if (fam === "markdown") return cmhHighlightMarkdown(text);
+  // A per-LANGUAGE set wins over the family set, which wins over the broad fallback, so
+  // python's capitalized True/False/None color and r's lowercase true does not.
+  const kw = _HL_LANG_KW[_HL_LANG_ALIAS[key] || key] || _HL_FAM_KW[fam] || _HL_KW_SET;
   const re = _hlTokenRe(fam);
   let out = "", last = 0, m;
   while ((m = re.exec(text)) !== null) {
@@ -2292,7 +2403,7 @@ function cmhHighlightCode(text, lang) {
     if (g.com) cls = "com";
     else if (g.str) cls = (fam === "json" && _jsonKeyIsTerminated(t) && _jsonKeyFollows(text, re.lastIndex)) ? "key" : "str";
     else if (g.num) cls = "num";
-    else if (g.id) cls = (_HL_FAM_KW[fam] || _HL_KW_SET).has(re.ignoreCase ? t.toLowerCase() : t) ? "kw" : (text[re.lastIndex] === "(" ? "fn" : null);
+    else if (g.id) cls = kw.has(re.ignoreCase ? t.toLowerCase() : t) ? "kw" : (text[re.lastIndex] === "(" ? "fn" : null);
     else if (g.op) cls = "op";
     out += cls ? ('<span class="cmh-code-' + cls + '">' + escapeHtml(t) + "</span>") : escapeHtml(t);
     last = re.lastIndex;

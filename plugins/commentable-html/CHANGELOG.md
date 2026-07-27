@@ -4,6 +4,31 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.260.0] - 2026-07-27
+
+### Fixed
+
+- A diff labelled `config.xml`, `page.html` or `main.dart` now highlights. `_EXT_LANG` had no entry
+  for those extensions, so extension inference resolved to no language and the diff rendered
+  monochrome unless the author passed `data-diff-lang` explicitly - even though both highlighters
+  fully support them. A guard test now fails when any supported language has an obvious extension the
+  table does not map, so the next language cannot ship with the same hole (CMH-HL-13).
+- The runtime `sql` family accepts double-quoted strings, matching its author-time config
+  (`string_styles` is `sql_single` plus `double`). A double-quoted SQL identifier previously rendered
+  as a string when baked and as plain text at runtime. The other dedicated families' string styles are
+  now spot-checked against their configs by the same guard (CMH-HL-15).
+
+### Changed
+
+- Runtime keyword lookup is per LANGUAGE rather than one broad bucket shared by 23 languages. The
+  `hash` and `c` families shared a single approximate set, which both over-colored (a lowercase
+  `true` in Python, `true`/`false`/`null` in R, `bool` in Objective-C) and under-colored (Python's
+  capitalized `True`/`False`/`None` never matched the case-sensitive lookup). Measured cost of
+  splitting, on the built `commentable-html.js` rather than on the raw keyword text: 9,346 bytes
+  (736,669 -> 746,015, about 1.27 percent), against a divergence visible in every Python block. Each
+  set is compared to its author-time config by test, so a future drift fails there instead of shipping
+  as a block that renders one way baked and another way live (CMH-HL-14).
+
 ## [1.259.0] - 2026-07-27
 
 ### Fixed
