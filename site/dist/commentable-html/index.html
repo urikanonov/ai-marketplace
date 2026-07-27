@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.257.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.258.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,6 +457,16 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.258.0] - 2026-07-27</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Content-scoped editing for the agent review loop. <code>tools/authoring/content_extract.py</code> prints ONLY the fragment between the CONTENT markers - the 0.1 to 1.3 percent of a document an agent actually edits - instead of making it read a 1.4 to 2.5 MB file, and hands back de-highlighted SOURCE so the agent never has to hand-maintain token spans. A code block the highlight inverse refuses (hand-written markup inside a <code>&lt;pre&gt;&lt;code&gt;</code>) is passed through verbatim, so the loop never stalls on the very blocks it exists to repair (CMH-CONTENT-01).</li>
+              <li><code>tools/authoring/content_replace.py</code> writes a fragment back as ONE atomic transaction: check, swap, re-bake (typography, section cards, highlighting, an existing TOC), strict-validate, re-stamp the content-bound validated hash, and optionally mark Copy-all ids handled. Either every step succeeds or the original file is left byte-for-byte unchanged with no temporary file surviving - there is no half-finished state and no follow-up step to remember. A replacement that changes nothing does not touch the file at all (CMH-CONTENT-02).</li>
+              <li>A content edit is LOCAL: a section the agent did not touch keeps a byte-identical hash, so its Mark-reviewed marker survives, while an edited section hashes differently (CMH-CONTENT-03).</li>
+              <li><code>tools/authoring/extract_comments.py</code> prints the embedded comment snapshot as JSON or fenced text for the peer-review path, where a returned Portable file carries comments nobody pasted. It reports what is baked into the file, never &quot;all current comments&quot; - a reviewer&#x27;s newer edits can still sit in browser <code>localStorage</code>, which no command-line tool can read - and it wraps every reviewer note in an untrusted-note fence so a downstream agent treats it as data, not instructions (CMH-CONTENT-04).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.257.0] - 2026-07-26</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -468,6 +478,8 @@
               <li>The code highlighter and the KQL highlighter now share one emission point and one newline normalizer, so the reversibility guarantee covers every language instead of being reimplemented per tokenizer. The two tokenizers stay separate (their grammars genuinely differ) and both the <code>cmh-code-*</code> and <code>cmh-kql-*</code> class vocabularies are retained, so output bytes are unchanged and already-generated documents keep rendering exactly as before. Emitter output is now asserted flat, pinning the property the inverse depends on (CMH-HL-11).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.256.0] - 2026-07-27</h3></div>
             <div class="group-label">Fixed</div>
@@ -475,8 +487,6 @@
               <li>The runtime tokenizer now gives every language family that has its own comment/string patterns its own KEYWORD set, mirroring the author-time list in <code>tools/blocks/highlight_code.py</code>. Those families used to fall back to one broad, general-purpose keyword set, which both under-colored and over-colored them: an unbaked <code>language-sql</code> block rendered <code>SELECT</code>, <code>INSERT</code>, <code>JOIN</code>, <code>GROUP</code> and <code>ORDER</code> as plain text (only the handful of words that happen to exist for other languages, like <code>FROM</code> and <code>WHERE</code>, were colored) while the same block baked at author time colored them all, and <code>css</code>, <code>batch</code>, <code>powershell</code>, <code>haskell</code> and <code>lua</code> had the same gap - <code>auto</code>/<code>inherit</code>, <code>echo</code>/<code>setlocal</code>, <code>param</code>/<code>begin</code>, <code>data</code>/<code>instance</code> and <code>local</code>/<code>end</code> were all plain. The shared set also tinted words the author-time tool never treats as keywords in those languages (<code>class</code> in Lua, <code>def</code> in Haskell). XML is now its own family instead of riding along with HTML, which used to color <code>&lt;div&gt;</code> and an uppercase <code>&lt;ROOT&gt;</code> in an XML block that the baked output leaves plain, and three stale words (<code>deriving</code>, <code>newtype</code>, <code>none</code>) left over from before Haskell and CSS had their own sets no longer mis-color identifiers in every other language. CSS now matches keywords case-insensitively at runtime too, as the author-time tool already did. The broad shared set is otherwise unchanged, so a SQL-only word like <code>insert</code> still stays a plain identifier in C, Python and everything else.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.255.0] - 2026-07-26</h3></div>
             <div class="group-label">Fixed</div>
@@ -522,16 +532,7 @@
               <li>The floating <code>Add Comment</code> popup no longer jumps to the bottom-right of the following block. A whole-line or whole-paragraph selection (a double-click on the trailing word, a triple-click, or a drag past the end of the block) is normalized by the browser past the end of that block, so the raw range&#x27;s last client rect covered the ENTIRE next element - a chart figure, an image, a table - and the popup landed hundreds of pixels below the selected words. The popup now anchors to the last RENDERED character the selection covers, measured rather than guessed from the character class, so a preformatted space, a non-breaking space and a narrow no-break space all still anchor it while collapsed and zero-width characters do not. It works on both the desktop <code>mouseup</code> path and the coarse-pointer <code>selectionchange</code> (touch) path, and stays clamped to the viewport. (CMH-SEL-03)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.249.0] - 2026-07-26</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Markdown is now a supported syntax-highlighting language (<code>markdown</code>, aliases <code>md</code>, <code>mdown</code>, <code>mkd</code>). Markdown carries no keywords, so it gets a dedicated line-oriented tokenizer that reuses the six shipped token classes: headings, setext underlines, bold and a fence info string read as keywords; emphasis, strikethrough and HTML comments read as comments; inline code spans, fenced-code bodies, autolinks and link destinations read as strings; link text, reference labels and footnote references read as function names; ordered-list digits read as numbers; and fence delimiters, blockquote markers, list bullets, task checkboxes, thematic breaks, table pipes, link brackets and inline HTML tags read as punctuation. An intraword underscore (<code>some_long_name</code>) never starts emphasis, a backslash-escaped marker stays literal, an unterminated marker is left plain, and a fenced body is opaque. (CMH-HL-07)</li>
-              <li>The runtime mirrors the same Markdown tokenizer, so an unbaked <code>language-markdown</code> block self-heals on load and a <code>.md</code> / <code>.markdown</code> / <code>.mkd</code> file in a unified diff is highlighted from its filename. (CMH-HL-08)</li>
-              <li>The showcase demo report ships a highlighted Markdown block (the volunteer handbook page), and the showcase deck&#x27;s supported-syntax slide lists Markdown. (CMH-DEMO-07)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">212 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">213 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
