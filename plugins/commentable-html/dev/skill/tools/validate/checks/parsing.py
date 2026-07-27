@@ -531,34 +531,187 @@ def _is_executable_js(ad):
     return (ad.get("type", "") or "").split(";")[0].strip().lower() in _JS_TYPES
 
 
+_REGEX_KEYWORDS = frozenset((
+    "return", "typeof", "instanceof", "in", "new", "delete", "void",
+    "case", "default", "do", "else", "extends", "throw",
+))
+# A `)` that closes one of these heads is followed by a statement, so a `/` there
+# opens a regex (`if (x) /re/.test(s)`); any other `)` closes a value (division).
+_CTRL_HEAD_KEYWORDS = frozenset(("if", "while", "for", "switch", "catch", "with"))
+# JS line terminators: none of them may appear inside a regex literal.
+_JS_LINE_TERMINATORS = ("\n", "\r", "\u2028", "\u2029")
+# Cap on the total regex lookahead per script body, as a multiple of its length.
+_REGEX_LOOKAHEAD_FACTOR = 4
+
+
+def _is_ident_char(c):
+    return bool(c) and (c.isalnum() or c in ("_", "$"))
+
+
+def _regex_can_start(prev_kind, prev_word, prev_is_prop):
+    """Whether a `/` at this point opens a regex literal rather than division,
+    using the usual prev-significant-token heuristic. `prev_kind` is the kind of
+    the last significant token: "" (start of body), "value" (identifier, number,
+    closing bracket, postfix `++`/`--`, or a closed string / template / regex
+    literal), "word" (an identifier whose text is `prev_word`), or "op" (an
+    operator, a punctuator, or a control-head `)`). Only RESERVED words open a
+    regex - a contextual keyword that can legally be a variable name (`of`,
+    `yield`, `await`) is left out, because reading division as a regex is the
+    failure that blanks live code."""
+    if prev_kind == "":
+        return True
+    if prev_kind == "word":
+        return not prev_is_prop and prev_word in _REGEX_KEYWORDS
+    return prev_kind == "op"
+
+
+def _scan_regex(body, i, stop):
+    """End offset (past the flags) of the regex literal starting at body[i] == '/',
+    or None when it does not terminate on that line (then it was division) or when
+    it runs past `stop` (the lookahead budget). A `/` inside a [...] character
+    class does not terminate the literal."""
+    n, j, in_class = len(body), i + 1, False
+    while j < stop:
+        c = body[j]
+        if c in _JS_LINE_TERMINATORS:
+            return None
+        if c == "\\":
+            # An escaped line terminator is not legal in a regex literal either.
+            if body[j + 1:j + 2] in ("", "\n", "\r", "\u2028", "\u2029"):
+                return None
+            j += 2
+            continue
+        if in_class:
+            if c == "]":
+                in_class = False
+        elif c == "[":
+            in_class = True
+        elif c == "/":
+            j += 1
+            while j < n and _is_ident_char(body[j]):
+                j += 1
+            return j
+        j += 1
+    return None
+
+
+def _string_closes_on_its_line(body, i):
+    """Whether the '/" string opened at body[i] closes before the line ends. A
+    quoted string may not contain a raw line terminator, so one that does not
+    close is NOT a string (typically a quote inside a regex literal the
+    prev-token heuristic read as division) and must not open a phantom string
+    that blanks the rest of the script."""
+    n, j, quote = len(body), i + 1, body[i]
+    while j < n:
+        c = body[j]
+        if c == "\\":
+            # A line continuation is legal inside a string; CRLF counts as one.
+            j += 3 if body[j + 1:j + 3] == "\r\n" else 2
+            continue
+        if c in _JS_LINE_TERMINATORS:
+            return False
+        if c == quote:
+            return True
+        j += 1
+    return False
+
+
 def _js_scan(body):
     """Single left-to-right pass over a script body that is string / template /
-    comment aware, returning two length-preserving views:
-      - guard_src: JS comments blanked, string literals KEPT (a real
-        `typeof Chart === "undefined"` guard needs its "undefined" string).
-      - init_src:  JS comments AND string / template literals blanked (a real
-        `new Chart(` is executable code, never inside a string).
+    regex / comment aware, returning two length-preserving views:
+      - guard_src: JS comments and regex literals blanked, string literals KEPT
+        (a real `typeof Chart === "undefined"` guard needs its "undefined"
+        string; a guard is never written as a regex).
+      - init_src:  JS comments AND string / template / regex literals blanked (a
+        real `new Chart(` is executable code, never inside a literal).
     Because it is one pass, a `//` or `/*` that lives INSIDE a string can never
-    start a fake comment (the string is entered first), and a quote inside a
-    comment can never open a fake string. Regex literals are not modeled (a rare,
-    documented residual - see SKILL.md Design decisions)."""
+    start a fake comment (the string is entered first), a quote inside a comment
+    can never open a fake string, and a quote or backtick inside a regex literal
+    can never open a fake string or template (which used to blank the rest of the
+    script). Where regex-versus-division is genuinely ambiguous the scanner reads
+    DIVISION, so mis-reading a division as a literal never blanks live code; a
+    quote left unterminated by such a read is contained to its own line (a quoted
+    string may not span one). A regex MISSED that way whose body holds a backtick
+    can still open a phantom template - the accepted residual is a regex right
+    after a `}` (a statement block and an object literal are indistinguishable
+    here). Template SUBSTITUTIONS are still treated as string content - see
+    SKILL.md Design decisions."""
     n = len(body)
-    guard = list(body)   # comments -> space, strings kept
-    init = list(body)    # comments AND strings -> space
+    guard = list(body)   # comments and regex literals -> space, strings kept
+    init = list(body)    # comments AND strings AND regex literals -> space
     i, state = 0, None   # state: None | "'" | '"' | '`' | 'line' | 'block'
+    # Last significant token: its kind, its text when it is an identifier, and
+    # whether that identifier was a property access (`obj.return` is not `return`).
+    # `word_open` says the scanner is still INSIDE that identifier, so `else if`
+    # does not concatenate into one `elseif` token.
+    prev_kind, prev_word, prev_is_prop = "", "", False
+    prev_char, prev_kind2, prev_word2, word_open = "", "", "", False
+    ctrl_parens = []     # per open `(`: whether it is an if/while/for/... head
+    # Total regex lookahead is bounded so a pathological line of unterminated
+    # candidates (`x=/[` repeated) cannot make the single pass quadratic; once
+    # the budget is spent a `/` simply reads as division, as it did before.
+    budget = _REGEX_LOOKAHEAD_FACTOR * n + 1024
     while i < n:
         ch = body[i]
         nx = body[i + 1] if i + 1 < n else ""
         if state is None:
             if ch == "/" and nx == "/":
-                guard[i] = guard[i + 1] = " "; init[i] = init[i + 1] = " "; state = "line"; i += 2; continue
+                guard[i] = guard[i + 1] = " "; init[i] = init[i + 1] = " "
+                state, word_open = "line", False; i += 2; continue
             if ch == "/" and nx == "*":
-                guard[i] = guard[i + 1] = " "; init[i] = init[i + 1] = " "; state = "block"; i += 2; continue
+                guard[i] = guard[i + 1] = " "; init[i] = init[i + 1] = " "
+                state, word_open = "block", False; i += 2; continue
+            if ch == "/":
+                end = None
+                if budget > 0 and _regex_can_start(prev_kind, prev_word, prev_is_prop):
+                    stop = min(n, i + budget)
+                    end = _scan_regex(body, i, stop)
+                    budget -= (end if end is not None else stop) - i
+                if end is not None:
+                    for k in range(i, end):
+                        guard[k] = init[k] = " "
+                    prev_kind2, prev_kind, prev_word = prev_kind, "value", ""
+                    prev_is_prop, prev_char, word_open = False, "/", False
+                    i = end; continue
             if ch in ("'", '"', "`"):
-                init[i] = " "; state = ch; i += 1; continue
+                if ch == "`" or _string_closes_on_its_line(body, i):
+                    init[i] = " "; state = ch; i += 1; continue
+                # not a real string opener: treat it as an ordinary character
+            if ch.isspace():
+                word_open = False
+                i += 1; continue
+            kind_before = prev_kind
+            if _is_ident_char(ch):
+                if word_open:
+                    prev_word += ch
+                else:
+                    prev_word2, prev_word, prev_is_prop = prev_word, ch, prev_char == "."
+                prev_kind, word_open = "word", True
+            else:
+                word_open = False
+                if ch == "(":
+                    head = (prev_kind == "word" and not prev_is_prop
+                            and (prev_word in _CTRL_HEAD_KEYWORDS
+                                 or (prev_word == "await" and prev_word2 == "for")))
+                    ctrl_parens.append(head)
+                    prev_kind, prev_word, prev_is_prop = "op", "", False
+                elif ch == ")":
+                    head = ctrl_parens.pop() if ctrl_parens else False
+                    prev_kind, prev_word, prev_is_prop = ("op" if head else "value"), "", False
+                elif ch in ("]", "}"):
+                    prev_kind, prev_word, prev_is_prop = "value", "", False
+                elif ch in ("+", "-") and i > 0 and body[i - 1] == ch:
+                    # `x++ /` divides; a PREFIX `++/re/` does not, so the kind
+                    # before the first `+`/`-` decides.
+                    postfix = prev_kind2 in ("value", "word")
+                    prev_kind, prev_word, prev_is_prop = ("value" if postfix else "op"), "", False
+                else:
+                    prev_kind, prev_word, prev_is_prop = "op", "", False
+            prev_kind2 = kind_before
+            prev_char = ch
             i += 1; continue
         if state == "line":
-            if ch == "\n":
+            if ch in _JS_LINE_TERMINATORS:
                 state = None
             else:
                 guard[i] = init[i] = " "
@@ -576,7 +729,11 @@ def _js_scan(body):
                 init[i + 1] = " "
             i += 2; continue
         if ch == state:
-            init[i] = " "; state = None; i += 1; continue
+            init[i] = " "; state = None
+            # A closed literal is a value, so a following `/` divides.
+            prev_kind2, prev_kind, prev_word = prev_kind, "value", ""
+            prev_is_prop, prev_char, word_open = False, ch, False
+            i += 1; continue
         if ch != "\n":
             init[i] = " "
         i += 1; continue

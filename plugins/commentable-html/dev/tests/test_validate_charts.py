@@ -30,6 +30,8 @@ ROOT = _paths.PKG
 TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
 import validate  # noqa: E402
+# validate puts tools/validate on sys.path, so the checks package resolves here.
+from checks import parsing  # noqa: E402  the script scanner under test
 
 TEMPLATE = os.path.join(ROOT, "dist", "PORTABLE.html")
 SCRIPT = os.path.join(TOOLS, "validate", "validate.py")
@@ -640,6 +642,180 @@ class ChartValidatorTests(unittest.TestCase):
                   '<canvas id="c" role="img" aria-label="x"></canvas></div></span></p></figure>')
         e, _w, _n = run(build(figure=figure))
         self.assertTrue(any("not inside a cm-skip" in x for x in e), e)
+
+    def test_regex_literal_backtick_does_not_blank_the_script(self):
+        # CMH-VAL-17: a backtick inside a regex literal must not open a phantom
+        # template literal that blanks the rest of the script - the `.getContext(`
+        # draw after it is still a renderer, so E3 must not fire.
+        init = ('<script>const FENCE = /^([ \\t]{0,3})(`{3,}|~{3,})(.*)$/;\n'
+                'document.getElementById("c").getContext("2d").fillRect(0,0,1,1);</script>')
+        e, _w, _n = run(build(cdn="", init=init))
+        self.assertEqual([x for x in e if "no renderer" in x], [], e)
+
+    def test_regex_literal_quote_does_not_hide_init(self):
+        # CMH-VAL-17: a quote inside a regex literal must not open a phantom string;
+        # the `new Chart(` after it is still executable init, so E5 fires.
+        pre = '<script>const Q = /["\'`]/g; new Chart(z,{});</script>\n'
+        e, _w, _n = run(build(pre_marker=pre))
+        self.assertTrue(any("before the" in x for x in e), e)
+
+    def test_regex_character_class_slash_does_not_end_the_literal(self):
+        # CMH-VAL-17: an unescaped `/` inside a character class does not terminate
+        # the literal, so the `"` after it stays inside the regex and the following
+        # `new Chart(` is still seen.
+        pre = '<script>const P = /[/"]+/; new Chart(z,{});</script>\n'
+        e, _w, _n = run(build(pre_marker=pre))
+        self.assertTrue(any("before the" in x for x in e), e)
+
+    def test_division_is_not_read_as_a_regex_literal(self):
+        # CMH-VAL-17: two divisions on one line must not read as a regex literal
+        # that swallows the init between them (prev-significant-token heuristic).
+        pre = ('<script>var r = w / h; if (r) { new Chart(z,{}); } var q = a / b;'
+               "</script>\n")
+        e, _w, _n = run(build(pre_marker=pre))
+        self.assertTrue(any("before the" in x for x in e), e)
+
+    def test_new_chart_inside_a_regex_literal_is_not_init(self):
+        # CMH-VAL-17: a `new Chart(` that only appears INSIDE a regex literal is
+        # data, not executable init, so E5 must not fire.
+        pre = '<script>const M = /new Chart[(]/; console.log(M.source);</script>\n'
+        e, _w, _n = run(build(pre_marker=pre))
+        self.assertEqual([x for x in e if "before the" in x], [], e)
+
+    def test_division_after_a_closed_literal_is_not_a_regex(self):
+        # CMH-VAL-17: a closed regex / string literal is a VALUE, so the `/` after
+        # it divides; reading it as a regex would swallow the init between the two
+        # division slashes.
+        for expr in ('/x/ / (new Chart(z,{})).width / n',
+                     '"px" / (new Chart(z,{})).width / n'):
+            e, _w, _n = run(build(pre_marker="<script>var q = " + expr + ";</script>\n"))
+            self.assertTrue(any("before the" in x for x in e), f"{expr}: {e}")
+
+    def test_postfix_and_property_keyword_divisions_are_not_regexes(self):
+        # CMH-VAL-17: `i++ /` is a postfix operator then division, and `obj.return`
+        # is a property access, not the `return` keyword - neither opens a regex.
+        for expr in ("i++ / (new Chart(z,{})).width / n",
+                     "obj.return / (new Chart(z,{})).width / n"):
+            e, _w, _n = run(build(pre_marker="<script>var q = " + expr + ";</script>\n"))
+            self.assertTrue(any("before the" in x for x in e), f"{expr}: {e}")
+
+    def test_regex_after_a_control_head_paren_is_a_literal(self):
+        # CMH-VAL-17: `if (x) /re/.test(s)` is a regex literal, not division, so a
+        # quote or backtick inside it must not blank the init that follows.
+        pre = '<script>if (x) /["`]/.test(s); new Chart(z,{});</script>\n'
+        e, _w, _n = run(build(pre_marker=pre))
+        self.assertTrue(any("before the" in x for x in e), e)
+
+    def test_unclosed_quote_is_contained_to_its_own_line(self):
+        # CMH-VAL-17: where regex-versus-division stays ambiguous (here after a
+        # block `}`) the scanner reads division, so a quote inside that regex is
+        # left open - but a quoted string cannot span a line, so it is not treated
+        # as a string opener and the next line's init is still seen.
+        pre = '<script>if (x) {} /["]/.test(s);\nnew Chart(z,{});</script>\n'
+        e, _w, _n = run(build(pre_marker=pre))
+        self.assertTrue(any("before the" in x for x in e), e)
+
+    def test_regex_shaped_guard_text_is_not_a_real_guard(self):
+        # CMH-VAL-17: a `typeof Chart === "undefined"` that only appears inside a
+        # regex literal is not an executable guard, so W5 still fires.
+        init = ('<script>var r = /typeof Chart === "undefined"/; '
+                'new Chart(document.getElementById("c"), {});</script>')
+        _e, w, _n = run(build(init=init))
+        self.assertTrue(any("typeof Chart" in x for x in w), w)
+
+    def test_regex_after_an_else_if_control_head_is_a_literal(self):
+        # CMH-VAL-17: identifiers are not concatenated across whitespace, so the
+        # `(` of `else if (x)` is still recognized as a control head.
+        pre = '<script>if (a) {} else if (x) /["`]/.test(s); new Chart(z,{});</script>\n'
+        e, _w, _n = run(build(pre_marker=pre))
+        self.assertTrue(any("before the" in x for x in e), e)
+
+    def test_contextual_keyword_named_variable_divides(self):
+        # CMH-VAL-17: `of`, `yield`, and `await` are not reserved, so a variable can
+        # be named after one; only RESERVED words open a regex, otherwise these
+        # divisions would blank the init between the two slashes.
+        for word in ("of", "yield", "await"):
+            pre = (f"<script>var {word} = 2; var q = {word} / "
+                   "(new Chart(z,{})).width / n;</script>\n")
+            e, _w, _n = run(build(pre_marker=pre))
+            self.assertTrue(any("before the" in x for x in e), f"{word}: {e}")
+
+    def test_unterminated_regex_candidates_do_not_blow_up(self):
+        # CMH-VAL-17: a pathological line of unterminated regex candidates must not
+        # make the single pass quadratic. Asserted DETERMINISTICALLY (no wall clock):
+        # the total lookahead the scan may consume is capped by the budget, and the
+        # init on the next line is still seen.
+        body = ("x=/[" * 4000) + "\nnew Chart(z,{});"
+        real_scan, examined = parsing._scan_regex, []
+
+        def counting_scan(text, start, stop):
+            end = real_scan(text, start, stop)
+            examined.append((end if end is not None else stop) - start)
+            return end
+
+        parsing._scan_regex = counting_scan
+        try:
+            _guard, init = parsing._js_scan(body)
+        finally:
+            parsing._scan_regex = real_scan
+        cap = parsing._REGEX_LOOKAHEAD_FACTOR * len(body) + 1024
+        self.assertLessEqual(sum(examined), cap, "regex lookahead exceeded its budget")
+        self.assertIn("new Chart(", init)
+        e, _w, _n = run(build(pre_marker="<script>" + body + "</script>\n"))
+        self.assertTrue(any("before the" in x for x in e), e)
+
+    def test_regex_after_extends_is_a_literal(self):
+        # CMH-VAL-17: `extends` is reserved, so the `/` after it opens a regex whose
+        # backtick must not blank the init that follows.
+        pre = ('<script>class C extends /["`]/.constructor {}; '
+               "new Chart(z,{});</script>\n")
+        e, _w, _n = run(build(pre_marker=pre))
+        self.assertTrue(any("before the" in x for x in e), e)
+
+    def test_escaped_line_terminator_does_not_extend_a_regex_candidate(self):
+        # CMH-VAL-17: a regex literal may not contain a line terminator, escaped or
+        # not, so the candidate ends at the newline and the next line's init stays
+        # visible instead of being blanked.
+        pre = "<script>var q = a / x\\\n/ 2; new Chart(z,{});</script>\n"
+        e, _w, _n = run(build(pre_marker=pre))
+        self.assertTrue(any("before the" in x for x in e), e)
+
+    def test_comment_separates_identifier_tokens(self):
+        # CMH-VAL-17: a comment breaks an identifier run, so `else/*c*/if (x)` is
+        # still a control head and the regex after it is a literal.
+        pre = ('<script>if (a) {} else/*c*/if (x) /["`]/.test(s); '
+               "new Chart(z,{});</script>\n")
+        e, _w, _n = run(build(pre_marker=pre))
+        self.assertTrue(any("before the" in x for x in e), e)
+
+    def test_regex_after_export_default_is_a_literal(self):
+        # CMH-VAL-17: `default` is reserved, so the `/` after it opens a regex and
+        # the backtick inside cannot blank the init that follows.
+        pre = '<script>export default /["`]/; new Chart(z,{});</script>\n'
+        e, _w, _n = run(build(pre_marker=pre))
+        self.assertTrue(any("before the" in x for x in e), e)
+
+    def test_separated_plus_signs_are_not_a_postfix_operator(self):
+        # CMH-VAL-17: `a + +/re/` is addition then unary plus, not a postfix `++`,
+        # so the `/` opens a regex whose backtick must not blank the init after it.
+        pre = '<script>var q = a + +/["`]/.lastIndex; new Chart(z,{});</script>\n'
+        e, _w, _n = run(build(pre_marker=pre))
+        self.assertTrue(any("before the" in x for x in e), e)
+
+    def test_line_comment_ends_at_any_js_line_terminator(self):
+        # CMH-VAL-17: U+2028 ends a `//` comment for the browser, so the init on
+        # the next line is executable and must not stay blanked.
+        pre = "<script>// note\u2028new Chart(z,{});</script>\n"
+        e, _w, _n = run(build(pre_marker=pre))
+        self.assertTrue(any("before the" in x for x in e), e)
+
+    def test_regex_after_a_for_await_control_head_is_a_literal(self):
+        # CMH-VAL-17: `for await (...)` is a control head too, so the regex after
+        # it is a literal and its backtick cannot blank the init that follows.
+        pre = ("<script>async function f(){ for await (const x of xs) "
+               '/["`]/.test(x); new Chart(z,{}); }</script>\n')
+        e, _w, _n = run(build(pre_marker=pre))
+        self.assertTrue(any("before the" in x for x in e), e)
 
     def test_template_marker_is_ignored(self):
         # A JS END marker comment inside an inert <template> must not become the E5
