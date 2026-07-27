@@ -8,6 +8,7 @@ immutable digest rather than a mutable tag, and a required gate that cannot skip
 """
 import json
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -610,11 +611,132 @@ class ContainerPinningTests(unittest.TestCase):
         self.assertNotIn("\n  python:", block)
 
 
+class DriftEvidenceArtifactTests(unittest.TestCase):
+    """CMH-BUILD-18: a failed drift gate must leave the fresh PNGs behind as a CI artifact.
+
+    The screenshots are rendered ONLY in the pinned container, so a contributor without Docker
+    cannot reproduce a drift failure at all - the CI run is their only evidence, and the fresh PNGs
+    the tool keeps in tmp/tutorial-shots-check/<pid> die with the runner unless CI uploads them.
+    """
+
+    def test_a_drift_failure_uploads_the_fresh_screenshots(self):
+        steps = _shots_job_steps(_shots_job_block(_workflow_text()))
+        check = _step_with(steps, "shots_linux.py --check")
+        step_id = _field(check, "id")
+        self.assertTrue(step_id, "the drift gate step needs an id so a later step can read its outcome")
+        upload = _step_with(steps, "uses: actions/upload-artifact@")
+        self.assertIsNotNone(upload, "a failed drift gate must upload the freshly rendered PNGs")
+        # The whole guard, not a substring: `... outcome != 'failure'` (or any other near-miss that
+        # merely CONTAINS these tokens) would silently upload nothing on real drift.
+        self.assertEqual(" ".join(_field(upload, "if").split()),
+                         "failure() && steps.%s.outcome == 'failure'" % step_id,
+                         "the upload must be tied to the drift gate's own outcome, not the job's")
+        self.assertGreater(steps.index(upload), steps.index(check),
+                           "the upload has to come AFTER the step whose outcome it reads")
+        self.assertEqual(_with_field(upload, "path"), "tmp/tutorial-shots-check/",
+                         "the check keeps the fresh PNGs there; nothing else is evidence")
+        # A missing scratch dir (the gate failed before rendering) must not add a SECOND, confusing
+        # failure on top of the real one.
+        self.assertIn(_with_field(upload, "if-no-files-found"), ("warn", "ignore"))
+
+    def test_the_evidence_upload_never_runs_on_a_green_job(self):
+        # Uploading unconditionally would cost every green run the artifact packing time, and would
+        # bury the one upload that matters in noise.
+        upload = _step_with(_shots_job_steps(_shots_job_block(_workflow_text())),
+                            "uses: actions/upload-artifact@")
+        condition = _field(upload, "if")
+        self.assertTrue(condition.startswith("failure() &&"),
+                        "without failure() the step runs on every green run too")
+        self.assertNotIn("always()", condition)
+        self.assertNotIn("success()", condition)
+
+    def test_the_artifact_action_is_pinned_by_commit_sha(self):
+        # House rule: third-party actions are pinned by full commit SHA, never by a movable tag.
+        block = _shots_job_block(_workflow_text())
+        pins = re.findall(r"uses: actions/upload-artifact@(\S+)", block)
+        self.assertTrue(pins)
+        for pin in pins:
+            self.assertRegex(pin, r"^[0-9a-f]{40}$")
+
+    def test_the_guide_tells_a_contributor_where_the_artifact_is(self):
+        # The artifact is only useful if the drift instructions name it; a rename here without a
+        # doc update would send a contributor looking for something that does not exist.
+        upload = _step_with(_shots_job_steps(_shots_job_block(_workflow_text())),
+                            "uses: actions/upload-artifact@")
+        name = _with_field(upload, "name")
+        self.assertTrue(name)
+        guide = os.path.normpath(os.path.join(_paths.PLUGIN_ROOT, "..", "..", "docs",
+                                              "testing-guidelines.md"))
+        with open(guide, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn(name, text)
+
+
 def _workflow_text():
     path = os.path.normpath(os.path.join(_paths.PLUGIN_ROOT, "..", "..", ".github", "workflows",
                                          "plugin-tests.yml"))
     with open(path, encoding="utf-8") as fh:
         return fh.read()
+
+
+def _shots_job_steps(block):
+    """The job block split into its individual `- name:` steps (text, comments included)."""
+    lines = block.split("\n")
+    steps = []
+    current = None
+    for line in lines:
+        if line.startswith("      - name:"):
+            current = [line]
+            steps.append(current)
+        elif current is not None:
+            if line.strip() and not line.startswith("       "):
+                current = None
+                continue
+            current.append(line)
+    return ["\n".join(step) for step in steps]
+
+
+def _step_with(steps, needle):
+    """The first step whose text contains `needle`, or None."""
+    return next((step for step in steps if needle in step), None)
+
+
+def _field(step, key):
+    """The value of a step-level `key:` (`if`, `id`, `uses`), with comments and quotes handled."""
+    for line in (step or "").split("\n")[1:]:
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+        if stripped.startswith(key + ":"):
+            return _scalar(stripped.split(":", 1)[1])
+    return ""
+
+
+def _with_field(step, key):
+    """The value of `key:` inside the step's `with:` mapping (and nothing outside it)."""
+    indent = None
+    for line in (step or "").split("\n"):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if indent is None:
+            if stripped == "with:":
+                indent = len(line) - len(line.lstrip())
+            continue
+        if len(line) - len(line.lstrip()) <= indent:
+            break  # a sibling key ended the with: mapping
+        if stripped.startswith(key + ":"):
+            return _scalar(stripped.split(":", 1)[1])
+    return ""
+
+
+def _scalar(raw):
+    value = raw.strip()
+    if value.startswith("${{") and value.endswith("}}"):
+        value = value[3:-2].strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+        value = value[1:-1]
+    return value
 
 
 def _shots_job_block(text):

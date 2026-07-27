@@ -257,11 +257,27 @@ jobs:
           docker pull --platform linux/amd64 "$image"
           echo "::notice title=Pinned renderer pull::$((SECONDS - start))s for $image"
       - name: Verify tutorial screenshots in the pinned container (once)
+        id: shots
         if: matrix.shard == '1/3'
         # NOT `npm run shots:check`: that carries --skip-without-renderer, whose only brake is the
         # CI environment variable. Calling the tool directly means the required drift gate cannot
         # skip itself by construction, whatever the runner's environment looks like.
         run: python tools/shots_linux.py --check
+      # The screenshots render ONLY in the pinned container, so a contributor without Docker cannot
+      # reproduce a drift failure locally - this run is their only evidence. The check KEEPS its
+      # freshly rendered PNGs in tmp/tutorial-shots-check/<pid> when it fails, so upload them before
+      # the runner is recycled. Tied to the gate step's OWN outcome (not the job's), so it never
+      # runs on a green job or on the shards that skip the gate.
+      - name: Upload the fresh screenshots on drift (once)
+        if: ${{ failure() && steps.shots.outcome == 'failure' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tutorial-shots-drift
+          path: tmp/tutorial-shots-check/
+          # A gate that failed BEFORE rendering (a missing digest pin, a docker error) leaves
+          # nothing behind; warn rather than adding a second, misleading failure.
+          if-no-files-found: warn
+          retention-days: 14
       # workers=3 (below the runner's 4 vCPUs): each heavy test spawns its OWN capture chromium
       # subprocess, so 3 workers keep the peak concurrent-browser count off the OS-thrash ceiling
       # that could flake the wall-clock settle deadlines. The heavy specs isolate their scratch per
