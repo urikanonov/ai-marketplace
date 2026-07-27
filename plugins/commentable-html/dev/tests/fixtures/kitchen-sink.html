@@ -5958,7 +5958,7 @@ const _HL_FAMILY = {
   css: "css", lua: "lua", haskell: "haskell", hs: "haskell",
   powershell: "powershell", ps1: "powershell", ps: "powershell",
   batch: "batch", bat: "batch", cmd: "batch",
-  html: "markup", xml: "markup",
+  html: "markup", xml: "xml",
   markdown: "markdown", md: "markdown", mdown: "markdown", mkd: "markdown",
 };
 const _EXT_LANG = {
@@ -5980,10 +5980,10 @@ function diffLangKnown(lang) { return !!(lang && _HL_FAMILY[String(lang).toLower
 const _HL_KW_SET = new Set(("abstract as async await base bool boolean break byte case catch char class const continue "
   + "def default defer del delete do double elif else enum event export extends final finally float fn for foreach from "
   + "func function global go goto if impl implements import in include instanceof int interface is lambda let long match "
-  + "module mut namespace new nil none not null object or override package pass private protected public raise readonly "
+  + "module mut namespace new nil not null object or override package pass private protected public raise readonly "
   + "ref return self short static struct super switch synchronized template this throw throws trait try type typedef "
   + "typeof union unsafe use using var virtual void volatile when where while with yield true false and "
-  + "cond defmacro defmodule defp defstruct deriving elseif newtype quote unquote receive rescue repeat until").split(" "));
+  + "cond defmacro defmodule defp defstruct elseif quote unquote receive rescue repeat until").split(" "));
 // A family that gets its own comment/string patterns in _hlTokenRe() is 1:1 with an author-time
 // language, so it also gets its own KEYWORD set mirroring that language's list in
 // tools/blocks/highlight_code.py. Sharing the broad set below both under-colors (it carries no
@@ -5993,11 +5993,15 @@ const _HL_KW_SET = new Set(("abstract as async await base bool boolean break byt
 // identifier as a keyword in every other language. A parity test pins each set to its author-time
 // config, so a future dedicated family cannot silently inherit the shared one.
 const _HL_FAM_KW = {
-  // Markup (html + xml): tag names, so a runtime-highlighted markup block colors the same tokens a
-  // baked one does instead of using the C-family set (where words like `class` collide).
+  // HTML tag names, so a runtime-highlighted markup block colors the same tokens a baked one does
+  // instead of using the C-family set (where words like `class` collide). XML is its OWN family
+  // rather than riding along: it has a different (much smaller) tag vocabulary, and unlike html it
+  // is case-SENSITIVE at author time, so sharing one family would color `<ROOT>` and `<div>` in an
+  // XML block that the baked output leaves plain.
   markup: new Set(("a article body button code div footer h1 h2 h3 head header html img "
     + "input label li link main meta nav ol option p pre script section select span style table tbody "
-    + "td template textarea th thead title tr ul xml version encoding root item node element").split(" ")),
+    + "td template textarea th thead title tr ul").split(" ")),
+  xml: new Set(("xml version encoding root item node element").split(" ")),
   // JSON has exactly three barewords; the broad set would tint an invalid stray identifier.
   json: new Set(("true false null").split(" ")),
   sql: new Set(("all alter and as asc between by case cast create cross delete desc distinct drop "
@@ -6052,6 +6056,9 @@ function _hlTokenRe(fam) {
   else if (fam === "powershell") { com = "<#[\\s\\S]*?(?:#>|$)|#[^\\n]*"; str = dq + "|" + sq; flags = "gi"; }
   else if (fam === "batch") { com = "(?:rem\\b|::)[^\\n]*"; str = dq; flags = "gi"; }
   else if (fam === "markup") { com = "<!--[\\s\\S]*?(?:-->|$)"; str = dq + "|" + sq; flags = "gi"; }
+  // XML shares markup's patterns but matches keywords case-SENSITIVELY, mirroring the author-time
+  // tool (html is in CASE_INSENSITIVE_LANGUAGES, xml is not).
+  else if (fam === "xml") { com = "<!--[\\s\\S]*?(?:-->|$)"; str = dq + "|" + sq; }
   // JSON strings cannot contain a raw newline, and the author-time `double` style excludes one. The
   // shared dq form does NOT, so reusing it here would let the runtime swallow a multi-line span (and,
   // with the key lookahead, call it a key) where the author-time tool emits several tokens.

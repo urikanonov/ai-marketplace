@@ -27,6 +27,8 @@ HIGHLIGHT_JS = os.path.join(_paths.ASSETS, "js", "26-highlight.js")
 # A key inside the _HL_FAMILY object literal: a bareword (javascript) or a quoted token ("c++")
 # immediately before a colon. Values ("c", "hash") never precede a colon, so they are not captured.
 _HL_FAMILY_KEY_RE = re.compile(r'("[^"]+"|[A-Za-z_$][A-Za-z0-9_$+.#-]*)\s*:')
+# A full `<label>: "<family>"` pair of that same literal.
+_HL_FAMILY_PAIR_RE = re.compile(r'("[^"]+"|[A-Za-z_$][A-Za-z0-9_$+.#-]*)\s*:\s*"([a-z]+)"')
 # One `<family>: new Set(("a b " + "c d").split(" "))` entry of the _HL_FAM_KW map.
 _FAM_KW_ENTRY_RE = re.compile(r'([A-Za-z_$][A-Za-z0-9_$]*)\s*:\s*new Set\(\((.*?)\)\.split\(" "\)\)', re.S)
 _JS_STRING_RE = re.compile(r'"([^"]*)"')
@@ -36,22 +38,31 @@ _FAM_BRANCH_RE = re.compile(r'fam === "([a-z]+)"')
 # ruby, shell, yaml ... / every C-family language), so no single author-time keyword list describes
 # them and they keep the broad shared set. `markdown` carries no keywords at all.
 SHARED_KEYWORD_FAMILIES = {"hash", "c", "markdown"}
-# Each dedicated family and the author-time language(s) whose keywords it must mirror.
-FAMILY_LANGUAGES = {
-    "sql": ("sql",),
-    "css": ("css",),
-    "lua": ("lua",),
-    "haskell": ("haskell",),
-    "powershell": ("powershell",),
-    "batch": ("batch",),
-    "json": ("json",),
-    "markup": ("html", "xml"),
-}
 
 
 def _highlight_js():
     with open(HIGHLIGHT_JS, "r", encoding="utf-8") as fh:
         return fh.read()
+
+
+def _canonical_language(label):
+    return H.ALIASES.get(label, label)
+
+
+def runtime_family_languages():
+    """{family: {author-time language}} derived from the _HL_FAMILY table itself.
+
+    Deriving this rather than hardcoding it is what makes the guards below cover a FUTURE family:
+    a new family cannot be forgotten by this test, because the table it is declared in is the
+    source both the runtime and the test read.
+    """
+    src = _highlight_js()
+    m = re.search(r"const _HL_FAMILY\s*=\s*\{(.*?)\};", src, re.S)
+    assert m, "could not locate the _HL_FAMILY object literal in 26-highlight.js"
+    out = {}
+    for label, fam in _HL_FAMILY_PAIR_RE.findall(m.group(1)):
+        out.setdefault(fam, set()).add(_canonical_language(label.strip('"').lower()))
+    return out
 
 
 def runtime_family_keywords():
@@ -74,9 +85,36 @@ def runtime_shared_keywords():
     return set("".join(_JS_STRING_RE.findall(m.group(1))).split())
 
 
+def _token_re_body():
+    src = _highlight_js()
+    start = src.index("function _hlTokenRe(")
+    end = src.index("\nfunction ", start + 1)
+    return src[start:end]
+
+
+def runtime_case_insensitive_families():
+    """{family} whose _hlTokenRe() branch compiles with the `i` flag."""
+    out = set()
+    for stmt in re.split(r"\n\s*(?:else )?if ", _token_re_body()):
+        fams = set(_FAM_BRANCH_RE.findall(stmt))
+        if fams and re.search(r'flags = "gi"', stmt):
+            out |= fams
+    return out
+
+
 def runtime_dedicated_families():
+    """Families that need their own keyword set, from the _HL_FAMILY table (not from control flow).
+
+    Reading the declarative table means a new family written with a branch shape this test cannot
+    parse still shows up here - the branch scan below is only a cross-check that the two agree.
+    """
+    return set(runtime_family_languages()) - SHARED_KEYWORD_FAMILIES
+
+
+def runtime_branch_families():
     """Families _hlTokenRe() gives their own comment/string patterns to."""
-    return set(_FAM_BRANCH_RE.findall(_highlight_js())) - SHARED_KEYWORD_FAMILIES
+    return set(_FAM_BRANCH_RE.findall(_token_re_body())) - SHARED_KEYWORD_FAMILIES
+
 
 
 def runtime_known_languages():
@@ -151,19 +189,31 @@ class FamilyKeywordParityTests(unittest.TestCase):
 
     def test_every_dedicated_family_has_its_own_keyword_set(self):
         # A future family with its own comment/string patterns must not silently inherit the broad
-        # set - that is exactly how `sql` shipped without SELECT.
+        # set - that is exactly how `sql` shipped without SELECT. The expected set comes from the
+        # declarative _HL_FAMILY table, so a family written with a branch shape this test cannot
+        # parse is still caught here.
         missing = sorted(runtime_dedicated_families() - set(runtime_family_keywords()))
         self.assertEqual(missing, [],
                          "every family with dedicated patterns needs a _HL_FAM_KW entry; missing: %r"
                          % missing)
-        unexpected = sorted(set(runtime_family_keywords()) - set(FAMILY_LANGUAGES))
-        self.assertEqual(unexpected, [],
-                         "a new _HL_FAM_KW family must also be mapped in FAMILY_LANGUAGES so this "
-                         "test knows which author-time language it mirrors; unmapped: %r" % unexpected)
+        stray = sorted(set(runtime_family_keywords()) - runtime_dedicated_families())
+        self.assertEqual(stray, [],
+                         "a _HL_FAM_KW entry must name a family the _HL_FAMILY table declares; "
+                         "stray: %r" % stray)
+
+    def test_the_dedicated_families_and_their_token_patterns_agree(self):
+        # The keyword sets are keyed off the family TABLE while the comment/string patterns are
+        # keyed off `_hlTokenRe`'s branches. If those two ever disagree, one of the guards above is
+        # inspecting something the runtime does not actually use.
+        self.assertEqual(sorted(runtime_branch_families()), sorted(runtime_dedicated_families()),
+                         "every dedicated family must have BOTH a _hlTokenRe branch and a table "
+                         "entry (a branch shape this test cannot parse shows up as a mismatch)")
 
     def test_each_family_keyword_set_matches_the_author_time_config(self):
         runtime = runtime_family_keywords()
-        for fam, langs in sorted(FAMILY_LANGUAGES.items()):
+        for fam, langs in sorted(runtime_family_languages().items()):
+            if fam in SHARED_KEYWORD_FAMILIES:
+                continue
             expected = set()
             for lang in langs:
                 expected |= set(H.LANGUAGE_CONFIGS[lang]["keywords"])
@@ -172,23 +222,52 @@ class FamilyKeywordParityTests(unittest.TestCase):
                 self.assertEqual(runtime[fam], expected,
                                  "runtime _HL_FAM_KW[%r] must mirror %s keywords exactly (only in "
                                  "runtime: %r; only author-time: %r)"
-                                 % (fam, "+".join(langs),
+                                 % (fam, "+".join(sorted(langs)),
                                     sorted(runtime.get(fam, set()) - expected),
                                     sorted(expected - runtime.get(fam, set()))))
 
+    def test_each_family_matches_the_author_time_case_sensitivity(self):
+        # Keyword matching is only faithful if the CASE rule matches too: the runtime lowercases a
+        # token exactly when its family regex carries the `i` flag, and the author-time tool
+        # compiles with re.IGNORECASE exactly for CASE_INSENSITIVE_LANGUAGES. A family whose
+        # languages disagree about that cannot be one family at all (that is why xml, which is
+        # case-SENSITIVE, cannot ride along with html).
+        insensitive = runtime_case_insensitive_families()
+        for fam, langs in sorted(runtime_family_languages().items()):
+            if fam in SHARED_KEYWORD_FAMILIES:
+                continue
+            expected = {lang in H.CASE_INSENSITIVE_LANGUAGES for lang in langs}
+            with self.subTest(family=fam):
+                self.assertEqual(len(expected), 1,
+                                 "family %r groups languages that disagree about case sensitivity "
+                                 "(%r) - split it" % (fam, sorted(langs)))
+                self.assertEqual(fam in insensitive, expected.pop(),
+                                 "family %r must match the author-time case rule for %s"
+                                 % (fam, "+".join(sorted(langs))))
+
     def test_the_shared_keyword_set_is_not_widened(self):
-        # The fix must ADD per-family sets, never broaden the shared one: a SQL-only word like
-        # `select` would then tint a plain identifier in C, Python, Go and everything else.
+        # The fix must ADD per-family sets, never broaden the shared one: a word no shared-family
+        # language actually uses (SQL's `insert`, CSS's `none`, Haskell's `newtype`) would only
+        # mis-color a plain identifier in C, Python, Go and everything else. Derived from the
+        # configs rather than a hand-listed sample, so ANY such word is caught.
         shared = runtime_shared_keywords()
-        sql_only = set(H.LANGUAGE_CONFIGS["sql"]["keywords"]) - set(H.LANGUAGE_CONFIGS["python"]["keywords"])
-        for word in ("select", "insert", "join", "group", "order", "update", "table", "values"):
-            self.assertIn(word, sql_only)
-            self.assertNotIn(word, shared,
-                             "%r is SQL-specific and must not enter the shared keyword set" % word)
-        # Same for the other dedicated families' distinctive words.
-        for word in ("endlocal", "setlocal", "dynamicparam", "qualified", "infixl", "inherit"):
-            self.assertNotIn(word, shared,
-                             "%r belongs to one family's set, not the shared one" % word)
+        families = runtime_family_languages()
+        allowed = set()
+        for fam in SHARED_KEYWORD_FAMILIES & set(families):
+            for lang in families[fam]:
+                allowed |= set(H.LANGUAGE_CONFIGS[lang]["keywords"])
+        # Sanity that `allowed` really is the shared-family vocabulary: the SQL words the bug was
+        # about are not in it. (`select` is deliberately absent from this list - bash has a `select`
+        # loop, so it is legitimately shared vocabulary rather than SQL-only.)
+        for word in ("insert", "join", "group", "order", "update", "table", "values"):
+            self.assertNotIn(word, allowed)
+        leaked = sorted(shared - allowed)
+        self.assertEqual(leaked, [],
+                         "no shared-family language uses these words, so in the shared set they can "
+                         "only mis-color an identifier; they belong to a dedicated family's set: %r"
+                         % leaked)
+
+
 
 
 

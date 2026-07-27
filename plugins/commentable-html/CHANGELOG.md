@@ -17,9 +17,13 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   and `css`, `batch`, `powershell`, `haskell` and `lua` had the same gap - `auto`/`inherit`,
   `echo`/`setlocal`, `param`/`begin`, `data`/`instance` and `local`/`end` were all plain. The shared
   set also tinted words the author-time tool never treats as keywords in those languages (`class` in
-  Lua, `def` in Haskell). CSS now matches keywords case-insensitively at runtime too, as the
-  author-time tool already did. The broad shared set is unchanged, so a SQL-only word like `select`
-  still stays a plain identifier in C, Python and everything else.
+  Lua, `def` in Haskell). XML is now its own family instead of riding along with HTML, which used to
+  color `<div>` and an uppercase `<ROOT>` in an XML block that the baked output leaves plain, and
+  three stale words (`deriving`, `newtype`, `none`) left over from before Haskell and CSS had their
+  own sets no longer mis-color identifiers in every other language. CSS now matches keywords
+  case-insensitively at runtime too, as the author-time tool already did. The broad shared set is
+  otherwise unchanged, so a SQL-only word like `insert` still stays a plain identifier in C, Python
+  and everything else.
 
 ## [1.255.0] - 2026-07-26
 

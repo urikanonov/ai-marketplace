@@ -150,6 +150,19 @@
       "notKw": ["name"]
     },
     {
+      "lang": "html",
+      "code": "<DIV CLASS=\"x\">hi</DIV>",
+      "str": ["\"x\""],
+      "kw": ["DIV"],
+      "notKw": ["CLASS"]
+    },
+    {
+      "lang": "xml",
+      "code": "<ROOT><item/></ROOT>",
+      "kw": ["item"],
+      "notKw": ["ROOT"]
+    },
+    {
       "lang": "json",
       "code": "{\"name\": \"cmh\", \"ok\": true, \"n\": 3}",
       "key": ["\"name\"", "\"ok\"", "\"n\""],
