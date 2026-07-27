@@ -42,21 +42,114 @@
       "notKw": [".filter", "local", "process"]
     },
     {
+      "lang": "css",
+      "code": "a { margin: AUTO; color: inherit; width: unset }",
+      "kw": ["AUTO", "inherit", "unset"],
+      "notKw": ["margin", "color", "width"]
+    },
+    {
       "lang": "sql",
       "code": "SELECT id FROM orders WHERE status = 'paid';",
       "str": ["'paid'"],
-      "kw": ["FROM", "WHERE"]
+      "kw": ["SELECT", "FROM", "WHERE"]
+    },
+    {
+      "lang": "sql",
+      "code": "INSERT INTO items (amount) VALUES (1); UPDATE items SET amount = 2 -- note",
+      "com": ["-- note"],
+      "kw": ["INSERT", "INTO", "VALUES", "UPDATE", "SET"],
+      "notKw": ["items", "amount"]
+    },
+    {
+      "lang": "sql",
+      "code": "select c.id from customers c inner join orders o on o.cid = c.id group by c.id order by c.id desc",
+      "kw": ["select", "from", "inner", "join", "on", "group", "by", "order", "desc"],
+      "notKw": ["customers", "orders", "cid"]
+    },
+    {
+      "lang": "python",
+      "code": "select = insert + join; table = 'x' # note",
+      "str": ["'x'"],
+      "com": ["# note"],
+      "notKw": ["select", "insert", "join", "table"]
+    },
+    {
+      "lang": "cpp",
+      "code": "int select = 1; int values = 2;",
+      "kw": ["int"],
+      "notKw": ["select", "values"]
+    },
+    {
+      "lang": "lua",
+      "code": "local tbl = {} function helper() return 1 end -- note",
+      "com": ["-- note"],
+      "kw": ["local", "function", "return", "end"],
+      "notKw": ["tbl", "helper"]
+    },
+    {
+      "lang": "lua",
+      "code": "class = 1 -- not a lua keyword",
+      "com": ["-- not a lua keyword"],
+      "notKw": ["class"]
+    },
+    {
+      "lang": "lua",
+      "code": "LOCAL = 1 -- lua is case-sensitive",
+      "com": ["-- lua is case-sensitive"],
+      "notKw": ["LOCAL"]
+    },
+    {
+      "lang": "json",
+      "code": "{ \"a\": TRUE }",
+      "key": ["\"a\""],
+      "notKw": ["TRUE"]
+    },
+    {
+      "lang": "haskell",
+      "code": "data T = T deriving Show -- note",
+      "com": ["-- note"],
+      "kw": ["data", "deriving"],
+      "notKw": ["Show"]
+    },
+    {
+      "lang": "haskell",
+      "code": "def = 1 -- not a haskell keyword",
+      "com": ["-- not a haskell keyword"],
+      "notKw": ["def"]
+    },
+    {
+      "lang": "haskell",
+      "code": "DATA = 1 -- haskell is case-sensitive",
+      "com": ["-- haskell is case-sensitive"],
+      "notKw": ["DATA"]
     },
     {
       "lang": "batch",
       "code": "IF 1==1 ECHO Hello & REM a comment",
       "com": ["REM a comment"],
-      "kw": ["IF"]
+      "kw": ["IF", "ECHO"]
+    },
+    {
+      "lang": "batch",
+      "code": "SETLOCAL & CALL :sub & ENDLOCAL",
+      "kw": ["SETLOCAL", "CALL", "ENDLOCAL"]
     },
     {
       "lang": "powershell",
       "code": "FUNCTION Get-Thing { RETURN $Name }",
       "kw": ["FUNCTION", "RETURN"]
+    },
+    {
+      "lang": "powershell",
+      "code": "PARAM($Name) BEGIN { EXIT 1 } # note",
+      "com": ["# note"],
+      "kw": ["PARAM", "BEGIN", "EXIT"]
+    },
+    {
+      "lang": "powershell",
+      "code": "let = 1 # not a powershell keyword",
+      "com": ["# not a powershell keyword"],
+      "notKw": ["let"]
     },
     {
       "lang": "html",
@@ -73,6 +166,19 @@
       "com": ["<!-- x -->"],
       "kw": ["item"],
       "notKw": ["name"]
+    },
+    {
+      "lang": "html",
+      "code": "<DIV CLASS=\"x\">hi</DIV>",
+      "str": ["\"x\""],
+      "kw": ["DIV"],
+      "notKw": ["CLASS"]
+    },
+    {
+      "lang": "xml",
+      "code": "<ROOT><item/></ROOT>",
+      "kw": ["item"],
+      "notKw": ["ROOT"]
     },
     {
       "lang": "json",

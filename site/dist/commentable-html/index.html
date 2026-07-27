@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.255.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.256.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,6 +457,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.256.0] - 2026-07-27</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The runtime tokenizer now gives every language family that has its own comment/string patterns its own KEYWORD set, mirroring the author-time list in <code>tools/blocks/highlight_code.py</code>. Those families used to fall back to one broad, general-purpose keyword set, which both under-colored and over-colored them: an unbaked <code>language-sql</code> block rendered <code>SELECT</code>, <code>INSERT</code>, <code>JOIN</code>, <code>GROUP</code> and <code>ORDER</code> as plain text (only the handful of words that happen to exist for other languages, like <code>FROM</code> and <code>WHERE</code>, were colored) while the same block baked at author time colored them all, and <code>css</code>, <code>batch</code>, <code>powershell</code>, <code>haskell</code> and <code>lua</code> had the same gap - <code>auto</code>/<code>inherit</code>, <code>echo</code>/<code>setlocal</code>, <code>param</code>/<code>begin</code>, <code>data</code>/<code>instance</code> and <code>local</code>/<code>end</code> were all plain. The shared set also tinted words the author-time tool never treats as keywords in those languages (<code>class</code> in Lua, <code>def</code> in Haskell). XML is now its own family instead of riding along with HTML, which used to color <code>&lt;div&gt;</code> and an uppercase <code>&lt;ROOT&gt;</code> in an XML block that the baked output leaves plain, and three stale words (<code>deriving</code>, <code>newtype</code>, <code>none</code>) left over from before Haskell and CSS had their own sets no longer mis-color identifiers in every other language. CSS now matches keywords case-insensitively at runtime too, as the author-time tool already did. The broad shared set is otherwise unchanged, so a SQL-only word like <code>insert</code> still stays a plain identifier in C, Python and everything else.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.255.0] - 2026-07-26</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -472,6 +479,8 @@
               <li>The author-time highlighter now knows the common short labels <code>js</code>, <code>jsx</code>, <code>mjs</code>, <code>py</code>, <code>ts</code> and <code>tsx</code>. They were runtime-only, so a <code>js</code>-labelled block was highlighted by the runtime but baked as plain text - and, with nested fences, would have nested on one path and stayed flat on the other. A second drift guard now fails in that direction too, so the author-time and runtime label sets cannot diverge again. (CMH-HL-03)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.254.0] - 2026-07-26</h3></div>
             <div class="group-label">Changed</div>
@@ -486,8 +495,6 @@
               <li>A comment is now editable in exactly one place at a time: opening a second editor for a note that already has an unsaved draft elsewhere (the panel card, the in-document dialog, another highlight&#x27;s dialog, or the floating composer reached by re-selecting the text) hands the reader back to the draft instead of duplicating it - previously two editors could exist and the last save silently overwrote the other. (CMH-CORE-16)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.253.0] - 2026-07-26</h3></div>
             <div class="group-label">Added</div>
@@ -519,24 +526,7 @@
               <li>The floating per-link <code>Add Comment</code> button that appears when hovering a commentable link now wears the shared crimson accent pill (background, label color, rounded shape, shadow, hover and active states) like every other add-comment affordance. <code>.cm-link-add</code> had been left out of the shared pill rule, so the link button rendered as a plain default browser button. (CMH-UI-04)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.247.0] - 2026-07-26</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A <code>jsonc</code> code block is highlighted instead of rendering as plain monochrome text. <code>jsonc</code> was not a known label on either path - it was missing from the author-time highlighter&#x27;s alias table and from the runtime tokenizer&#x27;s language map - so a <code>language-jsonc</code> block was baked as escaped plain text and the runtime fallback declined to touch it. It is now a first-class label that resolves to <code>json</code>. (CMH-HL-05)</li>
-              <li>A <code>/* ... */</code> block comment in a JSON/JSONC block is highlighted as a comment. The author-time <code>json</code> config declared only <code>//</code> line comments, so a block comment was tokenized as operators plus plain text - and silently disagreed with the runtime, which did treat it as a comment. (CMH-HL-05)</li>
-              <li>A comment that directly abuts an operator, with no whitespace between them, is highlighted as a comment. The author-time tokenizer&#x27;s greedy operator run absorbed the comment&#x27;s opener (<code>{/*</code> became one operator token), so the comment BODY was then highlighted as live code - which the new JSON block comments made visible as <code>{/* &quot;a&quot;: 1 */}</code> colouring <code>&quot;a&quot;</code> as a property key. The operator run is now guarded per language by that language&#x27;s own comment prefixes, so <code>x=1;/*c*/</code>, <code>int x=1;//n</code>, <code>f x={-c-}</code>, <code>$a=1&lt;#c#&gt;</code> and <code>x=1--c</code> all highlight correctly while an operator pair that is not a comment in that language (Python floor division <code>//</code>) is untouched. (CMH-HL-06)</li>
-            </ul>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>JSON property keys are tinted apart from string values. A double-quoted string whose next non-whitespace character is <code>:</code> now emits a <code>cmh-code-key</code> token instead of <code>cmh-code-str</code>, so a JSON document reads the way every mainstream JSON highlighter renders it rather than as one wall of green strings. The token ships colors for the light theme, the dark theme, deck mode, and the dark-theme print re-light, and it is JSON-only - no other language gains a key token. (CMH-HL-05)</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The runtime/author-time highlighter drift guard now also requires the runtime to know every author-time ALIAS, not just every canonical language. <code>diffLangKnown()</code> looks the raw <code>language-XXX</code> label up with no alias resolution, so an alias-only language was highlightable at author time and monochrome at runtime - the exact hole that let <code>jsonc</code> ship unhighlighted. (CMH-HL-03)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">210 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">211 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

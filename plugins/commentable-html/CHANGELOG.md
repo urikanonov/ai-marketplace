@@ -4,6 +4,27 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.256.0] - 2026-07-27
+
+### Fixed
+
+- The runtime tokenizer now gives every language family that has its own comment/string patterns its
+  own KEYWORD set, mirroring the author-time list in `tools/blocks/highlight_code.py`. Those
+  families used to fall back to one broad, general-purpose keyword set, which both under-colored and
+  over-colored them: an unbaked `language-sql` block rendered `SELECT`, `INSERT`, `JOIN`, `GROUP`
+  and `ORDER` as plain text (only the handful of words that happen to exist for other languages,
+  like `FROM` and `WHERE`, were colored) while the same block baked at author time colored them all,
+  and `css`, `batch`, `powershell`, `haskell` and `lua` had the same gap - `auto`/`inherit`,
+  `echo`/`setlocal`, `param`/`begin`, `data`/`instance` and `local`/`end` were all plain. The shared
+  set also tinted words the author-time tool never treats as keywords in those languages (`class` in
+  Lua, `def` in Haskell). XML is now its own family instead of riding along with HTML, which used to
+  color `<div>` and an uppercase `<ROOT>` in an XML block that the baked output leaves plain, and
+  three stale words (`deriving`, `newtype`, `none`) left over from before Haskell and CSS had their
+  own sets no longer mis-color identifiers in every other language. CSS now matches keywords
+  case-insensitively at runtime too, as the author-time tool already did. The broad shared set is
+  otherwise unchanged, so a SQL-only word like `insert` still stays a plain identifier in C, Python
+  and everything else.
+
 ## [1.255.0] - 2026-07-26
 
 ### Fixed
