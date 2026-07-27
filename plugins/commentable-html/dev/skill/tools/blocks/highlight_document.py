@@ -26,6 +26,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 import _toolpath  # noqa: E402
 _toolpath.ensure()
 import highlight_code  # noqa: E402
+import kql_highlight  # noqa: E402
+
+# Kusto labels the document path dispatches to the KQL tokenizer.
+_KQL_LANGUAGES = frozenset(("kusto", "kql"))
 
 # A block code element: <pre ...><code ...>INNER</code></pre> (optional whitespace between tags).
 _PRE_CODE_RE = re.compile(r"(<pre\b[^>]*>\s*<code\b([^>]*)>)(.*?)(</code>\s*</pre>)",
@@ -57,14 +61,19 @@ def highlight_document(html):
         if not raw_lang:
             return m.group(0)
         lang = highlight_code._normalize_language(raw_lang)
-        if lang not in highlight_code.LANGUAGE_CONFIGS:
-            return m.group(0)  # not a highlightable language (text, kusto, an unknown label)
-        if "cmh-code-" in inner or _TAG_RE.search(inner):
+        is_kql = lang in _KQL_LANGUAGES
+        if not is_kql and lang not in highlight_code.LANGUAGE_CONFIGS:
+            return m.group(0)  # not a highlightable language (text, an unknown label)
+        if "cmh-code-" in inner or "cmh-kql-" in inner or _TAG_RE.search(inner):
             return m.group(0)  # already highlighted or carries markup - leave it alone
         if not inner.strip():
             return m.group(0)
         code = _html.unescape(inner)
-        highlighted = highlight_code.highlight_code(lang, code)
+        # KQL keeps its own tokenizer and its own cmh-kql-* class vocabulary (bare
+        # function names, hyphenated keywords, @"..." strings); only the DISPATCH is
+        # shared, so the document path and the KQL tool can never diverge.
+        highlighted = (kql_highlight.highlight_inner(code) if is_kql
+                       else highlight_code.highlight_code(lang, code))
         counter[0] += 1
         return open_tag + highlighted + close_tag
 

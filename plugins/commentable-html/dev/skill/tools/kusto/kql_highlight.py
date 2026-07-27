@@ -26,6 +26,7 @@ import _toolpath  # noqa: E402
 _toolpath.ensure()
 import kusto_link  # noqa: E402
 import _highlight_core as _core  # noqa: E402
+from urllib.parse import unquote, urlsplit  # noqa: E402
 
 # KQL query/tabular operators and control keywords (lowercased). Hyphenated forms
 # (mv-expand, project-away, ...) are matched whole by the identifier rule below.
@@ -144,6 +145,40 @@ def render_block(cluster, database, title, query):
         '%s\n'
         '</figure>'
     ) % (cluster_attr, cluster_attr, _html.escape(title), href, render_code(query))
+
+
+_RUN_HREF_RE = re.compile(r'(<a class="cmh-kql-run" href=")([^"]*)(")', re.IGNORECASE)
+_CODE_INNER_RE = re.compile(
+    r'(<pre\b[^>]*>\s*<code\b[^>]*class="[^"]*language-kusto[^"]*"[^>]*>)(.*?)(</code>\s*</pre>)',
+    re.DOTALL | re.IGNORECASE)
+
+
+def refresh_block(figure_html, query):
+    """Return `figure_html` with BOTH its code and its Run link rebuilt for `query`.
+
+    The Run in Azure Data Explorer link encodes the query INSIDE its href, so
+    re-highlighting only the `<code>` inner would leave the button executing the
+    pre-edit text - silently, since nothing validates the payload. The cluster and
+    database are recovered from the existing link, so the caption, the copy affordance
+    and the frame are preserved exactly.
+
+    Raises ValueError when the figure carries no readable Run link or code block.
+    """
+    m = _RUN_HREF_RE.search(figure_html or "")
+    if not m:
+        raise ValueError("no cmh-kql-run link found: not a runnable KQL figure")
+    parts = urlsplit(_html.unescape(m.group(2)))
+    path = parts.path.strip("/").split("/")
+    if len(path) < 4 or "query=" not in parts.query:
+        raise ValueError("the Run link is not a recognizable ADX deep link")
+    cluster, database = unquote(path[1]), unquote(path[3])
+    href = _html.escape(kusto_link.kusto_link(cluster, database, query), quote=True)
+    out = _RUN_HREF_RE.sub(lambda mm: mm.group(1) + href + mm.group(3), figure_html, count=1)
+    inner = highlight_inner(query)
+    out, n = _CODE_INNER_RE.subn(lambda mm: mm.group(1) + inner + mm.group(3), out, count=1)
+    if n != 1:
+        raise ValueError("no language-kusto code block found in the figure")
+    return out
 
 
 def _usage():

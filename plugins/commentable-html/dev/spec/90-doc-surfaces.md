@@ -111,3 +111,6 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-CONTENT-02 | opt-out: an agent-facing authoring tool (atomic write-back); no reader-visible behavior change | opt-out: a transactional guarantee for tooling, not a deck topic |
 | CMH-CONTENT-03 | opt-out: an internal fidelity invariant (untouched sections keep their hashes); readers see no new capability | opt-out: an invariant with nothing to show on a slide |
 | CMH-CONTENT-04 | opt-out: an agent-facing export-reading format for the peer-review handoff | opt-out: agent-side tooling, already covered by the documented peer-review loop |
+| CMH-KQL-09 | opt-out: an internal dispatch unification; KQL blocks already rendered highlighted, so readers see no change | opt-out: an internal refactor with no visible behavior change |
+| CMH-KQL-10 | site | opt-out: the deck's KQL slide already shows a runnable block; the fix is that the link stays correct after an edit, which a slide cannot show |
+| CMH-HL-12 | opt-out: a validator hardening that catches malformed highlighting markup; not a reader-facing capability | opt-out: a validation guard, not a deck topic |

@@ -1,5 +1,12 @@
 from _validate_helpers import *
 
+import kql_highlight  # noqa: E402
+
+
+# kusto is dispatched by the document highlight path (CMH-KQL-09), so a clean fixture
+# carries real token spans exactly as a generated document does.
+KQL_INNER = kql_highlight.highlight_inner("T | take 1")
+
 
 class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
     def test_diff_block_is_tolerated(self):
@@ -74,7 +81,7 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
         # Azure Data Explorer link) nor explicitly marked data-cmh-kql-no-cluster is a hard error -
         # a KQL block must either run on a cluster or be a deliberate no-cluster snippet. Prefer
         # providing a cluster; the marker is the rare escape hatch.
-        block = '<pre><code class="language-kusto">T | take 1</code></pre>'
+        block = '<pre><code class="language-kusto">%s</code>' % KQL_INNER + '</pre>'
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + block)
         self.assertError(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
                          "not runnable")
@@ -82,7 +89,7 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
     def test_bare_kusto_with_no_cluster_marker_is_clean(self):
         # CMH-KQL-08: the explicit data-cmh-kql-no-cluster override marks a deliberate highlight-only
         # snippet (no known cluster to run it on), so it is validator-clean.
-        block = '<pre data-cmh-kql-no-cluster><code class="language-kusto">T | take 1</code></pre>'
+        block = '<pre data-cmh-kql-no-cluster><code class="language-kusto">%s</code>' % KQL_INNER + '</pre>'
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + block)
         self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
 
@@ -93,7 +100,7 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
                '<button class="cmh-kql-title" type="button">cluster</button>'
                '<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
                'target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer</a></figcaption>'
-               '<pre><code class="language-kusto">T | take 1</code></pre></figure>')
+               '<pre><code class="language-kusto">%s</code>' % KQL_INNER + '</pre></figure>')
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + fig)
         self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
 
@@ -106,7 +113,7 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
                '<button class="cmh-kql-title" type="button">cluster</button>'
                '<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
                'target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer</a></figcaption>'
-               '<pre><code class="language-kusto">T | take 1</code></pre></figure>')
+               '<pre><code class="language-kusto">%s</code>' % KQL_INNER + '</pre></figure>')
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + style + fig)
         self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
 
@@ -115,7 +122,7 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
         # is a hard validation ERROR (not a warning) so the reader can always open the query.
         fig = ('<figure class="cmh-kql"><figcaption class="cm-skip">'
                '<button class="cmh-kql-title" type="button">cluster</button></figcaption>'
-               '<pre><code class="language-kusto">T | take 1</code></pre></figure>')
+               '<pre><code class="language-kusto">%s</code>' % KQL_INNER + '</pre></figure>')
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + fig)
         self.assertError(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
                          'figure.cmh-kql has no "Run in Azure Data Explorer" link')
@@ -125,7 +132,7 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
                '<button class="cmh-kql-title" type="button">cluster</button>'
                '<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
                'target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer</a></figcaption>'
-               '<pre><code class="language-kusto">T | take 1</code></pre></figure>')
+               '<pre><code class="language-kusto">%s</code>' % KQL_INNER + '</pre></figure>')
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + fig)
         self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
 
@@ -133,7 +140,7 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
         return ('<figure class="cmh-kql"><figcaption class="cm-skip">'
                 '<button class="cmh-kql-title" type="button">cluster</button>'
                 + run_link_html +
-                '</figcaption><pre><code class="language-kusto">T | take 1</code></pre></figure>')
+                '</figcaption><pre><code class="language-kusto">%s</code>' % KQL_INNER + '</pre></figure>')
 
     def _kql_doc(self, fig):
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + fig)

@@ -4,6 +4,27 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.259.0] - 2026-07-27
+
+### Fixed
+
+- Editing a KQL query no longer leaves its **Run in Azure Data Explorer** button executing the
+  PRE-EDIT query. The query is encoded inside the link's href, so re-highlighting only the code
+  left a stale payload behind - silently, since nothing validated it. `refresh_block()` now recovers
+  the cluster and database from the existing link and rebuilds both the code and the href, preserving
+  the figure frame, caption and cluster copy affordance; the agent edit loop applies it to every KQL
+  figure it writes back (CMH-KQL-10).
+- The validator classifies a code block through the shared strict scanner instead of probing for the
+  `cmh-code-` substring, so a nested, malformed or hand-edited span is reported rather than silently
+  accepted as highlighted (CMH-HL-12).
+
+### Changed
+
+- `language-kusto` / `language-kql` blocks are baked by the same document highlight pass as every
+  other language rather than being skipped. Only the dispatch and the emission are shared - KQL keeps
+  its own tokenizer and `cmh-kql-*` class vocabulary - so output bytes are unchanged, and the agent
+  edit loop can now serve KQL blocks like any other code (CMH-KQL-09).
+
 ## [1.258.0] - 2026-07-27
 
 ### Added

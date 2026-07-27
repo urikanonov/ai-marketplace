@@ -33,7 +33,9 @@ class HighlightDocumentTests(unittest.TestCase):
         self.assertEqual(out, html)
 
     def test_non_highlightable_label_is_left_unchanged(self):
-        for cls in ("language-text", "language-kusto"):
+        # kusto is no longer in this set: it is dispatched to the KQL tokenizer
+        # (CMH-KQL-09), so the document path bakes it like every other language.
+        for cls in ("language-text", "language-bogus"):
             html = '<pre><code class="%s">plain content</code></pre>' % cls
             out, count = highlight_document.highlight_document(html)
             self.assertEqual(count, 0, cls)
