@@ -309,24 +309,30 @@ test("a grid-line straddle in the baseline does not fail --check, a smaller shif
     const captured = path.join(straddled, shot);
     expect(pngHeight(captured) % DIMENSION_DELTA_PX,
       "the checklist element clip is not on the shared clip grid").toBe(0);
+    // Keep the PRISTINE capture: every case below must be built from it, so each crop is measured
+    // against the fresh capture at exactly its own delta. Deriving a case from an already-cropped
+    // copy would compound the crops, and a lax `delta <= one quantum` implementation would still
+    // pass because the compounded delta lands outside the band either way.
+    const pristine = path.join(freshDir("drift-pristine"), shot);
+    fs.mkdirSync(path.dirname(pristine), { recursive: true });
+    fs.copyFileSync(captured, pristine);
 
     // Quantizing cannot be boundary-free: two heights either side of a grid line land exactly one
     // quantum apart. That case must pass.
-    await cropPngHeight(page, captured, captured, DIMENSION_DELTA_PX);
+    await cropPngHeight(page, pristine, captured, DIMENSION_DELTA_PX);
     const tolerated = check(scene.example, straddled, scene.prefix);
     expect(tolerated.error, String(tolerated.error)).toBeFalsy();
     expect(tolerated.status, tolerated.stdout + tolerated.stderr).toBe(0);
     expect(tolerated.stdout).toContain("tutorial screenshots are in sync");
 
-    // The allowance is that ONE exact value, not a tolerance band. A SUB-quantum shift is the case
-    // that distinguishes the two: a band would wave it through, but it can only be real content
-    // added or removed at the bottom edge, which the overlap-cropped pixel diff cannot see. An
-    // OVER-quantum shift must fail too, so the allowance is not simply a floor.
+    // The allowance is that ONE exact value between two ON-GRID heights, not a tolerance band. A
+    // SUB-quantum shift is the case that distinguishes the two: a band would wave it through, but it
+    // can only be real content added or removed at the bottom edge, which the overlap-cropped pixel
+    // diff cannot see. An OVER-quantum shift must fail too, so the allowance is not simply a floor.
     for (const crop of [DIMENSION_DELTA_PX - 1, DIMENSION_DELTA_PX + 1]) {
       const broken = path.join(freshDir(`drift-rejected-${crop}`), "assets");
       fs.mkdirSync(broken, { recursive: true });
-      fs.copyFileSync(path.join(straddled, shot), path.join(broken, shot));
-      await cropPngHeight(page, path.join(broken, shot), path.join(broken, shot), crop);
+      await cropPngHeight(page, pristine, path.join(broken, shot), crop);
       const rejected = check(scene.example, broken, scene.prefix);
       expect(rejected.error, String(rejected.error)).toBeFalsy();
       expect(rejected.status, `crop ${crop}: ${rejected.stdout}${rejected.stderr}`).toBe(1);

@@ -1,13 +1,14 @@
 // Shared clip geometry for the tutorial screenshot capture (dev-only, not shipped).
 //
 // Element-clipped shots are sized from the element's LAID-OUT height, and that height depends on
-// FONT METRICS. The example reports use the native-UI stack
-// ("Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif), which has no entry
-// present on every operating system, so a Windows host resolves Segoe UI while the pinned Linux
-// renderer falls through to its generic sans-serif. Issue #698 measured the result on
-// `.cmh-checklist`: identical CSS (font-size 15px, line-height 23.25px) and identical chromium, but
-// each row renders 0.141 CSS px taller on Linux, so the element measures 228 CSS px on Windows and
-// 230 in the container - a 4 device px PNG delta at deviceScaleFactor 2, with no content change.
+// FONT METRICS. `freezeMotion` pins the capture to `font-family: Arial, sans-serif !important`, and
+// that pin is only as portable as Arial is: Windows resolves real Arial, while the pinned Linux
+// container ships no Arial at all and fontconfig substitutes Liberation Sans. Liberation Sans is
+// metric-compatible with Arial in ADVANCE WIDTHS but not in vertical metrics, which is exactly why
+// width never drifts and height does. Issue #698 measured it on `.cmh-checklist` under identical CSS
+// (font-size 15px, line-height 23.25px) and an identical lockfile-pinned chromium: each row renders
+// 23.391 CSS px tall on Linux versus 23.250 on Windows, so the element measures 230 CSS px instead of
+// 228 - a 4 device px PNG delta at deviceScaleFactor 2, with no content change.
 //
 // Snapping every content-derived clip height onto a coarse grid collapses that drift onto a single
 // value, so the committed PNG dimensions stop depending on which renderer produced them.
@@ -27,13 +28,20 @@ export const DIMENSION_DELTA_PX = CLIP_QUANTUM * DEVICE_SCALE;
 // Width is NOT quantized - the layout width comes from the fixed viewport and was never observed to
 // drift - so it keeps a strict budget.
 export const MAX_WIDTH_DELTA = 2;
-// Height IS quantized on both sides, so the only legitimate cross-renderer difference is a grid-line
-// straddle: exactly one whole quantum, in device pixels. This is deliberately an exact-value
-// allowance rather than a tolerance band, because a band would also wave through an in-between
-// delta - real content added or removed at the bottom edge, which the overlap-cropped pixel diff
-// cannot see. Quantizing already absorbs sub-quantum content changes into an IDENTICAL height, where
-// the pixel diff does see them.
-export const ALLOWED_HEIGHT_DELTAS = [0, DIMENSION_DELTA_PX];
+// Height IS quantized on both sides for content-derived clips, so the only legitimate cross-renderer
+// difference is a grid-line straddle: exactly one whole quantum, in device pixels, BETWEEN TWO
+// HEIGHTS THAT ARE BOTH ON THE GRID. Both halves matter. Restricting it to an exact value rather than
+// a tolerance band keeps a sub-quantum delta failing, because that can only be real content added or
+// removed at the bottom edge, which the overlap-cropped pixel diff cannot see. Requiring both heights
+// to be on the grid keeps the allowance away from clips that are NOT quantized - a fixed 1320x900
+// viewport shot is 1800 device px tall, off-grid, so appending or removing 16 visible rows there is
+// real content and still fails.
+export function heightDeltaAllowed(expectedHeight, actualHeight) {
+  const delta = Math.abs(expectedHeight - actualHeight);
+  if (delta === 0) return true;
+  if (delta !== DIMENSION_DELTA_PX) return false;
+  return expectedHeight % DIMENSION_DELTA_PX === 0 && actualHeight % DIMENSION_DELTA_PX === 0;
+}
 
 export function quantizeClipHeight(height) {
   const raw = Math.max(1, Math.ceil(height));

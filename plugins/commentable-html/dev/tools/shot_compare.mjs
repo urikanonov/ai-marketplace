@@ -5,8 +5,12 @@
 // carry byte-identical copies of it, which is exactly how the budgets silently drift apart - the
 // spec even documents that it must never be STRICTER than the gate it mirrors. One module, imported
 // by both, removes that class.
+//
+// The DIMENSION gate runs here in Node (PNG headers are cheap to read), not inside the page, so the
+// grid rule lives in one testable place instead of being serialized into browser script. Only the
+// pixel diff needs a browser.
 import fs from "fs";
-import { MAX_WIDTH_DELTA, ALLOWED_HEIGHT_DELTAS } from "./shot_clip.mjs";
+import { MAX_WIDTH_DELTA, heightDeltaAllowed } from "./shot_clip.mjs";
 
 // Normalization applied to BOTH images before diffing: downsample then upsample nearest (to erase
 // the sub-pixel font antialiasing that differs across platforms) and quantize colors. The committed
@@ -16,8 +20,21 @@ export const PNG_DOWNSAMPLE = 2;
 export const PIXEL_CHANNEL_TOLERANCE = 96;
 export const MAX_PIXEL_DIFF_RATIO = 0.2;
 
+// PNG dimensions live in the IHDR chunk: width at byte 16, height at byte 20, both big-endian.
+export function pngSize(file) {
+  const buf = fs.readFileSync(file);
+  if (buf.length < 24 || buf.readUInt32BE(0) !== 0x89504e47) return null;
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
+export function dimensionsMatch(expectedSize, actualSize) {
+  if (!expectedSize || !actualSize) return false;
+  if (Math.abs(expectedSize.width - actualSize.width) > MAX_WIDTH_DELTA) return false;
+  return heightDeltaAllowed(expectedSize.height, actualSize.height);
+}
+
 // Runs in the browser: no closure over module scope, so it survives being serialized to page.evaluate.
-function diffRatio({ expectedBase64, actualBase64, tolerance, maxWidthDelta, allowedHeightDeltas, scale, step }) {
+function diffRatio({ expectedBase64, actualBase64, tolerance, scale, step }) {
   async function decode(base64) {
     const img = new Image();
     img.src = "data:image/png;base64," + base64;
@@ -59,10 +76,6 @@ function diffRatio({ expectedBase64, actualBase64, tolerance, maxWidthDelta, all
     try {
       const expectedImg = await decode(expectedBase64);
       const actualImg = await decode(actualBase64);
-      const widthDelta = Math.abs(expectedImg.naturalWidth - actualImg.naturalWidth);
-      const heightDelta = Math.abs(expectedImg.naturalHeight - actualImg.naturalHeight);
-      if (widthDelta > maxWidthDelta) return 1;
-      if (!allowedHeightDeltas.includes(heightDelta)) return 1;
       const width = Math.min(expectedImg.naturalWidth, actualImg.naturalWidth);
       const height = Math.min(expectedImg.naturalHeight, actualImg.naturalHeight);
       const expectedData = normalize(expectedImg, width, height);
@@ -87,12 +100,11 @@ function diffRatio({ expectedBase64, actualBase64, tolerance, maxWidthDelta, all
 
 export async function imagesMatch(comparePage, expected, actual) {
   if (!fs.existsSync(expected) || !fs.existsSync(actual)) return false;
+  if (!dimensionsMatch(pngSize(expected), pngSize(actual))) return false;
   const ratio = await comparePage.evaluate(diffRatio, {
     expectedBase64: fs.readFileSync(expected).toString("base64"),
     actualBase64: fs.readFileSync(actual).toString("base64"),
     tolerance: PIXEL_CHANNEL_TOLERANCE,
-    maxWidthDelta: MAX_WIDTH_DELTA,
-    allowedHeightDeltas: ALLOWED_HEIGHT_DELTAS,
     scale: PNG_DOWNSAMPLE,
     step: PNG_QUANTIZE_STEP,
   });

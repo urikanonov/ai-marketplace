@@ -13,7 +13,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath, pathToFileURL } from "url";
 import {
-  CLIP_QUANTUM, DEVICE_SCALE, DIMENSION_DELTA_PX, MAX_WIDTH_DELTA, ALLOWED_HEIGHT_DELTAS,
+  CLIP_QUANTUM, DEVICE_SCALE, DIMENSION_DELTA_PX, MAX_WIDTH_DELTA,
   quantizeClipHeight, clampedClipHeight,
 } from "./shot_clip.mjs";
 import { imagesMatch } from "./shot_compare.mjs";
@@ -98,7 +98,7 @@ if (printPaths) {
     clipQuantum: CLIP_QUANTUM,
     deviceScale: DEVICE_SCALE,
     maxWidthDelta: MAX_WIDTH_DELTA,
-    allowedHeightDeltas: ALLOWED_HEIGHT_DELTAS,
+    quantumStraddlePx: DIMENSION_DELTA_PX,
   }));
   process.exit(0);
 }

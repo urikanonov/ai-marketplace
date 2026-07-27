@@ -173,11 +173,16 @@ identical CSS (`font-size: 15px`, `line-height: 23.25px`):
 | --- | --- | --- |
 | element `offsetHeight` | 228 CSS px | 230 CSS px |
 | per-row rendered height | 23.250 | 23.391 |
+| element `offsetWidth` | 1222 CSS px | 1222 CSS px |
 | resulting PNG | 2444x456 | 2444x460 |
 
-The example reports use the native-UI font stack
-(`"Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif`), which has no entry
-present on every OS, so Windows resolves Segoe UI and Linux falls through to its generic sans-serif.
+The capture is not using the report's own font stack: `freezeMotion` pins it to
+`font-family: Arial, sans-serif !important`, and that pin is only as portable as Arial is. Windows
+resolves real Arial; the pinned Linux container ships no Arial at all (`fc-list` finds none) and
+fontconfig substitutes **Liberation Sans**. Liberation Sans is metric-compatible with Arial in ADVANCE
+WIDTHS - which is exactly why the width is identical to the pixel and no shot has ever drifted
+horizontally - but its VERTICAL metrics differ, so each text row grows by 0.141 CSS px.
+
 That only moves ELEMENT-clipped shots, whose clip height comes from the element's content-derived
 `offsetHeight`; full-viewport clips are stable by construction. `deviceScaleFactor: 2` then doubles a
 2 CSS px rounding difference into the 4 device px PNG delta.
@@ -193,12 +198,16 @@ measured font pair, so roughly 5.4 px at the 900 px viewport ceiling); a wider g
 fails loudly, which is the signal to raise the quantum, not to widen the budget.
 
 Because no pure function of a drifting measurement can be boundary-free - two heights either side of a
-grid line land one quantum apart - the `--check` height comparison allows exactly two values, `0` or
-one whole quantum (`DIMENSION_DELTA_PX`), rather than a tolerance band: a band would also wave through
-a sub-quantum delta, which is real content added or removed at the bottom edge and is invisible to the
-overlap-cropped pixel diff, whereas quantizing already absorbs sub-quantum content changes into an
-IDENTICAL height, where the pixel diff does see them. Width is not quantized (it comes from the fixed
-viewport) and keeps its own strict budget. The comparison itself lives once in `tools/shot_compare.mjs`
+grid line land one quantum apart - the `--check` height comparison allows exactly one non-zero value,
+one whole quantum (`DIMENSION_DELTA_PX`), and only BETWEEN TWO HEIGHTS THAT ARE BOTH ON THE GRID.
+Both halves matter. An exact value rather than a band keeps a sub-quantum delta failing, because that
+can only be real content added or removed at the bottom edge and is invisible to the overlap-cropped
+pixel diff, whereas quantizing already absorbs sub-quantum content changes into an IDENTICAL height,
+where the pixel diff does see them. Requiring both heights on the grid keeps the allowance away from
+clips that are not quantized: a fixed-viewport shot is 1800 device px tall (off-grid), so appending or
+removing exactly one quantum of visible rows there is real content and still fails. Width is not
+quantized (it comes from the fixed viewport) and keeps its own strict budget. The comparison lives
+once in `tools/shot_compare.mjs` - its dimension gate in Node, only the pixel diff in the browser -
 and is imported by both the capture tool and the heavy freshness spec. Do not re-declare any of these
 at a call site; import them (`--print-paths` reports them, and a test asserts the tool agrees).
 

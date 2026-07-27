@@ -4,9 +4,10 @@ import fs from "fs";
 import path from "path";
 import { DEV, PLUGIN } from "./helpers.js";
 import {
-  CLIP_QUANTUM, DEVICE_SCALE, DIMENSION_DELTA_PX, MAX_WIDTH_DELTA, ALLOWED_HEIGHT_DELTAS,
-  quantizeClipHeight, clampedClipHeight,
+  CLIP_QUANTUM, DEVICE_SCALE, DIMENSION_DELTA_PX, MAX_WIDTH_DELTA,
+  quantizeClipHeight, clampedClipHeight, heightDeltaAllowed,
 } from "../tools/shot_clip.mjs";
+import { dimensionsMatch } from "../tools/shot_compare.mjs";
 
 // CMH-BUILD-17. Element-clipped tutorial screenshots are sized from the element's LAID-OUT height,
 // which depends on font metrics: the report font stack has no entry present on every OS, so the same
@@ -76,6 +77,36 @@ test("a clamped clip lands on the grid and never exceeds its bound (CMH-BUILD-17
   expect(clampedClipHeight(100, 5)).toBe(5);
 });
 
+test("the straddle allowance applies only between two on-grid heights (CMH-BUILD-17)", () => {
+  const onGrid = 464;
+  expect(onGrid % DIMENSION_DELTA_PX).toBe(0);
+  // Identical heights always match, quantized or not.
+  expect(heightDeltaAllowed(onGrid, onGrid)).toBe(true);
+  expect(heightDeltaAllowed(FULL_VIEWPORT_PX, FULL_VIEWPORT_PX)).toBe(true);
+  // A grid-line straddle between two quantized clips is the one tolerated difference.
+  expect(heightDeltaAllowed(onGrid, onGrid - DIMENSION_DELTA_PX)).toBe(true);
+  expect(heightDeltaAllowed(onGrid - DIMENSION_DELTA_PX, onGrid)).toBe(true);
+  // A sub-quantum or over-quantum shift is real content, not renderer drift.
+  for (const delta of [1, 4, DIMENSION_DELTA_PX - 1, DIMENSION_DELTA_PX + 1, DIMENSION_DELTA_PX * 2]) {
+    expect(heightDeltaAllowed(onGrid, onGrid - delta), `delta ${delta} must not be allowed`).toBe(false);
+  }
+  // A fixed-viewport shot is NOT quantized (1800 is off-grid), so appending or removing exactly one
+  // quantum of visible rows there is real content and must still fail.
+  expect(FULL_VIEWPORT_PX % DIMENSION_DELTA_PX).not.toBe(0);
+  expect(heightDeltaAllowed(FULL_VIEWPORT_PX, FULL_VIEWPORT_PX - DIMENSION_DELTA_PX)).toBe(false);
+  expect(heightDeltaAllowed(FULL_VIEWPORT_PX, FULL_VIEWPORT_PX + DIMENSION_DELTA_PX)).toBe(false);
+});
+
+test("dimensionsMatch keeps width strict and rejects an unreadable PNG (CMH-BUILD-17)", () => {
+  const base = { width: 2444, height: 464 };
+  expect(dimensionsMatch(base, { width: 2444, height: 464 })).toBe(true);
+  expect(dimensionsMatch(base, { width: 2444 + MAX_WIDTH_DELTA, height: 464 })).toBe(true);
+  // Width is not quantized, so it must not inherit the quantum-sized allowance.
+  expect(dimensionsMatch(base, { width: 2444 + DIMENSION_DELTA_PX, height: 464 })).toBe(false);
+  expect(dimensionsMatch(base, null)).toBe(false);
+  expect(dimensionsMatch(null, base)).toBe(false);
+});
+
 test("capture_tutorial reports the shared clip geometry and budgets it renders with (CMH-BUILD-17)", () => {
   // The capture tool must consume the shared module rather than carry its own copies, so the
   // quantum, the device scale, and the comparison budgets cannot drift apart across the tool, the
@@ -84,11 +115,7 @@ test("capture_tutorial reports the shared clip geometry and budgets it renders w
   expect(info.clipQuantum).toBe(CLIP_QUANTUM);
   expect(info.deviceScale).toBe(DEVICE_SCALE);
   expect(info.maxWidthDelta).toBe(MAX_WIDTH_DELTA);
-  // The height allowance is two EXACT values, not a band: a sub-quantum delta is real content added
-  // or removed at the bottom edge, which the overlap-cropped pixel diff cannot see, so it must not
-  // be admitted. Width is not quantized and must not inherit the quantum-sized allowance.
-  expect(info.allowedHeightDeltas).toEqual(ALLOWED_HEIGHT_DELTAS);
-  expect(info.allowedHeightDeltas).not.toContain(DIMENSION_DELTA_PX - 1);
+  expect(info.quantumStraddlePx).toBe(DIMENSION_DELTA_PX);
   expect(info.maxWidthDelta).toBeLessThan(DIMENSION_DELTA_PX);
 });
 
