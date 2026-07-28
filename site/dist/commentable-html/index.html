@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.261.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.262.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -311,6 +311,7 @@
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/></svg></span><h3>Commentable decks</h3><p>Turn a request into an animation-rich, fixed 16:9 slide deck that is also a commentable document: present it full-screen, toggle comment mode to leave notes on the live slides, navigate with the slide bar or arrow keys, and Export Offline for a network-silent handoff.</p><p class="feature-credit">Deck engine: a curated, vendored subset of <a href="https://github.com/zarazhangrui/frontend-slides" target="_blank" rel="noopener noreferrer">frontend-slides</a> by Zara Zhang (MIT). See <a href="#credits">Credits</a>.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/></svg></span><h3>Navigate long documents</h3><p>A live table of contents, collapsible sections, and one-click jump from any comment straight to its highlight keep even a long report easy to move through.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/></svg></span><h3>No extension, runs everywhere</h3><p>Opening a generated file to read or comment needs no browser extension, plugin, or install - the whole review layer is plain HTML, CSS, and JavaScript inside the file, so anyone you share it with opens it in any modern browser on Windows, macOS, and Linux. (Authoring new documents uses the commentable-html plugin.)</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 12 5 5 5-5"/><path d="M5 21h14"/></svg></span><h3>Only as big as it needs to be</h3><p>Mermaid and Chart.js travel inside the file so diagrams and charts still render offline - but only in a document that actually has one. A prose-and-code review document drops that 1.3 MB renderer entirely, which is about 59 percent of its size, and what remains is kept out of the head so the top of the file stays readable to ordinary tools.</p></div>
         </div>
       </div>
     </section>
@@ -457,6 +458,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.262.0] - 2026-07-28</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>A document now carries the vendored rich-libraries payload (the gzip+base64 mermaid and Chart.js bundle the Offline export inlines) only when its content actually uses a diagram or a chart, and never in the document head. It used to be stamped into every document unconditionally: measured on the shipped examples it is 1,363 KB, 55 to 61 percent of a 2.3 MB file, and it sat on line 7 - so a prose-and-code review document paid for a renderer it could never call, and any tool that reads the head of a file hit a megabyte-long line immediately. A prose report now goes from 2,301 KB to 938 KB (59 percent smaller) and its longest line from 1,396,078 characters to 631.</li>
+              <li>The decision is re-evaluated on every finalize rather than made once when the document is created, so a document that GAINS a diagram after the payload was dropped gets it back and its Offline export keeps working. A document whose content region cannot be located is left alone entirely - never stripped, and never grown.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.261.0] - 2026-07-27</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -468,6 +477,8 @@
               <li>A quadratic scan in the KQL tokenizer. Deciding whether an identifier was a function call sliced the entire remaining query on every token, so cost grew with the square of the query length. It is now a bounded lookahead. A newline before the paren still does not make a call, so highlighted output is unchanged.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.260.0] - 2026-07-27</h3></div>
             <div class="group-label">Fixed</div>
@@ -480,8 +491,6 @@
               <li>Runtime keyword lookup is per LANGUAGE rather than one broad bucket shared by 23 languages. The <code>hash</code> and <code>c</code> families shared a single approximate set, which both over-colored (a lowercase <code>true</code> in Python, <code>true</code>/<code>false</code>/<code>null</code> in R, <code>bool</code> in Objective-C) and under-colored (Python&#x27;s capitalized <code>True</code>/<code>False</code>/<code>None</code> never matched the case-sensitive lookup). Measured cost of splitting, on the built <code>commentable-html.js</code> rather than on the raw keyword text: 9,346 bytes (736,669 -&gt; 746,015, about 1.27 percent), against a divergence visible in every Python block. Each set is compared to its author-time config by test, so a future drift fails there instead of shipping as a block that renders one way baked and another way live (CMH-HL-14).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.259.0] - 2026-07-27</h3></div>
             <div class="group-label">Fixed</div>
@@ -523,23 +532,7 @@
               <li>The runtime tokenizer now gives every language family that has its own comment/string patterns its own KEYWORD set, mirroring the author-time list in <code>tools/blocks/highlight_code.py</code>. Those families used to fall back to one broad, general-purpose keyword set, which both under-colored and over-colored them: an unbaked <code>language-sql</code> block rendered <code>SELECT</code>, <code>INSERT</code>, <code>JOIN</code>, <code>GROUP</code> and <code>ORDER</code> as plain text (only the handful of words that happen to exist for other languages, like <code>FROM</code> and <code>WHERE</code>, were colored) while the same block baked at author time colored them all, and <code>css</code>, <code>batch</code>, <code>powershell</code>, <code>haskell</code> and <code>lua</code> had the same gap - <code>auto</code>/<code>inherit</code>, <code>echo</code>/<code>setlocal</code>, <code>param</code>/<code>begin</code>, <code>data</code>/<code>instance</code> and <code>local</code>/<code>end</code> were all plain. The shared set also tinted words the author-time tool never treats as keywords in those languages (<code>class</code> in Lua, <code>def</code> in Haskell). XML is now its own family instead of riding along with HTML, which used to color <code>&lt;div&gt;</code> and an uppercase <code>&lt;ROOT&gt;</code> in an XML block that the baked output leaves plain, and three stale words (<code>deriving</code>, <code>newtype</code>, <code>none</code>) left over from before Haskell and CSS had their own sets no longer mis-color identifiers in every other language. CSS now matches keywords case-insensitively at runtime too, as the author-time tool already did. The broad shared set is otherwise unchanged, so a SQL-only word like <code>insert</code> still stays a plain identifier in C, Python and everything else.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.255.0] - 2026-07-26</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The authoring validator&#x27;s single-pass script scanner now models REGEX LITERALS. A <code>/.../</code> literal containing a backtick, a single quote, or a double quote used to flip the scanner into a phantom string/template state that blanked the rest of the script, hiding real code from every check that reads it - a Markdown fence regex holding a backtick made the shipped showcase deck fail with &quot;a <code>&lt;canvas&gt;</code> is present but no renderer was found&quot; because the chart&#x27;s <code>.getContext(</code> had been blanked. A <code>/</code> inside a <code>[...]</code> character class no longer ends the literal, escapes are honored, and division is told apart from a literal by the usual prev-significant-token heuristic (ambiguity and an unterminated literal both resolve to division, so the scanner never blanks live code). A <code>new Chart(</code> that appears only inside a regex is correctly not counted as executable init. (CMH-VAL-17)</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The Markdown fence regex in the runtime highlighter spells its backtick literally again; the <code>\x60</code> workaround that the old scanner limitation forced is no longer needed.</li>
-            </ul>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>A fenced code block inside a Markdown block is now highlighted in its OWN language instead of being colored as one flat run: the first word of the fence info string selects the language (aliases resolved, so a <code>py</code> label and a <code>python title=&quot;x.py&quot;</code> label both select Python), and an unknown or absent label keeps the previous opaque body. The body is highlighted as a whole, so a multi-line construct inside it (a block comment, a triple-quoted string) reads exactly as it would in a standalone block of that language. A <code>markdown</code>-labelled body re-reads as Markdown up to a small depth bound and stays opaque past it, so a hostile document cannot drive unbounded recursion. (CMH-HL-07, CMH-HL-08)</li>
-              <li>The author-time highlighter now knows the common short labels <code>js</code>, <code>jsx</code>, <code>mjs</code>, <code>py</code>, <code>ts</code> and <code>tsx</code>. They were runtime-only, so a <code>js</code>-labelled block was highlighted by the runtime but baked as plain text - and, with nested fences, would have nested on one path and stayed flat on the other. A second drift guard now fails in that direction too, so the author-time and runtime label sets cannot diverge again. (CMH-HL-03)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">216 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">217 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

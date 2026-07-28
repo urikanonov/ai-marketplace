@@ -32,6 +32,7 @@ import highlight_document  # noqa: E402
 import inline_images  # noqa: E402
 import normalize_typography  # noqa: E402
 import validate  # noqa: E402
+import vendored_libs  # noqa: E402
 import wrap_sections  # noqa: E402
 
 # Kinds that render as boxed section cards; only these get auto section-wrapping.
@@ -99,6 +100,26 @@ def _apply_stats(html):
     return rewritten, True, (rewritten != html)
 
 
+def _apply_vendored_libs(html):
+    """Carry the vendored mermaid/Chart.js payload only when the CONTENT can use it.
+
+    Runs on every finalize rather than once at creation, so a document that GAINS a diagram
+    after it was stripped gets the payload back (see tools/authoring/vendored_libs.py).
+    """
+    source_blob = None
+    try:
+        template = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__)))), "dist", "PORTABLE.html")
+        with open(template, "r", encoding="utf-8", newline="") as fh:
+            source_blob = vendored_libs.blob_script(fh.read())
+    except (OSError, UnicodeDecodeError):
+        # No reachable template: still able to STRIP, just not to restore. vendored_libs.apply
+        # leaves a document that needs a payload it cannot supply untouched.
+        source_blob = None
+    rewritten, changed = vendored_libs.apply(html, source_blob)
+    return rewritten, changed
+
+
 def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_base=None,
              run_highlight=True, run_wrap_sections=True, run_stats=True, run_normalize=True,
              stamp_when_clean=False):
@@ -146,6 +167,12 @@ def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_b
         html, applicable, changed = _apply_stats(html)
         if applicable:
             steps.append(("doc-stats", "updated" if changed else "unchanged"))
+    # Drop (or restore) the vendored rich-libraries payload last, once the content is final -
+    # an earlier phase can still ADD a chart or diagram, so deciding before them could strip a
+    # payload the finished document needs.
+    html, changed = _apply_vendored_libs(html)
+    if changed:
+        steps.append(("vendored-libs", "adjusted"))
     # Validate and stamp the IN-MEMORY document, then write once. Writing first and letting
     # validate re-read (and the stamp re-read and re-write) would leave a third read and a
     # second write on a multi-megabyte file - the amplification this whole change removes.

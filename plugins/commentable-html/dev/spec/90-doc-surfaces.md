@@ -118,3 +118,4 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-HL-14 | opt-out: a correctness fix to already-documented syntax highlighting (keyword coloring now matches the baked output); no new capability | opt-out: a tokenizer parity fix, not a deck topic |
 | CMH-HL-15 | opt-out: a correctness fix to already-documented SQL highlighting (a double-quoted identifier now colors on both paths) | opt-out: a tokenizer parity fix, not a deck topic |
 | CMH-BUILD-20 | opt-out: an internal performance refactor of the authoring pipeline; output is byte-identical so readers see no change | opt-out: an I/O refactor with nothing to demonstrate on a slide |
+| CMH-SIZE-01 | site | opt-out: a size and file-layout optimisation with nothing to demonstrate on a slide - the viewer sees the same document, only smaller |

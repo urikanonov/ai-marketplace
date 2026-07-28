@@ -21,7 +21,7 @@ EXPECTED = {
     "authoring": ["new_document", "generate_toc", "doc_stats", "inline_images", "finalize",
                   "fix_skip", "wrap_sections", "mark_handled", "mark_reviewed", "section_hash",
                   "upgrade", "retrofit", "doc_stamp", "recommend_kind", "normalize_typography",
-                  "content_extract", "content_replace", "extract_comments"],
+                  "content_extract", "content_replace", "extract_comments", "vendored_libs"],
     "validate": ["validate"],
 }
 
