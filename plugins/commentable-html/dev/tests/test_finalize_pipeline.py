@@ -87,11 +87,17 @@ class PipelineEquivalenceTests(_Case):
     """CMH-BUILD-20: the in-memory pipeline is byte-identical to the phase-by-phase one."""
 
     def test_finalize_output_matches_the_phase_by_phase_pipeline(self):
-        # The reference is a FILE-CYCLE pipeline - it reads the document, applies one phase,
-        # and writes it back, once per phase, which is the shape finalize had before this
-        # refactor. Driving the transforms in memory here instead would compare the new code
-        # against itself; going through disk is what actually proves the removed round trips
-        # (and any normalization they could have applied) changed nothing.
+        # The reference applies one phase per read/modify/write cycle - the shape finalize had
+        # before this refactor - so it is written independently of how finalize now threads the
+        # document. Note what this does and does not prove: because both sides open with
+        # utf-8 + newline="", the disk round trip is lossless, so this is really "naive
+        # sequential phase application" rather than a test of disk normalization. What it
+        # catches is a mis-threaded intermediate (a phase handed the ORIGINAL source instead of
+        # the running text), a changed always-on default, and an added or dropped phase.
+        #
+        # It pins the I/O SHAPE, not the phase ORDER: every always-on phase commutes with its
+        # neighbours on any fixture tried, so a shuffled pipeline would still produce identical
+        # bytes here. test_the_phases_run_in_the_documented_order pins the order.
         reference = os.path.join(self.tmp, "reference.html")
         shutil.copyfile(self.doc, reference)
         for phase in _ALWAYS_ON_PHASES:
@@ -114,13 +120,52 @@ class PipelineEquivalenceTests(_Case):
 
     def test_the_fixture_actually_exercises_every_phase(self):
         # Guards the test above: if the fixture stopped triggering a phase, equivalence would
-        # be proven on a no-op and the harness would silently lose its teeth.
-        src = _read(self.doc)
+        # be proven on a no-op and the harness would silently lose its teeth. Apply the phases
+        # CUMULATIVELY, so each is checked in the state the pipeline actually hands it - a
+        # phase can be non-trivial on the raw document yet a no-op once an earlier phase has
+        # rewritten its trigger.
+        html = _read(self.doc)
         for name, phase in zip(_ALWAYS_ON_NAMES, _ALWAYS_ON_PHASES):
+            after = phase(html)
             # Compare booleans, not the documents: a failing assertEqual on two ~2 MB strings
             # dumps the whole document into the test output and buries the actual failure.
-            self.assertTrue(phase(src) != src,
-                            "the fixture must exercise the %s phase, not no-op through it" % name)
+            self.assertTrue(after != html,
+                            "the fixture must exercise the %s phase in pipeline order, "
+                            "not no-op through it" % name)
+            html = after
+
+    def test_the_phases_run_in_the_documented_order(self):
+        """The byte-equivalence test above CANNOT pin ordering, so pin it directly.
+
+        Every always-on phase commutes with its neighbours on any fixture tried, so a
+        pipeline that shuffled them would still produce identical bytes and slip past the
+        equivalence test. Record the actual call order instead, which no amount of
+        commutation can disguise.
+        """
+        seen = []
+        patches = []
+
+        def make_spy(phase_name, original):
+            # A factory, not a loop-local closure: a function defined in the loop body would
+            # resolve the name `spy` at CALL time, by which point it refers to the LAST spy,
+            # so every phase would report the last phase's name.
+            def spy(*args, **kwargs):
+                seen.append(phase_name)
+                return original(*args, **kwargs)
+            return spy
+
+        for name in _ALWAYS_ON_NAMES:
+            attr = "_apply_" + name
+            original = getattr(finalize, attr)
+            patches.append((attr, original))
+            setattr(finalize, attr, make_spy(name, original))
+        try:
+            finalize.finalize(self.doc)
+        finally:
+            for attr, original in patches:
+                setattr(finalize, attr, original)
+        self.assertEqual(seen, list(_ALWAYS_ON_NAMES),
+                         "finalize must apply the always-on phases in the documented order")
 
     def test_a_second_finalize_is_a_no_op(self):
         finalize.finalize(self.doc)
@@ -131,6 +176,35 @@ class PipelineEquivalenceTests(_Case):
     def test_the_toc_phase_still_runs_when_requested(self):
         finalize.finalize(self.doc, run_toc=True)
         self.assertIn("cm-toc", _read(self.doc))
+
+    def test_the_optional_phases_are_threaded_equivalently_too(self):
+        """The opt-in phases moved off the file cycle as well, so pin them byte-for-byte.
+
+        Only the always-on phases are covered above, so a threading regression isolated to
+        `--toc`, `--fix-skip` or `--inline-images` would otherwise slip through.
+        """
+        images = os.path.join(self.tmp, "images")
+        os.mkdir(images)
+        reference = os.path.join(self.tmp, "reference-optional.html")
+        shutil.copyfile(self.doc, reference)
+        # finalize's order: normalize, toc, wrap_sections, fix_skip, inline_images,
+        # highlight, toc_dedup, stats.
+        cycle = (
+            lambda h: finalize._apply_normalize(h)[0],
+            lambda h: finalize._apply_toc(h)[0],
+            lambda h: finalize._apply_wrap_sections(h)[0],
+            lambda h: finalize._apply_fix_skip(h)[0],
+            lambda h: finalize._apply_inline_images(h, images)[0],
+            lambda h: finalize._apply_highlight(h)[0],
+            lambda h: finalize._apply_toc_dedup(h)[0],
+            lambda h: finalize._apply_stats(h)[0],
+        )
+        for phase in cycle:
+            _write(reference, phase(_read(reference)))
+
+        finalize.finalize(self.doc, run_toc=True, run_fix_skip=True, run_inline=True,
+                          images_base=images)
+        self._assert_same_bytes(_read(self.doc), _read(reference))
 
     def test_the_result_validates(self):
         result = finalize.finalize(self.doc)
