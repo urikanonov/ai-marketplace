@@ -4,6 +4,30 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.261.0] - 2026-07-27
+
+### Changed
+
+- `finalize` now reads the document once, threads it through the phase transforms in memory, and
+  writes once. Each phase previously re-read and re-wrote the whole file, so a 1.4 - 2.5 MB document
+  paid a read/write pair plus an independent full-document parse per phase - and because
+  `content_replace` finalizes on every write-back, the agent edit loop paid that on every iteration.
+  The phase order and every transform are unchanged, so the output is byte-identical. The per-phase
+  entry points are REMOVED rather than kept: nothing called them once the pipeline threaded the
+  document in memory, and leaving them would let a caller silently reintroduce the per-phase I/O
+  this removes.
+- Validation and the validated provenance stamp now work on that same in-memory document, so a
+  clean `finalize --strict` run costs one read and one write end to end, instead of re-reading the
+  file to validate it and then re-reading and re-writing it to stamp it. `validate.validate()`
+  takes an optional `html=` argument for callers that already hold the document.
+
+### Fixed
+
+- A quadratic scan in the KQL tokenizer. Deciding whether an identifier was a function call sliced
+  the entire remaining query on every token, so cost grew with the square of the query length. It is
+  now a bounded lookahead. A newline before the paren still does not make a call, so highlighted
+  output is unchanged.
+
 ## [1.260.0] - 2026-07-27
 
 ### Fixed

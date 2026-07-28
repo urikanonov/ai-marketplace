@@ -247,9 +247,13 @@ _PARSE_FAIL = ("the document could not be parsed as HTML (malformed markup) - "
 _BASE_DIR_UNSET = object()
 
 
-def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET):
+def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET, html=None):
     """Unified check. Returns (errors, warnings). Runs the layer checks and,
     when the document has a <canvas>, the chart checks too.
+
+    Pass `html` to validate a document the caller ALREADY has in memory; `path` is then used
+    only to resolve companion references. This is what lets finalize validate without a second
+    read of a multi-megabyte file (CMH-BUILD-20).
 
     base_dir controls how NonPortable companion references are resolved for the
     existence/remote/absolute checks: by default it is the document's own directory.
@@ -257,10 +261,11 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET):
     when validating before the file is written there), or None to skip the companion
     path checks entirely (structure is still validated) - appropriate when the
     companions are supplied separately or placement is deferred."""
-    try:
-        html = _read(path)
-    except (OSError, UnicodeDecodeError) as exc:
-        return [f"cannot read file: {exc}"], []
+    if html is None:
+        try:
+            html = _read(path)
+        except (OSError, UnicodeDecodeError) as exc:
+            return [f"cannot read file: {exc}"], []
     parser, ok = _parse(html)
     if not ok:
         return [_PARSE_FAIL], []
@@ -335,6 +340,28 @@ def _print_theme_suggestions(path):
         else:
             print(f"  SUGGEST: {f.env} theme {f.fg_token} on {f.bg_token} at {f.ratio:.2f}:1 has "
                   f"no reachable fix by nudging the foreground; adjust {f.bg_token} instead")
+
+
+def stamp_validated_text(html):
+    """Return `html` with the validated provenance stamp applied, or unchanged on failure.
+
+    The in-memory half of `_stamp_validated_file`, so a caller that already holds the document
+    (finalize) can stamp without a further read/write pair. Best-effort with a VISIBLE note on
+    failure, never silent - see `_stamp_validated_file` for why.
+    """
+    try:
+        import doc_stamp
+    except ImportError:
+        _toolpath.warn_missing_tool("doc_stamp", "the validated stamp")
+        return html
+    try:
+        return doc_stamp.stamp_validated_html(html)
+    except Exception as exc:
+        sys.stderr.write(
+            "  NOTE: could not write the validated stamp (%s); the document PASSED validation but "
+            "is not stamped, so the runtime may still show the 'not validated' banner - re-run to "
+            "stamp.\n" % exc)
+        return html
 
 
 def _stamp_validated_file(path):

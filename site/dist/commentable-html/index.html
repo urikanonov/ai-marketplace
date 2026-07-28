@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.260.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.261.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,6 +457,18 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.261.0] - 2026-07-27</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li><code>finalize</code> now reads the document once, threads it through the phase transforms in memory, and writes once. Each phase previously re-read and re-wrote the whole file, so a 1.4 - 2.5 MB document paid a read/write pair plus an independent full-document parse per phase - and because <code>content_replace</code> finalizes on every write-back, the agent edit loop paid that on every iteration. The phase order and every transform are unchanged, so the output is byte-identical. The per-phase entry points are REMOVED rather than kept: nothing called them once the pipeline threaded the document in memory, and leaving them would let a caller silently reintroduce the per-phase I/O this removes.</li>
+              <li>Validation and the validated provenance stamp now work on that same in-memory document, so a clean <code>finalize --strict</code> run costs one read and one write end to end, instead of re-reading the file to validate it and then re-reading and re-writing it to stamp it. <code>validate.validate()</code> takes an optional <code>html=</code> argument for callers that already hold the document.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A quadratic scan in the KQL tokenizer. Deciding whether an identifier was a function call sliced the entire remaining query on every token, so cost grew with the square of the query length. It is now a bounded lookahead. A newline before the paren still does not make a call, so highlighted output is unchanged.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.260.0] - 2026-07-27</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -468,6 +480,8 @@
               <li>Runtime keyword lookup is per LANGUAGE rather than one broad bucket shared by 23 languages. The <code>hash</code> and <code>c</code> families shared a single approximate set, which both over-colored (a lowercase <code>true</code> in Python, <code>true</code>/<code>false</code>/<code>null</code> in R, <code>bool</code> in Objective-C) and under-colored (Python&#x27;s capitalized <code>True</code>/<code>False</code>/<code>None</code> never matched the case-sensitive lookup). Measured cost of splitting, on the built <code>commentable-html.js</code> rather than on the raw keyword text: 9,346 bytes (736,669 -&gt; 746,015, about 1.27 percent), against a divergence visible in every Python block. Each set is compared to its author-time config by test, so a future drift fails there instead of shipping as a block that renders one way baked and another way live (CMH-HL-14).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.259.0] - 2026-07-27</h3></div>
             <div class="group-label">Fixed</div>
@@ -480,8 +494,6 @@
               <li><code>language-kusto</code> / <code>language-kql</code> blocks are baked by the same document highlight pass as every other language rather than being skipped. Only the dispatch and the emission are shared - KQL keeps its own tokenizer and <code>cmh-kql-*</code> class vocabulary - so output bytes are unchanged, and the agent edit loop can now serve KQL blocks like any other code (CMH-KQL-09).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.258.0] - 2026-07-27</h3></div>
             <div class="group-label">Added</div>
@@ -527,21 +539,7 @@
               <li>The author-time highlighter now knows the common short labels <code>js</code>, <code>jsx</code>, <code>mjs</code>, <code>py</code>, <code>ts</code> and <code>tsx</code>. They were runtime-only, so a <code>js</code>-labelled block was highlighted by the runtime but baked as plain text - and, with nested fences, would have nested on one path and stayed flat on the other. A second drift guard now fails in that direction too, so the author-time and runtime label sets cannot diverge again. (CMH-HL-03)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.254.0] - 2026-07-26</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Editing a comment note now happens INLINE, where the reviewer already is, instead of jumping them somewhere else. The sidebar card&#x27;s <code>edit</code> action opens an editor inside that card (exactly like a reply), so the document is no longer scrolled to the anchor and no floating composer opens. (CMH-THREAD-10)</li>
-              <li><code>Edit</code> in the inline comment dialog (opened from the orange &quot;Open comment&quot; hover bubble) turns that dialog into an editor in place, so the note is edited right where the reader clicked. While it is being edited the dialog stays open (an outside click or the anchor scrolling away no longer discards the draft), Escape cancels back to the note view, and a second Escape closes it. (CMH-CORE-16)</li>
-              <li>The orange &quot;Open comment&quot; hover bubble is bigger (28px with a 16px glyph), so it is an easier click target. (CMH-UI-12)</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Clicking inside an inline reply or note editor no longer also fires the comment card&#x27;s jump-to-anchor, which scrolled the document away mid-edit. (CMH-THREAD-10)</li>
-              <li>A comment is now editable in exactly one place at a time: opening a second editor for a note that already has an unsaved draft elsewhere (the panel card, the in-document dialog, another highlight&#x27;s dialog, or the floating composer reached by re-selecting the text) hands the reader back to the draft instead of duplicating it - previously two editors could exist and the last save silently overwrote the other. (CMH-CORE-16)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">215 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">216 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

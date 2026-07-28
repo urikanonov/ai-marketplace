@@ -55,11 +55,16 @@ class FinalizeTests(unittest.TestCase):
             self.assertEqual(base_dir, os.path.dirname(os.path.abspath(path)))
             return source + "[inline-images]", 1, []
 
-        def fake_validate(doc_path):
+        def fake_validate(doc_path, html=None, **kwargs):
             calls.append("validate")
+            # Validation now receives the IN-MEMORY document rather than re-reading the file,
+            # so assert on what it was handed. That is the stronger check anyway: it pins that
+            # every earlier phase's output was threaded through to validation.
+            self.assertEqual(html, "<html><body>seed</body></html>[toc][fix-skip][inline-images]")
+            # The file must NOT have been written yet - the single write happens after
+            # validation and stamping (CMH-BUILD-20).
             with open(doc_path, "r", encoding="utf-8") as fh:
-                current = fh.read()
-            self.assertEqual(current, "<html><body>seed</body></html>[toc][fix-skip][inline-images]")
+                self.assertEqual(fh.read(), "<html><body>seed</body></html>")
             return [], []
 
         with mock.patch.object(finalize.generate_toc, "rewrite_html", side_effect=fake_toc), \
@@ -76,33 +81,47 @@ class FinalizeTests(unittest.TestCase):
         directory = self._tmpdir()
         path = os.path.join(directory, "doc.html")
         self._write(path, "<html><body>x</body></html>")
-        with mock.patch.object(finalize, "_run_toc", return_value=False) as run_toc, \
-                mock.patch.object(finalize, "_run_fix_skip", return_value=(False, 0)) as run_fix, \
-                mock.patch.object(finalize, "_run_inline_images", return_value=(False, 0, [])) as run_inline, \
+        # Mock the PHASE TRANSFORMS the pipeline actually calls. Mocking the old per-file
+        # `_run_*` wrappers made this vacuous once they stopped being the call path: the
+        # assertions passed because nothing called them, not because the steps were skipped.
+        with mock.patch.object(finalize, "_apply_toc", return_value=("", False)) as apply_toc, \
+                mock.patch.object(finalize, "_apply_fix_skip", return_value=("", False, 0)) as apply_fix, \
+                mock.patch.object(finalize, "_apply_inline_images",
+                                  return_value=("", False, 0, [])) as apply_inline, \
                 mock.patch.object(finalize.validate, "validate", return_value=([], [])):
             code, _out, err = self._run_main(["finalize.py", path])
         self.assertEqual(code, 0, err)
-        run_toc.assert_not_called()
-        run_fix.assert_not_called()
-        run_inline.assert_not_called()
+        apply_toc.assert_not_called()
+        apply_fix.assert_not_called()
+        apply_inline.assert_not_called()
 
     def test_step_flags_enable_each_step(self):
         directory = self._tmpdir()
         path = os.path.join(directory, "doc.html")
-        self._write(path, "<html><body>x</body></html>")
+        source = "<html><body>x</body></html>"
+        self._write(path, source)
         images_base = os.path.join(directory, "images")
         os.mkdir(images_base)
-        with mock.patch.object(finalize, "_run_toc", return_value=False) as run_toc, \
-                mock.patch.object(finalize, "_run_fix_skip", return_value=(False, 0)) as run_fix, \
-                mock.patch.object(finalize, "_run_inline_images", return_value=(False, 0, [])) as run_inline, \
+        # Each phase must receive the document TEXT (threaded in memory), not a path, and the
+        # inline-images phase must still be handed the images base directory.
+        with mock.patch.object(finalize, "_apply_toc",
+                               side_effect=lambda h: (h, False)) as apply_toc, \
+                mock.patch.object(finalize, "_apply_fix_skip",
+                                  side_effect=lambda h: (h, False, 0)) as apply_fix, \
+                mock.patch.object(finalize, "_apply_inline_images",
+                                  side_effect=lambda h, b: (h, False, 0, [])) as apply_inline, \
                 mock.patch.object(finalize.validate, "validate", return_value=([], [])):
             code, _out, err = self._run_main(
                 ["finalize.py", path, "--toc", "--fix-skip", "--inline-images", "--images-base", images_base]
             )
         self.assertEqual(code, 0, err)
-        run_toc.assert_called_once_with(path)
-        run_fix.assert_called_once_with(path)
-        run_inline.assert_called_once_with(path, images_base)
+        apply_toc.assert_called_once()
+        apply_fix.assert_called_once()
+        apply_inline.assert_called_once()
+        self.assertEqual(apply_inline.call_args[0][1], images_base)
+        for call in (apply_toc.call_args, apply_fix.call_args, apply_inline.call_args):
+            self.assertIsInstance(call[0][0], str)
+            self.assertNotEqual(call[0][0], path)
 
     def test_warnings_only_are_allowed_without_strict(self):
         directory = self._tmpdir()
