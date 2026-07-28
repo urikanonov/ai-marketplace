@@ -395,14 +395,14 @@ test("the multi-duck hero lead is a short one-liner and the long pitch moved bel
     "(a diff, a PR, a plan, tests, or a commentable-HTML plan with its open comments)",
     "puts each duck on a different high-capability model so their blind spots do not overlap",
     "The disagreement is the point",
+    // The mechanics it carried stay in THIS section too - not merely somewhere on the page, which
+    // the hero lead and #how would satisfy on their own and would hide a loss from this section.
+    "in parallel",
+    "merges the results into one ranked list",
+    "applies the fixes that are safe",
   ]) {
     expect(whyText).toContain(claim);
   }
-  // The mechanics the paragraph used to restate are still promised on the page, just not twice.
-  const mainText = (await page.locator("#main").innerText()).replace(/\s+/g, " ");
-  expect(mainText).toMatch(/in parallel/i);
-  expect(mainText).toMatch(/merges the results into one ranked list/i);
-  expect(mainText).toMatch(/applies the fixes that are safe/i);
   // The hero must not still carry it.
   expect(text).not.toMatch(/One reviewer has one set of blind spots/);
 });
@@ -427,21 +427,30 @@ test("the multi-duck Why section states each claim once, in why-what-how order (
   const how = find(/one-word command/i);
   expect(how).toBeGreaterThan(what);
 
-  // The mechanics are stated once, not previewed and then repeated. Pin the WHAT paragraph
-  // EXACTLY: a not.toMatch guard on known phrasings would still let a paraphrase ("runs every
-  // duck concurrently, consolidates ...") re-preview the HOW paragraph, which is the exact
-  // defect this row exists to prevent. Any edit here must be deliberate.
+  // The mechanics are stated once, not previewed and then repeated. Pin the two restructured
+  // paragraphs EXACTLY: a not.toMatch or a literal-regex count would still let a paraphrase
+  // ("runs every duck concurrently, consolidates ...") re-preview the HOW paragraph, which is the
+  // exact defect this row exists to prevent. Any edit here must be deliberate.
+  expect(norm[opener]).toBe(
+    "One reviewer has one set of blind spots - and a single model, however strong, misses the same "
+    + "class of bug every time. Every model is confidently wrong in its own way, so if you ask the "
+    + "same model that wrote (or reviewed) a change to review it again, it tends to re-make the "
+    + "same oversight. The fix is not a bigger model - it is uncorrelated reviewers. Put an "
+    + "Anthropic model, an OpenAI model, a Google model, and more on the same change and the bug "
+    + "one family always glosses over is the one another family flags on sight.");
   expect(norm[what]).toBe(
     "multi-duck convenes a panel of independent rubber-duck reviewers over whatever you have in "
     + "flight (a diff, a PR, a plan, tests, or a commentable-HTML plan with its open comments), and "
     + "puts each duck on a different high-capability model so their blind spots do not overlap. "
     + "The disagreement is the point.");
-  // ...and no mechanic is stated twice anywhere in the section, in any paragraph.
+  // Every mechanic the relocated paragraph carried is stated in this section EXACTLY once - not
+  // zero times (that would be the information loss #744 forbids) and not twice (the redundancy
+  // #744 removes). Parallelism in particular must survive here, not only in the hero and #how.
   const whyText = norm.join(" ");
   const count = (re) => (whyText.match(re) || []).length;
+  expect(count(/in parallel/gi)).toBe(1);
+  expect(count(/one ranked list/gi)).toBe(1);
   expect(count(/applies the fixes that are safe/gi)).toBe(1);
-  expect(count(/in parallel/gi)).toBeLessThanOrEqual(1);
-  expect(count(/ranked list/gi)).toBeLessThanOrEqual(1);
 });
 
 
