@@ -527,6 +527,93 @@ try {
 } catch { $script:failures += "WPG-DECISION-21 threw: $_" }
 
 Write-Host ""
+# --- WPG-DELIVERY-01: at-least-once event delivery (two-phase pending/ack) -------------
+# Defect: the watcher persisted a seen key when it DECIDED, not when the agent ACKNOWLEDGED,
+# so a process killed between deciding and the agent reading the line marked the event
+# delivered without delivering it. A relaunch on the same head SHA was then permanently
+# suppressed - which is exactly how PR #718 sat green-but-BEHIND with nobody driving it.
+Write-Host "`nWPG-DELIVERY-01: a decided-but-unacked event re-fires"
+
+$pendingState = '{"seen":["review:1"],"pending":["ready:abc"],"noMerge":false}'
+$parsed = ConvertFrom-WatcherState $pendingState
+Assert-True ($parsed.PSObject.Properties['Pending'] -ne $null) "state exposes a Pending set"
+Assert-Eq 1 @($parsed.Pending).Count "pending key is parsed"
+Assert-True (@($parsed.Seen) -notcontains 'ready:abc') "a PENDING key is NOT treated as seen"
+
+# Without an ack, the pending key is dropped so the event re-fires on the next launch.
+$unacked = Resolve-WatcherState -State $parsed -Ack @()
+Assert-True (@($unacked.Seen) -notcontains 'ready:abc') "an unacked pending key does not become seen"
+Assert-Eq 0 @($unacked.Pending).Count "an unacked pending key is cleared so it can re-fire"
+
+# With an ack, it is promoted and will not re-fire.
+$acked = Resolve-WatcherState -State $parsed -Ack @('ready:abc')
+Assert-True (@($acked.Seen) -contains 'ready:abc') "an ACKED pending key is promoted into seen"
+Assert-Eq 0 @($acked.Pending).Count "an acked pending key leaves the pending set"
+
+# Acking a key that was never pending must not invent a seen key.
+$bogus = Resolve-WatcherState -State $parsed -Ack @('ready:never-pending')
+Assert-True (@($bogus.Seen) -notcontains 'ready:never-pending') "an ack only promotes keys that were pending"
+
+# The sticky opt-out survives the resolve step unchanged (fail-closed contract).
+$closed = ConvertFrom-WatcherState '{"seen":[],"pending":[],"noMerge":true}'
+Assert-True (Resolve-WatcherState -State $closed -Ack @()).NoMerge "the sticky opt-out survives resolve"
+
+Write-Host "`nWPG-DELIVERY-01: the crash-between-decide-and-deliver case"
+# Simulate: decision emits READY, watcher persists it as PENDING, process dies before the
+# agent reads the line. The next launch (no ack) must decide READY again.
+$snap = New-Snapshot -MergeStateStatus 'CLEAN' -ReviewDecision 'APPROVED'
+$writeAdmin = { 'admin' }
+$first = Get-WatcherDecision -Snapshot $snap -Viewer 'me' -OptedOut $false -Seen @() `
+    -IsTrusted { param($l, $a) $true } -ResolveViewerPermission $writeAdmin -FeedbackAvailable $true
+Assert-True ($first.Event -like 'EVENT=READY_TO_MERGE*') "first poll decides READY_TO_MERGE"
+
+# The watcher stores the new key as PENDING, not seen; the crash means no ack arrives.
+$after = ConvertFrom-WatcherState (ConvertTo-WatcherStateJson -Seen @() -Pending @($first.Seen | Where-Object { $_ -notin @() }) -NoMerge $false)
+$resolved = Resolve-WatcherState -State $after -Ack @()
+$second = Get-WatcherDecision -Snapshot $snap -Viewer 'me' -OptedOut $false -Seen @($resolved.Seen) `
+    -IsTrusted { param($l, $a) $true } -ResolveViewerPermission $writeAdmin -FeedbackAvailable $true
+Assert-True ($second.Event -like 'EVENT=READY_TO_MERGE*') "a killed watcher RE-FIRES the event instead of stranding the PR"
+
+# And once acked, it does not repeat.
+$ackedState = Resolve-WatcherState -State $after -Ack @($first.Seen)
+$third = Get-WatcherDecision -Snapshot $snap -Viewer 'me' -OptedOut $false -Seen @($ackedState.Seen) `
+    -IsTrusted { param($l, $a) $true } -ResolveViewerPermission $writeAdmin -FeedbackAvailable $true
+Assert-True ($null -eq $third.Event) "an acked event does not re-fire"
+
+Write-Host "`nWPG-DELIVERY-01: a stray empty-string key is not persisted"
+$dirty = ConvertFrom-WatcherState '{"seen":["","review:1"],"pending":[],"noMerge":false}'
+Assert-True (@($dirty.Seen) -notcontains '') "an empty-string key is dropped rather than kept as a key"
+Assert-True (@($dirty.Seen) -contains 'review:1') "real keys survive the cleanup"
+
+
+Write-Host "`nWPG-DELIVERY-01: an ack is DURABLE (the runnable Load-Seen persists the promotion)"
+# The assertions above drive the pure resolve in isolation, so they pass even if the runnable
+# watcher never writes the promotion back. That gap was real: the loop persists state only on
+# a decision or an opt-out change, so a launch that acked a key and then polled without a new
+# event left `pending` on disk, and the NEXT launch (carrying no -Ack) dropped it and re-fired
+# an event the agent had already handled - forever. So exercise the REAL persistence path.
+# -MaxIterations 0 skips the poll loop entirely, so no gh/network call is made.
+$stateProbe = Join-Path ([IO.Path]::GetTempPath()) ("wpg-test-" + [guid]::NewGuid().ToString('N') + ".json")
+try {
+    '{"seen":["review:1"],"pending":["ready:abc"],"noMerge":false}' | Set-Content $stateProbe -Encoding utf8
+    $runnable = Join-Path (Split-Path -Parent $PSScriptRoot) 'watch-pr-github.ps1'
+    $out = & pwsh -NoProfile -Command "
+        . '$runnable' -Owner o -Repo r -PrNumber 1 -MaxIterations 0 -StateFile '$stateProbe' -Ack @('ready:abc')
+        Load-Seen | ForEach-Object { `$_ }
+    " 2>&1
+    $returned = @($out | Where-Object { $_ -notlike 'EVENT=*' })
+    Assert-True ($returned -contains 'ready:abc') "the runnable Load-Seen returns the promoted key"
+
+    $onDisk = ConvertFrom-WatcherState (Get-Content $stateProbe -Raw)
+    Assert-True (@($onDisk.Seen) -contains 'ready:abc') "the promotion is PERSISTED, so the ack survives a launch that never decides again"
+    Assert-Eq 0 @($onDisk.Pending).Count "the pending set is cleared on disk, not just in memory"
+    Assert-True (@($onDisk.Seen) -contains 'review:1') "the pre-existing seen keys are preserved"
+    Assert-True (-not $onDisk.NoMerge) "the sticky opt-out is preserved across the durable write"
+} finally {
+    Remove-Item $stateProbe -Force -ErrorAction SilentlyContinue
+}
+
+
 if ($script:failures.Count -gt 0) {
     Write-Host "FAILED ($($script:failures.Count) assertion(s), $script:passes passed):" -ForegroundColor Red
     $script:failures | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }

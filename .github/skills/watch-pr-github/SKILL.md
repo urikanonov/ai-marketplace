@@ -233,8 +233,13 @@ Key parameters (see the script header for the rest):
 - `-AllowMerge`: clears a previously persisted `-NoMerge` opt-out, re-enabling autonomous completion.
 - `-PollSeconds` (default 180), `-MaxIterations` (default 240), `-StateFile` (defaults to a per-PR
   file in the OS temp dir), `-CopilotLogins` (the trusted Copilot allowlist).
+- `-Ack <key>[,<key>]` acknowledges the event key(s) the PREVIOUS launch printed on its `ACK_KEYS=`
+  line. Delivery is AT-LEAST-once: a decided event is stored as `pending`, not `seen`, and only
+  becomes `seen` when the next launch acks it. So a watcher killed between deciding and the agent
+  reading the line RE-FIRES the event instead of marking it delivered forever. Pass the keys back
+  after you have acted on the event; omit them (or omit `-Ack` entirely) to deliberately replay it.
 
-Run it as an async shell with shellId `pr-watch`. Use PowerShell 7 (`pwsh`), which is the
+Run it as an async shell with shellId `pr-watch` **and `detach: true`**. Use PowerShell 7 (`pwsh`), which is the
 cross-platform, repo-portable choice; Windows PowerShell 5.1 (`powershell`) also runs it. In this repo
 `<skill-folder>` is `.github/skills/watch-pr-github`; a maintainer running the Copilot CLI has the same
 files in the installed personal skill folder. The runnable `watch-pr-github.ps1` dot-sources
@@ -258,6 +263,18 @@ it is a launch flag it survives every relaunch without depending on chat context
   across relaunches even if this `plan.md` line is missed; clear it deliberately with `-AllowMerge` if
   the user later says to go ahead. Recording it in `plan.md` too keeps it visible on every wake.
 - Then **end your turn with no further tool calls**. You will be notified when it exits with `EVENT=`.
+
+**Launch it DETACHED (`detach: true`).** In the Copilot CLI an async shell is ATTACHED by default and
+is TERMINATED when the session shuts down or checkpoints - so "launch async, then end your turn" is
+exactly the sequence that kills the watcher. That is how PR #718 sat green-but-BEHIND for hours with
+nobody driving it and no error anywhere: the shell registry was gone (`read_powershell` reported "not
+found or was never created") while the state file simply stopped being written. Only `detach: true`
+survives.
+
+**Never treat silence as "nothing happened".** Before ending a turn in the loop, and on every wake,
+confirm the watcher is actually ALIVE - `read_powershell` on `pr-watch`, or check that the state file
+is still being touched. If it is gone, relaunch it (with `-Ack` for any event you already handled).
+A watcher that died is indistinguishable from a quiet PR unless you check.
 
 ## 3. On each wake: read `pr-watch` output and handle the event
 

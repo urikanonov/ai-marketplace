@@ -44,7 +44,7 @@ function Resolve-OptOut {
 function ConvertFrom-WatcherState {
     param([string]$Json)
     if (-not $Json -or -not $Json.Trim()) {
-        return [pscustomobject]@{ Seen = @(); NoMerge = $true }
+        return [pscustomobject]@{ Seen = @(); Pending = @(); NoMerge = $true }
     }
     try {
         $s = $Json | ConvertFrom-Json
@@ -57,9 +57,64 @@ function ConvertFrom-WatcherState {
         $noMerge = if ($noMergeProp -and $null -ne $noMergeProp.Value) { [bool]$noMergeProp.Value } else { $true }
         $seenProp = $s.PSObject.Properties['seen']
         $seenVal = if ($seenProp -and $null -ne $seenProp.Value) { @($seenProp.Value) } else { @() }
-        return [pscustomobject]@{ Seen = $seenVal; NoMerge = $noMerge }
+        # PENDING holds keys for events that were DECIDED but not yet acknowledged by the agent.
+        # They are deliberately NOT part of Seen, so an event whose delivery was interrupted
+        # re-fires instead of being permanently suppressed (see Resolve-WatcherState).
+        $pendProp = $s.PSObject.Properties['pending']
+        $pendVal = if ($pendProp -and $null -ne $pendProp.Value) { @($pendProp.Value) } else { @() }
+        # Drop empty/whitespace entries: a stray "" is not a key, and keeping one makes a state
+        # file look like it carries a delivery it never made.
+        $seenVal = @($seenVal | Where-Object { $_ -and "$_".Trim() })
+        $pendVal = @($pendVal | Where-Object { $_ -and "$_".Trim() })
+        return [pscustomobject]@{ Seen = $seenVal; Pending = $pendVal; NoMerge = $noMerge }
     } catch {
-        return [pscustomobject]@{ Seen = @(); NoMerge = $true }
+        return [pscustomobject]@{ Seen = @(); Pending = @(); NoMerge = $true }
+    }
+}
+
+
+# Serialize watcher state. `Pending` carries keys for events that have been DECIDED and printed
+# but not yet acknowledged by the agent; they stay OUT of `seen` so an interrupted delivery
+# re-fires rather than being suppressed forever.
+function ConvertTo-WatcherStateJson {
+    param(
+        [AllowEmptyCollection()][string[]]$Seen = @(),
+        [AllowEmptyCollection()][string[]]$Pending = @(),
+        [bool]$NoMerge = $false
+    )
+    return (@{
+        seen    = @($Seen | Where-Object { $_ -and "$_".Trim() })
+        pending = @($Pending | Where-Object { $_ -and "$_".Trim() })
+        noMerge = $NoMerge
+    } | ConvertTo-Json -Compress -Depth 5)
+}
+
+
+# Resolve a loaded state into the seen-set the next poll should use.
+#
+# This is what makes delivery AT-LEAST-once instead of at-most-once. The watcher used to
+# persist a seen key when it DECIDED an event, not when the agent ACKNOWLEDGED it, so a
+# process killed between the write and the agent reading the printed line marked the event
+# delivered without delivering it - and a relaunch on the same head SHA was permanently
+# suppressed (PR #718 sat green-but-BEHIND with `ready:0453a41c` already recorded).
+#
+# Now the deciding launch writes the key to `pending`. The NEXT launch either:
+#   - passes -Ack <key> (the agent confirms it acted on the event), promoting it into `seen`; or
+#   - passes nothing, which DROPS the pending key so the same event is decided again.
+function Resolve-WatcherState {
+    param(
+        [Parameter(Mandatory)]$State,
+        [AllowEmptyCollection()][string[]]$Ack = @()
+    )
+    $seen = @($State.Seen | Where-Object { $_ -and "$_".Trim() })
+    $pending = @($State.Pending | Where-Object { $_ -and "$_".Trim() })
+    # Only a key that was actually pending can be promoted, so a bogus -Ack cannot invent a
+    # seen key and suppress an event the watcher never emitted.
+    $promoted = @($pending | Where-Object { $Ack -contains $_ })
+    return [pscustomobject]@{
+        Seen    = @(@($seen) + $promoted | Select-Object -Unique)
+        Pending = @()
+        NoMerge = $State.NoMerge
     }
 }
 
