@@ -1,0 +1,6 @@
+# The terminal subject's dependencies are installed on demand and are never committed. No lockfile
+# lives here either: this is ad-hoc tooling whose two dependencies are pinned to exact versions in
+# package.json, and a lockfile generated behind a corporate npm proxy records that private feed's
+# URLs, which no other contributor can resolve.
+package-lock.json
+node_modules/
