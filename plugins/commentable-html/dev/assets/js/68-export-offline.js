@@ -195,7 +195,7 @@ function _stripOfflineRichRenderers(doc) {
 }
 let _offlineVendoredRichLibsPromise = null;
 function _offlineLiveDocNeedsRichLibs() {
-  return !!root.querySelector("pre.mermaid, div.mermaid, figure.chart canvas, canvas.cmh-chart");
+  return !!root.querySelector(CMH_RICH_CONTENT_SEL);
 }
 function _ensureOfflineVendoredRichLibsPromise() {
   if (_offlineVendoredRichLibsPromise) return _offlineVendoredRichLibsPromise;
@@ -234,11 +234,11 @@ function _primeOfflineVendoredRichLibs() {
 }
 function _offlineDocUsesMermaid(doc) {
   const docRoot = doc.getElementById("commentRoot") || doc.body;
-  return !!(docRoot && docRoot.querySelector("pre.mermaid, div.mermaid"));
+  return !!(docRoot && docRoot.querySelector(CMH_MERMAID_SEL));
 }
 function _offlineDocUsesCharts(doc) {
   const docRoot = doc.getElementById("commentRoot") || doc.body;
-  return !!(docRoot && docRoot.querySelector("figure.chart canvas, canvas.cmh-chart"));
+  return !!(docRoot && docRoot.querySelector(CMH_CHART_CANVAS_SEL));
 }
 // The chart-canvas selector above is a deliberate SUPERSET of what any one renderer draws, so the
 // shape of a canvas is not evidence that Chart.js is needed: a canvas carrying
@@ -287,7 +287,7 @@ function _offlineChartDataUsable(parsed) {
 function _offlineDocNeedsChartLib(doc, referencesChartLib) {
   if (!_offlineDocUsesCharts(doc)) return false;
   const docRoot = doc.getElementById("commentRoot") || doc.body;
-  const canvases = Array.prototype.slice.call(docRoot.querySelectorAll("figure.chart canvas, canvas.cmh-chart"));
+  const canvases = Array.prototype.slice.call(docRoot.querySelectorAll(CMH_CHART_CANVAS_SEL));
   const drawnByRuntime = function (canvas) {
     // Follow _chartConfig's precedence exactly: a resolvable source element WINS - unparseable
     // source JSON makes the renderer give up entirely, and only a source that parses FALSY lets it
@@ -402,7 +402,7 @@ async function _offlineInlineRichLibs(doc, referencesChartLib) {
       + "    var htmlLabels = !document.querySelector('.deck-stage');\n"
       + "    try { window.mermaid.initialize({ startOnLoad: false, theme: theme, securityLevel: 'strict', htmlLabels: htmlLabels, flowchart: { htmlLabels: htmlLabels, curve: 'basis' } }); }\n"
       + "    catch (e) { return; }\n"
-      + "    var all = Array.prototype.slice.call(document.querySelectorAll('pre.mermaid, div.mermaid'));\n"
+      + "    var all = Array.prototype.slice.call(document.querySelectorAll(" + JSON.stringify(CMH_MERMAID_SEL) + "));\n"
       + "    runVisible(all.filter(function (el) { return !el.hasAttribute('data-processed') && !isHidden(el); }));\n"
       + "    all.filter(function (el) { return !el.hasAttribute('data-processed') && isHidden(el); }).forEach(renderHidden);\n"
       + "    window.__cmhMermaidReady = chain;\n"

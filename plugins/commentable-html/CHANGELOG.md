@@ -4,6 +4,27 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.272.0] - 2026-07-29
+
+### Fixed
+
+- The live chart renderer, the comment layer, and the Offline export no longer disagree about
+  what a chart is. A bare data-bearing canvas (`data-cmh-chart-points` or
+  `data-cmh-chart-source` with no `cmh-chart` class and no `figure.chart` wrapper) drew nothing
+  at load - only a window resize revived it - was not commentable, and was invisible to the
+  Offline export, so a document that attached its own Chart.js to such a canvas exported without
+  the library and showed an empty canvas. It now draws at load, is commentable like any other
+  chart canvas, and the export recognises it, so the evidence-based Chart.js decision applies to
+  it too: the library travels only when the document actually needs it.
+
+### Changed
+
+- The chart and diagram selectors are declared ONCE, in a new `assets/js/03-selectors.js`
+  module, and the renderer, the image comment layer, the mermaid layer, the Offline exporter,
+  and the author-time rich-libraries payload detector all derive from it, so the lists can no
+  longer drift. The detector's former deliberate superset (any `data-cmh-chart*` attribute) is
+  now exact parity with the runtime.
+
 ## [1.271.0] - 2026-07-29
 
 ### Fixed
