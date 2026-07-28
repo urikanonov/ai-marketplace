@@ -5,12 +5,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://buttons.github.io; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.github.com; frame-src 'self' https://buttons.github.io; base-uri 'self'; form-action 'self'" />
-  <title>multi-duck - a panel of AI reviewers for your code, on many models at once</title>
+  <title>multi-duck - a panel of AI reviewers for anything you build, on many models at once</title>
   <meta name="description" content="A skill for Claude Code and the GitHub Copilot CLI that convenes a panel of independent rubber-duck reviewers over your in-flight work - each on a different model so their blind spots do not overlap - then consolidates the findings and applies the safe fixes." />
   <link rel="canonical" href="https://urikanonov.github.io/ai-marketplace/multi-duck/" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="ai-marketplace" />
-  <meta property="og:title" content="multi-duck - a panel of AI reviewers for your code, on many models at once" />
+  <meta property="og:title" content="multi-duck - a panel of AI reviewers for anything you build, on many models at once" />
   <meta property="og:description" content="Convene a panel of independent rubber-duck reviewers over your in-flight work, each on a different model, all in parallel, then consolidate the findings and apply the safe fixes. Two modes: prisms and consensus." />
   <meta property="og:url" content="https://urikanonov.github.io/ai-marketplace/multi-duck/" />
   <meta property="og:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
@@ -82,8 +82,8 @@
     <header class="hero">
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
-        <h1>Review your code with a <span class="accent">panel of models</span>, not just one</h1>
-        <p class="lead"><strong>multi-duck</strong> is multi-model code review: a panel of independent reviewers, each on a different model, on whatever you have in flight.</p>
+        <h1>Review anything you build with a <span class="accent">panel of models</span>, not just one</h1>
+        <p class="lead"><strong>Multi-model review and feedback on any code, plan, report or artifact.</strong> One command, several different high-capability models in parallel, one ranked list of what to fix.</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="#install">Install</a>
           <a class="btn" href="#how">How it works</a>
@@ -237,12 +237,12 @@
               <li><code>gpt-5.5</code> - OpenAI (prior generation)</li>
             </ol></div>
           <div class="step"><h3>Launch the panel in parallel</h3><p>Every duck runs at once as a strictly review-only reviewer. Running many in parallel is safe because no duck can change anything.</p></div>
-          <div class="step"><h3>Consolidate the findings</h3><p>Cluster duplicate findings, weigh agreement, rank by severity, and adjudicate conflicts by reading the code - because agreement across models that read the same bundle is corroboration to verify, never proof.</p></div>
+          <div class="step"><h3>Consolidate the findings</h3><p>Cluster duplicate findings, weigh agreement, rank by severity, and adjudicate conflicts by reading the work itself - because agreement across models that read the same bundle is corroboration to verify, never proof.</p></div>
           <div class="step"><h3>Act on the safe ones</h3><p>Apply the local, non-destructive, independently-verified fixes and check them with the narrowest test. Defer anything risky - API, dependency, migration, security, infrastructure, history-rewriting - with a clear recommendation.</p></div>
         </div>
         <div class="callout" role="note">
           <h3 class="callout-title">Run it more than once for complex work</h3>
-          <p>Scale the number of rounds to the complexity of the change. Each round applies the safe fixes and reshapes the code, so a fresh panel over the updated work almost always finds something the previous round could not see yet. For anything non-trivial, run multi-duck across several rounds - the later passes are where the subtle issues surface, and the subsequent rounds almost always turn up something useful.</p>
+          <p>Scale the number of rounds to the complexity of the change. Each round applies the safe fixes and reshapes the work, so a fresh panel over the updated work almost always finds something the previous round could not see yet. For anything non-trivial, run multi-duck across several rounds - the later passes are where the subtle issues surface, and the subsequent rounds almost always turn up something useful.</p>
         </div>
       </div>
     </section>
