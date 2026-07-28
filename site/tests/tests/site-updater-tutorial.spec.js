@@ -371,3 +371,26 @@ test("the multi-duck page roster step lists the example roster in SKILL.md order
   await expect(step.locator(".roster-caption")).toContainText(
     "substitute the equivalents your host exposes");
 });
+
+test("the multi-duck hero lead is a short one-liner and the long pitch moved below (SITE-MDUCK-07)", async ({ page }) => {
+  await page.goto("/multi-duck/", { waitUntil: "domcontentloaded" });
+
+  // The hero must read in 2-3 seconds and name the category up front.
+  const lead = page.locator("header .lead");
+  await expect(lead).toHaveCount(1);
+  const text = (await lead.innerText()).replace(/\s+/g, " ").trim();
+  expect(text).toMatch(/multi-model code review/i);
+  expect(text.split(" ").length).toBeLessThanOrEqual(30);
+
+  // The long explanation is MOVED, not deleted: it must still be on the page, below the hero,
+  // and inside the "Why a panel" section that it sets up.
+  const why = page.locator("#why");
+  const whyText = (await why.innerText()).replace(/\s+/g, " ");
+  expect(whyText).toMatch(/One reviewer has one set of blind spots/);
+  expect(whyText).toMatch(/The disagreement is the point/);
+  // ...and it must lead INTO the uncorrelated-reviewers argument, not follow it.
+  expect(whyText.indexOf("One reviewer has one set of blind spots"))
+    .toBeLessThan(whyText.indexOf("Every model is confidently wrong"));
+  // The hero must not still carry it.
+  expect(text).not.toMatch(/One reviewer has one set of blind spots/);
+});
