@@ -25,6 +25,7 @@ payload its exporter then demands, so a test pins them together.
 """
 import os
 import re
+from html.parser import HTMLParser
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
@@ -34,43 +35,131 @@ import new_document  # noqa: E402
 
 BLOB_ID = "cmhVendoredRichLibs"
 
-_BLOB_RE = re.compile(
-    r'[ \t]*<script\b[^>]*\sid\s*=\s*(["\'])' + BLOB_ID + r'\1[^>]*>[\s\S]*?</script>[ \t]*\r?\n?',
-    re.IGNORECASE)
-
-# Mirrors the runtime's selectors. Matching on the tag OPENING avoids parsing a multi-megabyte
-# document just to answer a yes/no question, and the CONTENT region is small (0.1 - 1.3% of the
-# file), so a regex over it is cheap and linear.
-_USES_RE = re.compile(
-    r'<pre\b[^>]*\bclass\s*=\s*["\'][^"\']*\bmermaid\b'
-    r'|<div\b[^>]*\bclass\s*=\s*["\'][^"\']*\bmermaid\b'
-    r'|<figure\b[^>]*\bclass\s*=\s*["\'][^"\']*\bchart\b'
-    r'|<canvas\b[^>]*\bclass\s*=\s*["\'][^"\']*\bcmh-chart\b'
-    r'|<canvas\b[^>]*\bdata-cmh-chart\b',
-    re.IGNORECASE)
-
+RUNTIME_SELECTORS = ("pre.mermaid", "div.mermaid", "figure.chart canvas", "canvas.cmh-chart")
 
 USES = "uses"
 UNUSED = "unused"
 UNKNOWN = "unknown"
 
+# Void elements never open a scope, so they must not be pushed onto the ancestor stack.
+_VOID = frozenset((
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
+    "param", "source", "track", "wbr", "canvas"))
+
+
+class _DocScan(HTMLParser):
+    """One parser pass that answers everything this module needs.
+
+    A regex CANNOT do this correctly, and the difference is not academic - review found three
+    real false negatives and one case of DATA LOSS in the regex version:
+
+    - `<canvas class=cmh-chart>` (CSS does not require quotes) was missed.
+    - `<canvas title="A > B" class="cmh-chart">` was missed, because a `[^>]*` scan stops at
+      the `>` inside the quoted attribute and never reaches the class.
+    - A literal `</main>` inside an HTML COMMENT truncated the scan region, hiding everything
+      after it.
+    - Worst: a document DOCUMENTING this feature can show the payload element as a
+      commented-out example. A regex matched that comment and DELETED authored content.
+
+    A false negative strips a payload the document's own offline export then demands and fails
+    on; deleting authored content is worse still. So use the standard-library tokenizer, which
+    is quote-aware, comment-aware, and treats `<script>` content as raw text - the same reading
+    a browser gives, which is what the runtime selectors are evaluated against.
+    """
+
+    def __init__(self, html):
+        HTMLParser.__init__(self, convert_charrefs=False)
+        self._html = html
+        self._line_offsets = [0]
+        for line in html.split("\n")[:-1]:
+            self._line_offsets.append(self._line_offsets[-1] + len(line) + 1)
+        self._stack = []
+        self.root_span = None          # inner span of <main id="commentRoot">
+        self.blob_span = None          # outer span of the real payload <script>
+        self.uses = False
+        self._root_depth = None
+        self._root_inner_start = None
+        self._blob_start = None
+        self._pending_blob = False
+
+    # -- offsets -------------------------------------------------------------
+    def _offset(self):
+        line, col = self.getpos()
+        return self._line_offsets[line - 1] + col
+
+    def _end_of_current_tag(self):
+        """Offset just past the tag the parser is reporting."""
+        text = self.get_starttag_text() or ""
+        return self._offset() + len(text)
+
+    # -- handlers ------------------------------------------------------------
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        classes = set((attrs.get("class") or "").split())
+        if tag == "main" and attrs.get("id") == "commentRoot" and self._root_inner_start is None:
+            self._root_inner_start = self._end_of_current_tag()
+            self._root_depth = len(self._stack)
+        if tag == "script" and attrs.get("id") == BLOB_ID and self.blob_span is None:
+            self._blob_start = self._offset()
+            self._pending_blob = True
+        if self._in_root():
+            if tag in ("pre", "div") and "mermaid" in classes:
+                self.uses = True
+            elif tag == "canvas":
+                if "cmh-chart" in classes or "data-cmh-chart" in attrs:
+                    self.uses = True
+                elif any(t == "figure" and "chart" in c for t, c in self._stack):
+                    self.uses = True
+        if tag not in _VOID:
+            self._stack.append((tag, classes))
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        if tag not in _VOID and self._stack and self._stack[-1][0] == tag:
+            self._stack.pop()
+
+    def handle_endtag(self, tag):
+        if tag == "script" and self._pending_blob:
+            self.blob_span = (self._blob_start, self._offset() + len("</script>"))
+            self._pending_blob = False
+        for i in range(len(self._stack) - 1, -1, -1):
+            if self._stack[i][0] == tag:
+                if (tag == "main" and self._root_depth is not None
+                        and i == self._root_depth and self.root_span is None):
+                    self.root_span = (self._root_inner_start, self._offset())
+                del self._stack[i:]
+                return
+
+    def _in_root(self):
+        return self._root_inner_start is not None and self.root_span is None
+
+
+def _scan(html):
+    scan = _DocScan(html)
+    try:
+        scan.feed(html)
+        scan.close()
+    except Exception:
+        return None
+    return scan
+
 
 def content_state(html):
     """Classify the document: `USES`, `UNUSED`, or `UNKNOWN`.
 
-    `UNKNOWN` means the CONTENT region could not be located, so the document is left ENTIRELY
+    The scan region is `#commentRoot`, matching the RUNTIME exactly (`68-export-offline.js`
+    scopes its check to that element). Scanning only the region between the CONTENT markers
+    would be NARROWER than the runtime, so rich content placed inside the root but outside the
+    markers would be honoured by the exporter and missed here - a false negative.
+
+    `UNKNOWN` means the content root could not be located, so the document is left ENTIRELY
     alone - neither stripped (it might rely on the payload) nor given one (a document that never
-    carried the payload must not suddenly grow by 1.3 MB because its markers were unreadable).
-    Only a positively classified document is ever rewritten.
+    carried the payload must not suddenly grow by 1.3 MB because it could not be parsed).
     """
-    try:
-        begin, end, _main_start, _tag_end = new_document._find_active_root(html)
-    except Exception:
+    scan = _scan(html)
+    if scan is None or scan.root_span is None:
         return UNKNOWN
-    if begin is None or end is None or end <= begin:
-        return UNKNOWN
-    fragment = html[begin + len(new_document.BEGIN_MARKER):end]
-    return USES if _USES_RE.search(fragment) else UNUSED
+    return USES if scan.uses else UNUSED
 
 
 def content_needs_rich_libs(html):
@@ -84,18 +173,23 @@ def content_needs_rich_libs(html):
 
 
 def find_blob(html):
-    """Return the (start, end) span of the payload script, or None when it is absent."""
-    m = _BLOB_RE.search(html)
-    return (m.start(), m.end()) if m else None
+    """Return the (start, end) span of the real payload script element, or None.
+
+    Parser-based, so a commented-out example of the element in authored content is NOT matched
+    (a regex version deleted exactly that).
+    """
+    scan = _scan(html)
+    return scan.blob_span if scan else None
 
 
 def blob_script(source_html):
     """Return the payload script element (with a trailing newline) taken from a built template."""
-    m = _BLOB_RE.search(source_html)
-    if not m:
+    span = find_blob(source_html)
+    if not span:
         return None
-    text = m.group(0).strip("\r\n \t")
-    return text + "\n"
+    return source_html[span[0]:span[1]].strip("\r\n \t") + "\n"
+
+
 
 
 def strip_blob(html):
@@ -113,16 +207,14 @@ def _insert_before_body_end(html, script):
 
 
 def _is_at_end_of_body(html, span):
-    """True when the payload already sits after the document content, near the body end.
+    """True when the payload already sits after the document content root.
 
-    Used so an ALREADY well-placed payload is never rewritten - a relocation churns bytes in
-    every document that has one, and an idempotent pass must not do that.
+    Kept for callers that hold only a span; `apply` uses the parser's root span directly.
     """
-    body_end = html.lower().rfind("</body>")
-    if body_end == -1:
+    scan = _scan(html)
+    if scan is None or scan.root_span is None:
         return True
-    head_end = html.lower().find("</head>")
-    return span[0] > head_end and span[1] <= body_end
+    return span[0] >= scan.root_span[1]
 
 
 def apply(html, source_blob=None):
@@ -131,18 +223,24 @@ def apply(html, source_blob=None):
     `source_blob` is the payload script to restore with (see `blob_script`); pass None when only
     removal is wanted or no built template is reachable. Returns (html, changed) and is
     idempotent: a document already in the right state is returned byte-identical.
+
+    One parser pass answers every question (classification, payload location, body end), so a
+    2.5 MB document costs a single ~20 ms scan rather than one per query.
     """
-    state = content_state(html)
-    if state == UNKNOWN:
+    scan = _scan(html)
+    if scan is None or scan.root_span is None:
         # Cannot classify: touch nothing. Never grow a document that may not even be one of ours.
         return html, False
-    span = find_blob(html)
-    if state == UNUSED:
-        return strip_blob(html)
-    if span:
-        if _is_at_end_of_body(html, span):
+    span = scan.blob_span
+    if not scan.uses:
+        if not span:
             return html, False
-        # Present but in the head: move it out so the top of the file stays readable.
+        return html[:span[0]] + html[span[1]:], True
+    if span:
+        # Already after the content root: leave it exactly as it is. Relocating an
+        # already-placed payload would churn bytes on every finalize.
+        if span[0] >= scan.root_span[1]:
+            return html, False
         without = html[:span[0]] + html[span[1]:]
         moved, ok = _insert_before_body_end(without, html[span[0]:span[1]].strip("\r\n \t") + "\n")
         return (moved, True) if ok else (html, False)
