@@ -2,9 +2,10 @@ import { test, expect } from "@playwright/test";
 import { fileUrl, ready, KITCHEN_SINK } from "./helpers.js";
 
 // The layer must never let author text run out of its box: long badges, long table
-// cells, and long KQL cluster titles have to wrap within their container instead of
-// overflowing (or being clipped by an ancestor's overflow:hidden). We inject the
-// content inside a deliberately narrow, cm-skip host so the layer CSS is the only
+// cells, and long KQL cluster titles have to stay within their container instead of
+// overflowing (or being clipped by an ancestor's overflow:hidden). A table is the one
+// case contained by SCROLLING rather than wrapping - see the table test below. We inject
+// the content inside a deliberately narrow, cm-skip host so the layer CSS is the only
 // thing under test and comment offsets are untouched.
 const LONG = "Draft-rev-17-whole-plan-duck-5-rounds-supercalifragilisticexpialidocious-cluster";
 
@@ -53,12 +54,17 @@ test.describe("boxed author content never overflows its container", () => {
     expect(badge.height, "badge wrapped to more than one line").toBeGreaterThan(refH + 2);
   });
 
-  test("a long unbroken token in a table cell wraps and the table fits its box", async ({ page }) => {
+  test("a long unbroken token in a table cell scrolls inside the table's box instead of overflowing", async ({ page }) => {
+    // A table is rendered inside a `.cmh-table-scroll` box at runtime (CMH-RESP-11), and that box -
+    // not the cell - is what holds the guarantee: cells wrap with `break-word` so multi-word text is
+    // never shredded mid-token, which means a single unbreakable token CAN make the table wider than
+    // its container, and the wrapper contains it by scrolling rather than spilling onto the page.
     const { targets } = await measure(page,
-      `<table><tbody><tr><td data-probe="cell">${LONG}${LONG}</td></tr></tbody></table>`);
-    const cell = targets.find((t) => t.tag === "cell");
-    expect(cell.overflowsRight, "table cell stays within its container").toBe(false);
-    expect(cell.selfScrollOverflow, "table cell has no clipped horizontal content").toBe(false);
+      `<div class="cmh-table-scroll" data-probe="wrap"><table><tbody><tr>` +
+      `<td>${LONG}${LONG}</td></tr></tbody></table></div>`);
+    const wrap = targets.find((t) => t.tag === "wrap");
+    expect(wrap.overflowsRight, "the table's scroll box stays within its container").toBe(false);
+    expect(wrap.selfScrollOverflow, "the over-wide table is contained by scrolling, not by spilling").toBe(true);
   });
 
   test("a long KQL cluster title wraps and the figure is not clipped", async ({ page }) => {

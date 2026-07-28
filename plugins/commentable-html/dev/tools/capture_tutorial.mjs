@@ -211,6 +211,18 @@ async function waitForFonts(page) {
   });
 }
 
+// A toast raised earlier in a scene (setReviewerName raises "You are commenting as ...") lives on a
+// wall-clock timer, so whether it is still on screen when a later shot is taken depends on how long
+// the intervening steps happened to take. That made 15-format-toolbar / 16-rich-card flip between a
+// toast and no toast between runs and reds the shots drift guard. Shots that mean to SHOW a toast
+// (09-copyall) wait for it explicitly; every other shot dismisses it first so it is never a race.
+async function hideTransientToast(page) {
+  await page.evaluate(() => {
+    const el = document.getElementById("toast");
+    if (el) el.classList.remove("show");
+  });
+}
+
 async function waitForMermaid(page) {
   await page.waitForFunction(() => {
     const hosts = Array.from(document.querySelectorAll("pre.mermaid, div.mermaid"));
@@ -744,12 +756,14 @@ async function captureGarden(ctx) {
     await composer.locator("textarea").first().fill(
       "Great topic! See **companion planting** and the guide: https://example.com/garden\n- rotate beds each year\n- add __compost__ in spring");
     await page.mouse.move(1, 1);
+    await hideTransientToast(page);
     await waitForStableLayout(page);
     await writeScreenshot(page, shotPath(targetDir, P, "15-format-toolbar"),
       { clip: { x: 0, y: 0, width: 1320, height: 900 } });
     await composer.locator('[data-act="save"]').click();
     await expectNoComposer(page);
     await page.evaluate(() => { window.scrollTo(0, 0); });
+    await hideTransientToast(page);
     await waitForStableLayout(page);
     await writeScreenshot(page, shotPath(targetDir, P, "16-rich-card"),
       { clip: { x: 0, y: 0, width: 1320, height: 900 } });

@@ -250,6 +250,7 @@ const prunedCount = pruneHandled();
 // keeps text-comment offsets consistent between save time and reload.
 setupDiffLayer();
 setupNotesLayer();
+setupTableScroll();
 applyPersistedTableSorts();
 backfillContext();
 restoreHighlights();
@@ -882,6 +883,10 @@ function setupDeck() {
       return;
     }
     if (commentMode || e.defaultPrevented || isEditableTarget(e.target) || hasBlockingDeckChrome()) return;
+    // A focused horizontal scroll region (a wide table's scroll box, an overflowing gallery card)
+    // owns the arrow keys: they are how a keyboard user reaches the clipped content, so the deck
+    // must not eat them to change slides instead (WCAG 2.1.1).
+    if (e.target && e.target.closest && e.target.closest("[data-cmh-scroll-a11y]")) return;
     if (e.key === "ArrowRight" || e.key === "PageDown") {
       if (show(current + 1)) e.preventDefault();
     } else if (e.key === "ArrowLeft" || e.key === "PageUp" || e.key === "Backspace") {

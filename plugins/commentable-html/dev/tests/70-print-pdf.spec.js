@@ -605,8 +605,17 @@ test("CMH-PRINT-06: an eligible flat document prints as a single continuous no-b
   tmpCopies.push(cellFile);
   await openForPrint(page, cellFile);
   // Premise: on SCREEN the inline overflow-wrap:normal wins, so the long token does not wrap and the
-  // cell forces horizontal overflow.
-  const screenCellOverflow = await page.evaluate(() =>
+  // cell forces the TABLE wider than its box. It no longer forces the whole DOCUMENT sideways -
+  // the table's `.cmh-table-scroll` box contains that overflow now (CMH-RESP-11) - so the premise is
+  // measured where the non-wrapping actually shows: the table against its own scroll box.
+  const screenCellOverflow = await page.evaluate(() => {
+    const cell = [...document.querySelectorAll("#commentRoot table td")]
+      .find((td) => /^X{200,}$/.test(td.textContent.trim()));
+    const table = cell.closest("table");
+    const wrap = table.closest(".cmh-table-scroll");
+    return Math.round(table.getBoundingClientRect().width - wrap.clientWidth);
+  });
+  const screenDocOverflow = await page.evaluate(() =>
     Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth);
   await page.emulateMedia({ media: "print" });
   await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
@@ -616,7 +625,10 @@ test("CMH-PRINT-06: an eligible flat document prints as a single continuous no-b
   }));
   await page.emulateMedia({ media: null });
   expect(screenCellOverflow,
-    "premise: the synthetic non-wrapping long-token cell overflows on screen").toBeGreaterThan(0);
+    "premise: the synthetic non-wrapping long-token cell makes the table overflow its scroll box").toBeGreaterThan(0);
+  expect(screenDocOverflow,
+    "and that overflow is contained on screen rather than pushing the document sideways (CMH-RESP-11)")
+    .toBeLessThanOrEqual(2);
   expect(printCellFit.scrollW,
     "print media wraps the long-token cell so it fits the printable width (no fixed-paper right-edge clip)")
     .toBeLessThanOrEqual(printCellFit.vw + 2);
