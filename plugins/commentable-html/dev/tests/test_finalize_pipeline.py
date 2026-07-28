@@ -45,7 +45,7 @@ FRAGMENT = """<h1>Finalize Perf</h1>
 <h2 id="two">2. Two</h2>
 <p>More prose with \u2018single quotes\u2019.</p>
 <pre><code class="language-sql">SELECT "col" FROM t WHERE a = 'x';</code></pre>
-<pre class="mermaid">graph TD; A--&gt;B;</pre>
+<pre class="mermaid cm-skip">graph TD; A--&gt;B;</pre>
 <h2 id="three">3. Three</h2>
 <p>A third section so wrapping has more than one boundary to find.</p>
 <pre data-cmh-kql-no-cluster><code class="language-kql">T | where a == 1 | summarize count() by b</code></pre>"""
@@ -214,7 +214,7 @@ class PipelineEquivalenceTests(_Case):
 class IoAmplificationTests(_Case):
     """CMH-BUILD-20: one read and one write for the whole pipeline, not one pair per phase."""
 
-    def _counted(self, run_toc=False):
+    def _counted(self, run_toc=False, stamp_when_clean=False):
         reads, writes = [], []
         real_open = io.open
 
@@ -242,7 +242,8 @@ class IoAmplificationTests(_Case):
         io.open = counting_open
         builtins.open = counting_builtin_open
         try:
-            finalize.finalize(self.doc, run_toc=run_toc)
+            finalize.finalize(self.doc, run_toc=run_toc,
+                              stamp_when_clean=stamp_when_clean)
         finally:
             io.open = real_open
             builtins.open = real_builtin_open
@@ -256,12 +257,26 @@ class IoAmplificationTests(_Case):
         self.assertEqual(writes, 1,
                          "finalize must write the document exactly once (got %d)" % writes)
 
-    def test_the_pipeline_reads_far_fewer_times_than_it_has_phases(self):
+    def test_the_pipeline_reads_the_document_once(self):
         reads, _writes = self._counted()
-        # Exactly two: the pipeline's own read, plus validation's independent read. The old
-        # shape was one read per phase on top of those.
-        self.assertEqual(reads, 2,
-                         "finalize must not re-read the document once per phase (got %d)" % reads)
+        # EXACTLY one. Validation and the validated stamp now work on the in-memory document,
+        # so neither adds a read; the old shape was one read per phase plus those.
+        self.assertEqual(reads, 1,
+                         "finalize must read the document exactly once (got %d)" % reads)
+
+    def test_a_strict_clean_run_still_writes_only_once(self):
+        # The validated stamp used to be a separate read+write AFTER the pipeline wrote, so a
+        # clean CLI run cost three reads and two writes. Stamping in memory keeps it at 1/1.
+        reads, writes = self._counted(stamp_when_clean=True)
+        self.assertEqual(writes, 1, "a stamped run must still write once (got %d)" % writes)
+        self.assertEqual(reads, 1, "a stamped run must still read once (got %d)" % reads)
+
+    def test_the_document_is_actually_stamped_when_clean(self):
+        # Guards the test above: identical counts would also hold if stamping silently stopped.
+        result = finalize.finalize(self.doc, stamp_when_clean=True)
+        self.assertEqual(result["errors"], [])
+        self.assertTrue(result["stamped"], "a clean run must stamp the document")
+        self.assertIn("commentable-html-validated", _read(self.doc))
 
     def test_an_unchanged_document_is_not_rewritten(self):
         finalize.finalize(self.doc)
@@ -274,7 +289,7 @@ class IoAmplificationTests(_Case):
     def test_the_toc_run_does_not_add_a_read_write_pair(self):
         reads, writes = self._counted(run_toc=True)
         self.assertEqual(writes, 1)
-        self.assertEqual(reads, 2)
+        self.assertEqual(reads, 1)
 
 
 if __name__ == "__main__":

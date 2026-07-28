@@ -55,11 +55,16 @@ class FinalizeTests(unittest.TestCase):
             self.assertEqual(base_dir, os.path.dirname(os.path.abspath(path)))
             return source + "[inline-images]", 1, []
 
-        def fake_validate(doc_path):
+        def fake_validate(doc_path, html=None, **kwargs):
             calls.append("validate")
+            # Validation now receives the IN-MEMORY document rather than re-reading the file,
+            # so assert on what it was handed. That is the stronger check anyway: it pins that
+            # every earlier phase's output was threaded through to validation.
+            self.assertEqual(html, "<html><body>seed</body></html>[toc][fix-skip][inline-images]")
+            # The file must NOT have been written yet - the single write happens after
+            # validation and stamping (CMH-BUILD-20).
             with open(doc_path, "r", encoding="utf-8") as fh:
-                current = fh.read()
-            self.assertEqual(current, "<html><body>seed</body></html>[toc][fix-skip][inline-images]")
+                self.assertEqual(fh.read(), "<html><body>seed</body></html>")
             return [], []
 
         with mock.patch.object(finalize.generate_toc, "rewrite_html", side_effect=fake_toc), \

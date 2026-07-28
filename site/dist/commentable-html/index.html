@@ -460,7 +460,8 @@
             <div class="rel-head"><h3>[1.261.0] - 2026-07-27</h3></div>
             <div class="group-label">Changed</div>
             <ul>
-              <li><code>finalize</code> now reads the document once, threads it through the phase transforms in memory, and writes once. Each phase previously re-read and re-wrote the whole file, so a 1.4 - 2.5 MB document paid a read/write pair plus an independent full-document parse per phase - and because <code>content_replace</code> finalizes on every write-back, the agent edit loop paid that on every iteration. The phase order and every transform are unchanged, so the output is byte-identical; the per-phase entry points are kept for callers that drive a single phase.</li>
+              <li><code>finalize</code> now reads the document once, threads it through the phase transforms in memory, and writes once. Each phase previously re-read and re-wrote the whole file, so a 1.4 - 2.5 MB document paid a read/write pair plus an independent full-document parse per phase - and because <code>content_replace</code> finalizes on every write-back, the agent edit loop paid that on every iteration. The phase order and every transform are unchanged, so the output is byte-identical. The per-phase entry points are REMOVED rather than kept: nothing called them once the pipeline threaded the document in memory, and leaving them would let a caller silently reintroduce the per-phase I/O this removes.</li>
+              <li>Validation and the validated provenance stamp now work on that same in-memory document, so a clean <code>finalize --strict</code> run costs one read and one write end to end, instead of re-reading the file to validate it and then re-reading and re-writing it to stamp it. <code>validate.validate()</code> takes an optional <code>html=</code> argument for callers that already hold the document.</li>
             </ul>
             <div class="group-label">Fixed</div>
             <ul>

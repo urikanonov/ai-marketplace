@@ -100,7 +100,8 @@ def _apply_stats(html):
 
 
 def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_base=None,
-             run_highlight=True, run_wrap_sections=True, run_stats=True, run_normalize=True):
+             run_highlight=True, run_wrap_sections=True, run_stats=True, run_normalize=True,
+             stamp_when_clean=False):
     # Read ONCE, thread the document through the pure phase transforms in memory, write ONCE.
     # Each phase used to re-read and re-write the whole file, so a 1.4 - 2.5 MB document paid
     # about 8 reads, 8 writes and 8 independent full-document parses per finalize - and
@@ -145,12 +146,18 @@ def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_b
         html, applicable, changed = _apply_stats(html)
         if applicable:
             steps.append(("doc-stats", "updated" if changed else "unchanged"))
-    # Validation reads the file, so the document has to be on disk first - but only when the
-    # pipeline actually changed it.
+    # Validate and stamp the IN-MEMORY document, then write once. Writing first and letting
+    # validate re-read (and the stamp re-read and re-write) would leave a third read and a
+    # second write on a multi-megabyte file - the amplification this whole change removes.
+    errors, warnings = validate.validate(path, html=html)
+    stamped = False
+    if stamp_when_clean and not errors and not warnings:
+        after = validate.stamp_validated_text(html)
+        stamped = after != html
+        html = after
     if html != source:
         _write(path, html)
-    errors, warnings = validate.validate(path)
-    return {"steps": steps, "errors": errors, "warnings": warnings}
+    return {"steps": steps, "errors": errors, "warnings": warnings, "stamped": stamped}
 
 
 def main(argv):
@@ -196,6 +203,10 @@ def main(argv):
             run_wrap_sections=not args.no_wrap_sections,
             run_stats=not args.no_stats,
             run_normalize=not args.no_normalize,
+            # Stamp inside the pipeline so the strict-clean path still writes ONCE. The
+            # condition is unchanged from when main() stamped after the fact: no errors and
+            # no warnings at all, and --no-stamp keeps a read-only run from writing.
+            stamp_when_clean=not args.no_stamp,
         )
     except (OSError, ValueError) as exc:
         sys.stderr.write("finalize: %s\n" % exc)
@@ -225,10 +236,8 @@ def main(argv):
               "stamp is re-written for the current content - until a clean strict pass, the runtime "
               "'not validated' banner stays up." % len(warnings))
         return 1
-    # Strict-clean: stamp the document as validated so the runtime fallback banner clears. --no-stamp
-    # keeps a read-only run from writing.
-    if not args.no_stamp and not errors and not warnings:
-        validate._stamp_validated_file(args.file)
+    # Strict-clean: the document was stamped as validated inside finalize (in memory, before
+    # the single write), so the runtime fallback banner clears without another read/write pair.
     return 0
 
 

@@ -12,8 +12,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   writes once. Each phase previously re-read and re-wrote the whole file, so a 1.4 - 2.5 MB document
   paid a read/write pair plus an independent full-document parse per phase - and because
   `content_replace` finalizes on every write-back, the agent edit loop paid that on every iteration.
-  The phase order and every transform are unchanged, so the output is byte-identical; the per-phase
-  entry points are kept for callers that drive a single phase.
+  The phase order and every transform are unchanged, so the output is byte-identical. The per-phase
+  entry points are REMOVED rather than kept: nothing called them once the pipeline threaded the
+  document in memory, and leaving them would let a caller silently reintroduce the per-phase I/O
+  this removes.
+- Validation and the validated provenance stamp now work on that same in-memory document, so a
+  clean `finalize --strict` run costs one read and one write end to end, instead of re-reading the
+  file to validate it and then re-reading and re-writing it to stamp it. `validate.validate()`
+  takes an optional `html=` argument for callers that already hold the document.
 
 ### Fixed
 
