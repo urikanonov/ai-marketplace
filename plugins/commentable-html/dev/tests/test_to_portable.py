@@ -561,6 +561,18 @@ class LiveMarkupOnlyTests(_Case):
             to_portable.to_portable(html, self.layer, "ambiguous.html")
         self.assertIn("commentable-html.js", str(caught.exception))
 
+    def test_a_companion_script_with_a_spaced_end_tag_still_migrates(self):
+        # HTML end tags may carry ignored attributes and trailing space, so `</script >` really
+        # does close the element. A matcher that only accepted `</script>` would stop seeing the
+        # element - and then refuse a document that a browser loads perfectly well.
+        html = _read(self.nonportable).replace(
+            '<script src="commentable-html.js"></script>',
+            '<script src="commentable-html.js"></script >', 1)
+        out, changed = to_portable.to_portable(html, self.layer, "spaced.html")
+        self.assertTrue(changed)
+        live = re.sub(r"<!--.*?-->", "", out, flags=re.DOTALL)
+        self.assertNotIn('src="commentable-html.js"', live)
+
     def test_a_document_without_the_assets_registry_still_migrates(self):
         # The registry is optional - the validator only WARNS when it is absent - so a document
         # that never had one (or already dropped it) must not be refused.

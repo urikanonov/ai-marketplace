@@ -104,7 +104,7 @@ def _consume_eol(html, at):
 
 
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
-_RAW_TEXT_BODY_RE = re.compile(r"(<(script|style)\b[^>]*>)([\s\S]*?)(</\2\s*>)", re.IGNORECASE)
+_RAW_TEXT_BODY_RE = re.compile(r"(<(script|style)\b[^>]*>)([\s\S]*?)(</\2\b[^>]*>)", re.IGNORECASE)
 
 
 def _blank(text):
@@ -234,8 +234,12 @@ def _content_span(html, target_name):
 
 _COMPANION_ELEMENT_RE = {
     # A stylesheet companion is a <link>; a script companion is a <script src=...></script> pair.
+    # The end tag is matched as `</script` plus anything up to `>`, not `</script>`: HTML lets an
+    # end tag carry (ignored) attributes and trailing space, so `</script >` and `</script foo>`
+    # both really close the element, and a regex that missed them would stop recognizing the
+    # element (CodeQL "bad HTML filtering regexp").
     "style": re.compile(r"<link\b[^>]*>", re.IGNORECASE),
-    "script": re.compile(r"<script\b[^>]*>[ \t\r\n]*</script\s*>", re.IGNORECASE),
+    "script": re.compile(r"<script\b[^>]*>[ \t\r\n]*</script\b[^>]*>", re.IGNORECASE),
 }
 # `(?<![-\w])` so `data-href="commentable-html.css"` on an element pointing somewhere else is
 # not read as the companion reference - `\b` matches inside `data-href`.
