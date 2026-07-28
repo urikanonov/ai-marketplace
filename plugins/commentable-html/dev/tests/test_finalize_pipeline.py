@@ -63,13 +63,15 @@ def _write(path, text):
 
 # The always-on phases, in the order finalize applies them, as plain text -> text callables.
 # Named so a failure says WHICH phase stopped being exercised.
-_ALWAYS_ON_NAMES = ("normalize", "wrap_sections", "highlight", "toc_dedup", "stats")
+_ALWAYS_ON_NAMES = ("normalize", "wrap_sections", "highlight", "toc_dedup", "stats",
+                    "vendored_libs")
 _ALWAYS_ON_PHASES = (
     lambda html: finalize._apply_normalize(html)[0],
     lambda html: finalize._apply_wrap_sections(html)[0],
     lambda html: finalize._apply_highlight(html)[0],
     lambda html: finalize._apply_toc_dedup(html)[0],
     lambda html: finalize._apply_stats(html)[0],
+    lambda html: finalize._apply_vendored_libs(html)[0],
 )
 
 
@@ -188,7 +190,7 @@ class PipelineEquivalenceTests(_Case):
         reference = os.path.join(self.tmp, "reference-optional.html")
         shutil.copyfile(self.doc, reference)
         # finalize's order: normalize, toc, wrap_sections, fix_skip, inline_images,
-        # highlight, toc_dedup, stats.
+        # highlight, toc_dedup, stats, vendored_libs.
         cycle = (
             lambda h: finalize._apply_normalize(h)[0],
             lambda h: finalize._apply_toc(h)[0],
@@ -198,6 +200,7 @@ class PipelineEquivalenceTests(_Case):
             lambda h: finalize._apply_highlight(h)[0],
             lambda h: finalize._apply_toc_dedup(h)[0],
             lambda h: finalize._apply_stats(h)[0],
+            lambda h: finalize._apply_vendored_libs(h)[0],
         )
         for phase in cycle:
             _write(reference, phase(_read(reference)))

@@ -1,4 +1,24 @@
 _LAYER_REGIONS = ("CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS")
+
+
+def _shipped_tool(name):
+    """Import a module from the STAGE's shipped tools so the build reuses the shipped logic.
+
+    The build must not carry its own copy of a rule the runtime tooling also applies (which
+    document carries the vendored payload, and where) - two copies drift. Imported lazily
+    because the stage is written by this same build run.
+    """
+    import importlib
+    import sys as _sys
+    tools = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         "skill", "tools")
+    for bucket in ("authoring", ""):
+        path = os.path.abspath(os.path.join(tools, bucket))
+        if path not in _sys.path:
+            _sys.path.insert(0, path)
+    return importlib.import_module(name)
+
+
 _EXAMPLE_SWAP_REGIONS = ("CSS", "COMMENT UI", "JS")
 _EXAMPLE_NAME_RE = re.compile(r"^(?:report|deck)-.*\.html$")
 # A shipped one-shot authoring prompt (examples/prompt-*.md) is plain Markdown with no layer,
@@ -209,17 +229,20 @@ def _vendored_rich_libs_script(portable_html):
 
 
 def _stamp_vendored_rich_libs(text, portable_html):
+    """Refresh the vendored payload, but only in an example whose CONTENT can use it.
+
+    Delegates the decision to the SHIPPED tool (tools/authoring/vendored_libs.py) so the build
+    and the authoring pipeline can never disagree about which documents carry the payload. The
+    old behaviour re-stamped it into the HEAD of every example unconditionally, which is what
+    made a prose-only demo 1,363 KB larger than it needed to be.
+    """
     script = _vendored_rich_libs_script(portable_html)
-    head_end = text.lower().find("</head>")
-    if head_end == -1:
-        raise SystemExit("build: could not locate </head> to place the vendored rich-content script")
-    head, tail = text[:head_end], text[head_end:]
-    if _VENDORED_RICH_LIBS_RE.search(head):
-        return _VENDORED_RICH_LIBS_RE.sub(script, head, count=1) + tail
-    new, n = _LAYER_DESCRIPTOR_INSERT_RE.subn(lambda m: m.group(1) + script, head, count=1)
-    if n != 1:
-        raise SystemExit("build: could not locate commentable-html-version <meta> to place the vendored rich-content script")
-    return new + tail
+    vendored_libs = _shipped_tool("vendored_libs")
+    # Drop any existing copy first so a refresh always lands the CURRENT payload, then let the
+    # shipped tool decide whether to place it and where.
+    stripped, _removed = vendored_libs.strip_blob(text)
+    out, _changed = vendored_libs.apply(stripped, script)
+    return out
 
 
 def _stamp_content_root_hook(text):

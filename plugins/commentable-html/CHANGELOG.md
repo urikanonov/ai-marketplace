@@ -4,6 +4,23 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.262.0] - 2026-07-28
+
+### Changed
+
+- A document now carries the vendored rich-libraries payload (the gzip+base64 mermaid and
+  Chart.js bundle the Offline export inlines) only when its content actually uses a diagram or a
+  chart, and never in the document head. It used to be stamped into every document
+  unconditionally: measured on the shipped examples it is 1,363 KB, 55 to 61 percent of a 2.3 MB
+  file, and it sat on line 7 - so a prose-and-code review document paid for a renderer it could
+  never call, and any tool that reads the head of a file hit a megabyte-long line immediately. A
+  prose report now goes from 2,301 KB to 938 KB (59 percent smaller) and its longest line from
+  1,396,078 characters to 631.
+- The decision is re-evaluated on every finalize rather than made once when the document is
+  created, so a document that GAINS a diagram after the payload was dropped gets it back and its
+  Offline export keeps working. A document whose content region cannot be located is left alone
+  entirely - never stripped, and never grown.
+
 ## [1.261.0] - 2026-07-27
 
 ### Changed
