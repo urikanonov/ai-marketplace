@@ -79,8 +79,17 @@ function _clipContainerFor(node) {
   // card, `closest()` starting at the svg would match the inner `pre.mermaid` (the nearer ancestor)
   // before the outer figure, and clamp the button to the non-scrolling pre instead of the figure's
   // scroll card - so the whole-diagram button could detach while the figure scrolls.
-  return el.closest(".cmh-diagram-gallery > pre.mermaid, .cmh-diagram-gallery > div.mermaid, .cmh-diagram-gallery > figure")
-    || el.closest("pre.mermaid, figure.chart, table, .cmh-diff-raw");
+  // A table is now rendered inside a `.cmh-table-scroll` wrapper (61-table-scroll.js), and it is
+  // the WRAPPER that scrolls and clips - the table itself can be wider than its visible box. Lift
+  // a table clip container to its wrapper so a bubble anchored to a cell scrolled out of view is
+  // clipped, instead of being clamped to the full (over-wide) table rect. `closest` (not the
+  // immediate parent) because an INNER table of a nested pair sits in a `td`, several levels below
+  // the wrapper that actually clips it.
+  const gallery = el.closest(".cmh-diagram-gallery > pre.mermaid, .cmh-diagram-gallery > div.mermaid, .cmh-diagram-gallery > figure");
+  if (gallery) return gallery;
+  const generic = el.closest("pre.mermaid, figure.chart, table, .cmh-diff-raw");
+  if (generic && generic.tagName === "TABLE") return generic.closest(".cmh-table-scroll") || generic;
+  return generic;
 }
 function _intersectRects(a, b) {
   const left = Math.max(a.left, b.left);

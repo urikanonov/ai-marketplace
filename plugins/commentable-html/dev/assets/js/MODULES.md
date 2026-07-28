@@ -51,6 +51,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `56-copy-clear.js` | CMH-COPY | Copy all + Clear all. |
 | `57-storage-manager.js` | CMH-STORE | Cross-document storage manager dialog: document registry, grouping, per-document delete, quota auto-open + retry. |
 | `60-export-markdown.js` | CMH-MD, CMH-CODE | Export to Markdown; per-code-block Copy button, language pill, and optional caption. |
+| `61-table-scroll.js` | CMH-RESP | Wraps each table in a `.cmh-table-scroll` box so a too-wide table scrolls instead of pushing the page sideways. |
 | `62-sortable-tables.js` | CMH-CONTENT, CMH-PERSIST | Sortable tables and durable embedded-delete persistence from Clear. |
 | `65-export-portable.js` | CMH-EXP, CMH-SEC | Export as Portable + shared export snapshot primitives. |
 | `66-export-plain.js` | CMH-EXP | Save as plain HTML (strip the comment layer). |

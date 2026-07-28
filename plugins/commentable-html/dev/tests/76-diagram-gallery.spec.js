@@ -163,12 +163,13 @@ test.describe("diagram gallery helper (CMH-CONTENT-19)", () => {
         const g = document.querySelector(".cmh-diagram-gallery");
         const pre = g.querySelector(":scope > pre.mermaid");
         const div = g.querySelector(":scope > div.mermaid");
-        const table = g.querySelector(":scope > table#stray");
+        const table = g.querySelector(":scope > .cmh-table-scroll > table#stray");
+        const tableBox = g.querySelector(":scope > .cmh-table-scroll");
         const card = (el) => {
           const cs = getComputedStyle(el);
           return { display: cs.display, overflowX: cs.overflowX, overflowY: cs.overflowY, border: Math.round(parseFloat(cs.borderTopWidth) || 0), h: Math.round(el.getBoundingClientRect().height) };
         };
-        return { gallery: getComputedStyle(g).display, pre: card(pre), div: card(div), table: card(table) };
+        return { gallery: getComputedStyle(g).display, pre: card(pre), div: card(div), table: card(table), tableBox: card(tableBox) };
       });
       // The gallery is a flex-wrap, and the two DIAGRAM containers are framed, hugging cards.
       expect(styles.gallery, "gallery is a flex container").toBe("flex");
@@ -181,10 +182,14 @@ test.describe("diagram gallery helper (CMH-CONTENT-19)", () => {
         expect(styles[kind].overflowY, `${kind}.mermaid card does not scroll vertically`).toMatch(/hidden/);
       }
       // The stray table is NOT turned into a card: it keeps table layout (not display:flex), gets no
-      // card frame - the breakage that targeting `> *` would have caused.
+      // card frame - the breakage that targeting `> *` would have caused. It sits inside its own
+      // `.cmh-table-scroll` box (CMH-RESP-11), which must not be card-framed either.
       expect(styles.table.display, "stray table keeps table layout (not a flex card)").not.toBe("flex");
       expect(styles.table.h, "stray table is not forced to the card height").toBeLessThan(200);
       expect(styles.table.border, "stray table is not given the card frame border").toBe(0);
+      expect(styles.tableBox.display, "the table's scroll box is not a flex card").not.toBe("flex");
+      expect(styles.tableBox.border, "the table's scroll box is not given the card frame border").toBe(0);
+      expect(styles.tableBox.h, "the table's scroll box is not forced to the card height").toBeLessThan(200);
     } finally {
       await server.close();
     }

@@ -57,15 +57,23 @@ for (const [name, file] of Object.entries(EXAMPLES)) {
       });
 
       test("every table fits the viewport and scrolls internally when wide", async ({ page }) => {
+        // A table is contained by its `.cmh-table-scroll` wrapper (CMH-RESP-11), so it is the
+        // WRAPPER that must fit the viewport; the table inside it is free to be wider and scroll.
         const tables = await page.evaluate(() => {
           const vw = document.documentElement.clientWidth;
-          return [...document.querySelectorAll("#commentRoot table")].map((t) => ({
-            fits: t.getBoundingClientRect().right <= vw + 1,
-            scrollable: t.scrollWidth > t.clientWidth ? getComputedStyle(t).overflowX : "n/a",
-          }));
+          return [...document.querySelectorAll("#commentRoot table")].map((t) => {
+            const wrap = t.closest(".cmh-table-scroll");
+            const box = wrap || t;
+            return {
+              wrapped: !!wrap,
+              fits: box.getBoundingClientRect().right <= vw + 1,
+              scrollable: box.scrollWidth > box.clientWidth ? getComputedStyle(box).overflowX : "n/a",
+            };
+          });
         });
         for (const t of tables) {
-          expect(t.fits, "table box stays within the viewport").toBe(true);
+          expect(t.wrapped, "every author table is in a scroll wrapper").toBe(true);
+          expect(t.fits, "the table's scroll box stays within the viewport").toBe(true);
           if (t.scrollable !== "n/a") {
             expect(["auto", "scroll"], "an overflowing table scrolls internally").toContain(t.scrollable);
           }

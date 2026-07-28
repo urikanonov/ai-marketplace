@@ -4,6 +4,35 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.264.0] - 2026-07-28
+
+### Fixed
+
+- A wide table no longer breaks words mid-token. Table cells used `overflow-wrap: anywhere`,
+  which participates in intrinsic (min-content) sizing, so every cell reported a min-content
+  width of roughly one character and the table layout algorithm collapsed a column to that and
+  shredded its text even while other columns still had spare room - a 14-column table rendered
+  `NAMESPACE MOVE` as `NAMES` / `PACE` / `MOVE`. Cells now use `overflow-wrap: break-word`,
+  which breaks identically once a line is being laid out but is ignored for min-content, so a
+  cell keeps its longest-word width and is only broken when there is genuinely nowhere left to
+  go.
+- A table that is genuinely too wide for the page now scrolls horizontally inside its own box
+  instead of pushing the whole document sideways. This is the other half of the fix above:
+  `break-word` is ignored for min-content sizing, which is exactly what stops a column being
+  shredded, but it also means a table whose columns cannot fit reports a min-content width
+  larger than its container and escapes it. Every table is therefore rendered inside a
+  `.cmh-table-scroll` box - the containment narrow screens already had, now at every width. The
+  wrapper is a real element rather than `display: block; overflow-x: auto` on the table itself,
+  because `display: block` wraps the rows in an anonymous table box that shrink-to-fits and
+  collapsed a narrow table's columns to their content width (a 2-column table measured 99px
+  instead of 400px) - which also means narrow screens no longer suffer that collapse. A wrapper
+  that actually scrolls is keyboard-focusable and labelled, so it can be scrolled without a
+  mouse, while a table that fits adds no tab stop. A table built at runtime by an author script
+  is contained too, and a table inside a flex or grid parent keeps its width and its placement.
+  A focused scroll box owns the arrow keys in a deck, so its clipped columns stay reachable by
+  keyboard instead of the arrows changing slides. Printing is unaffected: the wrapper reverts to
+  `overflow: visible` so a wide table is never clipped out of a PDF.
+
 ## [1.262.0] - 2026-07-28
 
 ### Changed

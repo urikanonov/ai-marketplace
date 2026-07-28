@@ -1260,17 +1260,35 @@ html[data-theme="dark"] mark.cmh-dl-mark:hover { background: rgba(251, 191, 36, 
 html:not([data-theme="dark"]) #commentRoot .badge.warn { border-color: #b45309; }
 
 #commentRoot table { border-collapse: collapse; width: 100%; margin: 0.75rem 0 0.25rem; font-size: 0.9rem; }
-#commentRoot th, #commentRoot td { border: 1px solid var(--cp-border); padding: 6px 9px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+/* `break-word`, NOT `anywhere`. The two break identically once a line is being laid out, but
+   they differ in INTRINSIC SIZING, which is what table layout depends on: `anywhere`
+   participates in min-content sizing, so every cell reports a min-content width of about one
+   character and the table algorithm collapses a column to that width and shreds its text even
+   while other columns still have spare room (a 14-column table rendered `NAMESPACE MOVE` as
+   `NAMES`/`PACE`/`MOVE`). `break-word` is ignored for min-content, so a cell keeps its
+   longest-word width and only breaks when there is genuinely nowhere left to go. */
+#commentRoot th, #commentRoot td { border: 1px solid var(--cp-border); padding: 6px 9px; text-align: left; vertical-align: top; overflow-wrap: break-word; }
 #commentRoot th { background: var(--cp-bg-elevated); font-weight: 600; }
 #commentRoot tbody tr:nth-child(even) td { background: rgba(0, 0, 0, 0.04); }
 html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.03); }
 #commentRoot table caption { caption-side: top; text-align: left; color: var(--cp-text-soft); font-size: 0.82rem; padding: 0.2rem 0; }
-/* On a narrow screen a wide multi-column table would push the whole page sideways.
-   Let the table scroll horizontally inside its own box instead: display:block wraps
-   the rows/cells in anonymous table boxes so the columns still align, while overflow-x
-   keeps the overflow contained rather than spilling onto the document. */
-@media (max-width: 700px) {
-  #commentRoot table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+/* Every table renders inside a `.cmh-table-scroll` box (see assets/js/61-table-scroll.js): a table
+   whose columns genuinely cannot fit scrolls horizontally inside its own box instead of pushing the
+   whole document sideways. This replaces the old `@media (max-width: 700px)` rule that set
+   `display: block; overflow-x: auto` on the table itself - that contained the overflow, but only on
+   narrow screens, and `display: block` wraps the rows in an anonymous table box that shrink-to-fits,
+   which collapsed a narrow table's columns to their content width. The wrapper carries the table's
+   margins because `overflow-x` makes it a block formatting context, which would otherwise trap the
+   table's own margins inside it and change the spacing around every table. An explicit `width: 100%`
+   matters in a FLEX parent (a `.cmh-diagram-gallery` card row, a deck slide): a scroll container's
+   automatic minimum size is 0, so a width-less wrapper would shrink to min-content and collapse the
+   table (measured: 900px -> 252px) - the very failure that ruled out `display: block` on the table. */
+#commentRoot .cmh-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0.75rem 0 0.25rem; width: 100%; box-sizing: border-box; }
+#commentRoot .cmh-table-scroll > table { margin: 0; }
+/* A wrapper that actually scrolls takes a tab stop (61-table-scroll.js), so it needs a visible
+   focus ring - the same affordance a scrollable gallery card gets. */
+#commentRoot .cmh-table-scroll[data-cmh-scroll-a11y]:focus-visible {
+  outline: 2px solid var(--cp-accent); outline-offset: 2px;
 }
 
 #commentRoot .cmh-lede { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 8px; padding: 0.75rem 1.25rem 1rem; margin: 0 0 1.25rem; color: var(--cp-text); font-size: 1.04em; line-height: 1.6; }
@@ -3413,6 +3431,13 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   html[data-theme="dark"] #commentRoot:not([data-cmh-mode="deck"]) .cmh-kql-num,
   html[data-theme="dark"] #commentRoot:not([data-cmh-mode="deck"]) .cmh-code-num {
     color: #953800 !important;
+  }
+
+  /* Paper cannot scroll, so the on-screen scroll box must not CLIP a wide table into a PDF: the
+     wrapper goes back to `overflow: visible` and the `anywhere` rule below (which restores
+     min-content squeezing) is what makes the table fit the sheet instead. */
+  #commentRoot .cmh-table-scroll {
+    overflow: visible !important;
   }
 
   #commentRoot table {

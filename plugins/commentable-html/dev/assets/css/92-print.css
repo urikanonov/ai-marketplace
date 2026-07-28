@@ -280,6 +280,13 @@
     color: #953800 !important;
   }
 
+  /* Paper cannot scroll, so the on-screen scroll box must not CLIP a wide table into a PDF: the
+     wrapper goes back to `overflow: visible` and the `anywhere` rule below (which restores
+     min-content squeezing) is what makes the table fit the sheet instead. */
+  #commentRoot .cmh-table-scroll {
+    overflow: visible !important;
+  }
+
   #commentRoot table {
     display: table !important;
     width: 100% !important;
