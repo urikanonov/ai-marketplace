@@ -238,8 +238,12 @@ def _stamp_vendored_rich_libs(text, portable_html):
     """
     script = _vendored_rich_libs_script(portable_html)
     vendored_libs = _shipped_tool("vendored_libs")
-    # Drop any existing copy first so a refresh always lands the CURRENT payload, then let the
-    # shipped tool decide whether to place it and where.
+    # Classify BEFORE touching anything: an unclassifiable document must come back untouched,
+    # and stripping first would have returned it already stripped.
+    if vendored_libs.content_state(text) == vendored_libs.UNKNOWN:
+        return text
+    # Drop any existing copy so a refresh always lands the CURRENT payload, then let the shipped
+    # tool decide whether to place it and where.
     stripped, _removed = vendored_libs.strip_blob(text)
     out, _changed = vendored_libs.apply(stripped, script)
     return out

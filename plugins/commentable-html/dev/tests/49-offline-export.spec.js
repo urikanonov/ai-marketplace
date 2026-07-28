@@ -662,3 +662,42 @@ test("CMH-MMD-07: Export Offline renders a collapsed-section diagram correctly a
     fs.rmSync(staged.dir, { recursive: true, force: true });
   }
 });
+
+test("Export Offline fails loudly when a rich document has no vendored payload (CMH-SIZE-01)", async ({ page }) => {
+  // The payload is now stripped from documents that do not use rich content (CMH-SIZE-01). The
+  // hazard that creates is the OTHER direction: a document that DOES use mermaid or a chart but
+  // whose payload is absent - a hand-edited or legacy file. It must fail visibly rather than
+  // silently downloading an export whose diagrams and charts will never render.
+  test.setTimeout(60000);
+  const staged = stageContent(CONTENT, { key: "cmh-offline-nopayload", source: "offline-nopayload.html" });
+  const before = fs.readFileSync(staged.html, "utf8");
+  const stripped = before.replace(
+    /<script\b[^>]*\sid\s*=\s*"cmhVendoredRichLibs"[^>]*>[\s\S]*?<\/script>\s*/i, "");
+  expect(stripped.length).toBeLessThan(before.length - 1000000);
+  expect(stripped).not.toContain('id="cmhVendoredRichLibs">{"encoding"');
+  fs.writeFileSync(staged.html, stripped);
+
+  const server = await startStaticServer(staged.dir);
+  try {
+    await routeRichContentLocal(page);
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+
+    // Use the TOOLBAR export entry: the sidebar menu only appears once a comment exists, and
+    // this document needs no comments to reproduce the failure.
+    await openToolbarMenu(page);
+    await expect(page.locator("#btnExportOfflineTop")).toBeVisible();
+    const downloads = [];
+    page.on("download", (d) => downloads.push(d));
+    await page.locator("#btnExportOfflineTop").click();
+
+    // A visible, assertive error naming the missing bundle - not a silent broken download.
+    const toast = page.locator("#toast");
+    await expect(toast).toContainText(/missing the vendored/i, { timeout: 15000 });
+    await expect(toast).toBeVisible();
+    expect(downloads).toHaveLength(0);
+  } finally {
+    await server.close();
+  }
+});

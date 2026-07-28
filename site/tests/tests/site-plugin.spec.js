@@ -752,3 +752,18 @@ test("the demo section and its links are labelled 'Demo', not 'Try it' (SITE-DEM
   const tutorialDemoLink = page.locator(".nav-links a[href='../#demo']");
   await expect(tutorialDemoLink).toHaveText("Demo");
 });
+
+test("the plugin page explains that the rich-content renderer only ships when it is used (SITE-SIZE-01)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const card = page.locator(".card.feature", {
+    hasText: "Only as big as it needs to be",
+  });
+  await expect(card).toHaveCount(1);
+  const body = (await card.locator("p").innerText()).replace(/\s+/g, " ");
+  // The three promises a reader is being made: it ships only when used, the saving is real and
+  // quantified, and the payload is not in the head. Pin each, so the card cannot quietly lose
+  // the substance and keep the heading.
+  expect(body).toMatch(/only in a document that actually has one/i);
+  expect(body).toMatch(/59 percent/i);
+  expect(body).toMatch(/out of the head/i);
+});
