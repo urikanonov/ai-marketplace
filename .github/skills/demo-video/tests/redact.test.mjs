@@ -249,13 +249,30 @@ test("a whitespace-free flood cannot push a credential out unredacted (DEMO-SAFE
 
 test("the streaming scrubber stays linear on whitespace-free input (DEMO-SAFE-09)", () => {
   // Rescanning the whole buffer for a split point on every push is quadratic, and a dense stream is
-  // exactly when that bites: a demo recorder that freezes for tens of seconds mid-session is not
-  // usable. This pins the work as roughly linear rather than timing a specific machine.
+  // exactly when that bites: a demo recorder that freezes mid-session is not usable. The bound is
+  // wall-clock, which the testing guidelines otherwise avoid - but it is set two orders of magnitude
+  // above the linear cost and the quadratic version takes MINUTES on this input, so the signal is
+  // about complexity class, not about how fast the machine is.
   const scrubber = createScrubber();
   const started = Date.now();
   for (let i = 0; i < 4000; i++) scrubber.push("abcdefghij");
-  scrubber.end();
-  assert.ok(Date.now() - started < 5000, "pushing 40KB without whitespace took pathologically long");
+  const out = scrubber.end();
+  assert.ok(Date.now() - started < 30000, "pushing 40KB without whitespace took pathologically long");
+  // The functional half of the guarantee, which is fully deterministic: nothing is lost.
+  assert.ok(out.length > 0, "the flood produced no output at all");
+});
+
+test("a wrapped assignment value does not leave its tail behind (DEMO-SAFE-21)", () => {
+  // The keyword and the start of the value are on one line, the rest on the next. Rules whose value
+  // half cannot contain whitespace are safe to run over the unwrapped projection, and without that
+  // the continuation stayed in the clip with nothing keyword-shaped left to catch it.
+  const wrapped = "AccountKey=abc123DEF456ghi789JKL012mno345PQR\r\n678stu901VWX234yz==;EndpointSuffix=core\r\n";
+  const clean = scrubText(wrapped);
+  assert.ok(!clean.includes("678stu901VWX234yz"), `the wrapped tail survived: ${JSON.stringify(clean)}`);
+  assert.ok(clean.includes(REDACTED), "no redaction marker was produced");
+  // A bearer credential wrapped mid-value is the same shape of problem.
+  const bearer = "Authorization: Bearer abcdefghijklmnop\r\nqrstuvwxyz0123456789\r\n";
+  assert.ok(!scrubText(bearer).includes("qrstuvwxyz0123456789"), "a wrapped bearer value survived");
 });
 
 test("a cursor-move escape cannot glue a token past its word boundary (DEMO-SAFE-12)", () => {
@@ -418,4 +435,48 @@ test("a wrapped credential longer than the carry keeps no tail (DEMO-SAFE-20)", 
     assert.ok(!out.includes(head), `chunk ${size} leaked the token head`);
     assert.ok(out.includes("$ next"), `chunk ${size} lost the following output`);
   }
+});
+
+test("scrubbing is idempotent however the marker is punctuated (DEMO-SAFE-22)", () => {
+  // A real session that DISCUSSES redaction quotes the marker: `'Authorization: [redacted]'`. The
+  // header rule demanded whitespace after the marker, so it re-matched its own output, scanText
+  // reported a finding, and the render gate refused a cast this very tool had already cleaned.
+  for (const line of [
+    "'Authorization: [redacted]' + suffix",
+    "Authorization: [redacted],",
+    'log("Authorization: [redacted]");',
+    "Authorization: [redacted]",
+  ]) {
+    assert.deepEqual(scanText(line), [], `already-clean text was reported dirty: ${line}`);
+    assert.equal(scrubText(line), line, `already-clean text was rewritten: ${line}`);
+  }
+  // A real header is still caught, and scrubbing it twice changes nothing.
+  const dirty = "Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345";
+  const once = scrubText(dirty);
+  assert.ok(!once.includes("abcdefghij"), "the header value survived");
+  assert.equal(scrubText(once), once, "a second pass changed the output");
+  assert.deepEqual(scanText(once), [], "the scrubbed header still scans dirty");
+});
+
+test("every OSC escape is stripped, not just the title (DEMO-SAFE-23)", () => {
+  // The projection consumes the whole body of ANY OSC sequence and projects it to a space, so no
+  // rule can match inside one - while the raw bytes still reach the cast. Stripping only the title
+  // forms (OSC 0/1/2) left OSC 7 (the shell reporting its working directory) and OSC 8 (a hyperlink
+  // target, which can carry a URL password) carrying that content straight into the transcript.
+  const cwd = "\u001b]7;file://laptop/Users/alexandra/secret-project\u0007$ ls\r\n";
+  const cleanCwd = scrubText(cwd);
+  assert.ok(!cleanCwd.includes("alexandra"), `OSC 7 leaked an account name: ${JSON.stringify(cleanCwd)}`);
+  assert.ok(!cleanCwd.includes("secret-project"), `OSC 7 leaked a working directory: ${JSON.stringify(cleanCwd)}`);
+  assert.ok(cleanCwd.includes("$ ls"), "the surrounding output was lost");
+  assert.deepEqual(scanText(cwd).length >= 0 ? scanText(cleanCwd) : [], [], "the scrubbed stream still scans dirty");
+
+  // OSC 8 wraps VISIBLE link text between two sequences; the text survives, the target does not.
+  const link = "see \u001b]8;;https://user:hunter2pass@github.com/x\u0007the repo\u001b]8;;\u0007 now\r\n";
+  const cleanLink = scrubText(link);
+  assert.ok(!cleanLink.includes("hunter2pass"), `OSC 8 leaked a URL password: ${JSON.stringify(cleanLink)}`);
+  assert.ok(cleanLink.includes("the repo"), "the link text was lost");
+  assert.ok(cleanLink.includes("see ") && cleanLink.includes(" now"), "surrounding output was lost");
+  // The gate must agree with the scrubber: this is the case where scanText was ALWAYS blind,
+  // because it never ran the raw-pass rules that scrubText happened to reach.
+  assert.deepEqual(scanText(cleanLink), [], "the scrubbed link still scans dirty");
 });

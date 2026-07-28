@@ -33,6 +33,7 @@ export const REPORT_ABILITIES = [
 // One shared routine for "select something, comment on it, save", so the three comment beats differ
 // only in WHAT they comment on - which is the point being demonstrated: any content is commentable.
 async function addComment(page, ctx, selector, note, { index = 0, share = 0.5 } = {}) {
+  const before = await page.locator("#commentList .cm-card[data-cid]").count().catch(() => 0);
   const ok = await ctx.dragSelect(selector, { index });
   if (!ok) { ctx.warn(`nothing selectable matched ${selector}`); return false; }
   const menu = page.locator("#menuComment");
@@ -45,6 +46,11 @@ async function addComment(page, ctx, selector, note, { index = 0, share = 0.5 } 
   if (!(await save.count())) { ctx.warn("the composer had no save action"); return false; }
   await ctx.click(save);
   await ctx.settle(250);
+  // Clicking save is not evidence that a comment was FILED. Without this check a required beat
+  // reports success while the clip shows a composer closing and nothing else - exactly the silent
+  // failure the required-beat gate exists to catch.
+  const after = await page.locator("#commentList .cm-card[data-cid]").count().catch(() => 0);
+  if (after <= before) { ctx.warn(`saving on ${selector} filed no comment`); return false; }
   return true;
 }
 

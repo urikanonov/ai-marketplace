@@ -10,6 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { launchSpec } from "../tools/record_demo.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TOOL = path.join(HERE, "..", "tools", "record_demo.mjs");
@@ -58,6 +59,14 @@ test("the argument contract fails loudly rather than guessing (DEMO-CLI-02)", ()
   const unknownSubject = run(["wat"]);
   assert.notEqual(unknownSubject.status, 0, "an unknown subject was accepted");
 
+  // An option that belongs to ANOTHER subject is rejected rather than silently ignored: accepting
+  // `scan --out x` tells the caller nothing and does not do what they asked.
+  const wrongSubject = run(["scan", "--cast", path.join(os.tmpdir(), "x.cast.json"), "--seconds", "10"]);
+  assert.notEqual(wrongSubject.status, 0, "scan accepted an option it does not use");
+  assert.match(wrongSubject.stderr, /does not use --seconds/);
+  const alsoWrong = run(["report", "--list", "--cast", "x"]);
+  assert.notEqual(alsoWrong.status, 0, "report accepted --cast");
+
   const missingExample = run(["report", "--list", "--example", path.join(HERE, "no-such.html")]);
   assert.notEqual(missingExample.status, 0, "a missing example was accepted");
   assert.match(missingExample.stderr, /no-such\.html/);
@@ -103,4 +112,23 @@ test("the safety gate refuses a dirty cast before any browser starts (DEMO-CLI-0
 
   const missing = run(["scan", "--cast", path.join(os.tmpdir(), "definitely-not-here.cast.json")]);
   assert.notEqual(missing.status, 0, "a missing cast was accepted");
+});
+
+test("a Windows shim is launched through its interpreter (DEMO-CLI-04)", () => {
+  // resolveExecutable finds `copilot.cmd` on PATH, but node-pty cannot spawn a .cmd or .ps1
+  // directly - so the documented `capture -- copilot` flow failed for every CLI that installs as a
+  // shim (which is most of them on Windows) even though the file was right there.
+  const cmd = launchSpec("C:\\tools\\copilot.cmd", ["-p", "hi"], "win32");
+  assert.match(cmd.file, /cmd\.exe$/i);
+  assert.deepEqual(cmd.args.slice(-3), ["C:\\tools\\copilot.cmd", "-p", "hi"]);
+
+  const ps = launchSpec("C:\\tools\\thing.ps1", ["--flag"], "win32");
+  assert.match(ps.file, /powershell\.exe$/i);
+  assert.ok(ps.args.includes("-File"));
+  assert.deepEqual(ps.args.slice(-2), ["C:\\tools\\thing.ps1", "--flag"]);
+
+  // A real executable is launched directly, and nothing is wrapped off Windows.
+  const exe = launchSpec("C:\\tools\\copilot.exe", ["-p", "hi"], "win32");
+  assert.deepEqual(exe, { file: "C:\\tools\\copilot.exe", args: ["-p", "hi"] });
+  assert.deepEqual(launchSpec("/usr/bin/copilot", ["-p"], "linux"), { file: "/usr/bin/copilot", args: ["-p"] });
 });

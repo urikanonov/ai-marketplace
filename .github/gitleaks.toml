@@ -7,9 +7,18 @@ useDefault = true
 # demos) carry a data-comment-key: a high-entropy hash derived from the document label/source, not a
 # credential. The default generic-api-key rule flags it. Allowlist the line that declares it so the
 # scan does not false-positive on the repo's own self-contained review artifacts.
+#
+# The demo-video recorder's redaction tests are the other unavoidable false positive: that file is a
+# CATALOGUE of synthetic credential shapes, because its whole job is to prove those shapes get
+# scrubbed out of a recorded session before it can be published. Every value in it is invented and
+# asserted on. The allowance is scoped to that one path, so the full ruleset still applies
+# everywhere else - including the rest of the skill.
 [allowlist]
-description = "commentable-html data-comment-key is a document identity hash, not a secret"
+description = "commentable-html data-comment-key hashes and demo-video redaction test fixtures"
 regexTarget = "line"
 regexes = [
   '''data-comment-key\s*=\s*["'][^"']+["']''',
+]
+paths = [
+  '''\.github/skills/demo-video/tests/redact\.test\.mjs''',
 ]

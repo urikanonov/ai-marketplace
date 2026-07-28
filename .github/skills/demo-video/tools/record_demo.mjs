@@ -105,6 +105,26 @@ const STRING_KEYS = new Set([
   "width", "height", "count", "font", "frames-dir",
 ]);
 const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings"]);
+// Which options each subject actually reads. Validating against the union instead means
+// `scan --out x` or `capture --seconds 10` is accepted and then silently ignored - the caller is
+// told nothing, and gets a clip that is not what they asked for.
+const SUBJECT_FLAGS = {
+  report: ["example", "out", "seconds", "width", "height", "list"],
+  capture: ["out", "cols", "rows"],
+  render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "allow-findings"],
+  scan: ["cast"],
+  frames: ["clip", "out", "count", "frames-dir"],
+};
+
+function checkSubjectFlags(args, subject) {
+  const allowed = SUBJECT_FLAGS[subject];
+  if (!allowed) return;
+  const used = Object.keys(args).filter((k) => k !== "_" && k !== "passthrough");
+  const stray = used.filter((k) => !allowed.includes(k));
+  if (stray.length) {
+    throw new Error(`${subject} does not use ${stray.map((k) => `--${k}`).join(", ")}`);
+  }
+}
 function parseArgs(argv) {
   const out = { _: [], passthrough: [] };
   let afterDashes = false;
@@ -172,7 +192,11 @@ async function startStaticServer(root, routes = {}) {
       return;
     }
     const file = path.join(root, rel.replace(/^\/+/, ""));
-    if (!path.resolve(file).startsWith(path.resolve(root))) { res.writeHead(403).end(); return; }
+    // `startsWith(root)` alone lets a SIBLING through: with a root of /x/examples, the path
+    // /x/examples-private/secret resolves outside the root yet still starts with it. Compare the
+    // relative path instead, which is empty or non-escaping only for a genuine descendant.
+    const within = path.relative(path.resolve(root), path.resolve(file));
+    if (within.startsWith("..") || path.isAbsolute(within)) { res.writeHead(403).end(); return; }
     fs.readFile(file, (err, body) => {
       if (err) { res.writeHead(404).end(); return; }
       res.writeHead(200, { "content-type": types[path.extname(file).toLowerCase()] || "application/octet-stream" });
@@ -476,11 +500,30 @@ function resolveExecutable(command) {
   throw new Error(`command not found on PATH: ${command}`);
 }
 
+// Resolving the shim is only half the job on Windows: a `.cmd`/`.bat` is not directly executable and
+// a `.ps1` is not executable at all, so handing either to node-pty fails even though the file is
+// right there. Most CLIs install as one of those, so wrap them in their interpreter.
+export function launchSpec(executable, args, platform = process.platform) {
+  if (platform !== "win32") return { file: executable, args };
+  const ext = path.extname(executable).toLowerCase();
+  if (ext === ".cmd" || ext === ".bat") {
+    return { file: process.env.COMSPEC || "cmd.exe", args: ["/d", "/s", "/c", executable, ...args] };
+  }
+  if (ext === ".ps1") {
+    return {
+      file: "powershell.exe",
+      args: ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", executable, ...args],
+    };
+  }
+  return { file: executable, args };
+}
+
 async function captureTerminal(args) {
   const command = args.passthrough;
   if (!command.length) throw new Error("capture needs a command after --, e.g. -- copilot");
   const pty = loadOptional("node-pty");
   const executable = resolveExecutable(command[0]);
+  const launch = launchSpec(executable, command.slice(1));
   const cols = Math.round(numberOpt(args, "cols", 120));
   const rows = Math.round(numberOpt(args, "rows", 30));
   const outFile = args.out
@@ -491,7 +534,7 @@ async function captureTerminal(args) {
   const rules = rulesForThisMachine();
   const started = Date.now();
   const events = [];
-  const child = pty.spawn(executable, command.slice(1), {
+  const child = pty.spawn(launch.file, launch.args, {
     name: "xterm-256color",
     cols,
     rows,
@@ -662,13 +705,16 @@ function terminalPage({ cast, timeline, fontSize }) {
     const write = (data) => new Promise((done) => term.write(data, done));
     const frame = () => new Promise((done) => requestAnimationFrame(() => done()));
     for (const event of DATA.events) {
-      await sleep(Math.max(0, event.t - clock));
-      clock = event.t;
+      // Raise the badge BEFORE waiting out a fast-forward, not after. Showing it once the hold has
+      // already elapsed means the viewer sits through an unexplained pause and then sees the badge
+      // land over the output that FOLLOWS the wait, labelling the wrong moment.
       if (event.f) {
         badge.textContent = "skipping ahead " + Math.round(event.s / 1000) + "s";
         badge.classList.add("on");
-        setTimeout(() => badge.classList.remove("on"), 700);
       }
+      await sleep(Math.max(0, event.t - clock));
+      clock = event.t;
+      if (event.f) setTimeout(() => badge.classList.remove("on"), 450);
       await write(event.d);
     }
     await frame();
@@ -716,10 +762,14 @@ async function renderTerminal(args) {
   const width = Math.round(numberOpt(args, "width", Math.ceil(cols * fontSize * 0.605) + 56));
   const height = Math.round(numberOpt(args, "height", Math.ceil(rows * fontSize * 1.32) + 84));
   // A clip rendered over the gate's objection must be impossible to mistake for a clean one later,
-  // when nobody remembers which flag was passed.
+  // when nobody remembers which flag was passed - including when the caller named the file itself.
   const unsafe = findings.length > 0;
-  const defaultName = `terminal-${unsafe ? "UNSAFE-" : ""}${stamp()}.webm`;
-  const outFile = args.out ? path.resolve(String(args.out)) : path.join(OUT_ROOT, defaultName);
+  const outFile = args.out
+    ? path.resolve(String(args.out))
+    : path.join(OUT_ROOT, `terminal-${unsafe ? "UNSAFE-" : ""}${stamp()}.webm`);
+  const markedOut = unsafe && !path.basename(outFile).includes("UNSAFE")
+    ? path.join(path.dirname(outFile), `UNSAFE-${path.basename(outFile)}`)
+    : outFile;
 
   const chromium = loadPlaywright();
   const stageDir = path.join(OUT_ROOT, "raw", `terminal-${process.pid}`);
@@ -741,13 +791,13 @@ async function renderTerminal(args) {
     await page.goto(pathToFileURL(pageFile).href, { waitUntil: "load" });
     await page.waitForFunction(() => window.__demoDone === true, null,
       { timeout: timeline.durationMs + 60000 });
-    await saveVideo(page, context, outFile);
+    await saveVideo(page, context, markedOut);
   } finally {
     if (browser) await browser.close().catch(() => {});
     try { fs.rmSync(stageDir, { recursive: true, force: true }); } catch (e) { /* best effort */ }
   }
 
-  console.log(`clip:     ${outFile}`);
+  console.log(`clip:     ${markedOut}`);
   console.log(`length:   ${(timeline.durationMs / 1000).toFixed(1)}s from a ${(timeline.sourceDurationMs / 1000).toFixed(1)}s session`);
   console.log(`skipped:  ${(timeline.skippedMs / 1000).toFixed(1)}s of waiting across ${timeline.fastForwards} fast-forward(s)`);
   if (unsafe) {
@@ -869,6 +919,7 @@ Everything is written under tmp/demo-video (gitignored). Nothing is committed.`;
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const subject = args._[0];
+  if (subject) checkSubjectFlags(args, subject);
   switch (subject) {
     case "report": return recordReport(args);
     case "capture": return captureTerminal(args);

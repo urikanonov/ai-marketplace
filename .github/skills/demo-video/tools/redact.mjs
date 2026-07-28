@@ -66,6 +66,7 @@ export const DEFAULT_RULES = [
     name: "kubeconfig-data",
     re: /\b(client-key-data|client-certificate-data|certificate-authority-data)(\s*:\s*)(?!\[redacted\])\S{16,}/gi,
     replace: (_m, key, sep) => `${key}${sep}${REDACTED}`,
+    unwrapSafe: true,
   },
   {
     name: "jwt",
@@ -76,27 +77,47 @@ export const DEFAULT_RULES = [
   {
     // The guard sits immediately after the colon and swallows the whitespace itself: written as
     // `(\s*:\s*)(?!\[redacted\])`, the separator could give the space back on backtracking and the
-    // rule would happily re-redact its own output, reporting a finding forever.
+    // rule would happily re-redact its own output, reporting a finding forever. It also must not
+    // require whitespace AFTER the marker - a redacted value quoted in a transcript
+    // (`'Authorization: [redacted]'`) is followed by a quote, and demanding whitespace there made
+    // scrubbing non-idempotent, so the render gate tripped on text this tool had already cleaned.
     name: "authorization-header",
-    re: /\b(authorization|proxy-authorization)(\s*:)(?!\s*\[redacted\](?:\s|$))\s*[^\r\n]+/gi,
+    re: /\b(authorization|proxy-authorization)(\s*:)(?!\s*\[redacted\])\s*[^\r\n]+/gi,
     replace: (_m, key, colon) => `${key}${colon} ${REDACTED}`,
   },
   {
     name: "bearer-credential",
     re: /\b(bearer|basic)(\s+)(?!\[redacted\])[A-Za-z0-9._~+/=-]{12,}/gi,
     replace: (_m, scheme, sep) => `${scheme}${sep}${REDACTED}`,
+    // The credential half contains no whitespace, so running this over the unwrapped projection
+    // cannot make it run away - and that is what catches one the application wrapped mid-value.
+    unwrapSafe: true,
+    // The credential half contains no whitespace, so this is safe to run over the unwrapped
+    // projection too - which is what catches one that the application wrapped mid-value.
+    unwrapSafe: true,
   },
   {
     name: "assigned-secret",
     re: ASSIGNED,
     replace: (match, sep) => `${match.slice(0, match.indexOf(sep))}${sep}${REDACTED}`,
+    // The VALUE half stops at whitespace, so unwrapping cannot make this rule run away across the
+    // transcript the way a line-oriented one would - and a wrapped value is exactly the case that
+    // otherwise leaves its continuation sitting on the next line.
+    unwrapSafe: true,
+    // The VALUE half stops at whitespace, so unwrapping cannot make this rule run away across the
+    // transcript the way a line-oriented one would - and a wrapped value is exactly the case that
+    // otherwise leaves its continuation on the next line.
+    unwrapSafe: true,
   },
   {
     // A cast can be captured by one person and rendered by another, and the machine-specific rules
     // below are built from whoever is RENDERING - so a foreign home path would sail through. This
     // covers the SHAPE of a home directory instead, which needs nobody's identity recorded anywhere.
     name: "home-directory-shape",
-    re: /(\/home\/|\/Users\/|[A-Za-z]:\\Users\\)(?!demo\b)[^\s\\/:*?"<>|]+/g,
+    // Windows paths turn up in three forms in one session: native `C:\Users\name`, forward-slash
+    // `C:/Users/name` (git, node, anything that prints a URL-ish path), and MSYS `/c/Users/name`.
+    // Matching only the backslash form let the other two carry an account name into the clip.
+    re: /(\/home\/|\/Users\/|[A-Za-z]:[\\/]Users[\\/]|\/[A-Za-z]\/Users\/)(?!demo\b)[^\s\\/:*?"<>|]+/g,
     replace: (_m, prefix) => `${prefix}demo`,
     // An identity rewrite is not an opaque blob: padding it to the original width would insert a
     // space inside a path (`/home/demo /.ssh/config`), which reads as two tokens and looks broken.
@@ -269,14 +290,16 @@ function mergeSpans(spans) {
 }
 
 // A shell sets the window title with an OSC sequence, and that title carries the executable path and
-// the current working directory - the operator's home, in a real session. It is stripped from the
-// PROJECTION like any other escape, so no rule ever sees inside it, while the raw bytes would still
-// reach the cast and the transcript. The replay has no use for a window title, so it is removed
-// from the stream outright before anything else runs.
-const OSC_TITLE = /\u001b\][0-2];[^\u0007\u001b]*(?:\u0007|\u001b\\)/g;
+// the current working directory - the operator's home, in a real session. Every OSC sequence is
+// stripped, not just the title ones: the projection's ANSI regex consumes the whole body of ANY OSC
+// and projects it to a single space, so no rule can ever match inside one, while the raw bytes still
+// reach the cast and the transcript. OSC 7 reports the CWD and OSC 8 carries a hyperlink target
+// (which can hold a URL password) - both are emitted by default by modern shells, and both were
+// invisible to the gate. The replay has no use for any of them.
+const OSC_ANY = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g;
 
 export function scrubText(text, rules = DEFAULT_RULES) {
-  const raw = String(text).replace(OSC_TITLE, "");
+  const raw = String(text).replace(OSC_ANY, "");
   // Two passes, both mapped back onto the raw bytes: the VISIBLE text (escapes handled, line
   // structure kept) with every rule, and the UNWRAPPED text (newlines removed too) with only the
   // rules whose shapes cannot contain whitespace. Running the line-oriented rules unwrapped would
@@ -303,7 +326,7 @@ export function scrubText(text, rules = DEFAULT_RULES) {
 // Report what WOULD be redacted, without changing anything: used to gate rendering and to tell a
 // reviewer what the net caught. Scans what the VIEWER would see, wrapped or painted.
 export function scanText(text, rules = DEFAULT_RULES) {
-  const raw = String(text).replace(OSC_TITLE, "");
+  const raw = String(text).replace(OSC_ANY, "");
   const spans = mergeSpans([
     ...collectSpans(raw, rules, {}),
     ...collectSpans(raw, rules, { dropNewlines: true, unwrapOnly: true }),
@@ -336,10 +359,11 @@ function findPemEnd(raw) {
 }
 
 // Is the whitespace run ending at `index` the JOIN of a hard-wrapped credential rather than a real
-// break? A wrap join is a bare line break with token characters pressed against it on both sides.
-// Splitting there flushes the first half before the unwrapped pass can see the whole token, and the
-// second half then carries nothing token-shaped for the gate to catch.
-const TOKEN_CHAR = /[A-Za-z0-9_.-]/;
+// break? A wrap join is a bare line break with credential characters pressed against it on both
+// sides. The class has to span every shape the rules match - base64 and URL-safe values carry `+`,
+// `/`, `=`, `%` and `~` as well as the usual identifier characters - or a value that wraps after one
+// of those is flushed early and its tail escapes.
+const TOKEN_CHAR = /[A-Za-z0-9_.~!$&*+/=%-]/;
 function isWrapJoin(buffer, runStart, runEnd) {
   const run = buffer.slice(runStart, runEnd);
   if (!/^[\r\n]+$/.test(run)) return false;
