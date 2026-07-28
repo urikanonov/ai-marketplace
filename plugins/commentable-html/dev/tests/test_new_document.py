@@ -648,6 +648,32 @@ class NonPortableCliTests(unittest.TestCase):
         self.assertNotIn('href="commentable-html.css"', html,
                          "a bare companion ref would not resolve beside the output")
 
+    def test_authored_content_demonstrating_the_runtime_is_not_repointed(self):
+        """CMH-PORT-03: the companion repoint rewrites the REAL reference, not an authored one.
+
+        The repoint runs after the content is injected and rewrites the FIRST occurrence, but the
+        real runtime reference sits at the END of the template - AFTER the content. A document
+        whose own content demonstrates `<script src="commentable-html.js"></script>` therefore
+        had its authored markup rewritten while the real reference stayed bare and unresolvable.
+        """
+        d = self._tmpdir()
+        op = os.path.join(d, "r.html")
+        fragment = ('<h1>Docs</h1>\n<p>Legacy files load it with:</p>\n'
+                    '<script src="commentable-html.js"></script>\n')
+        code, _o, err = self._run(
+            ["new_document.py", "--content", "-", "--key", "auto", "--label", "NP",
+             "--template", os.path.join(_paths.DIST, "NONPORTABLE.html"), "--out", op],
+            stdin=fragment)
+        self.assertEqual(code, 0, err)
+        html = open(op, encoding="utf-8").read()
+        begin = html.index("BEGIN: commentable-html - CONTENT", html.index("</head>"))
+        end = html.index("<!-- END: commentable-html - CONTENT")
+        self.assertIn('<script src="commentable-html.js"></script>', html[begin:end],
+                      "the authored demonstration must be preserved verbatim")
+        js_url = Path(os.path.join(_paths.DIST, "commentable-html.js")).resolve().as_uri()
+        self.assertIn('src="%s"' % js_url, html[end:],
+                      "the REAL runtime reference must be the one repointed")
+
     def test_assets_relative_restores_relative_dist_refs(self):
         d = self._tmpdir()
         op = os.path.join(d, "r.html")

@@ -668,6 +668,13 @@ def main(argv):
         sys.stderr.write("new_document: --copy-assets / --assets-href / --assets-relative are ignored with --portable "
                          "(a Portable file inlines the layer and references no companions)\n")
 
+    if nonportable and not custom_template:
+        # Repoint the TEMPLATE, before the caller's content is injected. Repointing the assembled
+        # document rewrote the first `src="commentable-html.js"` it found, and the real runtime
+        # reference sits AFTER the content region - so a document whose own content demonstrates
+        # that tag had its authored markup rewritten while the real reference stayed bare.
+        template_html = _repoint_companions(template_html, prefix)
+
     try:
         key = resolve_key(args.key, args.label, key_from_source=args.key_from_source,
                           source=args.source, out=out_path)
@@ -676,9 +683,6 @@ def main(argv):
     except ValueError as exc:
         sys.stderr.write("new_document: %s\n" % exc)
         return 2
-
-    if nonportable and not custom_template:
-        out_html = _repoint_companions(out_html, prefix)
 
     # Bake syntax highlighting into raw language-labelled code blocks so a created document is never
     # raw. Baking used to live only in the separate, manual finalize step, so a document that skipped

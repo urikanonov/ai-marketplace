@@ -561,6 +561,22 @@ class LiveMarkupOnlyTests(_Case):
             to_portable.to_portable(html, self.layer, "ambiguous.html")
         self.assertIn("commentable-html.js", str(caught.exception))
 
+    def test_migrating_a_document_whose_layer_quotes_the_bootstrap_marker_is_idempotent(self):
+        # A migrated document can legitimately CONTAIN the bootstrap marker text - in authored
+        # prose, or (as the hostile-dist case shows) in inlined companion bytes. Deciding the
+        # mode from that substring made the second run try to migrate an already-Portable
+        # document and fail, breaking the idempotency this tool promises.
+        layer = dict(self.layer)
+        layer["commentable-html.css"] += "\n<!-- %s -->\nbody{}\n" % _BOOTSTRAP_BEGIN_TEXT
+        once, changed = to_portable.to_portable(_read(self.nonportable), layer, "once.html")
+        self.assertTrue(changed)
+        self.assertIn(_BOOTSTRAP_BEGIN_TEXT, once, "premise: the marker text survives inlined")
+        self.assertFalse(to_portable.is_nonportable(once),
+                         "a migrated document must not look NonPortable again")
+        twice, changed_again = to_portable.to_portable(once, layer, "twice.html")
+        self.assertFalse(changed_again)
+        self.assertEqual(twice, once)
+
     def test_a_companion_script_with_a_spaced_end_tag_still_migrates(self):
         # HTML end tags may carry ignored attributes and trailing space, so `</script >` really
         # does close the element. A matcher that only accepted `</script>` would stop seeing the

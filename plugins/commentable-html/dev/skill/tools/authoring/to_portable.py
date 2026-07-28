@@ -56,7 +56,23 @@ _BOOTSTRAP_END = "<!-- END: commentable-html - NONPORTABLE BOOTSTRAP -->"
 
 
 def is_nonportable(html):
-    """True when the document carries the NonPortable bootstrap region."""
+    """True when the document's LIVE layer descriptor declares the nonportable mode.
+
+    Deliberately not a substring test for the bootstrap marker: a migrated document can contain
+    that text perfectly legitimately - authored prose about this skill quotes it, and inlined
+    companion bytes may carry it - and reading it as the mode made a second run try to migrate an
+    already-Portable document, breaking the idempotency this tool promises. The descriptor is
+    where the runtime and the validator read the mode from. A document with no parsable
+    descriptor falls back to the marker, so a hand-made legacy file is still recognized.
+    """
+    m = _DESCRIPTOR_RE.search(_mask_comments(html))
+    if m:
+        try:
+            mode = json.loads(html[m.start(3):m.end(3)]).get("mode")
+        except ValueError:
+            mode = None
+        if mode in ("portable", "nonportable"):
+            return mode == "nonportable"
     return upgrade.NONPORTABLE_MARKER in html
 
 
