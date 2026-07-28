@@ -82,8 +82,10 @@ export function planBeats(beats, totalMs, opts = {}) {
 export const DEFAULT_IDLE_MS = 900;
 export const DEFAULT_HOLD_MS = 320;
 // A fast-forward is a beat, not a scene: past about a second and a half the badge stops reading as
-// "time passed" and starts reading as "the clip froze".
+// "time passed" and starts reading as "the clip froze". The floor is the other end of that - below
+// roughly a tenth of a second the badge is gone before a viewer can register it.
 export const MAX_HOLD_MS = 1500;
+export const MIN_HOLD_MS = 80;
 
 // Collapse the dead air out of a captured terminal timeline.
 //
@@ -114,13 +116,14 @@ export function compressTimeline(events, opts = {}) {
     }
     const gap = at - previous;
     const fastForward = gap > idleMs;
-    if (fastForward) skippedMs += gap - holdMs;
+    const skipped = fastForward ? Math.round(gap - holdMs) : 0;
+    if (fastForward) skippedMs += skipped;
     clock += fastForward ? holdMs : gap;
     out.push({
       t: Math.round(clock),
       data: event.data,
       fastForward,
-      skippedMs: fastForward ? Math.round(gap - holdMs) : 0,
+      skippedMs: skipped,
     });
     previous = at;
   }
@@ -128,7 +131,9 @@ export function compressTimeline(events, opts = {}) {
     events: out,
     durationMs: Math.round(clock),
     sourceDurationMs: Math.round(previous),
-    skippedMs: Math.round(skippedMs),
+    // Summed from the ROUNDED per-event values, so the total the render summary prints is the sum
+    // of the parts rather than a separately-rounded figure that disagrees with them.
+    skippedMs,
     fastForwards: out.filter((e) => e.fastForward).length,
   };
 }
@@ -141,41 +146,63 @@ export function compressTimeline(events, opts = {}) {
 // target (a 30 second session with two pauses collapses to 4 seconds however it is sliced). Once the
 // threshold is chosen, the HOLD is solved for the remaining budget - capped, so a fast-forward stays
 // a beat rather than becoming a stare - which spends the requested length instead of wasting it.
+// Pick the idle threshold AND the hold that bring a captured session closest to a target clip
+// length, without disturbing the sub-threshold rhythm.
+//
+// Two things make this less obvious than it looks. Idle thresholds are DISCRETE, so with only a
+// couple of long waits no threshold lands near the target - the HOLD has to be solved for the
+// remainder. And "do not compress at all" is a legitimate candidate at EVERY target, not just when
+// the session already fits: a 700 second session asked for 690 seconds was coming back as a 1.5
+// second clip, missing by 688 seconds where leaving it alone missed by 10.
+//
+// The hold moves in BOTH directions within [MIN_HOLD_MS, maxHoldMs]. Only letting it grow meant a
+// session with many gaps could not be brought DOWN to the target - 84 fast-forwards at the default
+// hold is 27 seconds of holds alone, so a 35 second request produced 63 seconds. A hold the caller
+// passed explicitly is an instruction, not a hint, and is honoured exactly (`pinHold`).
 export function fitTimeline(events, targetMs, opts = {}) {
   if (!Number.isFinite(targetMs) || targetMs <= 0) throw new Error("targetMs must be positive");
-  const holdMs = opts.holdMs == null ? DEFAULT_HOLD_MS : opts.holdMs;
-  const maxHoldMs = opts.maxHoldMs == null ? MAX_HOLD_MS : opts.maxHoldMs;
-
-  // A session that already fits is kept whole. The candidate list has a ceiling, so without this a
-  // single gap longer than the largest candidate would be fast-forwarded even when the clip was
-  // explicitly asked to be longer than the session.
-  const uncompressed = compressTimeline(events, { idleMs: Number.MAX_SAFE_INTEGER, holdMs: 0 });
-  if (uncompressed.sourceDurationMs <= targetMs) {
-    return { idleMs: Number.MAX_SAFE_INTEGER, holdMs: 0, ...uncompressed };
+  const preferredHold = opts.holdMs == null ? DEFAULT_HOLD_MS : opts.holdMs;
+  if (!Number.isFinite(preferredHold) || preferredHold < 0) {
+    throw new Error("holdMs must be a non-negative number");
   }
+  const maxHoldMs = opts.maxHoldMs == null ? MAX_HOLD_MS : opts.maxHoldMs;
+  if (!Number.isFinite(maxHoldMs) || maxHoldMs <= 0) throw new Error("maxHoldMs must be positive");
+  if (opts.pinHold && preferredHold > maxHoldMs) {
+    throw new Error(`holdMs ${preferredHold} exceeds the maxHoldMs cap ${maxHoldMs}`);
+  }
+  if (!opts.pinHold && maxHoldMs < preferredHold) {
+    throw new Error(`maxHoldMs cap ${maxHoldMs} is below the requested hold ${preferredHold}`);
+  }
+  const floorHold = opts.pinHold ? preferredHold : Math.min(MIN_HOLD_MS, preferredHold);
 
-  const candidates = (opts.idleCandidates
-    || [600000, 60000, 30000, 10000, 5000, 4000, 3000, 2000, 1500, 1200, 900, 700, 500, 350, 250])
-    .filter((ms) => ms >= holdMs);
+  // Uncompressed always competes, on the same footing as every threshold.
+  const candidates = [
+    Number.MAX_SAFE_INTEGER,
+    ...(opts.idleCandidates
+      || [600000, 60000, 30000, 10000, 5000, 4000, 3000, 2000, 1500, 1200, 900, 700, 500, 350, 250]),
+  ]
+    .filter((ms) => Number.isFinite(ms) || ms === Number.MAX_SAFE_INTEGER)
+    // A pinned hold must come out exactly as asked, so a threshold it could not fit under (which
+    // would clamp it, or trip compressTimeline's hold <= idle guard) is not a candidate at all.
+    .filter((ms) => !opts.pinHold || ms >= preferredHold);
   if (candidates.length === 0) throw new Error("no idle threshold is compatible with the hold");
 
-  // Each candidate is judged by the length it can ACTUALLY achieve once its own hold is solved.
-  // Picking the threshold with the default hold and only then stretching chooses a loser: another
-  // threshold often hits the target exactly once its hold is solved for.
   let best = null;
   for (const idleMs of candidates) {
-    const withDefault = compressTimeline(events, { idleMs, holdMs });
-    let chosenHold = holdMs;
-    let result = withDefault;
-    if (withDefault.fastForwards > 0 && withDefault.durationMs < targetMs) {
-      // Everything except the holds is fixed, so the hold that spends the budget is exact arithmetic.
-      // It is ROUNDED before use: reporting a rounded hold while computing with a fractional one
-      // means replaying the reported configuration produces a different clip than the one returned.
-      const withoutHolds = compressTimeline(events, { idleMs, holdMs: 0 });
-      const solved = (targetMs - withoutHolds.durationMs) / withDefault.fastForwards;
-      chosenHold = Math.round(Math.max(holdMs, Math.min(solved, maxHoldMs, idleMs)));
-      result = compressTimeline(events, { idleMs, holdMs: chosenHold });
+    if (!(idleMs > 0)) continue;
+    const probe = compressTimeline(events, { idleMs, holdMs: 0 });
+    let chosenHold = Math.min(preferredHold, idleMs);
+    if (!opts.pinHold && probe.fastForwards > 0) {
+      // Everything except the holds is fixed, so the hold that spends the budget is exact
+      // arithmetic. Floor rather than round, so it can never land above the threshold and trip
+      // compressTimeline's own guard.
+      const solved = (targetMs - probe.durationMs) / probe.fastForwards;
+      const ceiling = Math.min(maxHoldMs, idleMs);
+      chosenHold = Math.floor(Math.max(floorHold, Math.min(solved, ceiling)));
+      if (chosenHold > ceiling) chosenHold = Math.floor(ceiling);
+      if (chosenHold < 0) chosenHold = 0;
     }
+    const result = compressTimeline(events, { idleMs, holdMs: chosenHold });
     const miss = Math.abs(result.durationMs - targetMs);
     if (!best || miss < best.miss) best = { miss, idleMs, holdMs: chosenHold, result };
   }

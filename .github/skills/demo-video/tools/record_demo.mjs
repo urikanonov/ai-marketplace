@@ -49,9 +49,10 @@ const DEV = path.join(REPO, "plugins", "commentable-html", "dev");
 const EXAMPLES = path.join(REPO, "plugins", "commentable-html", "examples");
 const OUT_ROOT = path.join(REPO, "tmp", "demo-video");
 
-// A montage that has to be readable, not just short: every beat is a real interaction, so packing
-// them into ten seconds makes the clip feel like a fast-forward of itself.
-export const DEFAULT_SECONDS = 22;
+// A montage that has to be readable, not just short: every beat is a real interaction - three
+// comments, a reply and a delete among them - so packing them into ten seconds made the clip feel
+// like a fast-forward of itself.
+export const DEFAULT_SECONDS = 30;
 const DEMO_AUTHOR = "Demo Reviewer";
 
 const requireFrom = createRequire(import.meta.url);
@@ -291,10 +292,11 @@ function makeContext(page, budgetMs, warnings) {
       await locator.click({ timeout: 2000 }).catch(() => {});
       await locator.type(text, { delay }).catch((e) => ctx.warn("typing failed: " + e.message));
     },
-    async dragSelect(selector) {
-      const box = await page.evaluate((sel) => {
+    async dragSelect(selector, { index = 0 } = {}) {
+      const box = await page.evaluate(([sel, nth]) => {
         const els = [...document.querySelectorAll(sel)];
-        const el = els.find((e) => (e.textContent || "").trim().length > 80) || els[0];
+        const candidates = els.filter((e) => (e.textContent || "").trim().length > 80);
+        const el = (candidates.length ? candidates : els)[nth % Math.max(1, candidates.length || els.length)];
         if (!el) return null;
         el.scrollIntoView({ block: "center" });
         const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -309,7 +311,7 @@ function makeContext(page, budgetMs, warnings) {
         if (!rects.length) return null;
         const a = rects[0], b = rects[rects.length - 1];
         return { x1: a.left + 2, y1: a.top + a.height / 2, x2: b.right - 2, y2: b.top + b.height / 2 };
-      }, selector).catch(() => null);
+      }, [selector, index]).catch(() => null);
       if (!box) return false;
       await moveCursor(box.x1, box.y1);
       await sleep(120);
@@ -388,6 +390,11 @@ async function recordReport(args) {
 
     const recordingStarted = Date.now();
     const page = await context.newPage();
+    // Deleting a comment asks for confirmation through a native dialog. Playwright DISMISSES those
+    // by default, which would cancel the delete and film nothing happening, so the recorder accepts
+    // them. The dialog is browser chrome and never appears in the video; the visible result is the
+    // comment leaving the sidebar.
+    page.on("dialog", (dialog) => { dialog.accept().catch(() => {}); });
     // The reviewer identity is a real person's name in a real install; the clip gets a demo one.
     await page.addInitScript(`try { localStorage.setItem("cmh::author", ${JSON.stringify(DEMO_AUTHOR)}); } catch (e) {}`);
     await page.addInitScript(CURSOR_SCRIPT);
@@ -694,7 +701,11 @@ async function renderTerminal(args) {
   const cols = cast.cols || 120;
   const rows = cast.rows || 30;
   const timeline = args.seconds
-    ? fitTimeline(cast.events, Math.round(numberOpt(args, "seconds", 45) * 1000), { holdMs: numberOpt(args, "hold", undefined) })
+    ? fitTimeline(cast.events, Math.round(numberOpt(args, "seconds", 45) * 1000), {
+      holdMs: numberOpt(args, "hold", undefined),
+      // An explicit --hold is an instruction, not a starting point for the solver.
+      pinHold: args.hold != null,
+    })
     : compressTimeline(cast.events, { idleMs: numberOpt(args, "idle", undefined), holdMs: numberOpt(args, "hold", undefined) });
 
   // Size the viewport from the terminal grid so no column is clipped and no space is wasted. The

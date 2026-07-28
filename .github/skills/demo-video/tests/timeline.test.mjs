@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 
 import {
   MIN_BEAT_MS, planBeats,
-  DEFAULT_HOLD_MS, MAX_HOLD_MS, compressTimeline, fitTimeline,
+  DEFAULT_HOLD_MS, MAX_HOLD_MS, MIN_HOLD_MS, compressTimeline, fitTimeline,
 } from "../tools/timeline.mjs";
 import { REPORT_BEATS, REPORT_ABILITIES } from "../tools/report-beats.mjs";
 
@@ -236,4 +236,51 @@ test("the fit it reports reproduces the timeline it returns (DEMO-FF-07)", () =>
       `target ${target}: reported hold ${fit.holdMs} replays to ${replay.durationMs}, not ${fit.durationMs}`);
     assert.deepEqual(replay.events.map((e) => e.t), fit.events.map((e) => e.t));
   }
+});
+
+test("a target just under the source keeps the session whole (DEMO-FF-08)", () => {
+  // The uncompressed option was only considered when the source already fitted, so a 700s session
+  // asked for 690s came back as a 1.5s clip - missing by 688s when leaving it alone missed by 10s.
+  // Uncompressed has to compete on the same footing as every other candidate.
+  const events = [{ t: 0, data: "a" }, { t: 700000, data: "b" }];
+  const fitted = fitTimeline(events, 690000);
+  assert.equal(fitted.fastForwards, 0, `compressed a session that was nearly the right length: ${fitted.durationMs}ms`);
+  assert.equal(fitted.durationMs, 700000);
+});
+
+test("the hold shrinks as well as grows to hit the target (DEMO-FF-09)", () => {
+  // The solver could only raise the hold above its default, so a session with many gaps overshot:
+  // 84 fast-forwards at a 320ms floor is 27s of holds alone. Asking for 35s got 63s.
+  const events = Array.from({ length: 200 }, (_, i) => ({ t: i * 1400, data: `line ${i}\r\n` }));
+  const fitted = fitTimeline(events, 45000);
+  assert.ok(Math.abs(fitted.durationMs - 45000) <= 3000,
+    `fit overshot the target: ${fitted.durationMs}ms for a 45000ms request`);
+  assert.ok(fitted.holdMs < DEFAULT_HOLD_MS, `the hold never shrank: ${fitted.holdMs}`);
+  assert.ok(fitted.holdMs >= MIN_HOLD_MS, `the hold shrank below the perceptible floor: ${fitted.holdMs}`);
+  // An explicitly pinned hold is still honoured exactly - it is an instruction, not a hint.
+  const pinned = fitTimeline(events, 45000, { holdMs: 500, pinHold: true });
+  assert.equal(pinned.holdMs, 500);
+});
+
+test("the hold can never exceed its cap or its threshold (DEMO-FF-10)", () => {
+  const events = [{ t: 0, data: "a" }, { t: 10000, data: "b" }, { t: 20000, data: "c" }];
+  // A cap below the requested hold is a contradiction, not something to silently ignore.
+  assert.throws(() => fitTimeline(events, 5000, { holdMs: 500, maxHoldMs: 100 }), /cap|maxHold/i);
+  assert.throws(() => fitTimeline(events, 5000, { holdMs: Number.NaN }), /hold/i);
+  assert.throws(() => fitTimeline(events, 5000, { holdMs: -5 }), /hold/i);
+  // Rounding must not push the hold past a fractional threshold, which would trip
+  // compressTimeline's own guard and surface as an internal error.
+  const fitted = fitTimeline(events, 1500, { idleCandidates: [500.6] });
+  assert.ok(fitted.holdMs <= 500.6, `hold ${fitted.holdMs} exceeded its threshold`);
+  const replay = compressTimeline(events, { idleMs: fitted.idleMs, holdMs: fitted.holdMs });
+  assert.equal(replay.durationMs, fitted.durationMs);
+});
+
+test("skipped time adds up the same way twice (DEMO-FF-11)", () => {
+  // Per-event and aggregate skipped time were rounded independently, so the parts did not sum to
+  // the total that the render summary prints.
+  const out = compressTimeline([{ t: 0, data: "a" }, { t: 1000.4, data: "b" }, { t: 2000.8, data: "c" }],
+    { idleMs: 500, holdMs: 300 });
+  const parts = out.events.reduce((a, e) => a + e.skippedMs, 0);
+  assert.equal(parts, out.skippedMs, "the per-event skips do not sum to the reported total");
 });
