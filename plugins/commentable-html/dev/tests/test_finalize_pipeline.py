@@ -24,19 +24,31 @@ sys.path.insert(0, _paths.TOOLS)
 import finalize  # noqa: E402
 import new_document  # noqa: E402
 
+# Exercise EVERY always-on phase, so the equivalence claim is not proven on a fixture where
+# most phases are no-ops. Flat (unwrapped) headings drive wrap_sections; the smart-typography
+# glyphs (written as escapes to keep this source plain ASCII) drive normalize_typography; the
+# author nav.cm-toc built from an <ol> with numbered labels drives strip_toc_numbers; the code
+# blocks drive the highlighter, and mermaid gives it a block it must leave alone.
 FRAGMENT = """<h1>Finalize Perf</h1>
-<section>
-<h2 id="one">One</h2>
-<p>Prose with an &amp; entity and a "quoted" phrase.</p>
+<nav class="cm-toc">
+<ol>
+<li><a href="#one">1. One</a></li>
+<li><a href="#two">2. Two</a></li>
+<li><a href="#three">3. Three</a></li>
+</ol>
+</nav>
+<h2 id="one">1. One</h2>
+<p>Prose with an &amp; entity, a \u201Cquoted\u201D phrase and an \u2014 aside\u2026</p>
 <pre><code class="language-python">def run(x):
     return x + 1
 </code></pre>
-</section>
-<section>
-<h2 id="two">Two</h2>
-<p>More prose.</p>
+<h2 id="two">2. Two</h2>
+<p>More prose with \u2018single quotes\u2019.</p>
 <pre><code class="language-sql">SELECT "col" FROM t WHERE a = 'x';</code></pre>
-</section>"""
+<pre class="mermaid">graph TD; A--&gt;B;</pre>
+<h2 id="three">3. Three</h2>
+<p>A third section so wrapping has more than one boundary to find.</p>
+<pre data-cmh-kql-no-cluster><code class="language-kql">T | where a == 1 | summarize count() by b</code></pre>"""
 
 
 def _read(path):
@@ -47,6 +59,18 @@ def _read(path):
 def _write(path, text):
     with io.open(path, "w", encoding="utf-8", newline="") as fh:
         fh.write(text)
+
+
+# The always-on phases, in the order finalize applies them, as plain text -> text callables.
+# Named so a failure says WHICH phase stopped being exercised.
+_ALWAYS_ON_NAMES = ("normalize", "wrap_sections", "highlight", "toc_dedup", "stats")
+_ALWAYS_ON_PHASES = (
+    lambda html: finalize._apply_normalize(html)[0],
+    lambda html: finalize._apply_wrap_sections(html)[0],
+    lambda html: finalize._apply_highlight(html)[0],
+    lambda html: finalize._apply_toc_dedup(html)[0],
+    lambda html: finalize._apply_stats(html)[0],
+)
 
 
 class _Case(unittest.TestCase):
@@ -63,29 +87,46 @@ class PipelineEquivalenceTests(_Case):
     """CMH-BUILD-20: the in-memory pipeline is byte-identical to the phase-by-phase one."""
 
     def test_finalize_output_matches_the_phase_by_phase_pipeline(self):
-        # Reference: drive each phase's PURE transform in the documented order by hand.
-        import generate_toc
-        import highlight_document
-        import normalize_typography
-        import wrap_sections
-        import doc_stats
-
-        src = _read(self.doc)
-        expected, _ = normalize_typography.normalize_typography(src)
-        expected, _ = wrap_sections.fix(expected)
-        expected, _ = highlight_document.highlight_document(expected)
-        expected, _ = generate_toc.strip_toc_numbers(expected)
-        expected = doc_stats.rewrite_html(expected)
+        # The reference is a FILE-CYCLE pipeline - it reads the document, applies one phase,
+        # and writes it back, once per phase, which is the shape finalize had before this
+        # refactor. Driving the transforms in memory here instead would compare the new code
+        # against itself; going through disk is what actually proves the removed round trips
+        # (and any normalization they could have applied) changed nothing.
+        reference = os.path.join(self.tmp, "reference.html")
+        shutil.copyfile(self.doc, reference)
+        for phase in _ALWAYS_ON_PHASES:
+            _write(reference, phase(_read(reference)))
 
         finalize.finalize(self.doc)
-        self.assertEqual(_read(self.doc), expected,
-                         "the pipeline must be byte-identical to running the phases in order")
+        self._assert_same_bytes(_read(self.doc), _read(reference))
+
+    def _assert_same_bytes(self, got, want):
+        """Compare two whole documents without dumping ~2 MB into the failure output."""
+        if got == want:
+            return
+        at = next((i for i in range(min(len(got), len(want))) if got[i] != want[i]),
+                  min(len(got), len(want)))
+        lo, hi = max(0, at - 90), at + 90
+        self.fail(
+            "the pipeline must be byte-identical to the phase-by-phase file cycle; "
+            "first difference at offset %d (lengths %d vs %d)\n  pipeline : %r\n  reference: %r"
+            % (at, len(got), len(want), got[lo:hi], want[lo:hi]))
+
+    def test_the_fixture_actually_exercises_every_phase(self):
+        # Guards the test above: if the fixture stopped triggering a phase, equivalence would
+        # be proven on a no-op and the harness would silently lose its teeth.
+        src = _read(self.doc)
+        for name, phase in zip(_ALWAYS_ON_NAMES, _ALWAYS_ON_PHASES):
+            # Compare booleans, not the documents: a failing assertEqual on two ~2 MB strings
+            # dumps the whole document into the test output and buries the actual failure.
+            self.assertTrue(phase(src) != src,
+                            "the fixture must exercise the %s phase, not no-op through it" % name)
 
     def test_a_second_finalize_is_a_no_op(self):
         finalize.finalize(self.doc)
         once = _read(self.doc)
         finalize.finalize(self.doc)
-        self.assertEqual(_read(self.doc), once, "finalize must be idempotent")
+        self.assertTrue(_read(self.doc) == once, "finalize must be idempotent")
 
     def test_the_toc_phase_still_runs_when_requested(self):
         finalize.finalize(self.doc, run_toc=True)
@@ -135,20 +176,31 @@ class IoAmplificationTests(_Case):
 
     def test_the_pipeline_writes_the_document_once(self):
         _reads, writes = self._counted()
-        # One write for the finalized document. The old pipeline wrote once per changed phase.
-        self.assertLessEqual(writes, 1,
-                             "finalize must write the document at most once (got %d)" % writes)
+        # EXACTLY one write for the finalized document. The old pipeline wrote once per
+        # changed phase. An upper bound would also pass if a phase silently stopped running,
+        # so pin the exact count.
+        self.assertEqual(writes, 1,
+                         "finalize must write the document exactly once (got %d)" % writes)
 
     def test_the_pipeline_reads_far_fewer_times_than_it_has_phases(self):
         reads, _writes = self._counted()
-        # One read for the pipeline plus validation's own read; the old shape was one per phase.
-        self.assertLessEqual(reads, 3,
-                             "finalize must not re-read the document once per phase (got %d)" % reads)
+        # Exactly two: the pipeline's own read, plus validation's independent read. The old
+        # shape was one read per phase on top of those.
+        self.assertEqual(reads, 2,
+                         "finalize must not re-read the document once per phase (got %d)" % reads)
+
+    def test_an_unchanged_document_is_not_rewritten(self):
+        finalize.finalize(self.doc)
+        before = os.stat(self.doc)
+        _reads, writes = self._counted()
+        self.assertEqual(writes, 0,
+                         "a finalize that changes nothing must not rewrite the file (got %d)" % writes)
+        self.assertEqual(os.stat(self.doc).st_size, before.st_size)
 
     def test_the_toc_run_does_not_add_a_read_write_pair(self):
         reads, writes = self._counted(run_toc=True)
-        self.assertLessEqual(writes, 1)
-        self.assertLessEqual(reads, 3)
+        self.assertEqual(writes, 1)
+        self.assertEqual(reads, 2)
 
 
 if __name__ == "__main__":
