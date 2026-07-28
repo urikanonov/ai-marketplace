@@ -391,7 +391,7 @@ test("the multi-duck hero lead is a short one-liner and the long pitch moved bel
   // sentences stay glued together. A first/last substring pair would pass with the middle deleted.
   for (const claim of [
     "One reviewer has one set of blind spots - and a single model, however strong, misses the same class of bug every time",
-    "convenes a panel of independent rubber-duck reviewers over whatever you have in flight",
+    "multi-duck convenes a panel of independent rubber-duck reviewers over whatever you have in flight",
     "(a diff, a PR, a plan, tests, or a commentable-HTML plan with its open comments)",
     "puts each duck on a different high-capability model so their blind spots do not overlap",
     "The disagreement is the point",
@@ -427,12 +427,21 @@ test("the multi-duck Why section states each claim once, in why-what-how order (
   const how = find(/one-word command/i);
   expect(how).toBeGreaterThan(what);
 
-  // The mechanics are stated once, not previewed and then repeated: the paragraph that says WHAT
-  // multi-duck is must not restate the run/rank/apply mechanics the HOW paragraph owns.
-  expect(norm[what]).not.toMatch(/in parallel|ranked list|applies the fixes/i);
+  // The mechanics are stated once, not previewed and then repeated. Pin the WHAT paragraph
+  // EXACTLY: a not.toMatch guard on known phrasings would still let a paraphrase ("runs every
+  // duck concurrently, consolidates ...") re-preview the HOW paragraph, which is the exact
+  // defect this row exists to prevent. Any edit here must be deliberate.
+  expect(norm[what]).toBe(
+    "multi-duck convenes a panel of independent rubber-duck reviewers over whatever you have in "
+    + "flight (a diff, a PR, a plan, tests, or a commentable-HTML plan with its open comments), and "
+    + "puts each duck on a different high-capability model so their blind spots do not overlap. "
+    + "The disagreement is the point.");
+  // ...and no mechanic is stated twice anywhere in the section, in any paragraph.
   const whyText = norm.join(" ");
   const count = (re) => (whyText.match(re) || []).length;
   expect(count(/applies the fixes that are safe/gi)).toBe(1);
+  expect(count(/in parallel/gi)).toBeLessThanOrEqual(1);
+  expect(count(/ranked list/gi)).toBeLessThanOrEqual(1);
 });
 
 
