@@ -6,6 +6,7 @@ import io
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -564,6 +565,11 @@ class NonPortableCliTests(unittest.TestCase):
     def _run(self, argv, stdin=CONTENT):
         if "--kind" not in argv:
             argv = argv[:1] + ["--kind", "generic"] + argv[1:]
+        # NonPortable is no longer a DEFAULT this skill produces - the mode follows the resolved
+        # template. These tests are specifically about the retained NonPortable behaviour, so they
+        # ask for that template explicitly, which is exactly how a caller reaches it now.
+        if "--template" not in argv and "--portable" not in argv:
+            argv = argv[:1] + ["--template", os.path.join(_paths.DIST, "NONPORTABLE.html")] + argv[1:]
         out = io.StringIO()
         err = io.StringIO()
         with mock.patch.object(sys, "stdin", io.StringIO(stdin)), \
@@ -571,7 +577,42 @@ class NonPortableCliTests(unittest.TestCase):
             code = new_document.main(argv)
         return code, out.getvalue(), err.getvalue()
 
-    def test_default_mode_is_nonportable_and_refs_resolve_to_dist(self):
+    def test_the_default_mode_is_now_portable(self):
+        """CMH-PORT-03: Portable is the only mode this skill generates by default.
+
+        Deliberately does NOT go through self._run, which injects the NonPortable template.
+        """
+        d = self._tmpdir()
+        op = os.path.join(d, "p.html")
+        argv = ["new_document.py", "--kind", "generic", "--content", "-", "--key", "auto",
+                "--label", "P", "--out", op]
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(sys, "stdin", io.StringIO(CONTENT)), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = new_document.main(argv)
+        self.assertEqual(code, 0, err.getvalue())
+        html = open(op, encoding="utf-8").read()
+        # Assert the EXACT bootstrap marker, not the bare phrase: the Portable layer's own
+        # export JS mentions that phrase inside a regex literal, so a loose substring check
+        # fails on a perfectly good Portable document.
+        self.assertNotIn(new_document.NONPORTABLE_MARKER, html)
+        self.assertIn('"mode":"portable"', html.replace(" ", ""))
+        # A Portable document references no companions at all.
+        self.assertNotIn('href="commentable-html.css"', html)
+        self.assertNotIn('src="commentable-html.js"', html)
+
+    def test_an_explicit_nonportable_template_still_builds_one(self):
+        """CMH-PORT-03: the legacy mode remains reachable on purpose, just never by default."""
+        d = self._tmpdir()
+        op = os.path.join(d, "r.html")
+        code, _o, err = self._run(
+            ["new_document.py", "--content", "-", "--key", "auto", "--label", "NP", "--out", op])
+        self.assertEqual(code, 0, err)
+        html = open(op, encoding="utf-8").read()
+        self.assertIn(new_document.NONPORTABLE_MARKER, html)
+        self.assertIn('"mode":"nonportable"', html.replace(" ", ""))
+
+    def test_explicit_nonportable_refs_resolve_to_dist(self):
         d = self._tmpdir()
         op = os.path.join(d, "r.html")
         code, _o, err = self._run(
@@ -583,6 +624,29 @@ class NonPortableCliTests(unittest.TestCase):
         js_url = Path(os.path.join(_paths.DIST, "commentable-html.js")).resolve().as_uri()
         self.assertIn('href="%s"' % css_url, html)
         self.assertIn('src="%s"' % js_url, html)
+
+    def test_a_copy_of_the_nonportable_template_is_still_repointed(self):
+        """CMH-PORT-03: a template is recognized by what it CONTAINS, not by where it lives.
+
+        --template is now the standard way to reach the legacy mode, and a caller may well pass a
+        copy of NONPORTABLE.html (a staged skill, a vendored tree). Deciding "this is a custom
+        template, leave its references alone" from the PATH silently produced a document with
+        bare companion refs and no companions beside it - and exited 0, because the existence
+        check was skipped too.
+        """
+        d = self._tmpdir()
+        copied = os.path.join(d, "copy-of-nonportable.html")
+        shutil.copyfile(os.path.join(_paths.DIST, "NONPORTABLE.html"), copied)
+        op = os.path.join(d, "r.html")
+        code, _o, err = self._run(
+            ["new_document.py", "--content", "-", "--key", "auto", "--label", "NP",
+             "--template", copied, "--out", op])
+        self.assertEqual(code, 0, err)
+        html = open(op, encoding="utf-8").read()
+        css_url = Path(os.path.join(_paths.DIST, "commentable-html.css")).resolve().as_uri()
+        self.assertIn('href="%s"' % css_url, html)
+        self.assertNotIn('href="commentable-html.css"', html,
+                         "a bare companion ref would not resolve beside the output")
 
     def test_assets_relative_restores_relative_dist_refs(self):
         d = self._tmpdir()

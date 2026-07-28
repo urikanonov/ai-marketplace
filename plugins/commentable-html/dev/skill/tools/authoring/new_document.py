@@ -15,22 +15,22 @@ The content root is anchored off the unique CONTENT markers, never off the first
 `<main id="commentRoot">` in the file, so an earlier decoy root left in an HTML
 comment (an authoring example) is ignored and only the real, last root is edited.
 
-Output mode. New documents are NonPortable by DEFAULT: the ~89KB of layer CSS/JS is
-referenced from the companion commentable-html.{css,js,assets.js} files instead of
-inlined, so the document (and every regeneration of it) is small and cheap to iterate
-on. A NonPortable file needs its companions reachable at the referenced path, so it is
-for local iteration. To get a single self-contained file to share, regenerate with
---portable (safe when the document has no in-browser comments yet) or use the in-page
-Export as Portable button; there is no CLI export because a tool cannot read the
-browser localStorage where in-browser comments live. Pass --portable to emit an
-inlined single file directly instead.
+Output mode. Every new document is PORTABLE: one self-contained file with the layer
+CSS/JS inlined, ready to share the moment it is written. There is no mode to choose,
+so `--nonportable` is accepted and ignored and `--portable` merely names the default.
+A legacy NonPortable document (the layer referenced from the companion
+commentable-html.{css,js,assets.js} files beside it) is still OPENED, VALIDATED and
+FINALIZED forever; only creating a new one has gone away. Build one deliberately -
+chiefly for the compatibility suite - with --template <dist>/NONPORTABLE.html, and
+migrate an existing one with tools/authoring/to_portable.py.
 
-For NonPortable output the companion references default to absolute file:// URLs that
-point at this installed skill's dist/ folder. The generated HTML can move anywhere on
-the same machine and still find the shared companions. Use --assets-relative to opt
-back into a relative path from --out to the skill's dist/ folder for a movable folder
-bundle, --assets-href PREFIX to reference companions elsewhere, or --copy-assets to
-copy the three files next to --out and reference them by bare name.
+For that explicit NonPortable output the companion references default to absolute
+file:// URLs that point at this installed skill's dist/ folder. The generated HTML can
+move anywhere on the same machine and still find the shared companions. Use
+--assets-relative to opt back into a relative path from --out to the skill's dist/
+folder for a movable folder bundle, --assets-href PREFIX to reference companions
+elsewhere, or --copy-assets to copy the three files next to --out and reference them
+by bare name.
 
 Usage (run from the skill root):
     python tools/new_document.py --content body.html --key auto --label "My Report" --kind report --out r.html
@@ -76,6 +76,11 @@ REFUSED_KEYS = frozenset({
     "commentable-html-nonportable-demo",
     "my-doc",
 })
+
+# A NonPortable document carries this exact bootstrap comment (the same anchor upgrade.py
+# uses). The mode is derived from the resolved TEMPLATE rather than a flag, so the two can
+# never disagree.
+NONPORTABLE_MARKER = "<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->"
 
 # The layer companion files a NonPortable document references. Ordered longest-suffix
 # first so a literal ref rewrite never clips commentable-html.js out of the .assets.js
@@ -385,6 +390,13 @@ def _repoint_companions(html, prefix):
     return html
 
 
+def _has_bare_companion_refs(html):
+    """True when every companion is referenced by BARE name, the shape _repoint_companions
+    rewrites. That is what makes a template one this tool knows how to place, wherever it
+    was copied from."""
+    return all('href="%s"' % name in html or 'src="%s"' % name in html for name in COMPANIONS)
+
+
 def _file_url_prefix(path):
     return Path(os.path.abspath(path)).resolve().as_uri()
 
@@ -509,8 +521,8 @@ def main(argv):
     parser = argparse.ArgumentParser(
         prog="new_document.py",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="Create a commentable-html document from a content fragment "
-                    "(NonPortable by default; pass --portable for a single self-contained file).",
+        description="Create a self-contained Portable commentable-html document from a content "
+                    "fragment (Portable is the only mode generated).",
         epilog=(
             "Trust boundary: the --content fragment is treated as TRUSTED HTML and is copied into\n"
             "the document verbatim - new_document.py does NOT sanitize it. The runtime protects only\n"
@@ -536,11 +548,13 @@ def main(argv):
                         help="optional data-generated ISO-8601 timestamp for deterministic metadata")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--nonportable", action="store_true",
-                      help="produce a NonPortable document (the default): references the companion "
-                           "commentable-html.{css,js,assets.js} instead of inlining them; cheap to "
-                           "iterate on, movable on this machine, export to Portable to share")
+                      help="DEPRECATED and ignored: this skill no longer generates NonPortable "
+                           "documents. Existing ones keep working forever - migrate one with "
+                           "tools/authoring/to_portable.py, or pass --template <dist>/"
+                           "NONPORTABLE.html to build a legacy document deliberately")
     mode.add_argument("--portable", action="store_true",
-                      help="produce a single self-contained Portable file (inlines the layer)")
+                      help="accepted for compatibility and now the default: a single "
+                           "self-contained Portable file (inlines the layer)")
     parser.add_argument("--assets-href", default=None,
                         help="NonPortable only: path prefix used to reference the companions "
                              "(default: an absolute file:// URL to the skill's dist/)")
@@ -551,8 +565,8 @@ def main(argv):
                         help="NonPortable only: copy the three companions next to --out and "
                              "reference them by bare name (a movable self-contained folder)")
     parser.add_argument("--template", default=None,
-                        help="template to clone (default: the skill's dist/NONPORTABLE.html, "
-                             "or dist/PORTABLE.html with --portable)")
+                        help="template to clone (default: the skill's dist/PORTABLE.html; pass "
+                             "dist/NONPORTABLE.html to build a legacy document deliberately)")
     parser.add_argument("--out", default=None, help="output file (default: stdout)")
     parser.add_argument("--force", action="store_true",
                         help="overwrite --out if it exists instead of writing a suffixed sibling")
@@ -585,16 +599,33 @@ def main(argv):
     args = parser.parse_args(argv[1:])
     out_path = resolve_output_path(args.out, force=args.force)
 
-    nonportable = not args.portable
+    # Portable is the ONLY mode this skill generates. The mode now follows the RESOLVED TEMPLATE
+    # rather than a flag: the default is dist/PORTABLE.html, and a caller that genuinely needs a
+    # legacy NonPortable document (the compatibility test suite, mostly) asks for it explicitly
+    # with --template dist/NONPORTABLE.html. Deriving the mode from the template it is actually
+    # built from means the two can never disagree.
+    #
+    # NonPortable documents are still OPENED, VALIDATED and FINALIZED forever, and the
+    # NonPortable runtime and its companions stay shipped for exactly that reason - only
+    # CREATING one by default goes away. `to_portable.py` migrates an existing one.
     if args.template:
         template_path = args.template
     else:
-        template_path = _default_template(nonportable=nonportable)
+        template_path = _default_template(nonportable=False)
     try:
         template_html = _read_file(template_path)
     except OSError as exc:
         sys.stderr.write("new_document: cannot read template: %s\n" % exc)
         return 1
+    nonportable = NONPORTABLE_MARKER in template_html
+    # --template is now the ONLY way to ask for a NonPortable document, so "a template was
+    # passed" no longer implies "a CUSTOM template the caller owns". Recognize the template by
+    # what it CONTAINS: one carrying the bare companion references this tool knows how to
+    # repoint is ours to handle (repointing plus the existence check), wherever it lives - a
+    # staged or vendored copy of NONPORTABLE.html is still NONPORTABLE.html. Only a template
+    # whose references we do not recognize stays the caller's responsibility. Deciding this from
+    # the PATH silently shipped bare refs with no companions beside the output, and exited 0.
+    custom_template = bool(args.template) and not _has_bare_companion_refs(template_html)
     try:
         content = _read_content(args.content)
     except OSError as exc:
@@ -628,7 +659,7 @@ def main(argv):
             sys.stderr.write("new_document: %s\n" % exc)
             return 2
         copy_here = args.copy_assets
-        if args.template:
+        if custom_template:
             # A custom template's companion references are the caller's responsibility:
             # we do not rewrite them and cannot assume they resolve to the skill dist/,
             # so defer the companion existence check to when the placed file is validated.
@@ -646,7 +677,7 @@ def main(argv):
         sys.stderr.write("new_document: %s\n" % exc)
         return 2
 
-    if nonportable and not args.template:
+    if nonportable and not custom_template:
         out_html = _repoint_companions(out_html, prefix)
 
     # Bake syntax highlighting into raw language-labelled code blocks so a created document is never

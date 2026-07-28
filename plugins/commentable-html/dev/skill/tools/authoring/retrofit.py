@@ -655,7 +655,15 @@ def main(argv):
     parser.add_argument("--out", default=None, help="output path; defaults to overwriting the input after validation")
     parser.add_argument("--root-selector", default=None, help='existing root to stamp, limited to a single "#id" selector')
     parser.add_argument("--skip-selectors", default="", help='comma-separated #id, .class, or tag selectors to mark class="cm-skip"')
-    parser.add_argument("--portable", action="store_true", help="inline the layer into one Portable file")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--portable", action="store_true",
+                      help="accepted for compatibility and now the default: inline the layer "
+                           "into one self-contained Portable file")
+    mode.add_argument("--nonportable", action="store_true",
+                      help="produce a legacy NonPortable document that references the companion "
+                           "commentable-html.{css,js,assets.js} instead of inlining them. New "
+                           "documents are no longer generated this way; existing ones stay "
+                           "supported, and tools/authoring/to_portable.py migrates one")
     parser.add_argument("--assets-relative", action="store_true", help="NonPortable only: reference companions by a relative path to skill dist/")
     parser.add_argument("--copy-assets", action="store_true", help="NonPortable only: copy companions next to the output")
     parser.add_argument("--assets-href", default=None, help="NonPortable only: companion path prefix")
@@ -681,6 +689,11 @@ def main(argv):
     if selected_asset_modes > 1:
         sys.stderr.write("retrofit: choose only one of --assets-relative, --copy-assets, or --assets-href\n")
         return 2
+    # Portable is the ONLY mode generated. A legacy NonPortable document is an EXPLICIT request:
+    # --nonportable, or one of the companion-href options, which only make sense in that mode.
+    # Deriving the mode from what the caller actually asked for means --portable (now the
+    # default) can stay accepted without ever contradicting the file that gets written.
+    args.portable = not (args.nonportable or selected_asset_modes)
 
     try:
         if args.portable:

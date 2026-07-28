@@ -29,13 +29,13 @@ import argparse
 import io
 import os
 import re
-import stat
 import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import _atomic_io  # noqa: E402
 import content_extract  # noqa: E402
 import doc_stamp  # noqa: E402
 import finalize  # noqa: E402
@@ -252,30 +252,8 @@ def replace(path, fragment, handled_ids=None, strict=True):
 
 
 def _atomic_write(path, text):
-    """Replace `path` with `text` via a fully-written temp file plus os.replace.
-
-    A plain write truncates the target first, so a crash or a full disk mid-write would
-    leave the user's document destroyed - the opposite of this tool's guarantee.
-    os.replace is atomic on POSIX and on Windows (MoveFileEx with REPLACE_EXISTING).
-    """
-    directory = os.path.dirname(os.path.abspath(path)) or "."
-    fd, staged = tempfile.mkstemp(prefix=".cmh-write-", suffix=".html", dir=directory)
-    os.close(fd)
-    try:
-        with io.open(staged, "w", encoding="utf-8", newline="") as fh:
-            fh.write(text)
-            fh.flush()
-            os.fsync(fh.fileno())
-        # mkstemp creates 0600 and os.replace carries that inode's mode to the target,
-        # so a 0644 report would silently become owner-only. Keep the target's mode.
-        try:
-            os.chmod(staged, stat.S_IMODE(os.stat(path).st_mode))
-        except OSError:
-            pass
-        os.replace(staged, path)
-    except Exception:
-        _quiet_remove(staged)
-        raise
+    """Replace `path` with `text` crash-safely (see `_atomic_io.atomic_write`)."""
+    _atomic_io.atomic_write(path, text)
 
 
 def _stamp(path):

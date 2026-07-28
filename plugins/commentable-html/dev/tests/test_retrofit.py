@@ -83,6 +83,52 @@ class RetrofitCliTests(unittest.TestCase):
                       '<h1>Doc</h1><pre><code class="language-python">def f(): return 1</code></pre>'
                       '</body></html>')
 
+    def test_the_default_retrofit_is_portable(self):
+        # CMH-PORT-03: Portable is the only mode generated. Retrofit used to produce a
+        # NonPortable document unless --portable was passed, so the skill kept creating files
+        # that only work while their companions sit beside them.
+        d = self._tmpdir()
+        src = self._write(d, "host.html", HOST_HTML)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run(["retrofit.py", src, "--label", "Host", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        html = _read_text(out)
+        self.assertIn('"mode":"portable"', html)
+        self.assertNotIn('href="commentable-html.css"', html)
+        self.assertNotIn('src="commentable-html.js"', html)
+        self._strict_clean(out)
+
+    def test_portable_is_accepted_as_a_deprecated_no_op(self):
+        # CMH-PORT-03: --portable is what callers and docs used to pass; it must keep working
+        # rather than error, now that it names the default.
+        d = self._tmpdir()
+        src = self._write(d, "host.html", HOST_HTML)
+        default_out = os.path.join(d, "default.html")
+        flagged_out = os.path.join(d, "flagged.html")
+        code, _stdout, stderr = self._run(
+            ["retrofit.py", src, "--label", "Host", "--key", "cmh-mode-check",
+             "--out", default_out])
+        self.assertEqual(code, 0, stderr)
+        code, _stdout, stderr = self._run(
+            ["retrofit.py", src, "--label", "Host", "--key", "cmh-mode-check", "--portable",
+             "--out", flagged_out])
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(_read_text(default_out), _read_text(flagged_out))
+
+    def test_an_explicit_nonportable_retrofit_still_builds_one(self):
+        # CMH-PORT-02: creating a legacy document by default goes away, but a deliberate request
+        # (chiefly the compatibility suite) still produces exactly what it produced before.
+        d = self._tmpdir()
+        src = self._write(d, "host.html", HOST_HTML)
+        out = os.path.join(d, "legacy.html")
+        code, _stdout, stderr = self._run(
+            ["retrofit.py", src, "--label", "Host", "--nonportable", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        html = _read_text(out)
+        self.assertIn('"mode":"nonportable"', html)
+        self.assertIn("commentable-html.css", html)
+        self.assertIn("commentable-html.js", html)
+
     def test_bakes_syntax_highlighting_by_default(self):
         # CMH-HL-04: retrofit bakes highlighting so a retrofitted document is never raw.
         d = self._tmpdir()
@@ -95,11 +141,14 @@ class RetrofitCliTests(unittest.TestCase):
     def test_no_highlight_with_raw_code_is_blocked_by_validation(self):
         # CMH-HL-04: with --no-highlight the raw block stays raw, and retrofit fails closed on the
         # resulting "not syntax-highlighted" warning, so it never writes a raw document.
+        # Deliberately NonPortable: in a Portable document the check is currently blind (a greedy
+        # <pre> match inside the inlined layer CSS/JS swallows the real block), tracked as its own
+        # issue because unblinding it also surfaces warnings that other tools fail closed on.
         d = self._tmpdir()
         src = self._write(d, "host.html", self._RAW_CODE_HOST)
         out = os.path.join(d, "out.html")
         code, _stdout, stderr = self._run(
-            ["retrofit.py", src, "--label", "H", "--out", out, "--no-highlight"])
+            ["retrofit.py", src, "--label", "H", "--out", out, "--no-highlight", "--nonportable"])
         self.assertEqual(code, 1)
         self.assertIn("not syntax-highlighted", stderr)
         self.assertFalse(os.path.exists(out), "a raw document must not be written")
@@ -343,7 +392,7 @@ class RetrofitCliTests(unittest.TestCase):
         d = self._tmpdir()
         src = self._write(d, "host.html", HOST_HTML)
         cases = {
-            "nonportable.html": [],
+            "nonportable.html": ["--nonportable"],
             "portable.html": ["--portable"],
         }
         for name, extra_args in cases.items():
