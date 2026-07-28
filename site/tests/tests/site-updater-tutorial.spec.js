@@ -386,8 +386,19 @@ test("the multi-duck hero lead is a short one-liner and the long pitch moved bel
   // and inside the "Why a panel" section that it sets up.
   const why = page.locator("#why");
   const whyText = (await why.innerText()).replace(/\s+/g, " ");
-  expect(whyText).toMatch(/One reviewer has one set of blind spots/);
-  expect(whyText).toMatch(/The disagreement is the point/);
+  // Assert the WHOLE relocated paragraph, not just its first and last phrases: the requirement
+  // is no information loss, and a substring pair either end would still pass if everything
+  // between them were deleted.
+  const MOVED = [
+    "One reviewer has one set of blind spots - and a single model, however strong, misses the",
+    "same class of bug every time. multi-duck convenes a panel of independent rubber-duck",
+    "reviewers over whatever you have in flight (a diff, a PR, a plan, tests, or a",
+    "commentable-HTML plan with its open comments), puts each duck on a different",
+    "high-capability model so their blind spots do not overlap, runs them all in parallel, then",
+    "consolidates their findings and applies the fixes that are safe to apply. The disagreement",
+    "is the point.",
+  ].join(" ");
+  expect(whyText).toContain(MOVED);
   // ...and it must lead INTO the uncorrelated-reviewers argument, not follow it.
   expect(whyText.indexOf("One reviewer has one set of blind spots"))
     .toBeLessThan(whyText.indexOf("Every model is confidently wrong"));
