@@ -44,7 +44,7 @@ UNKNOWN = "unknown"
 # Void elements never open a scope, so they must not be pushed onto the ancestor stack.
 _VOID = frozenset((
     "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
-    "param", "source", "track", "wbr", "canvas"))
+    "param", "source", "track", "wbr"))
 
 
 class _DocScan(HTMLParser):
@@ -75,12 +75,15 @@ class _DocScan(HTMLParser):
             self._line_offsets.append(self._line_offsets[-1] + len(line) + 1)
         self._stack = []
         self.root_span = None          # inner span of <main id="commentRoot">
-        self.blob_span = None          # outer span of the real payload <script>
+        self.blob_spans = []           # outer spans of payload <script>s OUTSIDE the root
         self.uses = False
+        self.body_end = None           # offset of the REAL </body>, parser-recorded
         self._root_depth = None
         self._root_inner_start = None
         self._blob_start = None
         self._pending_blob = False
+        self._root_has_chart_figure = False
+        self._root_has_canvas = False
 
     # -- offsets -------------------------------------------------------------
     def _offset(self):
@@ -99,16 +102,32 @@ class _DocScan(HTMLParser):
         if tag == "main" and attrs.get("id") == "commentRoot" and self._root_inner_start is None:
             self._root_inner_start = self._end_of_current_tag()
             self._root_depth = len(self._stack)
-        if tag == "script" and attrs.get("id") == BLOB_ID and self.blob_span is None:
+        if tag == "script" and attrs.get("id") == BLOB_ID and not self._in_root():
+            # Only a script OUTSIDE the content root can be the infrastructure payload. An
+            # authored document may legitimately contain one as an EXAMPLE inside its content;
+            # treating that as the payload and cutting it out is silent data loss (review found
+            # exactly that, twice - once via an HTML comment, once as a real authored element).
             self._blob_start = self._offset()
             self._pending_blob = True
         if self._in_root():
             if tag in ("pre", "div") and "mermaid" in classes:
                 self.uses = True
+            elif tag == "figure" and "chart" in classes:
+                self._root_has_chart_figure = True
             elif tag == "canvas":
-                if "cmh-chart" in classes or "data-cmh-chart" in attrs:
+                self._root_has_canvas = True
+                if "cmh-chart" in classes:
                     self.uses = True
                 elif any(t == "figure" and "chart" in c for t, c in self._stack):
+                    self.uses = True
+                elif any(name.startswith("data-cmh-chart") for name in attrs):
+                    # A DELIBERATE superset of the exporter's selector list. The LIVE renderer
+                    # (assets/js/30-images.js) draws a chart from
+                    # `canvas[data-cmh-chart-points], canvas[data-cmh-chart-source]` even
+                    # without the `cmh-chart` class, while the exporter only looks for
+                    # `canvas.cmh-chart` / `figure.chart canvas`. Keeping the payload for such a
+                    # canvas errs toward a document that is larger than strictly necessary
+                    # rather than one whose chart renders live and then breaks when exported.
                     self.uses = True
         if tag not in _VOID:
             self._stack.append((tag, classes))
@@ -120,8 +139,15 @@ class _DocScan(HTMLParser):
 
     def handle_endtag(self, tag):
         if tag == "script" and self._pending_blob:
-            self.blob_span = (self._blob_start, self._offset() + len("</script>"))
+            # Find the REAL end of the closing tag rather than assuming `len("</script>")`:
+            # `</script   >` is valid and a hardcoded length would leave orphaned bytes behind
+            # when the span is cut out.
+            close = self._html.find(">", self._offset())
+            end = (close + 1) if close != -1 else (self._offset() + len("</script>"))
+            self.blob_spans.append((self._blob_start, end))
             self._pending_blob = False
+        if tag == "body":
+            self.body_end = self._offset()
         for i in range(len(self._stack) - 1, -1, -1):
             if self._stack[i][0] == tag:
                 if (tag == "main" and self._root_depth is not None
@@ -141,6 +167,20 @@ def _scan(html):
         scan.close()
     except Exception:
         return None
+    if scan.root_span is None and scan._root_inner_start is not None:
+        # An UNCLOSED content root: a browser closes it at end of input, so recover the same way
+        # rather than reporting UNKNOWN and refusing to act on a document that renders fine.
+        scan.root_span = (scan._root_inner_start, len(html))
+    if scan.root_span is not None and not scan.uses:
+        # Nesting-TOLERANT fallback. `figure.chart canvas` is a descendant selector, but a
+        # browser REPAIRS misnested markup (`<p><figure class="chart"></p><canvas></canvas>`
+        # puts the canvas back inside the figure) while a token stack does not. If the root
+        # holds both a chart figure and a canvas, treat it as usage regardless of how the two
+        # nest - a false positive only keeps bytes, a false negative breaks an offline export.
+        if scan._root_has_chart_figure and scan._root_has_canvas:
+            scan.uses = True
+    if scan.body_end is None:
+        scan.body_end = len(html)
     return scan
 
 
@@ -175,11 +215,14 @@ def content_needs_rich_libs(html):
 def find_blob(html):
     """Return the (start, end) span of the real payload script element, or None.
 
-    Parser-based, so a commented-out example of the element in authored content is NOT matched
-    (a regex version deleted exactly that).
+    Parser-based and restricted to scripts OUTSIDE the content root, so neither a commented-out
+    example nor an authored one inside the document body is ever mistaken for the payload - a
+    regex version deleted both.
     """
     scan = _scan(html)
-    return scan.blob_span if scan else None
+    if not scan or not scan.blob_spans:
+        return None
+    return scan.blob_spans[0]
 
 
 def blob_script(source_html):
@@ -199,22 +242,21 @@ def strip_blob(html):
     return html[:span[0]] + html[span[1]:], True
 
 
-def _insert_before_body_end(html, script):
-    idx = html.lower().rfind("</body>")
-    if idx == -1:
+def _insert_before_body_end(html, script, body_end=None):
+    """Insert `script` immediately before the document's real end of body.
+
+    `body_end` comes from the PARSER. A substring search for `</body>` picks the last literal
+    occurrence, which can be inside an HTML comment or a script string - review found a case
+    where the 1.3 MB payload was inserted INSIDE a comment, invisible to both the runtime and
+    to find_blob, while apply() reported success.
+    """
+    idx = body_end
+    if idx is None:
+        scan = _scan(html)
+        idx = scan.body_end if scan else None
+    if idx is None or idx > len(html):
         return html, False
     return html[:idx] + script + html[idx:], True
-
-
-def _is_at_end_of_body(html, span):
-    """True when the payload already sits after the document content root.
-
-    Kept for callers that hold only a span; `apply` uses the parser's root span directly.
-    """
-    scan = _scan(html)
-    if scan is None or scan.root_span is None:
-        return True
-    return span[0] >= scan.root_span[1]
 
 
 def apply(html, source_blob=None):
@@ -231,22 +273,30 @@ def apply(html, source_blob=None):
     if scan is None or scan.root_span is None:
         # Cannot classify: touch nothing. Never grow a document that may not even be one of ours.
         return html, False
-    span = scan.blob_span
     if not scan.uses:
-        if not span:
+        if not scan.blob_spans:
             return html, False
-        return html[:span[0]] + html[span[1]:], True
+        # Remove EVERY payload copy (a refresh can leave a stale second one) in one pass, back
+        # to front so earlier offsets stay valid.
+        out = html
+        for start, end in sorted(scan.blob_spans, reverse=True):
+            out = out[:start] + out[end:]
+        return out, True
+    span = scan.blob_spans[0] if scan.blob_spans else None
     if span:
         # Already after the content root: leave it exactly as it is. Relocating an
         # already-placed payload would churn bytes on every finalize.
         if span[0] >= scan.root_span[1]:
             return html, False
         without = html[:span[0]] + html[span[1]:]
-        moved, ok = _insert_before_body_end(without, html[span[0]:span[1]].strip("\r\n \t") + "\n")
+        shift = span[1] - span[0]
+        body_end = scan.body_end - shift if scan.body_end > span[1] else scan.body_end
+        moved, ok = _insert_before_body_end(
+            without, html[span[0]:span[1]].strip("\r\n \t") + "\n", body_end)
         return (moved, True) if ok else (html, False)
     if not source_blob:
         return html, False
-    return _insert_before_body_end(html, source_blob)
+    return _insert_before_body_end(html, source_blob, scan.body_end)
 
 
 def apply_file(path, source_blob=None):
