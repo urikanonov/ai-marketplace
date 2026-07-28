@@ -6,8 +6,9 @@
    disagreeing about what a chart is - which is how a bare data-bearing canvas came to draw on a
    window resize but not at load, and to be missed entirely by the exporter (issue #740). */
 const CMH_MERMAID_SEL = "pre.mermaid, div.mermaid";
-// The authored "this is a chart" markers. They are matched as ancestor-or-self on any media
-// element, because an <img> inside a chart figure is chart media too, not only a canvas.
+// The authored "this is a chart" markers, matched differently on purpose (see `_isChartMedia`):
+// the FIGURE is an ancestor-or-self test, because an <img> inside a chart figure is chart media
+// too, while the CLASS marker is a self test on the media element itself.
 const CMH_CHART_FIGURE_SEL = "figure.chart";
 const CMH_CHART_MARK_SEL = ".cmh-chart";
 // A canvas the BUILT-IN chart renderer draws: it carries its points inline or by source id.

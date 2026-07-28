@@ -355,9 +355,10 @@ function setupInteractiveCharts() {
   }
 }
 
-// Chart MEDIA: an authored chart marker on the element or an ancestor (so an <img> inside a chart
-// figure counts too), or a canvas the built-in renderer draws. Shared by the index pass and the
-// anchor metadata so the two can never classify the same element differently.
+// Chart MEDIA: the chart FIGURE is matched ancestor-or-self (so an <img> inside a chart figure
+// counts too), the `.cmh-chart` class is matched on the element itself, and a canvas the built-in
+// renderer draws counts by its data attributes. Shared by the index pass and the anchor metadata so
+// the two can never classify the same element differently.
 function _isChartMedia(el) {
   if (!el) return false;
   return !!(el.closest(CMH_CHART_FIGURE_SEL) || el.matches(CMH_CHART_MARK_SEL)
