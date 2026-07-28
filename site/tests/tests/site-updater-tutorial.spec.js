@@ -382,28 +382,57 @@ test("the multi-duck hero lead is a short one-liner and the long pitch moved bel
   expect(text).toMatch(/^multi-model review\b/i);
   expect(text.split(" ").length).toBeLessThanOrEqual(30);
 
-  // The long explanation is MOVED, not deleted: it must still be on the page, below the hero,
-  // and inside the "Why a panel" section that it sets up.
+  // The long explanation is MOVED, not deleted: every claim it carried must still be on the page,
+  // and its panel definition must sit inside the "Why a panel" section it belongs to.
   const why = page.locator("#why");
   const whyText = (await why.innerText()).replace(/\s+/g, " ");
-  // Assert the WHOLE relocated paragraph, not just its first and last phrases: the requirement
-  // is no information loss, and a substring pair either end would still pass if everything
-  // between them were deleted.
-  const MOVED = [
-    "One reviewer has one set of blind spots - and a single model, however strong, misses the",
-    "same class of bug every time. multi-duck convenes a panel of independent rubber-duck",
-    "reviewers over whatever you have in flight (a diff, a PR, a plan, tests, or a",
-    "commentable-HTML plan with its open comments), puts each duck on a different",
-    "high-capability model so their blind spots do not overlap, runs them all in parallel, then",
-    "consolidates their findings and applies the fixes that are safe to apply. The disagreement",
-    "is the point.",
-  ].join(" ");
-  expect(whyText).toContain(MOVED);
-  // ...and it must lead INTO the uncorrelated-reviewers argument, not follow it.
-  expect(whyText.indexOf("One reviewer has one set of blind spots"))
-    .toBeLessThan(whyText.indexOf("Every model is confidently wrong"));
+  // Assert claim by claim rather than as one verbatim block: SITE-MDUCK-09 redistributes the
+  // paragraph to remove duplication, so the requirement is that no CLAIM is lost, not that the
+  // sentences stay glued together. A first/last substring pair would pass with the middle deleted.
+  for (const claim of [
+    "One reviewer has one set of blind spots - and a single model, however strong, misses the same class of bug every time",
+    "convenes a panel of independent rubber-duck reviewers over whatever you have in flight",
+    "(a diff, a PR, a plan, tests, or a commentable-HTML plan with its open comments)",
+    "puts each duck on a different high-capability model so their blind spots do not overlap",
+    "The disagreement is the point",
+  ]) {
+    expect(whyText).toContain(claim);
+  }
+  // The mechanics the paragraph used to restate are still promised on the page, just not twice.
+  const mainText = (await page.locator("#main").innerText()).replace(/\s+/g, " ");
+  expect(mainText).toMatch(/in parallel/i);
+  expect(mainText).toMatch(/merges the results into one ranked list/i);
+  expect(mainText).toMatch(/applies the fixes that are safe/i);
   // The hero must not still carry it.
   expect(text).not.toMatch(/One reviewer has one set of blind spots/);
+});
+
+
+test("the multi-duck Why section states each claim once, in why-what-how order (SITE-MDUCK-09)", async ({ page }) => {
+  await page.goto("/multi-duck/", { waitUntil: "domcontentloaded" });
+  const paras = await page.locator("#why p").allInnerTexts();
+  const norm = paras.map((t) => t.replace(/\s+/g, " ").trim());
+  const find = (re) => norm.findIndex((t) => re.test(t));
+
+  // The blind-spots opener no longer stands alone previewing the argument: it opens the SAME
+  // paragraph that makes the uncorrelated-reviewers case.
+  const opener = find(/One reviewer has one set of blind spots/);
+  expect(opener).toBeGreaterThanOrEqual(0);
+  expect(norm[opener]).toMatch(/uncorrelated/i);
+
+  // Then WHAT multi-duck is, after the WHY it rests on...
+  const what = find(/convenes a panel of independent rubber-duck reviewers/);
+  expect(what).toBeGreaterThan(opener);
+  // ...and only then HOW it runs.
+  const how = find(/one-word command/i);
+  expect(how).toBeGreaterThan(what);
+
+  // The mechanics are stated once, not previewed and then repeated: the paragraph that says WHAT
+  // multi-duck is must not restate the run/rank/apply mechanics the HOW paragraph owns.
+  expect(norm[what]).not.toMatch(/in parallel|ranked list|applies the fixes/i);
+  const whyText = norm.join(" ");
+  const count = (re) => (whyText.match(re) || []).length;
+  expect(count(/applies the fixes that are safe/gi)).toBe(1);
 });
 
 
