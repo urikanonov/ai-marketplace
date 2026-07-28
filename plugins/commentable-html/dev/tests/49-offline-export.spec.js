@@ -671,8 +671,16 @@ test("Export Offline fails loudly when a rich document has no vendored payload (
   test.setTimeout(60000);
   const staged = stageContent(CONTENT, { key: "cmh-offline-nopayload", source: "offline-nopayload.html" });
   const before = fs.readFileSync(staged.html, "utf8");
-  const stripped = before.replace(
-    /<script\b[^>]*\sid\s*=\s*"cmhVendoredRichLibs"[^>]*>[\s\S]*?<\/script>\s*/i, "");
+  // Cut the payload out by INDEX rather than with a replace() pattern. This is a test fixture
+  // removing one known element, not a sanitizer, and a regex here reads to CodeQL as an
+  // incomplete multi-character sanitization.
+  const idAt = before.indexOf('id="cmhVendoredRichLibs"');
+  expect(idAt).toBeGreaterThan(-1);
+  const openAt = before.lastIndexOf("<script", idAt);
+  const closeAt = before.indexOf("</script>", idAt);
+  expect(openAt).toBeGreaterThan(-1);
+  expect(closeAt).toBeGreaterThan(openAt);
+  const stripped = before.slice(0, openAt) + before.slice(closeAt + "</script>".length);
   expect(stripped.length).toBeLessThan(before.length - 1000000);
   expect(stripped).not.toContain('id="cmhVendoredRichLibs">{"encoding"');
   fs.writeFileSync(staged.html, stripped);
