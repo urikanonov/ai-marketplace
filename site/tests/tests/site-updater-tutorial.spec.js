@@ -379,7 +379,7 @@ test("the multi-duck hero lead is a short one-liner and the long pitch moved bel
   const lead = page.locator("header .lead");
   await expect(lead).toHaveCount(1);
   const text = (await lead.innerText()).replace(/\s+/g, " ").trim();
-  expect(text).toMatch(/multi-model code review/i);
+  expect(text).toMatch(/^multi-model review\b/i);
   expect(text.split(" ").length).toBeLessThanOrEqual(30);
 
   // The long explanation is MOVED, not deleted: it must still be on the page, below the hero,
@@ -404,4 +404,19 @@ test("the multi-duck hero lead is a short one-liner and the long pitch moved bel
     .toBeLessThan(whyText.indexOf("Every model is confidently wrong"));
   // The hero must not still carry it.
   expect(text).not.toMatch(/One reviewer has one set of blind spots/);
+});
+
+
+test("the multi-duck hero promises breadth, not code review only (SITE-MDUCK-08)", async ({ page }) => {
+  await page.goto("/multi-duck/", { waitUntil: "domcontentloaded" });
+  // The tagline names what can be reviewed, so a visitor knows to bring a plan or a report too.
+  const lead = page.locator("header .lead");
+  await expect(lead).toContainText(/any code, plan, report or artifact/i);
+  // The rest of the hero agrees on that scope rather than narrowing back to code.
+  const h1 = page.locator(".hero h1");
+  await expect(h1).toContainText(/anything you build/i);
+  await expect(h1).not.toContainText(/review your code/i);
+  await expect(page).toHaveTitle(/reviewers for anything you build/i);
+  const ogTitle = page.locator('meta[property="og:title"]');
+  await expect(ogTitle).toHaveAttribute("content", /anything you build/i);
 });
