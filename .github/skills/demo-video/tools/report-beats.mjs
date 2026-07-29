@@ -28,6 +28,7 @@ export const REPORT_ABILITIES = [
   "diagrams",
   "charts",
   "threads",
+  "edit-comment",
   "delete-comment",
   "comment-search",
   "toolbar-menu",
@@ -79,6 +80,7 @@ export const REPORT_BEATS = [
   {
     id: "comment-text",
     label: "Select any prose and comment on it",
+    toast: "Commenting on text",
     abilities: ["selection", "composer", "anchored-comments", "sidebar"],
     weight: 1.5,
     required: true,
@@ -94,20 +96,32 @@ export const REPORT_BEATS = [
   {
     id: "comment-image",
     label: "Comment on an image",
+    toast: "Commenting on an image",
     abilities: ["images", "anchored-comments"],
     weight: 1.2,
     required: true,
     async run(doc, ctx) {
-      await commentOnBlock(doc, ctx, {
+      // A report may carry its picture as an <img> or as an inline <svg> (the skill emits either).
+      // Both hover the same media affordance, so try the common shape first and fall back rather
+      // than failing a required beat over a markup choice the demo does not care about.
+      const ok = await commentOnBlock(doc, ctx, {
         target: "#commentRoot img",
         button: "#imageAddBtn",
         note: "Label the beds?",
       });
+      if (!ok) {
+        await commentOnBlock(doc, ctx, {
+          target: "#commentRoot figure svg:not(.mermaid svg), #commentRoot p > svg",
+          button: "#imageAddBtn",
+          note: "Label the beds?",
+        });
+      }
     },
   },
   {
     id: "comment-diff",
     label: "Comment on a line of a code diff",
+    toast: "Commenting on a code diff",
     abilities: ["diff-review", "anchored-comments"],
     weight: 1.2,
     async run(doc, ctx) {
@@ -121,6 +135,7 @@ export const REPORT_BEATS = [
   {
     id: "comment-mermaid",
     label: "Comment on a node of a Mermaid diagram",
+    toast: "Commenting on a diagram",
     abilities: ["diagrams", "anchored-comments"],
     weight: 1.2,
     needsDiagrams: true,
@@ -135,6 +150,7 @@ export const REPORT_BEATS = [
   {
     id: "comment-chart",
     label: "Comment on a Chart.js chart",
+    toast: "Commenting on a chart",
     abilities: ["charts", "anchored-comments"],
     weight: 1.2,
     needsDiagrams: true,
@@ -154,6 +170,7 @@ export const REPORT_BEATS = [
   {
     id: "thread",
     label: "Threads: reply to a comment in the sidebar",
+    toast: "Replying in a thread",
     abilities: ["threads"],
     weight: 1,
     async run(doc, ctx) {
@@ -172,8 +189,34 @@ export const REPORT_BEATS = [
     },
   },
   {
+    id: "edit",
+    label: "Edit a comment you already made",
+    toast: "Editing a comment",
+    abilities: ["edit-comment"],
+    weight: 1,
+    async run(doc, ctx) {
+      const card = doc.locator("#commentList .cm-card[data-cid]").first();
+      if (!(await card.count())) return ctx.warn("no comment card to edit");
+      await ctx.scrollIntoView(card);
+      const edit = card.locator('[data-act="edit"]').first();
+      if (!(await edit.count())) return ctx.warn("this build has no edit affordance");
+      await ctx.click(edit);
+      // The inline editor is the same widget the reply box uses, so the card's own
+      // `.cm-reply-compose` is the edit editor while no reply is open.
+      const box = card.locator(".cm-reply-compose .cm-reply-input").first();
+      if (!(await ctx.waitVisible(box, 1500))) return ctx.warn("the edit box never opened");
+      await box.fill("").catch(() => {});
+      await ctx.type(box, "Rephrased: is this window realistic?", ctx.budgetMs * 0.45);
+      const save = card.locator(".cm-reply-compose .cm-reply-save").first();
+      if (await save.count()) await ctx.click(save);
+      else ctx.warn("the edit had no save affordance");
+      await ctx.holdRemaining(120);
+    },
+  },
+  {
     id: "delete",
     label: "Delete a comment you no longer need",
+    toast: "Deleting a comment",
     abilities: ["delete-comment"],
     weight: 0.9,
     async run(doc, ctx) {
@@ -194,6 +237,7 @@ export const REPORT_BEATS = [
   {
     id: "search",
     label: "Search and filter the review",
+    toast: "Searching the comments",
     abilities: ["comment-search"],
     weight: 0.8,
     async run(doc, ctx) {
@@ -209,6 +253,7 @@ export const REPORT_BEATS = [
   {
     id: "menu",
     label: "Export the review: portable HTML, Markdown, offline copy",
+    toast: "Exporting for sharing",
     abilities: ["toolbar-menu", "exports"],
     weight: 1,
     async run(doc, ctx) {

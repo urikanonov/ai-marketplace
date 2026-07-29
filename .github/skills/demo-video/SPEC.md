@@ -5,9 +5,9 @@ dev-only tooling: nothing here is distributed, and nothing it produces is commit
 
 Run the suite from `.github/skills/demo-video`:
 
-```bash
+``bash
 node --test tests/timeline.test.mjs tests/redact.test.mjs tests/cli.test.mjs
-```
+``
 
 The required `validate` CI job runs the same command.
 
@@ -19,6 +19,8 @@ The required `validate` CI job runs the same command.
 | DEMO-PLAN-02 | A degenerate weight never produces a degenerate plan. `Infinity` divided by `Infinity` is `NaN`, which would spread silently into every budget and every sleep derived from it, so a non-finite, zero, negative or non-numeric weight falls back to 1 exactly like a missing one - the budgets stay whole numbers above the floor and still sum to the request. | `tests/timeline.test.mjs` - `a degenerate weight cannot produce a NaN budget (DEMO-PLAN-02)` |
 | DEMO-PLAN-03 | The readable floor must itself be a positive whole number of milliseconds. A fractional floor smuggles a fraction into the plan through the back door - the pinned beat keeps it and the budgets no longer sum to the request - so it is refused rather than silently overshooting. | `tests/timeline.test.mjs` - `a fractional floor cannot break the exact-budget contract (DEMO-PLAN-03)` |
 | DEMO-PLAN-04 | The clip opens on an INTERACTION, not on a still document. Waiting for every diagram and chart to render before the first beat put three seconds of a motionless page at the head of every montage, which reads as a stuck video; a beat that needs a drawn figure declares `needsDiagrams` instead and the wait is taken immediately before that beat, by which point the figure has long since drawn. The opening beat is a required one and starts on the selection affordance a reader discovers first, with the synthetic cursor gliding in (animated in the page, so it costs the beat nothing) rather than teleporting into place. | `tests/timeline.test.mjs` - `the montage opens on an interaction and declares its own diagram waits (DEMO-PLAN-04)` |
+
+| DEMO-PLAN-05 | Every beat names itself on screen. A montage moves fast and has no narrator, so a viewer who cannot tell an image comment from a diagram comment learns nothing from either: each beat carries a short caption ("Commenting on a diagram", "Editing a comment", "Exporting for sharing") shown as a toast for its duration. Captions are unique and short enough to read at speed, and they are part of the demo contract rather than decoration. | `tests/timeline.test.mjs` - `every beat names itself on screen (DEMO-PLAN-05)` |
 
 ## Fast-forward (idle compression)
 
@@ -41,6 +43,7 @@ The required `validate` CI job runs the same command.
 | DEMO-FF-14 | The OPENING is exempt from the speed-up as well as the ending. The start is where a viewer reads what was asked for and the end is where the answer lands, so both spans replay at their natural pace and the middle - the long stretch of the panel grinding away - absorbs the compression. Order is preserved across both joins. | `tests/timeline.test.mjs` - `the opening is exempt from the speed-up as well as the ending (DEMO-FF-14)` |
 | DEMO-FF-15 | Writes that share a moment of the replay are merged. A compressed middle asks the player to write thousands of chunks milliseconds apart, and each write costs real time to parse and paint, so the replay could not keep up and the clip ran ~50% long however aggressive the schedule was. Merging removes that floor without dropping a byte or reordering anything; a fast-forward event is a boundary, so its badge and skipped time stay on the right moment. | `tests/timeline.test.mjs` - `writes that share a moment are merged without losing a byte (DEMO-FF-15)` |
 | DEMO-FF-16 | An explicit `--idle` is an instruction, not one candidate among the defaults. Letting the fitter choose whichever threshold lands closest to the requested length quietly defeats a protected head or tail, because that threshold also collapses the gaps INSIDE the protected span - a panel summary meant to play at its natural pace arrived pre-compressed, and the body speed-up had nothing left to give (the middle capped out near 5x when 41x was wanted). A pinned threshold keeps the source pacing intact and pushes all the fitting into the hold and the body speed-up. | `tests/timeline.test.mjs` - `a pinned idle threshold is honoured, so a protected tail keeps its pace (DEMO-FF-16)` |
+| DEMO-FF-17 | A WINDOW of the finished clip can be re-timed on its own. A review note is almost always local - "seconds 20 to 27 drag" - and re-fitting the whole clip to answer it disturbs the parts that were already right, so `--speed-windows from:to:factor` speeds up exactly that stretch. Windows are given in CLIP time (what the viewer can point at, title card included), must not overlap, and events after one shift earlier by exactly the time it saved - never re-scaled, never dropped, never reordered. A malformed window is refused rather than silently ignored, because a clip that quietly came back at the old pace is the failure this exists to prevent. | `tests/timeline.test.mjs` - `a window of the clip can be re-timed without disturbing the rest (DEMO-FF-17)` |
 
 ## Redaction (what must never reach a published clip)
 

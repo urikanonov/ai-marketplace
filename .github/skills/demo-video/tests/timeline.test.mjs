@@ -9,6 +9,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  applySpeedWindows,
+  parseSpeedWindows,
   MIN_BEAT_MS, planBeats,
   DEFAULT_HOLD_MS, MAX_HOLD_MS, MIN_HOLD_MS, coalesceEvents, compressTimeline, fitTimeline,
 } from "../tools/timeline.mjs";
@@ -458,4 +460,47 @@ test("a pinned idle threshold is honoured, so a protected tail keeps its pace (D
     assert.ok(pinned.events[i].sourceT >= pinned.events[i - 1].sourceT, "source order must be preserved");
   }
   assert.ok(free.events.length === pinned.events.length, "both fits carry every event");
+});
+
+// A review note about a clip is almost always local - "the stretch around twenty seconds drags" -
+// and re-fitting the whole thing to fix it disturbs the parts that were already right.
+test("a window of the clip can be re-timed without disturbing the rest (DEMO-FF-17)", () => {
+  const events = [];
+  for (let i = 0; i <= 40; i++) events.push({ t: i * 1000, data: `line ${i}\n` });
+
+  const out = applySpeedWindows(events, parseSpeedWindows("20:27:2"));
+  assert.equal(out.length, events.length, "no event may be dropped");
+  // Before the window: untouched.
+  assert.equal(out[10].t, 10000);
+  assert.equal(out[20].t, 20000);
+  // Inside: half the elapsed time.
+  assert.equal(out[24].t, 22000);
+  assert.equal(out[27].t, 23500);
+  // After: shifted earlier by exactly what the window saved (7s at 2x saves 3.5s), never re-scaled.
+  assert.equal(out[40].t, 40000 - 3500);
+  for (let i = 1; i < out.length; i++) {
+    assert.ok(out[i].t >= out[i - 1].t, "the schedule must stay monotonic");
+  }
+
+  // Several windows compose, and a malformed one is refused rather than silently ignored - a clip
+  // that quietly came back at the old pace is the failure this is meant to prevent.
+  const two = applySpeedWindows(events, parseSpeedWindows("5:10:2,20:30:5"));
+  assert.equal(two[40].t, 40000 - 2500 - 8000);
+  assert.throws(() => parseSpeedWindows("20:27"), /from:to:factor/);
+  assert.throws(() => parseSpeedWindows("a:b:c"), /three numbers/);
+  assert.throws(() => applySpeedWindows(events, [{ fromMs: 5000, toMs: 1000, factor: 2 }]), /does not move forward/);
+  assert.throws(() => applySpeedWindows(events, [{ fromMs: 0, toMs: 1000, factor: 0 }]), /must be positive/);
+  assert.throws(() => applySpeedWindows(events, parseSpeedWindows("5:15:2,10:20:2")), /must not overlap/);
+});
+
+// A montage moves fast and has no narrator. Every beat names itself on screen, and the names are
+// part of the demo's contract, not decoration.
+test("every beat names itself on screen (DEMO-PLAN-05)", () => {
+  for (const beat of REPORT_BEATS) {
+    const toast = beat.toast || beat.label;
+    assert.ok(typeof toast === "string" && toast.trim().length > 3, `${beat.id} has no readable toast`);
+    assert.ok(toast.length <= 40, `${beat.id}'s toast is too long to read at speed: ${toast}`);
+  }
+  const toasts = REPORT_BEATS.map((b) => b.toast || b.label);
+  assert.equal(new Set(toasts).size, toasts.length, "two beats must not claim the same caption");
 });

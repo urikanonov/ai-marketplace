@@ -161,6 +161,54 @@ export function compressTimeline(events, opts = {}) {
 // session with many gaps could not be brought DOWN to the target - 84 fast-forwards at the default
 // hold is 27 seconds of holds alone, so a 35 second request produced 63 seconds. A hold the caller
 // passed explicitly is an instruction, not a hint, and is honoured exactly (`pinHold`).
+
+// Re-time a WINDOW of the finished clip. Fitting gives a whole clip one budget, but a review note is
+// almost always local - "the stretch around twenty seconds drags" - and the only honest answer is to
+// speed up exactly that stretch rather than re-fit everything and disturb the parts that were right.
+// Windows are given in CLIP time, because that is what the person watching it can point at. Events
+// after a window shift earlier by the time it saved, so nothing is dropped or reordered.
+export function applySpeedWindows(events, windows) {
+  if (!Array.isArray(windows) || !windows.length) return events;
+  const sorted = [...windows]
+    .map((w) => ({ fromMs: Number(w.fromMs), toMs: Number(w.toMs), factor: Number(w.factor) }))
+    .sort((a, b) => a.fromMs - b.fromMs);
+  for (const w of sorted) {
+    if (!Number.isFinite(w.fromMs) || !Number.isFinite(w.toMs) || !Number.isFinite(w.factor)) {
+      throw new Error("a speed window needs finite from, to and factor values");
+    }
+    if (w.toMs <= w.fromMs) throw new Error(`speed window ${w.fromMs}-${w.toMs} does not move forward`);
+    if (w.factor <= 0) throw new Error("a speed window factor must be positive");
+  }
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].fromMs < sorted[i - 1].toMs) throw new Error("speed windows must not overlap");
+  }
+  // How much time is removed before a given original moment.
+  const savedBefore = (t) => {
+    let saved = 0;
+    for (const w of sorted) {
+      if (t <= w.fromMs) break;
+      const end = Math.min(t, w.toMs);
+      saved += (end - w.fromMs) * (1 - 1 / w.factor);
+    }
+    return saved;
+  };
+  return events.map((e) => ({ ...e, t: Math.max(0, Math.round(e.t - savedBefore(e.t))) }));
+}
+
+// `20:27:2` - speed the clip between 20s and 27s up by two. Several windows are comma separated.
+export function parseSpeedWindows(spec) {
+  if (!spec) return [];
+  return String(spec).split(",").map((part) => {
+    const bits = part.trim().split(":");
+    if (bits.length !== 3) throw new Error(`a speed window looks like from:to:factor, not "${part.trim()}"`);
+    const [fromS, toS, factor] = bits.map(Number);
+    if (![fromS, toS, factor].every(Number.isFinite)) {
+      throw new Error(`a speed window needs three numbers, not "${part.trim()}"`);
+    }
+    return { fromMs: Math.round(fromS * 1000), toMs: Math.round(toS * 1000), factor };
+  });
+}
+
 export function fitTimeline(events, targetMs, opts = {}) {
   if (!Number.isFinite(targetMs) || targetMs <= 0) throw new Error("targetMs must be positive");
   const preferredHold = opts.holdMs == null ? DEFAULT_HOLD_MS : opts.holdMs;

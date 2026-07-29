@@ -39,7 +39,7 @@ import fs from "fs";
 import os from "os";
 import http from "http";
 
-import { planBeats, fitTimeline, compressTimeline, coalesceEvents, MIN_BEAT_MS } from "./timeline.mjs";
+import { planBeats, fitTimeline, compressTimeline, coalesceEvents, applySpeedWindows, parseSpeedWindows, MIN_BEAT_MS } from "./timeline.mjs";
 import { REPORT_BEATS } from "./report-beats.mjs";
 import { DEFAULT_RULES, homeRules, scanText, scrubEvents, scrubText, createScrubber } from "./redact.mjs";
 import { readScript, stepReady, stepPayload, stepSubmit } from "./script.mjs";
@@ -105,7 +105,7 @@ function resolveOptionalPath(pkg, ...rest) {
 const STRING_KEYS = new Set([
   "example", "out", "cast", "clip", "seconds", "cols", "rows", "idle", "hold",
   "width", "height", "count", "font", "frames-dir", "scale", "tail", "head", "end-hold", "intro", "ask",
-  "script", "review-out", "split", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "dpr",
+  "script", "review-out", "split", "speed-windows", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "dpr",
 ]);
 const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "help"]);
 // Which options each subject actually reads. Validating against the union instead means
@@ -114,7 +114,7 @@ const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "help"]);
 const SUBJECT_FLAGS = {
   report: ["example", "out", "seconds", "width", "height", "scale", "list", "review-out"],
   capture: ["out", "cols", "rows", "script"],
-  render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "head", "end-hold", "intro", "ask", "allow-findings"],
+  render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "head", "end-hold", "intro", "ask", "speed-windows", "allow-findings"],
   loop: ["cast", "example", "out", "split", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "idle", "hold", "width", "height", "font", "scale", "dpr", "intro", "end-hold", "ask", "allow-findings"],
   scan: ["cast"],
   frames: ["clip", "out", "count", "frames-dir"],
@@ -264,6 +264,67 @@ const CURSOR_SCRIPT = `(() => {
   else install();
 })();`;
 
+// Two more things injected into every recorded page, for the same reason the cursor is: a video has
+// no narrator. The TOAST names what is happening ("Commenting on an image") so a viewer can follow a
+// fast montage without guessing, and the clipboard shim records what Copy all copied - reading the
+// real clipboard needs a permission grant that does not exist for a file:// origin, which is exactly
+// where a generated report has to be loaded from.
+const OVERLAY_SCRIPT = `(() => {
+  if (window.top !== window) return;
+  const install = () => {
+    if (document.getElementById("__demoToast")) return;
+    const el = document.createElement("div");
+    el.id = "__demoToast";
+    el.setAttribute("aria-hidden", "true");
+    el.style.cssText = [
+      "position:fixed", "left:50%", "top:22px", "transform:translateX(-50%) translateY(-8px)",
+      "z-index:2147483646", "pointer-events:none", "padding:11px 22px", "border-radius:999px",
+      "background:rgba(13,17,23,0.92)", "color:#e6edf3", "border:1px solid rgba(240,246,252,0.18)",
+      "font:600 17px/1.2 'Segoe UI', system-ui, sans-serif", "letter-spacing:0.2px",
+      "box-shadow:0 8px 26px rgba(0,0,0,0.34)", "white-space:nowrap", "opacity:0",
+      "transition:opacity 220ms ease, transform 220ms ease",
+    ].join(";");
+    document.documentElement.appendChild(el);
+    let hideAt = 0;
+    window.__demoToast = (text) => {
+      if (!text) { el.style.opacity = "0"; el.style.transform = "translateX(-50%) translateY(-8px)"; return; }
+      el.textContent = text;
+      el.style.opacity = "1";
+      el.style.transform = "translateX(-50%) translateY(0)";
+      hideAt = Date.now();
+    };
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", install);
+  else install();
+
+  // Record what was copied instead of reading the clipboard back.
+  window.__demoCopied = "";
+  try {
+    const clip = navigator.clipboard;
+    if (clip && clip.writeText) {
+      const original = clip.writeText.bind(clip);
+      clip.writeText = (text) => { window.__demoCopied = String(text == null ? "" : text); return original(text); };
+    }
+  } catch (e) { /* no clipboard in this context */ }
+  // Older paths copy through a hidden textarea and execCommand.
+  try {
+    const exec = document.execCommand && document.execCommand.bind(document);
+    if (exec) {
+      document.execCommand = (cmd, ...rest) => {
+        if (String(cmd).toLowerCase() === "copy") {
+          const active = document.activeElement;
+          if (active && typeof active.value === "string" && active.value) window.__demoCopied = active.value;
+          else {
+            const sel = String(window.getSelection() || "");
+            if (sel) window.__demoCopied = sel;
+          }
+        }
+        return exec(cmd, ...rest);
+      };
+    }
+  } catch (e) { /* execCommand is not writable here */ }
+})();`;
+
 // `page` is the RECORDED page and owns the mouse and the synthetic cursor; `scope` is whatever
 // holds the document being reviewed. They are the same thing for the standalone montage, and differ
 // for the loop clip, where the report lives in a full-viewport iframe so the terminal can share the
@@ -289,6 +350,11 @@ function makeContext(page, budgetMs, warnings, scope = page) {
     // The keyboard belongs to the PAGE, not to the document being reviewed - a Frame has no
     // keyboard - so beats reach it through the context rather than through their scope.
     async pressKey(key) { await page.keyboard.press(key).catch(() => {}); },
+    // Names the moment on screen. A montage moves fast and a viewer who cannot tell an image comment
+    // from a diagram comment learns nothing from either.
+    async toast(text) {
+      await page.evaluate((t) => { if (window.__demoToast) window.__demoToast(t); }, text).catch(() => {});
+    },
     // Beat one opens on a still document while the runtime finishes booting. Teleporting the
     // cursor into place wastes that moment; gliding it in from the edge means the very first
     // frames after paint already have motion in them.
@@ -512,6 +578,7 @@ async function runBeats({ page, scope, paced, warnings, failures }) {
     const budgetMs = paced.find((p) => p.id === beat.id).budgetMs;
     const before = warnings.length;
     const ctx = makeContext(page, budgetMs, warnings, scope);
+    await ctx.toast(beat.toast || beat.label);
     const started = Date.now();
     try {
       await beat.run(scope, ctx);
@@ -559,24 +626,25 @@ async function recordReport(args) {
   const failures = [];
   let preludeReport = 0;
   try {
-    server = await startStaticServer(path.dirname(example));
     ensureDir(videoDir);
     browser = await chromium.launch();
     context = await browser.newContext({
       viewport: { width, height },
       deviceScaleFactor: 1,
       recordVideo: { dir: videoDir, size: videoSize(width, height, args) },
-      // Needed only for --review-out, which reads back what Copy all put on the clipboard. Granting
-      // it always keeps the two subjects' browser setup identical.
-      permissions: ["clipboard-read", "clipboard-write"],
     });
+    // Loaded from FILE, not from a local http server. A report the skill generates in "not portable"
+    // mode links its runtime with absolute `file:///` URLs into the installed plugin, and an http
+    // page is not allowed to load a file:// subresource - so the layer never booted, every beat
+    // found nothing, and the only clue was one "never signalled ready" line. A portable report works
+    // either way, so file:// is simply the setting that films both.
+    const url = pathToFileURL(example).href;
     // Playwright records PER PAGE, starting when the page is created. Warming the document in a
-    // throwaway page first fills the HTTP cache and pays the one-off font/diagram cost off camera,
-    // so the filmed page opens fast and the clip is mostly montage rather than loading.
-    const url = `${server.origin}/${encodeURIComponent(path.basename(example))}`;
+    // throwaway page first pays the one-off font/diagram cost off camera, so the filmed page opens
+    // fast and the clip is mostly montage rather than loading.
     const warmup = await context.newPage();
     await warmup.goto(url, { waitUntil: "load" }).catch(() => {});
-    await warmup.waitForFunction(() => window.__commentableHtmlReady === true, null, { timeout: 15000 })
+    await warmup.waitForFunction(() => window.__commentableHtmlReady === true, null, { timeout: 20000 })
       .catch(() => {});
     await warmup.close().catch(() => {});
 
@@ -590,6 +658,7 @@ async function recordReport(args) {
     // The reviewer identity is a real person's name in a real install; the clip gets a demo one.
     await page.addInitScript(`try { localStorage.setItem("cmh::author", ${JSON.stringify(DEMO_AUTHOR)}); } catch (e) {}`);
     await page.addInitScript(CURSOR_SCRIPT);
+    await page.addInitScript(OVERLAY_SCRIPT);
     await page.goto(url, { waitUntil: "domcontentloaded" });
     await waitForRuntime(page, warnings);
 
@@ -1194,9 +1263,9 @@ async function recordLoop(args) {
 
   const chromium = loadPlaywright();
   const videoDir = path.join(OUT_ROOT, "raw", `loop-${process.pid}`);
-  let server = null;
   let browser = null;
   let context = null;
+  let stageFile = null;
   const warnings = [];
   const failures = [];
   let bundle = "";
@@ -1209,22 +1278,24 @@ async function recordLoop(args) {
       introMs,
       endHoldMs,
       ask,
-      reportUrl: `/${encodeURIComponent(reportName)}`,
+      reportUrl: `./${encodeURIComponent(reportName)}`,
     });
-    // The stage is served from the SAME origin as the report, which is what lets the montage reach
-    // into the iframe at all - a file:// or cross-origin frame would be opaque to it.
-    server = await startStaticServer(path.dirname(example), {
-      "/stage": { body: stageHtml, type: "text/html" },
-    });
+    // The stage is written NEXT TO the report and loaded from file://, for the same reason the
+    // standalone montage is: a generated report links its runtime with absolute `file:///` URLs, and
+    // an http page may not load those. A file:// page may not embed an http frame either, so the
+    // stage has to live on the same protocol as the document it frames. Playwright drives frames
+    // over the debugging protocol rather than through JS, so the frame being a separate opaque
+    // origin costs nothing.
+    stageFile = path.join(path.dirname(example), `__demo-stage-${process.pid}.html`);
+    fs.writeFileSync(stageFile, stageHtml);
     ensureDir(videoDir);
     browser = await chromium.launch();
     context = await browser.newContext({
       viewport: { width, height },
       deviceScaleFactor: Number(numberOpt(args, "dpr", 2)),
       recordVideo: { dir: videoDir, size: videoSize(width, height, args) },
-      permissions: ["clipboard-read", "clipboard-write"],
     });
-    const reportUrl = `${server.origin}/${encodeURIComponent(reportName)}`;
+    const reportUrl = pathToFileURL(example).href;
     // Pay the report's load and diagram cost off camera, exactly as the standalone montage does.
     const warmup = await context.newPage();
     await warmup.goto(reportUrl, { waitUntil: "load" }).catch(() => {});
@@ -1236,7 +1307,8 @@ async function recordLoop(args) {
     page.on("dialog", (dialog) => { dialog.accept().catch(() => {}); });
     await page.addInitScript(`try { localStorage.setItem("cmh::author", ${JSON.stringify(DEMO_AUTHOR)}); } catch (e) {}`);
     await page.addInitScript(CURSOR_SCRIPT);
-    await page.goto(`${server.origin}/stage`, { waitUntil: "domcontentloaded" });
+    await page.addInitScript(OVERLAY_SCRIPT);
+    await page.goto(pathToFileURL(stageFile).href, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => window.__stageReady === true, null, { timeout: 30000 })
       .catch(() => warnings.push("the stage never signalled ready"));
 
@@ -1269,7 +1341,7 @@ async function recordLoop(args) {
     await saveVideo(page, context, markedOut);
   } finally {
     if (browser) await browser.close().catch(() => {});
-    if (server) await server.close().catch(() => {});
+    if (stageFile) { try { fs.rmSync(stageFile, { force: true }); } catch (e) { /* best effort */ } }
     try { fs.rmSync(videoDir, { recursive: true, force: true }); } catch (e) { /* best effort */ }
   }
 
@@ -1299,7 +1371,11 @@ async function copyAllBundle(page, scope, warnings) {
   }
   await ctx.click(button);
   await sleep(500);
-  const text = await page.evaluate(() => navigator.clipboard.readText().catch(() => "")).catch(() => "");
+  // Read what the page RECORDED being copied rather than the real clipboard: clipboard-read needs a
+  // permission grant, and there is no origin to grant it to when the report is loaded from file://
+  // - which is exactly where a generated report has to be loaded from.
+  await sleep(250);
+  const text = await page.evaluate(() => window.__demoCopied || "").catch(() => "");
   if (!text) warnings.push("Copy all left the clipboard empty");
   return text;
 }
@@ -1352,6 +1428,14 @@ async function renderTerminal(args) {
   // a paragraph-long prompt - which is unreadable on screen, so the prompt is extracted from it and
   // can be replaced outright with something short enough to read in a couple of seconds.
   const introMs = Math.round(numberOpt(args, "intro", 3) * 1000);
+  // A note like "20 to 27 drags" is about the CLIP, which begins with the title card - so windows
+  // are given in clip seconds and shifted onto the schedule's own clock here.
+  const speedWindows = parseSpeedWindows(args["speed-windows"])
+    .map((w) => ({ ...w, fromMs: w.fromMs - introMs, toMs: w.toMs - introMs }));
+  if (speedWindows.length) {
+    timeline.events = applySpeedWindows(timeline.events, speedWindows);
+    timeline.durationMs = timeline.events.length ? timeline.events[timeline.events.length - 1].t : 0;
+  }
   const promptFromCommand = /(?:^|\s)-p\s+(.+)$/s.exec(String(cast.command || ""));
   const ask = args.ask
     ? String(args.ask)
