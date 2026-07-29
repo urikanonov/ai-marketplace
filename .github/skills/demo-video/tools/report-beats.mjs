@@ -110,11 +110,20 @@ export const REPORT_BEATS = [
         note: "Label the beds?",
       });
       if (!ok) {
-        await commentOnBlock(doc, ctx, {
+        // Some reports carry the picture as an inline <svg> rather than an <img>, and the media
+        // affordance attaches to the FIGURE around it rather than to the drawing itself.
+        const svgOk = await commentOnBlock(doc, ctx, {
           target: "#commentRoot figure svg:not(.mermaid svg), #commentRoot p > svg",
           button: "#imageAddBtn",
           note: "Label the beds?",
         });
+        if (!svgOk) {
+          await commentOnBlock(doc, ctx, {
+            target: "#commentRoot figure:not(.chart):not(.cmh-mermaid)",
+            button: "#imageAddBtn, #widgetAddBtn",
+            note: "Label the beds?",
+          });
+        }
       }
     },
   },
