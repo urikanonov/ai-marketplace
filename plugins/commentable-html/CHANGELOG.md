@@ -4,6 +4,35 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.279.0] - 2026-07-30
+
+### Fixed
+
+- Validator checks about the LAYER can no longer be answered by text an author or a REVIEWER
+  supplied. Each now asks its question of the right SOURCE instead of the raw document string.
+  The scoped `.cm-skip[hidden]` rule check, the `--cp-bg:` theme-declaration check and the
+  unscoped `[hidden] { display: none }` warning read real parsed `<style>` bodies with CSS
+  comments blanked, because text is not a stylesheet and a commented-out declaration is not a
+  declaration. Previously a document that DOCUMENTS commentable-html could forge the verdict from
+  its own prose: quoting the scoped rule or `--cp-bg:` SATISFIED a real check, so a document with
+  no theme variables at all passed the ERROR by merely talking about them, while a code sample
+  SHOWING the unscoped rule raised a warning the author could only clear by rewording their
+  content. A `<style>` an author puts in their own content still counts, since it really would
+  style or hide the page, and an unclosed `<style>` - which a browser runs to end of file - is
+  now flushed by the parser instead of escaping the scan entirely.
+- The retired `--START-COMMENTS-EXPORT--` marker check, which is about markup rather than CSS,
+  now reads an ALLOW-list of the layer's own CSS, COMMENT UI and JS regions. A deny-list could not
+  be made safe: user text reaches `<title>`, `data-doc-label` and every other attribute -
+  `new_document --label` copies the label verbatim into two of them, so naming a document after
+  the retired marker raised a warning the author could only clear by renaming it - and the
+  HANDLED IDS and EMBEDDED COMMENTS regions exist precisely to carry user text (a reviewer's
+  comment bodies, the reviewed-section headings an export bakes in), so they are state containers
+  and are never inspected.
+- The CONTENT and region markers are now counted and located in one shared view whose
+  `<script>`/`<style>` bodies are blanked and whose comments survive (the markers ARE comments),
+  so the marker check and the layer checks can never disagree about what a marker is: a marker
+  quoted in script data neither forges a duplicate-marker error nor defines a boundary.
+
 ## [1.278.0] - 2026-07-30
 
 ### Added
