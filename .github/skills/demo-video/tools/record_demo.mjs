@@ -270,9 +270,11 @@ const CURSOR_SCRIPT = `(() => {
 // real clipboard needs a permission grant that does not exist for a file:// origin, which is exactly
 // where a generated report has to be loaded from.
 const OVERLAY_SCRIPT = `(() => {
-  if (window.top !== window) return;
-  const install = () => {
-    if (document.getElementById("__demoToast")) return;
+  // The TOAST belongs to the top frame only - it is chrome over the whole clip, and a second copy
+  // inside the report would sit behind it saying something stale.
+  if (window.top === window) {
+    const install = () => {
+      if (document.getElementById("__demoToast")) return;
     const el = document.createElement("div");
     el.id = "__demoToast";
     el.setAttribute("aria-hidden", "true");
@@ -293,11 +295,14 @@ const OVERLAY_SCRIPT = `(() => {
       el.style.transform = "translateX(-50%) translateY(0)";
       hideAt = Date.now();
     };
-  };
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", install);
-  else install();
+    };
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", install);
+    else install();
+  }
 
-  // Record what was copied instead of reading the clipboard back.
+  // Record what was copied instead of reading the clipboard back. This runs in EVERY frame: in the
+  // loop clip Copy all is clicked inside the report iframe, so a shim confined to the top frame
+  // would record nothing and the review that gets pasted back would be empty.
   window.__demoCopied = "";
   try {
     const clip = navigator.clipboard;
@@ -1331,6 +1336,10 @@ async function recordLoop(args) {
     await page.evaluate((t) => window.__stage.caption(t), "3. Copy all - hand the review back");
     bundle = await copyAllBundle(page, frame, warnings);
     await page.evaluate(() => window.__stage.hold(900));
+    // Clear the beat caption before the report leaves: a toast still reading "Exporting for
+    // sharing" over the terminal phase labels the wrong thing entirely.
+    await frame.evaluate(() => { if (window.__demoToast) window.__demoToast(""); }).catch(() => {});
+    await page.evaluate(() => { if (window.__demoToast) window.__demoToast(""); }).catch(() => {});
     await page.evaluate(() => window.__stage.hideReport());
     await page.evaluate(() => window.__stage.caption(""));
 
@@ -1375,7 +1384,9 @@ async function copyAllBundle(page, scope, warnings) {
   // permission grant, and there is no origin to grant it to when the report is loaded from file://
   // - which is exactly where a generated report has to be loaded from.
   await sleep(250);
-  const text = await page.evaluate(() => window.__demoCopied || "").catch(() => "");
+  // Read it from the SCOPE. Copy all runs in the document being reviewed, so in the loop clip the
+  // recorded value lives in the iframe, not on the stage page that owns the mouse.
+  const text = await scope.evaluate(() => window.__demoCopied || "").catch(() => "");
   if (!text) warnings.push("Copy all left the clipboard empty");
   return text;
 }
