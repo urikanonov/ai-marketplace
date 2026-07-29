@@ -119,5 +119,12 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-HL-15 | opt-out: a correctness fix to already-documented SQL highlighting (a double-quoted identifier now colors on both paths) | opt-out: a tokenizer parity fix, not a deck topic |
 | CMH-BUILD-20 | opt-out: an internal performance refactor of the authoring pipeline; output is byte-identical so readers see no change | opt-out: an I/O refactor with nothing to demonstrate on a slide |
 | CMH-SIZE-01 | site | opt-out: a size and file-layout optimisation with nothing to demonstrate on a slide - the viewer sees the same document, only smaller |
+<<<<<<< HEAD
 | CMH-RESP-10 | opt-out: a rendering-correctness fix; a reader sees a table that is no longer broken, with nothing new to learn | opt-out: a layout fix with nothing to demonstrate on a slide |
 | CMH-RESP-11 | opt-out: a layout-containment fix; a wide table scrolls in its box exactly as it already did on a phone, so there is no new capability to document | opt-out: a layout fix with nothing to demonstrate on a slide |
+=======
+| CMH-PORT-01 | tutorial | opt-out: a one-off migration command for legacy documents; nothing to demonstrate on a slide |
+| CMH-PORT-02 | site | opt-out: a compatibility guarantee - the viewer sees an old document simply continuing to work |
+| CMH-PORT-03 | tutorial, site | opt-out: a default-mode change; the slide shows the document, not which mode produced it |
+| CMH-PORT-04 | opt-out: internal safety hardening of the migration tool (crash-safe write, hostile-input neutralization, ambiguity refusal); a reader sees no new capability | opt-out: a robustness invariant with nothing to demonstrate on a slide |
+>>>>>>> ba64c4dd (commentable-html: generate only Portable documents, and migrate legacy ones safely)

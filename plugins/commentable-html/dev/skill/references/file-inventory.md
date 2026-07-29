@@ -35,7 +35,7 @@ subdirectories under `tools/` (for example `tools/validate/validate.py`, `tools/
 
 - `validate.py` - structural invariant checker for generated files. Use `--strict` before handoff.
 - `mark_handled.py` - appends handled comment ids from explicit ids or a copied bundle.
-- `new_document.py` - builds a fresh commentable document from a content fragment (NonPortable by default; `--portable` for a single self-contained file).
+- `new_document.py` - builds a fresh commentable document from a content fragment (always Portable, one self-contained file; `--template <dist>/NONPORTABLE.html` builds a legacy one deliberately).
 - `recommend_kind.py` - recommends `report`, `plan`, or `slides` from filename and content signals before choosing `--kind`.
 - `retrofit.py` - injects the layer into an existing unlayered HTML file, validates before writing, and leaves the target unchanged on failure.
 - `upgrade.py` - upgrades the CSS, COMMENT UI, and JS regions and re-emits the shell-baked mermaid loader bootstrap from the current `dist/PORTABLE.html`.

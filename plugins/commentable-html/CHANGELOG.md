@@ -4,6 +4,60 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.265.0] - 2026-07-28
+
+### Added
+
+- `tools/authoring/to_portable.py` migrates an existing NonPortable document into a
+  self-contained Portable one, preserving its authored content, its embedded comments, and its
+  handled ids - the point of migrating rather than regenerating is that review state travels
+  with the document. It is the counterpart to `upgrade.py`, which deliberately refuses a
+  NonPortable file. Running it twice is a no-op, and a file that is not a commentable-html
+  document is refused rather than rewritten.
+
+### Changed
+
+- Portable is now the ONLY mode generated, by every creation route. `new_document.py` follows the
+  resolved TEMPLATE rather than a flag, so the two can never disagree: the default is
+  `dist/PORTABLE.html`, and a caller that genuinely needs a legacy NonPortable document asks for
+  it explicitly with `--template <dist>/NONPORTABLE.html`, which still gets the full
+  companion-reference handling. `retrofit.py` also produces a Portable document by default; a
+  legacy one now requires an explicit `--nonportable` or one of the companion-href options.
+  `--nonportable` on `new_document.py` is accepted but ignored, and `--portable` on either tool
+  now simply names the default, so existing callers keep working.
+- NonPortable documents are opened, validated and finalized PERMANENTLY, with no deprecation
+  deadline. The NonPortable runtime and its companions (`NONPORTABLE.html`,
+  `commentable-html.{css,js,assets.js}`) stay shipped for exactly that reason: existing
+  documents reference them by bare name and would break on the next auto-update if they were
+  dropped. Only CREATING a new NonPortable document by default has gone away.
+
+### Security
+
+- `to_portable.py` neutralizes any raw-text terminator in the companion bytes it inlines, so a
+  stylesheet supplied through `--dist` can no longer close its `<style>` element and have the
+  rest parse as live markup - control of a stylesheet used to escalate to arbitrary script
+  execution in a document holding authored content and reviewer comments. The payload is
+  escaped, never silently dropped.
+- The migration writes through a staged temp file swapped in with `os.replace` (the crash-safe
+  helper `content_replace.py` already used, now shared as `_atomic_io.py`). The destination used
+  to be truncated before the replacement bytes existed, so an interrupted or failing write
+  destroyed the document being migrated - reproduced as a 1.4 MB file reduced to zero bytes.
+- The CONTENT region that decides which companion reference is the real one is now located from
+  line-anchored HTML-comment markers and required to be unique, so reviewer text quoting the
+  marker can no longer invert the region and send the stylesheet into the author's markup; an
+  ambiguous document is refused rather than guessed at. The mode transition parses the layer
+  descriptor as JSON and requires exactly one nonportable-to-portable transition, so a
+  reformatted descriptor can no longer be reported as migrated while still marked nonportable.
+- Every anchor is resolved against the document's original bytes and applied in one pass of
+  non-overlapping edits, and elements are matched in a view with HTML comments and raw-text
+  bodies blanked. Untrusted companion text can no longer aim a later step, and a commented-out
+  or quoted copy of a companion reference or of the layer descriptor is never the one rewritten.
+  A companion is matched by the BASENAME of the URL its element points at, so the absolute
+  `file://` references the CLI produced by default, the `--assets-relative` / `--copy-assets` /
+  `--assets-href` prefixes and `?v=` cache-busters all migrate rather than being refused; CRLF
+  documents migrate too. Migration finally refuses to write a result that would still reference
+  a companion, so it can never report success on a document that is not self-contained.
+
 ## [1.264.0] - 2026-07-28
 
 ### Fixed

@@ -127,6 +127,18 @@ test("the portability section shows three modes including Offline with a source 
 });
 
 
+test("the Non-portable mode card is marked legacy and points at the migration tool (SITE-PLUGIN-27)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const nonPortable = page.locator(".mode-card", { hasText: "Non-portable" });
+  // The skill no longer generates this mode, so the card must not read as a choice a reader
+  // could make: it is the shape older documents have, plus the way out of it.
+  await expect(nonPortable.locator(".badge")).toHaveText("legacy");
+  await expect(nonPortable).toContainText(/no longer generated/i);
+  await expect(nonPortable).toContainText(/to_portable\.py/);
+  await expect(page.locator(".mode-card", { hasText: "Non-portable" }).locator(".badge", { hasText: "default" })).toHaveCount(0);
+});
+
+
 test("the portability section explains the CDN chip needs a network connection and Offline removes it (SITE-PLUGIN-10)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const modes = page.locator("#modes");

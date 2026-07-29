@@ -4,7 +4,8 @@
 ## Contents
 
 - [Choosing a portability mode](#choosing-a-portability-mode)
-- [Producing a NonPortable document](#producing-a-nonportable-document)
+- [Migrating a NonPortable document to Portable](#migrating-a-nonportable-document-to-portable)
+- [Producing a NonPortable document (legacy, for compatibility work only)](#producing-a-nonportable-document-legacy-for-compatibility-work-only)
 - [Guardrails that make NonPortable safe](#guardrails-that-make-nonportable-safe)
 - [Versioning and compatibility](#versioning-and-compatibility)
 - [What is bundled in the file vs fetched from where](#what-is-bundled-in-the-file-vs-fetched-from-where)
@@ -17,16 +18,29 @@
 
 ## Choosing a portability mode
 
-**NonPortable** is the default authoring mode for fast personal iteration with the agent. The live HTML references shared companion assets (`commentable-html.css`, `commentable-html.js`, and `commentable-html.assets.js`), so each regeneration is much cheaper in tokens while the file can reach those assets.
-
-**Portable** is one self-contained file with the CSS, runtime, and comments inlined. Use it for peer review, sharing, or long-term persistence. Create it with **Export as Portable**; from a nonportable source, the export inlines the companion assets and current comments into the downloaded file.
+There is nothing to choose for a NEW document: **Portable** is the only mode the skill generates. It is one self-contained file with the CSS, runtime, and comments inlined - ready for peer review, sharing, or long-term persistence the moment it is written. **Export as Portable** in the browser produces the same shape from whatever is on screen, embedding the current comments.
 
 **Offline** is a Portable file plus vendored rich-content runtimes. Use **Export Offline** after mermaid diagrams and charts have rendered in the browser. It embeds the current comments, preserves live mermaid source blocks and live chart canvases, inlines vendored mermaid plus Chart.js only when needed, and removes remote loaders so the result opens with no network.
 
+**NonPortable** is the LEGACY mode: the HTML references shared companion assets (`commentable-html.css`, `commentable-html.js`, and `commentable-html.assets.js`) sitting beside it. New documents are no longer generated this way, but existing ones are opened, validated, finalized and exported exactly as before - permanently, with no deprecation deadline - which is why the runtime and all three companions stay shipped.
 
-## Producing a NonPortable document
 
-Use `tools/authoring/new_document.py` without `--portable`. It starts from `dist/NONPORTABLE.html`, keeps HANDLED IDS,
+## Migrating a NonPortable document to Portable
+
+Run `tools/authoring/to_portable.py <file.html>` (repeatable and idempotent; `--check` reports without
+writing). It inlines the layer and drops the now-dead asset registry, preserving the authored content, the
+embedded comments, and the handled ids - review state travels with the document, which is the point of
+migrating rather than regenerating. An already-Portable file is left untouched, and a file that is not a
+commentable-html document is refused rather than rewritten. Afterwards `upgrade.py` keeps it current, as it
+does for any Portable document.
+
+
+## Producing a NonPortable document (legacy, for compatibility work only)
+
+Pass `--template <skill>/dist/NONPORTABLE.html` to `tools/authoring/new_document.py`, or
+`--nonportable` (or one of the companion-href options below) to `tools/authoring/retrofit.py`;
+there is no `--nonportable` mode on `new_document.py` any more (the flag is accepted and ignored),
+and `--portable` on either tool now just names the default. It keeps HANDLED IDS,
 EMBEDDED COMMENTS, COMMENT UI, and content inline, and rewrites the companion references for the CSS, runtime JS, and
 asset registry. By default those references are absolute `file://` URLs to the installed skill `dist/` directory, so a
 loose HTML file can move anywhere on the same machine. Use `--assets-relative` for a folder whose relative path to the
@@ -69,7 +83,7 @@ flowchart LR
     content["Plan content (inline)"]
     comments["Comments: HANDLED IDS + EMBEDDED COMMENTS (inline)"]
     css["Layer CSS (inlined)"]
-    js["Layer JS + asset registry (inlined)"]
+    js["Layer JS (inlined)"]
   end
   cdn["mermaid / Chart.js (CDN)"]
   File -. "optional, only if the report renders diagrams/charts;<br/>vendor or inline for full offline" .-> cdn
@@ -104,7 +118,7 @@ flowchart LR
     content["Plan content (inline)"]
     comments["Comments: HANDLED IDS + EMBEDDED COMMENTS (inline)"]
     css["Layer CSS (inlined)"]
-    js["Layer JS + asset registry (inlined)"]
+    js["Layer JS (inlined)"]
     mmd["Vendored mermaid runtime (conditional)"]
     charts["Vendored Chart.js runtime (conditional)"]
   end

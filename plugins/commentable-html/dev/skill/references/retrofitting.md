@@ -17,7 +17,6 @@ Use `tools/authoring/retrofit.py` as the primary path for unlayered standalone H
 ```bash
 python tools/authoring/retrofit.py existing.html --label "My Report" --key auto --source existing.html --out existing-commentable.html
 python tools/authoring/retrofit.py existing.html --label "My Report" --root-selector "#content" --skip-selectors "#toolbar,.modal" --out existing-commentable.html
-python tools/authoring/retrofit.py existing.html --label "My Report" --portable --out shareable.html
 ```
 
 The tool parses the real HTML token stream with Python's standard `html.parser`; it does not regex-match `<head>` or
@@ -44,9 +43,10 @@ Use `--skip-selectors "sel,sel"` for host floating panels, modals, toolbars, nav
 receive comments. Each selector may be `#id`, `.class`, or a tag name. Matching elements receive `class="cm-skip"`;
 normal code blocks should stay commentable.
 
-For NonPortable output the companion asset options match `new_document.py`: default absolute `file://` references to
-the skill `dist/`, `--assets-relative`, `--copy-assets`, or `--assets-href PREFIX`. `--portable` inlines the layer into
-one file.
+The retrofitted document is Portable (the layer inlined into one file), like every other creation route; `--portable`
+is accepted and simply names that default. A legacy NonPortable retrofit is an explicit request: pass `--nonportable`,
+or one of the companion asset options, which match `new_document.py` - default absolute `file://` references to the
+skill `dist/`, `--assets-relative`, `--copy-assets`, or `--assets-href PREFIX`.
 
 Before writing, `retrofit.py` validates the candidate with the same `validate.py` checks. It writes through a temp file
 and atomic replace, so a validation failure never clobbers the target. It also warns, without failing, when host CSS

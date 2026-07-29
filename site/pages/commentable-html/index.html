@@ -330,8 +330,8 @@
         <p class="section-sub">Same document, three ways to assemble it - pick based on whether it stays local, travels, or must work with no network. The graph in each card shows where every part comes from.</p>
         <div class="grid">
           <div class="card feature mode-card">
-            <h3>Non-portable <span class="badge">default</span></h3>
-            <p>References shared companion assets instead of inlining them, so each regeneration is far cheaper in tokens. Best for fast, personal iteration while you and the agent shape the document.</p>
+            <h3>Non-portable <span class="badge">legacy</span></h3>
+            <p>References shared companion assets instead of inlining them. New documents are no longer generated this way, but existing ones are opened, validated and edited exactly as before, permanently - the runtime and its companion files are kept for that reason. Migrate one to Portable whenever you like with <code>tools/authoring/to_portable.py</code>.</p>
             <dl class="mode-sources" aria-label="Where each part comes from in Non-portable mode">
               <div class="mode-source"><dt>Styles + runtime</dt><dd><span class="src src-folder">skill folder</span></dd></div>
               <div class="mode-source"><dt>Mermaid + charts</dt><dd><span class="src src-cdn">CDN</span></dd></div>

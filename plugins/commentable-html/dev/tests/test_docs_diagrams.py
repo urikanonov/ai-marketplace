@@ -199,8 +199,7 @@ class NewFeatureDocsTests(unittest.TestCase):
     def test_skill_documents_widget_drag_and_offline_modes(self):
         text = _read(SKILL_MD)
         for snippet in (
-            "NonPortable is for fast iteration",
-            "Portable is for peer review",
+            "Portable is the only mode generated",
             "Offline is for zero-network handoff",
             "data-cm-draggable",
             "Only direct `data-cm-part` children of a slot are movable",
@@ -746,7 +745,7 @@ class SkillToolIndexRetentionTests(unittest.TestCase):
             "--agent",
             "--no-session-id",
             "--force",
-            "--portable",
+            "to_portable.py",
             "only recommends `report`, `plan`, or flat `slides`",
             "mismatch warning is advisory",
             "[--toc --fix-skip --inline-images --images-base DIR] --strict",

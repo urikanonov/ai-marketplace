@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.264.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.265.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -407,8 +407,8 @@
         <p class="section-sub">Same document, three ways to assemble it - pick based on whether it stays local, travels, or must work with no network. The graph in each card shows where every part comes from.</p>
         <div class="grid">
           <div class="card feature mode-card">
-            <h3>Non-portable <span class="badge">default</span></h3>
-            <p>References shared companion assets instead of inlining them, so each regeneration is far cheaper in tokens. Best for fast, personal iteration while you and the agent shape the document.</p>
+            <h3>Non-portable <span class="badge">legacy</span></h3>
+            <p>References shared companion assets instead of inlining them. New documents are no longer generated this way, but existing ones are opened, validated and edited exactly as before, permanently - the runtime and its companion files are kept for that reason. Migrate one to Portable whenever you like with <code>tools/authoring/to_portable.py</code>.</p>
             <dl class="mode-sources" aria-label="Where each part comes from in Non-portable mode">
               <div class="mode-source"><dt>Styles + runtime</dt><dd><span class="src src-folder">skill folder</span></dd></div>
               <div class="mode-source"><dt>Mermaid + charts</dt><dd><span class="src src-cdn">CDN</span></dd></div>
@@ -458,6 +458,25 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.265.0] - 2026-07-28</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li><code>tools/authoring/to_portable.py</code> migrates an existing NonPortable document into a self-contained Portable one, preserving its authored content, its embedded comments, and its handled ids - the point of migrating rather than regenerating is that review state travels with the document. It is the counterpart to <code>upgrade.py</code>, which deliberately refuses a NonPortable file. Running it twice is a no-op, and a file that is not a commentable-html document is refused rather than rewritten.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Portable is now the ONLY mode generated, by every creation route. <code>new_document.py</code> follows the resolved TEMPLATE rather than a flag, so the two can never disagree: the default is <code>dist/PORTABLE.html</code>, and a caller that genuinely needs a legacy NonPortable document asks for it explicitly with <code>--template &lt;dist&gt;/NONPORTABLE.html</code>, which still gets the full companion-reference handling. <code>retrofit.py</code> also produces a Portable document by default; a legacy one now requires an explicit <code>--nonportable</code> or one of the companion-href options. <code>--nonportable</code> on <code>new_document.py</code> is accepted but ignored, and <code>--portable</code> on either tool now simply names the default, so existing callers keep working.</li>
+              <li>NonPortable documents are opened, validated and finalized PERMANENTLY, with no deprecation deadline. The NonPortable runtime and its companions (<code>NONPORTABLE.html</code>, <code>commentable-html.{css,js,assets.js}</code>) stay shipped for exactly that reason: existing documents reference them by bare name and would break on the next auto-update if they were dropped. Only CREATING a new NonPortable document by default has gone away.</li>
+            </ul>
+            <div class="group-label">Security</div>
+            <ul>
+              <li><code>to_portable.py</code> neutralizes any raw-text terminator in the companion bytes it inlines, so a stylesheet supplied through <code>--dist</code> can no longer close its <code>&lt;style&gt;</code> element and have the rest parse as live markup - control of a stylesheet used to escalate to arbitrary script execution in a document holding authored content and reviewer comments. The payload is escaped, never silently dropped.</li>
+              <li>The migration writes through a staged temp file swapped in with <code>os.replace</code> (the crash-safe helper <code>content_replace.py</code> already used, now shared as <code>_atomic_io.py</code>). The destination used to be truncated before the replacement bytes existed, so an interrupted or failing write destroyed the document being migrated - reproduced as a 1.4 MB file reduced to zero bytes.</li>
+              <li>The CONTENT region that decides which companion reference is the real one is now located from line-anchored HTML-comment markers and required to be unique, so reviewer text quoting the marker can no longer invert the region and send the stylesheet into the author&#x27;s markup; an ambiguous document is refused rather than guessed at. The mode transition parses the layer descriptor as JSON and requires exactly one nonportable-to-portable transition, so a reformatted descriptor can no longer be reported as migrated while still marked nonportable.</li>
+              <li>Every anchor is resolved against the document&#x27;s original bytes and applied in one pass of non-overlapping edits, and elements are matched in a view with HTML comments and raw-text bodies blanked. Untrusted companion text can no longer aim a later step, and a commented-out or quoted copy of a companion reference or of the layer descriptor is never the one rewritten. A companion is matched by the BASENAME of the URL its element points at, so the absolute <code>file://</code> references the CLI produced by default, the <code>--assets-relative</code> / <code>--copy-assets</code> / <code>--assets-href</code> prefixes and <code>?v=</code> cache-busters all migrate rather than being refused; CRLF documents migrate too. Migration finally refuses to write a result that would still reference a companion, so it can never report success on a document that is not self-contained.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.264.0] - 2026-07-28</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -465,6 +484,8 @@
               <li>A table that is genuinely too wide for the page now scrolls horizontally inside its own box instead of pushing the whole document sideways. This is the other half of the fix above: <code>break-word</code> is ignored for min-content sizing, which is exactly what stops a column being shredded, but it also means a table whose columns cannot fit reports a min-content width larger than its container and escapes it. Every table is therefore rendered inside a <code>.cmh-table-scroll</code> box - the containment narrow screens already had, now at every width. The wrapper is a real element rather than <code>display: block; overflow-x: auto</code> on the table itself, because <code>display: block</code> wraps the rows in an anonymous table box that shrink-to-fits and collapsed a narrow table&#x27;s columns to their content width (a 2-column table measured 99px instead of 400px) - which also means narrow screens no longer suffer that collapse. A wrapper that actually scrolls is keyboard-focusable and labelled, so it can be scrolled without a mouse, while a table that fits adds no tab stop. A table built at runtime by an author script is contained too, and a table inside a flex or grid parent keeps its width and its placement. A focused scroll box owns the arrow keys in a deck, so its clipped columns stay reachable by keyboard instead of the arrows changing slides. Printing is unaffected: the wrapper reverts to <code>overflow: visible</code> so a wide table is never clipped out of a PDF.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.262.0] - 2026-07-28</h3></div>
             <div class="group-label">Changed</div>
@@ -473,8 +494,6 @@
               <li>The decision is re-evaluated on every finalize rather than made once when the document is created, so a document that GAINS a diagram after the payload was dropped gets it back and its Offline export keeps working. A document whose content region cannot be located is left alone entirely - never stripped, and never grown.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.261.0] - 2026-07-27</h3></div>
             <div class="group-label">Changed</div>
@@ -521,19 +540,7 @@
               <li><code>tools/authoring/extract_comments.py</code> prints the embedded comment snapshot as JSON or fenced text for the peer-review path, where a returned Portable file carries comments nobody pasted. It reports what is baked into the file, never &quot;all current comments&quot; - a reviewer&#x27;s newer edits can still sit in browser <code>localStorage</code>, which no command-line tool can read - and it wraps every reviewer note in an untrusted-note fence so a downstream agent treats it as data, not instructions (CMH-CONTENT-04).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.257.0] - 2026-07-26</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Syntax highlighting is now reversible. A new shared highlight core exposes <code>dehighlight()</code>, which recovers the exact source a highlighted code block was built from, for every language including KQL. The inverse is a LEFT inverse over newline-normalized input, because both emitters fold CRLF and lone CR to LF; for content already stored highlighted, dehighlight followed by re-highlight is byte-identical, so an untouched block never churns bytes. Escaped entities, a literal <code>&lt;/span&gt;</code> inside a string, multi-line tokens (docstrings, block comments, KQL verbatim strings), tabs and astral Unicode all survive the round trip (CMH-HL-09).</li>
-              <li>The inverse is a strict single-pass scanner, so content the highlighters did not produce is REFUSED rather than corrupted: hand-written markup in a code block, a nested or malformed span, extra attributes, an unknown token kind, or non-canonical escaping the emitters never write (<code>&amp;quot;</code>, <code>&amp;#x3C;</code>, <code>&amp;eacute;</code>, a bare <code>&amp;</code>) all return <code>None</code> from <code>dehighlight()</code>, and <code>classify()</code> reports <code>raw</code> / <code>highlighted</code> / <code>hand-written</code> so callers can pass such a block through untouched. The exact-escaping rule also makes an accidental double application refuse instead of silently decoding source that legitimately contains <code>&amp;amp;</code>. A repeated-substitution loop is deliberately not used - it would peel nested spans from the inside out and hand back plausible but corrupted source (CMH-HL-10).</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The code highlighter and the KQL highlighter now share one emission point and one newline normalizer, so the reversibility guarantee covers every language instead of being reimplemented per tokenizer. The two tokenizers stay separate (their grammars genuinely differ) and both the <code>cmh-code-*</code> and <code>cmh-kql-*</code> class vocabularies are retained, so output bytes are unchanged and already-generated documents keep rendering exactly as before. Emitter output is now asserted flat, pinning the property the inverse depends on (CMH-HL-11).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">218 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">219 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
