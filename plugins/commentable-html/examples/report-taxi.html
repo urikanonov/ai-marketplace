@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.265.0" />
+<meta name="commentable-html-version" content="1.268.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.265.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.268.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>NYC Taxi 2014 Report</title>
 
@@ -3959,7 +3959,7 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
      content, not a template-owned region.
 -->
 <div class="app">
-<main data-cmh-content-root id="commentRoot" data-comment-key="nyc-taxi-2014-report" data-doc-label="NYC Taxi 2014 Report" data-doc-source="report-taxi.html" data-generated="2026-07-28">
+<main data-cmh-content-root id="commentRoot" data-comment-key="nyc-taxi-2014-report" data-doc-label="NYC Taxi 2014 Report" data-doc-source="report-taxi.html" data-generated="2026-07-29">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
   <h1>NYC Yellow Taxi - 2014 Operations Status Report</h1>
@@ -4326,7 +4326,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.265.0";
+const CMH_VERSION = "1.268.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -15345,6 +15345,45 @@ async function saveStandalone() {
   showToast(`Downloaded ${filename} - one portable file, ${n} comment${n === 1 ? "" : "s"} embedded, no companion files needed.`, { center: true });
 }
 /* ---------- Export Offline (portable + zero-network rich-content embedding) ---------- */
+// Whether a document uses Chart.js is decided on a deliberately LOOSE signal: any mention of the
+// `Chart` global. The two failure directions are not symmetric - a false positive inlines a library
+// the document did not need (bytes), a false negative ships a chart that never renders - so this
+// errs toward inlining, and it also catches indirect construction (`const C = window.Chart;
+// new C(...)`, `new (Chart)(...)`, destructuring) that a literal `new Chart(` test would miss. The
+// same signal keeps such a script out of the loader strip and hoists it below the inlined library,
+// so provisioning and ordering can never disagree. It is read from the document BEFORE any script
+// is stripped, so a script the loader strip removes cannot take the evidence with it.
+const _OFFLINE_CHART_GLOBAL_RE = /\bChart\b/;
+// The narrower "this script CONSTRUCTS a chart" signal. Hoisting is still keyed on it for scripts
+// anywhere in the document, because the authoring validator requires chart init to sit after the
+// layer's JS region (so Save-as-plain preserves the chart) - and because moving an in-content script
+// changes the text offsets the comment anchors are measured against, so the move must stay rare and
+// deliberate rather than firing on any mention of the global.
+const _OFFLINE_CHART_CTOR_RE = /\bnew\s+(?:Chart|(?:window|globalThis|self)\.Chart)\s*\(/;
+// The review layer's own script ships inside every exported document and its source text mentions
+// "Chart.js" (the third-party notice it emits), so every content scan must skip it or it matches
+// every document. The strip below keeps its historical broad signature (skipping too much there only
+// leaves a script alone), but the EVIDENCE scan skips on a much narrower one - the layer's own
+// version declaration, plus its position outside the authored content root - because there a wrong
+// skip means a dropped library. `__commentableHtmlReady` is a documented public hook and
+// `COMMENT_KEY = ` is generic, so an author script may legitimately contain either.
+const _OFFLINE_LAYER_SCRIPT_RE = /__commentableHtmlReady|const CMH_VERSION|COMMENT_KEY = /;
+const _OFFLINE_LAYER_DECL_RE = /const CMH_VERSION\s*=/;
+// A script THIS exporter inlined on an earlier pass, recognized by the marker AND a value the
+// exporter itself emits - so an authored script that carries the attribute for its own bookkeeping
+// is neither deleted nor excluded from the evidence scan.
+function _offlineIsInlinedLibScript(s) {
+  const lib = s.getAttribute("data-cmh-offline-lib") || s.getAttribute("data-cmh-offline-lib-init") || "";
+  return lib === "chartjs" || lib === "mermaid";
+}
+// The HTML "JavaScript MIME type" set: a legacy type such as `text/ecmascript` still executes, so a
+// content scan that ignored it would miss real code.
+function _offlineIsRunnableScriptType(type) {
+  const t = String(type || "").split(";")[0].trim().toLowerCase();
+  if (!t || t === "module") return true;
+  return /^(?:text|application)\/(?:x-)?(?:java|ecma)script$/.test(t) ||
+    /^text\/(?:javascript1\.[0-5]|jscript|livescript)$/.test(t);
+}
 function _offlineDocFromHtml(html) {
   return new DOMParser().parseFromString(String(html || ""), "text/html");
 }
@@ -15462,7 +15501,15 @@ function _stripOfflineRichRenderers(doc) {
         if (n.parentNode) n.parentNode.removeChild(n);
       }
     });
+    // Libraries this exporter inlined on a previous pass carry their own marker, so remove them by
+    // that marker rather than by recognizing their bundled text: a text heuristic that ever failed
+    // would leave a stale 1 MB copy behind and append another on every re-export. The marker VALUE
+    // must be one this exporter emits, so an authored element carrying the attribute for its own
+    // bookkeeping is never silently deleted from the document.
   }
+  doc.querySelectorAll("script[data-cmh-offline-lib], script[data-cmh-offline-lib-init]").forEach(function (s) {
+    if (_offlineIsInlinedLibScript(s)) s.remove();
+  });
   doc.querySelectorAll("script[src]").forEach(function (s) {
     const src = s.getAttribute("src") || "";
     if (/(^|\/)(?:mermaid(?:\.esm)?(?:\.min)?\.mjs|mermaid(?:\.min)?\.js|chart(?:\.umd)?(?:\.min)?\.js)(?:[?#]|$)/i.test(src) ||
@@ -15474,13 +15521,20 @@ function _stripOfflineRichRenderers(doc) {
     const type = (s.getAttribute("type") || "").split(";")[0].trim().toLowerCase();
     if (type && type !== "module" && type !== "text/javascript" && type !== "application/javascript") return;
     const body = s.textContent || "";
-    if (/__commentableHtmlReady|const CMH_VERSION|COMMENT_KEY = /.test(body)) return;
+    if (_OFFLINE_LAYER_SCRIPT_RE.test(body)) return;
     if (/mermaid/i.test(body) && (/\bimport\s*\(/.test(body) || /\bmermaid\.(?:initialize|run)\b/i.test(body) || /\.run\s*\(/.test(body))) {
       s.remove();
       return;
     }
-    if (!/\bnew\s+(?:Chart|(?:window|globalThis|self)\.Chart)\s*\(/.test(body) &&
-        /chart(?:\.umd)?(?:\.min)?\.js|chart\.js@|window\.Chart\s*=\s*undefined/i.test(body)) {
+    // Author code that USES the Chart global is kept: naming a bundle file (in a comment, say) must
+    // not delete the very script the inlined library exists for. Only a loader shim - one that names
+    // a bundle without using the global, or that disables it - is removed.
+    if (/window\.Chart\s*=\s*undefined/i.test(body)) {
+      s.remove();
+      return;
+    }
+    if (!_OFFLINE_CHART_GLOBAL_RE.test(body) &&
+        /chart(?:\.umd)?(?:\.min)?\.js|chart\.js@/i.test(body)) {
       s.remove();
     }
   });
@@ -15532,6 +15586,71 @@ function _offlineDocUsesCharts(doc) {
   const docRoot = doc.getElementById("commentRoot") || doc.body;
   return !!(docRoot && docRoot.querySelector("figure.chart canvas, canvas.cmh-chart"));
 }
+// The chart-canvas selector above is a deliberate SUPERSET of what any one renderer draws, so the
+// shape of a canvas is not evidence that Chart.js is needed: a canvas carrying
+// data-cmh-chart-points / data-cmh-chart-source is drawn by the runtime's own 2D renderer
+// (setupInteractiveCharts) and never calls Chart.js. Decide on evidence instead - a chart canvas the
+// built-in renderer will NOT draw, or a surviving script that mentions the `Chart` global - so a
+// document whose charts are all built-in does not carry a megabyte of dead library. The superset
+// stays load-bearing: an author may attach their own Chart.js to any canvas, including a built-in
+// one, and that still wins. Detection is deliberately lopsided - a false positive costs bytes, a
+// false negative ships a chart that never renders - so it errs toward inlining. Two shapes are still
+// out of its reach, both unchanged from before this decision existed: an author script loaded from a
+// relative `src` (its body cannot be read here, and such a document is not self-contained anyway),
+// and a chart canvas placed OUTSIDE the content root (the shape gate, and the author-time decision
+// about which documents carry the vendored payload at all, are both scoped to that root).
+function _offlineDocReferencesChartLib(doc) {
+  const docRoot = doc.getElementById("commentRoot");
+  return Array.prototype.some.call(doc.querySelectorAll("script:not([src])"), function (s) {
+    // The layer's own data blocks carry reviewer text; skip them by id exactly as the network strip
+    // does, so a comment quoting "Chart" cannot decide a megabyte.
+    if (/^(?:embeddedComments|handledCommentIds|commentableHtmlLayer|cmhVendoredRichLibs|reviewedSections)$/.test(s.getAttribute("id") || "")) return false;
+    // A library THIS exporter inlined on an earlier pass is not the author's evidence; counting it
+    // would make every re-export re-inline it forever.
+    if (_offlineIsInlinedLibScript(s)) return false;
+    if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return false;
+    const body = s.textContent || "";
+    // Only a script OUTSIDE the authored content root can be the review layer, so an author script
+    // that happens to quote the layer's own tokens still counts as evidence.
+    if ((!docRoot || !docRoot.contains(s)) && _OFFLINE_LAYER_DECL_RE.test(body)) return false;
+    return _OFFLINE_CHART_GLOBAL_RE.test(body);
+  });
+}
+// Mirror the bail conditions of the built-in renderer's own _chartConfig(): data that does not parse,
+// or that yields no usable point, draws nothing - so such a canvas is NOT one the built-in renderer
+// covers, and the library must still travel.
+function _offlineParseChartData(raw) {
+  try { return { ok: true, value: JSON.parse(String(raw || "").trim() || "null") }; }
+  catch (e) { return { ok: false, value: null }; }
+}
+function _offlineChartDataUsable(parsed) {
+  const points = Array.isArray(parsed) ? parsed : (parsed && parsed.points);
+  if (!Array.isArray(points)) return false;
+  return points.some(function (point) {
+    return point && typeof point.label === "string" && point.label.trim() && Number.isFinite(Number(point.value));
+  });
+}
+function _offlineDocNeedsChartLib(doc, referencesChartLib) {
+  if (!_offlineDocUsesCharts(doc)) return false;
+  const docRoot = doc.getElementById("commentRoot") || doc.body;
+  const canvases = Array.prototype.slice.call(docRoot.querySelectorAll("figure.chart canvas, canvas.cmh-chart"));
+  const drawnByRuntime = function (canvas) {
+    // Follow _chartConfig's precedence exactly: a resolvable source element WINS - unparseable
+    // source JSON makes the renderer give up entirely, and only a source that parses FALSY lets it
+    // fall back to the inline points.
+    const sourceId = (canvas.getAttribute("data-cmh-chart-source") || "").trim();
+    const source = sourceId ? doc.getElementById(sourceId) : null;
+    if (source) {
+      const parsed = _offlineParseChartData(source.textContent);
+      if (!parsed.ok) return false;
+      if (parsed.value) return _offlineChartDataUsable(parsed.value);
+    }
+    const inline = _offlineParseChartData(canvas.getAttribute("data-cmh-chart-points"));
+    return inline.ok && _offlineChartDataUsable(inline.value);
+  };
+  if (!canvases.every(drawnByRuntime)) return true;
+  return referencesChartLib === undefined ? _offlineDocReferencesChartLib(doc) : !!referencesChartLib;
+}
 function _offlineAppendInlineScript(doc, head, code, attrs) {
   const s = doc.createElement("script");
   Object.keys(attrs || {}).forEach(function (name) { s.setAttribute(name, attrs[name]); });
@@ -15551,11 +15670,18 @@ function _offlineAppendLibNotice(doc, head, name, license) {
 }
 function _offlineHoistChartScripts(doc) {
   const body = doc.body || doc.querySelector("body");
-  if (!body) return;
-  const scripts = Array.from(doc.querySelectorAll("script")).filter(function (s) {
-    const type = (s.getAttribute("type") || "").split(";")[0].trim().toLowerCase();
-    if (type && type !== "text/javascript" && type !== "application/javascript") return false;
-    return /\bnew\s+(?:Chart|(?:window|globalThis|self)\.Chart)\s*\(/.test(s.textContent || "");
+  const head = doc.head || doc.querySelector("head");
+  if (!body || !head) return;
+  const scripts = Array.from(doc.querySelectorAll("script:not([src])")).filter(function (s) {
+    if (_offlineIsInlinedLibScript(s)) return false;
+    if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return false;
+    const text = s.textContent || "";
+    if (_OFFLINE_LAYER_DECL_RE.test(text)) return false;
+    if (_OFFLINE_CHART_CTOR_RE.test(text)) return true;
+    // A HEAD script that only references the global still has to move: the library is appended as
+    // the head's last child, so anything already in the head would otherwise run before it. Body
+    // scripts already run after it, and moving one would shift comment-anchor offsets for nothing.
+    return head.contains(s) && _OFFLINE_CHART_GLOBAL_RE.test(text);
   });
   scripts.forEach(function (s) { body.appendChild(s); });
 }
@@ -15563,11 +15689,11 @@ function _offlineRemoveVendoredBundleScript(doc) {
   const el = doc.getElementById("cmhVendoredRichLibs");
   if (el) el.remove();
 }
-async function _offlineInlineRichLibs(doc) {
+async function _offlineInlineRichLibs(doc, referencesChartLib) {
   const head = doc.head || doc.querySelector("head");
   if (!head) return;
   const needMermaid = _offlineDocUsesMermaid(doc);
-  const needCharts = _offlineDocUsesCharts(doc);
+  const needCharts = _offlineDocNeedsChartLib(doc, referencesChartLib);
   if (!needMermaid && !needCharts) {
     _offlineRemoveVendoredBundleScript(doc);
     return;
@@ -15636,11 +15762,14 @@ async function _offlineInlineRichLibs(doc) {
 }
 async function _buildOfflineHtml(portableHtml) {
   const doc = _offlineDocFromHtml(portableHtml);
+  // Read the "does this document use Chart.js" evidence BEFORE anything is stripped, so a script the
+  // loader strip removes cannot take the only sign of the library with it.
+  const referencesChartLib = _offlineDocReferencesChartLib(doc);
   _stripOfflineRichRenderers(doc);
   _stripOfflineNetworkLoads(doc);
   _stripOfflineEventHandlers(doc);
   _offlineHoistChartScripts(doc);
-  await _offlineInlineRichLibs(doc);
+  await _offlineInlineRichLibs(doc, referencesChartLib);
   _ensureOfflineCsp(doc);
   return _retargetLayerDescriptor(_serializeOfflineDoc(doc), "offline").replace(/\n{3,}/g, "\n\n");
 }

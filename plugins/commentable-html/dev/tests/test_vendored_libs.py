@@ -504,22 +504,44 @@ class RuntimeParityTests(unittest.TestCase):
         someone taught the exporter a NEW chart shape, while the stripper silently missed it -
         exactly the false negative that deletes a payload the export then demands.
 
-        The selectors are taken from the three offline-usage functions and NOT filtered on the
+        The selectors are taken from the offline-usage functions and NOT filtered on the
         words "chart"/"mermaid": a keyword filter would silently drop a future selector such as
         `canvas[data-cmh-visual]` and quietly re-open the hole this test exists to close.
+
+        `_offlineDocNeedsChartLib` is in the list because it is the function that actually decides
+        whether the export inlines Chart.js; it repeats the chart-canvas selector, so pinning it
+        here is what stops that copy from drifting away from the one this module strips against.
+        Functions that scan `script` elements for evidence (`_offlineDocReferencesChartLib`) are
+        deliberately NOT in the list - their selector is not a content shape.
+
+        The per-function assertion below is what makes that pinning real: a UNION alone would still
+        pass if one function's copy of the chart selector were narrowed or dropped, because another
+        function contributes the same strings.
         """
         source = self._runtime_source()
         found = set()
-        for fn in ("_offlineLiveDocNeedsRichLibs", "_offlineDocUsesMermaid", "_offlineDocUsesCharts"):
+        per_function = {}
+        for fn in ("_offlineLiveDocNeedsRichLibs", "_offlineDocUsesMermaid", "_offlineDocUsesCharts",
+                   "_offlineDocNeedsChartLib"):
             start = source.find("function " + fn)
             self.assertNotEqual(start, -1,
                                 "the runtime no longer defines %s; the parity check is stale "
                                 "and must be re-pointed at whatever replaced it" % fn)
             body = source[start:source.find("\n}", start)]
+            selectors = set()
             for m in re.finditer(r'querySelector(?:All)?\(\s*"([^"]*)"', body):
                 for part in m.group(1).split(","):
                     if part.strip():
-                        found.add(part.strip())
+                        selectors.add(part.strip())
+            per_function[fn] = selectors
+            found |= selectors
+        chart_selectors = {"figure.chart canvas", "canvas.cmh-chart"}
+        for fn in ("_offlineDocUsesCharts", "_offlineDocNeedsChartLib"):
+            self.assertEqual(
+                per_function[fn], chart_selectors,
+                "%s must query exactly the pinned chart-canvas selectors. Both the shape gate and "
+                "the inline-the-library decision carry this literal; if one is narrowed, a document "
+                "whose chart the other still recognises loses the library its export needs." % fn)
         self.assertTrue(found, "could not extract any selector from the runtime usage functions")
         self.assertEqual(
             found, set(vendored_libs.RUNTIME_SELECTORS),
