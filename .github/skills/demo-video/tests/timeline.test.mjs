@@ -504,3 +504,28 @@ test("every beat names itself on screen (DEMO-PLAN-05)", () => {
   const toasts = REPORT_BEATS.map((b) => b.toast || b.label);
   assert.equal(new Set(toasts).size, toasts.length, "two beats must not claim the same caption");
 });
+
+// If the head and tail between them cover the whole session there is no body left to absorb the
+// compression. Falling through to the uniform speed-up then raced through exactly the spans the
+// caller asked to protect - and said nothing about it.
+test("a fully protected clip overruns honestly instead of racing its protected spans (DEMO-FF-18)", () => {
+  const events = [];
+  for (let i = 0; i <= 10; i++) events.push({ t: i * 1000, data: `line ${i}\n` });
+  const uncompressed = Number.MAX_SAFE_INTEGER;
+
+  for (const [name, opts] of [
+    ["the head covers everything", { headMs: 11000 }],
+    ["the tail covers everything", { tailMs: 11000 }],
+    ["head and tail overlap", { headMs: 7000, tailMs: 7000 }],
+  ]) {
+    const out = fitTimeline(events, 3000, { ...opts, idleMs: uncompressed });
+    assert.equal(out.protectedOverrun, true, `${name}: should report the overrun`);
+    assert.equal(out.durationMs, 10000, `${name}: the protected span must keep its own pace`);
+    assert.equal(out.events.length, events.length, `${name}: no event may be dropped`);
+  }
+
+  // A genuine body is still compressed - the guard must not disable the feature it protects.
+  const normal = fitTimeline(events, 3000, { headMs: 1000, tailMs: 1000, idleMs: uncompressed });
+  assert.notEqual(normal.protectedOverrun, true);
+  assert.ok(normal.durationMs <= 3000, `a real body should still be fitted, got ${normal.durationMs}`);
+});

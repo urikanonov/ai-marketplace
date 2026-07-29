@@ -143,8 +143,10 @@ export function sanitizePasteText(text) {
     .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
     // eslint-disable-next-line no-control-regex
     .replace(/\u001b[\]P^_][\s\S]*?(?:\u0007|\u001b\\)/g, "")
+    // C0 AND C1. U+009B is an 8-bit CSI: a C1-aware parser reads `\u009b201~` as the paste
+    // terminator just as it reads `ESC[201~`, so stripping only C0 left the injection open.
     // eslint-disable-next-line no-control-regex
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, "")
     .replace(/\r\n?/g, "\n");
 }
 

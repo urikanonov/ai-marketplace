@@ -806,7 +806,15 @@ async function captureTerminal(args) {
   // was pasted back - so a composite clip can splice the browser phase between them.
   const marks = [];
   let buffer = "";
+  // Total bytes ever seen, which never rewinds. `buffer` keeps only a recent window, so a plain
+  // index into it goes stale the moment that window slides - see sinceStep below.
+  let seen = 0;
   let lastDataAt = Date.now();
+  // Output produced since a step began, as much of it as is still retained. Slicing `buffer` by a
+  // recorded LENGTH breaks once the window slides: the offset then points past what is kept, and a
+  // step whose buffer was already full when it started would slice an empty string and wait for its
+  // marker forever - which for the shipped script is a twenty-five minute hang.
+  const sinceStep = (fromSeen) => buffer.slice(Math.max(0, buffer.length - (seen - fromSeen)));
   // The driver waits on the session; if the session ends, every wait it is in must end too.
   let childExited = false;
   let driverError = null;
@@ -850,6 +858,7 @@ async function captureTerminal(args) {
       // here rather than re-derived. It is capped because a long agent run prints megabytes and the
       // only thing a step ever looks for is a recent marker.
       buffer = (buffer + data).slice(-65536);
+      seen += data.length;
       lastDataAt = Date.now();
     });
     // Scripted turns are driven from here, alongside the live stdin forwarding above (an operator
@@ -861,12 +870,12 @@ async function captureTerminal(args) {
         // Each step only reads output produced SINCE IT BEGAN. Sharing one buffer let a step whose
         // marker had already appeared for an earlier step fire immediately, before the session had
         // done anything the step was waiting on.
-        const from = buffer.length;
+        const from = seen;
         let skipped = false;
         for (;;) {
           if (childExited) throw new Error(`session ended while step "${step.mark}" was waiting`);
           const state = stepReady(step, {
-            buffer: buffer.slice(from),
+            buffer: sinceStep(from),
             lastDataAt,
             now: Date.now(),
             startedAt,
@@ -955,6 +964,14 @@ async function captureTerminal(args) {
   const transcriptFile = outFile.replace(/\.cast\.json$/, "") + ".transcript.txt";
   fs.writeFileSync(transcriptFile, scrubbed.transcript);
 
+  // A driver that could not finish means the session is NOT the one the script describes - a turn
+  // may never have been sent. The cast is still written, because a long capture is expensive and
+  // the partial recording may be worth keeping, but it must never look like a clean run.
+  if (driverError) {
+    console.error(`\nFAILED: the capture script did not complete: ${driverError.message}`);
+    console.error("The cast below is PARTIAL - it does not contain every turn the script asked for.");
+    process.exitCode = 1;
+  }
   console.log(`\ncast:       ${outFile}`);
   console.log(`transcript: ${transcriptFile}`);
   console.log(`redacted:   ${scrubbed.redactions} match(es) scrubbed before writing`);
@@ -964,7 +981,7 @@ async function captureTerminal(args) {
   // node-pty keeps handles alive after the child exits, so the process would hang on its own - but
   // exiting outright can truncate a piped stdout, losing the paths just printed. Flush, then go.
   await new Promise((done) => process.stdout.write("", done));
-  process.exit(exitCode || 0);
+  process.exit(driverError ? 1 : (exitCode || 0));
 }
 
 // A cast's COMMAND is shown in the clip's title bar, so the gate has to read it too - scanning only
