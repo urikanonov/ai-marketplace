@@ -184,7 +184,7 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   const formatBar = el.querySelector(".cm-format-bar");
   cleanups.push(wireNoteFormatBar(formatBar, ta));
   cleanups.push(addListener(ta, "keydown", (e) => {
-    if (e.isComposing) return;
+    if (e.isComposing || isNoteComposing(ta)) return;
     if (handleNoteFormatShortcut(e, ta)) return;
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveComposerElement(el); }
     else if (e.key === "Escape") { e.preventDefault(); closeComposerElement(el); }

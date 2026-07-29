@@ -5842,12 +5842,18 @@ function wireNoteFormatBar(bar, ta) {
   return function () { while (offs.length) { try { offs.pop()(); } catch (e) {} } };
 }
 
+// True while an IME composition is in progress in `ta` (tracked by `wireNoteFormatBar`). The event's
+// own `isComposing` is the primary signal; this covers engines that report a Ctrl-modified keydown
+// with `isComposing` already false before `compositionend`, so a surface's save/cancel keys stay
+// guarded too - not just the formatting shortcuts.
+function isNoteComposing(ta) {
+  return !!(ta && ta.__cmhComposing);
+}
+
 // Ctrl/Cmd+B/I/U/K formatting shortcuts. Returns true when the key was consumed, so each surface
 // keeps its own Enter (save) and Escape (cancel) handling below it.
 function handleNoteFormatShortcut(e, ta) {
-  // `isComposing` is the primary signal; the tracked flag covers engines that report a
-  // Ctrl-modified keydown mid-composition with `isComposing` already false.
-  if (e.isComposing || (ta && ta.__cmhComposing)) return false;
+  if (e.isComposing || isNoteComposing(ta)) return false;
   if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return false;
   var k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   var fmt = k === "b" ? "bold" : k === "i" ? "italic" : k === "u" ? "underline" : k === "k" ? "link" : null;
@@ -6167,7 +6173,7 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   const formatBar = el.querySelector(".cm-format-bar");
   cleanups.push(wireNoteFormatBar(formatBar, ta));
   cleanups.push(addListener(ta, "keydown", (e) => {
-    if (e.isComposing) return;
+    if (e.isComposing || isNoteComposing(ta)) return;
     if (handleNoteFormatShortcut(e, ta)) return;
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveComposerElement(el); }
     else if (e.key === "Escape") { e.preventDefault(); closeComposerElement(el); }
@@ -7068,7 +7074,7 @@ function _buildInlineReplyEditor(initialText, saveLabel, onSave, onCancel, opts)
   wrap.addEventListener("keydown", function (e) {
     // Ignore shortcuts mid-IME composition so Escape/Enter cannot discard a draft the composer is
     // still assembling (e.g. a CJK candidate window).
-    if (e.isComposing) return;
+    if (e.isComposing || isNoteComposing(ta)) return;
     if (handleNoteFormatShortcut(e, ta)) return;
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); doSave(); }
     else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onCancel(); }

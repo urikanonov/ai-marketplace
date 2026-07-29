@@ -494,6 +494,25 @@ test.describe("rich-text comment notes (CMH-RICH)", () => {
     await expect(other.locator("textarea")).toHaveValue("unrelated draft");
     await other.locator("textarea").press("Escape");
     expect((await storedComments(page)).length).toBe(1);
+
+    // Mid-composition the editor swallows save and cancel too, even when the engine reports the
+    // keydown with `isComposing` already false: the tracked composition state still guards them.
+    await page.locator(".cm-card .cm-reply-btn").first().click();
+    const editor3 = page.locator(".cm-card .cm-reply-compose").last();
+    const ta3 = editor3.locator("textarea");
+    await ta3.fill("mid composition");
+    await ta3.evaluate((el) => el.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })));
+    await ta3.press("Control+Enter");
+    await expect(editor3).toHaveCount(1);
+    expect((await storedComments(page)).length).toBe(1);
+    await ta3.press("Escape");
+    await expect(editor3).toHaveCount(1);
+    await expect(ta3).toHaveValue("mid composition");
+    // Once the composition commits, both work again.
+    await ta3.evaluate((el) => el.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true })));
+    await ta3.press("Control+Enter");
+    await expect(page.locator(".cm-reply-compose")).toHaveCount(0);
+    expect((await storedComments(page)).length).toBe(2);
     // Ctrl+Enter still saves the reply, markers and all.
     await page.locator(".cm-card .cm-reply-btn").first().click();
     const editor2 = page.locator(".cm-card .cm-reply-compose").last();
@@ -501,7 +520,7 @@ test.describe("rich-text comment notes (CMH-RICH)", () => {
     await editor2.locator("textarea").press("Control+Enter");
     await expect(page.locator(".cm-reply-compose")).toHaveCount(0);
     const stored = await storedComments(page);
-    expect(stored.length).toBe(2);
+    expect(stored.length).toBe(3);
     expect(stored.some((c) => c.note === "**saved** reply")).toBe(true);
   });
 });

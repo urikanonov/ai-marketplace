@@ -27,7 +27,9 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   border) as soon as the reviewer types or formats, matching the floating composer; it used to stay
   marked invalid until the editor closed.
 - A formatting-toolbar click during an IME composition is ignored on both surfaces, so markers can no
-  longer be spliced into provisional (for example CJK candidate) text.
+  longer be spliced into provisional (for example CJK candidate) text. The same tracked composition
+  state also guards each editor's save and cancel keys, so Ctrl/Cmd+Enter and Esc stay inert
+  mid-composition even on an engine that reports the keydown with `isComposing` already false.
 
 ## [1.276.0] - 2026-07-29
 

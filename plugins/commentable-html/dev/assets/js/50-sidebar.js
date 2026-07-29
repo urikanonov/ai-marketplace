@@ -457,7 +457,7 @@ function _buildInlineReplyEditor(initialText, saveLabel, onSave, onCancel, opts)
   wrap.addEventListener("keydown", function (e) {
     // Ignore shortcuts mid-IME composition so Escape/Enter cannot discard a draft the composer is
     // still assembling (e.g. a CJK candidate window).
-    if (e.isComposing) return;
+    if (e.isComposing || isNoteComposing(ta)) return;
     if (handleNoteFormatShortcut(e, ta)) return;
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); doSave(); }
     else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onCancel(); }

@@ -467,7 +467,7 @@
             <ul>
               <li>The side-pane inline reply/edit editor&#x27;s key handling now lives on the editor wrapper rather than its textarea, so Ctrl/Cmd+Enter, Esc, and the formatting shortcuts also work while focus is on one of the editor&#x27;s buttons. Previously Esc pressed there fell through to the document handler, which would discard an unrelated open composer&#x27;s draft while leaving the inline editor open.</li>
               <li>The side-pane inline editor now clears the blank-note invalid state (<code>aria-invalid</code> and the red border) as soon as the reviewer types or formats, matching the floating composer; it used to stay marked invalid until the editor closed.</li>
-              <li>A formatting-toolbar click during an IME composition is ignored on both surfaces, so markers can no longer be spliced into provisional (for example CJK candidate) text.</li>
+              <li>A formatting-toolbar click during an IME composition is ignored on both surfaces, so markers can no longer be spliced into provisional (for example CJK candidate) text. The same tracked composition state also guards each editor&#x27;s save and cancel keys, so Ctrl/Cmd+Enter and Esc stay inert mid-composition even on an engine that reports the keydown with <code>isComposing</code> already false.</li>
             </ul>
           </div>
           <div class="release">
