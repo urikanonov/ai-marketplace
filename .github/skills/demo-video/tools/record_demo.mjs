@@ -41,6 +41,7 @@ import http from "http";
 import { planBeats, fitTimeline, compressTimeline, coalesceEvents, MIN_BEAT_MS } from "./timeline.mjs";
 import { REPORT_BEATS } from "./report-beats.mjs";
 import { DEFAULT_RULES, homeRules, scanText, scrubEvents, scrubText, createScrubber } from "./redact.mjs";
+import { readScript, stepReady, stepPayload } from "./script.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SKILL = path.resolve(HERE, "..");
@@ -103,6 +104,7 @@ function resolveOptionalPath(pkg, ...rest) {
 const STRING_KEYS = new Set([
   "example", "out", "cast", "clip", "seconds", "cols", "rows", "idle", "hold",
   "width", "height", "count", "font", "frames-dir", "scale", "tail", "head", "end-hold", "intro", "ask",
+  "script",
 ]);
 const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "help"]);
 // Which options each subject actually reads. Validating against the union instead means
@@ -110,7 +112,7 @@ const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "help"]);
 // told nothing, and gets a clip that is not what they asked for.
 const SUBJECT_FLAGS = {
   report: ["example", "out", "seconds", "width", "height", "scale", "list"],
-  capture: ["out", "cols", "rows"],
+  capture: ["out", "cols", "rows", "script"],
   render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "head", "end-hold", "intro", "ask", "allow-findings"],
   scan: ["cast"],
   frames: ["clip", "out", "count", "frames-dir"],
@@ -255,7 +257,12 @@ const CURSOR_SCRIPT = `(() => {
   else install();
 })();`;
 
-function makeContext(page, budgetMs, warnings) {
+// `page` is the RECORDED page and owns the mouse and the synthetic cursor; `scope` is whatever
+// holds the document being reviewed. They are the same thing for the standalone montage, and differ
+// for the loop clip, where the report lives in a full-viewport iframe so the terminal can share the
+// stage. Playwright reports bounding boxes relative to the MAIN frame, so page coordinates and the
+// cursor keep lining up with a frame's elements without any offset arithmetic.
+function makeContext(page, budgetMs, warnings, scope = page) {
   const beatStarted = Date.now();
   const moveCursor = async (x, y, pressed = false) => {
     await page.evaluate(([cx, cy, down]) => {
@@ -272,6 +279,9 @@ function makeContext(page, budgetMs, warnings) {
     // early keeps its result on screen instead of handing the time to a blank pacing sleep.
     holdRemaining: (reserveMs = 0) => sleep(budgetMs - (Date.now() - beatStarted) - reserveMs),
     moveCursor,
+    // The keyboard belongs to the PAGE, not to the document being reviewed - a Frame has no
+    // keyboard - so beats reach it through the context rather than through their scope.
+    async pressKey(key) { await page.keyboard.press(key).catch(() => {}); },
     // Beat one opens on a still document while the runtime finishes booting. Teleporting the
     // cursor into place wastes that moment; gliding it in from the edge means the very first
     // frames after paint already have motion in them.
@@ -296,11 +306,11 @@ function makeContext(page, budgetMs, warnings) {
       await page.mouse.move(x, y).catch(() => {});
     },
     async scrollTo(y) {
-      await page.evaluate((to) => window.scrollTo(0, to), y).catch(() => {});
+      await scope.evaluate((to) => window.scrollTo(0, to), y).catch(() => {});
     },
     // A jump cut is unreadable at speed; a short eased glide reads as a real person scrolling.
     async glideTo(y, durationMs) {
-      await page.evaluate(async ([to, ms]) => {
+      await scope.evaluate(async ([to, ms]) => {
         const from = window.scrollY;
         const start = performance.now();
         const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - ((-2 * t + 2) ** 2) / 2);
@@ -319,7 +329,7 @@ function makeContext(page, budgetMs, warnings) {
     // asking for "a diff, else a diagram" would keep landing on an early figure instead.
     async offsetOf(selectors, { after = 0 } = {}) {
       const list = Array.isArray(selectors) ? selectors : [selectors];
-      return page.evaluate(([sels, floor]) => {
+      return scope.evaluate(([sels, floor]) => {
         for (const sel of sels) {
           for (const el of document.querySelectorAll(sel)) {
             const top = Math.round(window.scrollY + el.getBoundingClientRect().top);
@@ -337,7 +347,7 @@ function makeContext(page, budgetMs, warnings) {
     // dispatched directly as well: a canvas or an SVG node does not always react to a bare
     // mouse.move at its centre, and a beat that silently fails to hover films nothing.
     async hoverBlock(selector) {
-      const box = await page.evaluate((sel) => {
+      const box = await scope.evaluate((sel) => {
         const el = [...document.querySelectorAll(sel)].find((e) => {
           const r = e.getBoundingClientRect();
           return r.width > 8 && r.height > 8;
@@ -361,7 +371,7 @@ function makeContext(page, budgetMs, warnings) {
       return true;
     },
     async waitVisible(target, timeout = 2000) {
-      const locator = typeof target === "string" ? page.locator(target) : target;
+      const locator = typeof target === "string" ? scope.locator(target) : target;
       try { await locator.waitFor({ state: "visible", timeout }); return true; } catch (e) { return false; }
     },
     async click(locator) {
@@ -382,7 +392,7 @@ function makeContext(page, budgetMs, warnings) {
       await locator.type(text, { delay }).catch((e) => ctx.warn("typing failed: " + e.message));
     },
     async dragSelect(selector, { index = 0 } = {}) {
-      const box = await page.evaluate(([sel, nth]) => {
+      const box = await scope.evaluate(([sel, nth]) => {
         const els = [...document.querySelectorAll(sel)];
         const candidates = els.filter((e) => (e.textContent || "").trim().length > 80);
         const el = (candidates.length ? candidates : els)[nth % Math.max(1, candidates.length || els.length)];
@@ -439,8 +449,38 @@ async function diagramsReady(page) {
   }, null, { timeout: 9000 }).catch(() => {});
 }
 
+// The montage itself, shared by both subjects that show it. `page` owns the mouse and the synthetic
+// cursor; `scope` holds the document (the page itself for the standalone montage, a full-viewport
+// iframe for the loop clip). The loop reuses this rather than restating the demo, so a beat added to
+// the montage shows up in both clips automatically.
+async function runBeats({ page, scope, paced, warnings, failures }) {
+  for (const beat of REPORT_BEATS) {
+    // Diagrams and charts render asynchronously and cost real CPU. Waiting for them up front put
+    // three seconds of a motionless document at the head of every clip; waiting for them here
+    // costs nothing, because by the time a diagram beat runs they have long since drawn.
+    if (beat.needsDiagrams) await diagramsReady(scope);
+    const budgetMs = paced.find((p) => p.id === beat.id).budgetMs;
+    const before = warnings.length;
+    const ctx = makeContext(page, budgetMs, warnings, scope);
+    const started = Date.now();
+    try {
+      await beat.run(scope, ctx);
+    } catch (e) {
+      warnings.push(`${beat.id}: ${e.message}`);
+    }
+    // A beat marked `required` carries the demo: if `select`, `compose` or `save` shows nothing,
+    // the clip is seconds of a cursor waving at a document and must not be published as a demo.
+    // Optional beats stay best-effort, so a runtime change costs one moment, not the whole run.
+    if (beat.required && warnings.length > before) failures.push(beat.id);
+    const spent = Date.now() - started;
+    if (spent > budgetMs) warnings.push(`${beat.id} overran its ${budgetMs}ms budget by ${spent - budgetMs}ms`);
+    await sleep(budgetMs - spent);
+  }
+}
+
 async function recordReport(args) {
   const seconds = numberOpt(args, "seconds", DEFAULT_SECONDS);
+
   const example = args.example
     ? path.resolve(String(args.example))
     : path.join(EXAMPLES, "report-community-garden.html");
@@ -511,29 +551,7 @@ async function recordReport(args) {
       warnings.push(`the ${(preludeMs / 1000).toFixed(1)}s page load leaves too little of a ${seconds}s clip; the montage will overrun`);
     }
     const paced = planBeats(REPORT_BEATS, Math.max(floor, beatBudget));
-
-    for (const beat of REPORT_BEATS) {
-      // Diagrams and charts render asynchronously and cost real CPU. Waiting for them up front put
-      // three seconds of a motionless document at the head of every clip; waiting for them here
-      // costs nothing, because by the time a diagram beat runs they have long since drawn.
-      if (beat.needsDiagrams) await diagramsReady(page);
-      const budgetMs = paced.find((p) => p.id === beat.id).budgetMs;
-      const before = warnings.length;
-      const ctx = makeContext(page, budgetMs, warnings);
-      const started = Date.now();
-      try {
-        await beat.run(page, ctx);
-      } catch (e) {
-        warnings.push(`${beat.id}: ${e.message}`);
-      }
-      // A beat marked `required` carries the demo: if `select`, `compose` or `save` shows nothing,
-      // the clip is seconds of a cursor waving at a document and must not be published as a demo.
-      // Optional beats stay best-effort, so a runtime change costs one moment, not the whole run.
-      if (beat.required && warnings.length > before) failures.push(beat.id);
-      const spent = Date.now() - started;
-      if (spent > budgetMs) warnings.push(`${beat.id} overran its ${budgetMs}ms budget by ${spent - budgetMs}ms`);
-      await sleep(budgetMs - spent);
-    }
+    await runBeats({ page, scope: page, paced, warnings, failures });
     // Spend the tail INSIDE the recording: closing the context stops the video immediately, so
     // without this the reserved time is simply cut off and the clip ends mid-gesture.
     await sleep(tailMs);
@@ -621,6 +639,13 @@ async function captureTerminal(args) {
   });
 
   const wasRaw = process.stdin.isRaw;
+  const script = args.script ? readScript(String(args.script)) : null;
+  // A scripted capture drives the session itself, and the marks it records are what a later render
+  // uses to find each turn - the point where the report was generated, the point where the review
+  // was pasted back - so a composite clip can splice the browser phase between them.
+  const marks = [];
+  let buffer = "";
+  let lastDataAt = Date.now();
   const onInput = (data) => { try { child.write(data.toString("utf8")); } catch (e) { /* child is gone */ } };
   const onResize = () => { try { child.resize(process.stdout.columns || cols, process.stdout.rows || rows); } catch (e) { /* child is gone */ } };
   // Raw mode belongs to the CALLER's terminal, so it must be handed back on every path - a throw, a
@@ -650,8 +675,39 @@ async function captureTerminal(args) {
       // credential printed to a persisted log leaks just as surely as one written into the cast.
       process.stdout.write(process.stdout.isTTY ? data : liveScrubber.push(data));
       events.push({ t: Date.now() - started, data });
+      // The driver below waits on what the session has PRINTED, so the buffer it reads is kept
+      // here rather than re-derived. It is capped because a long agent run prints megabytes and the
+      // only thing a step ever looks for is a recent marker.
+      buffer = (buffer + data).slice(-65536);
+      lastDataAt = Date.now();
     });
+    // Scripted turns are driven from here, alongside the live stdin forwarding above (an operator
+    // watching can still intervene). Each step waits for its own condition, sends, and records a
+    // mark at the moment it sent.
+    const driver = script ? (async () => {
+      for (const step of script.steps) {
+        const startedAt = Date.now();
+        for (;;) {
+          const state = stepReady(step, {
+            buffer,
+            lastDataAt,
+            now: Date.now(),
+            startedAt,
+            fileExists: step.expectFile ? fs.existsSync(step.expectFile) : false,
+          });
+          if (state.ready) {
+            if (state.timedOut) console.warn(`  script: step "${step.mark}" ${state.reason}; sending anyway`);
+            break;
+          }
+          await sleep(200);
+        }
+        if (step.delayMs) await sleep(step.delayMs);
+        marks.push({ label: step.mark, t: Date.now() - started, eventIndex: events.length });
+        try { child.write(stepPayload(step)); } catch (e) { /* child is gone */ }
+      }
+    })().catch((e) => { console.warn(`  script: ${e.message}`); }) : null;
     exitCode = await new Promise((resolve) => child.onExit(({ exitCode: code }) => resolve(code)));
+    if (driver) await driver;
     // onExit can fire while the pty still has buffered output in flight, and the tail of a session
     // (the final result, the closing prompt) is exactly what a demo wants to show. Let it land.
     await sleep(250);
@@ -682,6 +738,9 @@ async function captureTerminal(args) {
     // by this tool - and render says so loudly when that mark is missing.
     scrubbedBy: "demo-video",
     durationMs: events.length ? events[events.length - 1].t : 0,
+    // Named split points, in the same clock as the events. A composite render reads these to find
+    // where one turn ends and the next begins without pattern-matching the output.
+    marks,
     events: scrubbed.events.map((e) => ({ t: e.t, data: e.data })),
   };
   fs.writeFileSync(outFile, JSON.stringify(cast));

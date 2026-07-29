@@ -34,45 +34,45 @@ export const REPORT_ABILITIES = [
   "exports",
 ];
 
-const cardCount = (page) => page.locator("#commentList .cm-card[data-cid]").count().catch(() => 0);
+const cardCount = (doc) => doc.locator("#commentList .cm-card[data-cid]").count().catch(() => 0);
 
 // Finish a comment once its composer is open: type, save, and CONFIRM a card actually appeared.
 // Clicking save is not evidence that a comment was filed, and a required beat that trusts the click
 // reports success over a clip that shows nothing.
-async function finishComment(page, ctx, note, before, share) {
-  const composer = page.locator(".cm-composer").last();
+async function finishComment(doc, ctx, note, before, share) {
+  const composer = doc.locator(".cm-composer").last();
   if (!(await ctx.waitVisible(composer, 2500))) { ctx.warn("the composer never opened"); return false; }
   await ctx.type(composer.locator("textarea"), note, ctx.budgetMs * share);
   const save = composer.locator('[data-act="save"]');
   if (!(await save.count())) { ctx.warn("the composer had no save action"); return false; }
   await ctx.click(save);
   await ctx.settle(200);
-  if ((await cardCount(page)) <= before) { ctx.warn(`saving filed no comment: ${note}`); return false; }
+  if ((await cardCount(doc)) <= before) { ctx.warn(`saving filed no comment: ${note}`); return false; }
   return true;
 }
 
 // Prose is commented by SELECTING it - the affordance a reader discovers first.
-async function commentOnText(page, ctx, selector, note, { index = 0, share = 0.45 } = {}) {
-  const before = await cardCount(page);
+async function commentOnText(doc, ctx, selector, note, { index = 0, share = 0.45 } = {}) {
+  const before = await cardCount(doc);
   if (!(await ctx.dragSelect(selector, { index }))) {
     ctx.warn(`nothing selectable matched ${selector}`);
     return false;
   }
-  const menu = page.locator("#menuComment");
+  const menu = doc.locator("#menuComment");
   if (!(await ctx.waitVisible(menu, 2000))) { ctx.warn("the selection menu never appeared"); return false; }
   await ctx.click(menu);
-  return finishComment(page, ctx, note, before, share);
+  return finishComment(doc, ctx, note, before, share);
 }
 
 // Everything that is not prose - an image, a diff line, a diagram node, a chart - is commented by
 // HOVERING the block, which floats its own add button. Same composer, different way in.
-async function commentOnBlock(page, ctx, { target, button, note, share = 0.45 }) {
-  const before = await cardCount(page);
+async function commentOnBlock(doc, ctx, { target, button, note, share = 0.45 }) {
+  const before = await cardCount(doc);
   if (!(await ctx.hoverBlock(target))) { ctx.warn(`no element matched ${target}`); return false; }
-  const add = page.locator(button);
+  const add = doc.locator(button);
   if (!(await ctx.waitVisible(add, 2500))) { ctx.warn(`${button} never appeared for ${target}`); return false; }
   await ctx.click(add);
-  return finishComment(page, ctx, note, before, share);
+  return finishComment(doc, ctx, note, before, share);
 }
 
 export const REPORT_BEATS = [
@@ -82,13 +82,13 @@ export const REPORT_BEATS = [
     abilities: ["selection", "composer", "anchored-comments", "sidebar"],
     weight: 1.5,
     required: true,
-    async run(page, ctx) {
+    async run(doc, ctx) {
       // The clip opens ON the first interaction. An establishing beat that just sits at the top of
       // the document reads as a stuck video before the demo has said anything - so the cursor
       // glides in from the edge and goes straight for the prose.
       await ctx.scrollTo(0);
       await ctx.glideCursor(720, 260, 420);
-      await commentOnText(page, ctx, "#commentRoot p", "Is this window realistic?");
+      await commentOnText(doc, ctx, "#commentRoot p", "Is this window realistic?");
     },
   },
   {
@@ -97,8 +97,8 @@ export const REPORT_BEATS = [
     abilities: ["images", "anchored-comments"],
     weight: 1.2,
     required: true,
-    async run(page, ctx) {
-      await commentOnBlock(page, ctx, {
+    async run(doc, ctx) {
+      await commentOnBlock(doc, ctx, {
         target: "#commentRoot img",
         button: "#imageAddBtn",
         note: "Label the beds?",
@@ -110,8 +110,8 @@ export const REPORT_BEATS = [
     label: "Comment on a line of a code diff",
     abilities: ["diff-review", "anchored-comments"],
     weight: 1.2,
-    async run(page, ctx) {
-      await commentOnBlock(page, ctx, {
+    async run(doc, ctx) {
+      await commentOnBlock(doc, ctx, {
         target: "#commentRoot .cmh-dl-add",
         button: "#diffAddBtn",
         note: "Guard the zero case.",
@@ -124,8 +124,8 @@ export const REPORT_BEATS = [
     abilities: ["diagrams", "anchored-comments"],
     weight: 1.2,
     needsDiagrams: true,
-    async run(page, ctx) {
-      await commentOnBlock(page, ctx, {
+    async run(doc, ctx) {
+      await commentOnBlock(doc, ctx, {
         target: "#commentRoot .mermaid svg g.node",
         button: "#mermaidAddBtn",
         note: "Missing a retry path.",
@@ -138,8 +138,8 @@ export const REPORT_BEATS = [
     abilities: ["charts", "anchored-comments"],
     weight: 1.2,
     needsDiagrams: true,
-    async run(page, ctx) {
-      const ok = await commentOnBlock(page, ctx, {
+    async run(doc, ctx) {
+      const ok = await commentOnBlock(doc, ctx, {
         // A chart canvas is commented through the MEDIA affordance, the same one images use - the
         // runtime treats a canvas as media and files the comment as an image anchor.
         target: "#commentRoot figure.chart canvas, #commentRoot canvas",
@@ -148,7 +148,7 @@ export const REPORT_BEATS = [
       });
       // A chart part only exists once Chart.js has drawn; fall back to the caption so the beat still
       // lands a comment on the chart rather than showing nothing at all.
-      if (!ok) await commentOnText(page, ctx, "#commentRoot figcaption", "Source for July?");
+      if (!ok) await commentOnText(doc, ctx, "#commentRoot figcaption", "Source for July?");
     },
   },
   {
@@ -156,8 +156,8 @@ export const REPORT_BEATS = [
     label: "Threads: reply to a comment in the sidebar",
     abilities: ["threads"],
     weight: 1,
-    async run(page, ctx) {
-      const card = page.locator("#commentList .cm-card[data-cid]").first();
+    async run(doc, ctx) {
+      const card = doc.locator("#commentList .cm-card[data-cid]").first();
       if (!(await card.count())) return ctx.warn("no comment card to reply to");
       await ctx.scrollIntoView(card);
       const replyBtn = card.locator(".cm-reply-btn").first();
@@ -176,18 +176,18 @@ export const REPORT_BEATS = [
     label: "Delete a comment you no longer need",
     abilities: ["delete-comment"],
     weight: 0.9,
-    async run(page, ctx) {
-      const before = await cardCount(page);
+    async run(doc, ctx) {
+      const before = await cardCount(doc);
       if (before < 2) return ctx.warn("not enough comments to demonstrate a delete");
       // Delete the LAST card, so the thread built above survives for the rest of the clip.
-      const card = page.locator("#commentList .cm-card[data-cid]").last();
+      const card = doc.locator("#commentList .cm-card[data-cid]").last();
       await ctx.scrollIntoView(card);
       const del = card.locator('[data-act="del"]').first();
       if (!(await del.count())) return ctx.warn("this build has no delete affordance");
       await ctx.click(del);
       // The runtime confirms with a native dialog; the recorder accepts it (see recordReport).
       await ctx.settle(350);
-      if ((await cardCount(page)) >= before) ctx.warn("the comment count did not drop after the delete");
+      if ((await cardCount(doc)) >= before) ctx.warn("the comment count did not drop after the delete");
       await ctx.holdRemaining(120);
     },
   },
@@ -196,11 +196,11 @@ export const REPORT_BEATS = [
     label: "Search and filter the review",
     abilities: ["comment-search"],
     weight: 0.8,
-    async run(page, ctx) {
-      const toggle = page.locator("#btnSearchToggle");
+    async run(doc, ctx) {
+      const toggle = doc.locator("#btnSearchToggle");
       if (!(await toggle.count())) return ctx.warn("no comment search in this build");
       await ctx.click(toggle);
-      const input = page.locator("#cmSearchInput");
+      const input = doc.locator("#cmSearchInput");
       if (!(await ctx.waitVisible(input, 1500))) return ctx.warn("the search box never opened");
       await ctx.type(input, "beds", ctx.budgetMs * 0.4);
       await ctx.holdRemaining(120);
@@ -211,12 +211,12 @@ export const REPORT_BEATS = [
     label: "Export the review: portable HTML, Markdown, offline copy",
     abilities: ["toolbar-menu", "exports"],
     weight: 1,
-    async run(page, ctx) {
+    async run(doc, ctx) {
       // The search panel takes the header over while it is open, so close it before reaching for a
       // menu, or this beat films nothing.
-      const clear = page.locator("#cmSearchClear");
+      const clear = doc.locator("#cmSearchClear");
       if (await clear.count() && await clear.isVisible().catch(() => false)) await ctx.click(clear);
-      await page.keyboard.press("Escape").catch(() => {});
+      await ctx.pressKey("Escape");
       await ctx.settle(150);
       // Once a comment is saved the sidebar is open and the top toolbar collapses into it, so the
       // export affordance to film is the SIDEBAR's, with the toolbar menu as the fallback.
@@ -224,7 +224,7 @@ export const REPORT_BEATS = [
         { button: "#btnSidebarExportMenu", menu: "#sidebarExportMenu" },
         { button: "#btnToolbarMenu", menu: "#toolbarMenu" },
       ]) {
-        const btn = page.locator(button);
+        const btn = doc.locator(button);
         if (!(await btn.count())) continue;
         if (!(await btn.isVisible().catch(() => false))) continue;
         await ctx.click(btn);
@@ -232,7 +232,7 @@ export const REPORT_BEATS = [
           // Hold the menu OPEN for what is left of the beat; closing it early hands the remaining
           // budget to the pacing sleep, which films a closed menu instead.
           await ctx.holdRemaining(150);
-          await page.keyboard.press("Escape").catch(() => {});
+          await ctx.pressKey("Escape");
           return;
         }
       }
