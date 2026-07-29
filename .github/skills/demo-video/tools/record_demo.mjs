@@ -283,7 +283,7 @@ const OVERLAY_SCRIPT = `(() => {
       // survive being recorded at 0.6-0.75 scale - a translucent dark pill at 17px was legible in a
       // full-size frame and nearly invisible in the finished clip.
       el.style.cssText = [
-        "position:fixed", "left:50%", "bottom:38px", "transform:translateX(-50%) translateY(10px)",
+        "position:fixed", "left:50%", "bottom:104px", "transform:translateX(-50%) translateY(10px)",
         "z-index:2147483646", "pointer-events:none", "padding:16px 34px", "border-radius:999px",
         "background:#b3234a", "color:#ffffff", "border:2px solid rgba(255,255,255,0.55)",
         "font:700 27px/1.15 'Segoe UI', system-ui, sans-serif", "letter-spacing:0.3px",
@@ -1061,6 +1061,22 @@ function terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask }) {
 </script></body></html>`;
 }
 
+// Wipe the reviewer's stored comments before the ANSWERED report loads. The runtime keeps comments
+// in localStorage under the document's comment key, and the review phase of this very clip just put
+// a fresh set there - with new ids the agent's `handledCommentIds` (recorded during the real
+// session) cannot match. Left alone, the closing shot shows the same outstanding comments as the
+// review phase and the round trip looks like nothing happened. Clearing them shows what the agent
+// actually left behind: its answers in the document and nothing still open.
+const CLEAR_COMMENTS_SCRIPT = `(() => {
+  try {
+    // The store key is derived from the document's own comment key, not a fixed prefix, so the only
+    // reliable move is to clear the lot and put the demo identity back.
+    const author = localStorage.getItem("cmh::author");
+    localStorage.clear();
+    if (author != null) localStorage.setItem("cmh::author", author);
+  } catch (e) { /* storage is not available on this origin */ }
+})();`;
+
 // The stage for the loop clip: ONE page that holds both the terminal and the report, because
 // Playwright records per page and a clip that cut between two pages would be two videos. The
 // terminal is an xterm exactly like the standalone render; the report lives in a full-viewport
@@ -1371,7 +1387,11 @@ async function recordLoop(args) {
     // answers are now in the document.
     if (afterExample) {
       await page.evaluate((t) => window.__stage.caption(t), "5. Back in the report - the comments are resolved");
-      await page.evaluate((u) => window.__stage.showReport(u), pathToFileURL(afterExample).href);
+      // Registered now, so it runs on the iframe's NEXT navigation and not on the review phase.
+      await page.addInitScript(CLEAR_COMMENTS_SCRIPT);
+      // A cache-busting query forces a real reload rather than a repaint of what is already there.
+      const afterUrl = `${pathToFileURL(afterExample).href}?resolved=${Date.now()}`;
+      await page.evaluate((u) => window.__stage.showReport(u), afterUrl);
       const done = page.frames().find((f) => f.url().startsWith(pathToFileURL(afterExample).href));
       if (done) {
         await waitForRuntime(done, warnings, page);
