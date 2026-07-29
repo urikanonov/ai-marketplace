@@ -201,12 +201,16 @@ async function startStaticServer(root, routes = {}) {
       res.end(routes[rel].body);
       return;
     }
-    const file = path.join(root, rel.replace(/^\/+/, ""));
     // `startsWith(root)` alone lets a SIBLING through: with a root of /x/examples, the path
-    // /x/examples-private/secret resolves outside the root yet still starts with it. Compare the
-    // relative path instead, which is empty or non-escaping only for a genuine descendant.
-    const within = path.relative(path.resolve(root), path.resolve(file));
-    if (within.startsWith("..") || path.isAbsolute(within)) { res.writeHead(403).end(); return; }
+    // /x/examples-private/secret resolves outside the root yet still starts with it. Resolve
+    // against the root and compare the RELATIVE path, which is escaping or absolute for anything
+    // that is not a genuine descendant. A NUL byte would truncate the path at the syscall, so it
+    // is rejected outright rather than normalized away.
+    const rootDir = path.resolve(root);
+    if (rel.includes("\0")) { res.writeHead(400).end(); return; }
+    const file = path.resolve(rootDir, path.normalize(rel).replace(/^([/\\]|[a-zA-Z]:)+/, ""));
+    const within = path.relative(rootDir, file);
+    if (!within || within.startsWith("..") || path.isAbsolute(within)) { res.writeHead(403).end(); return; }
     fs.readFile(file, (err, body) => {
       if (err) { res.writeHead(404).end(); return; }
       res.writeHead(200, { "content-type": types[path.extname(file).toLowerCase()] || "application/octet-stream" });
