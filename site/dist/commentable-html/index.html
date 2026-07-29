@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.272.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.273.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -458,7 +458,7 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
-            <div class="rel-head"><h3>[1.272.0] - 2026-07-29</h3></div>
+            <div class="rel-head"><h3>[1.273.0] - 2026-07-29</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The live chart renderer, the comment layer, and the Offline export no longer disagree about what a chart is. A bare data-bearing canvas (<code>data-cmh-chart-points</code> or <code>data-cmh-chart-source</code> with no <code>cmh-chart</code> class and no <code>figure.chart</code> wrapper) drew nothing at load - only a window resize revived it - was not commentable, and was invisible to the Offline export, so a document that attached its own Chart.js to such a canvas exported without the library and showed an empty canvas. It now draws at load, is commentable like any other chart canvas, and the export recognises it, so the evidence-based Chart.js decision applies to it too: the library travels only when the document actually needs it.</li>
