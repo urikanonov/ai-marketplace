@@ -40,7 +40,7 @@ import http from "http";
 
 import { planBeats, fitTimeline, compressTimeline, MIN_BEAT_MS } from "./timeline.mjs";
 import { REPORT_BEATS } from "./report-beats.mjs";
-import { DEFAULT_RULES, homeRules, scanText, scrubEvents, scrubText } from "./redact.mjs";
+import { DEFAULT_RULES, homeRules, scanText, scrubEvents, scrubText, createScrubber } from "./redact.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SKILL = path.resolve(HERE, "..");
@@ -102,19 +102,29 @@ function resolveOptionalPath(pkg, ...rest) {
 
 const STRING_KEYS = new Set([
   "example", "out", "cast", "clip", "seconds", "cols", "rows", "idle", "hold",
-  "width", "height", "count", "font", "frames-dir",
+  "width", "height", "count", "font", "frames-dir", "scale", "tail",
 ]);
-const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings"]);
+const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "help"]);
 // Which options each subject actually reads. Validating against the union instead means
 // `scan --out x` or `capture --seconds 10` is accepted and then silently ignored - the caller is
 // told nothing, and gets a clip that is not what they asked for.
 const SUBJECT_FLAGS = {
-  report: ["example", "out", "seconds", "width", "height", "list"],
+  report: ["example", "out", "seconds", "width", "height", "scale", "list"],
   capture: ["out", "cols", "rows"],
-  render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "allow-findings"],
+  render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "allow-findings"],
   scan: ["cast"],
   frames: ["clip", "out", "count", "frames-dir"],
 };
+
+// The video is recorded at `scale` times the layout size. Playwright scales the page DOWN to fit a
+// smaller video, so this trades pixels for file size without reflowing anything: the clip keeps the
+// same layout and line breaks, just fewer pixels to encode. A terminal full of scrolling text is
+// expensive to encode, and resolution is the biggest lever on it.
+function videoSize(width, height, args) {
+  const scale = numberOpt(args, "scale", 1);
+  if (scale > 1) throw new Error("--scale must be 1 or less; it only shrinks the recording");
+  return { width: Math.round(width * scale), height: Math.round(height * scale) };
+}
 
 function checkSubjectFlags(args, subject) {
   const allowed = SUBJECT_FLAGS[subject];
@@ -295,6 +305,34 @@ function makeContext(page, budgetMs, warnings) {
     async scrollIntoView(locator) {
       await locator.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => {});
     },
+    // Non-prose blocks (an image, a diff line, a diagram node, a chart) float their own add-comment
+    // button on hover. The synthetic cursor is moved there too, and the pointer events are
+    // dispatched directly as well: a canvas or an SVG node does not always react to a bare
+    // mouse.move at its centre, and a beat that silently fails to hover films nothing.
+    async hoverBlock(selector) {
+      const box = await page.evaluate((sel) => {
+        const el = [...document.querySelectorAll(sel)].find((e) => {
+          const r = e.getBoundingClientRect();
+          return r.width > 8 && r.height > 8;
+        });
+        if (!el) return null;
+        el.scrollIntoView({ block: "center" });
+        const r = el.getBoundingClientRect();
+        for (const type of ["mouseenter", "mouseover", "mousemove"]) {
+          el.dispatchEvent(new MouseEvent(type, {
+            bubbles: true,
+            clientX: r.left + r.width / 2,
+            clientY: r.top + r.height / 2,
+          }));
+        }
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      }, selector).catch(() => null);
+      if (!box) return false;
+      await moveCursor(box.x, box.y);
+      await page.mouse.move(box.x, box.y).catch(() => {});
+      await sleep(180);
+      return true;
+    },
     async waitVisible(target, timeout = 2000) {
       const locator = typeof target === "string" ? page.locator(target) : target;
       try { await locator.waitFor({ state: "visible", timeout }); return true; } catch (e) { return false; }
@@ -400,7 +438,7 @@ async function recordReport(args) {
     context = await browser.newContext({
       viewport: { width, height },
       deviceScaleFactor: 1,
-      recordVideo: { dir: videoDir, size: { width, height } },
+      recordVideo: { dir: videoDir, size: videoSize(width, height, args) },
     });
     // Playwright records PER PAGE, starting when the page is created. Warming the document in a
     // throwaway page first fills the HTTP cache and pays the one-off font/diagram cost off camera,
@@ -532,6 +570,9 @@ async function captureTerminal(args) {
   ensureDir(path.dirname(outFile));
 
   const rules = rulesForThisMachine();
+  // A second scrubber for the LIVE stream, kept separate from the one that cleans the cast so the
+  // two never share carry state.
+  const liveScrubber = createScrubber({ rules });
   const started = Date.now();
   const events = [];
   const child = pty.spawn(launch.file, launch.args, {
@@ -567,7 +608,10 @@ async function captureTerminal(args) {
     process.stdin.on("data", onInput);
     process.stdout.on("resize", onResize);
     child.onData((data) => {
-      process.stdout.write(data);
+      // The operator's own terminal shows the session RAW, because they are interacting with it.
+      // Anything else - a pipe, a CI log, an agent transcript - gets the scrubbed stream, since a
+      // credential printed to a persisted log leaks just as surely as one written into the cast.
+      process.stdout.write(process.stdout.isTTY ? data : liveScrubber.push(data));
       events.push({ t: Date.now() - started, data });
     });
     exitCode = await new Promise((resolve) => child.onExit(({ exitCode: code }) => resolve(code)));
@@ -576,6 +620,8 @@ async function captureTerminal(args) {
     await sleep(250);
   } finally {
     restore();
+    // Whatever the live scrubber was holding back belongs on the operator's stream too.
+    if (!process.stdout.isTTY) { try { process.stdout.write(liveScrubber.end()); } catch (e) { /* closed */ } }
     process.off("SIGINT", onSignal);
     process.off("SIGTERM", onSignal);
   }
@@ -751,6 +797,9 @@ async function renderTerminal(args) {
       holdMs: numberOpt(args, "hold", undefined),
       // An explicit --hold is an instruction, not a starting point for the solver.
       pinHold: args.hold != null,
+      // The closing stretch of a session is usually the whole point - the consolidated summary, the
+      // verdict - so it is exempt from the speed-up and plays at its natural pace.
+      tailMs: args.tail == null ? 0 : Math.round(numberOpt(args, "tail", 0) * 1000),
     })
     : compressTimeline(cast.events, { idleMs: numberOpt(args, "idle", undefined), holdMs: numberOpt(args, "hold", undefined) });
 
@@ -785,7 +834,7 @@ async function renderTerminal(args) {
     context = await browser.newContext({
       viewport: { width, height },
       deviceScaleFactor: 2,
-      recordVideo: { dir: videoDir, size: { width, height } },
+      recordVideo: { dir: videoDir, size: videoSize(width, height, args) },
     });
     const page = await context.newPage();
     await page.goto(pathToFileURL(pageFile).href, { waitUntil: "load" });
@@ -800,6 +849,9 @@ async function renderTerminal(args) {
   console.log(`clip:     ${markedOut}`);
   console.log(`length:   ${(timeline.durationMs / 1000).toFixed(1)}s from a ${(timeline.sourceDurationMs / 1000).toFixed(1)}s session`);
   console.log(`skipped:  ${(timeline.skippedMs / 1000).toFixed(1)}s of waiting across ${timeline.fastForwards} fast-forward(s)`);
+  if (timeline.speed && timeline.speed > 1.01) {
+    console.log(`speed:    the remaining output plays at ${timeline.speed.toFixed(1)}x`);
+  }
   if (unsafe) {
     console.error(`\nWARNING: rendered despite ${findings.length} finding(s) because --allow-findings was passed.`);
     console.error("This clip is NOT publish-safe. Run 'scan' and look at every finding before it goes anywhere.");
@@ -919,6 +971,14 @@ Everything is written under tmp/demo-video (gitignored). Nothing is committed.`;
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const subject = args._[0];
+  if (args.help || subject === "help") { console.log(USAGE); return undefined; }
+  // A stray positional is a typo that would otherwise be ignored, and the whole point of the
+  // argument contract is that the recorder never quietly records something else.
+  if (args._.length > 1) {
+    console.error(`unexpected argument: ${args._[1]}`);
+    process.exitCode = 2;
+    return undefined;
+  }
   if (subject) checkSubjectFlags(args, subject);
   switch (subject) {
     case "report": return recordReport(args);

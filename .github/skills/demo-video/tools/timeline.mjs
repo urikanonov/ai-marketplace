@@ -121,6 +121,9 @@ export function compressTimeline(events, opts = {}) {
     clock += fastForward ? holdMs : gap;
     out.push({
       t: Math.round(clock),
+      // The ORIGINAL timestamp travels with the event, so a later pass can tell which part of the
+      // session an event belongs to (the closing summary, say) without re-deriving it.
+      sourceT: at,
       data: event.data,
       fastForward,
       skippedMs: skipped,
@@ -206,5 +209,43 @@ export function fitTimeline(events, targetMs, opts = {}) {
     const miss = Math.abs(result.durationMs - targetMs);
     if (!best || miss < best.miss) best = { miss, idleMs, holdMs: chosenHold, result };
   }
-  return { idleMs: best.idleMs, holdMs: best.holdMs, ...best.result };
+
+  // Collapsing the waits is not always enough. A TUI redraws constantly, so a long session can carry
+  // a minute of genuine sub-threshold streaming that no idle threshold touches - the 17 minute panel
+  // run still came to 81 seconds against a 40 second request. When even the best fit overshoots,
+  // play the whole thing faster: a uniform factor keeps the rhythm intact (which compressing small
+  // gaps further would destroy) and is exactly how anyone watches a terminal recording anyway.
+  //
+  // `tailMs` protects the ENDING from that speed-up. The last stretch of a session is usually the
+  // part that matters - the consolidated summary, the verdict - and racing through it defeats the
+  // clip. That stretch replays at its natural pace and the earlier bulk absorbs the compression.
+  let { result } = best;
+  let speed = 1;
+  const tailMs = opts.tailMs == null ? 0 : opts.tailMs;
+  if (!Number.isFinite(tailMs) || tailMs < 0) throw new Error("tailMs must not be negative");
+  if (!opts.noSpeedUp && result.durationMs > targetMs && targetMs > 0) {
+    const cut = result.sourceDurationMs - tailMs;
+    const split = tailMs > 0 ? result.events.findIndex((e) => e.sourceT >= cut) : -1;
+    if (split > 0) {
+      const bodyMs = result.events[split - 1].t;
+      const tailClipMs = result.durationMs - bodyMs;
+      const budgetForBody = targetMs - tailClipMs;
+      if (budgetForBody > 0 && bodyMs > budgetForBody) {
+        speed = bodyMs / budgetForBody;
+        const events = result.events.map((e, i) => (i < split
+          ? { ...e, t: Math.round(e.t / speed) }
+          : { ...e, t: Math.round(budgetForBody + (e.t - bodyMs)) }));
+        result = { ...result, events, durationMs: Math.round(budgetForBody + tailClipMs) };
+      }
+    }
+    if (speed === 1 && result.durationMs > targetMs) {
+      speed = result.durationMs / targetMs;
+      result = {
+        ...result,
+        events: result.events.map((e) => ({ ...e, t: Math.round(e.t / speed) })),
+        durationMs: Math.round(result.durationMs / speed),
+      };
+    }
+  }
+  return { idleMs: best.idleMs, holdMs: best.holdMs, speed, ...result };
 }

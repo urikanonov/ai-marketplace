@@ -92,9 +92,6 @@ export const DEFAULT_RULES = [
     // The credential half contains no whitespace, so running this over the unwrapped projection
     // cannot make it run away - and that is what catches one the application wrapped mid-value.
     unwrapSafe: true,
-    // The credential half contains no whitespace, so this is safe to run over the unwrapped
-    // projection too - which is what catches one that the application wrapped mid-value.
-    unwrapSafe: true,
   },
   {
     name: "assigned-secret",
@@ -103,10 +100,6 @@ export const DEFAULT_RULES = [
     // The VALUE half stops at whitespace, so unwrapping cannot make this rule run away across the
     // transcript the way a line-oriented one would - and a wrapped value is exactly the case that
     // otherwise leaves its continuation sitting on the next line.
-    unwrapSafe: true,
-    // The VALUE half stops at whitespace, so unwrapping cannot make this rule run away across the
-    // transcript the way a line-oriented one would - and a wrapped value is exactly the case that
-    // otherwise leaves its continuation on the next line.
     unwrapSafe: true,
   },
   {

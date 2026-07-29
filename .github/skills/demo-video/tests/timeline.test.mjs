@@ -241,11 +241,17 @@ test("the fit it reports reproduces the timeline it returns (DEMO-FF-07)", () =>
 test("a target just under the source keeps the session whole (DEMO-FF-08)", () => {
   // The uncompressed option was only considered when the source already fitted, so a 700s session
   // asked for 690s came back as a 1.5s clip - missing by 688s when leaving it alone missed by 10s.
-  // Uncompressed has to compete on the same footing as every other candidate.
+  // Uncompressed has to compete on the same footing as every other candidate; the small remaining
+  // overshoot is then absorbed by playback rate rather than by butchering the timeline.
   const events = [{ t: 0, data: "a" }, { t: 700000, data: "b" }];
   const fitted = fitTimeline(events, 690000);
   assert.equal(fitted.fastForwards, 0, `compressed a session that was nearly the right length: ${fitted.durationMs}ms`);
-  assert.equal(fitted.durationMs, 700000);
+  assert.equal(fitted.durationMs, 690000, "the target was not reached");
+  assert.ok(fitted.speed > 1 && fitted.speed < 1.05, `absorbed by an implausible speed: ${fitted.speed}`);
+  // With speed-up disabled the session is returned at its true length, never chopped.
+  const whole = fitTimeline(events, 690000, { noSpeedUp: true });
+  assert.equal(whole.fastForwards, 0);
+  assert.equal(whole.durationMs, 700000);
 });
 
 test("the hold shrinks as well as grows to hit the target (DEMO-FF-09)", () => {
@@ -283,4 +289,53 @@ test("skipped time adds up the same way twice (DEMO-FF-11)", () => {
     { idleMs: 500, holdMs: 300 });
   const parts = out.events.reduce((a, e) => a + e.skippedMs, 0);
   assert.equal(parts, out.skippedMs, "the per-event skips do not sum to the reported total");
+});
+
+test("uniform speed-up lands a busy session on the requested length (DEMO-FF-12)", () => {
+  // Collapsing the waits is not always enough: a TUI redraws constantly, so a long session carries
+  // real sub-threshold streaming that no idle threshold touches. A 17 minute panel run still came to
+  // 81 seconds against a 40 second request. A uniform factor keeps the rhythm (which compressing
+  // small gaps further would destroy) and is how anyone watches a terminal recording anyway.
+  const busy = Array.from({ length: 600 }, (_, i) => ({ t: i * 120, data: `chunk ${i}` }));
+  const fitted = fitTimeline(busy, 20000);
+  assert.ok(Math.abs(fitted.durationMs - 20000) <= 200, `did not reach the target: ${fitted.durationMs}ms`);
+  assert.ok(fitted.speed > 1, "the clip was not sped up at all");
+  assert.equal(fitted.events.length, busy.length, "speeding up must not drop output");
+  for (let i = 1; i < fitted.events.length; i++) {
+    assert.ok(fitted.events[i].t >= fitted.events[i - 1].t, "speeding up produced a backwards clock");
+  }
+  // A session that already fits is played at normal speed.
+  const brisk = [{ t: 0, data: "a" }, { t: 500, data: "b" }];
+  const kept = fitTimeline(brisk, 20000);
+  assert.equal(kept.speed, 1);
+  assert.equal(kept.durationMs, 500);
+});
+
+test("the closing stretch is exempt from the speed-up (DEMO-FF-13)", () => {
+  // The end of a session is usually the whole point - the consolidated summary, the verdict - and a
+  // uniform speed-up races through exactly that. `tailMs` marks a stretch of SOURCE time at the end
+  // that replays at its natural pace while the earlier bulk absorbs the compression.
+  const events = Array.from({ length: 400 }, (_, i) => ({ t: i * 200, data: `line ${i}\r\n` }));
+  const sourceMs = 399 * 200;
+  const tailMs = 20000;
+  const fitted = fitTimeline(events, 30000, { tailMs });
+  assert.ok(Math.abs(fitted.durationMs - 30000) <= 500, `missed the target: ${fitted.durationMs}ms`);
+
+  // Everything from the cut onward keeps its ORIGINAL spacing, so the summary is readable.
+  const cut = sourceMs - tailMs;
+  const tail = fitted.events.filter((e) => e.sourceT >= cut);
+  assert.ok(tail.length > 10, "the tail selection found almost nothing");
+  for (let i = 1; i < tail.length; i++) {
+    const clipGap = tail[i].t - tail[i - 1].t;
+    const sourceGap = tail[i].sourceT - tail[i - 1].sourceT;
+    assert.equal(clipGap, sourceGap, "the tail was re-timed instead of played at its natural pace");
+  }
+  // ...while the body before it was compressed to make room.
+  const body = fitted.events.filter((e) => e.sourceT < cut);
+  assert.ok(body[body.length - 1].t < cut, "the body was not compressed at all");
+  // Order is preserved across the join.
+  for (let i = 1; i < fitted.events.length; i++) {
+    assert.ok(fitted.events[i].t >= fitted.events[i - 1].t, "the clock went backwards at the join");
+  }
+  assert.throws(() => fitTimeline(events, 30000, { tailMs: -1 }), /tailMs/i);
 });
