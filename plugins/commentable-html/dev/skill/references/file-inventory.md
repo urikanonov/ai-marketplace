@@ -42,7 +42,8 @@ subdirectories under `tools/` (for example `tools/validate/validate.py`, `tools/
 - `finalize.py` - runs safe assembly steps (including AI-typography normalization by default; `--no-normalize` to skip), then validates.
 - `normalize_typography.py` - rewrites AI smart-typography (em/en dashes, ellipsis, curly quotes, nbsp/zero-width spaces) to plain ASCII in a document's prose, leaving code/script/style/comments verbatim (`--check`/`--out`/in-place). Run automatically by `finalize.py` and `deck_scaffold.py`.
 - `diff_block.py` - emits escaped `pre.cmh-diff` review blocks.
-- `chart_block.py` - emits a validator-clean Chart.js figure, loader, data block, and init.
+- `chart_block.py` - emits a validator-clean Chart.js figure, loader, data block, and init. Fails
+ closed (writes nothing) when it cannot self-validate; `--allow-unvalidated-output` opts out.
 - `kql_highlight.py` and `kusto_link.py` - build KQL figures and Run in Azure Data Explorer deep links.
 - `highlight_code.py` - emits highlighted code blocks.
 - `generate_toc.py` - creates a `nav.cm-toc` from headings and strips redundant author section numbers from an ordered-list TOC.

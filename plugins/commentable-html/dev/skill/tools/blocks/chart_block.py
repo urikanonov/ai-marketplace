@@ -14,6 +14,7 @@ and running tools/validate.py as an import.
 """
 import argparse
 import html as _html
+import importlib.util
 import json
 import os
 import re
@@ -24,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 import _toolpath  # noqa: E402
 _toolpath.ensure()
 SKILL_ROOT = _toolpath.SKILL_ROOT
+_TOOLS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_TEMPLATE = os.path.join(SKILL_ROOT, "dist", "PORTABLE.html")
 
 BEGIN_MARKER = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->"
@@ -156,29 +158,117 @@ def _inject_for_validation(template_html, figure, scripts):
     return out[:body_pos] + "\n\n" + scripts.strip() + "\n\n" + out[body_pos:]
 
 
-def _self_validate(figure, scripts, template_path=DEFAULT_TEMPLATE):
+def _canonical(path):
+    """Resolve for COMPARISON: symlinks and junctions followed, Windows casing folded.
+
+    A plain abspath+startswith rejects the real validator when the skill is reached through
+    a junction or a differently-cased path, which would turn this guard into a false alarm.
+    """
+    if not path:
+        return ""
+    return os.path.normcase(os.path.realpath(path))
+
+
+def _contained(path):
+    """True when `path` lives inside this skill's own tools/validate directory.
+
+    Both sides are compared in two forms - fully resolved, and merely absolute - so a
+    junction, a differently-cased path, OR a per-file symlink of validate.py to a shared
+    location all still count as the real validator rather than tripping the guard.
+    """
+    if not path:
+        return False
+    expected = os.path.join(_TOOLS_DIR, "validate")
+    candidates = {_canonical(path), os.path.normcase(os.path.abspath(path))}
+    bases = {_canonical(expected), os.path.normcase(os.path.abspath(expected))}
+    return any(c.startswith(b + os.sep) for c in candidates if c for b in bases if b)
+
+
+def _load_validator():
+    """Return (module, None), or (None, reason) when it cannot be used.
+
+    Every failure becomes a REASON rather than an exception, because the caller's whole job
+    is to distinguish "checked and bad" from "could not check". Re-raising gave a traceback
+    instead of the fail-closed message and made the opt-out unreachable - and the shapes that
+    reach here are exactly the broken installs this guard exists for: a missing `validate`,
+    a `validate.py` whose own `checks.*` imports are missing, and a truncated `validate.py`
+    that raises SyntaxError.
+
+    The origin is checked BEFORE the import, so an unrelated `validate` earlier on sys.path
+    is refused without executing its module body; an already-imported module is re-checked by
+    its `__file__` for the same reason.
+    """
+    module = sys.modules.get("validate")
+    if module is None:
+        try:
+            spec = importlib.util.find_spec("validate")
+        except Exception as exc:  # noqa: BLE001  a broken parent package, a bad sys.path entry
+            return None, "the sibling 'validate' tool could not be located (%s: %s)" % (
+                type(exc).__name__, exc)
+        if spec is None:
+            return None, "the sibling 'validate' tool is not importable (no module named 'validate')"
+        if not _contained(getattr(spec, "origin", "") or ""):
+            return None, ("the 'validate' module on sys.path is %s, not this skill's "
+                          "tools/validate/validate.py" % (spec.origin or "an unknown location"))
+        try:
+            import validate as module  # noqa: F401
+        except Exception as exc:  # noqa: BLE001
+            # Announce it here too (the repo forbids a silent guarded sibling import), then let
+            # the caller decide what to do with the reason.
+            _toolpath.warn_missing_tool("validate", "chart self-validation")
+            return None, "the sibling 'validate' tool could not be imported (%s: %s)" % (
+                type(exc).__name__, exc)
+    if not _contained(getattr(module, "__file__", "") or ""):
+        return None, ("the imported 'validate' module is %s, not this skill's "
+                      "tools/validate/validate.py" % (getattr(module, "__file__", "")
+                                                      or "an unknown location"))
+    return module, None
+
+
+def _self_validate_result(figure, scripts, template_path=None):
+    """Return ((errors, warnings), None), or (None, reason it could not be checked)."""
+    template_path = template_path or DEFAULT_TEMPLATE
+    module, reason = _load_validator()
+    if module is None:
+        return None, reason
     try:
-        import validate as _validate
-    except ModuleNotFoundError as exc:
-        if exc.name != "validate":
-            raise
-        _toolpath.warn_missing_tool("validate", "chart self-validation")
-        return None
-    template_html = _read_text(template_path)
-    candidate = _inject_for_validation(template_html, figure, scripts)
+        template_html = _read_text(template_path)
+        candidate = _inject_for_validation(template_html, figure, scripts)
+    except (OSError, ValueError) as exc:
+        # A missing or corrupt dist/PORTABLE.html is the same class of problem as a missing
+        # validator - the environment, not the fragments - so it takes the same gate.
+        return None, "the validation template could not be prepared (%s)" % exc
     # The temp file location does not affect chart validation (it inspects the fragment,
     # not companion files), so use the system temp dir rather than os.getcwd(), which may
     # be read-only (e.g. C:\Windows\System32).
-    fd, tmp = tempfile.mkstemp(suffix=".html")
+    tmp = None
     try:
+        fd, tmp = tempfile.mkstemp(suffix=".html")
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             fh.write(candidate)
-        return _validate.validate(tmp)
+        outcome = module.validate(tmp)
+    except Exception as exc:  # noqa: BLE001
+        # A validator that crashes, or a temp dir that cannot be written, means the check did
+        # not happen - the same "could not be checked" signal, so it takes the same gate and
+        # the opt-out applies, instead of escaping as a traceback.
+        return None, "the validator could not run (%s: %s)" % (type(exc).__name__, exc)
     finally:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
+        if tmp is not None:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+    if not (isinstance(outcome, tuple) and len(outcome) == 2
+            and all(isinstance(part, list) for part in outcome)):
+        # A validator that answers in an unexpected shape has not given a verdict. Checking the
+        # MEMBERS matters as much as the arity: a `(None, None)` would satisfy a bare 2-tuple
+        # test and then read as "no errors, no warnings", i.e. the fail-open path again.
+        return None, "the validator returned an unexpected result (%r)" % (outcome,)
+    return outcome, None
+
+
+def _self_validate(figure, scripts, template_path=None):
+    return _self_validate_result(figure, scripts, template_path)[0]
 
 
 def main(argv):
@@ -189,6 +279,13 @@ def main(argv):
     parser.add_argument("--canvas-id", required=True, help="canvas element id")
     parser.add_argument("--caption", required=True, help="figure caption text")
     parser.add_argument("--title", default=None, help="optional chart title used in aria-label derivation")
+    parser.add_argument("--allow-unvalidated-output", action="store_true",
+                        help="print the fragments even when they could not be CHECKED at all - an "
+                             "unimportable or crashing validator, a validator that answers in an "
+                             "unexpected shape, or a missing/corrupt validation template. Off by "
+                             "default: this tool's guarantee is that what it prints validates, and "
+                             "silently dropping that guarantee on a broken install is the wrong "
+                             "direction. It never suppresses a real validation failure.")
     args = parser.parse_args(argv[1:])
 
     try:
@@ -199,12 +296,21 @@ def main(argv):
         sys.stderr.write("chart_block: %s\n" % exc)
         return 2
 
-    try:
-        result = _self_validate(fragments["figure"], fragments["scripts"])
-    except (OSError, ValueError) as exc:
-        sys.stderr.write("chart_block: self-validation failed: %s\n" % exc)
-        return 1
-    if result is not None:
+    result, reason = _self_validate_result(fragments["figure"], fragments["scripts"])
+    if result is None:
+        # The fragments could not be CHECKED (a broken or partial install), which is not the
+        # same as being invalid. Emitting them anyway would drop this tool's one guarantee
+        # precisely where something is already wrong, so fail closed unless the caller opted
+        # in knowingly.
+        if not args.allow_unvalidated_output:
+            sys.stderr.write(
+                "chart_block: the fragments could not be self-validated - %s - so nothing was "
+                "written. Reinstall or re-extract the skill, or pass --allow-unvalidated-output "
+                "to emit them unchecked.\n" % reason)
+            return 1
+        sys.stderr.write("chart_block: WARNING - emitting fragments that were not self-validated "
+                         "(%s).\n" % reason)
+    else:
         errors, warnings = result
         # An advisory names something the author cannot clear (CMH-VAL-18), so it is reported
         # but never blocks; every other warning still fails this self-validation closed. A

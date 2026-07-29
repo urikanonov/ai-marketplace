@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.269.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.270.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -458,6 +458,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.270.0] - 2026-07-29</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li><code>tools/blocks/chart_block.py</code> no longer prints chart fragments it could not check. The tool&#x27;s one promise is that what it emits validates, and it self-validates before printing - but when the sibling <code>validate</code> module could not be imported (a broken or partial install) the self-check returned &quot;unknown&quot;, which the CLI read as success and printed the fragments anyway. So the single protection disappeared exactly on the installs where something was already wrong. It now fails closed for every &quot;could not check&quot; shape - an unimportable validator, a partial install where <code>validate.py</code> is present but one of its own dependencies is not, a truncated <code>validate.py</code> that raises on import, a <code>validate</code> module resolved from outside the skill&#x27;s own tools directory (refused before its module body runs), a missing or corrupt validation template, a validator that crashes, and a validator that answers in an unexpected shape - writing nothing and naming the actual cause. A caller who knowingly wants unchecked output passes the new <code>--allow-unvalidated-output</code>, which emits the fragments with a warning on stderr; it never suppresses a real validation failure, and the CMH-VAL-18 advisory split still applies.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.269.0] - 2026-07-29</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -468,6 +475,8 @@
               <li>Validator warnings now have one shared fatal/advisory split (<code>validate.ADVISORY_PREFIXES</code>, <code>is_advisory()</code>, <code>partition_warnings()</code>), honoured by <code>retrofit.py</code>, <code>content_replace.py</code>, <code>chart_block.py</code> and the <code>--strict</code> and stamping paths of <code>finalize.py</code>, <code>upgrade.py</code> and <code>validate.py</code>. An advisory names something the author cannot clear, so it is always reported but never blocks a fail-closed tool and never withholds the <code>commentable-html-validated</code> stamp. Today the set holds exactly one prefix: a code block carrying deliberately hand-written INERT markup, which the authoring tools pass through verbatim by design - without this, the scan fix above would have made such a document impossible to write back or stamp. Markup that is not inert stays FATAL: inertness is decided by a whole-tag allowlist (every <code>&lt;</code> must open a well-formed inline formatting tag carrying at most a quoted <code>class</code>), so a raw <code>&lt;script&gt;</code>, an <code>&lt;iframe&gt;</code>, any <code>style</code>/<code>is</code>/<code>data-*</code>/event attribute, an unquoted attribute, or a stray <code>&lt;</code> keeps blocking - a <code>&lt;pre&gt;</code> body is parsed as markup and that content executes. Text between the tags is escaped source and is never inspected, so a code sample that merely mentions <code>onclick=</code> or <code>javascript:</code> is not flagged. The check also fails CLOSED when a raw <code>&lt;script&gt;</code> or <code>&lt;!--</code> opened inside a code block swallows its <code>&lt;/code&gt;&lt;/pre&gt;</code>: it reports the unpaired <code>&lt;pre&gt;</code> rather than silently inspecting nothing. The theme-contrast advisory is deliberately not in the advisory set - its near-miss band ships a concrete <code>--suggest</code> fix, so it is clearable and still fails <code>--strict</code>; <code>retrofit.py</code> keeps its own long-standing carve-out for it, and now fails closed (every warning fatal) if the validator cannot be imported. <code>upgrade.py --strict</code> likewise aborts instead of committing when the validator is unavailable, and <code>deck_validate.py --strict</code> - the command the skill tells deck authors to finish with - shares the same contract, so an advisory-only deck no longer exits 1.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.268.0] - 2026-07-29</h3></div>
             <div class="group-label">Fixed</div>
@@ -476,8 +485,6 @@
               <li>An offline re-export can no longer accumulate a second copy of an inlined library. The libraries the exporter injects now carry a marker it removes them by, instead of being recognized by their own bundled text. A script that merely names a bundle file (in a comment, say) but uses the <code>Chart</code> global is also no longer removed as if it were a loader shim, and a chart script placed in the document head is moved below the inlined library so it cannot run before it.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.265.0] - 2026-07-28</h3></div>
             <div class="group-label">Added</div>
@@ -525,19 +532,7 @@
               <li>A quadratic scan in the KQL tokenizer. Deciding whether an identifier was a function call sliced the entire remaining query on every token, so cost grew with the square of the query length. It is now a bounded lookahead. A newline before the paren still does not make a call, so highlighted output is unchanged.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.260.0] - 2026-07-27</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A diff labelled <code>config.xml</code>, <code>page.html</code> or <code>main.dart</code> now highlights. <code>_EXT_LANG</code> had no entry for those extensions, so extension inference resolved to no language and the diff rendered monochrome unless the author passed <code>data-diff-lang</code> explicitly - even though both highlighters fully support them. A guard test now fails when any supported language has an obvious extension the table does not map, so the next language cannot ship with the same hole (CMH-HL-13).</li>
-              <li>The runtime <code>sql</code> family accepts double-quoted strings, matching its author-time config (<code>string_styles</code> is <code>sql_single</code> plus <code>double</code>). A double-quoted SQL identifier previously rendered as a string when baked and as plain text at runtime. The other dedicated families&#x27; string styles are now spot-checked against their configs by the same guard (CMH-HL-15).</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Runtime keyword lookup is per LANGUAGE rather than one broad bucket shared by 23 languages. The <code>hash</code> and <code>c</code> families shared a single approximate set, which both over-colored (a lowercase <code>true</code> in Python, <code>true</code>/<code>false</code>/<code>null</code> in R, <code>bool</code> in Objective-C) and under-colored (Python&#x27;s capitalized <code>True</code>/<code>False</code>/<code>None</code> never matched the case-sensitive lookup). Measured cost of splitting, on the built <code>commentable-html.js</code> rather than on the raw keyword text: 9,346 bytes (736,669 -&gt; 746,015, about 1.27 percent), against a divergence visible in every Python block. Each set is compared to its author-time config by test, so a future drift fails there instead of shipping as a block that renders one way baked and another way live (CMH-HL-14).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">221 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">222 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

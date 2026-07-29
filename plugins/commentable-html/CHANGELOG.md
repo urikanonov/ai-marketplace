@@ -4,6 +4,24 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.270.0] - 2026-07-29
+
+### Fixed
+
+- `tools/blocks/chart_block.py` no longer prints chart fragments it could not check. The tool's one
+  promise is that what it emits validates, and it self-validates before printing - but when the
+  sibling `validate` module could not be imported (a broken or partial install) the self-check
+  returned "unknown", which the CLI read as success and printed the fragments anyway. So the single
+  protection disappeared exactly on the installs where something was already wrong. It now fails
+  closed for every "could not check" shape - an unimportable validator, a partial install where
+  `validate.py` is present but one of its own dependencies is not, a truncated `validate.py` that
+  raises on import, a `validate` module resolved from outside the skill's own tools directory
+  (refused before its module body runs), a missing or corrupt validation template, a validator that
+  crashes, and a validator that answers in an unexpected shape - writing nothing and naming the
+  actual cause. A caller who knowingly wants unchecked output passes the new
+  `--allow-unvalidated-output`, which emits the fragments with a warning on stderr; it never
+  suppresses a real validation failure, and the CMH-VAL-18 advisory split still applies.
+
 ## [1.269.0] - 2026-07-29
 
 ### Fixed
