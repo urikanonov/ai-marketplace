@@ -108,7 +108,12 @@ def check_code_highlighting(html):
     # own end tag, which covers both levels: an unpaired `<pre>`, and - inside an otherwise
     # well-formed `<pre>` - an unpaired `<code>`, the shape that survives when the raw region
     # closes before `</pre>` does.
-    if spans.unclosed:
+    if spans.failed:
+        warnings.append(
+            "the document could not be parsed to locate its code blocks, so none of them could "
+            "be inspected - fix the markup (or report this document) rather than trusting a "
+            "clean result")
+    elif spans.unclosed:
         warnings.append(
             "a <pre> or <code> element has no matching closing tag in the authored markup - a "
             "raw <script>, <style> or <!-- comment opened inside it swallows the rest of the "

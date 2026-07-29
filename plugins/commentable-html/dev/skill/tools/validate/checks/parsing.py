@@ -5,6 +5,7 @@ and the constants (regions, ids, regexes) every check builds on."""
 import functools
 import re
 from html.parser import HTMLParser
+from types import MappingProxyType
 
 REGIONS = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"]
 
@@ -67,6 +68,13 @@ def _attrs_have_class(attrs, class_name):
         if any(part.casefold() == wanted for part in value.split()):
             return True
     return False
+
+
+def parsed_attrs_have_class(ad, class_name):
+    """Whether a PARSED attribute dict carries `class_name` as a class token. Matching is
+    case-insensitive, like the raw-attribute `_attrs_have_class` it replaces for parsed input."""
+    wanted = class_name.casefold()
+    return any(part.casefold() == wanted for part in (ad.get("class") or "").split())
 
 
 # dist/PORTABLE.html ships a working DEMO: its content root carries these placeholder
@@ -574,12 +582,35 @@ _RAW_TEXT_ELEMENTS = frozenset((
 ))
 
 # A comment ends at `-->` or at the legacy `--!>` (the HTML comment-end-bang state), and a
-# `<!-->` / `<!--->` closes abruptly. html.parser recognizes the bang form only on 3.13+
-# (_markupbase closes on `--\s*>` alone), so an unrecognized `--!>` left the comment open to
-# the document's NEXT `-->` - the layer always supplies one - blanking the authored markup
-# between. parse_comment is overridden below so the boundary does not depend on the host.
-_COMMENT_CLOSE_RE = re.compile(r"--!?\s*>")
+# `<!-->` / `<!--->` closes abruptly. A whitespace-separated `-- >` does NOT close one, which is
+# why the boundary cannot be left to html.parser: before 3.13 it delegates to
+# `_markupbase._commentclose = re.compile(r'--\s*>')`, which both accepts `-- >` (a false close,
+# so quoted markup after it is read as live) and rejects `--!>` (so a comment ending that way
+# stayed open to the document's NEXT `-->` - the layer always supplies one - blanking the authored
+# markup between). parse_comment is overridden below so the boundary is exact on every host.
+_COMMENT_CLOSE_RE = re.compile(r"--!?>")
 _COMMENT_ABRUPT_CLOSE_RE = re.compile(r"-?>")
+
+# HTML closes a raw-text element on `</name` followed by whitespace, `/` or `>`, so
+# `</script data-x>` and `</script/>` ARE the end tag (with a parse error for the ignored
+# attribute). html.parser only honours the canonical `</script>` before 3.13, which lets the
+# raw-text region run on to the document's next canonical closer and swallow the authored block
+# between - so _CodeSpanParser.parse_endtag applies this boundary itself on every host.
+_RAW_TEXT_CLOSE_RES = {}
+
+# `<![CDATA[ ... ]]>` is only a CDATA section inside FOREIGN content. Everywhere else a browser
+# treats `<!` + junk as a BOGUS COMMENT that ends at the very first `>`, so markup after that `>`
+# is LIVE - while html.parser consumes the whole marked section, which would hide a real code
+# block (and, before 3.13, raises on an unknown section keyword).
+_FOREIGN_ROOTS = frozenset(("svg", "math"))
+
+
+def _raw_text_close_re(elem):
+    rx = _RAW_TEXT_CLOSE_RES.get(elem)
+    if rx is None:
+        rx = re.compile(r"</%s(?=[\t\n\r\f />])[^>]*>" % re.escape(elem), re.IGNORECASE)
+        _RAW_TEXT_CLOSE_RES[elem] = rx
+    return rx
 
 
 class _CodeSpanParser(HTMLParser):
@@ -603,8 +634,17 @@ class _CodeSpanParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self._starts = _line_starts(html)
         self._stack = []   # [(tag, record or None, is_kql_figure)]
+        self._final = False   # the whole document has been handed to feed()
         self.pres = []
         self.unclosed = False
+
+    def parse_document(self, html):
+        """Parse a COMPLETE document. Feeding the whole string at once is what lets an
+        unterminated comment be resolved the way a browser resolves it (it runs to the end of
+        the document) instead of the way the host interpreter happens to resolve it."""
+        self._final = True
+        self.feed(html)
+        self.close()
 
     # -- offsets ---------------------------------------------------------- #
 
@@ -615,20 +655,67 @@ class _CodeSpanParser(HTMLParser):
     def _start_tag_end(self):
         return self._off() + len(self.get_starttag_text() or "")
 
-    # -- cross-version comment boundary ------------------------------------ #
+    # -- cross-version comment and raw-text boundaries --------------------- #
 
     def parse_comment(self, i, report=True):
         rawdata = self.rawdata
         if not rawdata.startswith("<!--", i):
             raise AssertionError("unexpected call to parse_comment()")
         m = _COMMENT_ABRUPT_CLOSE_RE.match(rawdata, i + 4) or _COMMENT_CLOSE_RE.search(rawdata, i + 4)
-        if not m:
-            return -1   # unterminated so far; the base class asks for more data
-        if report:
-            self.handle_comment(rawdata[i + 4:m.start()])
-        return m.end()
+        if m:
+            if report:
+                self.handle_comment(rawdata[i + 4:m.start()])
+            return m.end()
+        # Unterminated: a browser treats the rest of the document as comment data. Say so
+        # explicitly rather than leaving it to the host - before 3.13 html.parser resumes
+        # tokenizing after the next `>`, which resurrects markup a browser never renders.
+        return self._unterminated(i + 4, self.handle_comment if report else (lambda _d: None))
+
+    def parse_endtag(self, i):
+        elem = self.cdata_elem
+        if elem is not None:
+            m = _raw_text_close_re(elem).match(self.rawdata, i)
+            if m:
+                self.handle_endtag(elem)
+                self.clear_cdata_mode()
+                return m.end()
+        return super().parse_endtag(i)
+
+    def parse_html_declaration(self, i):
+        # Replaced wholesale so `<!...>` is resolved identically on every interpreter. Only
+        # inside FOREIGN content is `<![CDATA[ ... ]]>` a CDATA section; everywhere else a
+        # browser treats `<!` + junk as a BOGUS COMMENT that ends at the very first `>`, so
+        # markup after that `>` is LIVE. html.parser instead consumes the whole marked section
+        # in every context (and, before 3.13, raises on an unknown section keyword), which would
+        # hide a real code block behind a `<![CDATA[` an author never meant as one.
+        rawdata = self.rawdata
+        if rawdata.startswith("<!--", i):
+            return self.parse_comment(i)
+        if rawdata[i:i + 9].lower() == "<!doctype":
+            gt = rawdata.find(">", i + 9)
+            if gt < 0:
+                return self._unterminated(i + 2, self.handle_decl)
+            self.handle_decl(rawdata[i + 2:gt])
+            return gt + 1
+        if rawdata.startswith("<![CDATA[", i) and self._in_foreign():
+            j = rawdata.find("]]>", i + 9)
+            if j < 0:
+                return self._unterminated(i + 3, self.unknown_decl)
+            self.unknown_decl(rawdata[i + 3:j])
+            return j + 3
+        return self.parse_bogus_comment(i)
+
+    def _unterminated(self, start, handler):
+        """A construct with no closer: a browser consumes the rest of the document."""
+        if not self._final:
+            return -1   # more data may still arrive; the base class re-tries
+        handler(self.rawdata[start:])
+        return len(self.rawdata)
 
     # -- element tracking -------------------------------------------------- #
+
+    def _in_foreign(self):
+        return any(t in _FOREIGN_ROOTS for (t, _r, _k) in self._stack)
 
     def _open_pre(self):
         for (t, rec, _k) in reversed(self._stack):
@@ -639,7 +726,6 @@ class _CodeSpanParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
         ad = _DocParser._attrs_dict(attrs)
-        classes = set((ad.get("class") or "").split())
         rec = None
         if tag == "pre":
             rec = {"attrs": ad, "start": self._off(), "inner_start": self._start_tag_end(),
@@ -652,7 +738,12 @@ class _CodeSpanParser(HTMLParser):
                 rec = {"attrs": ad, "start": self._off(),
                        "inner_start": self._start_tag_end(), "inner": None}
                 owner["codes"].append(rec)
-        self._stack.append((tag, rec, tag == "figure" and "cmh-kql" in classes))
+        # A VOID element has no content and no end tag, so it never owns a code block and never
+        # needs to be popped. Keeping voids off the stack matches _DocParser and keeps a
+        # void-heavy document from growing the stack (and every unmatched end tag's scan of it).
+        if tag not in VOID:
+            self._stack.append((tag, rec,
+                                tag == "figure" and parsed_attrs_have_class(ad, "cmh-kql")))
         if tag in _RAW_TEXT_ELEMENTS:
             self.set_cdata_mode(tag)
 
@@ -686,14 +777,36 @@ class _CodeSpanParser(HTMLParser):
 
 
 class CodeSpans:
-    """The parsed result: `pres` (each with `attrs`, `inner`, `codes`, `in_kql_figure`) and
-    `unclosed` (a `<pre>`/`<code>` with no end tag, so the structure cannot be trusted)."""
+    """The parsed result.
 
-    __slots__ = ("pres", "unclosed")
+    `pres` is a read-only tuple of `<pre>` records; each record is a read-only mapping with
+    `attrs` (the parsed attribute dict), `inner` (an `(start, end)` offset pair into the
+    ORIGINAL document, or None when the element never closed), `codes` (a tuple of the same
+    shape for the `<code>` elements inside it) and `in_kql_figure`. INVARIANT: `inner is None`
+    implies `unclosed` is True, so a caller that slices `inner` MUST null-check it (the element
+    is already reported through the fail-closed flag). `unclosed` is True when a `<pre>`/`<code>`
+    never got its own end tag, so the structure cannot be trusted; `failed` is True when the
+    parse itself blew up, in which case NO block was collected and every consumer must fail
+    closed rather than conclude the document is clean. The records are frozen because the result
+    is CACHED and shared between checks - a consumer that stamped a field on one would silently
+    poison the next check's view.
+    """
 
-    def __init__(self, pres, unclosed):
+    __slots__ = ("pres", "unclosed", "failed")
+
+    def __init__(self, pres, unclosed, failed=False):
         self.pres = pres
         self.unclosed = unclosed
+        self.failed = failed
+
+
+def _freeze_pres(pres):
+    frozen = []
+    for pre in pres:
+        rec = dict(pre)
+        rec["codes"] = tuple(MappingProxyType(dict(c)) for c in pre["codes"])
+        frozen.append(MappingProxyType(rec))
+    return tuple(frozen)
 
 
 @functools.lru_cache(maxsize=1)
@@ -701,20 +814,20 @@ def code_block_spans(html):
     """Parse `html` and return the `CodeSpans` for its `<pre>`/`<code>` elements.
 
     Cached for the last document because more than one check needs the same spans for the
-    same (multi-megabyte) document per validation run. A malformed document never raises:
-    the parser is tolerant, and anything it could not close is reported through `unclosed`
-    so the callers fail closed instead of silently inspecting nothing.
+    same (multi-megabyte) document per validation run. A malformed document never raises: the
+    parser is tolerant, and anything it could not close is reported through `unclosed` so the
+    callers fail closed instead of silently inspecting nothing.
     """
     p = _CodeSpanParser(html)
     try:
-        p.feed(html)
-        p.close()
+        p.parse_document(html)
     except Exception:
-        # A tolerant parse should not raise, but a code-block guardrail must never be the
-        # thing that crashes a validation run - report what was collected and mark the
-        # structure untrusted so the callers fail CLOSED.
-        return CodeSpans(list(p.pres), True)
-    return CodeSpans(list(p.pres), p.unclosed)
+        # A tolerant parse should not raise, but a code-block guardrail must never be the thing
+        # that crashes a validation run. Report NOTHING (a partial block list would let a check
+        # conclude the rest of the document is clean) and flag the failure so every consumer
+        # fails CLOSED.
+        return CodeSpans((), True, True)
+    return CodeSpans(_freeze_pres(p.pres), p.unclosed)
 
 
 def _is_json_attrs(ad):

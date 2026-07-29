@@ -193,6 +193,20 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
         doc = self._kql_content(self._bare_kusto(' title="a > b" data-cmh-kql-no-cluster'))
         self.assertOkNoWarn(doc)
 
+    def test_a_failed_parse_is_a_hard_error(self):
+        # CMH-KQL-08 is a hard gate, so an empty block list from a FAILED parse must not read as
+        # "no unrunnable KQL found" - the tokenizer hands back no blocks and the rule refuses.
+        doc = self._kql_content(self._bare_kusto())
+        from checks import parsing as _parsing
+        validate.code_block_spans.cache_clear()
+        with mock.patch.object(_parsing._CodeSpanParser, "parse_document",
+                               side_effect=RuntimeError("boom")):
+            errors, _warnings = _validate_text(doc)
+        validate.code_block_spans.cache_clear()
+        self.assertTrue(any("could not be parsed to locate its KQL code blocks" in e
+                            for e in errors),
+                        "expected a fail-closed KQL error, got: %r" % errors)
+
     def test_kql_figure_without_run_link_errors(self):
         # A framed KQL figure MUST carry a Run in Azure Data Explorer link; a missing one
         # is a hard validation ERROR (not a warning) so the reader can always open the query.

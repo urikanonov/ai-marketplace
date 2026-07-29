@@ -22,8 +22,8 @@ def _check_diff_blocks(html):
 
 def _is_kql_code(code):
     """True when a parsed <code> element carries a language-kusto / language-kql class token."""
-    tokens = [t.lower() for t in (code["attrs"].get("class") or "").split()]
-    return "language-kusto" in tokens or "language-kql" in tokens
+    return (parsed_attrs_have_class(code["attrs"], "language-kusto")
+            or parsed_attrs_have_class(code["attrs"], "language-kql"))
 
 
 def _check_kql_blocks(html):
@@ -79,7 +79,15 @@ def _check_kql_blocks(html):
     # comment, a raw-text element or a CDATA section is text and contributes nothing, the
     # figure.cmh-kql exemption comes from real ancestry, and the marker is read from the parsed
     # <pre> attributes so a `>` inside a quoted attribute value cannot hide it.
-    for pre in code_block_spans(html).pres:
+    spans = code_block_spans(html)
+    if spans.failed:
+        # The scan produced NO blocks, so "no unrunnable KQL found" would be a lie. This gate is
+        # a hard error, so say so rather than let a document through on an empty result.
+        errors.append("the document could not be parsed to locate its KQL code blocks, so the "
+                      "runnable-KQL rule could not be applied - fix the markup rather than "
+                      "trusting a clean result")
+        return errors, warnings
+    for pre in spans.pres:
         if not any(_is_kql_code(c) for c in pre["codes"]):
             continue
         if pre["in_kql_figure"]:
