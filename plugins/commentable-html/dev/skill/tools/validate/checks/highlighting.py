@@ -4,7 +4,7 @@ that shipped without highlight spans)."""
 import re
 
 import _toolpath
-from .parsing import _CLASS_ATTR_RE, _CODE_TAG_RE, _PRE_TAG_RE, authored_html
+from .parsing import code_block_spans
 
 _toolpath.ensure()
 import _highlight_core  # noqa: E402
@@ -12,10 +12,6 @@ import _highlight_core  # noqa: E402
 # Kusto labels the document highlight path bakes via the KQL tokenizer (CMH-KQL-09), so
 # an unhighlighted one is a real warning here rather than an ignorable label.
 _KQL_LANGUAGES = frozenset(("kusto", "kql"))
-
-# Every authored <pre> opener, used only to detect an opener the masking left unpaired.
-_PRE_OPEN_RE = re.compile(r"<pre\b", re.IGNORECASE)
-_CODE_OPEN_RE = re.compile(r"<code\b", re.IGNORECASE)
 
 # A deliberately hand-written code block is legitimate - the authoring tools leave it exactly
 # as written - so the author can never clear that finding. It carries a stable prefix (like the
@@ -77,12 +73,10 @@ def _highlight_language_table():
 
 
 def _code_block_language(attrs):
-    """The XXX of a `language-XXX` class token on a <code> element, or None."""
-    for m in _CLASS_ATTR_RE.finditer(attrs):
-        value = next((g for g in m.groups() if g is not None), "")
-        for token in value.split():
-            if token.lower().startswith("language-"):
-                return token[len("language-"):]
+    """The XXX of a `language-XXX` class token on a parsed <code> element, or None."""
+    for token in (attrs.get("class") or "").split():
+        if token.lower().startswith("language-"):
+            return token[len("language-"):]
     return None
 
 
@@ -92,40 +86,39 @@ def check_code_highlighting(html):
     `cmh-code-*` token spans, i.e. it was authored with a language label but never run through
     tools/highlight_code.py, so it renders as monochrome text. Only block code inside a <pre> is
     checked (inline <code> is never highlighted); a `language-text`/unknown label is skipped
-    (not highlightable); an empty block is skipped. Blocks are LOCATED in the masked view
-    (<script>/<style> bodies and HTML comments blanked, so layer prose that merely mentions
-    <pre>/<code> cannot start a match that swallows a real block) but every payload is sliced
-    from the ORIGINAL document, so the language, emptiness and highlight state are decided on
-    the bytes that actually ship. All findings are warnings so --strict escalates them; the
-    hand-written-markup finding is ADVISORY when the leftover markup is inert (the author
-    cannot clear a deliberate hand-written block) and stays fatal when it could execute."""
+    (not highlightable); an empty block is skipped. Blocks are LOCATED as PARSED ELEMENTS
+    (checks/parsing.code_block_spans, shared with the KQL runnable scan CMH-KQL-08), so layer
+    prose that merely mentions <pre>/<code> inside a script, style, comment, raw-text element
+    or CDATA section contributes no block, and a `>` inside a quoted attribute cannot truncate
+    a tag. Every payload is sliced from the ORIGINAL document, so the language, emptiness and
+    highlight state are decided on the bytes that actually ship. All findings are warnings so
+    --strict escalates them; the hand-written-markup finding is ADVISORY when the leftover
+    markup is inert (the author cannot clear a deliberate hand-written block) and stays fatal
+    when it could execute."""
     configs, aliases = _highlight_language_table()
     if not configs:
         return [], []
     warnings = []
-    masked = authored_html(html)
-    # Fail CLOSED when masking destroyed the structure. A raw <script>, <style> or <!-- opened
-    # INSIDE a `<pre><code>` and closed outside it blanks the intervening `</code>` (and possibly
-    # the `</pre>`), so the block would disappear from the scan - and that is the payload the
-    # fatal branch exists for (the browser's raw-text mode swallows those closers too, and the
-    # script RUNS). Both levels are checked: an unpaired `<pre>`, and - inside an otherwise
-    # well-formed `<pre>` - an unpaired `<code>`, which is the shape that survives when the raw
-    # region closes before `</pre>` does.
-    destroyed = len(_PRE_OPEN_RE.findall(masked)) != len(_PRE_TAG_RE.findall(masked))
-    for pm in _PRE_TAG_RE.finditer(masked):
-        body = masked[pm.start(2):pm.end(2)]
-        if len(_CODE_OPEN_RE.findall(body)) != len(_CODE_TAG_RE.findall(body)):
-            destroyed = True
-    if destroyed:
+    spans = code_block_spans(html)
+    # Fail CLOSED when the structure is destroyed. A raw <script>, <style> or <!-- opened
+    # INSIDE a `<pre><code>` and closed outside it swallows the intervening `</code>` (and
+    # possibly the `</pre>`), so the block would disappear from the scan - and that is the
+    # payload the fatal branch exists for (the browser's raw-text mode swallows those closers
+    # too, and the script RUNS). The parser reports any `<pre>`/`<code>` that never got its
+    # own end tag, which covers both levels: an unpaired `<pre>`, and - inside an otherwise
+    # well-formed `<pre>` - an unpaired `<code>`, the shape that survives when the raw region
+    # closes before `</pre>` does.
+    if spans.unclosed:
         warnings.append(
             "a <pre> or <code> element has no matching closing tag in the authored markup - a "
             "raw <script>, <style> or <!-- comment opened inside it swallows the rest of the "
             "block, so it could not be inspected; escape it (< as &lt;, > as &gt;, & as &amp;)")
-    for pm in _PRE_TAG_RE.finditer(masked):
-        for cm in _CODE_TAG_RE.finditer(masked, pm.start(2), pm.end(2)):
-            code_attrs = html[cm.start(1):cm.end(1)]
-            code_inner = html[cm.start(2):cm.end(2)]
-            raw_lang = _code_block_language(code_attrs)
+    for pre in spans.pres:
+        for code in pre["codes"]:
+            if code["inner"] is None:
+                continue  # never closed; already reported through the fail-closed branch
+            code_inner = html[code["inner"][0]:code["inner"][1]]
+            raw_lang = _code_block_language(code["attrs"])
             if not raw_lang or not code_inner.strip():
                 continue
             lang = raw_lang.strip().lower()

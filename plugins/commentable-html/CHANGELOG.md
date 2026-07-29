@@ -4,6 +4,45 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.276.0] - 2026-07-29
+
+### Fixed
+
+- The two author-time scans that locate code blocks - the syntax-highlighting guardrail
+  (CMH-VAL-11) and the runnable-KQL rule (CMH-KQL-08) - now read PARSED elements instead of
+  matching text over a masked copy of the document. The mask closed the two real defects it was
+  built for, but a text scan still drew the block boundary in four places a browser does not, and
+  each one could hide a real raw block from a guardrail that exists to catch it:
+  - every HTML raw-text / RCDATA element holds text, not markup, yet only `<script>` and `<style>`
+    were treated that way. A `<pre>`/`<code>` written inside a `<textarea>`, `<title>`, `<xmp>`,
+    `<iframe>`, `<noembed>`, `<noframes>` or `<noscript>` was read as authored markup, and its
+    unpaired opener could swallow the author's real block that followed;
+  - a `<![CDATA[ ... ]]>` section in foreign content (`<svg>`/`<math>`) is a declaration whose
+    content is character data, so a block quoted there was both flagged on its own and able to hide
+    a later real one;
+  - the legacy comment close `--!>` was not recognized, so a comment ending that way stayed "open"
+    to the document's next `-->` - which the layer always supplies - blanking every authored block
+    in between;
+  - matching attributes up to the first `>` ended a tag inside a QUOTED attribute value, so
+    `<code title="a > b" class="language-python">` lost its language label entirely and a
+    `data-cmh-kql-no-cluster` marker written after such a value was invisible.
+
+  All four now fall out of a shared tolerant tokenizer (`checks/parsing.code_block_spans`), which
+  records the offsets of every real `<pre>`/`<code>` element; the `figure.cmh-kql` exemption comes
+  from real ancestry (matched case-insensitively) and the no-cluster marker from parsed attributes.
+  Because the host interpreter's own rules differ, every boundary is applied explicitly rather than
+  inherited, so the same document validates identically on every Python the skill runs on: the
+  raw-text set; the raw-text closer (`</script data-x>`, `</script/>`, which only Python 3.13+
+  honours); the comment closes (`-->`, `--!>`, `<!-->`, `<!--->` - and NOT `-- >`, which the
+  pre-3.13 delegate wrongly accepted); an unterminated comment running to the end of the document
+  rather than resuming after the next `>`;   and CDATA, which is a section only inside `<svg>`/`<math>` (and not at an HTML integration point
+  such as `foreignObject` or `desc`, where HTML tokenization resumes) and a bogus comment ending at
+  the first `>` everywhere else. Payloads are still sliced from the
+  ORIGINAL document, so the language, the emptiness test and the highlight classification are
+  decided on the bytes that ship, and the fail-closed warning for a code block whose structure a raw
+  `<script>`/`<style>`/`<!--` destroyed is unchanged. If the parse itself fails, no blocks are
+  reported at all and both checks refuse the document instead of passing it on an empty result.
+
 ## [1.275.0] - 2026-07-29
 
 ### Fixed

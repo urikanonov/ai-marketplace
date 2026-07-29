@@ -50,8 +50,6 @@ SAFE_ID_RE = re.compile(r"^c[a-z0-9]{6,63}$")
 
 _PRE_TAG_RE = re.compile(r"<pre\b([^>]*)>(.*?)</pre>", re.DOTALL | re.IGNORECASE)
 
-_CODE_TAG_RE = re.compile(r"<code\b([^>]*)>(.*?)</code>", re.DOTALL | re.IGNORECASE)
-
 _CLASS_ATTR_RE = re.compile(r"""\bclass\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))""", re.IGNORECASE)
 
 # Transient runtime UI-state classes the layer toggles on document.body (sidebar open, active
@@ -101,43 +99,6 @@ _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 # that appears only inside script/style data (which the browser parses as text, not
 # a comment) cannot be mistaken for a real HTML comment.
 _SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1\s*>", re.DOTALL | re.IGNORECASE)
-
-# The constructs a `<pre>`/`<code>` scan must never look inside, matched as ONE left-to-right
-# scan so whichever construct opens FIRST wins - which is what a browser does. Masking them in
-# two sequential passes is wrong: a "<script" mentioned inside an HTML comment would open a
-# script mask that runs past the comment to the document's next real </script>, blanking the
-# authored content between. The third branch matches ANY OTHER start tag and is left UNCHANGED;
-# it exists purely to consume a tag so that a delimiter sitting inside one of its quoted
-# attribute values (`<div title="<script fake">`) cannot open a mask, since a browser only
-# recognizes these delimiters in the data state. The raw-text closer accepts the full HTML
-# end-tag boundary (`</script data-x>`, `</script/>`), which a browser also honours.
-_ATTRS = r'(?:[^>"\']|"[^"]*"|\'[^\']*\')*'
-_MASK_SCAN_RE = re.compile(
-    r"(?P<comment><!--.*?-->)"
-    r"|(?P<raw><(?P<tag>script|style)\b" + _ATTRS + r">.*?</(?P=tag)(?=[\s/>])[^>]*>)"
-    r"|(?P<other><[a-zA-Z][^\s/>]*" + _ATTRS + r">)",
-    re.DOTALL | re.IGNORECASE)
-
-
-def _mask_region(m):
-    """Blank a comment or raw-text body to same-length spaces; leave any other tag as it is."""
-    if m.lastgroup == "other" or m.group("other") is not None:
-        return m.group(0)
-    return " " * len(m.group(0))
-
-
-@functools.lru_cache(maxsize=1)
-def authored_html(html):
-    """Return `html` with <script>/<style> bodies and HTML comments blanked to SPACES.
-
-    Markup inside a script body, a style body, or a comment is quoted TEXT, not authored
-    content: a Portable document inlines layer CSS and JS whose prose mentions `<pre>` and
-    `<code>`, and a raw scan lets such a mention start a greedy match that swallows the author's
-    real block. Blanking preserves every offset, so a caller can locate spans in this view and
-    slice the ORIGINAL string for the payload. Cached for the last document because more than one
-    check needs the same view of the same (multi-megabyte) document per validation run.
-    """
-    return _MASK_SCAN_RE.sub(_mask_region, html)
 
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
@@ -591,6 +552,169 @@ class _DocParser(HTMLParser):
                 if self._in_content_region:
                     self.content_region_closed = True
                 self._in_content_region = False
+
+
+# --------------------------------------------------------------------------- #
+# Parsed <pre>/<code> spans - the scan boundary CMH-VAL-11 and CMH-KQL-08 share.
+# --------------------------------------------------------------------------- #
+
+# Elements whose CONTENT is text, not markup (the browser's raw-text and RCDATA modes).
+# A `<pre>`/`<code>` written inside one of them is prose a reader SEES, never an authored
+# code block, so a code-block scan must not look inside. Every one is switched on
+# EXPLICITLY rather than relying on html.parser's own table, which knows only script/style
+# on older interpreters (3.13 added xmp/iframe/noembed/noframes/textarea/title) - so the
+# boundary is identical on every Python the skill runs on. `noscript` is raw text in a
+# scripting-ENABLED browser, which is the only mode a commentable document ever runs in.
+# The set is applied unconditionally, including inside SVG/MathML where a browser would
+# parse an element of the same name normally: a code block inside an SVG `<title>` is not a
+# real shape, and a rule that depended on foreign-content state would land differently on
+# 3.13 (whose parser makes its own raw-text decisions) than on 3.12.
+_RAW_TEXT_ELEMENTS = frozenset((
+    "script", "style", "textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript",
+))
+
+# A comment ends at `-->` or at the legacy `--!>` (the HTML comment-end-bang state), and a
+# `<!-->` / `<!--->` closes abruptly. html.parser recognizes the bang form only on 3.13+
+# (_markupbase closes on `--\s*>` alone), so an unrecognized `--!>` left the comment open to
+# the document's NEXT `-->` - the layer always supplies one - blanking the authored markup
+# between. parse_comment is overridden below so the boundary does not depend on the host.
+_COMMENT_CLOSE_RE = re.compile(r"--!?\s*>")
+_COMMENT_ABRUPT_CLOSE_RE = re.compile(r"-?>")
+
+
+class _CodeSpanParser(HTMLParser):
+    """Record the offsets of every real `<pre>` element and of the `<code>` elements inside
+    it, so the code-block checks read PARSED elements instead of matching text.
+
+    Each `<pre>` record carries its parsed attributes, the span of its inner content
+    (offsets into the ORIGINAL document, so a payload is always sliced from the bytes that
+    ship), whether an ancestor is a `figure.cmh-kql`, and the `<code>` elements found under
+    it. `unclosed` is True when a `<pre>` or a `<code>` never got its own end tag - the
+    shape a raw `<script>`/`<style>`/`<!--` opened inside a code block produces, which the
+    browser's raw-text mode swallows the same way, so the callers fail CLOSED on it.
+
+    Everything a text scan got wrong falls out of parsing: a `>` inside a QUOTED attribute
+    value no longer ends a tag, comments and raw-text/RCDATA bodies and `<![CDATA[ ]]>`
+    sections contribute no elements, and a construct mentioned inside any of them cannot
+    start a match that swallows the author's real block.
+    """
+
+    def __init__(self, html):
+        super().__init__(convert_charrefs=True)
+        self._starts = _line_starts(html)
+        self._stack = []   # [(tag, record or None, is_kql_figure)]
+        self.pres = []
+        self.unclosed = False
+
+    # -- offsets ---------------------------------------------------------- #
+
+    def _off(self):
+        ln, col = self.getpos()
+        return self._starts[ln - 1] + col
+
+    def _start_tag_end(self):
+        return self._off() + len(self.get_starttag_text() or "")
+
+    # -- cross-version comment boundary ------------------------------------ #
+
+    def parse_comment(self, i, report=True):
+        rawdata = self.rawdata
+        if not rawdata.startswith("<!--", i):
+            raise AssertionError("unexpected call to parse_comment()")
+        m = _COMMENT_ABRUPT_CLOSE_RE.match(rawdata, i + 4) or _COMMENT_CLOSE_RE.search(rawdata, i + 4)
+        if not m:
+            return -1   # unterminated so far; the base class asks for more data
+        if report:
+            self.handle_comment(rawdata[i + 4:m.start()])
+        return m.end()
+
+    # -- element tracking -------------------------------------------------- #
+
+    def _open_pre(self):
+        for (t, rec, _k) in reversed(self._stack):
+            if t == "pre":
+                return rec
+        return None
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        ad = _DocParser._attrs_dict(attrs)
+        classes = set((ad.get("class") or "").split())
+        rec = None
+        if tag == "pre":
+            rec = {"attrs": ad, "start": self._off(), "inner_start": self._start_tag_end(),
+                   "inner": None, "codes": [],
+                   "in_kql_figure": any(k for (_t, _r, k) in self._stack)}
+            self.pres.append(rec)
+        elif tag == "code":
+            owner = self._open_pre()
+            if owner is not None:
+                rec = {"attrs": ad, "start": self._off(),
+                       "inner_start": self._start_tag_end(), "inner": None}
+                owner["codes"].append(rec)
+        self._stack.append((tag, rec, tag == "figure" and "cmh-kql" in classes))
+        if tag in _RAW_TEXT_ELEMENTS:
+            self.set_cdata_mode(tag)
+
+    def handle_startendtag(self, tag, attrs):
+        # HTML5: a trailing slash on a NON-void tag is ignored, so `<pre/>` opens an element
+        # that still needs `</pre>` and `<textarea/>` still opens raw text.
+        if tag.lower() not in VOID:
+            self.handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        end = self._off()
+        for i in range(len(self._stack) - 1, -1, -1):
+            if self._stack[i][0] != tag:
+                continue
+            for (t, rec, _k) in self._stack[i + 1:]:
+                if t in ("pre", "code") and rec is not None:
+                    self.unclosed = True   # implicitly closed: it never got its own closer
+            own = self._stack[i][1]
+            if own is not None:
+                own["inner"] = (own["inner_start"], end)
+            del self._stack[i:]
+            return
+        # An end tag with no open element is ignored, exactly as a browser ignores it.
+
+    def close(self):
+        super().close()
+        for (t, rec, _k) in self._stack:
+            if t in ("pre", "code") and rec is not None:
+                self.unclosed = True
+
+
+class CodeSpans:
+    """The parsed result: `pres` (each with `attrs`, `inner`, `codes`, `in_kql_figure`) and
+    `unclosed` (a `<pre>`/`<code>` with no end tag, so the structure cannot be trusted)."""
+
+    __slots__ = ("pres", "unclosed")
+
+    def __init__(self, pres, unclosed):
+        self.pres = pres
+        self.unclosed = unclosed
+
+
+@functools.lru_cache(maxsize=1)
+def code_block_spans(html):
+    """Parse `html` and return the `CodeSpans` for its `<pre>`/`<code>` elements.
+
+    Cached for the last document because more than one check needs the same spans for the
+    same (multi-megabyte) document per validation run. A malformed document never raises:
+    the parser is tolerant, and anything it could not close is reported through `unclosed`
+    so the callers fail closed instead of silently inspecting nothing.
+    """
+    p = _CodeSpanParser(html)
+    try:
+        p.feed(html)
+        p.close()
+    except Exception:
+        # A tolerant parse should not raise, but a code-block guardrail must never be the
+        # thing that crashes a validation run - report what was collected and mark the
+        # structure untrusted so the callers fail CLOSED.
+        return CodeSpans(list(p.pres), True)
+    return CodeSpans(list(p.pres), p.unclosed)
 
 
 def _is_json_attrs(ad):

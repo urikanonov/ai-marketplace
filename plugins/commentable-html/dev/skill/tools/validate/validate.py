@@ -128,7 +128,6 @@ from checks.parsing import (  # noqa: F401,E402
     SAFE_ID_RE,
     VOID,
     _CLASS_ATTR_RE,
-    _CODE_TAG_RE,
     _COMMENT_ROOT_ATTR_RE,
     _DATA_KEY_RE,
     _DocParser,
@@ -154,7 +153,7 @@ from checks.parsing import (  # noqa: F401,E402
     _parser_script,
     _parser_script_body,
     _region_marker_matches,
-    authored_html,
+    code_block_spans,
 )
 from checks.resources import (  # noqa: F401,E402
     CHARTJS_SRC_RE,
@@ -332,10 +331,10 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET, html=None)
         e, w = check_density(html)
         errors += e
         warnings += w
-    # Release the cached masked view: it is only worth keeping for the duration of ONE
-    # document's checks, and holding a multi-megabyte string alive afterwards would be a
+    # Release the cached parse: it is only worth keeping for the duration of ONE document's
+    # checks, and holding a multi-megabyte document's spans alive afterwards would be a
     # surprising residue in any process that hosts these modules.
-    authored_html.cache_clear()
+    code_block_spans.cache_clear()
     return errors, warnings
 
 
