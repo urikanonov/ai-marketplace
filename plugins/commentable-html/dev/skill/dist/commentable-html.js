@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.273.0";
+const CMH_VERSION = "1.275.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -11173,6 +11173,23 @@ function _offlineIsRunnableScriptType(type) {
   return /^(?:text|application)\/(?:x-)?(?:java|ecma)script$/.test(t) ||
     /^text\/(?:javascript1\.[0-5]|jscript|livescript)$/.test(t);
 }
+// The MIT notice wording is single-sourced here because THREE places must agree on it byte for
+// byte - the emitter, the re-export strip that removes a previous pass's notice, and the capture
+// that reads one back. Wording that drifted in one of them used to fail silently: the strip would
+// stop pruning (notices accumulate) or the capture would miss (the license is dropped from the
+// re-export, breaking the MIT redistribution requirement).
+const _OFFLINE_LIB_NOTICE_LEAD = "Third-party notice - ";
+const _OFFLINE_LIB_NOTICE_TAIL = " is bundled inline for offline use under the MIT License:";
+function _offlineReEscape(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+const _OFFLINE_LIB_NOTICE_ANY_RE = new RegExp(
+  _offlineReEscape(_OFFLINE_LIB_NOTICE_LEAD) + "[^\\n]*" + _offlineReEscape(_OFFLINE_LIB_NOTICE_TAIL));
+// Tolerate CRLF: an offline file re-saved by a Windows editor carries `\r\n`, and a notice that no
+// longer matched would be silently dropped from the next export rather than travelling with the
+// bytes it licenses.
+const _OFFLINE_LIB_NOTICE_RE = new RegExp(
+  "^\\s*" + _offlineReEscape(_OFFLINE_LIB_NOTICE_LEAD) + "(\\S+)"
+  + _offlineReEscape(_OFFLINE_LIB_NOTICE_TAIL) + "\\r?\\n([\\s\\S]*)$");
+const _OFFLINE_LIB_NOTICE_KEYS = { "Chart.js": "chartjsLicense", mermaid: "mermaidLicense" };
 function _offlineDocFromHtml(html) {
   return new DOMParser().parseFromString(String(html || ""), "text/html");
 }
@@ -11230,8 +11247,7 @@ function _stripOfflineNetworkLoads(doc) {
   doc.querySelectorAll("script").forEach(function (s) {
     const id = s.getAttribute("id") || "";
     if (/^(?:embeddedComments|handledCommentIds|commentableHtmlLayer|cmhVendoredRichLibs)$/.test(id)) return;
-    const type = (s.getAttribute("type") || "").split(";")[0].trim().toLowerCase();
-    if (type && type !== "module" && type !== "text/javascript" && type !== "application/javascript") return;
+    if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return;
     const body = s.textContent || "";
     if (_offlineScriptHasNetworkImport(body)) {
       s.remove();
@@ -11286,7 +11302,7 @@ function _stripOfflineRichRenderers(doc) {
   const head = doc.head || doc.querySelector("head");
   if (head) {
     Array.prototype.slice.call(head.childNodes).forEach(function (n) {
-      if (n.nodeType === 8 && /Third-party notice - .* bundled inline for offline use under the MIT License:/.test(n.nodeValue || "")) {
+      if (n.nodeType === 8 && _OFFLINE_LIB_NOTICE_ANY_RE.test(n.nodeValue || "")) {
         if (n.parentNode) n.parentNode.removeChild(n);
       }
     });
@@ -11307,8 +11323,7 @@ function _stripOfflineRichRenderers(doc) {
     }
   });
   doc.querySelectorAll("script").forEach(function (s) {
-    const type = (s.getAttribute("type") || "").split(";")[0].trim().toLowerCase();
-    if (type && type !== "module" && type !== "text/javascript" && type !== "application/javascript") return;
+    if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return;
     const body = s.textContent || "";
     if (_OFFLINE_LAYER_SCRIPT_RE.test(body)) return;
     if (/mermaid/i.test(body) && (/\bimport\s*\(/.test(body) || /\bmermaid\.(?:initialize|run)\b/i.test(body) || /\.run\s*\(/.test(body))) {
@@ -11454,7 +11469,7 @@ function _offlineAppendLibNotice(doc, head, name, license) {
   const text = String(license || "").replace(/-{2,}/g, function (m) { return m.split("").join(" "); });
   if (!text.trim()) return;
   head.appendChild(doc.createComment(
-    " Third-party notice - " + name + " is bundled inline for offline use under the MIT License:\n"
+    " " + _OFFLINE_LIB_NOTICE_LEAD + name + _OFFLINE_LIB_NOTICE_TAIL + "\n"
     + text + "\n"));
 }
 function _offlineHoistChartScripts(doc) {
@@ -11478,7 +11493,95 @@ function _offlineRemoveVendoredBundleScript(doc) {
   const el = doc.getElementById("cmhVendoredRichLibs");
   if (el) el.remove();
 }
-async function _offlineInlineRichLibs(doc, referencesChartLib) {
+// An Offline export CONSUMES the vendored payload and removes it, so the file it produces carries
+// the libraries inline and no payload at all. Re-exporting that file therefore has nothing to
+// re-inline from - so read the copies already in the document (and the MIT notices beside them)
+// BEFORE the strip removes them, and let the strip stay unconditional. Capturing and re-emitting,
+// rather than leaving them in place, keeps the strip's exactly-one-copy and ordering guarantees.
+//
+// Re-emitting a captured script GRANTS IT EXECUTION in the exported file, and the document reaching
+// here is UNTRUSTED (it may be hand-authored, or crafted), so the `data-cmh-offline-lib` marker is
+// NOT on its own proof that this exporter wrote it. Four provenance gates make an impersonation
+// grant no capability the source document did not already have://   1. it sits in <head>, where this exporter appends it and never in the authored content root;
+//   2. it carries EXACTLY the attribute shape this exporter emits - the marker and nothing else.
+//      That is stricter than enumerating disqualifying attributes and cannot be outflanked by one
+//      nobody thought of. It rules out `src` (whose inline text never ran), any `type` (so inert
+//      `application/json` / `text/plain` data is never promoted from data to code, and a bare
+//      marker means the type was runnable), and - the reason a denylist would have failed -
+//      `nomodule`, which every module-supporting browser SKIPS, so its body never ran, yet
+//      re-emission drops the attribute and would run it;
+//   3. it passes the same network-import check `_stripOfflineNetworkLoads` applies to every other
+//      surviving script - capture happens BEFORE the strips and re-emission AFTER, so without this
+//      a smuggled remote import would ride straight past a strip that had already run. This is a
+//      strip-parity gate, NOT an egress proof: like the strip it only recognizes literal-URL import
+//      forms, and the zero-network CSP is what actually enforces no egress. Both vendored bundles
+//      are clean under it, so the legitimate path pays nothing;
+//   4. its bytes cannot open a script-data escape. A body containing a script start tag (or a
+//      script/style end tag) re-serializes into an element the parser does not close where the
+//      exporter thinks it does: an HTML comment opener followed by a script start tag puts the
+//      re-parse into the script-data-double-escaped state, so the emitted end tag stops closing
+//      the element and the rest of the head (including the mermaid init shim) is swallowed into
+//      it. `_escClose` neutralizes an end tag but cannot fix that state, so the bytes are rejected
+//      instead. The vendored bundles contain none of these sequences (mermaid does contain a bare
+//      comment opener, which is harmless on its own - the double-escaped state needs a script
+//      start tag too - so the gate deliberately does not look for it). This very comment must
+//      therefore avoid spelling those sequences out: doing so swallowed the whole runtime once.
+// An adjacent MIT notice is required as well (below), but that is a LICENSING requirement, not
+// authentication: the wording is a public constant and a forgery can copy it. The security
+// argument rests only on gates 1-4.
+//
+// THREAT MODEL (deliberate, and the reason this stops here rather than at a pinned hash): these
+// gates exist to ensure capture grants NO capability the source document did not already have.
+// They close every case where it did - inert data, a MIME-parameter type (`text/javascript;
+// charset=utf-8` does not execute: HTML matches the type's essence), or a skipped `nomodule` body
+// promoted to code; a `src` script's dead inline text promoted; code carrying a remote import that
+// the strip would have deleted being resurrected after the strip ran; and bytes that break the
+// document's own parse. What they deliberately do NOT try to prove is that the bytes ARE the
+// genuine library: an attacker who authors the document can put arbitrary executable code in a head
+// script WITHOUT the marker, and the export preserves benign inline scripts by design
+// (CMH-OFFLINE-04), so refusing a marked copy would not take that ability away. Verifying the bytes
+// would need a build-pinned digest, and `crypto.subtle` is unavailable in a `file://` document -
+// exactly where these exports are opened - so it would also reject every file produced by a
+// different exporter version, reintroducing the false-rejection bug this fixes. The zero-network
+// CSP remains the backstop for what any preserved script can do.
+const _OFFLINE_SCRIPT_DATA_ESCAPE_RE = /<\/?script|<\/style/i;
+function _offlineAdjacentLibNotice(script, lib) {
+  let n = script.previousSibling;
+  while (n && n.nodeType === 3 && !String(n.nodeValue || "").trim()) n = n.previousSibling;
+  if (!n || n.nodeType !== 8) return "";
+  const m = _OFFLINE_LIB_NOTICE_RE.exec(n.nodeValue || "");
+  // Bind the notice to THIS library, and only to the notice immediately before it, so an earlier
+  // duplicate or forged comment elsewhere in the head cannot shadow the authentic one. The name
+  // is read from an untrusted comment, so look it up as an OWN key - `constructor` / `__proto__`
+  // would otherwise resolve to an inherited value.
+  if (!m || !Object.prototype.hasOwnProperty.call(_OFFLINE_LIB_NOTICE_KEYS, m[1])) return "";
+  if (_OFFLINE_LIB_NOTICE_KEYS[m[1]] !== lib + "License") return "";
+  return m[2].replace(/\r?\n$/, "");
+}
+function _offlineCaptureInlinedRichLibs(doc) {
+  const found = { chartjs: "", mermaid: "", chartjsLicense: "", mermaidLicense: "" };
+  const head = doc.head || doc.querySelector("head");
+  if (!head) return found;
+  head.querySelectorAll("script[data-cmh-offline-lib]").forEach(function (s) {
+    const lib = s.getAttribute("data-cmh-offline-lib") || "";
+    if (lib !== "chartjs" && lib !== "mermaid") return;
+    if (s.attributes.length !== 1) return;
+    const code = s.textContent || "";
+    if (!code.trim() || _offlineScriptHasNetworkImport(code)) return;
+    if (_OFFLINE_SCRIPT_DATA_ESCAPE_RE.test(code)) return;
+    const license = _offlineAdjacentLibNotice(s, lib);
+    // A blank notice would make `_offlineAppendLibNotice` a no-op, redistributing the library with
+    // no MIT notice at all, so treat it as no notice.
+    if (!license.trim()) return;
+    // LAST match wins: this exporter appends the library as the head's last child, so a marker
+    // placed earlier must never displace the genuine copy (that would "succeed" with a diagram
+    // that never renders).
+    found[lib] = code;
+    found[lib + "License"] = license;
+  });
+  return found;
+}
+async function _offlineInlineRichLibs(doc, referencesChartLib, inlinedLibs) {
   const head = doc.head || doc.querySelector("head");
   if (!head) return;
   const needMermaid = _offlineDocUsesMermaid(doc);
@@ -11488,15 +11591,24 @@ async function _offlineInlineRichLibs(doc, referencesChartLib) {
     return;
   }
   const bundle = await _offlineVendoredRichLibs();
+  const captured = inlinedLibs || {};
+  // The payload wins when it carries the library (a fresh copy of the vendored bytes); the captured
+  // copy is the fallback for a document that no longer has a payload.
+  const lib = function (key) {
+    if (bundle[key]) return { code: bundle[key], license: bundle[key + "License"] || "" };
+    return { code: captured[key] || "", license: captured[key + "License"] || "" };
+  };
   if (needCharts) {
-    if (!bundle.chartjs) throw new Error("Offline export is missing the vendored Chart.js bundle.");
-    _offlineAppendLibNotice(doc, head, "Chart.js", bundle.chartjsLicense);
-    _offlineAppendInlineScript(doc, head, bundle.chartjs, { "data-cmh-offline-lib": "chartjs" });
+    const chartjs = lib("chartjs");
+    if (!chartjs.code) throw new Error("Offline export is missing the vendored Chart.js bundle.");
+    _offlineAppendLibNotice(doc, head, "Chart.js", chartjs.license);
+    _offlineAppendInlineScript(doc, head, chartjs.code, { "data-cmh-offline-lib": "chartjs" });
   }
   if (needMermaid) {
-    if (!bundle.mermaid) throw new Error("Offline export is missing the vendored mermaid bundle.");
-    _offlineAppendLibNotice(doc, head, "mermaid", bundle.mermaidLicense);
-    _offlineAppendInlineScript(doc, head, bundle.mermaid, { "data-cmh-offline-lib": "mermaid" });
+    const mermaid = lib("mermaid");
+    if (!mermaid.code) throw new Error("Offline export is missing the vendored mermaid bundle.");
+    _offlineAppendLibNotice(doc, head, "mermaid", mermaid.license);
+    _offlineAppendInlineScript(doc, head, mermaid.code, { "data-cmh-offline-lib": "mermaid" });
     _offlineAppendInlineScript(doc, head,
       "(function(){\n"
       + "  if (!window.mermaid || !window.mermaid.initialize || !window.mermaid.run) return;\n"
@@ -11554,11 +11666,12 @@ async function _buildOfflineHtml(portableHtml) {
   // Read the "does this document use Chart.js" evidence BEFORE anything is stripped, so a script the
   // loader strip removes cannot take the only sign of the library with it.
   const referencesChartLib = _offlineDocReferencesChartLib(doc);
+  const inlinedRichLibs = _offlineCaptureInlinedRichLibs(doc);
   _stripOfflineRichRenderers(doc);
   _stripOfflineNetworkLoads(doc);
   _stripOfflineEventHandlers(doc);
   _offlineHoistChartScripts(doc);
-  await _offlineInlineRichLibs(doc, referencesChartLib);
+  await _offlineInlineRichLibs(doc, referencesChartLib, inlinedRichLibs);
   _ensureOfflineCsp(doc);
   return _retargetLayerDescriptor(_serializeOfflineDoc(doc), "offline").replace(/\n{3,}/g, "\n\n");
 }

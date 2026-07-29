@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.273.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.275.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -458,6 +458,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.275.0] - 2026-07-29</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The Offline export&#x27;s two script strips now treat every executable JavaScript MIME type as runnable, not only the modern three. <code>_stripOfflineRichRenderers</code> and <code>_stripOfflineNetworkLoads</code> returned early for any <code>type</code> outside empty / <code>module</code> / <code>text/javascript</code> / <code>application/javascript</code>, but a browser also executes <code>text/ecmascript</code>, <code>application/ecmascript</code>, <code>application/x-javascript</code>, <code>text/x-javascript</code>, <code>text/jscript</code>, <code>text/livescript</code>, and <code>text/javascript1.0</code> through <code>1.5</code> - so a script carrying one of those types kept its remote dynamic import, and a stale mermaid or Chart.js loader shim survived the renderer strip. Both strips now share the one runnable-script-type predicate the evidence scan already used. The strict validator carried the same narrow set in its own independent Python copy, so such a file also passed <code>validate.py --strict</code> as offline-clean; it now mirrors the runtime predicate, and a parity test pins the two implementations together in both directions. The zero-network CSP blocked the fetch either way, so this is defense in depth; the strip is the primary guarantee and no longer leans on the CSP.</li>
+              <li>Re-running <code>Export Offline</code> on an already-offline document that contains a mermaid diagram (or a chart the built-in renderer does not draw) now produces a working download instead of an &quot;Offline export is missing the vendored mermaid bundle&quot; error toast. An Offline export consumes the vendored payload and removes it, so the file it produces carries the libraries inline and no payload at all; the exporter now reads those already-inlined copies and their MIT notices before the strip removes them and re-emits them, so a re-export reuses what is already local. Because re-emitting a captured script grants it execution and the document being exported is untrusted, the <code>data-cmh-offline-lib</code> marker alone is not taken as proof this exporter wrote it: a captured copy must sit in the head, carry exactly the attribute shape the exporter emits (which rules out <code>src</code>, any <code>type</code> - so inert data and a non-executing MIME-parameter type are never promoted to code - and <code>nomodule</code>, whose body never ran), pass the same network-import check the loader strip applies to every other surviving script, and carry no byte sequence that would open a script-data escape. An adjacent MIT notice naming the same library is required as a licensing condition, so the library and its notice always travel together. A document that has neither a payload nor a qualifying inlined copy still fails loudly.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.273.0] - 2026-07-29</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -468,6 +476,8 @@
               <li>The chart and diagram selectors are declared ONCE, in a new <code>assets/js/03-selectors.js</code> module, and the renderer, the image comment layer, the mermaid layer, the Offline exporter, and the author-time rich-libraries payload detector all derive from it, so the lists can no longer drift. The detector&#x27;s former deliberate superset (any <code>data-cmh-chart*</code> attribute) is now exact parity with the runtime.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.271.0] - 2026-07-29</h3></div>
             <div class="group-label">Fixed</div>
@@ -475,8 +485,6 @@
               <li>The validator no longer classifies a document as NonPortable because its own authored CONTENT demonstrates the companion markup. It decided the mode by looking for a <code>&lt;link href=&quot;commentable-html.css&quot;&gt;</code> / <code>&lt;script src=&quot;commentable-html.js&quot;&gt;</code> ANYWHERE in the file, so a genuinely self-contained Portable document about commentable-html - one that quotes the legacy loading markup in prose, which <code>to_portable.py</code> now deliberately preserves when it migrates such a file - failed validation with <code>commentableHtmlLayer.mode must be &quot;nonportable&quot;</code>, no runtime script found, a missing <code>#cmhAssetBanner</code>, and a companion file that does not exist. The mode determination and every check that follows from it now read the LAYER&#x27;s own markup: the authored region is excluded, because the layer&#x27;s references always sit outside it (the stylesheet in <code>&lt;head&gt;</code> before it, the runtime scripts at the end of <code>&lt;body&gt;</code> after it). The region comes from the PARSE, not from marker offsets in the text, so it is exactly the region a browser would agree on - real comment markers, inside the live <code>#commentRoot</code>, outside an inert <code>&lt;template&gt;</code>, never inside CDATA - and a misplaced marker or a <code>&lt;style&gt;</code> straddling one cannot steer the validator into ignoring the real layer instead. It holds in the other direction too: an authored demonstration can never STAND IN for a real reference, so a NonPortable document whose bootstrap banner, watchdog, version meta, or companion reference exists only inside its prose still reports the same error it always did, and a real NonPortable document is classified and checked exactly as before. Because the layer view is only as trustworthy as the region it is derived from, the validator also errors when the CONTENT markers are present in the text exactly once each and in order but the document does not parse with a well-formed region - a marker swallowed by a <code>&lt;script&gt;</code>/<code>&lt;style&gt;</code> body or an inert <code>&lt;template&gt;</code>, a marker outside <code>#commentRoot</code>, or unbalanced markup closing <code>#commentRoot</code> mid-region - instead of guessing which side of the broken boundary the markup after it belongs to.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.270.0] - 2026-07-29</h3></div>
             <div class="group-label">Fixed</div>
@@ -522,15 +530,7 @@
               <li>Every anchor is resolved against the document&#x27;s original bytes and applied in one pass of non-overlapping edits, and elements are matched in a view with HTML comments and raw-text bodies blanked. Untrusted companion text can no longer aim a later step, and a commented-out or quoted copy of a companion reference or of the layer descriptor is never the one rewritten. A companion is matched by the BASENAME of the URL its element points at, so the absolute <code>file://</code> references the CLI produced by default, the <code>--assets-relative</code> / <code>--copy-assets</code> / <code>--assets-href</code> prefixes and <code>?v=</code> cache-busters all migrate rather than being refused; CRLF documents migrate too. Migration finally refuses to write a result that would still reference a companion, so it can never report success on a document that is not self-contained.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.264.0] - 2026-07-28</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A wide table no longer breaks words mid-token. Table cells used <code>overflow-wrap: anywhere</code>, which participates in intrinsic (min-content) sizing, so every cell reported a min-content width of roughly one character and the table layout algorithm collapsed a column to that and shredded its text even while other columns still had spare room - a 14-column table rendered <code>NAMESPACE MOVE</code> as <code>NAMES</code> / <code>PACE</code> / <code>MOVE</code>. Cells now use <code>overflow-wrap: break-word</code>, which breaks identically once a line is being laid out but is ignored for min-content, so a cell keeps its longest-word width and is only broken when there is genuinely nowhere left to go.</li>
-              <li>A table that is genuinely too wide for the page now scrolls horizontally inside its own box instead of pushing the whole document sideways. This is the other half of the fix above: <code>break-word</code> is ignored for min-content sizing, which is exactly what stops a column being shredded, but it also means a table whose columns cannot fit reports a min-content width larger than its container and escapes it. Every table is therefore rendered inside a <code>.cmh-table-scroll</code> box - the containment narrow screens already had, now at every width. The wrapper is a real element rather than <code>display: block; overflow-x: auto</code> on the table itself, because <code>display: block</code> wraps the rows in an anonymous table box that shrink-to-fits and collapsed a narrow table&#x27;s columns to their content width (a 2-column table measured 99px instead of 400px) - which also means narrow screens no longer suffer that collapse. A wrapper that actually scrolls is keyboard-focusable and labelled, so it can be scrolled without a mouse, while a table that fits adds no tab stop. A table built at runtime by an author script is contained too, and a table inside a flex or grid parent keeps its width and its placement. A focused scroll box owns the arrow keys in a deck, so its clipped columns stay reachable by keyboard instead of the arrows changing slides. Printing is unaffected: the wrapper reverts to <code>overflow: visible</code> so a wide table is never clipped out of a PDF.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">224 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">225 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

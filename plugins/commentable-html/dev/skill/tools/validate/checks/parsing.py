@@ -597,12 +597,25 @@ def _is_json_attrs(ad):
     return (ad.get("type", "") or "").split(";")[0].strip().lower() == "application/json"
 
 
-# Script types the browser executes natively as classic/module JavaScript. A
-# loader or a `new Chart(` in any other type (application/json, importmap,
-# text/plain, and transpiler-only text/babel / text/jsx which need a runtime the
-# validator cannot assume) does not run, so it must not satisfy loader / init.
-_JS_TYPES = {"", "text/javascript", "application/javascript", "text/ecmascript",
-             "application/ecmascript", "module"}
+# Script types the browser executes natively as classic/module JavaScript. This is the HTML
+# spec's "JavaScript MIME type" set plus the empty type and `module`: a LEGACY type such as
+# `text/ecmascript`, `application/x-javascript`, `text/jscript`, `text/livescript`, or
+# `text/javascript1.0`-`1.5` still RUNS in a browser, so treating one as inert would let a
+# loader - or, in offline mode, a remote dynamic import - pass a check whose whole job is to
+# notice executable code. It mirrors `_offlineIsRunnableScriptType` in
+# assets/js/68-export-offline.js exactly, and tests/test_vendored_libs.py pins the two together
+# so the validator and the exporter's strips can never disagree about what runs. A type outside
+# it (application/json, importmap, text/plain, and transpiler-only text/babel / text/jsx which
+# need a runtime the validator cannot assume) does not run, so it must not satisfy loader / init.
+_JS_TYPES = frozenset(
+    {"", "module"}
+    | {"%s/%sscript" % (top, prefix + family)
+       for top in ("text", "application")
+       for prefix in ("", "x-")
+       for family in ("java", "ecma")}
+    | {"text/javascript1.%d" % minor for minor in range(6)}
+    | {"text/jscript", "text/livescript"}
+)
 
 
 def _is_executable_js(ad):
