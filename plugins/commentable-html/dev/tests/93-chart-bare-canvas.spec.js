@@ -7,13 +7,15 @@ import {
 } from "./helpers.js";
 import { execFileSync } from "child_process";
 
-// CMH-CHART-12 (issue #740): the live chart renderer and the offline exporter disagreed about what
-// counts as a chart. The renderer's setup pass took `canvas.cmh-chart[data-cmh-chart-*]` /
-// `figure.chart canvas[data-cmh-chart-*]` while its own resize listener took any
-// `canvas[data-cmh-chart-points], canvas[data-cmh-chart-source]`, and the exporter took a third list
-// (`figure.chart canvas, canvas.cmh-chart`). A BARE data-bearing canvas - no `cmh-chart` class, not
-// inside a `figure.chart` - therefore drew nothing at load (only a window resize revived it) and was
-// not treated as a chart by the exporter. All three now derive from one shared selector definition.
+// CMH-CHART-12 (issue #740): the live chart renderer, the comment layer, and the offline exporter
+// disagreed about what counts as a chart. The renderer's setup pass took
+// `canvas.cmh-chart[data-cmh-chart-*]` / `figure.chart canvas[data-cmh-chart-*]` while its own resize
+// listener took any `canvas[data-cmh-chart-points], canvas[data-cmh-chart-source]`, and the exporter
+// took a third list (`figure.chart canvas, canvas.cmh-chart`). A BARE data-bearing canvas - no
+// `cmh-chart` class, not inside a `figure.chart` - therefore drew nothing at load (only a window
+// resize revived it), was not commentable, and was invisible to the exporter's chart shape gate, so
+// the CMH-OFFLINE-06 evidence decision never even ran for it and a document that drove such a canvas
+// with its OWN Chart.js exported without the library. They now derive from one shared definition.
 
 const POINTS = '[{"label":"Alpha","value":10},{"label":"Beta","value":24},{"label":"Gamma","value":16}]';
 // The authorable bare shape: no `cmh-chart` class and no `figure.chart` wrapper, but still inside a
@@ -103,6 +105,30 @@ test("CMH-CHART-12: a legacy image comment still resolves when a bare canvas bec
   }
 });
 
+async function exportOffline(page, html) {
+  await denyExternalNetwork(page);
+  await page.addInitScript(() => {
+    window.__cmhDownloadTexts = [];
+    const original = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = (blob) => {
+      if (blob && String(blob.type || "").includes("text/html")) {
+        blob.text().then((text) => window.__cmhDownloadTexts.push(text));
+      }
+      return original(blob);
+    };
+  });
+  await page.goto(fileUrl(html));
+  await ready(page);
+  await openToolbarMenu(page);
+  await expect(page.locator("#btnExportOfflineTop")).toBeVisible();
+  await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#btnExportOfflineTop").click(),
+  ]);
+  await page.waitForFunction(() => window.__cmhDownloadTexts && window.__cmhDownloadTexts.length > 0);
+  return page.evaluate(() => window.__cmhDownloadTexts[window.__cmhDownloadTexts.length - 1]);
+}
+
 test("CMH-CHART-12: the Offline export of a bare data-bearing canvas renders with zero network", async ({ browser }) => {
   test.setTimeout(90000);
   const context = await browser.newContext({ viewport: { width: 1000, height: 800 } });
@@ -111,30 +137,11 @@ test("CMH-CHART-12: the Offline export of a bare data-bearing canvas renders wit
   const outDir = fs.mkdtempSync(path.join(dir, "out_"));
   let offlineCtx;
   try {
-    await denyExternalNetwork(page);
-    await page.addInitScript(() => {
-      window.__cmhDownloadTexts = [];
-      const original = URL.createObjectURL.bind(URL);
-      URL.createObjectURL = (blob) => {
-        if (blob && String(blob.type || "").includes("text/html")) {
-          blob.text().then((text) => window.__cmhDownloadTexts.push(text));
-        }
-        return original(blob);
-      };
-    });
-    await page.goto(fileUrl(html));
-    await ready(page);
-    await openToolbarMenu(page);
-    await expect(page.locator("#btnExportOfflineTop")).toBeVisible();
-    await Promise.all([
-      page.waitForEvent("download"),
-      page.locator("#btnExportOfflineTop").click(),
-    ]);
-    await page.waitForFunction(() => window.__cmhDownloadTexts && window.__cmhDownloadTexts.length > 0);
-    const exportedHtml = await page.evaluate(() => window.__cmhDownloadTexts[window.__cmhDownloadTexts.length - 1]);
-    // The exporter agrees with the renderer that this is a chart, so it inlines Chart.js for any
-    // author script the document may add later, exactly as it does for a wrapped chart canvas.
-    expect(exportedHtml).toContain('data-cmh-offline-lib="chartjs"');
+    const exportedHtml = await exportOffline(page, html);
+    // The exporter now recognises the bare canvas as a chart, so the CMH-OFFLINE-06 evidence
+    // decision applies to it: this one is drawn by the built-in 2D renderer and no script mentions
+    // the Chart global, so the library must NOT travel. The next test covers the other direction.
+    expect(exportedHtml).not.toContain('data-cmh-offline-lib="chartjs"');
     const exportedPath = path.join(outDir, "bare-chart-offline.html");
     fs.writeFileSync(exportedPath, exportedHtml);
     execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
@@ -154,6 +161,29 @@ test("CMH-CHART-12: the Offline export of a bare data-bearing canvas renders wit
     expect(external).toEqual([]);
   } finally {
     if (offlineCtx) await offlineCtx.close();
+    await context.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("CMH-CHART-12: a bare canvas driven by the document's own Chart.js still gets the library inlined", async ({ browser }) => {
+  // The genuine export defect #740 described. The bare canvas never matched the exporter's chart
+  // shape gate, so the whole Chart.js decision was skipped for it and the author's own chart
+  // exported as an empty canvas. Now the shape gate matches, the evidence scan sees the author
+  // script, and the library travels.
+  test.setTimeout(90000);
+  const context = await browser.newContext({ viewport: { width: 1000, height: 800 } });
+  const page = await context.newPage();
+  const content = CONTENT
+    + '\n<script>\n(function () {\n'
+    + '  if (typeof Chart === "undefined") return;\n'
+    + '  new Chart(document.getElementById("bareChart"), { type: "bar", data: { labels: [], datasets: [] } });\n'
+    + '})();\n</script>';
+  const { dir, html } = stageContent(content, { key: "cmh-bare-chart-authorlib", source: "bare-chart-authorlib.html" });
+  try {
+    const exportedHtml = await exportOffline(page, html);
+    expect(exportedHtml).toContain('data-cmh-offline-lib="chartjs"');
+  } finally {
     await context.close();
     fs.rmSync(dir, { recursive: true, force: true });
   }
