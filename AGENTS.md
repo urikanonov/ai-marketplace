@@ -524,7 +524,9 @@ push with `git push --no-verify`):
 git config core.hooksPath .githooks
 ```
 
-This turns on two hooks: `pre-commit` runs the manifest and Markdown validators before each commit,
+This turns on two hooks: `pre-commit` runs the manifest and Markdown validators plus the
+tracked-file guards (secret-bearing files, Backlog artifacts, and unresolved conflict markers in the
+staged content) before each commit,
 and `pre-push` runs the deterministic gate that mirrors the required CI checks before each push -
 the validators, the script unit tests, the changed plugins' Python suites (via
 `scripts/run_plugin_python_tests.py --changed-only`; set `PREPUSH_FULL=1` to run every plugin's
@@ -562,7 +564,15 @@ the required `validate` job, and `check_version_bump.py` (a change to a plugin's
 requires a version bump) runs in the required `version-bump` job. The required `validate` job also runs
 `check_forbidden_files.py`, which fails if a secret-bearing file (`.env`, `*.pem`, `*.key`, a keystore,
 or a private SSH key) is ever tracked - the enforceable stand-in for a push rule, since GitHub push
-rulesets are unavailable on public user-owned repos. The required `site` check runs
+rulesets are unavailable on public user-owned repos. It also runs `check_conflict_markers.py`, which
+fails if any tracked text file still carries an unresolved `<<<<<<<` / `=======` / `>>>>>>>` block:
+a bad conflict resolution is otherwise invisible to every other gate (a marker line is valid Markdown,
+and a file generated from a broken source still matches that source), and one reached `main` that way
+and malformed the doc-surface registry for six shipped feature ids. It catches an UNFINISHED merge,
+not a WRONG one - a resolution that silently keeps only one side leaves no markers, so the
+survival check above is still the gate for that. The `pre-commit` hook runs it in `--staged` mode
+(what the commit will record); a file that must legitimately DISPLAY a conflict block opts out with a
+`check-conflict-markers: allow-file` line. The required `site` check runs
 `build_site_data.py --check`, which fails if the committed `site/` is stale versus its sources.
 
 ## Versioning
@@ -605,7 +615,8 @@ rulesets are unavailable on public user-owned repos. The required `site` check r
   comment thread on the PR before pushing so the conversation stays clean and reviewers can see
   what is still open at a glance.
 - Required status checks on `main` (all must be green to merge): `validate` (schema, script unit
-  tests, Markdown, changelog sync, the secret-bearing-file guard, and the CI trust-boundary policy
+  tests, Markdown, changelog sync, the secret-bearing-file and conflict-marker guards, and the CI
+  trust-boundary policy
   gate), `version-bump` (a shipped-source change requires a version bump), `dist-in-sync` (the
   commentable-html layer's committed `dist/` and its Playwright fixtures match its `dev/` source),
   `actionlint` (every workflow file lints clean), `site` (the `pages` workflow regenerates the site
