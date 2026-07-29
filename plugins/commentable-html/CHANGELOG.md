@@ -4,6 +4,38 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.275.0] - 2026-07-29
+
+### Fixed
+
+- The Offline export's two script strips now treat every executable JavaScript MIME type as
+  runnable, not only the modern three. `_stripOfflineRichRenderers` and `_stripOfflineNetworkLoads`
+  returned early for any `type` outside empty / `module` / `text/javascript` /
+  `application/javascript`, but a browser also executes `text/ecmascript`, `application/ecmascript`,
+  `application/x-javascript`, `text/x-javascript`, `text/jscript`, `text/livescript`, and
+  `text/javascript1.0` through `1.5` - so a script carrying one of those types kept its remote
+  dynamic import, and a stale mermaid or Chart.js loader shim survived the renderer strip. Both
+  strips now share the one runnable-script-type predicate the evidence scan already used. The
+  strict validator carried the same narrow set in its own independent Python copy, so such a file
+  also passed `validate.py --strict` as offline-clean; it now mirrors the runtime predicate, and a
+  parity test pins the two implementations together in both directions. The zero-network CSP
+  blocked the fetch either way, so this is defense in depth; the strip is the primary guarantee and
+  no longer leans on the CSP.
+- Re-running `Export Offline` on an already-offline document that contains a mermaid diagram (or a
+  chart the built-in renderer does not draw) now produces a working download instead of an
+  "Offline export is missing the vendored mermaid bundle" error toast. An Offline export consumes
+  the vendored payload and removes it, so the file it produces carries the libraries inline and no
+  payload at all; the exporter now reads those already-inlined copies and their MIT notices before
+  the strip removes them and re-emits them, so a re-export reuses what is already local. Because
+  re-emitting a captured script grants it execution and the document being exported is untrusted,
+  the `data-cmh-offline-lib` marker alone is not taken as proof this exporter wrote it: a captured
+  copy must sit in the head, carry exactly the attribute shape the exporter emits (which rules out
+  `src`, any `type` - so inert data and a non-executing MIME-parameter type are never promoted to
+  code - and `nomodule`, whose body never ran), pass the same network-import check the loader strip
+  applies to every other surviving script, and carry no byte sequence that would open a script-data
+  escape. An adjacent MIT notice naming the same library is required as a licensing condition, so
+  the library and its notice always travel together. A document that has neither a payload nor a
+  qualifying inlined copy still fails loudly.
 ## [1.273.0] - 2026-07-29
 
 ### Fixed
