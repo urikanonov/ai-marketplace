@@ -1,0 +1,25 @@
+{
+  "name": "demo-video-recorder",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Ad-hoc demo clip recorder for this marketplace. Dev-only tooling: nothing here is distributed, and nothing it produces is committed.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.16.0"
+  },
+  "scripts": {
+    "test": "node --test tests/timeline.test.mjs tests/redact.test.mjs tests/cli.test.mjs",
+    "report": "node tools/record_demo.mjs report",
+    "capture": "node tools/record_demo.mjs capture",
+    "render": "node tools/record_demo.mjs render",
+    "scan": "node tools/record_demo.mjs scan",
+    "frames": "node tools/record_demo.mjs frames"
+  },
+  "dependencies": {
+    "@xterm/xterm": "5.5.0",
+    "node-pty": "1.1.0"
+  },
+  "allowScripts": {
+    "node-pty@1.1.0": true
+  }
+}

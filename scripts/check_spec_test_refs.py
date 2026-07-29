@@ -15,6 +15,8 @@ SPEC_TARGETS = (
     (REPO_ROOT / "plugins" / "commentable-html" / "dev" / "SPEC.md",
      REPO_ROOT / "plugins" / "commentable-html" / "dev"),
     (REPO_ROOT / "site" / "tests" / "SPEC.md", REPO_ROOT),
+    (REPO_ROOT / ".github" / "skills" / "demo-video" / "SPEC.md",
+     REPO_ROOT / ".github" / "skills" / "demo-video"),
 )
 
 _TEST_PATH_RE = re.compile(
