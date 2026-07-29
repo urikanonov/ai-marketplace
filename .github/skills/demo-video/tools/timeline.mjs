@@ -177,12 +177,18 @@ export function fitTimeline(events, targetMs, opts = {}) {
   }
   const floorHold = opts.pinHold ? preferredHold : Math.min(MIN_HOLD_MS, preferredHold);
 
-  // Uncompressed always competes, on the same footing as every threshold.
-  const candidates = [
-    Number.MAX_SAFE_INTEGER,
-    ...(opts.idleCandidates
-      || [600000, 60000, 30000, 10000, 5000, 4000, 3000, 2000, 1500, 1200, 900, 700, 500, 350, 250]),
-  ]
+  // Uncompressed always competes, on the same footing as every threshold - UNLESS the caller pinned
+  // a threshold. Choosing the threshold that lands closest to the target quietly collapses the gaps
+  // INSIDE a protected head or tail too, so a summary meant to play at its natural pace ends up
+  // pre-compressed and the speed-up has nothing left to give the body. A pinned idle keeps the
+  // source pacing intact and leaves the fitting entirely to the hold and the body speed-up.
+  const candidates = (opts.idleMs != null
+    ? [opts.idleMs]
+    : [
+      Number.MAX_SAFE_INTEGER,
+      ...(opts.idleCandidates
+        || [600000, 60000, 30000, 10000, 5000, 4000, 3000, 2000, 1500, 1200, 900, 700, 500, 350, 250]),
+    ])
     .filter((ms) => Number.isFinite(ms) || ms === Number.MAX_SAFE_INTEGER)
     // A pinned hold must come out exactly as asked, so a threshold it could not fit under (which
     // would clamp it, or trip compressTimeline's hold <= idle guard) is not a candidate at all.

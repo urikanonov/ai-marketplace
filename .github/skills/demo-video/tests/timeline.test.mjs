@@ -416,3 +416,46 @@ test("the montage opens on an interaction and declares its own diagram waits (DE
     assert.ok(!beat.needsDiagrams, `${beat.id} does not need a figure and must not wait for one`);
   }
 });
+
+// Letting the fitter choose the idle threshold quietly defeats a protected tail: the threshold that
+// lands closest to the target also collapses the gaps INSIDE the summary, so the summary arrives
+// pre-compressed and the body speed-up has nothing left to give. Pinning the threshold keeps the
+// source pacing and pushes all the fitting into the hold and the body.
+test("a pinned idle threshold is honoured, so a protected tail keeps its pace (DEMO-FF-16)", () => {
+  // A long stretch of slow work, then a burst that must stay readable.
+  const events = [];
+  for (let i = 0; i < 60; i++) events.push({ t: i * 4000, data: `work ${i}\n` });
+  const burstFrom = 60 * 4000;
+  for (let i = 0; i < 40; i++) events.push({ t: burstFrom + i * 400, data: `summary ${i}\n` });
+  const sourceMs = events[events.length - 1].t;
+  const tailMs = sourceMs - burstFrom + 400;
+
+  const free = fitTimeline(events, 20000, { tailMs });
+  const pinned = fitTimeline(events, 20000, { tailMs, idleMs: 3000, holdMs: 320, pinHold: true });
+
+  // The pinned run must actually use the threshold it was given, not a better-fitting one.
+  const gapsKept = (tl) => {
+    const tail = tl.events.filter((e) => e.sourceT >= burstFrom);
+    return tail[tail.length - 1].t - tail[0].t;
+  };
+  assert.ok(gapsKept(pinned) > 0, "the pinned tail must still occupy real time");
+  assert.equal(pinned.events.length, events.length, "no event may be dropped");
+  // The point of pinning: a free fit is allowed to choose a threshold below the burst's own 400ms
+  // gaps, which collapses the summary itself. The pinned 3000ms threshold sits above the 400ms gaps
+  // and below the 4000ms waits, so the waits collapse and the summary keeps every original gap -
+  // its clip span must equal its SOURCE span exactly, not merely be longer than the free fit's.
+  assert.equal(
+    gapsKept(pinned), 39 * 400,
+    `a pinned threshold above the tail's own gaps must leave them untouched (got ${gapsKept(pinned)}ms)`,
+  );
+  assert.ok(
+    gapsKept(free) < gapsKept(pinned),
+    `the free fit is expected to collapse the tail (free ${gapsKept(free)}ms)`,
+  );
+  // Order is preserved and the schedule is still monotonic.
+  for (let i = 1; i < pinned.events.length; i++) {
+    assert.ok(pinned.events[i].t >= pinned.events[i - 1].t, "the pinned schedule must not go backwards");
+    assert.ok(pinned.events[i].sourceT >= pinned.events[i - 1].sourceT, "source order must be preserved");
+  }
+  assert.ok(free.events.length === pinned.events.length, "both fits carry every event");
+});

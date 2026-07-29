@@ -864,6 +864,9 @@ async function renderTerminal(args) {
       holdMs: numberOpt(args, "hold", undefined),
       // An explicit --hold is an instruction, not a starting point for the solver.
       pinHold: args.hold != null,
+      // Same for --idle: pinning it keeps the source pacing (and so a protected head or tail) at
+      // the threshold that was asked for, instead of whichever one happens to fit the target.
+      idleMs: args.idle == null ? undefined : Math.round(numberOpt(args, "idle", 0)),
       // The closing stretch of a session is usually the whole point - the consolidated summary, the
       // verdict - and the opening is where the ask is read. Both are exempt from the speed-up.
       tailMs: args.tail == null ? 0 : Math.round(numberOpt(args, "tail", 0) * 1000),

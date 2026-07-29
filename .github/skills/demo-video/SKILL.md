@@ -62,7 +62,21 @@ longer than the idle threshold collapses to a short hold with a visible "skippin
 the model thinking, the test run and the duck panel do not cost the viewer the wall clock. Gaps below
 the threshold are left exactly alone, so streaming output still looks real. `--seconds` picks the
 threshold that best fits and then stretches the hold to spend the budget; `--idle`/`--hold` override
-it directly.
+it directly, and pinning `--idle` alongside `--seconds` is what protects a `--head`/`--tail` span
+from being pre-compressed by a threshold chosen for the total.
+
+The shape that works for a long panel run is a readable title card, a hard-compressed middle, and
+the summary at its natural pace:
+
+```bash
+node tools/record_demo.mjs render --cast <file.cast.json> \
+  --seconds 22.6 --idle 900 --hold 320 --head 60 --tail 620 \
+  --intro 4 --end-hold 4 --scale 0.6 --ask "<the short version of the ask>"
+```
+
+`--head`/`--tail` are spans of RAW SESSION time, not clip time, so size them from the transcript
+(where the summary starts) rather than from the previous render. `--scale` records smaller than the
+layout to cut the file size.
 
 ## Check what you filmed
 
