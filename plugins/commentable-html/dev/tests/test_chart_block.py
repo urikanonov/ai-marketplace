@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Regression tests for chart_block.py."""
+import builtins
 import contextlib
 import io
 import json
@@ -8,6 +9,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -180,7 +182,8 @@ class ChartBlockCliTests(unittest.TestCase):
         advisory = validate.HIGHLIGHT_ADVISORY_PREFIX + "a hand-written span"
         out, err = io.StringIO(), io.StringIO()
         with mock.patch.object(sys, "stdin", _TextStdin(json.dumps(SPEC))), \
-                mock.patch.object(chart_block, "_self_validate", return_value=([], [advisory])), \
+                mock.patch.object(chart_block, "_self_validate_result",
+                                  return_value=(([], [advisory]), None)), \
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = chart_block.main(
                 ["chart_block.py", "--spec", "-", "--canvas-id", "chartA", "--caption", "Caption"]
@@ -192,8 +195,8 @@ class ChartBlockCliTests(unittest.TestCase):
     def test_a_fatal_warning_still_blocks_the_output(self):
         out, err = io.StringIO(), io.StringIO()
         with mock.patch.object(sys, "stdin", _TextStdin(json.dumps(SPEC))), \
-                mock.patch.object(chart_block, "_self_validate",
-                                  return_value=([], ["a real warning"])), \
+                mock.patch.object(chart_block, "_self_validate_result",
+                                  return_value=(([], ["a real warning"]), None)), \
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = chart_block.main(
                 ["chart_block.py", "--spec", "-", "--canvas-id", "chartA", "--caption", "Caption"]
@@ -229,6 +232,187 @@ class ChartBlockCliTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("spec must be a JSON object", result.stderr)
+
+
+class ChartBlockUnvalidatedOutputTests(unittest.TestCase):
+    """CMH-TOOL-13: the generator's one guarantee is that what it prints validates.
+
+    `_self_validate` returns None when the sibling `validate` module cannot be imported -
+    a broken or partial install. Printing the fragments anyway would drop that guarantee
+    exactly where something is already wrong, so the default is to fail closed.
+    """
+
+    ARGV = ["chart_block.py", "--spec", "-", "--canvas-id", "chartA", "--caption", "Caption"]
+
+    @contextlib.contextmanager
+    def _validator_unimportable(self):
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "validate":
+                raise ModuleNotFoundError("No module named 'validate'", name="validate")
+            return real_import(name, *args, **kwargs)
+
+        with mock.patch.dict(sys.modules), mock.patch.object(builtins, "__import__", fake_import):
+            sys.modules.pop("validate", None)
+            yield
+
+    def _run(self, extra_argv=()):
+        out, err = io.StringIO(), io.StringIO()
+        with self._validator_unimportable(), \
+                mock.patch.object(sys, "stdin", _TextStdin(json.dumps(SPEC))), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = chart_block.main(list(self.ARGV) + list(extra_argv))
+        return code, out.getvalue(), err.getvalue()
+
+    def test_an_unimportable_validator_fails_instead_of_printing_fragments(self):
+        code, out, err = self._run()
+        self.assertNotEqual(code, 0)
+        self.assertEqual(out, "", "fragments must not be printed when they could not be validated")
+        self.assertIn("could not be self-validated", err)
+        # The message must name the actual cause, not just say something went wrong.
+        self.assertIn("'validate' tool could not be imported", err)
+        self.assertIn("No module named 'validate'", err)
+        self.assertIn("--allow-unvalidated-output", err)
+
+    def test_the_explicit_opt_out_still_prints_with_a_warning(self):
+        code, out, err = self._run(["--allow-unvalidated-output"])
+        self.assertEqual(code, 0, err)
+        self.assertIn('id="chartA-data"', out)
+        self.assertIn("not self-validated", err)
+
+    def test_a_partial_install_whose_validator_lacks_its_own_deps_also_fails_closed(self):
+        # The likelier partial install: validate.py is present but one of ITS imports is
+        # missing. That must take the same gate, not surface as a traceback.
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "validate":
+                raise ModuleNotFoundError("No module named 'checks.links'", name="checks.links")
+            return real_import(name, *args, **kwargs)
+
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.dict(sys.modules), mock.patch.object(builtins, "__import__", fake_import), \
+                mock.patch.object(sys, "stdin", _TextStdin(json.dumps(SPEC))), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            sys.modules.pop("validate", None)
+            code = chart_block.main(list(self.ARGV))
+        self.assertNotEqual(code, 0)
+        self.assertEqual(out.getvalue(), "")
+        self.assertIn("checks.links", err.getvalue(), "the error must name what is actually missing")
+
+    def test_a_foreign_validate_module_is_not_accepted_as_the_checker(self):
+        # An unrelated `validate` earlier on sys.path must not be able to hand back a clean
+        # verdict it never computed.
+        foreign = types.ModuleType("validate")
+        foreign.__file__ = os.path.join(tempfile.gettempdir(), "validate.py")
+        foreign.validate = lambda path: ([], [])
+        with mock.patch.dict(sys.modules, {"validate": foreign}):
+            module, reason = chart_block._load_validator()
+        self.assertIsNone(module)
+        self.assertIn("not this skill's", reason)
+
+    def _run_with_template(self, template_path, extra_argv=()):
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(chart_block, "DEFAULT_TEMPLATE", template_path), \
+                mock.patch.object(sys, "stdin", _TextStdin(json.dumps(SPEC))), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = chart_block.main(list(self.ARGV) + list(extra_argv))
+        return code, out.getvalue(), err.getvalue()
+
+    def test_a_missing_validation_template_also_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            # A path inside a fresh directory that is deliberately never created, so the test
+            # cannot be satisfied (or flapped) by a leftover file from an earlier run.
+            code, out, err = self._run_with_template(os.path.join(directory, "absent.html"))
+        self.assertNotEqual(code, 0)
+        self.assertEqual(out, "")
+        self.assertIn("template could not be prepared", err)
+
+    def test_a_corrupt_validation_template_also_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            corrupt = os.path.join(directory, "corrupt.html")
+            with open(corrupt, "w", encoding="utf-8", newline="") as fh:
+                fh.write("<html><body>no content markers here</body></html>")
+            code, out, err = self._run_with_template(corrupt)
+            self.assertNotEqual(code, 0)
+            self.assertEqual(out, "")
+            self.assertIn("template could not be prepared", err)
+            # The same shape is opt-out-able, like every other "could not be checked" cause.
+            code, out, err = self._run_with_template(corrupt, ["--allow-unvalidated-output"])
+        self.assertEqual(code, 0, err)
+        self.assertIn('id="chartA-data"', out)
+        self.assertIn("not self-validated", err)
+
+    def test_a_crashing_validator_fails_closed_rather_than_raising(self):
+        boom = types.SimpleNamespace(validate=mock.Mock(side_effect=RuntimeError("kaboom")))
+        with mock.patch.object(chart_block, "_load_validator", return_value=(boom, None)):
+            out, err = io.StringIO(), io.StringIO()
+            with mock.patch.object(sys, "stdin", _TextStdin(json.dumps(SPEC))), \
+                    contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = chart_block.main(list(self.ARGV))
+        self.assertNotEqual(code, 0)
+        self.assertEqual(out.getvalue(), "")
+        self.assertIn("validator could not run", err.getvalue())
+        self.assertIn("kaboom", err.getvalue())
+
+    def test_a_corrupt_validator_source_fails_closed_rather_than_raising(self):
+        # The most literal partial install: validate.py is present but truncated, so importing
+        # it raises SyntaxError. That must take the same gate as any other "could not check".
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "validate":
+                raise SyntaxError("unterminated triple-quoted string literal")
+            return real_import(name, *args, **kwargs)
+
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.dict(sys.modules), mock.patch.object(builtins, "__import__", fake_import), \
+                mock.patch.object(sys, "stdin", _TextStdin(json.dumps(SPEC))), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            sys.modules.pop("validate", None)
+            code = chart_block.main(list(self.ARGV))
+        self.assertNotEqual(code, 0)
+        self.assertEqual(out.getvalue(), "")
+        self.assertIn("SyntaxError", err.getvalue())
+
+    def test_a_validator_answering_in_an_unexpected_shape_is_not_treated_as_clean(self):
+        # A validator that returns None must not be laundered into "checked and clean", and
+        # must not become an emitted-anyway result under the opt-out either.
+        for outcome in (None, ([], [], []), (None, None), ([], None), ("", "")):
+            with self.subTest(outcome=outcome):
+                broken = types.SimpleNamespace(validate=mock.Mock(return_value=outcome))
+                with mock.patch.object(chart_block, "_load_validator", return_value=(broken, None)):
+                    out, err = io.StringIO(), io.StringIO()
+                    with mock.patch.object(sys, "stdin", _TextStdin(json.dumps(SPEC))), \
+                            contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                        code = chart_block.main(list(self.ARGV))
+                self.assertNotEqual(code, 0)
+                self.assertEqual(out.getvalue(), "")
+                self.assertIn("unexpected result", err.getvalue())
+
+    def test_the_opt_out_does_not_suppress_a_real_validation_failure(self):
+        # The flag means "I accept fragments that could not be CHECKED", never "skip the
+        # check". Widening it into the latter must fail this test.
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(chart_block, "_self_validate_result",
+                               return_value=((["boom"], []), None)), \
+                mock.patch.object(sys, "stdin", _TextStdin(json.dumps(SPEC))), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = chart_block.main(list(self.ARGV) + ["--allow-unvalidated-output"])
+        self.assertNotEqual(code, 0)
+        self.assertEqual(out.getvalue(), "")
+        self.assertIn("do not validate cleanly", err.getvalue())
+
+    def test_a_working_validator_with_the_flag_still_validates_and_succeeds(self):
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(sys, "stdin", _TextStdin(json.dumps(SPEC))), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = chart_block.main(list(self.ARGV) + ["--allow-unvalidated-output"])
+        self.assertEqual(code, 0, err.getvalue())
+        self.assertIn('id="chartA-data"', out.getvalue())
+        # It ran the real check, so it must NOT have taken the unvalidated warning path.
+        self.assertNotIn("not self-validated", err.getvalue())
 
 
 if __name__ == "__main__":

@@ -243,6 +243,13 @@ and point count match the source, and `c.scales.y.min` is the floor you set.
  `END: commentable-html - JS` marker and after the Chart.js loader, and canvas `role`/`aria-label`
  + the `typeof Chart` network-failure guard. Use `--charts-only` to run just the chart checks.
 
+ `chart_block.py` runs that same validator on its own output before printing, and FAILS CLOSED when
+ the check cannot be performed at all - an unimportable or crashing validator, a `validate` module
+ that is not this skill's own, or a missing/corrupt `dist/PORTABLE.html` template. It writes nothing
+ and names the cause, so a broken or partial install cannot quietly hand you unchecked fragments. If
+ you knowingly want the fragments anyway, pass `--allow-unvalidated-output`; it emits them with a
+ warning and never suppresses a real validation failure.
+
 ## Pitfalls checklist
 
 - Init `<script>` landed inside the template's explanatory comment because you replaced the first
