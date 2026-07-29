@@ -862,9 +862,18 @@ async function captureTerminal(args) {
         }
         if (skipped) continue;
         if (step.delayMs) await sleep(step.delayMs);
-        marks.push({ label: step.mark, t: Date.now() - started, eventIndex: events.length });
+        const payload = stepPayload(step);
+        // Record WHAT WAS TYPED alongside the mark, so a render can put the real prompt on its
+        // title card instead of a paraphrase somebody has to keep in sync by hand. Scrubbed like
+        // everything else, and capped because one of these steps pastes a whole review bundle.
+        marks.push({
+          label: step.mark,
+          t: Date.now() - started,
+          eventIndex: events.length,
+          text: scrubText(payload.replace(/\u001b\[20[01]~/g, ""), rules).slice(0, 2000),
+        });
         try {
-          child.write(stepPayload(step));
+          child.write(payload);
           const submit = stepSubmit(step);
           if (submit) { await sleep(step.submitMs); child.write(submit); }
         } catch (e) { /* child is gone */ }
@@ -966,6 +975,7 @@ function terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask }) {
     endHoldMs,
     introMs,
     ask,
+    askFontPx: askFontPx(ask),
     // Merged at the last moment, so the schedule above is computed on the real event stream and
     // only the PLAYER sees the cheaper one.
     events: coalesceEvents(timeline.events, 45).map((e) => ({ t: e.t, d: e.data, f: e.fastForward, s: e.skippedMs })),
@@ -993,7 +1003,7 @@ function terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask }) {
     transition: opacity 420ms ease; z-index: 5; }
   #intro.gone { opacity: 0; pointer-events: none; }
   #intro .who { color: #7d8590; font-size: 15px; letter-spacing: 2.4px; text-transform: uppercase; }
-  #intro .ask { color: #e6edf3; font-size: 30px; line-height: 1.45; max-width: 20em;
+  #intro .ask { color: #e6edf3; line-height: 1.45; max-width: 32em; text-align: left;
     font-family: "Cascadia Mono", Consolas, monospace; }
   #intro .ask::before { content: "> "; color: #58a6ff; }
 </style></head>
@@ -1025,6 +1035,7 @@ function terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask }) {
     // Hold the title card first, so the ask is read before any output appears, then fade it out.
     const intro = document.getElementById("intro");
     document.getElementById("introAsk").textContent = DATA.ask;
+    document.getElementById("introAsk").style.fontSize = DATA.askFontPx + "px";
     if (DATA.introMs > 0) {
       await sleep(DATA.introMs);
       intro.classList.add("gone");
@@ -1077,6 +1088,32 @@ const CLEAR_COMMENTS_SCRIPT = `(() => {
   } catch (e) { /* storage is not available on this origin */ }
 })();`;
 
+// What the title card should say: the prompt that was ACTUALLY typed. A hand-written summary drifts
+// from the session the moment either changes, and a viewer comparing the card with the terminal
+// underneath it will spot the difference immediately. `--ask` stays as an override for a cast
+// captured before marks carried their text.
+function askFromCast(cast, args, preferredMark = "ask") {
+  if (args.ask) return String(args.ask);
+  const marks = Array.isArray(cast.marks) ? cast.marks : [];
+  const chosen = marks.find((m) => m.label === preferredMark && m.text) || marks.find((m) => m.text);
+  if (chosen) return String(chosen.text).trim();
+  const fromCommand = /(?:^|\s)-p\s+(.+)$/s.exec(String(cast.command || ""));
+  if (fromCommand) return fromCommand[1].replace(/^["']|["']$/g, "");
+  return String(cast.command || "session");
+}
+
+// The card has to hold whatever the real prompt turned out to be, and a real prompt is often a
+// paragraph. Step the type size down as it grows rather than letting it overflow the screen.
+function askFontPx(ask) {
+  const n = String(ask || "").length;
+  if (n <= 90) return 30;
+  if (n <= 200) return 27;
+  if (n <= 340) return 24;
+  if (n <= 560) return 21;
+  if (n <= 900) return 19;
+  return 17;
+}
+
 // The stage for the loop clip: ONE page that holds both the terminal and the report, because
 // Playwright records per page and a clip that cut between two pages would be two videos. The
 // terminal is an xterm exactly like the standalone render; the report lives in a full-viewport
@@ -1092,6 +1129,7 @@ function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, reportUr
     introMs,
     endHoldMs,
     ask,
+    askFontPx: askFontPx(ask),
     reportUrl,
     segments: segments.map((timeline) =>
       coalesceEvents(timeline.events, 45).map((e) => ({ t: e.t, d: e.data, f: e.fastForward, s: e.skippedMs }))),
@@ -1129,7 +1167,7 @@ function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, reportUr
     transition: opacity 420ms ease; z-index: 8; }
   #intro.gone { opacity: 0; pointer-events: none; }
   #intro .who { color: #7d8590; font-size: 15px; letter-spacing: 2.4px; text-transform: uppercase; }
-  #intro .ask { color: #e6edf3; font-size: 30px; line-height: 1.45; max-width: 20em;
+  #intro .ask { color: #e6edf3; line-height: 1.45; max-width: 32em; text-align: left;
     font-family: "Cascadia Mono", Consolas, monospace; }
   #intro .ask::before { content: "> "; color: #58a6ff; }
 </style></head>
@@ -1205,6 +1243,7 @@ function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, reportUr
   window.__stageReady = false;
   (async () => {
     document.getElementById("introAsk").textContent = DATA.ask;
+    document.getElementById("introAsk").style.fontSize = DATA.askFontPx + "px";
     const intro = document.getElementById("intro");
     if (DATA.introMs > 0) {
       await sleep(DATA.introMs);
@@ -1292,7 +1331,7 @@ async function recordLoop(args) {
   const fontSize = Math.round(numberOpt(args, "font", Math.floor((width - 56) / (cols * 0.605))));
   const introMs = Math.round(numberOpt(args, "intro", 3.5) * 1000);
   const endHoldMs = Math.round(numberOpt(args, "end-hold", 3.5) * 1000);
-  const ask = args.ask ? String(args.ask) : "Build me a commentable review report.";
+  const ask = askFromCast(cast, args);
   const unsafe = findings.length > 0;
   const outFile = args.out
     ? path.resolve(String(args.out))
@@ -1508,10 +1547,7 @@ async function renderTerminal(args) {
     timeline.events = applySpeedWindows(timeline.events, speedWindows);
     timeline.durationMs = timeline.events.length ? timeline.events[timeline.events.length - 1].t : 0;
   }
-  const promptFromCommand = /(?:^|\s)-p\s+(.+)$/s.exec(String(cast.command || ""));
-  const ask = args.ask
-    ? String(args.ask)
-    : (promptFromCommand ? promptFromCommand[1].replace(/^["']|["']$/g, "") : String(cast.command || "session"));
+  const ask = askFromCast(cast, args);
   const width = Math.round(numberOpt(args, "width", Math.ceil(cols * fontSize * 0.605) + 56));
   const height = Math.round(numberOpt(args, "height", Math.ceil(rows * fontSize * 1.32) + 84));
   // A clip rendered over the gate's objection must be impossible to mistake for a clean one later,
