@@ -1,6 +1,6 @@
 def check_layer(html, parser, base_dir=None):
     errors, warnings = [], []
-    nonportable = _is_nonportable(html)
+    nonportable = _is_nonportable(parser)
     active_regions = NONPORTABLE_REGIONS if nonportable else REGIONS
 
     # 1) Exactly one BEGIN and one END marker per (active) region, BEGIN before END.
@@ -28,7 +28,7 @@ def check_layer(html, parser, base_dir=None):
 
     errors.extend(_check_layer_descriptor(parser, nonportable, active_regions))
 
-    e, w = _check_content_markers(html)
+    e, w = _check_content_markers(html, parser)
     errors += e
     warnings += w
 
@@ -95,8 +95,8 @@ def check_layer(html, parser, base_dir=None):
     # 12) NonPortable-mode-only invariants (companion refs, version handshake, banner,
     #     referenced files exist).
     if nonportable:
-        id_counts = Counter(parser.all_ids)
-        e, w = _check_nonportable(html, base_dir, id_counts)
+        id_counts = Counter(parser.layer_ids)
+        e, w = _check_nonportable(parser, base_dir, id_counts)
         errors += e
         warnings += w
 

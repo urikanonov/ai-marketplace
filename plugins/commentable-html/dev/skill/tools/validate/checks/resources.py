@@ -8,7 +8,7 @@ import tempfile
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 from urllib.request import url2pathname
-from .parsing import REGIONS, _find_tag_attrs
+from .parsing import REGIONS, _DocParser, _find_tag_attrs, _parse_document
 
 # A Chart.js loader filename, as a whole path segment: chart(.umd)?(.min)?.js,
 # optionally followed by a query string / fragment; OR the bare pinned form
@@ -217,34 +217,67 @@ def _same_dir(a, b):
         return False
 
 
-def _nonportable_css_refs(html):
-    return [_ref_path(a["href"]) for a in _find_tag_attrs(html, "link")
+def _as_parser(doc):
+    """`doc` is either an already-parsed `_DocParser` (the normal path - `validate()` parses the
+    document once) or raw html, parsed here. Explicitly typed on `_DocParser` rather than "not a
+    str", so an unexpected value (bytes, a Path) fails at the parse rather than surfacing as an
+    AttributeError deep inside a check."""
+    return doc if isinstance(doc, _DocParser) else _parse_document(doc)
+
+
+def _layer_tags(doc, tag):
+    """Attrs of every `tag` element the parser saw OUTSIDE the authored CONTENT region.
+
+    `doc` is an already-parsed `_DocParser` (the normal path) or raw html. The LAYER's own
+    companion references always sit outside that region - the CSS <link> in <head> before it, the
+    runtime <script>s at the end of <body> after it - so an occurrence INSIDE it is the author's
+    own prose. A document about commentable-html that DEMONSTRATES the companion markup was being
+    read as NonPortable because of its own content.
+
+    The region is taken from the PARSE, not from marker offsets in the text, so it is exactly the
+    region a browser would agree on: real HTML comment markers, inside the live `#commentRoot`,
+    outside an inert `<template>`, and never inside CDATA. A string-offset view could be steered
+    (markers placed around the real references, or a `<style>`/`<script>` straddling the boundary)
+    into blanking the layer itself and reporting a broken NonPortable document as Portable."""
+    parser = _as_parser(doc)
+    return parser.layer_tags.get(tag, [])
+
+
+def _nonportable_css_refs(doc):
+    return [_ref_path(a["href"]) for a in _layer_tags(doc, "link")
             if "commentable-html" in a.get("href", "").lower()
             and _ref_path(a.get("href", "")).lower().endswith(".css")]
 
 
-def _nonportable_js_refs(html):
-    return [_ref_path(a["src"]) for a in _find_tag_attrs(html, "script")
+def _nonportable_js_refs(doc):
+    return [_ref_path(a["src"]) for a in _layer_tags(doc, "script")
             if "commentable-html" in a.get("src", "").lower()
             and _ref_path(a.get("src", "")).lower().endswith(".js")]
 
 
-def _nonportable_meta_versions(html):
-    return [a.get("content", "") for a in _find_tag_attrs(html, "meta")
+def _nonportable_meta_versions(doc):
+    return [a.get("content", "") for a in _layer_tags(doc, "meta")
             if a.get("name", "").lower() == "commentable-html-version"]
 
 
-def _is_nonportable(html):
-    """NonPortable = the document references external commentable-html companion files."""
-    return bool(_nonportable_css_refs(html) or _nonportable_js_refs(html))
+def _is_nonportable(doc):
+    """NonPortable = the LAYER references external commentable-html companion files."""
+    parser = _as_parser(doc)
+    return bool(_nonportable_css_refs(parser) or _nonportable_js_refs(parser))
 
 
-def _check_nonportable(html, base_dir, id_counts):
-    """NonPortable-mode-only invariants. Returns (errors, warnings)."""
+def _check_nonportable(doc, base_dir, id_counts):
+    """NonPortable-mode-only invariants. Returns (errors, warnings).
+
+    `doc` is an already-parsed `_DocParser` or raw html; `id_counts` must count only ids OUTSIDE
+    the authored CONTENT region (the parser's `layer_ids`), so an authored demonstration cannot
+    stand in for the real bootstrap."""
     errors, warnings = [], []
+    parser = _as_parser(doc)
 
-    css_refs = _nonportable_css_refs(html)
-    js_refs = _nonportable_js_refs(html)
+    css_refs = _nonportable_css_refs(parser)
+    js_refs = _nonportable_js_refs(parser)
+
     runtime_refs = [s for s in js_refs if not s.lower().endswith(".assets.js")]
     assets_refs = [s for s in js_refs if s.lower().endswith(".assets.js")]
 
@@ -258,7 +291,7 @@ def _check_nonportable(html, base_dir, id_counts):
     # Version stamp: a <meta name="commentable-html-version"> records the skill
     # version that produced the file and lets the runtime detect a stale companion
     # by comparing it against the loaded runtime's CMH_VERSION.
-    metas = _nonportable_meta_versions(html)
+    metas = _nonportable_meta_versions(parser)
     if not metas:
         warnings.append('nonportable mode: missing <meta name="commentable-html-version" content="X"> - the runtime cannot detect a stale/mismatched companion file')
 
@@ -266,7 +299,7 @@ def _check_nonportable(html, base_dir, id_counts):
     # page must say so instead of looking fine but dead.
     if id_counts.get("cmhAssetBanner", 0) == 0:
         errors.append('nonportable mode: missing the #cmhAssetBanner element (a broken companion load would fail silently) - keep the NONPORTABLE BOOTSTRAP block')
-    if "__commentableHtmlReady" not in html:
+    if not parser.layer_ready_token:
         warnings.append('nonportable mode: no bootstrap watchdog (looked for __commentableHtmlReady) - the missing-asset banner will never reveal itself')
 
     # Referenced companion files must resolve to a local file that exists. NonPortable

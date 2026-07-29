@@ -14,6 +14,11 @@ CONTENT_BEGIN = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY betwee
 
 CONTENT_END = "<!-- END: commentable-html - CONTENT -->"
 
+# The token the NonPortable bootstrap watchdog sets/reads. The parser records whether it appears
+# OUTSIDE the authored CONTENT region, so a document that merely MENTIONS it in prose does not
+# look like it carries a watchdog.
+READY_TOKEN = "__commentableHtmlReady"
+
 # Structural ids the layer's JS wires up. Missing ones make the layer throw or
 # silently no-op, so their absence is an error. (handledCommentIds and
 # embeddedComments are <script> blocks, validated separately below. commentRoot
@@ -277,6 +282,20 @@ class _DocParser(HTMLParser):
         self.has_comment_root = False
         self.js_end_marker_pos = None
         self.all_ids = []        # every element id value, in document order
+        # The LAYER's own markup: everything the parser sees OUTSIDE the authored CONTENT region
+        # (`_in_commentable_content()`). A document about commentable-html can DEMONSTRATE the
+        # companion markup in its prose, so the mode determination and the NonPortable checks read
+        # these instead of the whole document. Tracking it in the parse (rather than by marker
+        # offsets) means the region is exactly what a browser would agree it is: real HTML comment
+        # markers, inside the live #commentRoot, outside an inert <template> and outside CDATA.
+        self.layer_ids = []
+        self.layer_tags = {"link": [], "meta": [], "script": []}
+        self.layer_ready_token = False
+        # Whether the CONTENT region is well-formed AS PARSED: opened by a real BEGIN comment
+        # inside the live #commentRoot and closed again by a real END comment. When it is not,
+        # the layer view above cannot be trusted and the layer check errors rather than guessing.
+        self.content_region_opened = False
+        self.content_region_closed = False
         self.anchors = []        # [{"href", "target", "skip", "in_root"}] for every <a> element
         self.metas = {}          # {meta name (lowercased): content} for <meta name content>
         self.icon_links = []     # [{"rel": str, "href": str}] for every head <link rel~="icon">
@@ -334,6 +353,19 @@ class _DocParser(HTMLParser):
     def _in_commentable_content(self):
         return self._in_content_region and self._in_comment_root()
 
+    def _note_ready_token(self, text):
+        """Record the NonPortable bootstrap watchdog token, but ONLY from the body of an
+        executable <script> belonging to the LAYER - outside the authored CONTENT region (and, by
+        construction of `_cur_script`, outside an inert <template>). The watchdog IS such a script,
+        so authored prose, a reviewer note in the embedded-comments JSON, or a template that merely
+        contains the token must not stand in for it."""
+        if self.layer_ready_token or self._cur_script is None:
+            return
+        if not _is_executable_js(self._cur_script[1]):
+            return
+        if READY_TOKEN in (text or "") and not self._in_commentable_content():
+            self.layer_ready_token = True
+
     def _implicit_close(self, tag):
         # HTML5 "close a p element" / li handling: a block-level start tag closes an
         # open <p> even through intervening inline elements (a browser pops the <p>
@@ -361,6 +393,8 @@ class _DocParser(HTMLParser):
     def _record(self, tag, ad, own_skip):
         if self._in_template():
             return  # inert template content
+        if tag in self.layer_tags and not self._in_commentable_content():
+            self.layer_tags[tag].append(ad)
         if not self._head_ended and (tag == "body" or tag not in _HEAD_TAGS):
             self._head_ended = True
         if tag == "body" and self.body_attrs is None:
@@ -414,6 +448,8 @@ class _DocParser(HTMLParser):
         idv = ad.get("id")
         if idv:
             self.all_ids.append(idv)
+            if not self._in_commentable_content():
+                self.layer_ids.append(idv)
             if idv == "commentRoot":
                 self.has_comment_root = True
                 if self.comment_root_attrs is None:
@@ -477,6 +513,7 @@ class _DocParser(HTMLParser):
         self._record(tag, ad, own_skip)
 
     def handle_data(self, data):
+        self._note_ready_token(data)
         # Capture the raw source text of the current mermaid block (entities are already
         # decoded because convert_charrefs=True), so the mermaid syntax checker can read it.
         # Only meaningful before the diagram renders to <svg>; a rendered block's has_svg
@@ -549,7 +586,10 @@ class _DocParser(HTMLParser):
             marker = data.strip()
             if marker == CONTENT_BEGIN[4:-3].strip() and self._in_comment_root():
                 self._in_content_region = True
+                self.content_region_opened = True
             elif marker == CONTENT_END[4:-3].strip():
+                if self._in_content_region:
+                    self.content_region_closed = True
                 self._in_content_region = False
 
 
@@ -827,3 +867,19 @@ def _find_tag_attrs(html, tag):
     except Exception:
         pass
     return p.found
+
+
+def _parse_document(html):
+    """A tolerant `_DocParser` pass over `html`.
+
+    The shared entry point for helpers that accept EITHER an already-parsed document (the normal
+    path - `validate()` parses once) or raw html (tests and callers holding only a string), so a
+    parser-derived view of the document never needs a second, divergent notion of its structure."""
+    text = html or ""
+    p = _DocParser(text)
+    try:
+        p.feed(text)
+        p.close()
+    except Exception:
+        pass
+    return p

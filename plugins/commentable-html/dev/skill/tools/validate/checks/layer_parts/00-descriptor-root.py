@@ -58,7 +58,7 @@ def _check_layer_descriptor(parser, nonportable, active_regions):
     return errors
 
 
-def _check_content_markers(html):
+def _check_content_markers(html, parser):
     errors, warnings = [], []
     content_begin_count = html.count(CONTENT_BEGIN)
     content_end_count = html.count(CONTENT_END)
@@ -68,6 +68,20 @@ def _check_content_markers(html):
         errors.append("CONTENT region: expected 1 END marker, found %d" % content_end_count)
     if content_begin_count == 1 and content_end_count == 1 and html.index(CONTENT_BEGIN) >= html.index(CONTENT_END):
         errors.append("CONTENT region: END marker appears before its BEGIN marker")
+    elif content_begin_count == 1 and content_end_count == 1 and not (
+            parser.content_region_opened and parser.content_region_closed):
+        # The markers are in the TEXT, but the document does not PARSE with a well-formed region.
+        # That matters because the layer view (which decides NonPortable mode and its checks) is
+        # derived from the parse: if the region a browser sees does not open inside #commentRoot
+        # and close again, the layer's own markup cannot be told apart from authored content, and
+        # markup after the broken boundary would be silently misattributed. Refuse rather than
+        # guess. Causes: a marker inside a <script>/<style> body or an inert <template>, a marker
+        # outside #commentRoot, or unbalanced markup closing #commentRoot mid-region.
+        errors.append("CONTENT region: the markers are present in the text but the document does "
+                      "not parse with a well-formed region inside #commentRoot (a marker swallowed "
+                      "by a <script>/<style> body or a <template>, a marker outside #commentRoot, "
+                      "or unbalanced markup closing #commentRoot before the END marker) - fix the "
+                      "markup so the region opens and closes where it reads")
     return errors, warnings
 
 

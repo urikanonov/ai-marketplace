@@ -126,6 +126,150 @@ class NonPortableTests(unittest.TestCase):
         self.assertEqual(warnings, [], "cache-busted refs should not warn: %r" % warnings)
 
 
+    # -- authored CONTENT never decides the mode (CMH-VAL-19) --------------- #
+    _DEMO_MARKUP = ('  <p>Legacy files load the layer with:</p>\n'
+                    '  <link rel="stylesheet" href="commentable-html.css">\n'
+                    '  <script src="commentable-html.js"></script>\n')
+
+    def _in_content(self, doc, markup):
+        """Put `markup` inside the authored CONTENT region of a builder document."""
+        out = doc.replace("  <p>content</p>\n", markup, 1)
+        self.assertNotEqual(out, doc, "fixture premise: the CONTENT region was substituted")
+        return out
+
+    def test_companion_markup_in_authored_content_does_not_make_a_document_nonportable(self):
+        # A document ABOUT commentable-html legitimately demonstrates the companion markup in
+        # its content. The real references always sit OUTSIDE the CONTENT region (the CSS link
+        # in <head>, the scripts at the end of <body>), so an occurrence inside the region is
+        # authored prose and must not flip the document into NonPortable mode.
+        doc = self._in_content(build(), self._DEMO_MARKUP)
+        self.assertFalse(validate._is_nonportable(doc))
+        self.assertEqual(validate._nonportable_css_refs(doc), [])
+        self.assertEqual(validate._nonportable_js_refs(doc), [])
+        errors, warnings = _validate_text(doc)
+        self.assertEqual(errors, [], "authored demonstration should validate clean: %r" % errors)
+        self.assertEqual(warnings, [], "authored demonstration should not warn: %r" % warnings)
+
+    def test_a_real_nonportable_document_that_also_demonstrates_the_markup_is_clean(self):
+        doc = self._in_content(build_nonportable(), self._DEMO_MARKUP)
+        self.assertTrue(validate._is_nonportable(doc))
+        self.assertEqual(validate._nonportable_css_refs(doc), ["commentable-html.css"])
+        self.assertEqual(validate._nonportable_js_refs(doc),
+                         ["commentable-html.assets.js", "commentable-html.js"])
+        errors, warnings = self._validate(doc)
+        self.assertEqual(errors, [], "nonportable errors: %r" % errors)
+        self.assertEqual(warnings, [], "nonportable warnings: %r" % warnings)
+
+    def test_companion_markup_in_authored_content_does_not_stand_in_for_a_real_reference(self):
+        # Still NonPortable (the assets companion is referenced for real), but the authored
+        # quote must not satisfy the stylesheet / runtime requirements.
+        doc = self._in_content(build_nonportable(link=False, runtime=False), self._DEMO_MARKUP)
+        self.assertTrue(validate._is_nonportable(doc))
+        self.assertNonPortableError(doc, "no commentable-html stylesheet")
+        self.assertNonPortableError(doc, "no commentable-html runtime")
+
+    def test_an_asset_banner_in_authored_content_does_not_satisfy_the_bootstrap(self):
+        doc = self._in_content(
+            build_nonportable(banner=False),
+            '  <div id="cmhAssetBanner" class="cm-skip" role="alert" hidden>missing</div>\n')
+        self.assertNonPortableError(doc, "missing the #cmhAssetBanner element")
+
+    def test_a_watchdog_mention_in_authored_content_does_not_satisfy_the_bootstrap(self):
+        doc = self._in_content(build_nonportable(watchdog=False),
+                               "  <p>The bootstrap sets __commentableHtmlReady.</p>\n")
+        self.assertNonPortableWarn(doc, "bootstrap watchdog")
+
+    def test_a_version_meta_in_authored_content_does_not_satisfy_the_handshake(self):
+        doc = self._in_content(
+            build_nonportable(meta=False),
+            '  <meta name="commentable-html-version" content="%s">\n' % NONPORTABLE_VERSION)
+        self.assertNonPortableWarn(doc, 'missing <meta name="commentable-html-version"')
+
+    # -- the CONTENT region is the one the PARSE agrees on ------------------ #
+    def test_a_content_begin_marker_outside_commentroot_does_not_hide_the_layer(self):
+        # MOVING the BEGIN marker into <head>, ahead of the real stylesheet link, keeps exactly
+        # one marker of each kind, so the marker-count check stays silent. A text-offset view of
+        # the region would blank the real <link> and report this document as Portable; the parse
+        # opens the region only inside #commentRoot, so the layer stays visible.
+        doc = build_nonportable().replace(CONTENT_BEGIN + "\n", "", 1)
+        doc = doc.replace("<head>\n", "<head>\n" + CONTENT_BEGIN + "\n", 1)
+        self.assertEqual(doc.count(CONTENT_BEGIN), 1, "fixture premise: the marker was moved")
+        self.assertTrue(validate._is_nonportable(doc))
+        self.assertEqual(validate._nonportable_css_refs(doc), ["commentable-html.css"])
+
+    def test_a_content_end_marker_after_commentroot_does_not_hide_the_layer(self):
+        # Likewise for the END marker moved to the end of <body>, past the runtime scripts.
+        # #commentRoot closing ends the region regardless, so the scripts stay visible.
+        doc = build_nonportable().replace(CONTENT_END + "\n", "", 1)
+        doc = doc.replace("\n</body>", "\n" + CONTENT_END + "\n</body>", 1)
+        self.assertEqual(doc.count(CONTENT_END), 1, "fixture premise: the marker was moved")
+        self.assertTrue(validate._is_nonportable(doc))
+        self.assertEqual(validate._nonportable_js_refs(doc),
+                         ["commentable-html.assets.js", "commentable-html.js"])
+
+    def test_a_style_straddling_the_content_markers_does_not_hide_the_layer(self):
+        # A <style> opened BEFORE the BEGIN marker and closed INSIDE the region puts the marker
+        # itself in CDATA, so a browser never sees a CONTENT region here at all. Blanking the
+        # marker-to-marker text would have deleted the closing </style> with it and left the
+        # whole rest of the document parsing as CDATA - hiding the real companion scripts.
+        doc = build_nonportable().replace(CONTENT_BEGIN + "\n", "<style>\n" + CONTENT_BEGIN + "\n", 1)
+        doc = doc.replace(CONTENT_END, "</style>\n" + CONTENT_END, 1)
+        self.assertTrue(validate._is_nonportable(doc))
+        self.assertEqual(validate._nonportable_js_refs(doc),
+                         ["commentable-html.assets.js", "commentable-html.js"])
+
+    def test_an_unterminated_script_in_authored_content_still_hides_the_runtime(self):
+        # The reverse direction: an unterminated <script> in the authored content makes a browser
+        # read everything after it - the runtime <script src> included - as script TEXT, so the
+        # layer never loads. The validator must agree and still report the missing runtime.
+        doc = self._in_content(build_nonportable(), "  <script>var broken = 1;\n")
+        self.assertEqual(validate._nonportable_js_refs(doc), [])
+        self.assertNonPortableError(doc, "no commentable-html runtime")
+
+    def test_companion_markup_inside_a_template_is_inert(self):
+        # <template> contents are an inert DocumentFragment: the scripts never run and the
+        # stylesheet never loads, so they must not make a document NonPortable. The head case is
+        # the one that uniquely pins the template guard - a template INSIDE the CONTENT region is
+        # already excluded by the region itself.
+        in_head = build().replace(
+            "<head>\n", "<head>\n<template>\n" + self._DEMO_MARKUP + "</template>\n", 1)
+        self.assertFalse(validate._is_nonportable(in_head))
+        self.assertEqual(validate._nonportable_css_refs(in_head), [])
+        in_content = build().replace(
+            "  <p>content</p>\n",
+            "  <template>\n" + self._DEMO_MARKUP + "  </template>\n", 1)
+        self.assertFalse(validate._is_nonportable(in_content))
+
+    # -- a region that does not PARSE where it reads is refused ------------- #
+    def test_a_content_end_marker_swallowed_by_a_style_body_errors(self):
+        # The layer view is derived from the parse, so a region that does not open and close where
+        # the text says it does must be refused rather than guessed: markup after the broken
+        # boundary would otherwise be silently misattributed to the author or to the layer.
+        doc = build_nonportable().replace(CONTENT_END, "<style>\n" + CONTENT_END + "\n</style>", 1)
+        self.assertEqual(doc.count(CONTENT_END), 1, "fixture premise: still exactly one marker")
+        self.assertNonPortableError(doc, "does not parse with a well-formed region")
+
+    def test_an_unclosed_template_hiding_the_content_end_marker_errors(self):
+        doc = self._in_content(build_nonportable(), "  <template>\n")
+        self.assertEqual(doc.count(CONTENT_END), 1, "fixture premise: still exactly one marker")
+        self.assertNonPortableError(doc, "does not parse with a well-formed region")
+
+    def test_an_unbalanced_root_close_in_authored_content_errors(self):
+        # An extra </main> ends #commentRoot mid-region, so everything after it would be read as
+        # the layer's own markup.
+        doc = self._in_content(build_nonportable(), "  <p>content</p>\n</main>\n")
+        self.assertNonPortableError(doc, "does not parse with a well-formed region")
+
+    def test_a_watchdog_token_outside_an_executable_script_does_not_count(self):
+        # The watchdog IS an inline script. A reviewer note in the embedded-comments JSON, or an
+        # inert <template>, that merely contains the token must not satisfy the check.
+        doc = build_nonportable(watchdog=False).replace(
+            '<script type="application/json" id="embeddedComments">[]</script>',
+            '<script type="application/json" id="embeddedComments">'
+            '[{"id":"cab12345","quote":"q","note":"__commentableHtmlReady","created":"2026-01-01"}]'
+            '</script>', 1)
+        self.assertNonPortableWarn(doc, "bootstrap watchdog")
+
     def test_missing_stylesheet_link_errors(self):
         self.assertNonPortableError(build_nonportable(link=False), "no commentable-html stylesheet")
 

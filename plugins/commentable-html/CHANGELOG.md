@@ -4,6 +4,34 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.271.0] - 2026-07-29
+
+### Fixed
+
+- The validator no longer classifies a document as NonPortable because its own authored CONTENT
+  demonstrates the companion markup. It decided the mode by looking for a
+  `<link href="commentable-html.css">` / `<script src="commentable-html.js">` ANYWHERE in the
+  file, so a genuinely self-contained Portable document about commentable-html - one that quotes
+  the legacy loading markup in prose, which `to_portable.py` now deliberately preserves when it
+  migrates such a file - failed validation with `commentableHtmlLayer.mode must be "nonportable"`,
+  no runtime script found, a missing `#cmhAssetBanner`, and a companion file that does not exist.
+  The mode determination and every check that follows from it now read the LAYER's own markup:
+  the authored region is excluded, because the layer's references always sit outside it (the
+  stylesheet in `<head>` before it, the runtime scripts at the end of `<body>` after it). The
+  region comes from the PARSE, not from marker offsets in the text, so it is exactly the region a
+  browser would agree on - real comment markers, inside the live `#commentRoot`, outside an inert
+  `<template>`, never inside CDATA - and a misplaced marker or a `<style>` straddling one cannot
+  steer the validator into ignoring the real layer instead. It holds in the other direction too:
+  an authored demonstration can never STAND IN for a real reference, so a NonPortable document
+  whose bootstrap banner, watchdog, version meta, or companion reference exists only inside its
+  prose still reports the same error it always did, and a real NonPortable document is classified
+  and checked exactly as before. Because the layer view is only as trustworthy as the region it is
+  derived from, the validator also errors when the CONTENT markers are present in the text exactly
+  once each and in order but the document does not parse with a well-formed region - a marker
+  swallowed by a `<script>`/`<style>` body or an inert `<template>`, a marker outside
+  `#commentRoot`, or unbalanced markup closing `#commentRoot` mid-region - instead of guessing
+  which side of the broken boundary the markup after it belongs to.
+
 ## [1.270.0] - 2026-07-29
 
 ### Fixed
