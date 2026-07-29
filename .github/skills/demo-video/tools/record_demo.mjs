@@ -272,6 +272,29 @@ function makeContext(page, budgetMs, warnings) {
     // early keeps its result on screen instead of handing the time to a blank pacing sleep.
     holdRemaining: (reserveMs = 0) => sleep(budgetMs - (Date.now() - beatStarted) - reserveMs),
     moveCursor,
+    // Beat one opens on a still document while the runtime finishes booting. Teleporting the
+    // cursor into place wastes that moment; gliding it in from the edge means the very first
+    // frames after paint already have motion in them.
+    async glideCursor(x, y, durationMs = 420, from = null) {
+      const start = from || { x: -40, y: y + 90 };
+      // Animated IN THE PAGE. Stepping it from node costs a round trip per frame, which made a
+      // 420ms glide eat a second of the beat's budget; a single evaluate driving rAF is free.
+      await page.evaluate(async ([sx, sy, tx, ty, ms]) => {
+        if (!window.__demoCursorTo) return;
+        const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - ((-2 * t + 2) ** 2) / 2);
+        const begun = performance.now();
+        await new Promise((done) => {
+          const step = () => {
+            const t = Math.min(1, (performance.now() - begun) / ms);
+            const e = ease(t);
+            window.__demoCursorTo(sx + (tx - sx) * e, sy + (ty - sy) * e, false);
+            if (t < 1) requestAnimationFrame(step); else done();
+          };
+          requestAnimationFrame(step);
+        });
+      }, [start.x, start.y, x, y, durationMs]).catch(() => {});
+      await page.mouse.move(x, y).catch(() => {});
+    },
     async scrollTo(y) {
       await page.evaluate((to) => window.scrollTo(0, to), y).catch(() => {});
     },
@@ -407,6 +430,15 @@ async function saveVideo(page, context, outFile) {
   return outFile;
 }
 
+// A diagram or chart draws asynchronously after the runtime is ready. This is awaited immediately
+// before the first beat that needs one, never up front - see the call site.
+async function diagramsReady(page) {
+  await page.waitForFunction(() => {
+    const figs = document.querySelectorAll(".mermaid, figure.cmh-mermaid, .cmh-diagram");
+    return !figs.length || [...figs].every((f) => f.querySelector("svg"));
+  }, null, { timeout: 9000 }).catch(() => {});
+}
+
 async function recordReport(args) {
   const seconds = numberOpt(args, "seconds", DEFAULT_SECONDS);
   const example = args.example
@@ -435,6 +467,7 @@ async function recordReport(args) {
   let context = null;
   const warnings = [];
   const failures = [];
+  let preludeReport = 0;
   try {
     server = await startStaticServer(path.dirname(example));
     ensureDir(videoDir);
@@ -464,17 +497,12 @@ async function recordReport(args) {
     // The reviewer identity is a real person's name in a real install; the clip gets a demo one.
     await page.addInitScript(`try { localStorage.setItem("cmh::author", ${JSON.stringify(DEMO_AUTHOR)}); } catch (e) {}`);
     await page.addInitScript(CURSOR_SCRIPT);
-    await page.goto(url, { waitUntil: "load" });
+    await page.goto(url, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => window.__commentableHtmlReady === true, null, { timeout: 15000 })
       .catch(() => warnings.push("the runtime never signalled ready"));
-    // Give diagrams a chance to finish rendering, so the tour beat is not filming a loading state.
-    await page.waitForFunction(() => {
-      const figs = document.querySelectorAll(".mermaid, figure.cmh-mermaid, .cmh-diagram");
-      return !figs.length || [...figs].every((f) => f.querySelector("svg"));
-    }, null, { timeout: 9000 }).catch(() => {});
-    await sleep(250);
 
     const preludeMs = Date.now() - recordingStarted;
+    preludeReport = preludeMs;
     // Closing the context and finalizing the file also lands in the clip, so hold a little back.
     const tailMs = 350;
     const beatBudget = totalMs - preludeMs - tailMs;
@@ -485,6 +513,10 @@ async function recordReport(args) {
     const paced = planBeats(REPORT_BEATS, Math.max(floor, beatBudget));
 
     for (const beat of REPORT_BEATS) {
+      // Diagrams and charts render asynchronously and cost real CPU. Waiting for them up front put
+      // three seconds of a motionless document at the head of every clip; waiting for them here
+      // costs nothing, because by the time a diagram beat runs they have long since drawn.
+      if (beat.needsDiagrams) await diagramsReady(page);
       const budgetMs = paced.find((p) => p.id === beat.id).budgetMs;
       const before = warnings.length;
       const ctx = makeContext(page, budgetMs, warnings);
@@ -512,6 +544,7 @@ async function recordReport(args) {
     try { fs.rmSync(videoDir, { recursive: true, force: true }); } catch (e) { /* best effort */ }
   }
   console.log(`clip: ${outFile}`);
+  console.log(`  opening dead time before the first beat: ${preludeReport}ms`);
   for (const warning of warnings) console.warn(`  warning: ${warning}`);
   if (failures.length) {
     console.error(`\nFAILED: required beat(s) showed nothing: ${failures.join(", ")}.`);

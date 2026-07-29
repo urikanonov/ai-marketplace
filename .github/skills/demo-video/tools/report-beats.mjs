@@ -84,9 +84,10 @@ export const REPORT_BEATS = [
     required: true,
     async run(page, ctx) {
       // The clip opens ON the first interaction. An establishing beat that just sits at the top of
-      // the document reads as a stuck video before the demo has said anything.
+      // the document reads as a stuck video before the demo has said anything - so the cursor
+      // glides in from the edge and goes straight for the prose.
       await ctx.scrollTo(0);
-      await ctx.moveCursor(720, 260);
+      await ctx.glideCursor(720, 260, 420);
       await commentOnText(page, ctx, "#commentRoot p", "Is this window realistic?");
     },
   },
@@ -122,6 +123,7 @@ export const REPORT_BEATS = [
     label: "Comment on a node of a Mermaid diagram",
     abilities: ["diagrams", "anchored-comments"],
     weight: 1.2,
+    needsDiagrams: true,
     async run(page, ctx) {
       await commentOnBlock(page, ctx, {
         target: "#commentRoot .mermaid svg g.node",
@@ -135,6 +137,7 @@ export const REPORT_BEATS = [
     label: "Comment on a Chart.js chart",
     abilities: ["charts", "anchored-comments"],
     weight: 1.2,
+    needsDiagrams: true,
     async run(page, ctx) {
       const ok = await commentOnBlock(page, ctx, {
         // A chart canvas is commented through the MEDIA affordance, the same one images use - the

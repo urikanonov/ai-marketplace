@@ -396,3 +396,23 @@ test("writes that share a moment are merged without losing a byte (DEMO-FF-15)",
   assert.throws(() => coalesceEvents(events, -1), /windowMs/i);
   assert.throws(() => coalesceEvents("nope"), /array/i);
 });
+
+// A montage that opens on a still document reads as a stuck video, and the biggest source of that
+// stillness was waiting for every diagram and chart to draw BEFORE the first beat ran. A beat that
+// needs a rendered figure declares it instead, so the wait happens at the beat that needs it - by
+// which time the figure has long since drawn - and the clip opens on an interaction.
+test("the montage opens on an interaction and declares its own diagram waits (DEMO-PLAN-04)", () => {
+  const first = REPORT_BEATS[0];
+  assert.ok(first.required, "the opening beat must be a required interaction, not an establishing shot");
+  assert.ok(first.abilities.includes("selection"), "the clip should open on the affordance a reader finds first");
+
+  const needsRendering = REPORT_BEATS.filter((b) =>
+    b.abilities.includes("diagrams") || b.abilities.includes("charts"));
+  assert.ok(needsRendering.length >= 2, "the montage should comment on both a diagram and a chart");
+  for (const beat of needsRendering) {
+    assert.equal(beat.needsDiagrams, true, `${beat.id} draws a figure, so it must declare needsDiagrams`);
+  }
+  for (const beat of REPORT_BEATS.filter((b) => !needsRendering.includes(b))) {
+    assert.ok(!beat.needsDiagrams, `${beat.id} does not need a figure and must not wait for one`);
+  }
+});
