@@ -663,6 +663,261 @@ test("CMH-MMD-07: Export Offline renders a collapsed-section diagram correctly a
   }
 });
 
+// The exporter's chart-canvas selector is deliberately a SUPERSET of what any one renderer draws, so
+// the SHAPE of a canvas is not evidence that Chart.js is needed: a canvas carrying
+// data-cmh-chart-points / data-cmh-chart-source is drawn by the runtime's own 2D renderer
+// (renderInteractiveChart) and never calls Chart.js. Inlining the library for such a document ships
+// ~1 MB of dead weight in every offline export (CMH-OFFLINE-06).
+const BUILTIN_CHART_CONTENT = `
+<h1>Built-in chart</h1>
+<p id="builtin-chart-note">This chart is drawn by the built-in renderer, not by Chart.js.</p>
+<figure class="chart" aria-labelledby="builtin-chart-cap">
+  <div class="chart-wrap cm-skip" style="position: relative; height: 180px; max-height: 180px; overflow: hidden;">
+    <canvas id="builtinChart" class="cmh-chart" width="360" height="180" role="img" aria-label="Built-in bar chart"
+      data-cmh-chart-points='[{"label":"one","value":4},{"label":"two","value":9},{"label":"three","value":6}]'></canvas>
+  </div>
+  <figcaption id="builtin-chart-cap">Built-in canvas chart.</figcaption>
+</figure>`;
+
+test("CMH-OFFLINE-06: Export Offline omits Chart.js for a document only the built-in renderer draws", async ({ page, browser }) => {
+  test.setTimeout(60000);
+  const staged = stageContent(BUILTIN_CHART_CONTENT, { key: "cmh-offline-builtin-chart", source: "offline-builtin-chart.html" });
+  // Seed a library this exporter inlined on an earlier pass, as a re-export of an older offline file
+  // carries. It must be removed by its marker (and must not count as evidence that the document
+  // needs the library), so the export neither keeps it nor grows a second copy.
+  fs.writeFileSync(staged.html, fs.readFileSync(staged.html, "utf8").replace(
+    "</head>",
+    '<script data-cmh-offline-lib="chartjs">window.__staleInlinedLib = true; /* new Chart( */</script>\n</head>'));
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    // The live document draws the chart with the built-in renderer and never defines Chart.
+    expect(await page.evaluate(() => typeof window.Chart)).toBe("undefined");
+    expect(await page.evaluate(() => {
+      const c = document.getElementById("builtinChart");
+      return c && c._cmhChart ? c._cmhChart.points.length : 0;
+    })).toBe(3);
+
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    // No library, and no MIT notice for a library that is not there.
+    expect(exportedHtml).not.toContain('data-cmh-offline-lib="chartjs"');
+    expect(exportedHtml).not.toContain("__staleInlinedLib");
+    expect(exportedHtml).not.toContain("Third-party notice - Chart.js");
+    expect(exportedHtml).not.toContain('data-cmh-offline-lib="mermaid"');
+    expect(exportedHtml).not.toContain('id="cmhVendoredRichLibs"');
+    expect(networkLoadRefs(exportedHtml)).toEqual([]);
+
+    const exportedPath = path.join(outDir, "offline-builtin-chart.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+
+    // Never provision less than the renderer draws: the chart still renders, with zero network.
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    const state = await page2.evaluate(() => {
+      const c = document.getElementById("builtinChart");
+      return { hasChart: typeof window.Chart !== "undefined", points: c && c._cmhChart ? c._cmhChart.points.length : 0 };
+    });
+    expect(state.hasChart).toBe(false);
+    expect(state.points).toBe(3);
+    expect(external).toEqual([]);
+
+    // Re-exporting the offline file stays library-free and does not accumulate a second copy.
+    await installDownloadTextCapture(page2);
+    await page2.reload();
+    await ready(page2);
+    await openToolbarMenu(page2);
+    await Promise.all([
+      page2.waitForEvent("download"),
+      page2.locator("#btnExportOfflineTop").click(),
+    ]);
+    const reExported = await capturedDownloadText(page2);
+    expect(reExported).not.toContain('data-cmh-offline-lib="chartjs"');
+    expect(reExported).not.toContain("Third-party notice - Chart.js");
+    expect(external).toEqual([]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("CMH-OFFLINE-06: Export Offline still inlines Chart.js when the document constructs a Chart on a built-in canvas", async ({ page, browser }) => {
+  // The superset selector is load-bearing: an author may attach their own Chart.js to ANY canvas,
+  // including one that also carries the built-in data attributes. Evidence that the document uses
+  // the library must win over the "the built-in renderer draws it" shortcut, or the export would
+  // drop a library its own chart needs. The second case pins the INDIRECT construction that a
+  // literal `new Chart(` detector would miss.
+  test.setTimeout(90000);
+  const cases = [
+    {
+      key: "direct",
+      script: `
+(function () {
+  var el = document.getElementById("builtinChart");
+  if (!el || typeof Chart === "undefined") return;
+  window.__authorChartBuilt = true;
+  new Chart(el, { type: "bar", data: { labels: ["one"], datasets: [{ label: "Values", data: [4] }] }, options: { animation: false, responsive: false } });
+})();`,
+    },
+    {
+      key: "aliased",
+      script: `
+// Chart bundle: chart.umd.min.js
+(function () {
+  var el = document.getElementById("builtinChart");
+  var C = window.Chart;
+  if (!el || !C) return;
+  window.__authorChartBuilt = true;
+  var chart = new C(el, { type: "bar", data: { labels: ["one"], datasets: [{ label: "Values", data: [4] }] }, options: { animation: false, responsive: false } });
+  return chart;
+})();`,
+    },
+    {
+      key: "module",
+      type: ' type="module"',
+      script: `
+const el = document.getElementById("builtinChart");
+const C = window.Chart;
+if (el && C) {
+  window.__authorChartBuilt = true;
+  new C(el, { type: "bar", data: { labels: ["one"], datasets: [{ label: "Values", data: [4] }] }, options: { animation: false, responsive: false } });
+}`,
+    },
+  ];
+  for (const variant of cases) {
+    const content = BUILTIN_CHART_CONTENT
+      + '\n<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.js"></script>\n<script'
+      + (variant.type || "") + ">" + variant.script + "\n</script>";
+    const staged = stageContent(content, { key: "cmh-offline-author-chart-" + variant.key, source: "offline-author-chart.html" });
+    const outDir = makeTmpDir();
+    let ctx2;
+    try {
+      await routeRichContentLocal(page);
+      await installDownloadTextCapture(page);
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      // A module script is deferred, so wait for the author chart rather than sampling once.
+      await page.waitForFunction(() => window.__authorChartBuilt === true);
+
+      await openToolbarMenu(page);
+      await Promise.all([
+        page.waitForEvent("download"),
+        page.locator("#btnExportOfflineTop").click(),
+      ]);
+      const exportedHtml = await capturedDownloadText(page);
+      expect(exportedHtml, `${variant.key}: Chart.js inlined`).toContain('data-cmh-offline-lib="chartjs"');
+      expect(exportedHtml, `${variant.key}: MIT notice travels with it`).toContain("Third-party notice - Chart.js");
+      expect(networkLoadRefs(exportedHtml)).toEqual([]);
+
+      // The library must be inlined BEFORE the constructing script runs, so prove it by reopening
+      // the export offline rather than by asserting the marker alone.
+      const exportedPath = path.join(outDir, "offline-author-chart.html");
+      fs.writeFileSync(exportedPath, exportedHtml);
+      ctx2 = await browser.newContext();
+      const page2 = await ctx2.newPage();
+      const external = [];
+      await page2.route(/^https?:\/\//, async (route) => {
+        external.push(route.request().url());
+        await route.abort();
+      });
+      // addInitScript only applies to navigations that follow it, so install before the goto.
+      await installDownloadTextCapture(page2);
+      await page2.goto(fileUrl(exportedPath));
+      await ready(page2);
+      await page2.waitForFunction(() => window.__authorChartBuilt === true);
+      expect(await page2.evaluate(() => typeof window.Chart !== "undefined"),
+        `${variant.key}: Chart global present offline`).toBe(true);
+      expect(external).toEqual([]);
+    } finally {
+      if (ctx2) await ctx2.close();
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+      fs.rmSync(outDir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("CMH-OFFLINE-06: evidence covers a head-placed legacy-typed constructor and unusable built-in data", async ({ page, browser }) => {
+  // Two branches that a shape-only or literal-constructor detector would miss: a constructing script
+  // in the HEAD (which must be hoisted below the inlined library or it runs first) declared with a
+  // legacy but still-executable script type, and a canvas whose built-in data cannot draw anything,
+  // so the built-in renderer is NOT what covers it.
+  test.setTimeout(90000);
+  const outDir = makeTmpDir();
+  const stagedHead = stageContent(BUILTIN_CHART_CONTENT, { key: "cmh-offline-head-ctor", source: "offline-head-ctor.html" });
+  const emptyData = BUILTIN_CHART_CONTENT.replace(/data-cmh-chart-points='[^']*'/, "data-cmh-chart-points=''");
+  const stagedEmpty = stageContent(emptyData, { key: "cmh-offline-empty-data", source: "offline-empty-data.html" });
+  let ctx2;
+  try {
+    expect(emptyData).toContain("data-cmh-chart-points=''");
+    fs.writeFileSync(stagedHead.html, fs.readFileSync(stagedHead.html, "utf8").replace(
+      "</head>",
+      '<script type="text/ecmascript">\nwindow.addEventListener("DOMContentLoaded", function () {\n'
+      + '  var el = document.getElementById("builtinChart");\n  var C = window.Chart;\n'
+      + '  if (!el || !C) return;\n  window.__headChartBuilt = true;\n'
+      + '  new C(el, { type: "bar", data: { labels: ["one"], datasets: [{ data: [4] }] }, options: { animation: false, responsive: false } });\n'
+      + "});\n</script>\n</head>"));
+
+    await routeRichContentLocal(page);
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(stagedHead.html));
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const headExport = await capturedDownloadText(page);
+    expect(headExport, "a legacy-typed head constructor is evidence").toContain('data-cmh-offline-lib="chartjs"');
+    const exportedPath = path.join(outDir, "offline-head-ctor.html");
+    fs.writeFileSync(exportedPath, headExport);
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    await page2.waitForFunction(() => window.__headChartBuilt === true);
+    expect(external).toEqual([]);
+
+    // A canvas whose inline data cannot produce a point is not one the built-in renderer draws, so
+    // the library still travels rather than leaving the canvas blank.
+    await page.goto(fileUrl(stagedEmpty.html));
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    expect(await capturedDownloadText(page), "unusable built-in data still provisions the library")
+      .toContain('data-cmh-offline-lib="chartjs"');
+  } finally {
+    if (ctx2) await ctx2.close();
+    fs.rmSync(stagedHead.dir, { recursive: true, force: true });
+    fs.rmSync(stagedEmpty.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
 test("Export Offline fails loudly when a rich document has no vendored payload (CMH-SIZE-01)", async ({ page }) => {
   // The payload is now stripped from documents that do not use rich content (CMH-SIZE-01). The
   // hazard that creates is the OTHER direction: a document that DOES use mermaid or a chart but

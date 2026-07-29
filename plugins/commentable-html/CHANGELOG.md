@@ -4,6 +4,28 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.268.0] - 2026-07-29
+
+### Fixed
+
+- An Offline export no longer inlines Chart.js for a document that never calls it. The exporter
+  decided by SHAPE - any `figure.chart canvas` or `canvas.cmh-chart` - but a canvas carrying
+  `data-cmh-chart-points` / `data-cmh-chart-source` is drawn by the runtime's own 2D renderer and
+  never touches Chart.js, so a report whose charts are all built-in shipped roughly a megabyte of
+  dead library in every offline file (and, with no diagram either, the vendored payload with it).
+  The decision is now made on EVIDENCE: the library travels only when the document has a chart
+  canvas the built-in renderer will not draw, or a surviving script that mentions the `Chart`
+  global. The superset selector stays load-bearing - an author who attaches their own Chart.js to
+  any canvas, including one that also carries the built-in attributes, still gets the library
+  inlined, and the evidence match is deliberately loose (it covers indirect construction such as
+  `const C = window.Chart; new C(...)` and every executable script MIME type) because a false
+  positive only costs bytes while a false negative would ship a chart that never renders.
+- An offline re-export can no longer accumulate a second copy of an inlined library. The libraries
+  the exporter injects now carry a marker it removes them by, instead of being recognized by their
+  own bundled text. A script that merely names a bundle file (in a comment, say) but uses the
+  `Chart` global is also no longer removed as if it were a loader shim, and a chart script placed in
+  the document head is moved below the inlined library so it cannot run before it.
+
 ## [1.265.0] - 2026-07-28
 
 ### Added
