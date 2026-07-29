@@ -424,7 +424,9 @@ def validate_deck(path, contrast_threshold=contrast.DEFAULT_MIN_CONTRAST_RATIO,
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Validate a commentable-html deck.")
     ap.add_argument("file")
-    ap.add_argument("--strict", action="store_true", help="treat validator warnings as errors too")
+    ap.add_argument("--strict", action="store_true",
+                    help="treat BLOCKING validator warnings as errors too (an advisory, which the "
+                         "author cannot clear, is reported but never fails strict)")
     ap.add_argument("--contrast-threshold", type=float, default=contrast.DEFAULT_MIN_CONTRAST_RATIO,
                     help="minimum WCAG contrast ratio for explicit text/background color pairs")
     ap.add_argument("--max-slide-lines", type=int, default=DEFAULT_MAX_SLIDE_LINES,
@@ -448,7 +450,14 @@ def main(argv=None):
     for w in base_warnings:
         print(f"  WARNING: {w}", file=sys.stderr)
 
-    failed = bool(base_errors or deck_errors) or (args.strict and bool(base_warnings))
+    # CMH-VAL-18: an advisory names something the author cannot clear (a deliberately
+    # hand-written inert code block), so it is reported but never fails --strict. Without this
+    # the deck path would still block the workflow the skill tells deck authors to finish with,
+    # even though validate.py --strict and finalize.py --strict now pass the same document.
+    fatal_warnings = base_warnings
+    if _base is not None and hasattr(_base, "partition_warnings"):
+        fatal_warnings, _advisory = _base.partition_warnings(base_warnings)
+    failed = bool(base_errors or deck_errors) or (args.strict and bool(fatal_warnings))
     if failed:
         print("deck_validate: FAILED", file=sys.stderr)
         return 1

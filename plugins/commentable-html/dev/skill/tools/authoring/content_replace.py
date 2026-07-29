@@ -177,16 +177,22 @@ def finalize_document(path, strict=True):
     if errors:
         raise ReplaceError("the document has %d validation error(s) after the swap: %s"
                            % (len(errors), errors[0]))
-    if strict and warnings:
+    # An ADVISORY warning names something the author cannot clear - a deliberately hand-written
+    # code block (which this tool passes through verbatim by design), an unresolvable contrast
+    # chain - so it must not stall the edit loop or withhold the stamp.
+    fatal, advisory = validate.partition_warnings(warnings)
+    for item in advisory:
+        sys.stderr.write("content_replace: %s\n" % item)
+    if strict and fatal:
         raise ReplaceError("the document has %d validation warning(s) after the swap: %s"
-                           % (len(warnings), warnings[0]))
-    if warnings:
+                           % (len(fatal), fatal[0]))
+    if fatal:
         # A stamp asserts a STRICT-clean pass, so a warning-bearing document is written
         # without one and the runtime keeps its "not validated" banner up. Say so rather
         # than failing, since --no-strict deliberately allows this.
         sys.stderr.write("content_replace: %d warning(s) remain, so no validated stamp "
                          "was written; resolve them and re-run for a clean stamp\n"
-                         % len(warnings))
+                         % len(fatal))
         return
     _stamp(path)
 
@@ -266,7 +272,8 @@ def _stamp(path):
     replaced.
     """
     errors, warnings = validate.validate(path)
-    if errors or warnings:
+    fatal, _advisory = validate.partition_warnings(warnings)
+    if errors or fatal:
         raise ReplaceError("the document did not validate cleanly before stamping")
     validate._stamp_validated_file(path)
     stamped = _read(path)

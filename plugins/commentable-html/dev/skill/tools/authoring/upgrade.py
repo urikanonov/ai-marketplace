@@ -601,6 +601,17 @@ def _detect_newline(path):
     return "\r\n" if crlf > lf else "\n"
 
 
+def _fatal_warnings(validate_mod, warnings):
+    """The subset of `warnings` a --strict upgrade must abort on: everything except the
+    never-blocking advisories (CMH-VAL-18), which name something the author cannot clear.
+    Tolerant of a validate module that does not expose the prefixes, where every warning
+    stays fatal (fail closed)."""
+    prefixes = getattr(validate_mod, "ADVISORY_PREFIXES", ())
+    if not isinstance(prefixes, tuple) or not all(isinstance(p, str) for p in prefixes):
+        return list(warnings)
+    return [w for w in warnings if not (isinstance(w, str) and w.startswith(prefixes))]
+
+
 def main(argv):
     p = argparse.ArgumentParser(description="Upgrade a commentable-html file's layer regions from a template.")
     p.add_argument("file", help="the deployed commentable-html file to upgrade")
@@ -659,6 +670,12 @@ def main(argv):
         except ImportError:
             validate = None
             _toolpath.warn_missing_tool("validate", "post-upgrade validation")
+        if validate is None and args.strict:
+            # --strict promises the result was validated. Committing without a validator would
+            # silently turn strict into non-strict on a broken install, so fail closed.
+            sys.stderr.write("upgrade aborted (--strict): the validator is unavailable, so the "
+                             "new %s cannot be checked (target left unchanged)\n" % out_path)
+            return 1
         if validate is not None:
             try:
                 errors, warnings = validate.validate(tmp_path)
@@ -670,9 +687,11 @@ def main(argv):
                                  % (out_path, "\n  ".join(errors)))
                 return 1
             if warnings and args.strict:
-                sys.stderr.write("upgrade aborted (--strict): the new %s has validator warning(s) "
-                                 "(target left unchanged):\n  %s\n" % (out_path, "\n  ".join(warnings)))
-                return 1
+                fatal = _fatal_warnings(validate, warnings)
+                if fatal:
+                    sys.stderr.write("upgrade aborted (--strict): the new %s has validator warning(s) "
+                                     "(target left unchanged):\n  %s\n" % (out_path, "\n  ".join(fatal)))
+                    return 1
 
         os.replace(tmp_path, out_path)
         tmp_path = None

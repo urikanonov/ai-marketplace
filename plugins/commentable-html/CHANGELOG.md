@@ -4,6 +4,48 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.269.0] - 2026-07-29
+
+### Fixed
+
+- The author-time syntax-highlighting guardrail is no longer blind in a Portable document. The
+  check scanned the whole file for `<pre>` blocks, so in a Portable document - which inlines the
+  layer CSS and JS, both full of prose mentioning `<pre>` and `<code>` - a match starting inside
+  one of those bodies swallowed the author's real code block and the check reported nothing at
+  all. A raw `language-XXX` block therefore shipped unhighlighted with no warning, and
+  `retrofit.py --no-highlight` exited 0 instead of failing closed. Blocks are now LOCATED in a
+  masked view of the document (`<script>`/`<style>` bodies and HTML comments blanked to
+  same-length spaces) and every payload is read from the original bytes, so the language,
+  emptiness and highlight state are still decided on what actually ships. The mask is one
+  left-to-right pass over an alternation, so a `<script` named inside a comment cannot open a
+  mask that runs to the document's next real `</script>` - the same one-pass masking now backs
+  the KQL runnable scan, which had that hole too.
+
+### Changed
+
+- Validator warnings now have one shared fatal/advisory split (`validate.ADVISORY_PREFIXES`,
+  `is_advisory()`, `partition_warnings()`), honoured by `retrofit.py`, `content_replace.py`,
+  `chart_block.py` and the `--strict` and stamping paths of `finalize.py`, `upgrade.py` and
+  `validate.py`. An advisory names something the author cannot clear, so it is always reported
+  but never blocks a fail-closed tool and never withholds the `commentable-html-validated` stamp.
+  Today the set holds exactly one prefix: a code block carrying deliberately hand-written INERT
+  markup, which the authoring tools pass through verbatim by design - without this, the scan fix
+  above would have made such a document impossible to write back or stamp. Markup that is not
+  inert stays FATAL: inertness is decided by a whole-tag allowlist (every `<` must open a
+  well-formed inline formatting tag carrying at most a quoted `class`), so a raw `<script>`, an
+  `<iframe>`, any `style`/`is`/`data-*`/event attribute, an unquoted attribute, or a stray `<`
+  keeps blocking - a `<pre>` body is parsed as markup and that content executes. Text between
+  the tags is escaped source and is never inspected, so a code sample that merely mentions
+  `onclick=` or `javascript:` is not flagged. The check also fails CLOSED when a raw `<script>`
+  or `<!--` opened inside a code block swallows its `</code></pre>`: it reports the unpaired
+  `<pre>` rather than silently inspecting nothing. The theme-contrast advisory is deliberately
+  not in the advisory set - its near-miss band ships a concrete `--suggest` fix, so it is
+  clearable and still fails `--strict`; `retrofit.py` keeps its own long-standing carve-out for
+  it, and now fails closed (every warning fatal) if the validator cannot be imported.
+  `upgrade.py --strict` likewise aborts instead of committing when the validator is unavailable,
+  and `deck_validate.py --strict` - the command the skill tells deck authors to finish with -
+  shares the same contract, so an advisory-only deck no longer exits 1.
+
 ## [1.268.0] - 2026-07-29
 
 ### Fixed

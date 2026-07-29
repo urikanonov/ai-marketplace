@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.268.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.269.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -458,6 +458,17 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.269.0] - 2026-07-29</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The author-time syntax-highlighting guardrail is no longer blind in a Portable document. The check scanned the whole file for <code>&lt;pre&gt;</code> blocks, so in a Portable document - which inlines the layer CSS and JS, both full of prose mentioning <code>&lt;pre&gt;</code> and <code>&lt;code&gt;</code> - a match starting inside one of those bodies swallowed the author&#x27;s real code block and the check reported nothing at all. A raw <code>language-XXX</code> block therefore shipped unhighlighted with no warning, and <code>retrofit.py --no-highlight</code> exited 0 instead of failing closed. Blocks are now LOCATED in a masked view of the document (<code>&lt;script&gt;</code>/<code>&lt;style&gt;</code> bodies and HTML comments blanked to same-length spaces) and every payload is read from the original bytes, so the language, emptiness and highlight state are still decided on what actually ships. The mask is one left-to-right pass over an alternation, so a <code>&lt;script</code> named inside a comment cannot open a mask that runs to the document&#x27;s next real <code>&lt;/script&gt;</code> - the same one-pass masking now backs the KQL runnable scan, which had that hole too.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Validator warnings now have one shared fatal/advisory split (<code>validate.ADVISORY_PREFIXES</code>, <code>is_advisory()</code>, <code>partition_warnings()</code>), honoured by <code>retrofit.py</code>, <code>content_replace.py</code>, <code>chart_block.py</code> and the <code>--strict</code> and stamping paths of <code>finalize.py</code>, <code>upgrade.py</code> and <code>validate.py</code>. An advisory names something the author cannot clear, so it is always reported but never blocks a fail-closed tool and never withholds the <code>commentable-html-validated</code> stamp. Today the set holds exactly one prefix: a code block carrying deliberately hand-written INERT markup, which the authoring tools pass through verbatim by design - without this, the scan fix above would have made such a document impossible to write back or stamp. Markup that is not inert stays FATAL: inertness is decided by a whole-tag allowlist (every <code>&lt;</code> must open a well-formed inline formatting tag carrying at most a quoted <code>class</code>), so a raw <code>&lt;script&gt;</code>, an <code>&lt;iframe&gt;</code>, any <code>style</code>/<code>is</code>/<code>data-*</code>/event attribute, an unquoted attribute, or a stray <code>&lt;</code> keeps blocking - a <code>&lt;pre&gt;</code> body is parsed as markup and that content executes. Text between the tags is escaped source and is never inspected, so a code sample that merely mentions <code>onclick=</code> or <code>javascript:</code> is not flagged. The check also fails CLOSED when a raw <code>&lt;script&gt;</code> or <code>&lt;!--</code> opened inside a code block swallows its <code>&lt;/code&gt;&lt;/pre&gt;</code>: it reports the unpaired <code>&lt;pre&gt;</code> rather than silently inspecting nothing. The theme-contrast advisory is deliberately not in the advisory set - its near-miss band ships a concrete <code>--suggest</code> fix, so it is clearable and still fails <code>--strict</code>; <code>retrofit.py</code> keeps its own long-standing carve-out for it, and now fails closed (every warning fatal) if the validator cannot be imported. <code>upgrade.py --strict</code> likewise aborts instead of committing when the validator is unavailable, and <code>deck_validate.py --strict</code> - the command the skill tells deck authors to finish with - shares the same contract, so an advisory-only deck no longer exits 1.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.268.0] - 2026-07-29</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -465,6 +476,8 @@
               <li>An offline re-export can no longer accumulate a second copy of an inlined library. The libraries the exporter injects now carry a marker it removes them by, instead of being recognized by their own bundled text. A script that merely names a bundle file (in a comment, say) but uses the <code>Chart</code> global is also no longer removed as if it were a loader shim, and a chart script placed in the document head is moved below the inlined library so it cannot run before it.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.265.0] - 2026-07-28</h3></div>
             <div class="group-label">Added</div>
@@ -484,8 +497,6 @@
               <li>Every anchor is resolved against the document&#x27;s original bytes and applied in one pass of non-overlapping edits, and elements are matched in a view with HTML comments and raw-text bodies blanked. Untrusted companion text can no longer aim a later step, and a commented-out or quoted copy of a companion reference or of the layer descriptor is never the one rewritten. A companion is matched by the BASENAME of the URL its element points at, so the absolute <code>file://</code> references the CLI produced by default, the <code>--assets-relative</code> / <code>--copy-assets</code> / <code>--assets-href</code> prefixes and <code>?v=</code> cache-busters all migrate rather than being refused; CRLF documents migrate too. Migration finally refuses to write a result that would still reference a companion, so it can never report success on a document that is not self-contained.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.264.0] - 2026-07-28</h3></div>
             <div class="group-label">Fixed</div>
@@ -526,19 +537,7 @@
               <li>Runtime keyword lookup is per LANGUAGE rather than one broad bucket shared by 23 languages. The <code>hash</code> and <code>c</code> families shared a single approximate set, which both over-colored (a lowercase <code>true</code> in Python, <code>true</code>/<code>false</code>/<code>null</code> in R, <code>bool</code> in Objective-C) and under-colored (Python&#x27;s capitalized <code>True</code>/<code>False</code>/<code>None</code> never matched the case-sensitive lookup). Measured cost of splitting, on the built <code>commentable-html.js</code> rather than on the raw keyword text: 9,346 bytes (736,669 -&gt; 746,015, about 1.27 percent), against a divergence visible in every Python block. Each set is compared to its author-time config by test, so a future drift fails there instead of shipping as a block that renders one way baked and another way live (CMH-HL-14).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.259.0] - 2026-07-27</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Editing a KQL query no longer leaves its <strong>Run in Azure Data Explorer</strong> button executing the PRE-EDIT query. The query is encoded inside the link&#x27;s href, so re-highlighting only the code left a stale payload behind - silently, since nothing validated it. <code>refresh_block()</code> now recovers the cluster and database from the existing link and rebuilds both the code and the href, preserving the figure frame, caption and cluster copy affordance; the agent edit loop applies it to every KQL figure it writes back (CMH-KQL-10).</li>
-              <li>The validator classifies a code block through the shared strict scanner instead of probing for the <code>cmh-code-</code> substring, so a nested, malformed or hand-edited span is reported rather than silently accepted as highlighted (CMH-HL-12).</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li><code>language-kusto</code> / <code>language-kql</code> blocks are baked by the same document highlight pass as every other language rather than being skipped. Only the dispatch and the emission are shared - KQL keeps its own tokenizer and <code>cmh-kql-*</code> class vocabulary - so output bytes are unchanged, and the agent edit loop can now serve KQL blocks like any other code (CMH-KQL-09).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">220 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">221 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

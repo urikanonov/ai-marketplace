@@ -622,20 +622,25 @@ def _validate_candidate(text, out_path, base_dir):
 
 
 def _partition_val_warnings(warnings):
-    """Split validator warnings into (fatal, advisory). A theme-contrast near-miss or unresolved
-    advisory (CMH-THEME-02) carries a stable prefix and stays OUT of retrofit's hard-fail path,
-    so retrofit still writes the file; a bad-contrast ERROR is not a warning and continues to
-    block the retrofit. Every OTHER validator warning stays fatal, preserving retrofit's
-    clean-result guarantee."""
+    """Split validator warnings into (fatal, advisory) for retrofit's hard-fail path.
+
+    Two prefixes stay OUT of it: the never-blocking advisories every tool tolerates
+    (`validate.ADVISORY_PREFIXES` - today a deliberately hand-written code block, CMH-VAL-11),
+    plus retrofit's own long-standing carve-out for the theme-contrast near-miss/unresolved
+    advisory (CMH-THEME-02), which other tools still treat as fatal. A bad-contrast ERROR is not
+    a warning and continues to block the retrofit; every OTHER validator warning stays fatal,
+    preserving retrofit's clean-result guarantee. `validate` is already a hard dependency of the
+    surrounding flow (`_validate_candidate` imports it), so if it cannot be imported here we fail
+    CLOSED rather than keep a second copy of the prefixes that could silently drift."""
     try:
         import validate
-        prefix = validate.ADVISORY_PREFIX
+        prefixes = validate.ADVISORY_PREFIXES + (validate.ADVISORY_PREFIX,)
     except Exception:
         _toolpath.warn_missing_tool("validate", "advisory-warning classification")
-        prefix = "theme contrast advisory: "
+        return list(warnings), []
     fatal, advisory = [], []
     for w in warnings:
-        (advisory if w.startswith(prefix) else fatal).append(w)
+        (advisory if isinstance(w, str) and w.startswith(prefixes) else fatal).append(w)
     return fatal, advisory
 
 

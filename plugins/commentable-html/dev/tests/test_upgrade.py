@@ -664,6 +664,54 @@ class UpgradeCliTests(unittest.TestCase):
         with open(p, encoding="utf-8") as fh:
             self.assertNotIn("STALE", fh.read())
 
+    def test_cli_strict_commits_when_only_an_advisory_remains(self):
+        # CMH-VAL-18: an advisory names something the author cannot clear (a deliberately
+        # hand-written code block), so --strict must NOT abort on it - otherwise such a
+        # document could never be upgraded strictly.
+        target = _mutate_region_inner(_tpl(), "CSS", "\n/* STALE */\n")
+        p = self._write(target)
+        mock_validate = mock.MagicMock()
+        mock_validate.ADVISORY_PREFIXES = ("code highlighting advisory: ",)
+        mock_validate.validate.return_value = (
+            [], ["code highlighting advisory: a hand-written span"])
+        out = io.StringIO()
+        with mock.patch.dict(sys.modules, {"validate": mock_validate}), \
+             contextlib.redirect_stdout(out):
+            rc = upgrade.main(["upgrade.py", p, "--strict"])
+        self.assertEqual(rc, 0, out.getvalue())
+        with open(p, encoding="utf-8") as fh:
+            self.assertNotIn("STALE", fh.read())  # committed despite the advisory
+
+    def test_cli_strict_fails_closed_when_the_validator_is_unavailable(self):
+        # --strict promises the result was validated. Committing without a validator would turn
+        # strict into non-strict on a broken install, so it must abort and leave the target alone.
+        target = _mutate_region_inner(_tpl(), "CSS", "\n/* STALE */\n")
+        p = self._write(target)
+        with open(p, "rb") as fh:
+            original_bytes = fh.read()
+        err = io.StringIO()
+        with mock.patch.dict(sys.modules, {"validate": None}), \
+             contextlib.redirect_stderr(err):
+            rc = upgrade.main(["upgrade.py", p, "--strict"])
+        self.assertEqual(rc, 1)
+        self.assertIn("validator is unavailable", err.getvalue())
+        with open(p, "rb") as fh:
+            self.assertEqual(fh.read(), original_bytes)
+
+    def test_fatal_warnings_falls_back_to_every_warning_without_the_prefixes(self):
+        # CMH-VAL-18: a validate module that does not expose ADVISORY_PREFIXES (an older or
+        # stubbed one) must make every warning fatal, not none of them.
+        class _NoPrefixes:
+            pass
+
+        warnings = ["code highlighting advisory: hand-written span", "a real warning"]
+        self.assertEqual(upgrade._fatal_warnings(_NoPrefixes(), warnings), warnings)
+
+        class _Prefixes:
+            ADVISORY_PREFIXES = ("code highlighting advisory: ",)
+
+        self.assertEqual(upgrade._fatal_warnings(_Prefixes(), warnings), ["a real warning"])
+
     def test_cli_missing_file_returns_2(self):
         rc = upgrade.main(["upgrade.py", os.path.join(tempfile.gettempdir(), "cmh-no-such-file.html")])
         self.assertEqual(rc, 2)

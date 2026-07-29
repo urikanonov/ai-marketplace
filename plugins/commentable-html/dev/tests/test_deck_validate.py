@@ -389,6 +389,26 @@ class DeckValidateTests(unittest.TestCase):
                 self.assertEqual(deck_validate.main([valid]), 0)          # warnings printed, not failing
                 self.assertEqual(deck_validate.main(["--strict", valid]), 1)  # strict promotes to failure
 
+    def test_main_advisory_warning_does_not_fail_strict(self):
+        # CMH-VAL-18: the deck path shares the advisory contract. A deliberately hand-written
+        # inert code block cannot be cleared by the author, so `deck_validate.py --strict` - the
+        # command the skill tells deck authors to finish with - must not block on it, exactly as
+        # validate.py --strict and finalize.py --strict do not.
+        import contextlib
+        import io
+        from unittest import mock
+        import validate as base
+        valid = os.path.join(self.tmp, "warn3.html")
+        Path(valid).write_text(self.html, encoding="utf-8")
+        advisory = base.HIGHLIGHT_ADVISORY_PREFIX + "a hand-written span"
+        with mock.patch.object(deck_validate, "validate_deck", return_value=([], [advisory], [])):
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(deck_validate.main(["--strict", valid]), 0)
+        with mock.patch.object(deck_validate, "validate_deck",
+                               return_value=([], [advisory, "w1"], [])):
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(deck_validate.main(["--strict", valid]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

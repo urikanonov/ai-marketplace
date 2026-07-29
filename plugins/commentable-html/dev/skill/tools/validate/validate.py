@@ -153,6 +153,7 @@ from checks.parsing import (  # noqa: F401,E402
     _parser_script,
     _parser_script_body,
     _region_marker_matches,
+    authored_html,
 )
 from checks.resources import (  # noqa: F401,E402
     CHARTJS_SRC_RE,
@@ -205,6 +206,7 @@ from checks.notes import (  # noqa: F401,E402
     check_notes,
 )
 from checks.highlighting import (  # noqa: F401,E402
+    HIGHLIGHT_ADVISORY_PREFIX,
     _code_block_language,
     _highlight_language_table,
     check_code_highlighting,
@@ -222,6 +224,30 @@ from checks.layer import (  # noqa: F401,E402
     _layer_descriptor_data,
     check_layer,
 )
+
+# The stable ADVISORY warning prefixes: a finding the author CANNOT clear, so blocking on it
+# would leave the document permanently unstampable with the runtime "not validated" banner up.
+# Today that is the hand-written code block (CMH-VAL-11) the authoring tools pass through
+# verbatim by design. An advisory is always REPORTED but never fails --strict, never blocks a
+# fail-closed caller, and never withholds the validated stamp. Keeping the split in ONE place is
+# what stops retrofit, content_replace, finalize and this CLI disagreeing about what is
+# actionable. NOTE the theme-contrast advisory (CMH-THEME-02) is deliberately NOT here: its
+# near-miss band ships a concrete `--suggest` fix, so it IS clearable and must keep failing
+# --strict; retrofit's own long-standing carve-out for it is composed in retrofit.py.
+ADVISORY_PREFIXES = (HIGHLIGHT_ADVISORY_PREFIX,)
+
+
+def is_advisory(warning):
+    """True when `warning` is an advisory (see ADVISORY_PREFIXES)."""
+    return isinstance(warning, str) and warning.startswith(ADVISORY_PREFIXES)
+
+
+def partition_warnings(warnings):
+    """Split validator warnings into (fatal, advisory), preserving order."""
+    fatal, advisory = [], []
+    for w in warnings or []:
+        (advisory if is_advisory(w) else fatal).append(w)
+    return fatal, advisory
 
 
 def _read(path):
@@ -304,6 +330,10 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET, html=None)
         e, w = check_density(html)
         errors += e
         warnings += w
+    # Release the cached masked view: it is only worth keeping for the duration of ONE
+    # document's checks, and holding a multi-megabyte string alive afterwards would be a
+    # surprising residue in any process that hosts these modules.
+    authored_html.cache_clear()
     return errors, warnings
 
 
@@ -408,7 +438,8 @@ def main(argv):
         print("\nValidate one or more commentable-html documents.")
         print("  --charts-only  run only the Chart.js checks")
         print("  --layer-only   run only the commentable-html layer checks")
-        print("  --strict       exit non-zero if any warning remains")
+        print("  --strict       exit non-zero if any BLOCKING warning remains (an advisory, which")
+        print("                 the author cannot clear, is reported but never fails strict)")
         print("  --suggest      print a compliant nudged value for each low-contrast --cp-* override")
         print("  --no-stamp     do not write the commentable-html-validated stamp on a clean pass")
         print("                 (a --charts-only/--layer-only partial run never stamps either)")
@@ -455,20 +486,25 @@ def main(argv):
             print(f"  ERROR:   {e}")
         if suggest:
             _print_theme_suggestions(path)
-        if warnings:
+        # Advisories are reported above but never fail --strict and never withhold the stamp:
+        # they name something the author cannot clear, so treating them as blocking would leave
+        # such a document permanently unstampable (and the runtime banner permanently up).
+        fatal_warnings, _advisory = partition_warnings(warnings)
+        if fatal_warnings:
             any_warnings = True
         if errors:
             any_errors = True
             print(f"  FAILED ({len(errors)} error(s), {len(warnings)} warning(s))")
-        elif strict and warnings:
-            print(f"  FAILED (strict): {len(warnings)} warning(s) - resolve every warning before handoff")
+        elif strict and fatal_warnings:
+            print(f"  FAILED (strict): {len(fatal_warnings)} blocking warning(s) - resolve every "
+                  "blocking warning before handoff (advisories need no action)")
         else:
             print(f"  OK ({len(warnings)} warning(s))")
             # Stamp commentable-html-validated ONLY on a strict-clean pass (no errors AND no
-            # warnings) of a FULL validation (see `stamp` above: never for a --charts-only /
+            # fatal warnings) of a FULL validation (see `stamp` above: never for a --charts-only /
             # --layer-only partial run), so the runtime banner clears only for a document that
             # genuinely passed the whole validator. --no-stamp keeps a pure --check/CI run read-only.
-            if stamp and not errors and not warnings:
+            if stamp and not errors and not fatal_warnings:
                 _stamp_validated_file(path)
     if any_errors:
         return 1

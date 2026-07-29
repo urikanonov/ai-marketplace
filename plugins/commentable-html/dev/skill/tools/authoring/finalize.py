@@ -178,7 +178,10 @@ def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_b
     # second write on a multi-megabyte file - the amplification this whole change removes.
     errors, warnings = validate.validate(path, html=html)
     stamped = False
-    if stamp_when_clean and not errors and not warnings:
+    # An advisory warning names something the author cannot clear, so it must not withhold the
+    # stamp (see validate.ADVISORY_PREFIXES); every other warning still does.
+    fatal_warnings, _advisory = validate.partition_warnings(warnings)
+    if stamp_when_clean and not errors and not fatal_warnings:
         after = validate.stamp_validated_text(html)
         stamped = after != html
         html = after
@@ -210,7 +213,8 @@ def main(argv):
                         help="skip rewriting AI smart-typography (em/en dashes, ellipsis, curly "
                              "quotes, nbsp) to plain ASCII in prose (on by default)")
     parser.add_argument("--strict", action="store_true",
-                        help="treat validator warnings as failures (errors already fail)")
+                        help="treat BLOCKING validator warnings as failures (errors already fail; "
+                             "an advisory, which the author cannot clear, never fails strict)")
     parser.add_argument("--no-stamp", action="store_true",
                         help="do not write the commentable-html-validated stamp on a strict-clean pass")
     args = parser.parse_args(argv[1:])
@@ -231,8 +235,9 @@ def main(argv):
             run_stats=not args.no_stats,
             run_normalize=not args.no_normalize,
             # Stamp inside the pipeline so the strict-clean path still writes ONCE. The
-            # condition is unchanged from when main() stamped after the fact: no errors and
-            # no warnings at all, and --no-stamp keeps a read-only run from writing.
+            # condition is no errors and no BLOCKING warnings (an advisory, which the author
+            # cannot clear, must not withhold the stamp - CMH-VAL-18), and --no-stamp keeps a
+            # read-only run from writing.
             stamp_when_clean=not args.no_stamp,
         )
     except (OSError, ValueError) as exc:
@@ -254,14 +259,15 @@ def main(argv):
 
     if errors:
         return 1
-    if args.strict and warnings:
+    fatal_warnings, _advisory = validate.partition_warnings(warnings)
+    if args.strict and fatal_warnings:
         # Guardrail (issue #584 #4): a strict-fail leaves the document without a fresh validated
         # stamp, so the runtime shows the "not validated" banner. Remind the author that the fix
         # must END with a clean strict pass (finalize OR validate) to re-stamp the CURRENT content.
         print("finalize: strict mode failed on %d warning(s). Fix them, then re-run "
               "'finalize.py <file> --strict' (or 'validate.py --strict <file>') so the validated "
               "stamp is re-written for the current content - until a clean strict pass, the runtime "
-              "'not validated' banner stays up." % len(warnings))
+              "'not validated' banner stays up." % len(fatal_warnings))
         return 1
     # Strict-clean: the document was stamped as validated inside finalize (in memory, before
     # the single write), so the runtime fallback banner clears without another read/write pair.
