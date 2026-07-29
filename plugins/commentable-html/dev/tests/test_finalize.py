@@ -144,6 +144,34 @@ class FinalizeTests(unittest.TestCase):
         self.assertIn("--strict", out)
         self.assertIn("banner", out)
 
+    def test_advisory_warnings_do_not_fail_strict_and_still_stamp(self):
+        # CMH-VAL-11 / CMH-THEME-02: an ADVISORY warning describes something the author cannot
+        # clear (a deliberately hand-written code block, an unresolvable contrast chain), so it
+        # must not fail --strict and must not withhold the validated stamp - otherwise the
+        # runtime "not validated" banner could never be cleared for such a document.
+        directory = self._tmpdir()
+        path = os.path.join(directory, "doc.html")
+        self._write(path, "<html><head></head><body>x</body></html>")
+        advisory = finalize.validate.HIGHLIGHT_ADVISORY_PREFIX + "hand-written span"
+        with mock.patch.object(finalize.validate, "validate", return_value=([], [advisory])):
+            code, out, err = self._run_main(["finalize.py", path, "--strict"])
+        self.assertEqual(code, 0, err)
+        self.assertIn("hand-written span", out)  # reported, never hidden
+        with open(path, "r", encoding="utf-8") as fh:
+            self.assertIn("commentable-html-validated", fh.read())
+
+    def test_a_fatal_warning_beside_an_advisory_still_fails_strict(self):
+        directory = self._tmpdir()
+        path = os.path.join(directory, "doc.html")
+        self._write(path, "<html><head></head><body>x</body></html>")
+        advisory = finalize.validate.HIGHLIGHT_ADVISORY_PREFIX + "hand-written span"
+        with mock.patch.object(finalize.validate, "validate",
+                               return_value=([], [advisory, "real warning"])):
+            code, _out, err = self._run_main(["finalize.py", path, "--strict"])
+        self.assertEqual(code, 1, err)
+        with open(path, "r", encoding="utf-8") as fh:
+            self.assertNotIn("commentable-html-validated", fh.read())
+
     def test_errors_fail_in_all_modes(self):
         directory = self._tmpdir()
         path = os.path.join(directory, "doc.html")

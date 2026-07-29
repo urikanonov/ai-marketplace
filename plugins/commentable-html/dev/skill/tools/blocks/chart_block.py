@@ -206,11 +206,18 @@ def main(argv):
         return 1
     if result is not None:
         errors, warnings = result
-        if errors or warnings:
+        # An advisory names something the author cannot clear (CMH-VAL-18), so it is reported
+        # but never blocks; every other warning still fails this self-validation closed. A
+        # non-None result means validate imported cleanly inside _self_validate.
+        import validate as _validate  # noqa: E402
+        fatal, advisory = _validate.partition_warnings(warnings)
+        for item in advisory:
+            sys.stderr.write("chart_block: ADVISORY: %s\n" % item)
+        if errors or fatal:
             sys.stderr.write("chart_block: generated fragments do not validate cleanly:\n")
             for item in errors:
                 sys.stderr.write("  ERROR: %s\n" % item)
-            for item in warnings:
+            for item in fatal:
                 sys.stderr.write("  WARNING: %s\n" % item)
             return 1
 

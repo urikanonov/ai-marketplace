@@ -149,6 +149,45 @@ class ValidateMainTests(unittest.TestCase):
             self.assertIn("--charts-only", out)
             self.assertIn("--strict", out)
 
+    def test_advisory_only_document_passes_strict_and_is_stamped(self):
+        # CMH-VAL-18: an advisory names something the author cannot clear (here a deliberately
+        # hand-written code block), so --strict must pass and the validated stamp must be
+        # written - otherwise such a document could never clear the runtime "not validated"
+        # banner. Driven end to end through a real document, not a mocked warning list.
+        doc = build().replace(
+            "  <p>content</p>",
+            '  <pre><code class="language-python">x = <mark>1</mark></code></pre>', 1)
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "advisory.html")
+            with open(p, "w", encoding="utf-8", newline="") as fh:
+                fh.write(doc)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = validate.main(["validate.py", "--strict", p])
+            out = buf.getvalue()
+            self.assertEqual(rc, 0, out)
+            self.assertIn("code highlighting advisory", out)
+            with open(p, encoding="utf-8") as fh:
+                self.assertIn("commentable-html-validated", fh.read())
+
+    def test_a_fatal_warning_fails_strict_and_is_not_stamped(self):
+        # The other side: a RAW language-labelled block is fixable (bake it), so it keeps
+        # failing --strict and keeps the document unstamped.
+        doc = build().replace(
+            "  <p>content</p>",
+            '  <pre><code class="language-python">def f(): return 1</code></pre>', 1)
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "fatal.html")
+            with open(p, "w", encoding="utf-8", newline="") as fh:
+                fh.write(doc)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = validate.main(["validate.py", "--strict", p])
+            out = buf.getvalue()
+            self.assertEqual(rc, 1, out)
+            with open(p, encoding="utf-8") as fh:
+                self.assertNotIn("commentable-html-validated", fh.read())
+
     def test_double_dash_separator_treats_following_token_as_path(self):
         # CMH-TOOL-01: a bare "--" ends options, so a following dash-led token is a
         # PATH, not an unknown flag. A missing such file exits 1 (a read error), not

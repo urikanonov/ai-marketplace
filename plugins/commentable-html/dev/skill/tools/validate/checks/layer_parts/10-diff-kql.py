@@ -70,9 +70,9 @@ def _check_kql_blocks(html):
     #      rare clusterless snippet (tools/kusto/kql_highlight.py --code-only stamps it).
     # Mask <script>/<style> bodies and HTML comments (blanking to spaces preserves offsets) so a
     # `<pre>` or `language-kusto` mentioned in CSS/JS or a comment cannot start a spurious match that
-    # swallows a real KQL block.
-    _blank = lambda m: " " * len(m.group(0))
-    masked = _HTML_COMMENT_RE.sub(_blank, _SCRIPT_STYLE_RE.sub(_blank, html))
+    # swallows a real KQL block. One left-to-right pass, so a `<script` named inside a comment cannot
+    # open a mask that runs to the document's next real `</script>`.
+    masked = authored_html(html)
     kql_figure_spans = [(fm.start(), fm.end()) for fm in
                         re.finditer(r"<figure\b([^>]*)>.*?</figure>", masked, re.IGNORECASE | re.DOTALL)
                         if _attrs_have_class(fm.group(1), "cmh-kql")]

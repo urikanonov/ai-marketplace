@@ -173,6 +173,34 @@ class ChartBlockCliTests(unittest.TestCase):
         self.assertEqual(code, 0, err.getvalue())
         self.assertIn('id="chartA-data"', out.getvalue())
 
+    def test_an_advisory_warning_does_not_block_the_output(self):
+        # CMH-VAL-18: an advisory names something the author cannot clear, so it is reported but
+        # must not fail this self-validating generator; every other warning still does.
+        import validate  # noqa: E402
+        advisory = validate.HIGHLIGHT_ADVISORY_PREFIX + "a hand-written span"
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(sys, "stdin", _TextStdin(json.dumps(SPEC))), \
+                mock.patch.object(chart_block, "_self_validate", return_value=([], [advisory])), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = chart_block.main(
+                ["chart_block.py", "--spec", "-", "--canvas-id", "chartA", "--caption", "Caption"]
+            )
+        self.assertEqual(code, 0, err.getvalue())
+        self.assertIn("ADVISORY", err.getvalue())
+        self.assertIn('id="chartA-data"', out.getvalue())
+
+    def test_a_fatal_warning_still_blocks_the_output(self):
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(sys, "stdin", _TextStdin(json.dumps(SPEC))), \
+                mock.patch.object(chart_block, "_self_validate",
+                                  return_value=([], ["a real warning"])), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = chart_block.main(
+                ["chart_block.py", "--spec", "-", "--canvas-id", "chartA", "--caption", "Caption"]
+            )
+        self.assertEqual(code, 1)
+        self.assertIn("do not validate cleanly", err.getvalue())
+
     def test_invalid_json_spec_exits_non_zero(self):
         result = subprocess.run(
             [sys.executable, CHART_BLOCK_PY, "--spec", "-", "--canvas-id", "chartA", "--caption", "Caption"],

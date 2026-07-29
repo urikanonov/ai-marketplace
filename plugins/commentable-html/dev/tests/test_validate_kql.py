@@ -117,6 +117,30 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + style + fig)
         self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
 
+    def test_kql_scan_is_not_blinded_by_a_script_named_inside_a_comment(self):
+        # CMH-KQL-08 shares the one-pass mask (checks/parsing.authored_html). Masking
+        # script/style BEFORE comments let a "<script" NAMED INSIDE A COMMENT open a mask that
+        # ran to the document's next real </script> - the layer JS always supplies one - blanking
+        # the authored block, so an unrunnable KQL block silently passed this hard-ERROR gate.
+        bare = ('<!-- move the <script> tag later -->'
+                '<pre><code class="language-kusto">%s</code></pre>' % KQL_INNER)
+        main = MAIN.replace("<p>content</p>", "<p>content</p>" + bare)
+        doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION])
+        self.assertError(doc, "is not runnable")
+
+    def test_kql_scan_pairs_the_script_opener_with_its_own_closer(self):
+        # The mask alternation must keep opener and closer PAIRED: without the backreference a
+        # <script> region ended at a `"</style>"` string literal and its unfinished `<pre>`
+        # swallowed the real block.
+        js = JS_REGION.replace(
+            "<script>\n",
+            '<script>\nvar css = "</style>";\nvar u = "<pre><code class=\'language-kusto\'>X";\n',
+            1)
+        bare = '<pre><code class="language-kusto">%s</code></pre>' % KQL_INNER
+        main = MAIN.replace("<p>content</p>", "<p>content</p>" + bare)
+        doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), js, main])
+        self.assertError(doc, "is not runnable")
+
     def test_kql_figure_without_run_link_errors(self):
         # A framed KQL figure MUST carry a Run in Azure Data Explorer link; a missing one
         # is a hard validation ERROR (not a warning) so the reader can always open the query.

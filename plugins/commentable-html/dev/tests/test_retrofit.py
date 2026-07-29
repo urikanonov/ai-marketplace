@@ -7,6 +7,7 @@ import re
 import sys
 import unittest
 import uuid
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402
@@ -140,18 +141,42 @@ class RetrofitCliTests(unittest.TestCase):
 
     def test_no_highlight_with_raw_code_is_blocked_by_validation(self):
         # CMH-HL-04: with --no-highlight the raw block stays raw, and retrofit fails closed on the
-        # resulting "not syntax-highlighted" warning, so it never writes a raw document.
-        # Deliberately NonPortable: in a Portable document the check is currently blind (a greedy
-        # <pre> match inside the inlined layer CSS/JS swallows the real block), tracked as its own
-        # issue because unblinding it also surfaces warnings that other tools fail closed on.
-        d = self._tmpdir()
-        src = self._write(d, "host.html", self._RAW_CODE_HOST)
-        out = os.path.join(d, "out.html")
-        code, _stdout, stderr = self._run(
-            ["retrofit.py", src, "--label", "H", "--out", out, "--no-highlight", "--nonportable"])
-        self.assertEqual(code, 1)
-        self.assertIn("not syntax-highlighted", stderr)
-        self.assertFalse(os.path.exists(out), "a raw document must not be written")
+        # resulting "not syntax-highlighted" warning, so it never writes a raw document. Asserted
+        # in BOTH layer modes: the guardrail used to be BLIND in a Portable document, because the
+        # greedy <pre> scan matched inside the inlined layer CSS/JS (issue #754), so this test was
+        # pinned to --nonportable. Portable is now the default mode AND is covered here.
+        for extra in ([], ["--nonportable"]):
+            with self.subTest(mode=("nonportable" if extra else "portable (default)")):
+                d = self._tmpdir()
+                src = self._write(d, "host.html", self._RAW_CODE_HOST)
+                out = os.path.join(d, "out.html")
+                code, _stdout, stderr = self._run(
+                    ["retrofit.py", src, "--label", "H", "--out", out, "--no-highlight"] + extra)
+                self.assertEqual(code, 1, stderr)
+                self.assertIn("not syntax-highlighted", stderr)
+                self.assertFalse(os.path.exists(out), "a raw document must not be written")
+
+    def test_partition_val_warnings_fails_closed_without_validate(self):
+        # CMH-VAL-18: the advisory prefixes have ONE home. If validate cannot be imported (a
+        # broken install), retrofit must treat every warning as fatal rather than keep a second
+        # copy of the prefixes that could silently drift out of sync.
+        warnings = ["code highlighting advisory: hand-written span",
+                    "theme contrast advisory: near miss",
+                    "a real warning"]
+        with mock.patch.dict(sys.modules, {"validate": None}):
+            fatal, advisory = retrofit._partition_val_warnings(warnings)
+        self.assertEqual(fatal, warnings)
+        self.assertEqual(advisory, [])
+
+    def test_partition_val_warnings_tolerates_both_advisory_families(self):
+        # With validate available, retrofit tolerates the never-blocking advisory AND its own
+        # long-standing theme-contrast carve-out; every other warning stays fatal.
+        warnings = [validate.HIGHLIGHT_ADVISORY_PREFIX + "hand-written span",
+                    validate.ADVISORY_PREFIX + "near miss",
+                    "a real warning"]
+        fatal, advisory = retrofit._partition_val_warnings(warnings)
+        self.assertEqual(fatal, ["a real warning"])
+        self.assertEqual(len(advisory), 2)
 
     def test_wraps_body_children_and_strict_validates(self):
         d = self._tmpdir()

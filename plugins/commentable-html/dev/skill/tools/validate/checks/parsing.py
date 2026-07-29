@@ -2,6 +2,7 @@
 single-pass `_DocParser`, region-marker detection, tag/script attribute helpers,
 and the constants (regions, ids, regexes) every check builds on."""
 
+import functools
 import re
 from html.parser import HTMLParser
 
@@ -95,6 +96,43 @@ _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 # that appears only inside script/style data (which the browser parses as text, not
 # a comment) cannot be mistaken for a real HTML comment.
 _SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1\s*>", re.DOTALL | re.IGNORECASE)
+
+# The constructs a `<pre>`/`<code>` scan must never look inside, matched as ONE left-to-right
+# scan so whichever construct opens FIRST wins - which is what a browser does. Masking them in
+# two sequential passes is wrong: a "<script" mentioned inside an HTML comment would open a
+# script mask that runs past the comment to the document's next real </script>, blanking the
+# authored content between. The third branch matches ANY OTHER start tag and is left UNCHANGED;
+# it exists purely to consume a tag so that a delimiter sitting inside one of its quoted
+# attribute values (`<div title="<script fake">`) cannot open a mask, since a browser only
+# recognizes these delimiters in the data state. The raw-text closer accepts the full HTML
+# end-tag boundary (`</script data-x>`, `</script/>`), which a browser also honours.
+_ATTRS = r'(?:[^>"\']|"[^"]*"|\'[^\']*\')*'
+_MASK_SCAN_RE = re.compile(
+    r"(?P<comment><!--.*?-->)"
+    r"|(?P<raw><(?P<tag>script|style)\b" + _ATTRS + r">.*?</(?P=tag)(?=[\s/>])[^>]*>)"
+    r"|(?P<other><[a-zA-Z][^\s/>]*" + _ATTRS + r">)",
+    re.DOTALL | re.IGNORECASE)
+
+
+def _mask_region(m):
+    """Blank a comment or raw-text body to same-length spaces; leave any other tag as it is."""
+    if m.lastgroup == "other" or m.group("other") is not None:
+        return m.group(0)
+    return " " * len(m.group(0))
+
+
+@functools.lru_cache(maxsize=1)
+def authored_html(html):
+    """Return `html` with <script>/<style> bodies and HTML comments blanked to SPACES.
+
+    Markup inside a script body, a style body, or a comment is quoted TEXT, not authored
+    content: a Portable document inlines layer CSS and JS whose prose mentions `<pre>` and
+    `<code>`, and a raw scan lets such a mention start a greedy match that swallows the author's
+    real block. Blanking preserves every offset, so a caller can locate spans in this view and
+    slice the ORIGINAL string for the payload. Cached for the last document because more than one
+    check needs the same view of the same (multi-megabyte) document per validation run.
+    """
+    return _MASK_SCAN_RE.sub(_mask_region, html)
 
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
