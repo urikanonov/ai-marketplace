@@ -1,0 +1,126 @@
+// Scripted-capture contract. Everything here is a pure function of (step, clock, buffer), because
+// the alternative - asserting against a real pty and a real agent - is neither fast nor repeatable.
+
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { normalizeScript, readScript, stepReady, stepPayload, stepSubmit, DEFAULT_IDLE_MS } from "../tools/script.mjs";
+
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "demo-video-script-"));
+const write = (name, body) => {
+  const file = path.join(tmpDir, name);
+  fs.writeFileSync(file, body);
+  return file;
+};
+
+test("a script is validated up front rather than half-run (DEMO-SCRIPT-01)", () => {
+  const bad = [
+    [{}, /steps array/],
+    [{ steps: [] }, /no steps/],
+    [{ steps: [{ send: "x" }] }, /needs a mark/],
+    [{ steps: [{ mark: "a", send: "x" }, { mark: "a", send: "y" }] }, /duplicate mark/],
+    [{ steps: [{ mark: "a" }] }, /neither send nor sendFile/],
+    [{ steps: [{ mark: "a", send: "x", sendFile: "y" }] }, /both send and sendFile/],
+    [{ steps: [{ mark: "a", send: "x", expect: "" }] }, /empty expect/],
+    [{ steps: [{ mark: "a", send: "x", timeoutMs: -1 }] }, /non-negative/],
+  ];
+  for (const [raw, re] of bad) {
+    assert.throws(() => normalizeScript(raw, tmpDir), re, `should have rejected ${JSON.stringify(raw)}`);
+  }
+  // A step that only waits for quiet gets a default window; one with an explicit condition does not,
+  // because an agent that is streaming its answer never goes quiet first.
+  const { steps } = normalizeScript({
+    steps: [{ mark: "a", send: "x" }, { mark: "b", send: "y", expect: "READY" }],
+  }, tmpDir);
+  assert.equal(steps[0].idleMs, DEFAULT_IDLE_MS);
+  assert.equal(steps[1].idleMs, 0);
+});
+
+test("a step waits for quiet, a marker, or a file, and the timeout is the backstop (DEMO-SCRIPT-02)", () => {
+  const { steps } = normalizeScript({
+    steps: [
+      { mark: "quiet", send: "a", idleMs: 1000, timeoutMs: 10000 },
+      { mark: "marker", send: "b", expect: "READY", timeoutMs: 10000 },
+      { mark: "file", send: "c", expectFile: path.join(tmpDir, "nope.md"), timeoutMs: 10000 },
+    ],
+  }, tmpDir);
+  const [quiet, marker, file] = steps;
+
+  assert.equal(stepReady(quiet, { now: 500, lastDataAt: 0, startedAt: 0 }).ready, false);
+  assert.equal(stepReady(quiet, { now: 1500, lastDataAt: 0, startedAt: 0 }).ready, true);
+
+  assert.equal(stepReady(marker, { now: 100, buffer: "still thinking", startedAt: 0 }).ready, false);
+  assert.equal(stepReady(marker, { now: 100, buffer: "all READY now", startedAt: 0 }).ready, true);
+
+  assert.equal(stepReady(file, { now: 100, fileExists: false, startedAt: 0 }).ready, false);
+  assert.equal(stepReady(file, { now: 100, fileExists: true, startedAt: 0 }).ready, true);
+
+  // The backstop fires even when the condition never came true, so a capture that ran long still
+  // yields the session it did record.
+  const late = stepReady(marker, { now: 10001, buffer: "nothing", startedAt: 0 });
+  assert.equal(late.ready, true);
+  assert.equal(late.timedOut, true);
+});
+
+test("an optional step is skipped on timeout, not sent blind (DEMO-SCRIPT-03)", () => {
+  const { steps } = normalizeScript({
+    steps: [{ mark: "trust", send: "2", expect: "Do you trust", timeoutMs: 5000, optional: true }],
+  }, tmpDir);
+  const step = steps[0];
+  // The folder-trust dialog appears once per machine. On every later run it never appears, and a
+  // required step would fire its keystroke into whatever is on screen instead - typically the
+  // prompt, corrupting the very turn the clip is about.
+  const out = stepReady(step, { now: 6000, buffer: "no dialog here", startedAt: 0 });
+  assert.equal(out.skip, true);
+  assert.notEqual(out.ready, true);
+});
+
+test("a file-backed step is read at send time, not at parse time (DEMO-SCRIPT-04)", () => {
+  const target = path.join(tmpDir, "late.md");
+  fs.rmSync(target, { force: true });
+  // Parsing must succeed even though the file does not exist yet: in the loop capture the review
+  // bundle is produced by the browser phase, which runs while the session sits on the prompt.
+  const { steps } = normalizeScript({
+    steps: [{ mark: "paste", sendFile: "late.md", expectFile: "late.md" }],
+  }, tmpDir);
+  assert.throws(() => stepPayload(steps[0]), /never appeared/);
+  fs.writeFileSync(target, "the review");
+  assert.equal(stepPayload(steps[0]), "the review");
+});
+
+test("Enter is a separate write, and a paste is bracketed (DEMO-SCRIPT-05)", () => {
+  const { steps } = normalizeScript({
+    steps: [
+      { mark: "typed", send: "hello" },
+      { mark: "pasted", send: "line one\r\nline two", paste: true },
+      { mark: "noenter", send: "abc", enter: false },
+    ],
+  }, tmpDir);
+  const [typed, pasted, noenter] = steps;
+
+  // The payload must NOT carry the carriage return: a TUI composer that receives a long string and
+  // a trailing return in one burst treats the return as typed text, and the prompt just sits there.
+  assert.equal(typed.text, "hello");
+  assert.equal(stepPayload(typed), "hello");
+  assert.equal(stepSubmit(typed), "\r");
+  assert.equal(stepSubmit(noenter), "");
+
+  // A multi-line paste has to arrive bracketed or every newline submits its own turn, and CRLF is
+  // normalized first because a bare CR inside the brackets submits in some readline implementations.
+  const payload = stepPayload(pasted);
+  assert.ok(payload.startsWith("\u001b[200~"), "a paste must open a bracketed paste");
+  assert.ok(payload.endsWith("\u001b[201~"), "a paste must close a bracketed paste");
+  assert.ok(!payload.includes("\r"), "no carriage return may survive inside a bracketed paste");
+  assert.ok(payload.includes("line one\nline two"));
+});
+
+test("readScript reports the file it could not use (DEMO-SCRIPT-06)", () => {
+  assert.throws(() => readScript(path.join(tmpDir, "missing.json")), /file not found/);
+  const broken = write("broken.json", "{ not json");
+  assert.throws(() => readScript(broken), /not valid JSON/);
+  const good = write("good.json", JSON.stringify({ steps: [{ mark: "a", send: "hi" }] }));
+  assert.equal(readScript(good).steps[0].mark, "a");
+});

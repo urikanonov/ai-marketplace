@@ -1,0 +1,34 @@
+{
+  "steps": [
+    {
+      "mark": "trust",
+      "expect": "Do you trust the files in this folder?",
+      "timeoutMs": 45000,
+      "optional": true,
+      "delayMs": 800,
+      "send": "2"
+    },
+    {
+      "mark": "ask",
+      "idleMs": 4000, "submitMs": 1500,
+      "send": "Use the commentable-html skill to write C:\\demo\\report.html - a short review report for a plan to add rate limiting to our public API. It MUST contain all of: prose paragraphs, an inline SVG image, a Mermaid diagram, a fenced code diff, and a Chart.js chart, so every kind of content is commentable. Keep the content short - one screen per section. When the file is written, print exactly REPORT-READY on its own line and end your turn."
+    },
+    {
+      "mark": "paste",
+      "expectFile": "C:\\demo\\review.md",
+      "timeoutMs": 2400000,
+      "idleMs": 2000,
+      "delayMs": 1200, "submitMs": 1500,
+      "paste": true,
+      "sendFile": "C:\\demo\\review.md"
+    },
+    {
+      "mark": "quit",
+      "expect": "REVIEW-APPLIED",
+      "timeoutMs": 1500000,
+      "idleMs": 4000, "submitMs": 1500,
+      "delayMs": 2500,
+      "send": "/exit"
+    }
+  ]
+}

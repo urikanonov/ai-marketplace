@@ -27,7 +27,8 @@
 //
 // Usage:
 //   node record_demo.mjs report  [--seconds 10] [--example <file>] [--out <file.webm>] [--list]
-//   node record_demo.mjs capture [--out <file.cast.json>] [--cols 120] [--rows 30] -- <command...>
+//   node record_demo.mjs loop    --cast <file.cast.json> --example <report.html> [--split paste]
+//   node record_demo.mjs capture [--out <file.cast.json>] [--cols 120] [--rows 30] [--script <f.json>] -- <command...>
 //   node record_demo.mjs render  --cast <file.cast.json> [--seconds 45] [--out <file.webm>]
 //   node record_demo.mjs scan    --cast <file.cast.json>
 
@@ -41,7 +42,7 @@ import http from "http";
 import { planBeats, fitTimeline, compressTimeline, coalesceEvents, MIN_BEAT_MS } from "./timeline.mjs";
 import { REPORT_BEATS } from "./report-beats.mjs";
 import { DEFAULT_RULES, homeRules, scanText, scrubEvents, scrubText, createScrubber } from "./redact.mjs";
-import { readScript, stepReady, stepPayload } from "./script.mjs";
+import { readScript, stepReady, stepPayload, stepSubmit } from "./script.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SKILL = path.resolve(HERE, "..");
@@ -104,16 +105,17 @@ function resolveOptionalPath(pkg, ...rest) {
 const STRING_KEYS = new Set([
   "example", "out", "cast", "clip", "seconds", "cols", "rows", "idle", "hold",
   "width", "height", "count", "font", "frames-dir", "scale", "tail", "head", "end-hold", "intro", "ask",
-  "script",
+  "script", "review-out", "split", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "dpr",
 ]);
 const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "help"]);
 // Which options each subject actually reads. Validating against the union instead means
 // `scan --out x` or `capture --seconds 10` is accepted and then silently ignored - the caller is
 // told nothing, and gets a clip that is not what they asked for.
 const SUBJECT_FLAGS = {
-  report: ["example", "out", "seconds", "width", "height", "scale", "list"],
+  report: ["example", "out", "seconds", "width", "height", "scale", "list", "review-out"],
   capture: ["out", "cols", "rows", "script"],
   render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "head", "end-hold", "intro", "ask", "allow-findings"],
+  loop: ["cast", "example", "out", "split", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "idle", "hold", "width", "height", "font", "scale", "dpr", "intro", "end-hold", "ask", "allow-findings"],
   scan: ["cast"],
   frames: ["clip", "out", "count", "frames-dir"],
 };
@@ -234,6 +236,11 @@ async function startStaticServer(root, routes = {}) {
 // clicks or drags moves this dot first, which is what makes the montage readable.
 const CURSOR_SCRIPT = `(() => {
   const install = () => {
+    // Init scripts run in EVERY frame, and the loop clip puts the report in an iframe. A second dot
+    // inside that frame would sit wherever it was left, because the driver only ever moves the top
+    // one - a stray blue circle parked in the middle of the report. One cursor, on the page that
+    // owns the mouse.
+    if (window.top !== window) return;
     if (document.getElementById("__demoCursor")) return;
     const dot = document.createElement("div");
     dot.id = "__demoCursor";
@@ -347,13 +354,26 @@ function makeContext(page, budgetMs, warnings, scope = page) {
     // dispatched directly as well: a canvas or an SVG node does not always react to a bare
     // mouse.move at its centre, and a beat that silently fails to hover films nothing.
     async hoverBlock(selector) {
-      const box = await scope.evaluate((sel) => {
+      // Same split as dragSelect: scroll in one turn, measure and dispatch in the next, so a
+      // smooth-scrolling document cannot hand back stale coordinates.
+      const found = await scope.evaluate((sel) => {
         const el = [...document.querySelectorAll(sel)].find((e) => {
           const r = e.getBoundingClientRect();
           return r.width > 8 && r.height > 8;
         });
+        if (!el) return false;
+        const previous = document.documentElement.style.scrollBehavior;
+        document.documentElement.style.scrollBehavior = "auto";
+        el.scrollIntoView({ block: "center", behavior: "instant" });
+        document.documentElement.style.scrollBehavior = previous;
+        window.__demoHoverTarget = el;
+        return true;
+      }, selector).catch(() => false);
+      if (!found) return false;
+      await sleep(160);
+      const box = await scope.evaluate(() => {
+        const el = window.__demoHoverTarget;
         if (!el) return null;
-        el.scrollIntoView({ block: "center" });
         const r = el.getBoundingClientRect();
         for (const type of ["mouseenter", "mouseover", "mousemove"]) {
           el.dispatchEvent(new MouseEvent(type, {
@@ -363,7 +383,7 @@ function makeContext(page, budgetMs, warnings, scope = page) {
           }));
         }
         return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-      }, selector).catch(() => null);
+      }).catch(() => null);
       if (!box) return false;
       await moveCursor(box.x, box.y);
       await page.mouse.move(box.x, box.y).catch(() => {});
@@ -392,12 +412,28 @@ function makeContext(page, budgetMs, warnings, scope = page) {
       await locator.type(text, { delay }).catch((e) => ctx.warn("typing failed: " + e.message));
     },
     async dragSelect(selector, { index = 0 } = {}) {
-      const box = await scope.evaluate(([sel, nth]) => {
+      // Scroll FIRST, measure second. A document that sets `scroll-behavior: smooth` (generated
+      // reports often do) animates scrollIntoView, so measuring in the same turn returns rectangles
+      // from before the scroll landed and the drag happens over whatever used to be there - the
+      // selection silently comes back empty and a required beat films nothing.
+      const found = await scope.evaluate(([sel, nth]) => {
         const els = [...document.querySelectorAll(sel)];
         const candidates = els.filter((e) => (e.textContent || "").trim().length > 80);
-        const el = (candidates.length ? candidates : els)[nth % Math.max(1, candidates.length || els.length)];
+        const pool = candidates.length ? candidates : els;
+        const el = pool[nth % Math.max(1, pool.length)];
+        if (!el) return false;
+        const previous = document.documentElement.style.scrollBehavior;
+        document.documentElement.style.scrollBehavior = "auto";
+        el.scrollIntoView({ block: "center", behavior: "instant" });
+        document.documentElement.style.scrollBehavior = previous;
+        window.__demoDragTarget = el;
+        return true;
+      }, [selector, index]).catch(() => false);
+      if (!found) return false;
+      await sleep(160);
+      const box = await scope.evaluate(() => {
+        const el = window.__demoDragTarget;
         if (!el) return null;
-        el.scrollIntoView({ block: "center" });
         const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
         const first = walker.nextNode();
         if (!first) return null;
@@ -410,7 +446,7 @@ function makeContext(page, budgetMs, warnings, scope = page) {
         if (!rects.length) return null;
         const a = rects[0], b = rects[rects.length - 1];
         return { x1: a.left + 2, y1: a.top + a.height / 2, x2: b.right - 2, y2: b.top + b.height / 2 };
-      }, [selector, index]).catch(() => null);
+      }).catch(() => null);
       if (!box) return false;
       await moveCursor(box.x1, box.y1);
       await sleep(120);
@@ -440,8 +476,22 @@ async function saveVideo(page, context, outFile) {
   return outFile;
 }
 
-// A diagram or chart draws asynchronously after the runtime is ready. This is awaited immediately
-// before the first beat that needs one, never up front - see the call site.
+// Wait for the commentable-html runtime to say it is up. The clip is filmed from
+// `domcontentloaded` so the opening is not three seconds of a motionless page, but a big report
+// (one 1.4 MB standalone file with mermaid and Chart.js vendored inline) does not finish booting by
+// then - it signals ready only after `load`. Waiting a short beat first keeps a light report fast;
+// falling back to `load` is what makes a heavy one work at all. Without this the layer was never up,
+// every beat found nothing, and the only clue was a single "never signalled ready" line.
+async function waitForRuntime(scope, warnings, page = null) {
+  const ready = () => window.__commentableHtmlReady === true;
+  if (await scope.waitForFunction(ready, null, { timeout: 4000 }).then(() => true).catch(() => false)) return true;
+  await (page || scope).waitForLoadState("load").catch(() => {});
+  if (await scope.waitForFunction(ready, null, { timeout: 20000 }).then(() => true).catch(() => false)) return true;
+  warnings.push("the runtime never signalled ready");
+  return false;
+}
+
+// A diagram or chart draws asynchronously after the runtime is ready. This is awaited immediately// before the first beat that needs one, never up front - see the call site.
 async function diagramsReady(page) {
   await page.waitForFunction(() => {
     const figs = document.querySelectorAll(".mermaid, figure.cmh-mermaid, .cmh-diagram");
@@ -516,6 +566,9 @@ async function recordReport(args) {
       viewport: { width, height },
       deviceScaleFactor: 1,
       recordVideo: { dir: videoDir, size: videoSize(width, height, args) },
+      // Needed only for --review-out, which reads back what Copy all put on the clipboard. Granting
+      // it always keeps the two subjects' browser setup identical.
+      permissions: ["clipboard-read", "clipboard-write"],
     });
     // Playwright records PER PAGE, starting when the page is created. Warming the document in a
     // throwaway page first fills the HTTP cache and pays the one-off font/diagram cost off camera,
@@ -538,8 +591,7 @@ async function recordReport(args) {
     await page.addInitScript(`try { localStorage.setItem("cmh::author", ${JSON.stringify(DEMO_AUTHOR)}); } catch (e) {}`);
     await page.addInitScript(CURSOR_SCRIPT);
     await page.goto(url, { waitUntil: "domcontentloaded" });
-    await page.waitForFunction(() => window.__commentableHtmlReady === true, null, { timeout: 15000 })
-      .catch(() => warnings.push("the runtime never signalled ready"));
+    await waitForRuntime(page, warnings);
 
     const preludeMs = Date.now() - recordingStarted;
     preludeReport = preludeMs;
@@ -552,6 +604,20 @@ async function recordReport(args) {
     }
     const paced = planBeats(REPORT_BEATS, Math.max(floor, beatBudget));
     await runBeats({ page, scope: page, paced, warnings, failures });
+    // The loop capture waits on this file: the montage IS what produces the review that gets pasted
+    // back into the session, so writing it here is what closes the loop without hand-assembling a
+    // bundle that no reviewer actually made.
+    if (args["review-out"]) {
+      const bundle = await copyAllBundle(page, page, warnings);
+      const dest = path.resolve(String(args["review-out"]));
+      ensureDir(path.dirname(dest));
+      // Written atomically: the capture polls for this path, and a half-written bundle would be
+      // pasted into the session as a truncated review.
+      const tmpDest = `${dest}.partial`;
+      fs.writeFileSync(tmpDest, reviewPreamble() + bundle);
+      fs.renameSync(tmpDest, dest);
+      console.log(`review bundle: ${dest} (${bundle.length} chars)`);
+    }
     // Spend the tail INSIDE the recording: closing the context stops the video immediately, so
     // without this the reserved time is simply cut off and the clip ends mid-gesture.
     await sleep(tailMs);
@@ -687,6 +753,7 @@ async function captureTerminal(args) {
     const driver = script ? (async () => {
       for (const step of script.steps) {
         const startedAt = Date.now();
+        let skipped = false;
         for (;;) {
           const state = stepReady(step, {
             buffer,
@@ -695,15 +762,25 @@ async function captureTerminal(args) {
             startedAt,
             fileExists: step.expectFile ? fs.existsSync(step.expectFile) : false,
           });
+          if (state.skip) {
+            console.warn(`  script: optional step "${step.mark}" ${state.reason}; skipping`);
+            skipped = true;
+            break;
+          }
           if (state.ready) {
             if (state.timedOut) console.warn(`  script: step "${step.mark}" ${state.reason}; sending anyway`);
             break;
           }
           await sleep(200);
         }
+        if (skipped) continue;
         if (step.delayMs) await sleep(step.delayMs);
         marks.push({ label: step.mark, t: Date.now() - started, eventIndex: events.length });
-        try { child.write(stepPayload(step)); } catch (e) { /* child is gone */ }
+        try {
+          child.write(stepPayload(step));
+          const submit = stepSubmit(step);
+          if (submit) { await sleep(step.submitMs); child.write(submit); }
+        } catch (e) { /* child is gone */ }
       }
     })().catch((e) => { console.warn(`  script: ${e.message}`); }) : null;
     exitCode = await new Promise((resolve) => child.onExit(({ exitCode: code }) => resolve(code)));
@@ -895,6 +972,336 @@ function terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask }) {
     window.__demoDone = true;
   })();
 </script></body></html>`;
+}
+
+// The stage for the loop clip: ONE page that holds both the terminal and the report, because
+// Playwright records per page and a clip that cut between two pages would be two videos. The
+// terminal is an xterm exactly like the standalone render; the report lives in a full-viewport
+// iframe on top of it. Node drives the phases through `window.__stage`, and because page.evaluate
+// awaits a returned promise, the handshake needs no polling.
+function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, reportUrl }) {
+  const xtermJs = fs.readFileSync(resolveOptionalPath("@xterm/xterm", "lib", "xterm.js"), "utf8");
+  const xtermCss = fs.readFileSync(resolveOptionalPath("@xterm/xterm", "css", "xterm.css"), "utf8");
+  const payload = scriptJson({
+    cols: cast.cols || 120,
+    rows: cast.rows || 30,
+    fontSize,
+    introMs,
+    endHoldMs,
+    ask,
+    reportUrl,
+    segments: segments.map((timeline) =>
+      coalesceEvents(timeline.events, 45).map((e) => ({ t: e.t, d: e.data, f: e.fastForward, s: e.skippedMs }))),
+  });
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><title>demo</title>
+<style>${xtermCss}</style>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0f16; color: #e6edf3;
+    font: 13px/1.4 "Segoe UI", system-ui, sans-serif; overflow: hidden; }
+  .wrap { height: 100%; display: flex; flex-direction: column; padding: 18px 20px; box-sizing: border-box; }
+  .chrome { display: flex; align-items: center; gap: 8px; padding-bottom: 12px; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; }
+  .title { margin-left: 8px; opacity: .75; font-size: 12px; letter-spacing: .2px; }
+  .term { flex: 1; min-height: 0; }
+  #ff { position: fixed; right: 26px; bottom: 24px; padding: 7px 13px; border-radius: 999px;
+    background: rgba(56,139,253,.16); border: 1px solid rgba(56,139,253,.5); color: #9ecbff;
+    font-size: 12px; letter-spacing: .3px; opacity: 0; transition: opacity 120ms linear; z-index: 6; }
+  #ff.on { opacity: 1; }
+  /* The report sits ON TOP of the terminal at full size, so montage coordinates are page
+     coordinates and every beat works unchanged. */
+  #report { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; background: #fff;
+    opacity: 0; pointer-events: none; transition: opacity 380ms ease; z-index: 4; }
+  #report.on { opacity: 1; pointer-events: auto; }
+  /* A caption for each phase, so a viewer knows they are watching one loop rather than three
+     unrelated clips spliced together. */
+  #phase { position: fixed; left: 50%; top: 24px; transform: translateX(-50%); z-index: 7;
+    padding: 9px 18px; border-radius: 999px; background: rgba(13,17,23,.86); color: #e6edf3;
+    border: 1px solid rgba(240,246,252,.16); font-size: 15px; letter-spacing: .3px;
+    opacity: 0; transition: opacity 300ms ease; white-space: nowrap; }
+  #phase.on { opacity: 1; }
+  #intro { position: fixed; inset: 0; background: #0b0f16; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 22px; padding: 8%; text-align: center;
+    transition: opacity 420ms ease; z-index: 8; }
+  #intro.gone { opacity: 0; pointer-events: none; }
+  #intro .who { color: #7d8590; font-size: 15px; letter-spacing: 2.4px; text-transform: uppercase; }
+  #intro .ask { color: #e6edf3; font-size: 30px; line-height: 1.45; max-width: 20em;
+    font-family: "Cascadia Mono", Consolas, monospace; }
+  #intro .ask::before { content: "> "; color: #58a6ff; }
+</style></head>
+<body><div class="wrap">
+  <div class="chrome">
+    <span class="dot" style="background:#ff5f57"></span>
+    <span class="dot" style="background:#febc2e"></span>
+    <span class="dot" style="background:#28c840"></span>
+    <span class="title" id="title"></span>
+  </div>
+  <div class="term" id="term"></div>
+</div>
+<iframe id="report" title="report"></iframe>
+<div id="ff">fast-forward</div>
+<div id="phase"></div>
+<div id="intro"><div class="who">asked of copilot</div><div class="ask" id="introAsk"></div></div>
+<script>${xtermJs}</script>
+<script>
+  const DATA = ${payload};
+  document.getElementById("title").textContent = ${scriptJson(String(cast.command || "session"))};
+  const term = new Terminal({
+    cols: DATA.cols, rows: DATA.rows, fontSize: DATA.fontSize, convertEol: false,
+    fontFamily: 'Cascadia Mono, Consolas, "DejaVu Sans Mono", monospace',
+    theme: { background: "#0b0f16", foreground: "#e6edf3" }, cursorBlink: false, scrollback: 0,
+  });
+  term.open(document.getElementById("term"));
+  const badge = document.getElementById("ff");
+  const phase = document.getElementById("phase");
+  const report = document.getElementById("report");
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const write = (data) => new Promise((done) => term.write(data, done));
+
+  async function playSegment(index) {
+    const events = DATA.segments[index] || [];
+    // Each segment schedules against its own real clock, for the same reason the single-segment
+    // render does: adding planned gaps to planned time lets write cost accumulate into drift.
+    const start = performance.now();
+    for (const event of events) {
+      if (event.f) {
+        badge.textContent = "skipping ahead " + Math.round(event.s / 1000) + "s";
+        badge.classList.add("on");
+      }
+      await sleep(start + event.t - performance.now());
+      if (event.f) setTimeout(() => badge.classList.remove("on"), 450);
+      await write(event.d);
+    }
+  }
+
+  window.__stage = {
+    playSegment,
+    async caption(text) {
+      if (!text) { phase.classList.remove("on"); await sleep(300); return; }
+      phase.textContent = text;
+      phase.classList.add("on");
+    },
+    async showReport() {
+      report.src = DATA.reportUrl;
+      await new Promise((done) => {
+        if (report.contentDocument && report.contentDocument.readyState === "complete") return done();
+        report.addEventListener("load", done, { once: true });
+        setTimeout(done, 15000);
+      });
+      report.classList.add("on");
+      await sleep(420);
+    },
+    async hideReport() {
+      report.classList.remove("on");
+      await sleep(420);
+    },
+    async hold(ms) { await sleep(ms); },
+  };
+
+  window.__stageReady = false;
+  (async () => {
+    document.getElementById("introAsk").textContent = DATA.ask;
+    const intro = document.getElementById("intro");
+    if (DATA.introMs > 0) {
+      await sleep(DATA.introMs);
+      intro.classList.add("gone");
+      await sleep(420);
+    } else {
+      intro.classList.add("gone");
+    }
+    window.__stageReady = true;
+  })();
+</script></body></html>`;
+}
+
+// What the reviewer says when handing the bundle back. The clip needs the agent to visibly ACT on
+// the review, and it needs a marker the capture script can wait for to know the turn finished.
+function reviewPreamble() {
+  return "Here is my review of report.html from the browser. Apply every comment: make the change "
+    + "each one asks for, and reply to it in the report. When you are done, print exactly "
+    + "REVIEW-APPLIED on its own line and end your turn.\n\n";
+}
+
+// The full loop: an agent generates the report, a reviewer works it over in the browser, the review
+// goes back to the same session. One continuous clip, because the point is the ROUND TRIP - three
+// separate videos would not make it.
+//
+// The montage in the middle is not restated here: it is the same REPORT_BEATS driven through the
+// same runBeats, just scoped to the iframe, so a beat added to the standalone montage appears in
+// this clip too.
+async function recordLoop(args) {
+  const { cast } = readCast(args);
+  const rules = rulesForThisMachine();
+  const findings = scanText(castText(cast), rules);
+  if (findings.length && !args["allow-findings"]) {
+    throw new Error(
+      `this cast still scans dirty (${findings.length} finding(s)); run 'scan --cast <file>' to see them. `
+      + "Re-capture or add a rule to tools/redact.mjs rather than publishing it.",
+    );
+  }
+  if (cast.scrubbedBy !== "demo-video") {
+    console.warn("WARNING: this cast was not captured by demo-video, so it was never scrubbed at source.");
+  }
+
+  const splitLabel = args.split ? String(args.split) : "paste";
+  const mark = (cast.marks || []).find((m) => m.label === splitLabel);
+  if (!mark) {
+    const have = (cast.marks || []).map((m) => m.label).join(", ") || "none";
+    throw new Error(`the cast has no mark "${splitLabel}" to split on (marks: ${have}). `
+      + "Capture with --script so the turns are marked.");
+  }
+  const example = args.example ? path.resolve(String(args.example)) : path.join("C:", "demo", "report.html");
+  if (!fs.existsSync(example)) throw new Error(`example not found: ${example}`);
+
+  // Split at the mark: everything the agent did to PRODUCE the report, then everything it did with
+  // the review that came back. The two halves are fitted independently, because they are different
+  // kinds of moment - the first is setup a viewer only needs the gist of, the second is the payoff.
+  const before = cast.events.slice(0, mark.eventIndex);
+  const after = cast.events.slice(mark.eventIndex).map((e) => ({ ...e, t: e.t - mark.t }));
+  if (!before.length || !after.length) throw new Error(`the mark "${splitLabel}" leaves one half empty`);
+
+  const fitFor = (events, seconds, tailSeconds) => fitTimeline(events, Math.round(seconds * 1000), {
+    holdMs: numberOpt(args, "hold", undefined),
+    pinHold: args.hold != null,
+    idleMs: args.idle == null ? undefined : Math.round(numberOpt(args, "idle", 0)),
+    tailMs: Math.round(tailSeconds * 1000),
+  });
+  const genSeconds = numberOpt(args, "seconds-gen", 9);
+  const applySeconds = numberOpt(args, "seconds-apply", 12);
+  const reviewSeconds = numberOpt(args, "seconds-review", 24);
+  const segments = [
+    fitFor(before, genSeconds, numberOpt(args, "tail-gen", 12)),
+    fitFor(after, applySeconds, numberOpt(args, "tail-apply", 25)),
+  ];
+
+  const cols = cast.cols || 120;
+  const rows = cast.rows || 30;
+  const width = Math.round(numberOpt(args, "width", 1440));
+  const height = Math.round(numberOpt(args, "height", 900));
+  // The terminal has to fit the REPORT's viewport, since one page serves both phases: size the font
+  // from the column count rather than the other way round.
+  const fontSize = Math.round(numberOpt(args, "font", Math.floor((width - 56) / (cols * 0.605))));
+  const introMs = Math.round(numberOpt(args, "intro", 3.5) * 1000);
+  const endHoldMs = Math.round(numberOpt(args, "end-hold", 3.5) * 1000);
+  const ask = args.ask ? String(args.ask) : "Build me a commentable review report.";
+  const unsafe = findings.length > 0;
+  const outFile = args.out
+    ? path.resolve(String(args.out))
+    : path.join(OUT_ROOT, `loop-${unsafe ? "UNSAFE-" : ""}${stamp()}.webm`);
+  const markedOut = unsafe && !path.basename(outFile).includes("UNSAFE")
+    ? path.join(path.dirname(outFile), `UNSAFE-${path.basename(outFile)}`)
+    : outFile;
+
+  const chromium = loadPlaywright();
+  const videoDir = path.join(OUT_ROOT, "raw", `loop-${process.pid}`);
+  let server = null;
+  let browser = null;
+  let context = null;
+  const warnings = [];
+  const failures = [];
+  let bundle = "";
+  try {
+    const reportName = path.basename(example);
+    const stageHtml = stagePage({
+      cast,
+      segments,
+      fontSize,
+      introMs,
+      endHoldMs,
+      ask,
+      reportUrl: `/${encodeURIComponent(reportName)}`,
+    });
+    // The stage is served from the SAME origin as the report, which is what lets the montage reach
+    // into the iframe at all - a file:// or cross-origin frame would be opaque to it.
+    server = await startStaticServer(path.dirname(example), {
+      "/stage": { body: stageHtml, type: "text/html" },
+    });
+    ensureDir(videoDir);
+    browser = await chromium.launch();
+    context = await browser.newContext({
+      viewport: { width, height },
+      deviceScaleFactor: Number(numberOpt(args, "dpr", 2)),
+      recordVideo: { dir: videoDir, size: videoSize(width, height, args) },
+      permissions: ["clipboard-read", "clipboard-write"],
+    });
+    const reportUrl = `${server.origin}/${encodeURIComponent(reportName)}`;
+    // Pay the report's load and diagram cost off camera, exactly as the standalone montage does.
+    const warmup = await context.newPage();
+    await warmup.goto(reportUrl, { waitUntil: "load" }).catch(() => {});
+    await warmup.waitForFunction(() => window.__commentableHtmlReady === true, null, { timeout: 15000 })
+      .catch(() => {});
+    await warmup.close().catch(() => {});
+
+    const page = await context.newPage();
+    page.on("dialog", (dialog) => { dialog.accept().catch(() => {}); });
+    await page.addInitScript(`try { localStorage.setItem("cmh::author", ${JSON.stringify(DEMO_AUTHOR)}); } catch (e) {}`);
+    await page.addInitScript(CURSOR_SCRIPT);
+    await page.goto(`${server.origin}/stage`, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => window.__stageReady === true, null, { timeout: 30000 })
+      .catch(() => warnings.push("the stage never signalled ready"));
+
+    await page.evaluate((t) => window.__stage.caption(t), "1. The agent builds the review report");
+    await page.evaluate(() => window.__stage.playSegment(0));
+    await page.evaluate(() => window.__stage.caption(""));
+
+    await page.evaluate((t) => window.__stage.caption(t), "2. You review it in the browser");
+    await page.evaluate(() => window.__stage.showReport());
+    const frame = page.frames().find((f) => f.url().startsWith(reportUrl));
+    if (!frame) throw new Error("the report frame never attached to the stage");
+    await waitForRuntime(frame, warnings, page);
+    await page.evaluate(() => window.__stage.caption(""));
+
+    const floor = MIN_BEAT_MS * REPORT_BEATS.length;
+    const paced = planBeats(REPORT_BEATS, Math.max(floor, Math.round(reviewSeconds * 1000)));
+    await runBeats({ page, scope: frame, paced, warnings, failures });
+
+    // Copy all is the hand-off: it is what turns a browser review into something an agent can read.
+    await page.evaluate((t) => window.__stage.caption(t), "3. Copy all - hand the review back");
+    bundle = await copyAllBundle(page, frame, warnings);
+    await page.evaluate(() => window.__stage.hold(900));
+    await page.evaluate(() => window.__stage.hideReport());
+    await page.evaluate(() => window.__stage.caption(""));
+
+    await page.evaluate((t) => window.__stage.caption(t), "4. Paste it back - the agent applies it");
+    await page.evaluate(() => window.__stage.playSegment(1));
+    await page.evaluate(() => window.__stage.caption(""));
+    await page.evaluate((ms) => window.__stage.hold(ms), endHoldMs);
+    await saveVideo(page, context, markedOut);
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+    if (server) await server.close().catch(() => {});
+    try { fs.rmSync(videoDir, { recursive: true, force: true }); } catch (e) { /* best effort */ }
+  }
+
+  console.log(`clip:  ${markedOut}`);
+  console.log(`split: "${splitLabel}" at ${(mark.t / 1000).toFixed(1)}s of the session`);
+  if (bundle) {
+    const bundleFile = path.join(OUT_ROOT, "review.md");
+    fs.writeFileSync(bundleFile, bundle);
+    console.log(`review bundle (${bundle.length} chars) also written to ${bundleFile}`);
+  }
+  for (const warning of warnings) console.warn(`  warning: ${warning}`);
+  if (failures.length) {
+    console.error(`\nFAILED: required beat(s) showed nothing: ${failures.join(", ")}.`);
+    process.exitCode = 1;
+  }
+}
+
+// Click Copy all and read what it put on the clipboard. The clip needs the CLICK, and a re-record
+// needs the TEXT: the same bundle is what a capture pastes back into the session, so producing it
+// here is what makes the loop reproducible instead of hand-assembled.
+async function copyAllBundle(page, scope, warnings) {
+  const button = scope.locator("#btnCopyAll");
+  const ctx = makeContext(page, 1200, warnings, scope);
+  if (!(await ctx.waitVisible(button, 2500))) {
+    warnings.push("Copy all was not visible; the hand-off beat filmed nothing");
+    return "";
+  }
+  await ctx.click(button);
+  await sleep(500);
+  const text = await page.evaluate(() => navigator.clipboard.readText().catch(() => "")).catch(() => "");
+  if (!text) warnings.push("Copy all left the clipboard empty");
+  return text;
 }
 
 async function renderTerminal(args) {
@@ -1102,7 +1509,8 @@ async function extractFrames(args) {
 const USAGE = `demo-video recorder
 
   node record_demo.mjs report  [--seconds 10] [--example <file>] [--out <file.webm>] [--list]
-  node record_demo.mjs capture [--out <file.cast.json>] [--cols 120] [--rows 30] -- <command...>
+  node record_demo.mjs loop    --cast <file.cast.json> --example <report.html> [--split paste]
+  node record_demo.mjs capture [--out <file.cast.json>] [--cols 120] [--rows 30] [--script <f.json>] -- <command...>
   node record_demo.mjs render  --cast <file.cast.json> [--seconds 45] [--idle 900] [--out <file.webm>]
   node record_demo.mjs scan    --cast <file.cast.json>
   node record_demo.mjs frames  --clip <file.webm> [--count 12]
@@ -1123,6 +1531,7 @@ async function main() {
   if (subject) checkSubjectFlags(args, subject);
   switch (subject) {
     case "report": return recordReport(args);
+    case "loop": return recordLoop(args);
     case "capture": return captureTerminal(args);
     case "render": return renderTerminal(args);
     case "scan": return void scanCast(args);

@@ -69,6 +69,20 @@ The required `validate` CI job runs the same command.
 | DEMO-SAFE-21 | A rule whose VALUE half cannot contain whitespace also runs over the unwrapped projection, so an assignment or a bearer credential the application wrapped mid-value is caught whole. Without it the keyword matched on the first line and the continuation stayed in the clip with nothing keyword-shaped left to catch it. | `tests/redact.test.mjs` - `a wrapped assignment value does not leave its tail behind (DEMO-SAFE-21)` |
 | DEMO-SAFE-22 | Scrubbing is idempotent however the marker is punctuated. A session that DISCUSSES redaction quotes it (`'Authorization: [redacted]'`), and demanding whitespace after the marker made the header rule re-match its own output - so the render gate refused a cast this very tool had already cleaned. | `tests/redact.test.mjs` - `scrubbing is idempotent however the marker is punctuated (DEMO-SAFE-22)` |
 
+## Scripted capture (driving a session unattended)
+
+A demo has to be re-recordable on demand, and the loop clip needs a session with TWO turns and a long
+browser phase in between. So the turns are declared in a file rather than typed by hand.
+
+| Feature id | Behavior | Covering tests |
+| --- | --- | --- |
+| DEMO-SCRIPT-01 | A script is validated up front, not half-run: it needs a non-empty `steps` array, every step needs a unique `mark` (marks are how a render finds a turn in the cast), exactly one of `send`/`sendFile`, a non-empty `expect` if given, and non-negative numbers. A step with no explicit condition gets a default quiet window; one with an `expect` or `expectFile` does not, because an agent that is streaming its answer never goes quiet first. | `tests/script.test.mjs` - `a script is validated up front rather than half-run (DEMO-SCRIPT-01)` |
+| DEMO-SCRIPT-02 | A step waits for quiet, for a marker in the output, or for a FILE to appear - and the timeout is always the backstop, reporting rather than throwing so a capture that ran long still yields the session it did record. Waiting on a file is what lets one session span the browser phase: the capture sits on the prompt until the review bundle the montage produces exists on disk. | `tests/script.test.mjs` - `a step waits for quiet, a marker, or a file, and the timeout is the backstop (DEMO-SCRIPT-02)` |
+| DEMO-SCRIPT-03 | An OPTIONAL step is skipped when it times out rather than sent blind. The folder-trust dialog appears once per machine and never again, so a required step would fire its keystroke into whatever is on screen instead - typically the prompt, corrupting the very turn the clip is about. Without this the script only works on a fresh machine, which is the opposite of re-recordable. | `tests/script.test.mjs` - `an optional step is skipped on timeout, not sent blind (DEMO-SCRIPT-03)` |
+| DEMO-SCRIPT-04 | A file-backed step is READ at send time, not at parse time, so parsing succeeds while the file is still absent. In the loop capture the review bundle is produced by the browser phase, which runs long after the script was parsed; a missing file at send time is a clear error naming the step and the path. | `tests/script.test.mjs` - `a file-backed step is read at send time, not at parse time (DEMO-SCRIPT-04)` |
+| DEMO-SCRIPT-05 | Enter is a SEPARATE write, after a pause. A TUI composer that receives a long string and a trailing carriage return in one burst treats the return as typed text: the prompt lands in the composer and simply sits there, which is how a fifteen minute capture produced no session at all. A multi-line step is sent as a real bracketed paste, with CRLF normalized first, or every newline submits its own turn. | `tests/script.test.mjs` - `Enter is a separate write, and a paste is bracketed (DEMO-SCRIPT-05)` |
+| DEMO-SCRIPT-06 | A script that cannot be used says which file and why - missing, or not valid JSON - rather than failing later inside a session that is already running with a pty attached. | `tests/script.test.mjs` - `readScript reports the file it could not use (DEMO-SCRIPT-06)` |
+
 ## Command line and the safety gate
 
 | Feature id | Behavior | Covering tests |

@@ -68,6 +68,17 @@ export function normalizeScript(raw, baseDir = process.cwd()) {
       // between a captured session and one sitting on a full prompt line forever. Default it on,
       // since every real turn wants it, and let a step that is only typing opt out.
       enter: step.enter === false ? false : true,
+      // A multi-line paste into a TUI is only ONE turn if it arrives as a bracketed paste. Sent
+      // raw, every newline in a review bundle submits its own turn - a hundred junk turns instead
+      // of the paste the clip is meant to show - so a step can ask for the real thing.
+      paste: step.paste === true,
+      // A one-time prompt (the folder-trust dialog) appears on the first run and never again, so a
+      // step that waits for it must be able to give up and SKIP rather than send its keystroke into
+      // whatever is on screen instead. Without this the script only works on a fresh machine, which
+      // is the opposite of re-recordable.
+      optional: step.optional === true,
+      // How long to wait between typing and pressing Enter. See stepSubmit.
+      submitMs: num("submitMs", 450),
       text: source.text,
       file: source.file,
     };
@@ -93,7 +104,12 @@ export function readScript(file) {
 // still yields the session it did record instead of losing it.
 export function stepReady(step, { buffer = "", lastDataAt = 0, now = 0, startedAt = 0, fileExists = false } = {}) {
   if (now - startedAt >= step.timeoutMs) {
-    return { ready: true, timedOut: true, reason: `timed out after ${step.timeoutMs}ms` };
+    return {
+      ready: !step.optional,
+      skip: step.optional,
+      timedOut: true,
+      reason: `timed out after ${step.timeoutMs}ms`,
+    };
   }
   if (step.expectFile && !fileExists) {
     return { ready: false, reason: `waiting for ${step.expectFile}` };
@@ -117,5 +133,16 @@ export function stepPayload(step) {
     if (!fs.existsSync(step.file)) fail(`step "${step.mark}" sendFile never appeared: ${step.file}`);
     text = fs.readFileSync(step.file, "utf8");
   }
-  return step.enter ? `${text}\r` : text;
+  // Normalize to bare newlines first: a CRLF inside a bracketed paste submits on the CR in some
+  // readline implementations, which is the very thing bracketing is meant to prevent.
+  if (step.paste) text = `\u001b[200~${text.replace(/\r\n?/g, "\n")}\u001b[201~`;
+  return text;
+}
+
+// Enter is written SEPARATELY, after a pause. A TUI composer that receives a long string and a
+// trailing carriage return in one burst treats the return as part of the text being typed - the
+// prompt lands in the composer and simply sits there, which is exactly how a fifteen minute capture
+// produced no session at all. A human types, stops, then presses Enter; so does this.
+export function stepSubmit(step) {
+  return step.enter ? "\r" : "";
 }
