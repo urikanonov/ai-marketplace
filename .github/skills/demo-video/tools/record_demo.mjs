@@ -102,7 +102,7 @@ function resolveOptionalPath(pkg, ...rest) {
 
 const STRING_KEYS = new Set([
   "example", "out", "cast", "clip", "seconds", "cols", "rows", "idle", "hold",
-  "width", "height", "count", "font", "frames-dir", "scale", "tail",
+  "width", "height", "count", "font", "frames-dir", "scale", "tail", "end-hold",
 ]);
 const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "help"]);
 // Which options each subject actually reads. Validating against the union instead means
@@ -111,7 +111,7 @@ const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "help"]);
 const SUBJECT_FLAGS = {
   report: ["example", "out", "seconds", "width", "height", "scale", "list"],
   capture: ["out", "cols", "rows"],
-  render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "allow-findings"],
+  render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "end-hold", "allow-findings"],
   scan: ["cast"],
   frames: ["clip", "out", "count", "frames-dir"],
 };
@@ -696,13 +696,14 @@ function scanCast(args) {
   return findings;
 }
 
-function terminalPage({ cast, timeline, fontSize }) {
+function terminalPage({ cast, timeline, fontSize, endHoldMs }) {
   const xtermJs = fs.readFileSync(resolveOptionalPath("@xterm/xterm", "lib", "xterm.js"), "utf8");
   const xtermCss = fs.readFileSync(resolveOptionalPath("@xterm/xterm", "css", "xterm.css"), "utf8");
   const payload = scriptJson({
     cols: cast.cols || 120,
     rows: cast.rows || 30,
     fontSize,
+    endHoldMs,
     events: timeline.events.map((e) => ({ t: e.t, d: e.data, f: e.fastForward, s: e.skippedMs })),
   });
   return `<!doctype html>
@@ -745,9 +746,11 @@ function terminalPage({ cast, timeline, fontSize }) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   window.__demoDone = false;
   (async () => {
-    let clock = 0;
-    // term.write is ASYNCHRONOUS: signalling done on a fixed delay can cut the recording before the
-    // last chunk is parsed and painted, which is exactly the frame the clip exists to show.
+    // Schedule against a REAL clock, not a running total of planned gaps. term.write and the paint
+    // it triggers cost real milliseconds, and adding the next planned gap on top of the previous
+    // PLANNED time lets that cost accumulate: a long session drifted ~50% past its requested length.
+    // Sleeping until start plus the event time self-corrects - a slow write shortens the next wait.
+    const start = performance.now();
     const write = (data) => new Promise((done) => term.write(data, done));
     const frame = () => new Promise((done) => requestAnimationFrame(() => done()));
     for (const event of DATA.events) {
@@ -758,14 +761,15 @@ function terminalPage({ cast, timeline, fontSize }) {
         badge.textContent = "skipping ahead " + Math.round(event.s / 1000) + "s";
         badge.classList.add("on");
       }
-      await sleep(Math.max(0, event.t - clock));
-      clock = event.t;
+      await sleep(start + event.t - performance.now());
       if (event.f) setTimeout(() => badge.classList.remove("on"), 450);
       await write(event.d);
     }
     await frame();
     await frame();
-    await sleep(700);
+    // Hold the closing frame. The panel summary is the point of the clip and it streams fast, so
+    // without this the verdict is on screen for a blink before the recording stops.
+    await sleep(DATA.endHoldMs);
     window.__demoDone = true;
   })();
 </script></body></html>`;
@@ -808,6 +812,9 @@ async function renderTerminal(args) {
   // records the page at its CSS size and will not upscale it, so asking for a bigger video than the
   // viewport just pads it with grey. A 2x device scale still sharpens the glyphs within that size.
   const fontSize = Math.round(numberOpt(args, "font", 24));
+  // The panel summary is the point of a review clip and it streams fast, so the closing frame is
+  // held rather than cut the moment the last byte lands.
+  const endHoldMs = Math.round(numberOpt(args, "end-hold", 2.5) * 1000);
   const width = Math.round(numberOpt(args, "width", Math.ceil(cols * fontSize * 0.605) + 56));
   const height = Math.round(numberOpt(args, "height", Math.ceil(rows * fontSize * 1.32) + 84));
   // A clip rendered over the gate's objection must be impossible to mistake for a clean one later,
@@ -827,7 +834,7 @@ async function renderTerminal(args) {
   try {
     ensureDir(stageDir);
     const pageFile = path.join(stageDir, "player.html");
-    fs.writeFileSync(pageFile, terminalPage({ cast, timeline, fontSize }));
+    fs.writeFileSync(pageFile, terminalPage({ cast, timeline, fontSize, endHoldMs }));
     const videoDir = path.join(stageDir, "video");
     ensureDir(videoDir);
     browser = await chromium.launch();
