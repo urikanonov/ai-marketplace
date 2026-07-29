@@ -480,3 +480,29 @@ test("every OSC escape is stripped, not just the title (DEMO-SAFE-23)", () => {
   // because it never ran the raw-pass rules that scrubText happened to reach.
   assert.deepEqual(scanText(cleanLink), [], "the scrubbed link still scans dirty");
 });
+
+// The two wrap contracts collide exactly here, and the collision leaked. A hard wrap in a real TUI
+// is not a bare newline: the emulator brackets it with erase/cursor sequences. Mapping those to a
+// space (so unrelated runs can never be glued into one apparent token) also split the token in the
+// projection whose whole job is to rejoin it - so a credential broken across two lines matched
+// nothing, scrubbed to nothing, and the gate reported ZERO findings while both halves stayed
+// perfectly legible in the clip.
+test("a credential wrapped with an erase or cursor escape at the break is still caught (DEMO-SAFE-24)", () => {
+  const head = join("ghp", "_ABCDEFGHIJKLMNOP");
+  const tail = "QRSTUVWXYZ012345";
+  for (const bridge of ["\u001b[K\n", "\u001b[0G\n", "\u001b[K\u001b[3C\r\n", "\r\n", "\n\u001b[K"]) {
+    const raw = head + bridge + tail;
+    assert.equal(scanText(raw, DEFAULT_RULES).length > 0, true,
+      `the gate missed a token wrapped with ${JSON.stringify(bridge)}`);
+    const out = scrubText(raw, DEFAULT_RULES);
+    assert.equal(out.includes("ABCDEFGHIJKLMNOP"), false,
+      `the head of the token survived a wrap with ${JSON.stringify(bridge)}`);
+    assert.equal(out.includes(tail), false,
+      `the tail of the token survived a wrap with ${JSON.stringify(bridge)}`);
+  }
+  // The anti-gluing guarantee this could have broken: a movement escape with NO newline still
+  // separates two unrelated runs, so a harmless prefix cannot be welded onto a following run to
+  // fabricate - or to hide inside - a token.
+  const glued = "abcdefghij\u001b[0Gklmnopqrstuvwxyz0123";
+  assert.equal(scanText(glued, DEFAULT_RULES).length, 0, "a movement escape must not glue two runs");
+});

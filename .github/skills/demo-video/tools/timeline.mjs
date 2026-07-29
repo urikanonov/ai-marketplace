@@ -287,11 +287,16 @@ export function fitTimeline(events, targetMs, opts = {}) {
       : -1;
     const bodyStart = lastHead > 0 ? lastHead : 0;
     const bodyEnd = firstTail > bodyStart ? firstTail : result.events.length;
+    // Head and tail can be asked for spans that between them cover the whole session. There is then
+    // no body to absorb the compression, and quietly falling through to a uniform speed-up would
+    // race through the very stretches the caller asked to protect. Leave the clip alone instead and
+    // say so - an honest overshoot beats a silently unprotected summary.
+    const bodyIsEmpty = bodyEnd <= bodyStart;
     const headClipMs = bodyStart > 0 ? result.events[bodyStart - 1].t : 0;
     const bodyClipMs = (bodyEnd > 0 ? result.events[bodyEnd - 1].t : 0) - headClipMs;
     const tailClipMs = result.durationMs - headClipMs - bodyClipMs;
     const budgetForBody = targetMs - headClipMs - tailClipMs;
-    if ((headMs > 0 || tailMs > 0) && budgetForBody > 0 && bodyClipMs > budgetForBody) {
+    if ((headMs > 0 || tailMs > 0) && !bodyIsEmpty && budgetForBody > 0 && bodyClipMs > budgetForBody) {
       speed = bodyClipMs / budgetForBody;
       const events = result.events.map((e, i) => {
         if (i < bodyStart) return e;
@@ -301,6 +306,9 @@ export function fitTimeline(events, targetMs, opts = {}) {
       result = { ...result, events, durationMs: Math.round(headClipMs + budgetForBody + tailClipMs) };
     }
     if (speed === 1 && result.durationMs > targetMs) {
+      // A fully protected clip is left alone. Speeding it up here would race through exactly the
+      // spans `headMs`/`tailMs` were asked to preserve.
+      if (bodyIsEmpty && (headMs > 0 || tailMs > 0)) return { ...result, speed: 1, protectedOverrun: true };
       speed = result.durationMs / targetMs;
       result = {
         ...result,

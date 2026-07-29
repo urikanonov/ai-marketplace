@@ -39,16 +39,18 @@ const cardCount = (doc) => doc.locator("#commentList .cm-card[data-cid]").count(
 
 // Finish a comment once its composer is open: type, save, and CONFIRM a card actually appeared.
 // Clicking save is not evidence that a comment was filed, and a required beat that trusts the click
-// reports success over a clip that shows nothing.
-async function finishComment(doc, ctx, note, before, share) {
+// reports success over a clip that shows nothing. `quiet` is for a PROBE - an attempt the beat has
+// a fallback for - because a warning from a probe that later succeeded would still fail the beat.
+async function finishComment(doc, ctx, note, before, share, quiet = false) {
+  const warn = quiet ? () => {} : ctx.warn;
   const composer = doc.locator(".cm-composer").last();
-  if (!(await ctx.waitVisible(composer, 2500))) { ctx.warn("the composer never opened"); return false; }
+  if (!(await ctx.waitVisible(composer, 2500))) { warn("the composer never opened"); return false; }
   await ctx.type(composer.locator("textarea"), note, ctx.budgetMs * share);
   const save = composer.locator('[data-act="save"]');
-  if (!(await save.count())) { ctx.warn("the composer had no save action"); return false; }
+  if (!(await save.count())) { warn("the composer had no save action"); return false; }
   await ctx.click(save);
   await ctx.settle(200);
-  if ((await cardCount(doc)) <= before) { ctx.warn(`saving filed no comment: ${note}`); return false; }
+  if ((await cardCount(doc)) <= before) { warn(`saving filed no comment: ${note}`); return false; }
   return true;
 }
 
@@ -67,13 +69,14 @@ async function commentOnText(doc, ctx, selector, note, { index = 0, share = 0.45
 
 // Everything that is not prose - an image, a diff line, a diagram node, a chart - is commented by
 // HOVERING the block, which floats its own add button. Same composer, different way in.
-async function commentOnBlock(doc, ctx, { target, button, note, share = 0.45 }) {
+async function commentOnBlock(doc, ctx, { target, button, note, share = 0.45, quiet = false }) {
+  const warn = quiet ? () => {} : ctx.warn;
   const before = await cardCount(doc);
-  if (!(await ctx.hoverBlock(target))) { ctx.warn(`no element matched ${target}`); return false; }
+  if (!(await ctx.hoverBlock(target))) { warn(`no element matched ${target}`); return false; }
   const add = doc.locator(button);
-  if (!(await ctx.waitVisible(add, 2500))) { ctx.warn(`${button} never appeared for ${target}`); return false; }
+  if (!(await ctx.waitVisible(add, 2500))) { warn(`${button} never appeared for ${target}`); return false; }
   await ctx.click(add);
-  return finishComment(doc, ctx, note, before, share);
+  return finishComment(doc, ctx, note, before, share, quiet);
 }
 
 export const REPORT_BEATS = [
@@ -101,29 +104,18 @@ export const REPORT_BEATS = [
     weight: 1.2,
     required: true,
     async run(doc, ctx) {
-      // A report may carry its picture as an <img> or as an inline <svg> (the skill emits either).
-      // Both hover the same media affordance, so try the common shape first and fall back rather
-      // than failing a required beat over a markup choice the demo does not care about.
-      const ok = await commentOnBlock(doc, ctx, {
-        target: "#commentRoot img",
-        button: "#imageAddBtn",
-        note: "Label the beds?",
-      });
-      if (!ok) {
-        // Some reports carry the picture as an inline <svg> rather than an <img>, and the media
-        // affordance attaches to the FIGURE around it rather than to the drawing itself.
-        const svgOk = await commentOnBlock(doc, ctx, {
-          target: "#commentRoot figure svg:not(.mermaid svg), #commentRoot p > svg",
-          button: "#imageAddBtn",
-          note: "Label the beds?",
-        });
-        if (!svgOk) {
-          await commentOnBlock(doc, ctx, {
-            target: "#commentRoot figure:not(.chart):not(.cmh-mermaid)",
-            button: "#imageAddBtn, #widgetAddBtn",
-            note: "Label the beds?",
-          });
-        }
+      // A report may carry its picture as an <img>, as an inline <svg>, or as a bare <figure> the
+      // affordance attaches to. The first two are PROBES: a warning from an attempt the beat has a
+      // fallback for would fail the beat even after the fallback succeeded.
+      const attempts = [
+        { target: "#commentRoot img", button: "#imageAddBtn" },
+        { target: "#commentRoot figure svg:not(.mermaid svg), #commentRoot p > svg", button: "#imageAddBtn" },
+        { target: "#commentRoot figure:not(.chart):not(.cmh-mermaid)", button: "#imageAddBtn, #widgetAddBtn" },
+      ];
+      for (const [i, attempt] of attempts.entries()) {
+        const last = i === attempts.length - 1;
+        const ok = await commentOnBlock(doc, ctx, { ...attempt, note: "Label the beds?", quiet: !last });
+        if (ok) return;
       }
     },
   },

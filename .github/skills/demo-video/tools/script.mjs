@@ -103,6 +103,17 @@ export function readScript(file) {
 // the timeout is always the backstop - it reports rather than throws, so a capture that ran long
 // still yields the session it did record instead of losing it.
 export function stepReady(step, { buffer = "", lastDataAt = 0, now = 0, startedAt = 0, fileExists = false } = {}) {
+  // Readiness is checked BEFORE the deadline. A condition that arrived just before the timeout but
+  // is only observed on the next poll would otherwise be reported as a timeout - and for an
+  // optional step that means skipping a dialog that is actually on screen.
+  const waiting = (step.expectFile && !fileExists)
+    ? `waiting for ${step.expectFile}`
+    : (step.expect && !buffer.includes(step.expect))
+      ? `waiting for ${JSON.stringify(step.expect)}`
+      : (step.idleMs > 0 && now - lastDataAt < step.idleMs)
+        ? `waiting for ${step.idleMs}ms of quiet`
+        : null;
+  if (!waiting) return { ready: true, timedOut: false, reason: "ready" };
   if (now - startedAt >= step.timeoutMs) {
     return {
       ready: !step.optional,
@@ -111,31 +122,46 @@ export function stepReady(step, { buffer = "", lastDataAt = 0, now = 0, startedA
       reason: `timed out after ${step.timeoutMs}ms`,
     };
   }
-  if (step.expectFile && !fileExists) {
-    return { ready: false, reason: `waiting for ${step.expectFile}` };
-  }
-  if (step.expect && !buffer.includes(step.expect)) {
-    return { ready: false, reason: `waiting for ${JSON.stringify(step.expect)}` };
-  }
-  if (step.idleMs > 0 && now - lastDataAt < step.idleMs) {
-    return { ready: false, reason: `waiting for ${step.idleMs}ms of quiet` };
-  }
-  return { ready: true, timedOut: false, reason: "ready" };
+  return { ready: false, reason: waiting };
 }
 
 // What actually goes down the pipe. Kept separate from the sending so a test can assert the Enter
 // policy without a pty, and so a bracketed-paste terminal cannot swallow the newline: the text and
 // the Enter are written as one string in the order a person would produce them. A file-backed step
 // is read HERE, not at parse time, because its file may not exist until the moment it is needed.
+export const MAX_SEND_BYTES = 1024 * 1024;
+
+// Bracketed paste has NO escaping mechanism: the terminal ends the paste at the first `ESC[201~` it
+// sees. Text that contains one - and the pasted text here is a review bundle quoting a document
+// somebody else may have written - would end the paste early and have the remainder interpreted as
+// live keystrokes, which in a Copilot session means submitting whatever followed as a command. So
+// every escape and control byte is stripped before the delimiters go on. Fail closed: this is a
+// protocol that cannot express "a literal ESC", so a literal ESC must not be sent.
+export function sanitizePasteText(text) {
+  return String(text)
+    // eslint-disable-next-line no-control-regex
+    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/\u001b[\]P^_][\s\S]*?(?:\u0007|\u001b\\)/g, "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .replace(/\r\n?/g, "\n");
+}
+
 export function stepPayload(step) {
   let text = step.text;
   if (text == null) {
-    if (!fs.existsSync(step.file)) fail(`step "${step.mark}" sendFile never appeared: ${step.file}`);
+    let stat;
+    try { stat = fs.statSync(step.file); } catch (e) { stat = null; }
+    if (!stat) fail(`step "${step.mark}" sendFile never appeared: ${step.file}`);
+    // A bundle is generated, so its size is not a promise. Refuse an implausible one rather than
+    // pulling it into memory (twice, after normalization) and leaving a pty running behind it.
+    if (stat.size > MAX_SEND_BYTES) {
+      fail(`step "${step.mark}" sendFile is ${stat.size} bytes, over the ${MAX_SEND_BYTES} limit: ${step.file}`);
+    }
     text = fs.readFileSync(step.file, "utf8");
   }
-  // Normalize to bare newlines first: a CRLF inside a bracketed paste submits on the CR in some
-  // readline implementations, which is the very thing bracketing is meant to prevent.
-  if (step.paste) text = `\u001b[200~${text.replace(/\r\n?/g, "\n")}\u001b[201~`;
+  if (step.paste) text = `\u001b[200~${sanitizePasteText(text)}\u001b[201~`;
   return text;
 }
 

@@ -176,14 +176,43 @@ const ANSI_OR_EOL = /\r\n|\r|\n|\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b
 function project(raw, { dropNewlines = false } = {}) {
   const skip = dropNewlines ? ANSI_OR_EOL : ANSI;
   skip.lastIndex = 0;
+  const matches = [...raw.matchAll(skip)];
+  // A hard wrap in a real TUI is not a bare newline: the emulator brackets it with cursor and
+  // erase sequences, so a credential broken across two lines looks like
+  // `...MNOP` ESC[K \n `QRST...`. Mapping every movement escape to a SPACE (which stops unrelated
+  // runs being glued into one apparent token) also split the token in the very projection whose
+  // job is to rejoin it - so the token matched nothing, scrubbed to nothing, and the gate reported
+  // zero findings while both halves stayed legible in the clip.
+  //
+  // So in the unwrapped projection a RUN of adjacent escapes that contains a newline and is
+  // flanked by token characters is dropped whole: that shape is a wrap and nothing else. Any other
+  // movement escape still becomes a space, which is what keeps the anti-gluing guarantee.
+  const dropWhole = new Set();
+  if (dropNewlines) {
+    for (let i = 0; i < matches.length;) {
+      let end = i;
+      let hasEol = /^[\r\n]+$/.test(matches[i][0]);
+      while (end + 1 < matches.length
+        && matches[end + 1].index === matches[end].index + matches[end][0].length) {
+        end += 1;
+        if (/^[\r\n]+$/.test(matches[end][0])) hasEol = true;
+      }
+      const before = raw[matches[i].index - 1];
+      const after = raw[matches[end].index + matches[end][0].length];
+      if (hasEol && before && after && TOKEN_CHAR.test(before) && TOKEN_CHAR.test(after)) {
+        for (let k = i; k <= end; k++) dropWhole.add(k);
+      }
+      i = end + 1;
+    }
+  }
   let plain = "";
   const map = [];
   let at = 0;
-  for (const match of raw.matchAll(skip)) {
+  for (const [index, match] of matches.entries()) {
     for (let i = at; i < match.index; i++) { plain += raw[i]; map.push(i); }
     // A style escape is dropped (so a painted token rejoins); anything that moves or erases the
     // cursor becomes a space (so it can never glue two unrelated runs into one apparent token).
-    if (!ANSI_STYLE.test(match[0]) && !/^[\r\n]+$/.test(match[0])) {
+    if (!dropWhole.has(index) && !ANSI_STYLE.test(match[0]) && !/^[\r\n]+$/.test(match[0])) {
       plain += " ";
       map.push(match.index);
     }

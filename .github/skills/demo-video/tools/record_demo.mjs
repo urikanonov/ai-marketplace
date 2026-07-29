@@ -565,6 +565,14 @@ async function waitForRuntime(scope, warnings, page = null) {
   return false;
 }
 
+// Match the frame by its EXACT url. A prefix match picks the wrong document the moment two
+// navigations share a prefix - which is exactly what the closing phase does, reloading the same
+// file with a cache-busting query - so the montage would drive the document it had just left.
+function findFrame(page, url) {
+  return page.frames().find((f) => f.url() === url)
+    || page.frames().find((f) => f.url().split("#")[0] === url.split("#")[0]);
+}
+
 // A diagram or chart draws asynchronously after the runtime is ready. This is awaited immediately// before the first beat that needs one, never up front - see the call site.
 async function diagramsReady(page) {
   await page.waitForFunction(() => {
@@ -799,6 +807,9 @@ async function captureTerminal(args) {
   const marks = [];
   let buffer = "";
   let lastDataAt = Date.now();
+  // The driver waits on the session; if the session ends, every wait it is in must end too.
+  let childExited = false;
+  let driverError = null;
   const onInput = (data) => { try { child.write(data.toString("utf8")); } catch (e) { /* child is gone */ } };
   const onResize = () => { try { child.resize(process.stdout.columns || cols, process.stdout.rows || rows); } catch (e) { /* child is gone */ } };
   // Raw mode belongs to the CALLER's terminal, so it must be handed back on every path - a throw, a
@@ -812,7 +823,14 @@ async function captureTerminal(args) {
     if (process.stdin.isTTY) { try { process.stdin.setRawMode(!!wasRaw); } catch (e) { /* already closed */ } }
     process.stdin.pause();
   };
-  const onSignal = () => { restore(); process.exit(130); };
+  const onSignal = () => {
+    restore();
+    // The scrubber holds a whitespace-free run back until it can prove it is not a credential.
+    // Exiting without flushing loses that text from the operator's own terminal for good.
+    if (!process.stdout.isTTY) { try { process.stdout.write(liveScrubber.end()); } catch (e) { /* closed */ } }
+    try { child.kill(); } catch (e) { /* already gone */ }
+    process.exit(130);
+  };
   process.once("SIGINT", onSignal);
   process.once("SIGTERM", onSignal);
 
@@ -840,10 +858,15 @@ async function captureTerminal(args) {
     const driver = script ? (async () => {
       for (const step of script.steps) {
         const startedAt = Date.now();
+        // Each step only reads output produced SINCE IT BEGAN. Sharing one buffer let a step whose
+        // marker had already appeared for an earlier step fire immediately, before the session had
+        // done anything the step was waiting on.
+        const from = buffer.length;
         let skipped = false;
         for (;;) {
+          if (childExited) throw new Error(`session ended while step "${step.mark}" was waiting`);
           const state = stepReady(step, {
-            buffer,
+            buffer: buffer.slice(from),
             lastDataAt,
             now: Date.now(),
             startedAt,
@@ -862,6 +885,7 @@ async function captureTerminal(args) {
         }
         if (skipped) continue;
         if (step.delayMs) await sleep(step.delayMs);
+        if (childExited) throw new Error(`session ended before step "${step.mark}" could be sent`);
         const payload = stepPayload(step);
         // Record WHAT WAS TYPED alongside the mark, so a render can put the real prompt on its
         // title card instead of a paraphrase somebody has to keep in sync by hand. Scrubbed like
@@ -872,20 +896,31 @@ async function captureTerminal(args) {
           eventIndex: events.length,
           text: scrubText(payload.replace(/\u001b\[20[01]~/g, ""), rules).slice(0, 2000),
         });
-        try {
-          child.write(payload);
-          const submit = stepSubmit(step);
-          if (submit) { await sleep(step.submitMs); child.write(submit); }
-        } catch (e) { /* child is gone */ }
+        child.write(payload);
+        const submit = stepSubmit(step);
+        if (submit) { await sleep(step.submitMs); child.write(submit); }
       }
-    })().catch((e) => { console.warn(`  script: ${e.message}`); }) : null;
-    exitCode = await new Promise((resolve) => child.onExit(({ exitCode: code }) => resolve(code)));
+    })().catch((e) => {
+      // A driver that gives up must not leave the session sitting on a prompt forever - a capture
+      // waiting on a step that can no longer be satisfied would otherwise hang for the whole of
+      // every remaining timeout, which the shipped script measures in tens of minutes.
+      driverError = e;
+      console.warn(`  script: ${e.message}; ending the session`);
+      try { child.kill(); } catch (killErr) { /* already gone */ }
+    }) : null;
+    exitCode = await new Promise((resolve) => child.onExit(({ exitCode: code }) => {
+      childExited = true;
+      resolve(code);
+    }));
     if (driver) await driver;
     // onExit can fire while the pty still has buffered output in flight, and the tail of a session
     // (the final result, the closing prompt) is exactly what a demo wants to show. Let it land.
     await sleep(250);
   } finally {
     restore();
+    // Never orphan the child. The happy path leaves through onExit, but a setup throw or a signal
+    // would otherwise leave a pty running with nobody reading it.
+    try { child.kill(); } catch (e) { /* already gone */ }
     // Whatever the live scrubber was holding back belongs on the operator's stream too.
     if (!process.stdout.isTTY) { try { process.stdout.write(liveScrubber.end()); } catch (e) { /* closed */ } }
     process.off("SIGINT", onSignal);
@@ -1224,12 +1259,15 @@ function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, reportUr
       phase.classList.add("on");
     },
     async showReport(url) {
-      report.src = url || DATA.reportUrl;
-      await new Promise((done) => {
-        if (report.contentDocument && report.contentDocument.readyState === "complete") return done();
+      // The waiter is attached BEFORE the navigation starts. Checking readyState after assigning
+      // src can observe the PREVIOUS document still sitting at "complete", so the handshake
+      // resolves before the new page exists and the montage drives whatever is still on screen.
+      const loaded = new Promise((done) => {
         report.addEventListener("load", done, { once: true });
         setTimeout(done, 15000);
       });
+      report.src = url || DATA.reportUrl;
+      await loaded;
       report.classList.add("on");
       await sleep(420);
     },
@@ -1348,6 +1386,16 @@ async function recordLoop(args) {
   const warnings = [];
   const failures = [];
   let bundle = "";
+  // The stage file is written into the USER's directory, so a Ctrl+C must not leave it there.
+  // `finally` alone does not run when a default signal handler exits the process.
+  const cleanStage = () => {
+    if (!stageFile) return;
+    try { fs.rmSync(stageFile, { force: true }); } catch (e) { /* best effort */ }
+    stageFile = null;
+  };
+  const onSignal = () => { cleanStage(); process.exit(130); };
+  process.once("SIGINT", onSignal);
+  process.once("SIGTERM", onSignal);
   try {
     const reportName = path.basename(example);
     const stageHtml = stagePage({
@@ -1397,7 +1445,7 @@ async function recordLoop(args) {
 
     await page.evaluate((t) => window.__stage.caption(t), "2. You review it in the browser");
     await page.evaluate(() => window.__stage.showReport());
-    const frame = page.frames().find((f) => f.url().startsWith(reportUrl));
+    const frame = findFrame(page, reportUrl);
     if (!frame) throw new Error("the report frame never attached to the stage");
     await waitForRuntime(frame, warnings, page);
     await page.evaluate(() => window.__stage.caption(""));
@@ -1431,7 +1479,7 @@ async function recordLoop(args) {
       // A cache-busting query forces a real reload rather than a repaint of what is already there.
       const afterUrl = `${pathToFileURL(afterExample).href}?resolved=${Date.now()}`;
       await page.evaluate((u) => window.__stage.showReport(u), afterUrl);
-      const done = page.frames().find((f) => f.url().startsWith(pathToFileURL(afterExample).href));
+      const done = findFrame(page, afterUrl);
       if (done) {
         await waitForRuntime(done, warnings, page);
         const ctx = makeContext(page, resolvedMs, warnings, done);
@@ -1450,7 +1498,9 @@ async function recordLoop(args) {
     await saveVideo(page, context, markedOut);
   } finally {
     if (browser) await browser.close().catch(() => {});
-    if (stageFile) { try { fs.rmSync(stageFile, { force: true }); } catch (e) { /* best effort */ } }
+    cleanStage();
+    process.off("SIGINT", onSignal);
+    process.off("SIGTERM", onSignal);
     try { fs.rmSync(videoDir, { recursive: true, force: true }); } catch (e) { /* best effort */ }
   }
 
@@ -1541,8 +1591,13 @@ async function renderTerminal(args) {
   const introMs = Math.round(numberOpt(args, "intro", 3) * 1000);
   // A note like "20 to 27 drags" is about the CLIP, which begins with the title card - so windows
   // are given in clip seconds and shifted onto the schedule's own clock here.
+  // Shifted onto the schedule's clock and clipped to it. A window that reaches back into the title
+  // card would otherwise become negative and pull the opening events to time zero, silently
+  // re-timing output the caller never pointed at - while the card itself, which is not on this
+  // clock, played its full length regardless.
   const speedWindows = parseSpeedWindows(args["speed-windows"])
-    .map((w) => ({ ...w, fromMs: w.fromMs - introMs, toMs: w.toMs - introMs }));
+    .map((w) => ({ ...w, fromMs: Math.max(0, w.fromMs - introMs), toMs: w.toMs - introMs }))
+    .filter((w) => w.toMs > w.fromMs);
   if (speedWindows.length) {
     timeline.events = applySpeedWindows(timeline.events, speedWindows);
     timeline.durationMs = timeline.events.length ? timeline.events[timeline.events.length - 1].t : 0;
