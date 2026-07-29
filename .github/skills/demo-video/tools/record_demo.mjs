@@ -105,17 +105,17 @@ function resolveOptionalPath(pkg, ...rest) {
 const STRING_KEYS = new Set([
   "example", "out", "cast", "clip", "seconds", "cols", "rows", "idle", "hold",
   "width", "height", "count", "font", "frames-dir", "scale", "tail", "head", "end-hold", "intro", "ask",
-  "script", "review-out", "split", "speed-windows", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "dpr",
+  "script", "review-out", "snapshot-out", "split", "speed-windows", "example-after", "seconds-resolved", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "dpr",
 ]);
 const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "help"]);
 // Which options each subject actually reads. Validating against the union instead means
 // `scan --out x` or `capture --seconds 10` is accepted and then silently ignored - the caller is
 // told nothing, and gets a clip that is not what they asked for.
 const SUBJECT_FLAGS = {
-  report: ["example", "out", "seconds", "width", "height", "scale", "list", "review-out"],
+  report: ["example", "out", "seconds", "width", "height", "scale", "list", "review-out", "snapshot-out"],
   capture: ["out", "cols", "rows", "script"],
   render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "head", "end-hold", "intro", "ask", "speed-windows", "allow-findings"],
-  loop: ["cast", "example", "out", "split", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "idle", "hold", "width", "height", "font", "scale", "dpr", "intro", "end-hold", "ask", "allow-findings"],
+  loop: ["cast", "example", "example-after", "seconds-resolved", "out", "split", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "idle", "hold", "width", "height", "font", "scale", "dpr", "intro", "end-hold", "ask", "allow-findings"],
   scan: ["cast"],
   frames: ["clip", "out", "count", "frames-dir"],
 };
@@ -275,26 +275,29 @@ const OVERLAY_SCRIPT = `(() => {
   if (window.top === window) {
     const install = () => {
       if (document.getElementById("__demoToast")) return;
-    const el = document.createElement("div");
-    el.id = "__demoToast";
-    el.setAttribute("aria-hidden", "true");
-    el.style.cssText = [
-      "position:fixed", "left:50%", "top:22px", "transform:translateX(-50%) translateY(-8px)",
-      "z-index:2147483646", "pointer-events:none", "padding:11px 22px", "border-radius:999px",
-      "background:rgba(13,17,23,0.92)", "color:#e6edf3", "border:1px solid rgba(240,246,252,0.18)",
-      "font:600 17px/1.2 'Segoe UI', system-ui, sans-serif", "letter-spacing:0.2px",
-      "box-shadow:0 8px 26px rgba(0,0,0,0.34)", "white-space:nowrap", "opacity:0",
-      "transition:opacity 220ms ease, transform 220ms ease",
-    ].join(";");
-    document.documentElement.appendChild(el);
-    let hideAt = 0;
-    window.__demoToast = (text) => {
-      if (!text) { el.style.opacity = "0"; el.style.transform = "translateX(-50%) translateY(-8px)"; return; }
-      el.textContent = text;
-      el.style.opacity = "1";
-      el.style.transform = "translateX(-50%) translateY(0)";
-      hideAt = Date.now();
-    };
+      const el = document.createElement("div");
+      el.id = "__demoToast";
+      el.setAttribute("aria-hidden", "true");
+      // Bottom centre, not top: the report's own toolbar owns the top right, the table of contents
+      // the top left, and in the loop clip the phase caption sits top centre. Sized and coloured to
+      // survive being recorded at 0.6-0.75 scale - a translucent dark pill at 17px was legible in a
+      // full-size frame and nearly invisible in the finished clip.
+      el.style.cssText = [
+        "position:fixed", "left:50%", "bottom:38px", "transform:translateX(-50%) translateY(10px)",
+        "z-index:2147483646", "pointer-events:none", "padding:16px 34px", "border-radius:999px",
+        "background:#b3234a", "color:#ffffff", "border:2px solid rgba(255,255,255,0.55)",
+        "font:700 27px/1.15 'Segoe UI', system-ui, sans-serif", "letter-spacing:0.3px",
+        "box-shadow:0 14px 40px rgba(0,0,0,0.45), 0 0 0 6px rgba(179,35,74,0.22)",
+        "white-space:nowrap", "opacity:0",
+        "transition:opacity 200ms ease, transform 200ms ease",
+      ].join(";");
+      document.documentElement.appendChild(el);
+      window.__demoToast = (text) => {
+        if (!text) { el.style.opacity = "0"; el.style.transform = "translateX(-50%) translateY(10px)"; return; }
+        el.textContent = text;
+        el.style.opacity = "1";
+        el.style.transform = "translateX(-50%) translateY(0)";
+      };
     };
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", install);
     else install();
@@ -691,6 +694,16 @@ async function recordReport(args) {
       fs.writeFileSync(tmpDest, reviewPreamble() + bundle);
       fs.renameSync(tmpDest, dest);
       console.log(`review bundle: ${dest} (${bundle.length} chars)`);
+      // Snapshot the report AS REVIEWED. The agent edits the file in place when the review goes
+      // back, so without a copy taken at this exact moment the "before" version is gone - and the
+      // loop clip would show the already-answered document during the review phase and again at the
+      // end, which makes the round trip look like nothing happened.
+      if (args["snapshot-out"]) {
+        const snap = path.resolve(String(args["snapshot-out"]));
+        ensureDir(path.dirname(snap));
+        fs.copyFileSync(example, snap);
+        console.log(`reviewed snapshot: ${snap}`);
+      }
     }
     // Spend the tail INSIDE the recording: closing the context stops the video immediately, so
     // without this the reserved time is simply cut off and the clip ends mid-gesture.
@@ -1089,10 +1102,11 @@ function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, reportUr
   #report.on { opacity: 1; pointer-events: auto; }
   /* A caption for each phase, so a viewer knows they are watching one loop rather than three
      unrelated clips spliced together. */
-  #phase { position: fixed; left: 50%; top: 24px; transform: translateX(-50%); z-index: 7;
-    padding: 9px 18px; border-radius: 999px; background: rgba(13,17,23,.86); color: #e6edf3;
-    border: 1px solid rgba(240,246,252,.16); font-size: 15px; letter-spacing: .3px;
-    opacity: 0; transition: opacity 300ms ease; white-space: nowrap; }
+  #phase { position: fixed; left: 50%; top: 26px; transform: translateX(-50%); z-index: 7;
+    padding: 14px 30px; border-radius: 999px; background: #0d1117; color: #e6edf3;
+    border: 2px solid rgba(240,246,252,0.34); font-size: 24px; font-weight: 700; letter-spacing: .3px;
+    box-shadow: 0 14px 40px rgba(0,0,0,.5); opacity: 0; transition: opacity 300ms ease;
+    white-space: nowrap; }
   #phase.on { opacity: 1; }
   #intro { position: fixed; inset: 0; background: #0b0f16; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 22px; padding: 8%; text-align: center;
@@ -1155,8 +1169,8 @@ function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, reportUr
       phase.textContent = text;
       phase.classList.add("on");
     },
-    async showReport() {
-      report.src = DATA.reportUrl;
+    async showReport(url) {
+      report.src = url || DATA.reportUrl;
       await new Promise((done) => {
         if (report.contentDocument && report.contentDocument.readyState === "complete") return done();
         report.addEventListener("load", done, { once: true });
@@ -1226,6 +1240,11 @@ async function recordLoop(args) {
   }
   const example = args.example ? path.resolve(String(args.example)) : path.join("C:", "demo", "report.html");
   if (!fs.existsSync(example)) throw new Error(`example not found: ${example}`);
+  // The report AFTER the agent answered the review. Optional, because a cast whose second turn did
+  // not touch the file has nothing to show; when it is given the clip ends where it should.
+  const afterExample = args["example-after"] ? path.resolve(String(args["example-after"])) : null;
+  if (afterExample && !fs.existsSync(afterExample)) throw new Error(`example-after not found: ${afterExample}`);
+  const resolvedMs = Math.round(numberOpt(args, "seconds-resolved", 7) * 1000);
 
   // Split at the mark: everything the agent did to PRODUCE the report, then everything it did with
   // the review that came back. The two halves are fitted independently, because they are different
@@ -1346,6 +1365,28 @@ async function recordLoop(args) {
     await page.evaluate((t) => window.__stage.caption(t), "4. Paste it back - the agent applies it");
     await page.evaluate(() => window.__stage.playSegment(1));
     await page.evaluate(() => window.__stage.caption(""));
+
+    // The point of the whole loop is that the review CAME BACK. Reopening the report the agent just
+    // edited is what shows it: the runtime itself announces the comments it handled, and the
+    // answers are now in the document.
+    if (afterExample) {
+      await page.evaluate((t) => window.__stage.caption(t), "5. Back in the report - the comments are resolved");
+      await page.evaluate((u) => window.__stage.showReport(u), pathToFileURL(afterExample).href);
+      const done = page.frames().find((f) => f.url().startsWith(pathToFileURL(afterExample).href));
+      if (done) {
+        await waitForRuntime(done, warnings, page);
+        const ctx = makeContext(page, resolvedMs, warnings, done);
+        await ctx.toast("Comments resolved");
+        // Drift down the answered document rather than sitting on one screen, so a viewer sees the
+        // agent's replies in place instead of just a settled sidebar.
+        await ctx.glideTo(700, Math.max(600, resolvedMs * 0.45));
+        await ctx.holdRemaining(200);
+        await ctx.toast("");
+      } else {
+        warnings.push("the answered report never attached to the stage");
+      }
+      await page.evaluate(() => window.__stage.caption(""));
+    }
     await page.evaluate((ms) => window.__stage.hold(ms), endHoldMs);
     await saveVideo(page, context, markedOut);
   } finally {
