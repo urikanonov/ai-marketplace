@@ -429,6 +429,10 @@ function _buildInlineReplyEditor(initialText, saveLabel, onSave, onCancel, opts)
   ta.setAttribute("aria-label", o.label || "Write a reply");
   ta.placeholder = o.placeholder || "Write a reply...";
   ta.value = initialText || "";
+  // The side pane offers the same rich-text editing as the new-comment composer (issue #774): the
+  // shared toolbar above the textarea plus the Ctrl/Cmd formatting shortcuts.
+  const formatBar = noteFormatBarElement();
+  wireNoteFormatBar(formatBar, ta);
   const actions = document.createElement("div");
   actions.className = "cm-reply-compose-actions";
   const cancel = document.createElement("button");
@@ -436,7 +440,7 @@ function _buildInlineReplyEditor(initialText, saveLabel, onSave, onCancel, opts)
   const save = document.createElement("button");
   save.type = "button"; save.className = "cm-reply-save"; save.textContent = saveLabel;
   actions.appendChild(cancel); actions.appendChild(save);
-  wrap.appendChild(ta); wrap.appendChild(actions);
+  wrap.appendChild(formatBar); wrap.appendChild(ta); wrap.appendChild(actions);
   function doSave() {
     const val = ta.value.trim();
     if (!val) { ta.setAttribute("aria-invalid", "true"); ta.classList.add("cm-invalid"); ta.focus(); return; }
@@ -444,11 +448,18 @@ function _buildInlineReplyEditor(initialText, saveLabel, onSave, onCancel, opts)
   }
   cancel.addEventListener("click", function () { onCancel(); });
   save.addEventListener("click", doSave);
-  ta.addEventListener("keydown", function (e) {
+  // Clear the blank-note invalid state as soon as the reviewer types or formats, matching the
+  // floating composer (a toolbar action dispatches its own `input` event).
+  ta.addEventListener("input", function () { ta.removeAttribute("aria-invalid"); ta.classList.remove("cm-invalid"); });
+  // The editor now holds seven toolbar buttons plus Cancel/Save, so bind the keys on the WRAPPER,
+  // not the textarea: Escape from a focused button must cancel THIS editor rather than bubbling to
+  // the document handler, which would discard an unrelated floating composer's draft.
+  wrap.addEventListener("keydown", function (e) {
     // Ignore shortcuts mid-IME composition so Escape/Enter cannot discard a draft the composer is
     // still assembling (e.g. a CJK candidate window).
     if (e.isComposing) return;
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doSave(); }
+    if (handleNoteFormatShortcut(e, ta)) return;
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); doSave(); }
     else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onCancel(); }
   });
   wrap._focus = function () { setTimeout(function () { try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {} }, 0); };

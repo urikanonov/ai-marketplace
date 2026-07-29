@@ -4,6 +4,31 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.278.0] - 2026-07-30
+
+### Added
+
+- Replying to a comment or editing a comment or reply in the side pane now offers the SAME
+  rich-text editing as writing a new comment: the inline editor carries the formatting toolbar
+  (bold, italic, underline, strikethrough, inline code, link, bullet list) above its textarea, and
+  Ctrl/Cmd+B/I/U/K apply the matching markers to the selection. The notes always RENDERED rich, but
+  the markers were undiscoverable exactly where most follow-up writing happens. The floating
+  new-comment composer and the side pane now build the toolbar and the shortcuts from one shared
+  source (`noteFormatBarHtml` / `wireNoteFormatBar` / `handleNoteFormatShortcut`), so the two
+  surfaces cannot drift apart.
+
+### Fixed
+
+- The side-pane inline reply/edit editor's key handling now lives on the editor wrapper rather than
+  its textarea, so Ctrl/Cmd+Enter, Esc, and the formatting shortcuts also work while focus is on one
+  of the editor's buttons. Previously Esc pressed there fell through to the document handler, which
+  would discard an unrelated open composer's draft while leaving the inline editor open.
+- The side-pane inline editor now clears the blank-note invalid state (`aria-invalid` and the red
+  border) as soon as the reviewer types or formats, matching the floating composer; it used to stay
+  marked invalid until the editor closed.
+- A formatting-toolbar click during an IME composition is ignored on both surfaces, so markers can no
+  longer be spliced into provisional (for example CJK candidate) text.
+
 ## [1.276.0] - 2026-07-29
 
 ### Fixed

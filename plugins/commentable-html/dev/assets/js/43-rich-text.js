@@ -191,6 +191,91 @@ function richConsumeUrl(text, i, ctx) {
 // Marker pairs the wrap buttons/shortcuts insert around the selection.
 var NOTE_FORMAT_WRAP = { bold: ["**", "**"], italic: ["*", "*"], underline: ["__", "__"], strike: ["~~", "~~"], code: ["`", "`"] };
 
+// One source of truth for the formatting toolbar, so the floating new-comment composer and the
+// side-pane reply/edit editors offer exactly the same controls and can never drift apart. Each
+// entry's `html` is injected VERBATIM into the button, so it must stay a literal here - never a
+// computed, configurable, or document-derived string.
+var NOTE_FORMAT_BUTTONS = [
+  { fmt: "bold", title: "Bold (Ctrl+B)", label: "Bold", html: "<strong>B</strong>" },
+  { fmt: "italic", title: "Italic (Ctrl+I)", label: "Italic", html: "<em>I</em>" },
+  { fmt: "underline", title: "Underline (Ctrl+U)", label: "Underline", html: '<span style="text-decoration:underline">U</span>' },
+  { fmt: "strike", title: "Strikethrough", label: "Strikethrough", html: "<s>S</s>" },
+  { fmt: "code", title: "Inline code", label: "Inline code", html: "&lt;/&gt;" },
+  { fmt: "link", title: "Link (Ctrl+K)", label: "Insert link", html: "&#128279;" },
+  { fmt: "list", title: "Bullet list", label: "Bullet list", html: "&#8226;" }
+];
+
+function noteFormatBarHtml() {
+  var out = '<div class="cm-format-bar" role="group" aria-label="Comment formatting">';
+  for (var i = 0; i < NOTE_FORMAT_BUTTONS.length; i++) {
+    var b = NOTE_FORMAT_BUTTONS[i];
+    out += '<button type="button" data-fmt="' + escapeHtml(b.fmt) + '" title="' + escapeHtml(b.title)
+      + '" aria-label="' + escapeHtml(b.label) + '">' + b.html + "</button>";
+  }
+  return out + "</div>";
+}
+
+function noteFormatBarElement() {
+  var host = document.createElement("div");
+  host.innerHTML = noteFormatBarHtml();
+  return host.firstElementChild;
+}
+
+// Wire a `.cm-format-bar`'s buttons to `ta`; returns a remover for every listener it added.
+function wireNoteFormatBar(bar, ta) {
+  var offs = [];
+  if (bar && ta) {
+    // A click during an IME pre-edit would splice markers into provisional composition text, so
+    // track the composition and let the buttons no-op until it commits (the keyboard shortcuts get
+    // the same guarantee from the event's own `isComposing`).
+    var composing = false;
+    var onCompStart = function () { composing = true; ta.__cmhComposing = true; };
+    var onCompEnd = function () { composing = false; ta.__cmhComposing = false; };
+    ta.addEventListener("compositionstart", onCompStart);
+    ta.addEventListener("compositionend", onCompEnd);
+    offs.push(function () {
+      ta.removeEventListener("compositionstart", onCompStart);
+      ta.removeEventListener("compositionend", onCompEnd);
+    });
+    bar.querySelectorAll("button[data-fmt]").forEach(function (btn) {
+      // preventDefault on pointer/mouse down keeps the textarea's selection from collapsing when the
+      // button takes focus (mousedown for desktop, pointerdown so touch devices are covered too); the
+      // action runs on click.
+      var down = function (e) { e.preventDefault(); };
+      var click = function (e) {
+        e.preventDefault();
+        if (composing) return;
+        applyNoteFormat(ta, btn.getAttribute("data-fmt"));
+      };
+      btn.addEventListener("pointerdown", down);
+      btn.addEventListener("mousedown", down);
+      btn.addEventListener("click", click);
+      offs.push(function () {
+        btn.removeEventListener("pointerdown", down);
+        btn.removeEventListener("mousedown", down);
+        btn.removeEventListener("click", click);
+      });
+    });
+  }
+  return function () { while (offs.length) { try { offs.pop()(); } catch (e) {} } };
+}
+
+// Ctrl/Cmd+B/I/U/K formatting shortcuts. Returns true when the key was consumed, so each surface
+// keeps its own Enter (save) and Escape (cancel) handling below it.
+function handleNoteFormatShortcut(e, ta) {
+  // `isComposing` is the primary signal; the tracked flag covers engines that report a
+  // Ctrl-modified keydown mid-composition with `isComposing` already false.
+  if (e.isComposing || (ta && ta.__cmhComposing)) return false;
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return false;
+  var k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  var fmt = k === "b" ? "bold" : k === "i" ? "italic" : k === "u" ? "underline" : k === "k" ? "link" : null;
+  if (!fmt) return false;
+  e.preventDefault();
+  e.stopPropagation();
+  applyNoteFormat(ta, fmt);
+  return true;
+}
+
 // Replace [start,end) in the textarea with text using execCommand("insertText") so the browser's
 // native undo/redo stack is preserved (setRangeText does NOT preserve undo in Chromium); fall back
 // to setRangeText when execCommand is unavailable.

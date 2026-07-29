@@ -130,6 +130,15 @@ html[data-theme="dark"] .cm-author-pill {
   color: inherit;
 }
 .cm-reply-input.cm-invalid { border-color: var(--cp-danger, #dc2626); }
+/* The shared formatting toolbar (issue #774) sits in a flex column that already spaces its rows, and
+   the side pane is narrow, so drop its own margins and tighten the buttons to keep it on one row. */
+.cm-reply-compose .cm-format-bar { margin: 0; gap: 3px; }
+.cm-reply-compose .cm-format-bar button { min-width: 26px; padding: 2px 5px; font-size: 0.8rem; }
+/* On phones the side pane is the primary editing surface, so its toolbar keeps the repo-wide >=44px
+   touch target (it wraps to a second row rather than overflowing). */
+@media (max-width: 640px) {
+  .cm-reply-compose .cm-format-bar button { min-width: 44px; min-height: 44px; padding: 0.4rem; }
+}
 .cm-reply-compose-actions { display: flex; justify-content: flex-end; gap: 0.4rem; }
 .cm-reply-compose-actions button {
   border: 1px solid var(--cp-border, #cbd5e1);
