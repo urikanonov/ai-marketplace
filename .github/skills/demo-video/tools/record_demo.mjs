@@ -38,7 +38,7 @@ import fs from "fs";
 import os from "os";
 import http from "http";
 
-import { planBeats, fitTimeline, compressTimeline, MIN_BEAT_MS } from "./timeline.mjs";
+import { planBeats, fitTimeline, compressTimeline, coalesceEvents, MIN_BEAT_MS } from "./timeline.mjs";
 import { REPORT_BEATS } from "./report-beats.mjs";
 import { DEFAULT_RULES, homeRules, scanText, scrubEvents, scrubText, createScrubber } from "./redact.mjs";
 
@@ -102,7 +102,7 @@ function resolveOptionalPath(pkg, ...rest) {
 
 const STRING_KEYS = new Set([
   "example", "out", "cast", "clip", "seconds", "cols", "rows", "idle", "hold",
-  "width", "height", "count", "font", "frames-dir", "scale", "tail", "end-hold",
+  "width", "height", "count", "font", "frames-dir", "scale", "tail", "head", "end-hold", "intro", "ask",
 ]);
 const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "help"]);
 // Which options each subject actually reads. Validating against the union instead means
@@ -111,7 +111,7 @@ const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "help"]);
 const SUBJECT_FLAGS = {
   report: ["example", "out", "seconds", "width", "height", "scale", "list"],
   capture: ["out", "cols", "rows"],
-  render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "end-hold", "allow-findings"],
+  render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "head", "end-hold", "intro", "ask", "allow-findings"],
   scan: ["cast"],
   frames: ["clip", "out", "count", "frames-dir"],
 };
@@ -696,7 +696,7 @@ function scanCast(args) {
   return findings;
 }
 
-function terminalPage({ cast, timeline, fontSize, endHoldMs }) {
+function terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask }) {
   const xtermJs = fs.readFileSync(resolveOptionalPath("@xterm/xterm", "lib", "xterm.js"), "utf8");
   const xtermCss = fs.readFileSync(resolveOptionalPath("@xterm/xterm", "css", "xterm.css"), "utf8");
   const payload = scriptJson({
@@ -704,7 +704,11 @@ function terminalPage({ cast, timeline, fontSize, endHoldMs }) {
     rows: cast.rows || 30,
     fontSize,
     endHoldMs,
-    events: timeline.events.map((e) => ({ t: e.t, d: e.data, f: e.fastForward, s: e.skippedMs })),
+    introMs,
+    ask,
+    // Merged at the last moment, so the schedule above is computed on the real event stream and
+    // only the PLAYER sees the cheaper one.
+    events: coalesceEvents(timeline.events, 45).map((e) => ({ t: e.t, d: e.data, f: e.fastForward, s: e.skippedMs })),
   });
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>demo</title>
@@ -721,6 +725,17 @@ function terminalPage({ cast, timeline, fontSize, endHoldMs }) {
     background: rgba(56,139,253,.16); border: 1px solid rgba(56,139,253,.5); color: #9ecbff;
     font-size: 12px; letter-spacing: .3px; opacity: 0; transition: opacity 120ms linear; }
   #ff.on { opacity: 1; }
+  /* The title card. A viewer needs to know what was ASKED before any output means anything, and the
+     command in the window chrome is far too small to read. This states the ask in large type, holds,
+     then fades into the session. */
+  #intro { position: fixed; inset: 0; background: #0b0f16; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 22px; padding: 8%; text-align: center;
+    transition: opacity 420ms ease; z-index: 5; }
+  #intro.gone { opacity: 0; pointer-events: none; }
+  #intro .who { color: #7d8590; font-size: 15px; letter-spacing: 2.4px; text-transform: uppercase; }
+  #intro .ask { color: #e6edf3; font-size: 30px; line-height: 1.45; max-width: 20em;
+    font-family: "Cascadia Mono", Consolas, monospace; }
+  #intro .ask::before { content: "> "; color: #58a6ff; }
 </style></head>
 <body><div class="wrap">
   <div class="chrome">
@@ -732,6 +747,7 @@ function terminalPage({ cast, timeline, fontSize, endHoldMs }) {
   <div class="term" id="term"></div>
 </div>
 <div id="ff">fast-forward</div>
+<div id="intro"><div class="who">asked of copilot</div><div class="ask" id="introAsk"></div></div>
 <script>${xtermJs}</script>
 <script>
   const DATA = ${payload};
@@ -746,6 +762,16 @@ function terminalPage({ cast, timeline, fontSize, endHoldMs }) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   window.__demoDone = false;
   (async () => {
+    // Hold the title card first, so the ask is read before any output appears, then fade it out.
+    const intro = document.getElementById("intro");
+    document.getElementById("introAsk").textContent = DATA.ask;
+    if (DATA.introMs > 0) {
+      await sleep(DATA.introMs);
+      intro.classList.add("gone");
+      await sleep(420);
+    } else {
+      intro.classList.add("gone");
+    }
     // Schedule against a REAL clock, not a running total of planned gaps. term.write and the paint
     // it triggers cost real milliseconds, and adding the next planned gap on top of the previous
     // PLANNED time lets that cost accumulate: a long session drifted ~50% past its requested length.
@@ -802,8 +828,9 @@ async function renderTerminal(args) {
       // An explicit --hold is an instruction, not a starting point for the solver.
       pinHold: args.hold != null,
       // The closing stretch of a session is usually the whole point - the consolidated summary, the
-      // verdict - so it is exempt from the speed-up and plays at its natural pace.
+      // verdict - and the opening is where the ask is read. Both are exempt from the speed-up.
       tailMs: args.tail == null ? 0 : Math.round(numberOpt(args, "tail", 0) * 1000),
+      headMs: args.head == null ? 0 : Math.round(numberOpt(args, "head", 0) * 1000),
     })
     : compressTimeline(cast.events, { idleMs: numberOpt(args, "idle", undefined), holdMs: numberOpt(args, "hold", undefined) });
 
@@ -815,6 +842,14 @@ async function renderTerminal(args) {
   // The panel summary is the point of a review clip and it streams fast, so the closing frame is
   // held rather than cut the moment the last byte lands.
   const endHoldMs = Math.round(numberOpt(args, "end-hold", 2.5) * 1000);
+  // The title card states what was asked. A capture's `command` is the whole invocation - flags and
+  // a paragraph-long prompt - which is unreadable on screen, so the prompt is extracted from it and
+  // can be replaced outright with something short enough to read in a couple of seconds.
+  const introMs = Math.round(numberOpt(args, "intro", 3) * 1000);
+  const promptFromCommand = /(?:^|\s)-p\s+(.+)$/s.exec(String(cast.command || ""));
+  const ask = args.ask
+    ? String(args.ask)
+    : (promptFromCommand ? promptFromCommand[1].replace(/^["']|["']$/g, "") : String(cast.command || "session"));
   const width = Math.round(numberOpt(args, "width", Math.ceil(cols * fontSize * 0.605) + 56));
   const height = Math.round(numberOpt(args, "height", Math.ceil(rows * fontSize * 1.32) + 84));
   // A clip rendered over the gate's objection must be impossible to mistake for a clean one later,
@@ -834,7 +869,7 @@ async function renderTerminal(args) {
   try {
     ensureDir(stageDir);
     const pageFile = path.join(stageDir, "player.html");
-    fs.writeFileSync(pageFile, terminalPage({ cast, timeline, fontSize, endHoldMs }));
+    fs.writeFileSync(pageFile, terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask }));
     const videoDir = path.join(stageDir, "video");
     ensureDir(videoDir);
     browser = await chromium.launch();

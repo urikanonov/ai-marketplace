@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 
 import {
   MIN_BEAT_MS, planBeats,
-  DEFAULT_HOLD_MS, MAX_HOLD_MS, MIN_HOLD_MS, compressTimeline, fitTimeline,
+  DEFAULT_HOLD_MS, MAX_HOLD_MS, MIN_HOLD_MS, coalesceEvents, compressTimeline, fitTimeline,
 } from "../tools/timeline.mjs";
 import { REPORT_BEATS, REPORT_ABILITIES } from "../tools/report-beats.mjs";
 
@@ -338,4 +338,61 @@ test("the closing stretch is exempt from the speed-up (DEMO-FF-13)", () => {
     assert.ok(fitted.events[i].t >= fitted.events[i - 1].t, "the clock went backwards at the join");
   }
   assert.throws(() => fitTimeline(events, 30000, { tailMs: -1 }), /tailMs/i);
+});
+
+test("the opening is exempt from the speed-up as well as the ending (DEMO-FF-14)", () => {
+  // The start is where a viewer reads what was ASKED FOR and the end is where the answer lands.
+  // Racing through either defeats the clip, so both spans keep their natural pace and the middle -
+  // the long stretch of the panel grinding away - absorbs the compression.
+  const events = Array.from({ length: 600 }, (_, i) => ({ t: i * 200, data: `line ${i}\r\n` }));
+  const headMs = 8000;
+  const tailMs = 15000;
+  const fitted = fitTimeline(events, 40000, { headMs, tailMs });
+  assert.ok(Math.abs(fitted.durationMs - 40000) <= 600, `missed the target: ${fitted.durationMs}ms`);
+
+  const head = fitted.events.filter((e) => e.sourceT <= headMs);
+  assert.ok(head.length > 5, "the head selection found almost nothing");
+  for (let i = 1; i < head.length; i++) {
+    assert.equal(head[i].t - head[i - 1].t, head[i].sourceT - head[i - 1].sourceT,
+      "the opening was re-timed instead of played at its natural pace");
+  }
+  const cut = (600 - 1) * 200 - tailMs;
+  const tail = fitted.events.filter((e) => e.sourceT >= cut);
+  for (let i = 1; i < tail.length; i++) {
+    assert.equal(tail[i].t - tail[i - 1].t, tail[i].sourceT - tail[i - 1].sourceT,
+      "the ending was re-timed instead of played at its natural pace");
+  }
+  // The middle carried the compression, and the clock never goes backwards across either join.
+  assert.ok(fitted.speed > 1, "the middle was not compressed at all");
+  for (let i = 1; i < fitted.events.length; i++) {
+    assert.ok(fitted.events[i].t >= fitted.events[i - 1].t, "the clock went backwards at a join");
+  }
+  assert.throws(() => fitTimeline(events, 40000, { headMs: -1 }), /headMs/i);
+});
+
+test("writes that share a moment are merged without losing a byte (DEMO-FF-15)", () => {
+  // A compressed middle asks the player to write thousands of chunks milliseconds apart, and each
+  // write costs real time to parse and paint - so the replay cannot keep up and the clip runs long
+  // however aggressive the schedule is. Merging chunks that share a moment removes that floor.
+  const events = [
+    { t: 0, data: "a", fastForward: false, skippedMs: 0 },
+    { t: 5, data: "b", fastForward: false, skippedMs: 0 },
+    { t: 12, data: "c", fastForward: false, skippedMs: 0 },
+    { t: 400, data: "d", fastForward: false, skippedMs: 0 },
+    { t: 700, data: "e", fastForward: true, skippedMs: 9000 },
+    { t: 705, data: "f", fastForward: false, skippedMs: 0 },
+  ];
+  const merged = coalesceEvents(events, 40);
+  // Not one byte lost, and the order is exactly as captured.
+  assert.equal(merged.map((e) => e.data).join(""), "abcdef");
+  assert.ok(merged.length < events.length, "nothing was merged at all");
+  assert.equal(merged[0].data, "abc", "the shared moment was not merged");
+  // A fast-forward keeps its own chunk so the badge and skipped time stay on the right moment.
+  const ff = merged.find((e) => e.fastForward);
+  assert.equal(ff.data, "e");
+  assert.equal(ff.skippedMs, 9000);
+  // A zero window merges nothing but still preserves the stream.
+  assert.equal(coalesceEvents(events, 0).map((e) => e.data).join(""), "abcdef");
+  assert.throws(() => coalesceEvents(events, -1), /windowMs/i);
+  assert.throws(() => coalesceEvents("nope"), /array/i);
 });

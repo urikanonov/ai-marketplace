@@ -79,8 +79,7 @@ export function planBeats(beats, totalMs, opts = {}) {
   }));
 }
 
-export const DEFAULT_IDLE_MS = 900;
-export const DEFAULT_HOLD_MS = 320;
+export const DEFAULT_IDLE_MS = 900;export const DEFAULT_HOLD_MS = 320;
 // A fast-forward is a beat, not a scene: past about a second and a half the badge stops reading as
 // "time passed" and starts reading as "the clip froze". The floor is the other end of that - below
 // roughly a tenth of a second the badge is gone before a viewer can register it.
@@ -216,27 +215,36 @@ export function fitTimeline(events, targetMs, opts = {}) {
   // play the whole thing faster: a uniform factor keeps the rhythm intact (which compressing small
   // gaps further would destroy) and is exactly how anyone watches a terminal recording anyway.
   //
-  // `tailMs` protects the ENDING from that speed-up. The last stretch of a session is usually the
-  // part that matters - the consolidated summary, the verdict - and racing through it defeats the
-  // clip. That stretch replays at its natural pace and the earlier bulk absorbs the compression.
+  // `tailMs` protects the ENDING from that speed-up, and `headMs` the OPENING. The start is where a
+  // viewer reads what was asked for and the end is where the answer lands; racing through either
+  // defeats the clip. Both spans replay at their natural pace and the middle - the long stretch of
+  // the panel grinding away - absorbs the compression.
   let { result } = best;
   let speed = 1;
   const tailMs = opts.tailMs == null ? 0 : opts.tailMs;
+  const headMs = opts.headMs == null ? 0 : opts.headMs;
   if (!Number.isFinite(tailMs) || tailMs < 0) throw new Error("tailMs must not be negative");
+  if (!Number.isFinite(headMs) || headMs < 0) throw new Error("headMs must not be negative");
   if (!opts.noSpeedUp && result.durationMs > targetMs && targetMs > 0) {
-    const cut = result.sourceDurationMs - tailMs;
-    const split = tailMs > 0 ? result.events.findIndex((e) => e.sourceT >= cut) : -1;
-    if (split > 0) {
-      const bodyMs = result.events[split - 1].t;
-      const tailClipMs = result.durationMs - bodyMs;
-      const budgetForBody = targetMs - tailClipMs;
-      if (budgetForBody > 0 && bodyMs > budgetForBody) {
-        speed = bodyMs / budgetForBody;
-        const events = result.events.map((e, i) => (i < split
-          ? { ...e, t: Math.round(e.t / speed) }
-          : { ...e, t: Math.round(budgetForBody + (e.t - bodyMs)) }));
-        result = { ...result, events, durationMs: Math.round(budgetForBody + tailClipMs) };
-      }
+    const tailCut = result.sourceDurationMs - tailMs;
+    const firstTail = tailMs > 0 ? result.events.findIndex((e) => e.sourceT >= tailCut) : -1;
+    const lastHead = headMs > 0
+      ? result.events.findIndex((e) => e.sourceT > headMs)
+      : -1;
+    const bodyStart = lastHead > 0 ? lastHead : 0;
+    const bodyEnd = firstTail > bodyStart ? firstTail : result.events.length;
+    const headClipMs = bodyStart > 0 ? result.events[bodyStart - 1].t : 0;
+    const bodyClipMs = (bodyEnd > 0 ? result.events[bodyEnd - 1].t : 0) - headClipMs;
+    const tailClipMs = result.durationMs - headClipMs - bodyClipMs;
+    const budgetForBody = targetMs - headClipMs - tailClipMs;
+    if ((headMs > 0 || tailMs > 0) && budgetForBody > 0 && bodyClipMs > budgetForBody) {
+      speed = bodyClipMs / budgetForBody;
+      const events = result.events.map((e, i) => {
+        if (i < bodyStart) return e;
+        if (i >= bodyEnd) return { ...e, t: Math.round(headClipMs + budgetForBody + (e.t - headClipMs - bodyClipMs)) };
+        return { ...e, t: Math.round(headClipMs + (e.t - headClipMs) / speed) };
+      });
+      result = { ...result, events, durationMs: Math.round(headClipMs + budgetForBody + tailClipMs) };
     }
     if (speed === 1 && result.durationMs > targetMs) {
       speed = result.durationMs / targetMs;
@@ -248,4 +256,27 @@ export function fitTimeline(events, targetMs, opts = {}) {
     }
   }
   return { idleMs: best.idleMs, holdMs: best.holdMs, speed, ...result };
+}
+
+// Merge writes that land within the same instant of the replay.
+//
+// A compressed middle asks the player to write thousands of chunks a few milliseconds apart, and
+// every write costs real time to parse and paint - so the replay cannot keep up and the clip runs
+// long however aggressive the schedule is. Concatenating chunks that share a moment removes that
+// floor without dropping a single byte: the terminal renders exactly the same text, in the same
+// order, in fewer calls. A fast-forward event is a BOUNDARY - it neither joins the chunk before it
+// nor absorbs the one after - so its badge and its skipped time stay attached to the right moment.
+export function coalesceEvents(events, windowMs = 40) {
+  if (!Array.isArray(events)) throw new Error("coalesceEvents needs an array of events");
+  if (!Number.isFinite(windowMs) || windowMs < 0) throw new Error("windowMs must not be negative");
+  const out = [];
+  for (const event of events) {
+    const last = out[out.length - 1];
+    if (last && !event.fastForward && !last.fastForward && event.t - last.t <= windowMs) {
+      last.data += event.data;
+      continue;
+    }
+    out.push({ ...event });
+  }
+  return out;
 }
