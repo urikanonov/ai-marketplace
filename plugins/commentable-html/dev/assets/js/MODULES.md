@@ -13,7 +13,8 @@ Conventions for these partials (they share ONE closure scope after concatenation
 - The FIRST partial (`00-preamble.js`) must stay first: it captures `SNAPSHOT_HTML` and
   `document.currentScript` before any DOM access, and opens the IIFE. The LAST partial
   (`95-startup.js`) closes the IIFE and runs startup. Do not reorder these two.
-- Shared infrastructure used across modules: `widgetStateChanges` (35-widgets), and the export
+- Shared infrastructure used across modules: the rich-content selector vocabulary (`03-selectors.js`),
+  `widgetStateChanges` (35-widgets), and the export
   primitives `SNAPSHOT_HTML` / `CMH_LAYER_SCRIPT` / `CMH_INJECTED_CHROME` / `_stripTransientBodyClasses`
   / `_snapshotWithTail` (65-export-portable) are consumed by later export modules - move with care.
 
@@ -22,6 +23,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `00-preamble.js` | CMH-CORE, CMH-EXP | IIFE opener; captures `SNAPSHOT_HTML` and `document.currentScript` before any DOM access. |
 | `01-config.js` | CMH-CORE, CMH-FWDCOMPAT, CMH-DENSITY, CMH-SEC | Auto-discovered config; declares `CMH_VERSION` (build.py stamps it). |
 | `02-lzstring.js` | CMH-STORE | Vendored lz-string (trimmed `compressToUTF16`/`decompressFromUTF16`, bounded decode) used to pack the comment store. |
+| `03-selectors.js` | CMH-CHART, CMH-MMD, CMH-OFFLINE | The one shared rich-content selector vocabulary (`CMH_MERMAID_SEL`, `CMH_CHART_DATA_SEL`, `CMH_CHART_CANVAS_SEL`, `CMH_RICH_CONTENT_SEL`) the chart renderer, the image layer, the Offline exporter, and the author-time payload detector all derive from. |
 | `05-persistence.js` | CMH-PERSIST, CMH-STORE, CMH-EXP | localStorage load/merge/save of the comments array; sync compression codec + quota-aware write helpers. |
 | `10-offsets.js` | CMH-CORE, CMH-TEXT | Text-offset anchoring helpers. |
 | `15-context.js` | CMH-CORE, CMH-COPY | Section + surrounding-text context capture. |

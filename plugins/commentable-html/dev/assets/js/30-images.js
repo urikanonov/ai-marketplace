@@ -289,7 +289,7 @@ function renderInteractiveChart(canvas, activeIndex, measure) {
   return true;
 }
 function setupInteractiveCharts() {
-  const charts = Array.from(root.querySelectorAll("canvas.cmh-chart[data-cmh-chart-points], canvas.cmh-chart[data-cmh-chart-source], figure.chart canvas[data-cmh-chart-points], figure.chart canvas[data-cmh-chart-source]"));
+  const charts = Array.from(root.querySelectorAll(CMH_CHART_DATA_SEL));
   charts.forEach(function (canvas) {
     renderInteractiveChart(canvas, canvas._cmhChart ? canvas._cmhChart.activeIndex : -1);
     if (canvas._cmhChartBound) return;
@@ -310,7 +310,7 @@ function setupInteractiveCharts() {
   if (!chartResizeBound) {
     chartResizeBound = true;
     window.addEventListener("resize", function () {
-      root.querySelectorAll("canvas[data-cmh-chart-points], canvas[data-cmh-chart-source]").forEach(function (canvas) {
+      root.querySelectorAll(CMH_CHART_DATA_SEL).forEach(function (canvas) {
         renderInteractiveChart(canvas, canvas._cmhChart ? canvas._cmhChart.activeIndex : -1);
       });
       if (chartTooltipCanvas && chartTooltipCanvas._cmhChart && chartTooltipCanvas._cmhChart.activeIndex >= 0) {
@@ -355,10 +355,19 @@ function setupInteractiveCharts() {
   }
 }
 
+// Chart MEDIA: the chart FIGURE is matched ancestor-or-self (so an <img> inside a chart figure
+// counts too), the `.cmh-chart` class is matched on the element itself, and a canvas the built-in
+// renderer draws counts by its data attributes. Shared by the index pass and the anchor metadata so
+// the two can never classify the same element differently.
+function _isChartMedia(el) {
+  if (!el) return false;
+  return !!(el.closest(CMH_CHART_FIGURE_SEL) || el.matches(CMH_CHART_MARK_SEL)
+    || el.matches(CMH_CHART_DATA_SEL));
+}
 function indexImages() {
   imageEls.length = 0;
   root.querySelectorAll("img, canvas").forEach((el) => {
-    const isChartMedia = el.closest("figure.chart") || el.classList.contains("cmh-chart");
+    const isChartMedia = _isChartMedia(el);
     if (el.tagName === "IMG") {
       if (el.closest(".cm-skip") && !isChartMedia) return; // skip UI-chrome images
     } else { // CANVAS: only chart canvases are commentable media (never mermaid/diff surfaces).
@@ -387,7 +396,7 @@ function _imageElMeta(img) {
   const isCanvas = img && img.tagName === "CANVAS";
   const alt = _imageOneLine(img && (img.getAttribute("alt") || img.getAttribute("aria-label") || ""));
   const src = _imageOneLine(img && img.getAttribute("src"));
-  const kind = (isCanvas || (img && img.closest("figure.chart")) || (img && img.classList.contains("cmh-chart"))) ? "chart" : "image";
+  const kind = (isCanvas || _isChartMedia(img)) ? "chart" : "image";
   return { alt, src, kind };
 }
 function _imageMismatch(img, comment) {

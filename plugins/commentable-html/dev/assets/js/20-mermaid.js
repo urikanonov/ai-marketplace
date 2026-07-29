@@ -137,7 +137,7 @@ var MERMAID_RENDERED_SEL = MERMAID_NODE_SEL.split(", ").map(function (s) { retur
 
 function indexMermaidDiagrams() {
   mermaidDiagrams.length = 0;
-  const hosts = root.querySelectorAll("pre.mermaid, div.mermaid");
+  const hosts = root.querySelectorAll(CMH_MERMAID_SEL);
   hosts.forEach((host, i) => {
     host.classList.add("cm-mermaid-host");
     host.dataset.cmMermaidIndex = String(i);
@@ -296,13 +296,13 @@ function classifyDeckDiagramSlide(host) {
   const slide = host.closest(".slide");
   if (!slide) return;
   if (slide.classList.contains("cmh-slide-diagram")) { slide.classList.add("cmh-deck-diagram-slide"); return; }
-  const diagrams = slide.querySelectorAll("pre.mermaid, div.mermaid");
+  const diagrams = slide.querySelectorAll(CMH_MERMAID_SEL);
   const hasCols = !!slide.querySelector(".cmh-cols-2");
   let hasOther = false;
   slide.querySelectorAll(DECK_RICH_OTHER_SEL).forEach((el) => {
     // Skip the diagram's own rendered content and any wrapper that CONTAINS the host (e.g. a
     // <figure> around the diagram) - only a genuine SIBLING rich block is disqualifying.
-    if (host.contains(el) || el.contains(host) || el.closest("pre.mermaid, div.mermaid")) return;
+    if (host.contains(el) || el.contains(host) || el.closest(CMH_MERMAID_SEL)) return;
     hasOther = true;
   });
   slide.classList.toggle("cmh-deck-diagram-slide", diagrams.length === 1 && !hasOther && !hasCols);

@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.271.0";
+const CMH_VERSION = "1.273.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -481,6 +481,28 @@ const LZString = (function () {
     },
   };
 })();
+/* ---------- Shared content selectors ----------
+   ONE definition of the rich-content shapes the runtime recognises. The live chart renderer and
+   the image comment layer (30-images.js) and the Offline exporter (68-export-offline.js) all
+   derive their queries from these constants, and the author-time payload detector
+   (tools/authoring/vendored_libs.py) pins its own list to them, so they can no longer drift into
+   disagreeing about what a chart is - which is how a bare data-bearing canvas came to draw on a
+   window resize but not at load, and to be missed entirely by the exporter (issue #740). */
+const CMH_MERMAID_SEL = "pre.mermaid, div.mermaid";
+// The authored "this is a chart" markers, matched differently on purpose (see `_isChartMedia`):
+// the FIGURE is an ancestor-or-self test, because an <img> inside a chart figure is chart media
+// too, while the CLASS marker is a self test on the media element itself.
+const CMH_CHART_FIGURE_SEL = "figure.chart";
+const CMH_CHART_MARK_SEL = ".cmh-chart";
+// A canvas the BUILT-IN chart renderer draws: it carries its points inline or by source id.
+const CMH_CHART_DATA_SEL = "canvas[data-cmh-chart-points], canvas[data-cmh-chart-source]";
+// Every canvas the runtime treats as a chart. A strict superset of CMH_CHART_DATA_SEL, because an
+// authored `figure.chart` / `.cmh-chart` canvas may instead be drawn by the document's own Chart.js,
+// which the Offline export has to inline. Keeping it a superset by CONSTRUCTION is the invariant:
+// anything the renderer draws is something the exporter provisions for.
+const CMH_CHART_CANVAS_SEL =
+  CMH_CHART_FIGURE_SEL + " canvas, canvas" + CMH_CHART_MARK_SEL + ", " + CMH_CHART_DATA_SEL;
+const CMH_RICH_CONTENT_SEL = CMH_MERMAID_SEL + ", " + CMH_CHART_CANVAS_SEL;
 /* ---------- Persistence ---------- */
 // True for a storage-quota error across browsers (Chrome/Safari "QuotaExceededError", Firefox
 // "NS_ERROR_DOM_QUOTA_REACHED"; legacy numeric codes 22 / 1014). A DOMException raised via the
@@ -1240,7 +1262,7 @@ var MERMAID_RENDERED_SEL = MERMAID_NODE_SEL.split(", ").map(function (s) { retur
 
 function indexMermaidDiagrams() {
   mermaidDiagrams.length = 0;
-  const hosts = root.querySelectorAll("pre.mermaid, div.mermaid");
+  const hosts = root.querySelectorAll(CMH_MERMAID_SEL);
   hosts.forEach((host, i) => {
     host.classList.add("cm-mermaid-host");
     host.dataset.cmMermaidIndex = String(i);
@@ -1399,13 +1421,13 @@ function classifyDeckDiagramSlide(host) {
   const slide = host.closest(".slide");
   if (!slide) return;
   if (slide.classList.contains("cmh-slide-diagram")) { slide.classList.add("cmh-deck-diagram-slide"); return; }
-  const diagrams = slide.querySelectorAll("pre.mermaid, div.mermaid");
+  const diagrams = slide.querySelectorAll(CMH_MERMAID_SEL);
   const hasCols = !!slide.querySelector(".cmh-cols-2");
   let hasOther = false;
   slide.querySelectorAll(DECK_RICH_OTHER_SEL).forEach((el) => {
     // Skip the diagram's own rendered content and any wrapper that CONTAINS the host (e.g. a
     // <figure> around the diagram) - only a genuine SIBLING rich block is disqualifying.
-    if (host.contains(el) || el.contains(host) || el.closest("pre.mermaid, div.mermaid")) return;
+    if (host.contains(el) || el.contains(host) || el.closest(CMH_MERMAID_SEL)) return;
     hasOther = true;
   });
   slide.classList.toggle("cmh-deck-diagram-slide", diagrams.length === 1 && !hasOther && !hasCols);
@@ -3336,7 +3358,7 @@ function renderInteractiveChart(canvas, activeIndex, measure) {
   return true;
 }
 function setupInteractiveCharts() {
-  const charts = Array.from(root.querySelectorAll("canvas.cmh-chart[data-cmh-chart-points], canvas.cmh-chart[data-cmh-chart-source], figure.chart canvas[data-cmh-chart-points], figure.chart canvas[data-cmh-chart-source]"));
+  const charts = Array.from(root.querySelectorAll(CMH_CHART_DATA_SEL));
   charts.forEach(function (canvas) {
     renderInteractiveChart(canvas, canvas._cmhChart ? canvas._cmhChart.activeIndex : -1);
     if (canvas._cmhChartBound) return;
@@ -3357,7 +3379,7 @@ function setupInteractiveCharts() {
   if (!chartResizeBound) {
     chartResizeBound = true;
     window.addEventListener("resize", function () {
-      root.querySelectorAll("canvas[data-cmh-chart-points], canvas[data-cmh-chart-source]").forEach(function (canvas) {
+      root.querySelectorAll(CMH_CHART_DATA_SEL).forEach(function (canvas) {
         renderInteractiveChart(canvas, canvas._cmhChart ? canvas._cmhChart.activeIndex : -1);
       });
       if (chartTooltipCanvas && chartTooltipCanvas._cmhChart && chartTooltipCanvas._cmhChart.activeIndex >= 0) {
@@ -3402,10 +3424,19 @@ function setupInteractiveCharts() {
   }
 }
 
+// Chart MEDIA: the chart FIGURE is matched ancestor-or-self (so an <img> inside a chart figure
+// counts too), the `.cmh-chart` class is matched on the element itself, and a canvas the built-in
+// renderer draws counts by its data attributes. Shared by the index pass and the anchor metadata so
+// the two can never classify the same element differently.
+function _isChartMedia(el) {
+  if (!el) return false;
+  return !!(el.closest(CMH_CHART_FIGURE_SEL) || el.matches(CMH_CHART_MARK_SEL)
+    || el.matches(CMH_CHART_DATA_SEL));
+}
 function indexImages() {
   imageEls.length = 0;
   root.querySelectorAll("img, canvas").forEach((el) => {
-    const isChartMedia = el.closest("figure.chart") || el.classList.contains("cmh-chart");
+    const isChartMedia = _isChartMedia(el);
     if (el.tagName === "IMG") {
       if (el.closest(".cm-skip") && !isChartMedia) return; // skip UI-chrome images
     } else { // CANVAS: only chart canvases are commentable media (never mermaid/diff surfaces).
@@ -3434,7 +3465,7 @@ function _imageElMeta(img) {
   const isCanvas = img && img.tagName === "CANVAS";
   const alt = _imageOneLine(img && (img.getAttribute("alt") || img.getAttribute("aria-label") || ""));
   const src = _imageOneLine(img && img.getAttribute("src"));
-  const kind = (isCanvas || (img && img.closest("figure.chart")) || (img && img.classList.contains("cmh-chart"))) ? "chart" : "image";
+  const kind = (isCanvas || _isChartMedia(img)) ? "chart" : "image";
   return { alt, src, kind };
 }
 function _imageMismatch(img, comment) {
@@ -11299,7 +11330,7 @@ function _stripOfflineRichRenderers(doc) {
 }
 let _offlineVendoredRichLibsPromise = null;
 function _offlineLiveDocNeedsRichLibs() {
-  return !!root.querySelector("pre.mermaid, div.mermaid, figure.chart canvas, canvas.cmh-chart");
+  return !!root.querySelector(CMH_RICH_CONTENT_SEL);
 }
 function _ensureOfflineVendoredRichLibsPromise() {
   if (_offlineVendoredRichLibsPromise) return _offlineVendoredRichLibsPromise;
@@ -11338,11 +11369,11 @@ function _primeOfflineVendoredRichLibs() {
 }
 function _offlineDocUsesMermaid(doc) {
   const docRoot = doc.getElementById("commentRoot") || doc.body;
-  return !!(docRoot && docRoot.querySelector("pre.mermaid, div.mermaid"));
+  return !!(docRoot && docRoot.querySelector(CMH_MERMAID_SEL));
 }
 function _offlineDocUsesCharts(doc) {
   const docRoot = doc.getElementById("commentRoot") || doc.body;
-  return !!(docRoot && docRoot.querySelector("figure.chart canvas, canvas.cmh-chart"));
+  return !!(docRoot && docRoot.querySelector(CMH_CHART_CANVAS_SEL));
 }
 // The chart-canvas selector above is a deliberate SUPERSET of what any one renderer draws, so the
 // shape of a canvas is not evidence that Chart.js is needed: a canvas carrying
@@ -11391,7 +11422,7 @@ function _offlineChartDataUsable(parsed) {
 function _offlineDocNeedsChartLib(doc, referencesChartLib) {
   if (!_offlineDocUsesCharts(doc)) return false;
   const docRoot = doc.getElementById("commentRoot") || doc.body;
-  const canvases = Array.prototype.slice.call(docRoot.querySelectorAll("figure.chart canvas, canvas.cmh-chart"));
+  const canvases = Array.prototype.slice.call(docRoot.querySelectorAll(CMH_CHART_CANVAS_SEL));
   const drawnByRuntime = function (canvas) {
     // Follow _chartConfig's precedence exactly: a resolvable source element WINS - unparseable
     // source JSON makes the renderer give up entirely, and only a source that parses FALSY lets it
@@ -11506,7 +11537,7 @@ async function _offlineInlineRichLibs(doc, referencesChartLib) {
       + "    var htmlLabels = !document.querySelector('.deck-stage');\n"
       + "    try { window.mermaid.initialize({ startOnLoad: false, theme: theme, securityLevel: 'strict', htmlLabels: htmlLabels, flowchart: { htmlLabels: htmlLabels, curve: 'basis' } }); }\n"
       + "    catch (e) { return; }\n"
-      + "    var all = Array.prototype.slice.call(document.querySelectorAll('pre.mermaid, div.mermaid'));\n"
+      + "    var all = Array.prototype.slice.call(document.querySelectorAll(" + JSON.stringify(CMH_MERMAID_SEL) + "));\n"
       + "    runVisible(all.filter(function (el) { return !el.hasAttribute('data-processed') && !isHidden(el); }));\n"
       + "    all.filter(function (el) { return !el.hasAttribute('data-processed') && isHidden(el); }).forEach(renderHidden);\n"
       + "    window.__cmhMermaidReady = chain;\n"

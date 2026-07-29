@@ -11,17 +11,18 @@ megabyte-long line immediately.
 This module decides, keeps, drops, and (re-)places that payload. Two properties matter:
 
 1. DETECTION IS SCOPED TO THE CONTENT REGION. The built review layer's own JavaScript contains
-   `pre.mermaid, div.mermaid, figure.chart canvas, canvas.cmh-chart` as a literal selector
-   string, so a whole-document scan matches EVERY document and the feature silently becomes a
-   no-op. Only the authored fragment between the CONTENT markers counts.
+   `pre.mermaid, div.mermaid` and the chart canvas selectors as literal strings (they are declared
+   once in `assets/js/03-selectors.js`), so a whole-document scan matches EVERY document and the
+   feature silently becomes a no-op. Only the authored fragment between the CONTENT markers counts.
 2. THE DECISION IS RE-EVALUATED, NOT MADE ONCE. A document that gains a diagram after it was
    stripped must get the payload back, or its offline export breaks. `apply` therefore both
    removes and restores, and finalize runs it on every write-back.
 
 The selector set is deliberately the SAME one the runtime uses to decide whether it needs the
-bundle (`_offlineLiveDocNeedsRichLibs` / `_offlineDocUsesMermaid` / `_offlineDocUsesCharts` in
-assets/js/68-export-offline.js). If the two ever disagree, a document could ship without a
-payload its exporter then demands, so a test pins them together.
+bundle: `68-export-offline.js` (`_offlineLiveDocNeedsRichLibs` / `_offlineDocUsesMermaid` /
+`_offlineDocUsesCharts`) queries the shared constants declared in `assets/js/03-selectors.js`, and
+so does the live chart renderer in `assets/js/30-images.js`. If the two ever disagree, a document
+could ship without a payload its exporter then demands, so a test pins them together.
 """
 import os
 import re
@@ -35,7 +36,8 @@ import new_document  # noqa: E402
 
 BLOB_ID = "cmhVendoredRichLibs"
 
-RUNTIME_SELECTORS = ("pre.mermaid", "div.mermaid", "figure.chart canvas", "canvas.cmh-chart")
+RUNTIME_SELECTORS = ("pre.mermaid", "div.mermaid", "figure.chart canvas", "canvas.cmh-chart",
+                     "canvas[data-cmh-chart-points]", "canvas[data-cmh-chart-source]")
 
 USES = "uses"
 UNUSED = "unused"
@@ -120,14 +122,12 @@ class _DocScan(HTMLParser):
                     self.uses = True
                 elif any(t == "figure" and "chart" in c for t, c in self._stack):
                     self.uses = True
-                elif any(name.startswith("data-cmh-chart") for name in attrs):
-                    # A DELIBERATE superset of the exporter's selector list. The LIVE renderer
-                    # (assets/js/30-images.js) draws a chart from
-                    # `canvas[data-cmh-chart-points], canvas[data-cmh-chart-source]` even
-                    # without the `cmh-chart` class, while the exporter only looks for
-                    # `canvas.cmh-chart` / `figure.chart canvas`. Keeping the payload for such a
-                    # canvas errs toward a document that is larger than strictly necessary
-                    # rather than one whose chart renders live and then breaks when exported.
+                elif any(name in ("data-cmh-chart-points", "data-cmh-chart-source") for name in attrs):
+                    # The runtime's own chart selector list (assets/js/03-selectors.js) includes
+                    # `canvas[data-cmh-chart-points], canvas[data-cmh-chart-source]`: those are the
+                    # canvases the LIVE renderer draws, with or without the `cmh-chart` class, and
+                    # the exporter provisions the library for exactly the same set. This is now
+                    # parity with the runtime, not the deliberate superset it used to be.
                     self.uses = True
         if tag not in _VOID:
             self._stack.append((tag, classes))

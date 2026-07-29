@@ -183,8 +183,10 @@ class RuntimeDifferentialTests(unittest.TestCase):
     the check that matters: a FALSE NEGATIVE deletes a payload the document's own offline export
     then demands, and fails with "Offline export is missing the vendored Chart.js bundle". So
     run a genuine HTML-parser implementation of the runtime's selector list
-    (`pre.mermaid, div.mermaid, figure.chart canvas, canvas.cmh-chart`) over every shipped
-    example's CONTENT region and require the fast regex to reach the same verdict.
+    (`pre.mermaid, div.mermaid, figure.chart canvas, canvas.cmh-chart,
+    canvas[data-cmh-chart-points], canvas[data-cmh-chart-source]` - declared once in
+    `assets/js/03-selectors.js`) over every shipped example's CONTENT region and require the
+    fast regex to reach the same verdict.
     """
 
     class _RuntimeTruth(HTMLParser):
@@ -218,6 +220,8 @@ class RuntimeDifferentialTests(unittest.TestCase):
                 if tag == "canvas" and "cmh-chart" in classes:
                     self.hit = True
                 if tag == "canvas" and any(t == "figure" and "chart" in c for t, c in self.stack):
+                    self.hit = True
+                if tag == "canvas" and ("data-cmh-chart-points" in attrs or "data-cmh-chart-source" in attrs):
                     self.hit = True
             if tag not in ("br", "img", "input", "meta", "link", "hr", "canvas"):
                 self.stack.append((tag, classes))
@@ -413,14 +417,23 @@ class HtmlBlindnessTests(unittest.TestCase):
                          "the padded closing tag must be removed with its element")
 
     def test_a_bare_chart_canvas_the_live_renderer_draws_keeps_the_payload(self):
-        # A DELIBERATE superset of the exporter's selectors: the live renderer draws
-        # `canvas[data-cmh-chart-points]` even without the cmh-chart class. Keeping the payload
-        # errs toward a larger document rather than a chart that renders and then breaks on
-        # export. See issue filed for the underlying runtime inconsistency.
+        # CMH-CHART-12: `canvas[data-cmh-chart-points]` (and `-source`) is part of the runtime's
+        # shared chart selector list, so the live renderer draws it and the exporter provisions
+        # for it even without the cmh-chart class. The author-time detector must agree, or the
+        # payload the export then demands is stripped.
         self.assertEqual(vendored_libs.content_state(_doc(
             '<h1>C</h1>\n<canvas id="a" data-cmh-chart-points="1,2,3"></canvas>')),
             vendored_libs.USES)
+        self.assertEqual(vendored_libs.content_state(_doc(
+            '<h1>C</h1>\n<canvas id="a" data-cmh-chart-source="pts"></canvas>')),
+            vendored_libs.USES)
 
+    def test_a_canvas_with_only_a_styling_chart_attribute_is_not_usage(self):
+        # `data-cmh-chart-max` alone carries no data, so neither the built-in renderer nor the
+        # exporter treats it as a chart. Counting it would keep 1.3 MB in every such document.
+        self.assertEqual(vendored_libs.content_state(_doc(
+            '<h1>C</h1>\n<canvas id="a" data-cmh-chart-max="10"></canvas>')),
+            vendored_libs.UNUSED)
 
     def test_an_authored_payload_example_inside_the_content_is_never_deleted(self):
         # DATA LOSS, found in review. A document can legitimately author a real (not commented)
@@ -490,64 +503,153 @@ class HtmlBlindnessTests(unittest.TestCase):
 
 
 class RuntimeParityTests(unittest.TestCase):
-    """CMH-SIZE-01: the author-time decision uses the same selectors as the runtime exporter."""
+    """CMH-SIZE-01 / CMH-CHART-12: one shared selector definition, pinned in three directions.
 
-    def _runtime_source(self):
-        path = os.path.join(_paths.DEV, "assets", "js", "68-export-offline.js")
+    The runtime declares its rich-content selectors ONCE, in `assets/js/03-selectors.js`, and the
+    exporter, the live chart renderer, and this module's `RUNTIME_SELECTORS` all derive from it.
+    These tests pin that: the constants resolve to exactly `RUNTIME_SELECTORS`, the exporter's
+    usage functions query the constants rather than re-typing a literal list, and the renderer's
+    set is a SUBSET of the exporter's so anything drawn live is provisioned for on export.
+    """
+
+    _CONST_RE = re.compile(r"^const (CMH_[A-Z0-9_]+)\s*=\s*(.+?);\s*$", re.M | re.S)
+
+    def _read(self, *parts):
+        path = os.path.join(_paths.DEV, "assets", "js", *parts)
         with open(path, "r", encoding="utf-8", newline="") as fh:
             return fh.read()
+
+    def _selector_constants(self):
+        """Resolve `03-selectors.js` into {constant name: [selector, ...]}.
+
+        The values are string literals concatenated with earlier constants, so evaluate them in
+        declaration order rather than assuming any one shape - a future constant built from two
+        others must resolve too, or this check silently stops covering it. Tokens are scanned
+        rather than split on `+`, because `+` is also a CSS sibling combinator.
+        """
+        source = self._read("03-selectors.js")
+        term_re = re.compile(r"\"([^\"]*)\"|'([^']*)'|`([^`]*)`|([A-Za-z_$][\w$]*)")
+        values = {}
+        for name, expr in self._CONST_RE.findall(source):
+            out = []
+            for m in term_re.finditer(expr):
+                literal = next((g for g in m.groups()[:3] if g is not None), None)
+                if literal is not None:
+                    out.append(literal)
+                    continue
+                ref = m.group(4)
+                self.assertIn(ref, values,
+                              "%s is built from %r, which is not a string literal or an "
+                              "already-declared selector constant" % (name, ref))
+                out.append(values[ref])
+            values[name] = "".join(out)
+        self.assertTrue(values, "no selector constants found in 03-selectors.js")
+        # A declaration this parser could not read would be silently DROPPED, and the parity check
+        # would keep passing while that selector quietly stopped being pinned - the exact silent
+        # regression these tests exist to prevent. Fail loudly instead.
+        self.assertEqual(
+            len(values), len(re.findall(r"^const CMH_[A-Z0-9_]+\s*=", source, re.M)),
+            "a selector constant in 03-selectors.js was not parsed; teach _CONST_RE its shape "
+            "rather than leaving it unpinned")
+        return {name: [p.strip() for p in value.split(",") if p.strip()]
+                for name, value in values.items()}
 
     def test_the_selector_set_matches_the_runtimes_exactly(self):
         """Two-directional: catches the runtime ADDING a selector, not just removing one.
 
-        Asserting only that the four known selectors are still present would keep passing if
-        someone taught the exporter a NEW chart shape, while the stripper silently missed it -
-        exactly the false negative that deletes a payload the export then demands.
+        Asserting only that the known selectors are still present would keep passing if someone
+        taught the exporter a NEW chart shape while the stripper silently missed it - exactly the
+        false negative that deletes a payload the export then demands. Nothing is filtered on the
+        words "chart"/"mermaid" either: a keyword filter would silently drop a future selector
+        such as `canvas[data-cmh-visual]` and quietly re-open the hole this test exists to close.
+        """
+        consts = self._selector_constants()
+        self.assertIn("CMH_RICH_CONTENT_SEL", consts,
+                      "the runtime no longer declares CMH_RICH_CONTENT_SEL; the parity check is "
+                      "stale and must be re-pointed at whatever replaced it")
+        self.assertEqual(
+            set(consts["CMH_RICH_CONTENT_SEL"]), set(vendored_libs.RUNTIME_SELECTORS),
+            "the runtime's rich-content selectors and vendored_libs.RUNTIME_SELECTORS have "
+            "diverged. Update RUNTIME_SELECTORS *and* the detector, or a document using the new "
+            "shape will be stripped of a payload its own offline export needs.")
 
-        The selectors are taken from the offline-usage functions and NOT filtered on the
-        words "chart"/"mermaid": a keyword filter would silently drop a future selector such as
-        `canvas[data-cmh-visual]` and quietly re-open the hole this test exists to close.
+    def test_the_exporter_queries_the_shared_constants_rather_than_its_own_literals(self):
+        """The single-definition invariant itself (issue #740).
+
+        Re-typing a selector list inside an offline-usage function is how the exporter and the
+        live renderer came to disagree about what a chart is. Fail on any string literal passed
+        to querySelector there, so the drift cannot come back.
 
         `_offlineDocNeedsChartLib` is in the list because it is the function that actually decides
-        whether the export inlines Chart.js; it repeats the chart-canvas selector, so pinning it
-        here is what stops that copy from drifting away from the one this module strips against.
-        Functions that scan `script` elements for evidence (`_offlineDocReferencesChartLib`) are
-        deliberately NOT in the list - their selector is not a content shape.
-
-        The per-function assertion below is what makes that pinning real: a UNION alone would still
-        pass if one function's copy of the chart selector were narrowed or dropped, because another
-        function contributes the same strings.
+        whether the export inlines Chart.js. It carries the chart-canvas selector a SECOND time,
+        and pinning it to the SAME constant as the shape gate is what stops the two from drifting
+        apart - a document whose chart one of them recognises and the other does not would lose
+        the library its export needs. Functions that scan `script` elements for evidence
+        (`_offlineDocReferencesChartLib`) are deliberately NOT in the list: their selector is not
+        a content shape.
         """
-        source = self._runtime_source()
-        found = set()
-        per_function = {}
-        for fn in ("_offlineLiveDocNeedsRichLibs", "_offlineDocUsesMermaid", "_offlineDocUsesCharts",
-                   "_offlineDocNeedsChartLib"):
+        source = self._read("68-export-offline.js")
+        expected = {
+            "_offlineLiveDocNeedsRichLibs": "CMH_RICH_CONTENT_SEL",
+            "_offlineDocUsesMermaid": "CMH_MERMAID_SEL",
+            "_offlineDocUsesCharts": "CMH_CHART_CANVAS_SEL",
+            "_offlineDocNeedsChartLib": "CMH_CHART_CANVAS_SEL",
+        }
+        for fn, constant in expected.items():
             start = source.find("function " + fn)
             self.assertNotEqual(start, -1,
                                 "the runtime no longer defines %s; the parity check is stale "
                                 "and must be re-pointed at whatever replaced it" % fn)
             body = source[start:source.find("\n}", start)]
-            selectors = set()
-            for m in re.finditer(r'querySelector(?:All)?\(\s*"([^"]*)"', body):
-                for part in m.group(1).split(","):
-                    if part.strip():
-                        selectors.add(part.strip())
-            per_function[fn] = selectors
-            found |= selectors
-        chart_selectors = {"figure.chart canvas", "canvas.cmh-chart"}
-        for fn in ("_offlineDocUsesCharts", "_offlineDocNeedsChartLib"):
+            self.assertTrue(
+                re.search(r"querySelector(?:All)?\(\s*" + re.escape(constant) + r"\s*\)", body),
+                "%s must query the shared %s constant" % (fn, constant))
             self.assertEqual(
-                per_function[fn], chart_selectors,
-                "%s must query exactly the pinned chart-canvas selectors. Both the shape gate and "
-                "the inline-the-library decision carry this literal; if one is narrowed, a document "
-                "whose chart the other still recognises loses the library its export needs." % fn)
-        self.assertTrue(found, "could not extract any selector from the runtime usage functions")
-        self.assertEqual(
-            found, set(vendored_libs.RUNTIME_SELECTORS),
-            "the runtime's rich-content selectors and vendored_libs.RUNTIME_SELECTORS have "
-            "diverged. Update RUNTIME_SELECTORS *and* the detector, or a document using the new "
-            "shape will be stripped of a payload its own offline export needs.")
+                re.findall(r"querySelector(?:All)?\(\s*[\"'`]", body), [],
+                "%s passes a selector literal instead of the shared constant" % fn)
+
+    def test_the_live_renderer_draws_a_subset_of_what_the_exporter_provisions_for(self):
+        """Anything the chart renderer draws must be something the export inlines Chart.js for."""
+        consts = self._selector_constants()
+        renderer = self._read("30-images.js")
+        self.assertIn("root.querySelectorAll(CMH_CHART_DATA_SEL)", renderer,
+                      "the live chart renderer must select the shared CMH_CHART_DATA_SEL set")
+        self.assertTrue(
+            set(consts["CMH_CHART_DATA_SEL"]).issubset(set(consts["CMH_CHART_CANVAS_SEL"])),
+            "the renderer's chart selectors must be a subset of the exporter's, or a chart can "
+            "render live and then export blank")
+
+    def test_no_other_partial_re_types_a_declared_selector_list_verbatim(self):
+        """A backstop against the coarsest form of re-typing: copying a declared list wholesale.
+
+        It is deliberately narrow. It does NOT catch a VARIANT of a declared list (the historical
+        drift was a variant, not a copy - `canvas.cmh-chart[data-cmh-chart-points], ...` versus
+        `figure.chart canvas, canvas.cmh-chart`); component-level matching would fire on the many
+        places that legitimately query `pre.mermaid` or `figure.chart` alone for a different
+        purpose. The real guarantee against a variant is that the consumers query the constants
+        (`test_the_exporter_queries_the_shared_constants_rather_than_its_own_literals` and
+        `test_the_live_renderer_draws_a_subset_of_what_the_exporter_provisions_for`); this only
+        stops a copy from quietly becoming a second source of truth.
+        """
+        # Only LISTS are guarded: re-typing an assembled multi-selector list is the drift this
+        # exists to catch, while a single token like `figure.chart` is ordinary CSS that other
+        # layers legitimately query on its own.
+        declared = {", ".join(sel_list) for sel_list in self._selector_constants().values()
+                    if len(sel_list) > 1}
+        self.assertTrue(declared, "no multi-selector constants declared in 03-selectors.js")
+        call_re = re.compile(
+            r"(?:querySelectorAll|querySelector|closest|matches)\(\s*[\"'`]([^\"'`]+)[\"'`]")
+        js_dir = os.path.join(_paths.DEV, "assets", "js")
+        for name in sorted(os.listdir(js_dir)):
+            if name == "03-selectors.js" or not name.endswith(".js"):
+                continue
+            body = self._read(name)
+            for used in call_re.findall(body):
+                normalized = ", ".join(p.strip() for p in used.split(",") if p.strip())
+                self.assertNotIn(
+                    normalized, declared,
+                    "%s re-types the selector list %r that 03-selectors.js already declares; "
+                    "query the shared constant instead" % (name, used))
 
     def test_every_runtime_selector_is_recognised_by_the_author_time_detector(self):
         markup = {
@@ -555,6 +657,8 @@ class RuntimeParityTests(unittest.TestCase):
             "div.mermaid": '<div class="mermaid">graph TD; A--&gt;B;</div>',
             "figure.chart canvas": '<figure class="chart"><canvas id="a"></canvas></figure>',
             "canvas.cmh-chart": '<canvas class="cmh-chart" id="b"></canvas>',
+            "canvas[data-cmh-chart-points]": '<canvas id="c" data-cmh-chart-points="[]"></canvas>',
+            "canvas[data-cmh-chart-source]": '<canvas id="d" data-cmh-chart-source="pts"></canvas>',
         }
         self.assertEqual(set(markup), set(vendored_libs.RUNTIME_SELECTORS),
                          "add example markup for every declared runtime selector")
