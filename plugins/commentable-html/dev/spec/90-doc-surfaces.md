@@ -127,3 +127,4 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-PORT-02 | site | opt-out: a compatibility guarantee - the viewer sees an old document simply continuing to work |
 | CMH-PORT-03 | tutorial, site | opt-out: a default-mode change; the slide shows the document, not which mode produced it |
 | CMH-PORT-04 | opt-out: internal safety hardening of the migration tool (crash-safe write, hostile-input neutralization, ambiguity refusal); a reader sees no new capability | opt-out: a robustness invariant with nothing to demonstrate on a slide |
+| CMH-VAL-19 | opt-out: an authoring-time validator internal (which occurrences of the companion markup decide the document mode); a reader sees no new capability | opt-out: an authoring-time validator internal, not a deck topic |
