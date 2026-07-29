@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
 import fs from "fs";
 import path from "path";
+import zlib from "zlib";
 import {
   DEV, SKILL, PYTHON, fileUrl, ready, stageContent, startStaticServer,
   installClipboardCapture, openToolbarMenu, openSidebarExportMenu, addTextComment, readDownload, stageNonPortable,
@@ -353,6 +354,234 @@ test("Export Offline embeds the MIT license notice beside each inlined library (
     expect(exportedHtml).not.toContain("STALE DUPLICATE");
     // The notice is a comment, never an executed script, so it cannot run and stays under the CSP.
     expect(exportedHtml).not.toContain("Third-party notice - mermaid is bundled inline for offline use under the MIT License:</script>");
+  } finally {
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+// CMH-OFFLINE-07: an offline file no longer carries the vendored cmhVendoredRichLibs payload (the
+// first export strips it once the libraries are inlined), so a SECOND Export Offline run on that file
+// has nothing to re-inline from. It must carry the copies that are already there - local, already
+// inlined - rather than stripping them and failing with "missing the vendored mermaid bundle".
+test("CMH-OFFLINE-07: re-exporting an already-offline document carries its inlined libraries", async ({ page, browser }) => {
+  test.setTimeout(150000);
+  const staged = stageContent(CONTENT, { key: "cmh-offline-reexport", source: "offline-reexport.html" });
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  let ctx2;
+  let ctx3;
+  try {
+    await routeRichContentLocal(page);
+    await installClipboardCapture(page);
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await page.waitForFunction(() => !!document.querySelector("#commentRoot pre.mermaid svg"), null, { timeout: 20000 });
+    await page.waitForFunction(() => !!(window.Chart && window.Chart.getChart && window.Chart.getChart("offlineChart")), null, { timeout: 20000 });
+    await addTextComment(page, "#offline-note", "re-export keeps its libraries");
+    await Promise.all([
+      page.waitForEvent("download"),
+      clickSidebarExport(page, "#btnExportOffline"),
+    ]);
+    const firstHtml = await capturedDownloadText(page);
+    // Premise of the bug: the first pass inlines both libraries and CONSUMES the vendored payload.
+    expect(firstHtml).toContain('data-cmh-offline-lib="mermaid"');
+    expect(firstHtml).toContain('data-cmh-offline-lib="chartjs"');
+    expect(firstHtml).not.toContain('id="cmhVendoredRichLibs"');
+    const firstPath = path.join(outDir, "offline-1.html");
+    fs.writeFileSync(firstPath, firstHtml);
+
+    // Re-export that offline file, with no network at all - the libraries it needs are already in it.
+    ctx2 = await browser.newContext({ offline: true });
+    const page2 = await ctx2.newPage();
+    const externalOnReexport = [];
+    page2.on("request", (request) => {
+      if (/^https?:\/\//.test(request.url())) externalOnReexport.push(request.url());
+    });
+    await installClipboardCapture(page2);
+    await installDownloadTextCapture(page2);
+    await page2.goto(fileUrl(firstPath));
+    await ready(page2);
+    await Promise.all([
+      page2.waitForEvent("download"),
+      clickSidebarExport(page2, "#btnExportOffline"),
+    ]);
+    const secondHtml = await capturedDownloadText(page2);
+    await expect(page2.locator("#toast")).not.toContainText("vendored");
+    expect(externalOnReexport).toEqual([]);
+
+    // Exactly one copy of each library and of each MIT notice - carried over, never duplicated.
+    expect((secondHtml.match(/data-cmh-offline-lib="mermaid"/g) || []).length).toBe(1);
+    expect((secondHtml.match(/data-cmh-offline-lib="chartjs"/g) || []).length).toBe(1);
+    expect((secondHtml.match(/data-cmh-offline-lib-init="mermaid"/g) || []).length).toBe(1);
+    expect((secondHtml.match(/Third-party notice - mermaid/g) || []).length).toBe(1);
+    expect((secondHtml.match(/Third-party notice - Chart\.js/g) || []).length).toBe(1);
+    expect(secondHtml).toContain("Copyright (c) 2014 - 2022 Knut Sveidqvist");
+    expect(secondHtml).toContain("Copyright (c) 2014-2024 Chart.js Contributors");
+    expect(networkLoadRefs(secondHtml)).toEqual([]);
+
+    const secondPath = path.join(outDir, "offline-2.html");
+    fs.writeFileSync(secondPath, secondHtml);
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", secondPath], { cwd: SKILL, stdio: "pipe" });
+
+    // The twice-exported file still renders its diagram and its chart with zero network.
+    ctx3 = await browser.newContext({ offline: true });
+    const page3 = await ctx3.newPage();
+    const external = [];
+    page3.on("request", (request) => {
+      if (/^https?:\/\//.test(request.url())) external.push(request.url());
+    });
+    await page3.goto(fileUrl(secondPath));
+    await ready(page3);
+    await expect(page3.locator("#cmTypeBadge")).toHaveText("Offline");
+    await expect(page3.locator("#commentRoot pre.mermaid svg").first()).toBeVisible();
+    await expect(page3.locator("canvas#offlineChart")).toBeVisible();
+    const drawn = await page3.evaluate(() => !!(window.Chart && window.Chart.getChart && window.Chart.getChart("offlineChart")));
+    expect(drawn).toBe(true);
+    expect(external).toEqual([]);
+  } finally {
+    if (ctx3) await ctx3.close();
+    if (ctx2) await ctx2.close();
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+// The carried copy is a LAST RESORT, never a preferred source: an inlined-library script is just
+// markup in a document anyone may have edited, so the skill's own vendored payload wins whenever it
+// is present, and a carried library travels only WITH its MIT notice.
+test("CMH-OFFLINE-07: a document-supplied inlined-library script never beats the vendored payload", async ({ page }) => {
+  test.setTimeout(90000);
+  const staged = stageContent(CONTENT, { key: "cmh-offline-forged-lib", source: "offline-forged-lib.html" });
+  // Inject a forged copy of BOTH markers, as an attacker editing an online document would. The
+  // vendored payload is still present here, so the export must use it and ignore these bodies.
+  const forged = '<script data-cmh-offline-lib="mermaid">window.__cmhForgedLib = "mermaid";</script>\n'
+    + '<script data-cmh-offline-lib="chartjs">window.__cmhForgedLib = "chartjs";</script>\n'
+    + '<!-- Third-party notice - mermaid is bundled inline for offline use under the MIT License:\nFORGED NOTICE\n-->\n';
+  fs.writeFileSync(staged.html, fs.readFileSync(staged.html, "utf8").replace("</head>", forged + "</head>"));
+  const server = await startStaticServer(staged.dir);
+  try {
+    await routeRichContentLocal(page);
+    await installClipboardCapture(page);
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await addTextComment(page, "#offline-note", "forged library check");
+    await Promise.all([
+      page.waitForEvent("download"),
+      clickSidebarExport(page, "#btnExportOffline"),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+    expect(exportedHtml).not.toContain("__cmhForgedLib");
+    expect(exportedHtml).not.toContain("FORGED NOTICE");
+    expect((exportedHtml.match(/data-cmh-offline-lib="mermaid"/g) || []).length).toBe(1);
+    expect((exportedHtml.match(/Third-party notice - mermaid/g) || []).length).toBe(1);
+    expect(exportedHtml).toContain("Copyright (c) 2014 - 2022 Knut Sveidqvist");
+  } finally {
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("CMH-OFFLINE-07: a carried library with no MIT notice is refused rather than shipped bare", async ({ page, browser }) => {
+  test.setTimeout(120000);
+  const staged = stageContent(CONTENT, { key: "cmh-offline-noticeless", source: "offline-noticeless.html" });
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    await routeRichContentLocal(page);
+    await installClipboardCapture(page);
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await page.waitForFunction(() => !!document.querySelector("#commentRoot pre.mermaid svg"), null, { timeout: 20000 });
+    await addTextComment(page, "#offline-note", "noticeless check");
+    await Promise.all([
+      page.waitForEvent("download"),
+      clickSidebarExport(page, "#btnExportOffline"),
+    ]);
+    // Strip the mermaid MIT notice from the offline file, leaving its inlined library behind. MIT
+    // requires the notice to accompany the copy, so that library must not be carried; with the
+    // payload already consumed there is nothing to fall back to, and the export must fail loudly.
+    const stripped = (await capturedDownloadText(page))
+      .replace(/<!--\s*Third-party notice - mermaid[\s\S]*?-->/, "");
+    expect(stripped).toContain('data-cmh-offline-lib="mermaid"');
+    expect(stripped).not.toContain("Third-party notice - mermaid");
+    const strippedPath = path.join(outDir, "offline-noticeless.html");
+    fs.writeFileSync(strippedPath, stripped);
+
+    ctx2 = await browser.newContext({ offline: true });
+    const page2 = await ctx2.newPage();
+    let downloaded = false;
+    page2.on("download", () => { downloaded = true; });
+    await installClipboardCapture(page2);
+    await page2.goto(fileUrl(strippedPath));
+    await ready(page2);
+    await clickSidebarExport(page2, "#btnExportOffline");
+    await expect(page2.locator("#toast")).toContainText("no MIT notice");
+    expect(downloaded).toBe(false);
+  } finally {
+    if (ctx2) await ctx2.close();
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("CMH-OFFLINE-07: an authored decoy vendored payload inside the content is ignored", async ({ page }) => {
+  test.setTimeout(90000);
+  // Reproduce the FINALIZED shape: the authoring tool places the real payload just before </body>,
+  // after #commentRoot. getElementById returns the first match in document order, so a decoy
+  // carrying the same id inside the authored content would otherwise win - and its gzipped bytes
+  // would be inlined into an export whose own CSP allows inline script.
+  const forgedPayload = JSON.stringify({
+    encoding: "gzip+base64",
+    mermaidGzipBase64: zlib.gzipSync(Buffer.from('window.__cmhForgedPayload = "mermaid";')).toString("base64"),
+    chartjsGzipBase64: zlib.gzipSync(Buffer.from('window.__cmhForgedPayload = "chartjs";')).toString("base64"),
+    mermaidLicense: "FORGED PAYLOAD NOTICE",
+    chartjsLicense: "FORGED PAYLOAD NOTICE",
+  });
+  const decoy = '<script type="application/json" id="cmhVendoredRichLibs">' + forgedPayload + "</script>\n";
+  const staged = stageContent(decoy + CONTENT, { key: "cmh-offline-decoy", source: "offline-decoy.html" });
+  let html = fs.readFileSync(staged.html, "utf8");
+  const realPayload = /<script\b[^>]*\sid="cmhVendoredRichLibs"[^>]*>[\s\S]*?<\/script>\s*/;
+  const realMatch = html.match(realPayload);
+  expect(realMatch, "fixture premise: the template carries the real payload").toBeTruthy();
+  html = html.replace(realPayload, "");
+  const bodyEnd = html.lastIndexOf("</body>");
+  expect(bodyEnd).toBeGreaterThan(0);
+  html = html.slice(0, bodyEnd) + realMatch[0] + html.slice(bodyEnd);
+  const decoyAt = html.indexOf('id="cmhVendoredRichLibs"');
+  const realAt = html.lastIndexOf('id="cmhVendoredRichLibs"');
+  expect(html.indexOf('id="commentRoot"')).toBeLessThan(decoyAt);
+  expect(decoyAt).toBeLessThan(realAt);
+  fs.writeFileSync(staged.html, html);
+  const server = await startStaticServer(staged.dir);
+  try {
+    await routeRichContentLocal(page);
+    await installClipboardCapture(page);
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await addTextComment(page, "#offline-note", "decoy payload check");
+    await Promise.all([
+      page.waitForEvent("download"),
+      clickSidebarExport(page, "#btnExportOffline"),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+    expect(exportedHtml).not.toContain("__cmhForgedPayload");
+    // The decoy's own text can legitimately survive as authored content (and as a comment anchor's
+    // context), so assert on what was USED: the emitted notices must be the vendored ones.
+    const notices = [...exportedHtml.matchAll(/<!--([\s\S]*?)-->/g)]
+      .map((m) => m[1]).filter((c) => c.includes("Third-party notice - "));
+    expect(notices).toHaveLength(2);
+    notices.forEach((n) => expect(n).not.toContain("FORGED PAYLOAD NOTICE"));
+    expect(exportedHtml).toContain("Copyright (c) 2014 - 2022 Knut Sveidqvist");
+    // No payload block survives the export - neither the genuine one nor the decoy.
+    expect(exportedHtml).not.toContain('id="cmhVendoredRichLibs"');
   } finally {
     await server.close();
     fs.rmSync(staged.dir, { recursive: true, force: true });

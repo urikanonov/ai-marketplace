@@ -4,6 +4,34 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.276.0] - 2026-07-29
+
+### Fixed
+
+- Re-running `Export Offline` on a document that is already offline no longer fails with "Offline
+  export is missing the vendored mermaid bundle". The first export CONSUMES the vendored payload -
+  it inlines the libraries the document needs and drops the payload block - so a second run had
+  nothing left to re-inline from: the rendered diagram elements keep their `mermaid` class, so
+  mermaid was still needed, the payload lookup resolved to an empty bundle, and the export threw
+  and showed an error toast instead of downloading anything. The same applied to a chart canvas the
+  built-in renderer does not draw. The exporter now CARRIES the copies the document already holds:
+  before the renderer strip that removes them, it captures each previously inlined library by its
+  own marker plus that library's MIT notice, and re-emits them - so a re-exported file carries
+  exactly one copy of each library and one notice, and still renders its diagram and its chart with
+  zero network. The vendored payload always wins when it is present - an inlined-library script is
+  just markup in a document anyone may have edited - so the carried copy is a last-resort fallback
+  for the one case with no alternative, and a genuinely rich document with no payload and nothing
+  carried still fails loudly. That guarantee is only as good as the payload lookup, so the payload
+  block is now resolved as infrastructure - a `<script>` carrying the payload id from OUTSIDE
+  `#commentRoot`, and exactly one of them - instead of `getElementById`, which returns the first
+  match in document order and so would have handed an authored decoy inside the content the win in
+  a finalized document (where the payload sits just before `</body>`, after the content). An
+  ambiguous payload is treated as absent, which fails closed, and an export now strips every
+  payload block rather than only the first. Because MIT requires the notice to accompany the
+  redistributed copy, a library and its notice are carried as one unit: a library whose notice is
+  missing is not carried at all (and the failure names the missing notice rather than a bundle),
+  and a stale notice with no matching library is dropped rather than trusted.
+
 ## [1.271.0] - 2026-07-29
 
 ### Fixed

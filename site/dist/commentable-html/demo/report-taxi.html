@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.271.0" />
+<meta name="commentable-html-version" content="1.276.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.271.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.276.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>NYC Taxi 2014 Report</title>
 
@@ -4326,7 +4326,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.271.0";
+const CMH_VERSION = "1.276.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -15543,10 +15543,22 @@ let _offlineVendoredRichLibsPromise = null;
 function _offlineLiveDocNeedsRichLibs() {
   return !!root.querySelector("pre.mermaid, div.mermaid, figure.chart canvas, canvas.cmh-chart");
 }
+// The vendored payload is INFRASTRUCTURE: the authoring tool places it just before </body>, OUTSIDE
+// #commentRoot. `getElementById` returns the FIRST match in document order, so in a finalized
+// document (where the real payload sits after the content) an authored decoy carrying the same id
+// inside the content would win - and its bytes would be inlined into an export whose own CSP allows
+// inline script. Select only a candidate outside the content root, and refuse when there is more
+// than one: an ambiguous payload is treated as absent, which fails closed rather than guessing.
+function _offlineVendoredPayloadElement() {
+  const contentRoot = document.getElementById("commentRoot");
+  const found = _offlineVendoredPayloadScripts(document)
+    .filter(function (s) { return !contentRoot || !contentRoot.contains(s); });
+  return found.length === 1 ? found[0] : null;
+}
 function _ensureOfflineVendoredRichLibsPromise() {
   if (_offlineVendoredRichLibsPromise) return _offlineVendoredRichLibsPromise;
   _offlineVendoredRichLibsPromise = (async function () {
-    const el = document.getElementById("cmhVendoredRichLibs");
+    const el = _offlineVendoredPayloadElement();
     if (!el) return {};
     const payload = JSON.parse(el.textContent || "{}");
     return {
@@ -15685,11 +15697,70 @@ function _offlineHoistChartScripts(doc) {
   });
   scripts.forEach(function (s) { body.appendChild(s); });
 }
-function _offlineRemoveVendoredBundleScript(doc) {
-  const el = doc.getElementById("cmhVendoredRichLibs");
-  if (el) el.remove();
+// Every <script> in `scope` whose id is the vendored payload block. Matched by ATTRIBUTE rather
+// than an id attribute SELECTOR on purpose: this source is inlined verbatim into every exported
+// document, so writing that selector literally here would make an export appear, to anything
+// scanning its text, to still carry a payload block.
+function _offlineVendoredPayloadScripts(scope) {
+  return Array.prototype.filter.call(scope.querySelectorAll("script"), function (s) {
+    return (s.getAttribute("id") || "") === "cmhVendoredRichLibs";
+  });
 }
-async function _offlineInlineRichLibs(doc, referencesChartLib) {
+function _offlineRemoveVendoredBundleScript(doc) {
+  // EVERY copy, not just the first: an exported file must never carry a leftover payload block,
+  // decoy or genuine.
+  _offlineVendoredPayloadScripts(doc).forEach(function (s) { s.remove(); });
+}
+// An offline export CONSUMES the vendored payload: the libraries are inlined and
+// #cmhVendoredRichLibs is dropped, so an already-offline file has nothing left to re-inline from.
+// Re-exporting one therefore has to carry the copies it already holds - they are local, already
+// inlined, and byte-identical to what a fresh pass would emit - instead of stripping them and
+// failing with "missing the vendored mermaid bundle". Read BEFORE the strip, exactly like the
+// Chart-evidence scan, since the strip is what removes them.
+function _offlineCarriedRichLibs(doc) {
+  // Reading these from the HEAD depends on the layer <script> living in BODY: SNAPSHOT_HTML stops
+  // at the layer script, so a previous pass's libraries and notices (appended to the head) survive
+  // the file:// snapshot fallback in _getBaseHtml only because the whole head is captured.
+  const libs = {};
+  const licenses = {};
+  const noticeless = [];
+  doc.querySelectorAll("script[data-cmh-offline-lib]").forEach(function (s) {
+    const lib = s.getAttribute("data-cmh-offline-lib");
+    if (lib !== "chartjs" && lib !== "mermaid") return;
+    const body = s.textContent || "";
+    if (body.trim() && !libs[lib]) libs[lib] = body;
+  });
+  if (!libs.chartjs && !libs.mermaid) return {};
+  const head = doc.head || doc.querySelector("head");
+  if (head) {
+    Array.prototype.slice.call(head.childNodes).forEach(function (n) {
+      if (n.nodeType !== 8) return;
+      const m = /^\s*Third-party notice - (.+?) is bundled inline for offline use under the MIT License:\r?\n([\s\S]*)$/.exec(n.nodeValue || "");
+      if (!m) return;
+      const lib = m[1] === "Chart.js" ? "chartjs" : (m[1] === "mermaid" ? "mermaid" : "");
+      if (!lib || !libs[lib] || licenses[lib]) return;
+      licenses[lib] = m[2].replace(/\s+$/, "");
+    });
+  }
+  // MIT requires the notice to accompany the redistributed copy, so a library and its notice are
+  // carried as ONE unit: a library whose notice is absent is not carried at all, and the export
+  // falls back to the vendored pair (or fails loudly) rather than shipping the code without it.
+  const out = {};
+  ["chartjs", "mermaid"].forEach(function (lib) {
+    if (!libs[lib]) return;
+    if (!licenses[lib]) {
+      noticeless.push(lib);
+      return;
+    }
+    out[lib] = libs[lib];
+    out[lib + "License"] = licenses[lib];
+  });
+  // Remember which library was refused for that reason, so the failure names the missing NOTICE
+  // instead of a bundle the document was never going to have.
+  if (noticeless.length) out.noticeless = noticeless;
+  return out;
+}
+async function _offlineInlineRichLibs(doc, referencesChartLib, carried) {
   const head = doc.head || doc.querySelector("head");
   if (!head) return;
   const needMermaid = _offlineDocUsesMermaid(doc);
@@ -15698,16 +15769,36 @@ async function _offlineInlineRichLibs(doc, referencesChartLib) {
     _offlineRemoveVendoredBundleScript(doc);
     return;
   }
+  const have = carried || {};
+  // The vendored payload ALWAYS wins when it is present. A document being exported may have been
+  // edited by someone else, and its `data-cmh-offline-lib` script is just markup - trusting it over
+  // the skill's own copy would let an injected script that a strict host CSP blocks today be
+  // laundered into an export whose own CSP allows inline script. The carried copy is a FALLBACK for
+  // the one case where there is no alternative: an already-offline file, whose payload the first
+  // export consumed. (A re-export finds no payload element, so this resolves to {} without error.)
   const bundle = await _offlineVendoredRichLibs();
+  // Each notice travels with the copy of the library it belongs to.
+  const chartjs = bundle.chartjs || have.chartjs;
+  const chartjsLicense = bundle.chartjs ? bundle.chartjsLicense : have.chartjsLicense;
+  const mermaid = bundle.mermaid || have.mermaid;
+  const mermaidLicense = bundle.mermaid ? bundle.mermaidLicense : have.mermaidLicense;
+  const missing = function (lib, name) {
+    return ((have.noticeless || []).indexOf(lib) !== -1)
+      ? new Error("Offline export found an inlined " + name + " copy with no MIT notice, so it cannot"
+        + " be carried - restore the notice, or re-export from a document that still has the"
+        + " vendored bundle.")
+      : new Error("Offline export is missing the vendored " + name + " bundle.");
+  };
   if (needCharts) {
-    if (!bundle.chartjs) throw new Error("Offline export is missing the vendored Chart.js bundle.");
-    _offlineAppendLibNotice(doc, head, "Chart.js", bundle.chartjsLicense);
-    _offlineAppendInlineScript(doc, head, bundle.chartjs, { "data-cmh-offline-lib": "chartjs" });
+    if (!chartjs) throw missing("chartjs", "Chart.js");
+    _offlineAppendLibNotice(doc, head, "Chart.js", chartjsLicense);
+    _offlineAppendInlineScript(doc, head, chartjs, { "data-cmh-offline-lib": "chartjs" });
   }
   if (needMermaid) {
-    if (!bundle.mermaid) throw new Error("Offline export is missing the vendored mermaid bundle.");
-    _offlineAppendLibNotice(doc, head, "mermaid", bundle.mermaidLicense);
-    _offlineAppendInlineScript(doc, head, bundle.mermaid, { "data-cmh-offline-lib": "mermaid" });
+    if (!mermaid) throw missing("mermaid", "mermaid");
+    _offlineAppendLibNotice(doc, head, "mermaid", mermaidLicense);
+    _offlineAppendInlineScript(doc, head, mermaid, { "data-cmh-offline-lib": "mermaid" });
+
     _offlineAppendInlineScript(doc, head,
       "(function(){\n"
       + "  if (!window.mermaid || !window.mermaid.initialize || !window.mermaid.run) return;\n"
@@ -15765,11 +15856,12 @@ async function _buildOfflineHtml(portableHtml) {
   // Read the "does this document use Chart.js" evidence BEFORE anything is stripped, so a script the
   // loader strip removes cannot take the only sign of the library with it.
   const referencesChartLib = _offlineDocReferencesChartLib(doc);
+  const carriedRichLibs = _offlineCarriedRichLibs(doc);
   _stripOfflineRichRenderers(doc);
   _stripOfflineNetworkLoads(doc);
   _stripOfflineEventHandlers(doc);
   _offlineHoistChartScripts(doc);
-  await _offlineInlineRichLibs(doc, referencesChartLib);
+  await _offlineInlineRichLibs(doc, referencesChartLib, carriedRichLibs);
   _ensureOfflineCsp(doc);
   return _retargetLayerDescriptor(_serializeOfflineDoc(doc), "offline").replace(/\n{3,}/g, "\n\n");
 }
