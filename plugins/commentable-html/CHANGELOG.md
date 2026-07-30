@@ -36,7 +36,9 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 - The CONTENT and region markers are now counted and located in one shared view whose
   `<script>`/`<style>` bodies are blanked and whose comments survive (the markers ARE comments),
   so the marker check and the layer checks can never disagree about what a marker is: a marker
-  quoted in script data neither forges a duplicate-marker error nor defines a boundary.
+  quoted in script data neither forges a duplicate-marker error nor defines a boundary. That
+  scan takes its raw-text boundaries from the same tokenizer the code-block checks use, so a
+  `<script` named inside a comment never opens a region that swallows a marker.
 
 ## [1.278.0] - 2026-07-30
 
