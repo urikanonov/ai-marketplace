@@ -9,6 +9,11 @@ from types import MappingProxyType
 
 REGIONS = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"]
 
+# The regions that hold the layer's OWN markup. The two omitted ones (HANDLED IDS, EMBEDDED
+# COMMENTS) exist to CARRY user text - a reviewer's comment bodies, the reviewed-section headings
+# an export bakes in - so a check asking "does the LAYER contain X?" must never read them.
+LAYER_MARKUP_REGIONS = ["CSS", "COMMENT UI", "JS"]
+
 LAYER_DESCRIPTOR_ID = "commentableHtmlLayer"
 
 CONTENT_BEGIN = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->"
@@ -505,6 +510,23 @@ class _DocParser(HTMLParser):
                 and not any(t == "a" for (t, _s) in self.stack)):
             self.commentroot_prose.append(data)
 
+    def close(self):
+        """Flush a `<script>`/`<style>` still open at end of input.
+
+        A browser treats an unclosed raw-text element as running to EOF, so its body is LIVE.
+        Dropping it here would let a `<style>` with no closing tag hide a real rule from every
+        check that reads `parser.styles` (the unscoped-`[hidden]` rule, CMH-VAL-20). The base
+        close() runs FIRST so any buffered trailing data reaches `handle_data` before the flush.
+        """
+        super().close()
+        for cur, sink in ((self._cur_script, self.scripts), (self._cur_style, self.styles)):
+            if cur is not None:
+                pos, ad = cur
+                sink.append({"pos": pos, "attrs": ad, "body": "".join(self._cur_body)})
+        self._cur_script = None
+        self._cur_style = None
+        self._cur_body = []
+
     def handle_endtag(self, tag):
         tag = tag.lower()
         if tag == "head":
@@ -951,6 +973,93 @@ def code_block_spans(html):
         # fails CLOSED.
         return CodeSpans((), True, True)
     return CodeSpans(_freeze_pres(p.pres), p.unclosed)
+
+
+class _RawTextSpanParser(_CodeSpanParser):
+    """Record the body span of every real `<script>`/`<style>`, reusing the code-span tokenizer.
+
+    The point is to get raw-text boundaries a BROWSER agrees with without a second text scan:
+    a `<script` NAMED inside a comment never opens a raw-text region, a `>` inside a quoted
+    attribute value never ends a start tag, and an end tag the browser honours (`</script/>`,
+    `</script data-x>`) really closes one.
+    """
+
+    def __init__(self, html):
+        super().__init__(html)
+        self._raw = None          # (tag, body_start) while inside a raw-text element
+        self._length = len(html)
+        self.raw_spans = []
+
+    def handle_starttag(self, tag, attrs):
+        super().handle_starttag(tag, attrs)
+        if self._raw is None and self.cdata_elem in _FOREIGN_RAW_TEXT_ELEMENTS:
+            self._raw = (self.cdata_elem, self._start_tag_end())
+
+    def handle_endtag(self, tag):
+        if self._raw is not None and tag.lower() == self._raw[0]:
+            self.raw_spans.append((self._raw[1], self._off()))
+            self._raw = None
+        super().handle_endtag(tag)
+
+    def close(self):
+        super().close()
+        if self._raw is not None:
+            # A browser runs an unclosed raw-text element to the end of the document.
+            self.raw_spans.append((self._raw[1], self._length))
+            self._raw = None
+
+
+@functools.lru_cache(maxsize=1)
+def content_marker_scan(html):
+    """The view the CONTENT and region markers are COUNTED and LOCATED in: `<script>`/`<style>`
+    bodies blanked, comments KEPT (the markers ARE comments, so unlike a code-block view this
+    must not blank them). A marker quoted inside script data is not a real boundary, so counting
+    it would both forge a duplicate-marker error and disagree with the layer views about where
+    the content region is. Blanking preserves offsets AND line breaks, so a caller can locate a
+    span here and slice the ORIGINAL string for the payload.
+
+    A parse that blew up falls back to the raw document. That direction is deliberate: an
+    unblanked scan can only over-count markers or over-report the export warning, which is noise
+    an author can see and act on, whereas an empty view would silently report a document that
+    has its markers as having none.
+    """
+    p = _RawTextSpanParser(html)
+    try:
+        p.parse_document(html)
+    except Exception:
+        return html
+    out = list(html)
+    for start, end in p.raw_spans:
+        for k in range(start, end):
+            if out[k] not in "\r\n":
+                out[k] = " "
+    return "".join(out)
+
+
+@functools.lru_cache(maxsize=1)
+def layer_regions_text(html):
+    """Return only the text inside the layer's own MARKUP regions (an ALLOW-list).
+
+    For "does the LAYER contain X?", a deny-list ("the whole document minus the parts a user
+    writes") cannot be made safe: user text reaches `<title>`, `data-doc-label`, `<meta>` and
+    every other attribute - `new_document --label` copies the label verbatim into two of them -
+    so any of those can forge the verdict. This returns the CSS, COMMENT UI and JS regions only.
+    The other two regions (HANDLED IDS, EMBEDDED COMMENTS) exist precisely to CARRY user text -
+    a reviewer's comment bodies and the reviewed-section headings an export bakes in - so they
+    are state containers, not layer markup, and are never inspected. Regions are located in
+    `content_marker_scan`'s view, so a region marker quoted in script data is not a boundary.
+    """
+    scan = content_marker_scan(html)
+    parts = []
+    for region in LAYER_MARKUP_REGIONS:
+        begins = _region_marker_matches(scan, "BEGIN", region)
+        ends = _region_marker_matches(scan, "END", region)
+        if len(begins) != 1 or len(ends) != 1:
+            continue
+        start, end = begins[0].end(), ends[0].start()
+        if end > start:
+            parts.append(html[start:end])
+    return "\n".join(parts)
 
 
 def _is_json_attrs(ad):

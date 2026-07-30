@@ -2,6 +2,20 @@ from _validate_helpers import *
 
 
 class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
+    def _with_content(self, content_html, css=None):
+        """A valid document whose AUTHORED CONTENT region is `content_html`.
+
+        The CMH-VAL-20 checks must read the layer's own markup, so their fixtures need content
+        that is inside the CONTENT markers - where an author's prose legitimately quotes the
+        layer's own CSS, theme tokens and retired markers. The replacement is asserted so a
+        future change to MAIN's shape cannot silently stop exercising the content region.
+        """
+        needle = "  <p>content</p>"
+        self.assertIn(needle, MAIN, "MAIN no longer carries the expected content placeholder")
+        main = MAIN.replace(needle, "  " + content_html)
+        return build(css=css,
+                     body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION])
+
     def test_real_template_is_clean(self):
         self.assertTrue(os.path.exists(TEMPLATE), "dist/PORTABLE.html not found next to the tests")
         errors, warnings = validate.validate(TEMPLATE)
@@ -535,12 +549,345 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
         self.assertWarn(build(body=body), "removed before the 1.0.0 release")
 
     def test_export_marker_warns(self):
-        doc = build().replace("<p>content</p>", "<p>--START-COMMENTS-EXPORT--</p>")
+        # The marker must sit in the LAYER's own markup: an occurrence in the authored CONTENT
+        # is the author quoting a retired marker, not a reintroduced export UI (CMH-VAL-20,
+        # covered by test_export_marker_inside_authored_content_is_not_flagged).
+        doc = build().replace(
+            '<div class="cm-toolbar cm-skip">',
+            '<div class="cm-toolbar cm-skip">\n  <!-- --START-COMMENTS-EXPORT-- -->', 1)
         self.assertWarn(doc, "Export/Import UI detected")
+
+    def test_export_marker_inside_authored_content_is_not_flagged(self):
+        # CMH-VAL-20: a document that DOCUMENTS the layer legitimately quotes the old export
+        # marker in its prose. Scanning the whole document let that prose forge a diagnostic
+        # about the layer's own markup - a false positive the reader cannot fix without
+        # rewording their content.
+        doc = self._with_content("<p>The retired marker was <code>--START-COMMENTS-EXPORT--</code>.</p>")
+        errors, warnings = _validate_text(doc)
+        self.assertEqual(errors, [], "expected no errors, got: %r" % errors)
+        self.assertFalse(any("Export/Import UI detected" in w for w in warnings),
+                         "authored prose must not raise the export warning: %r" % warnings)
 
     def test_missing_cp_variables(self):
         css = CSS_REGION.replace("--cp-bg: #ffffff;", "")
         self.assertError(build(css=css), "--cp-* theme variables are not defined")
+
+    def test_cp_variable_mentioned_in_authored_content_does_not_satisfy_the_check(self):
+        # CMH-VAL-20: prose that MENTIONS "--cp-bg:" is not a declaration. Scanning the whole
+        # document let a document with no theme variables at all pass this ERROR by talking
+        # about them - a suppressed diagnostic, the dangerous direction.
+        css = CSS_REGION.replace("--cp-bg: #ffffff;", "")
+        doc = self._with_content("<p>Set <code>--cp-bg: #fff;</code> to theme the layer.</p>",
+                                 css=css)
+        self.assertError(doc, "--cp-* theme variables are not defined")
+
+    def test_cp_variable_declared_outside_the_content_region_still_satisfies_the_check(self):
+        doc = self._with_content("<p>plain prose</p>")
+        errors, _warnings = _validate_text(doc)
+        self.assertFalse(any("theme variables are not defined" in e for e in errors),
+                         "a real declaration must still satisfy the check: %r" % errors)
+
+    def test_scoped_hidden_rule_mentioned_in_authored_content_does_not_satisfy_the_check(self):
+        # CMH-VAL-20: the most plausible of the three - a document explaining the layer's CSS
+        # naturally contains the scoped rule, which silently suppressed the warning.
+        css = (
+            "/*\nBEGIN: commentable-html - CSS\n*/\n"
+            ":root { --cp-bg: #fff; }\n"
+            "/*\nEND: commentable-html - CSS\n*/"
+        )
+        doc = self._with_content(
+            "<p>The layer scopes it as <code>.cm-skip[hidden]</code>.</p>", css=css)
+        self.assertWarn(doc, "missing the scoped '.cm-skip[hidden]'")
+
+    def test_scoped_hidden_rule_outside_the_content_region_still_satisfies_the_check(self):
+        doc = self._with_content("<p>plain prose</p>")
+        errors, warnings = _validate_text(doc)
+        self.assertEqual(errors, [], "expected no errors, got: %r" % errors)
+        self.assertFalse(any("missing the scoped" in w for w in warnings),
+                         "the real CSS rule must still satisfy the check: %r" % warnings)
+
+    def test_reviewer_prose_in_the_embedded_state_blocks_cannot_forge_the_verdict(self):
+        # CMH-VAL-20: "Export with embedded comments" bakes REVIEWER prose into the
+        # embeddedComments block, which sits OUTSIDE the CONTENT region - so blanking only the
+        # content still let a reviewer who quotes the layer's CSS satisfy these checks. A review
+        # of a document ABOUT commentable-html is exactly when that text appears.
+        forged = ".cm-skip[hidden] and --cp-bg: #fff and --START-COMMENTS-EXPORT--"
+        css = (
+            "/*\nBEGIN: commentable-html - CSS\n*/\n"
+            ":root { color: #000; }\n"
+            "/*\nEND: commentable-html - CSS\n*/"
+        )
+        embedded = EMBEDDED_REGION.replace(
+            ">[]<", '>[{"id":"cabc123","text":"%s"}]<' % forged, 1)
+        main = MAIN.replace("  <p>content</p>", "  <p>plain prose</p>")
+        doc = build(css=css,
+                    body=[HANDLED_REGION, embedded, comment_ui(), main, JS_REGION])
+        errors, warnings = _validate_text(doc)
+        self.assertTrue(any("theme variables are not defined" in e for e in errors),
+                        "reviewer prose must not satisfy the theme ERROR: %r" % errors)
+        self.assertTrue(any("missing the scoped" in w for w in warnings),
+                        "reviewer prose must not satisfy the scoped-rule check: %r" % warnings)
+        self.assertFalse(any("Export/Import UI detected" in w for w in warnings),
+                         "reviewer prose must not forge the export warning: %r" % warnings)
+        # The other document-owned state block must be equally powerless.
+        handled = HANDLED_REGION.replace(">[]<", '>["%s"]<' % forged, 1)
+        doc2 = build(css=css,
+                     body=[handled, EMBEDDED_REGION, comment_ui(), main, JS_REGION])
+        errors2, warnings2 = _validate_text(doc2)
+        self.assertTrue(any("theme variables are not defined" in e for e in errors2), errors2)
+        self.assertFalse(any("Export/Import UI detected" in w for w in warnings2), warnings2)
+
+    def test_a_marker_quoted_in_script_data_cannot_define_the_layer_view(self):
+        # CMH-VAL-20 fails CLOSED on an ambiguous marker set. A CONTENT marker quoted inside
+        # <script> data is not a real boundary, and treating it as one let a document with no
+        # theme variables at all validate clean by supplying them from its own prose.
+        css = (
+            "/*\nBEGIN: commentable-html - CSS\n*/\n"
+            ":root { color: #000; }\n"
+            "/*\nEND: commentable-html - CSS\n*/"
+        )
+        js = JS_REGION.replace(
+            "<script>\n",
+            '<script>\nvar t = "%s" + "%s";\n' % (CONTENT_BEGIN, CONTENT_END), 1)
+        main = MAIN.replace(
+            "  <p>content</p>",
+            "  <p>set <code>--cp-bg: #fff</code> and <code>.cm-skip[hidden]</code></p>")
+        doc = build(css=css,
+                    body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, js])
+        errors, _warnings = _validate_text(doc)
+        self.assertTrue(any("theme variables are not defined" in e for e in errors),
+                        "a script-quoted marker must not let prose satisfy the check: %r" % errors)
+
+    def test_the_layer_region_view_is_an_allow_list(self):
+        # The marker check reads only what the LAYER's own regions contain. A deny-list cannot be
+        # made safe here, because user text reaches <title>, data-doc-label and every other
+        # attribute - new_document --label copies the label verbatim into two of them.
+        from checks.parsing import layer_regions_text
+        doc = build()
+        view = layer_regions_text(doc)
+        self.assertIn("cm-toolbar", view, "the layer's own regions must be present")
+        self.assertNotIn("<title>", view, "document chrome is outside the layer's regions")
+        self.assertNotIn("data-doc-label", view, "author-supplied attributes are never inspected")
+        self.assertEqual(layer_regions_text("no regions at all"), "",
+                         "a document with no layer regions exposes nothing to inspect")
+
+    def test_a_script_named_inside_a_comment_does_not_swallow_the_content_markers(self):
+        # The marker scan masks <script>/<style> BODIES, but it must do so in the same ONE-PASS
+        # way CMH-VAL-11 uses: masking naively let a "<script" NAMED INSIDE a comment open a mask
+        # that ran to the document's next real </script>, blanking a CONTENT marker in between.
+        # The view then saw an ambiguous marker set and failed closed, inventing a theme ERROR on
+        # a perfectly good document.
+        doc = self._with_content(
+            "<!-- move the <script> tag later -->\n  <p>plain prose</p>")
+        errors, warnings = _validate_text(doc)
+        self.assertEqual(errors, [], "a commented <script> must not break the layer view: %r" % errors)
+        self.assertFalse(any("missing the scoped" in w for w in warnings), warnings)
+
+    def test_a_marker_quoted_in_script_data_is_not_counted_as_a_duplicate(self):
+        # The marker COUNT and the layer view must agree on what a marker is. Counting raw text
+        # made a marker quoted inside script data forge a duplicate-marker ERROR, and could also
+        # leave the count satisfied while the layer view saw none.
+        js = JS_REGION.replace(
+            "<script>\n", '<script>\nvar t = "%s";\n' % CONTENT_BEGIN, 1)
+        main = MAIN.replace("  <p>content</p>", "  <p>plain prose</p>")
+        doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, js])
+        errors, _warnings = _validate_text(doc)
+        self.assertFalse(any("CONTENT region" in e for e in errors),
+                         "a marker quoted in script data is not a real marker: %r" % errors)
+
+    def test_an_unterminated_or_string_quoted_css_comment_is_lexed_correctly(self):
+        # The comment stripper is a lexer, not a regex, because both mistakes are reachable:
+        # an unterminated comment runs to end of input in a real parser (so its text must not
+        # satisfy a check), and `/*` inside a quoted CSS string is an ordinary character (so
+        # treating it as a delimiter would blank the LIVE declarations after it).
+        from checks.layer import _css_declarations_view as strip
+
+        unterminated = "/* --cp-bg: #fff"
+        self.assertNotIn("--cp-bg", strip(unterminated),
+                         "an unterminated comment must be blanked to end of input")
+
+        quoted = 'a { content: "/*" }\n:root { --cp-bg: #fff }\nb { content: "*/" }'
+        stripped = strip(quoted)
+        self.assertIn("--cp-bg", stripped,
+                      "a live declaration between quoted comment-like strings must survive")
+        for src in (unterminated, quoted):
+            out = strip(src)
+            self.assertEqual(len(out), len(src), "blanking must preserve offsets")
+            self.assertEqual(out.count("\n"), src.count("\n"), "line breaks must survive")
+
+    def test_an_open_comment_cannot_cross_a_style_boundary(self):
+        # A browser parses each <style> as its OWN stylesheet, so an unterminated `/*` in one
+        # cannot comment out a LATER element's rules. Stripping a JOINED string let a stray
+        # comment anywhere in the document hide a live, dangerous unscoped reset from check 9.
+        doc = self._with_content(
+            "<style>\n/* an author's unterminated comment\n</style>\n"
+            "<style>\n[hidden] { display: none !important; }\n</style>")
+        self.assertWarn(doc, "unscoped '[hidden]")
+
+    def test_a_style_with_a_non_css_type_is_not_a_stylesheet(self):
+        # A browser applies a <style> only when its type is absent, empty, or text/css. Reading
+        # every <style> body let `<style type="text/plain">` - which renders nothing - satisfy
+        # the CSS checks for a document that declares no theme and no scoped rule.
+        css = (
+            "/*\nBEGIN: commentable-html - CSS\n*/\n"
+            ":root { color: #000; }\n"
+            "/*\nEND: commentable-html - CSS\n*/"
+        )
+        doc = self._with_content(
+            '<style type="text/plain">\n'
+            ":root { --cp-bg: #fff; }\n"
+            ".cm-skip[hidden] { display: none !important; }\n"
+            "</style>",
+            css=css)
+        errors, warnings = _validate_text(doc)
+        self.assertTrue(any("theme variables are not defined" in e for e in errors),
+                        "a non-CSS <style> must not satisfy the theme ERROR: %r" % errors)
+        self.assertTrue(any("missing the scoped" in w for w in warnings), warnings)
+
+    def test_a_quoted_css_string_is_not_a_selector_or_a_declaration(self):
+        # A string VALUE can never be a selector or a declaration name, so its text must not
+        # decide any of the three CSS verdicts: `content: ".cm-skip[hidden] --cp-bg: x"` is live
+        # CSS that declares neither, and an unscoped reset quoted in one is not a live rule.
+        css = (
+            "/*\nBEGIN: commentable-html - CSS\n*/\n"
+            ':root::before { content: ".cm-skip[hidden] --cp-bg: #fff"; }\n'
+            "/*\nEND: commentable-html - CSS\n*/"
+        )
+        errors, warnings = _validate_text(build(css=css))
+        self.assertTrue(any("theme variables are not defined" in e for e in errors),
+                        "a quoted string must not satisfy the theme ERROR: %r" % errors)
+        self.assertTrue(any("missing the scoped" in w for w in warnings), warnings)
+
+        quoted_reset = (
+            "/*\nBEGIN: commentable-html - CSS\n*/\n"
+            ":root { --cp-bg: #fff; }\n"
+            ".cm-skip[hidden], .cm-skip [hidden] { display: none !important; }\n"
+            ':root::after { content: "\\A[hidden] { display: none !important; }"; }\n'
+            "/*\nEND: commentable-html - CSS\n*/"
+        )
+        _errors, warnings2 = _validate_text(build(css=quoted_reset))
+        self.assertFalse(any("unscoped '[hidden]" in w for w in warnings2),
+                         "a quoted reset is not a live rule: %r" % warnings2)
+
+    def test_an_unterminated_css_string_ends_at_the_newline(self):
+        # CSS terminates a string at a raw newline (a bad-string token), so an author's stray
+        # quote cannot swallow every declaration after it. Letting the string run on blanked the
+        # layer's real theme declaration and failed a valid document.
+        from checks.layer import _css_declarations_view as view
+
+        src = 'a { content: "oops\n:root { --cp-bg: #fff; }\n'
+        out = view(src)
+        self.assertIn("--cp-bg", out,
+                      "a string must not swallow the next line's declaration")
+        self.assertEqual(len(out), len(src), "blanking must preserve offsets")
+        self.assertEqual(out.count("\n"), src.count("\n"), "line breaks must survive")
+
+    def test_a_commented_out_css_rule_is_not_a_rule(self):
+        # A commented-out declaration is not a declaration, in either direction: a quoted
+        # `--cp-bg:` must not SATISFY the theme ERROR, and a rule someone commented out while
+        # debugging must not still raise the unscoped-[hidden] warning.
+        css = (
+            "/*\nBEGIN: commentable-html - CSS\n*/\n"
+            ":root { color: #000; }\n"
+            "/* --cp-bg: #fff; .cm-skip[hidden] { display: none !important; } */\n"
+            "/*\nEND: commentable-html - CSS\n*/"
+        )
+        errors, warnings = _validate_text(build(css=css))
+        self.assertTrue(any("theme variables are not defined" in e for e in errors),
+                        "a commented-out declaration must not satisfy the check: %r" % errors)
+        self.assertTrue(any("missing the scoped" in w for w in warnings), warnings)
+
+        commented_reset = (
+            "/*\nBEGIN: commentable-html - CSS\n*/\n"
+            ":root { --cp-bg: #fff; }\n"
+            ".cm-skip[hidden], .cm-skip [hidden] { display: none !important; }\n"
+            "/*\n[hidden] {\n  display: none !important;\n}\n*/\n"
+            "/*\nEND: commentable-html - CSS\n*/"
+        )
+        _errors, warnings2 = _validate_text(build(css=commented_reset))
+        self.assertFalse(any("unscoped '[hidden]" in w for w in warnings2),
+                         "a commented-out reset is not a live rule: %r" % warnings2)
+
+    def test_the_export_marker_outside_the_layer_regions_is_not_flagged(self):
+        # The marker probe is an ALLOW-list over the layer's own regions, because
+        # `new_document --label` copies the label verbatim into <title> AND data-doc-label - so
+        # naming a document after the retired marker used to raise a warning the author could
+        # only clear by renaming the document.
+        label = "About the --START-COMMENTS-EXPORT-- marker"
+        doc = build().replace("<title>", "<title>" + label, 1) if "<title>" in build() else build()
+        doc = doc.replace('data-doc-label="l"', 'data-doc-label="%s"' % label, 1)
+        _errors, warnings = _validate_text(doc)
+        self.assertFalse(any("Export/Import UI detected" in w for w in warnings),
+                         "author-supplied chrome must not forge the export warning: %r" % warnings)
+
+    def test_an_unclosed_style_at_eof_is_still_scanned(self):
+        # A browser runs an unclosed raw-text element to EOF, so its CSS is live. Reading only
+        # closed <style> elements would let a dangerous unscoped rule hide behind a missing
+        # closing tag.
+        from checks.parsing import _DocParser
+        html = "<html><head><style>\n[hidden] { display: none !important; }"
+        parser = _DocParser(html)
+        parser.feed(html)
+        parser.close()
+        self.assertTrue(parser.styles, "an unclosed <style> must still be captured")
+        self.assertIn("[hidden]", parser.styles[0]["body"])
+
+    def test_a_style_the_author_puts_in_their_own_content_still_counts(self):
+        # The CSS checks are narrowed by CSS-ness, NOT by region: a <style> inside the authored
+        # content is live CSS that really would hide host elements, so it must still be seen.
+        # (test_an_unscoped_hidden_rule_shown_in_prose_is_not_a_live_rule pins the other side.)
+        doc = self._with_content(
+            "<style>\n[hidden] { display: none !important; }\n</style>")
+        self.assertWarn(doc, "unscoped '[hidden]")
+
+    def test_a_layer_script_that_merely_mentions_the_css_cannot_satisfy_the_checks(self):
+        # Text is not a stylesheet. Reading any "layer text" let a layer <script> that merely
+        # MENTIONS the tokens satisfy both CSS checks on a document that declares neither.
+        css = (
+            "/*\nBEGIN: commentable-html - CSS\n*/\n"
+            ":root { color: #000; }\n"
+            "/*\nEND: commentable-html - CSS\n*/"
+        )
+        js = JS_REGION.replace(
+            "<script>\n", '<script>\nvar hint = "--cp-bg: #fff .cm-skip[hidden]";\n', 1)
+        doc = build(css=css, body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN, js])
+        errors, warnings = _validate_text(doc)
+        self.assertTrue(any("theme variables are not defined" in e for e in errors),
+                        "a script mention must not satisfy the theme ERROR: %r" % errors)
+        self.assertTrue(any("missing the scoped" in w for w in warnings),
+                        "a script mention must not satisfy the scoped-rule check: %r" % warnings)
+
+    def test_a_clean_document_survives_a_marker_quoted_in_script_data(self):
+        # The marker scan must MASK script bodies rather than count raw text: counting raw text
+        # would see two BEGIN markers here, fail closed, and invent findings on a good document.
+        js = JS_REGION.replace(
+            "<script>\n", '<script>\nvar t = "%s";\n' % CONTENT_BEGIN, 1)
+        doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN, js])
+        self.assertOkNoWarn(doc)
+
+    def test_the_marker_scan_keeps_comments_while_blanking_script_bodies(self):
+        # The marker scan blanks raw-text BODIES but must NOT blank comments (the CONTENT
+        # markers ARE comments), which is the opposite of every view that hides quoted markup.
+        # Conflating the two silently breaks marker discovery, so pin the distinction - along
+        # with the offset and line preservation callers slice the ORIGINAL document by.
+        from checks.parsing import content_marker_scan
+        doc = "<script>\nvar s = 1;\n</script>\n" + CONTENT_BEGIN
+        scan = content_marker_scan(doc)
+        self.assertIn(CONTENT_BEGIN, scan, "the marker scan must keep comments")
+        self.assertNotIn("var s = 1", scan, "the marker scan must blank script bodies")
+        self.assertEqual(len(scan), len(doc), "blanking must preserve offsets")
+        self.assertEqual(scan.count("\n"), doc.count("\n"), "line breaks must survive")
+
+    def test_an_unscoped_hidden_rule_shown_in_prose_is_not_a_live_rule(self):
+        # CMH-VAL-20: the unscoped-[hidden] warning reads real <style> BODIES, so a code sample
+        # that SHOWS the rule is not treated as one. It is narrowed by CSS-ness rather than by
+        # region, because a <style> the author puts in their content really would hide host
+        # elements (test_unscoped_hidden_warns pins that direction).
+        doc = self._with_content(
+            "<pre><code>[hidden] {\n  display: none !important;\n}</code></pre>")
+        _errors, warnings = _validate_text(doc)
+        self.assertFalse(any("unscoped '[hidden]" in w for w in warnings),
+                         "a code sample must not raise the unscoped-rule warning: %r" % warnings)
 
     def test_cp_variable_must_be_defined_not_just_used(self):
         css = (
