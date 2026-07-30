@@ -20,6 +20,12 @@ def _check_diff_blocks(html):
     return errors, warnings
 
 
+def _is_kql_code(code):
+    """True when a parsed <code> element carries a language-kusto / language-kql class token."""
+    return (parsed_attrs_have_class(code["attrs"], "language-kusto")
+            or parsed_attrs_have_class(code["attrs"], "language-kql"))
+
+
 def _check_kql_blocks(html):
     errors, warnings = [], []
     # 11c) "Run in Azure Data Explorer" links (class cmh-kql-run) must point at the ADX web UX over
@@ -68,21 +74,25 @@ def _check_kql_blocks(html):
     #      missing cluster is a conscious choice, not an accidental omission. Prefer providing a
     #      cluster (build the figure with tools/kusto/kql_highlight.py); reserve the marker for the
     #      rare clusterless snippet (tools/kusto/kql_highlight.py --code-only stamps it).
-    # Mask <script>/<style> bodies and HTML comments (blanking to spaces preserves offsets) so a
-    # `<pre>` or `language-kusto` mentioned in CSS/JS or a comment cannot start a spurious match that
-    # swallows a real KQL block. One left-to-right pass, so a `<script` named inside a comment cannot
-    # open a mask that runs to the document's next real `</script>`.
-    masked = authored_html(html)
-    kql_figure_spans = [(fm.start(), fm.end()) for fm in
-                        re.finditer(r"<figure\b([^>]*)>.*?</figure>", masked, re.IGNORECASE | re.DOTALL)
-                        if _attrs_have_class(fm.group(1), "cmh-kql")]
-    for pm in _PRE_TAG_RE.finditer(masked):
-        if not re.search(r'<code\b[^>]*\bclass\s*=\s*["\'][^"\']*\blanguage-(?:kusto|kql)\b',
-                         pm.group(2), re.IGNORECASE):
+    # Blocks come from PARSED elements (checks/parsing.code_block_spans, shared with the
+    # highlighting scan CMH-VAL-11), so a `<pre>` or `language-kusto` mentioned inside CSS, JS, a
+    # comment, a raw-text element or a CDATA section is text and contributes nothing, the
+    # figure.cmh-kql exemption comes from real ancestry, and the marker is read from the parsed
+    # <pre> attributes so a `>` inside a quoted attribute value cannot hide it.
+    spans = code_block_spans(html)
+    if spans.failed:
+        # The scan produced NO blocks, so "no unrunnable KQL found" would be a lie. This gate is
+        # a hard error, so say so rather than let a document through on an empty result.
+        errors.append("the document could not be parsed to locate its KQL code blocks, so the "
+                      "runnable-KQL rule could not be applied - fix the markup rather than "
+                      "trusting a clean result")
+        return errors, warnings
+    for pre in spans.pres:
+        if not any(_is_kql_code(c) for c in pre["codes"]):
             continue
-        if any(start <= pm.start() < end for start, end in kql_figure_spans):
+        if pre["in_kql_figure"]:
             continue  # inside a figure.cmh-kql - the run-link rule (11d) governs this block
-        if re.search(r"\bdata-cmh-kql-no-cluster\b", pm.group(1), re.IGNORECASE):
+        if "data-cmh-kql-no-cluster" in pre["attrs"]:
             continue  # explicitly marked highlight-only (no known cluster)
         errors.append('a KQL code block (<pre><code class="language-kusto">) is not runnable: wrap it '
                       'in a figure.cmh-kql with a "Run in Azure Data Explorer" link (build it with '

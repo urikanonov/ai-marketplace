@@ -230,7 +230,7 @@ class ValidateHighlightingTests(ValidateAssertions, unittest.TestCase):
                     self.assertFalse(validate.is_advisory(w), "this must stay fatal, got: %r" % w)
 
     def test_the_block_payload_is_read_from_the_original_document(self):
-        # The masked view only LOCATES blocks; the language, emptiness and highlight state must
+        # The tokenizer only LOCATES blocks; the language, emptiness and highlight state must
         # be decided on the bytes that ship. Reading the masked bytes made a block whose inner
         # is a raw <script> look empty, so the rawest shape of all was silently skipped.
         doc = self._doc_with_code(
@@ -239,6 +239,61 @@ class ValidateHighlightingTests(ValidateAssertions, unittest.TestCase):
         self.assertEqual(errors, [], "expected no errors, got: %r" % errors)
         self.assertTrue(any("markup the highlighter did not emit" in w for w in warnings),
                         "expected the block to be inspected, got: %r" % warnings)
+
+    # ------------------------------------------------------------------ #
+    # CMH-VAL-11 scan boundary: blocks come from PARSED element spans, so the
+    # four blind spots a text scan had are closed (#759).
+    # ------------------------------------------------------------------ #
+
+    _RAW_TEXT_ELEMENTS = ("textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript")
+
+    def test_a_raw_text_element_body_cannot_swallow_the_real_block(self):
+        # #759 blind spot 1: <script>/<style> were not the only elements whose body is TEXT.
+        # Every HTML raw-text / RCDATA element parses its content as characters, so a
+        # `<pre><code class="language-python">` mentioned inside one is prose, not authored
+        # markup - and a text scan let that mention start a match that ran to the author's real
+        # closer, hiding the raw block behind it.
+        for elem in self._RAW_TEXT_ELEMENTS:
+            with self.subTest(elem=elem):
+                doc = self._doc_with_code(
+                    '<%s>docs mention <pre><code class="language-python"></%s>\n' % (elem, elem)
+                    + '<pre><code class="language-python">def f(): return 1</code></pre>')
+                _errors, warnings = _validate_text(doc)
+                self.assertTrue(any("is not syntax-highlighted" in w for w in warnings),
+                                "%s body hid the real block, got: %r" % (elem, warnings))
+                self.assertFalse(any("no matching closing tag" in w for w in warnings),
+                                 "%s body must not look like a destroyed structure, got: %r"
+                                 % (elem, warnings))
+
+    def test_cdata_in_foreign_content_cannot_swallow_the_real_block(self):
+        # #759 blind spot 2: inside <svg>/<math> a `<![CDATA[ ... ]]>` section is a declaration
+        # whose content is character data. A text scan both flagged the block quoted there and
+        # let its unpaired opener swallow the author's real (already highlighted) block.
+        doc = self._doc_with_code(
+            '<svg class="cm-skip" aria-hidden="true">'
+            '<![CDATA[ <pre><code class="language-python"> ]]></svg>\n'
+            '<pre><code class="language-python">'
+            '<span class="cmh-code-kw">def</span> f(): <span class="cmh-code-kw">return</span> 1'
+            '</code></pre>')
+        self.assertOkNoWarn(doc)
+
+    def test_the_legacy_comment_close_ends_the_comment(self):
+        # #759 blind spot 3: `--!>` is a legal comment close (the HTML comment-end-bang state).
+        # Not recognizing it left the comment "open" to the document's NEXT `-->` - the layer
+        # always supplies one - blanking the authored block between and silencing the check.
+        doc = self._doc_with_code(
+            '<!-- example: <pre><code class="language-python">x</code></pre> --!>\n'
+            '<pre><code class="language-python">def f(): return 1</code></pre>')
+        self.assertWarn(doc, "is not syntax-highlighted")
+
+    def test_a_gt_inside_a_quoted_attribute_does_not_truncate_the_tag(self):
+        # #759 blind spot 4: matching attributes with `[^>]*` ends the tag at the FIRST `>`, even
+        # one sitting inside a quoted value. That truncated the attribute text, so the
+        # `language-python` token was never seen and the raw block was skipped entirely.
+        doc = self._doc_with_code(
+            '<pre title="a > b"><code title="x > y" class="language-python">'
+            'def f(): return 1</code></pre>')
+        self.assertWarn(doc, "is not syntax-highlighted")
 
     def test_hand_written_markup_in_a_code_block_is_an_advisory(self):
         # CMH-VAL-11: a deliberately hand-written code block is legitimate - the authoring tools

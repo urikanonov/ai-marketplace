@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.275.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.276.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -458,6 +458,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.276.0] - 2026-07-29</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The two author-time scans that locate code blocks - the syntax-highlighting guardrail (CMH-VAL-11) and the runnable-KQL rule (CMH-KQL-08) - now read PARSED elements instead of matching text over a masked copy of the document. The mask closed the two real defects it was built for, but a text scan still drew the block boundary in four places a browser does not, and each one could hide a real raw block from a guardrail that exists to catch it: - every HTML raw-text / RCDATA element holds text, not markup, yet only <code>&lt;script&gt;</code> and <code>&lt;style&gt;</code> were treated that way. A <code>&lt;pre&gt;</code>/<code>&lt;code&gt;</code> written inside a <code>&lt;textarea&gt;</code>, <code>&lt;title&gt;</code>, <code>&lt;xmp&gt;</code>, <code>&lt;iframe&gt;</code>, <code>&lt;noembed&gt;</code>, <code>&lt;noframes&gt;</code> or <code>&lt;noscript&gt;</code> was read as authored markup, and its unpaired opener could swallow the author&#x27;s real block that followed; - a <code>&lt;![CDATA[ ... ]]&gt;</code> section in foreign content (<code>&lt;svg&gt;</code>/<code>&lt;math&gt;</code>) is a declaration whose content is character data, so a block quoted there was both flagged on its own and able to hide a later real one; - the legacy comment close <code>--!&gt;</code> was not recognized, so a comment ending that way stayed &quot;open&quot; to the document&#x27;s next <code>--&gt;</code> - which the layer always supplies - blanking every authored block in between; - matching attributes up to the first <code>&gt;</code> ended a tag inside a QUOTED attribute value, so <code>&lt;code title=&quot;a &gt; b&quot; class=&quot;language-python&quot;&gt;</code> lost its language label entirely and a <code>data-cmh-kql-no-cluster</code> marker written after such a value was invisible.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.275.0] - 2026-07-29</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -465,6 +472,8 @@
               <li>Re-running <code>Export Offline</code> on an already-offline document that contains a mermaid diagram (or a chart the built-in renderer does not draw) now produces a working download instead of an &quot;Offline export is missing the vendored mermaid bundle&quot; error toast. An Offline export consumes the vendored payload and removes it, so the file it produces carries the libraries inline and no payload at all; the exporter now reads those already-inlined copies and their MIT notices before the strip removes them and re-emits them, so a re-export reuses what is already local. Because re-emitting a captured script grants it execution and the document being exported is untrusted, the <code>data-cmh-offline-lib</code> marker alone is not taken as proof this exporter wrote it: a captured copy must sit in the head, carry exactly the attribute shape the exporter emits (which rules out <code>src</code>, any <code>type</code> - so inert data and a non-executing MIME-parameter type are never promoted to code - and <code>nomodule</code>, whose body never ran), pass the same network-import check the loader strip applies to every other surviving script, and carry no byte sequence that would open a script-data escape. An adjacent MIT notice naming the same library is required as a licensing condition, so the library and its notice always travel together. A document that has neither a payload nor a qualifying inlined copy still fails loudly.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.273.0] - 2026-07-29</h3></div>
             <div class="group-label">Fixed</div>
@@ -476,8 +485,6 @@
               <li>The chart and diagram selectors are declared ONCE, in a new <code>assets/js/03-selectors.js</code> module, and the renderer, the image comment layer, the mermaid layer, the Offline exporter, and the author-time rich-libraries payload detector all derive from it, so the lists can no longer drift. The detector&#x27;s former deliberate superset (any <code>data-cmh-chart*</code> attribute) is now exact parity with the runtime.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.271.0] - 2026-07-29</h3></div>
             <div class="group-label">Fixed</div>
@@ -511,26 +518,7 @@
               <li>An offline re-export can no longer accumulate a second copy of an inlined library. The libraries the exporter injects now carry a marker it removes them by, instead of being recognized by their own bundled text. A script that merely names a bundle file (in a comment, say) but uses the <code>Chart</code> global is also no longer removed as if it were a loader shim, and a chart script placed in the document head is moved below the inlined library so it cannot run before it.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.265.0] - 2026-07-28</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li><code>tools/authoring/to_portable.py</code> migrates an existing NonPortable document into a self-contained Portable one, preserving its authored content, its embedded comments, and its handled ids - the point of migrating rather than regenerating is that review state travels with the document. It is the counterpart to <code>upgrade.py</code>, which deliberately refuses a NonPortable file. Running it twice is a no-op, and a file that is not a commentable-html document is refused rather than rewritten.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Portable is now the ONLY mode generated, by every creation route. <code>new_document.py</code> follows the resolved TEMPLATE rather than a flag, so the two can never disagree: the default is <code>dist/PORTABLE.html</code>, and a caller that genuinely needs a legacy NonPortable document asks for it explicitly with <code>--template &lt;dist&gt;/NONPORTABLE.html</code>, which still gets the full companion-reference handling. <code>retrofit.py</code> also produces a Portable document by default; a legacy one now requires an explicit <code>--nonportable</code> or one of the companion-href options. <code>--nonportable</code> on <code>new_document.py</code> is accepted but ignored, and <code>--portable</code> on either tool now simply names the default, so existing callers keep working.</li>
-              <li>NonPortable documents are opened, validated and finalized PERMANENTLY, with no deprecation deadline. The NonPortable runtime and its companions (<code>NONPORTABLE.html</code>, <code>commentable-html.{css,js,assets.js}</code>) stay shipped for exactly that reason: existing documents reference them by bare name and would break on the next auto-update if they were dropped. Only CREATING a new NonPortable document by default has gone away.</li>
-            </ul>
-            <div class="group-label">Security</div>
-            <ul>
-              <li><code>to_portable.py</code> neutralizes any raw-text terminator in the companion bytes it inlines, so a stylesheet supplied through <code>--dist</code> can no longer close its <code>&lt;style&gt;</code> element and have the rest parse as live markup - control of a stylesheet used to escalate to arbitrary script execution in a document holding authored content and reviewer comments. The payload is escaped, never silently dropped.</li>
-              <li>The migration writes through a staged temp file swapped in with <code>os.replace</code> (the crash-safe helper <code>content_replace.py</code> already used, now shared as <code>_atomic_io.py</code>). The destination used to be truncated before the replacement bytes existed, so an interrupted or failing write destroyed the document being migrated - reproduced as a 1.4 MB file reduced to zero bytes.</li>
-              <li>The CONTENT region that decides which companion reference is the real one is now located from line-anchored HTML-comment markers and required to be unique, so reviewer text quoting the marker can no longer invert the region and send the stylesheet into the author&#x27;s markup; an ambiguous document is refused rather than guessed at. The mode transition parses the layer descriptor as JSON and requires exactly one nonportable-to-portable transition, so a reformatted descriptor can no longer be reported as migrated while still marked nonportable.</li>
-              <li>Every anchor is resolved against the document&#x27;s original bytes and applied in one pass of non-overlapping edits, and elements are matched in a view with HTML comments and raw-text bodies blanked. Untrusted companion text can no longer aim a later step, and a commented-out or quoted copy of a companion reference or of the layer descriptor is never the one rewritten. A companion is matched by the BASENAME of the URL its element points at, so the absolute <code>file://</code> references the CLI produced by default, the <code>--assets-relative</code> / <code>--copy-assets</code> / <code>--assets-href</code> prefixes and <code>?v=</code> cache-busters all migrate rather than being refused; CRLF documents migrate too. Migration finally refuses to write a result that would still reference a companion, so it can never report success on a document that is not self-contained.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">225 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">226 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

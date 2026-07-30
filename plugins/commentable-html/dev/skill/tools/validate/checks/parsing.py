@@ -5,6 +5,7 @@ and the constants (regions, ids, regexes) every check builds on."""
 import functools
 import re
 from html.parser import HTMLParser
+from types import MappingProxyType
 
 REGIONS = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"]
 
@@ -50,8 +51,6 @@ SAFE_ID_RE = re.compile(r"^c[a-z0-9]{6,63}$")
 
 _PRE_TAG_RE = re.compile(r"<pre\b([^>]*)>(.*?)</pre>", re.DOTALL | re.IGNORECASE)
 
-_CODE_TAG_RE = re.compile(r"<code\b([^>]*)>(.*?)</code>", re.DOTALL | re.IGNORECASE)
-
 _CLASS_ATTR_RE = re.compile(r"""\bclass\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))""", re.IGNORECASE)
 
 # Transient runtime UI-state classes the layer toggles on document.body (sidebar open, active
@@ -69,6 +68,13 @@ def _attrs_have_class(attrs, class_name):
         if any(part.casefold() == wanted for part in value.split()):
             return True
     return False
+
+
+def parsed_attrs_have_class(ad, class_name):
+    """Whether a PARSED attribute dict carries `class_name` as a class token. Matching is
+    case-insensitive, like the raw-attribute `_attrs_have_class` it replaces for parsed input."""
+    wanted = class_name.casefold()
+    return any(part.casefold() == wanted for part in (ad.get("class") or "").split())
 
 
 # dist/PORTABLE.html ships a working DEMO: its content root carries these placeholder
@@ -101,43 +107,6 @@ _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 # that appears only inside script/style data (which the browser parses as text, not
 # a comment) cannot be mistaken for a real HTML comment.
 _SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1\s*>", re.DOTALL | re.IGNORECASE)
-
-# The constructs a `<pre>`/`<code>` scan must never look inside, matched as ONE left-to-right
-# scan so whichever construct opens FIRST wins - which is what a browser does. Masking them in
-# two sequential passes is wrong: a "<script" mentioned inside an HTML comment would open a
-# script mask that runs past the comment to the document's next real </script>, blanking the
-# authored content between. The third branch matches ANY OTHER start tag and is left UNCHANGED;
-# it exists purely to consume a tag so that a delimiter sitting inside one of its quoted
-# attribute values (`<div title="<script fake">`) cannot open a mask, since a browser only
-# recognizes these delimiters in the data state. The raw-text closer accepts the full HTML
-# end-tag boundary (`</script data-x>`, `</script/>`), which a browser also honours.
-_ATTRS = r'(?:[^>"\']|"[^"]*"|\'[^\']*\')*'
-_MASK_SCAN_RE = re.compile(
-    r"(?P<comment><!--.*?-->)"
-    r"|(?P<raw><(?P<tag>script|style)\b" + _ATTRS + r">.*?</(?P=tag)(?=[\s/>])[^>]*>)"
-    r"|(?P<other><[a-zA-Z][^\s/>]*" + _ATTRS + r">)",
-    re.DOTALL | re.IGNORECASE)
-
-
-def _mask_region(m):
-    """Blank a comment or raw-text body to same-length spaces; leave any other tag as it is."""
-    if m.lastgroup == "other" or m.group("other") is not None:
-        return m.group(0)
-    return " " * len(m.group(0))
-
-
-@functools.lru_cache(maxsize=1)
-def authored_html(html):
-    """Return `html` with <script>/<style> bodies and HTML comments blanked to SPACES.
-
-    Markup inside a script body, a style body, or a comment is quoted TEXT, not authored
-    content: a Portable document inlines layer CSS and JS whose prose mentions `<pre>` and
-    `<code>`, and a raw scan lets such a mention start a greedy match that swallows the author's
-    real block. Blanking preserves every offset, so a caller can locate spans in this view and
-    slice the ORIGINAL string for the payload. Cached for the last document because more than one
-    check needs the same view of the same (multi-megabyte) document per validation run.
-    """
-    return _MASK_SCAN_RE.sub(_mask_region, html)
 
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
@@ -591,6 +560,397 @@ class _DocParser(HTMLParser):
                 if self._in_content_region:
                     self.content_region_closed = True
                 self._in_content_region = False
+
+
+# --------------------------------------------------------------------------- #
+# Parsed <pre>/<code> spans - the scan boundary CMH-VAL-11 and CMH-KQL-08 share.
+# --------------------------------------------------------------------------- #
+
+# Elements whose CONTENT is text, not markup (the browser's raw-text and RCDATA modes).
+# A `<pre>`/`<code>` written inside one of them is prose a reader SEES, never an authored
+# code block, so a code-block scan must not look inside. Every one is switched on
+# EXPLICITLY rather than relying on html.parser's own table, which knows only script/style
+# on older interpreters (3.13 added xmp/iframe/noembed/noframes/textarea/title) - so the
+# boundary is identical on every Python the skill runs on. `noscript` is raw text in a
+# scripting-ENABLED browser, which is the only mode a commentable document ever runs in.
+_RAW_TEXT_ELEMENTS = frozenset((
+    "script", "style", "textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript",
+))
+
+# Only script and style stay raw text inside FOREIGN content; the rest are ordinary parsed
+# elements there (an SVG `<title>` is not HTML's RCDATA `<title>`).
+_FOREIGN_RAW_TEXT_ELEMENTS = frozenset(("script", "style"))
+
+# A comment ends at `-->` or at the legacy `--!>` (the HTML comment-end-bang state), and a
+# `<!-->` / `<!--->` closes abruptly. A whitespace-separated `-- >` does NOT close one, which is
+# why the boundary cannot be left to html.parser: before 3.13 it delegates to
+# `_markupbase._commentclose = re.compile(r'--\s*>')`, which both accepts `-- >` (a false close,
+# so quoted markup after it is read as live) and rejects `--!>` (so a comment ending that way
+# stayed open to the document's NEXT `-->` - the layer always supplies one - blanking the authored
+# markup between). parse_comment is overridden below so the boundary is exact on every host.
+_COMMENT_CLOSE_RE = re.compile(r"--!?>")
+_COMMENT_ABRUPT_CLOSE_RE = re.compile(r"-?>")
+
+# HTML closes a raw-text element on `</name` followed by whitespace, `/` or `>`, so
+# `</script data-x>` and `</script/>` ARE the end tag (with a parse error for the ignored
+# attribute). An end tag is still a TAG, so a `>` inside a quoted attribute value there does not
+# end it. html.parser only honours the canonical `</script>` before 3.13 AND decides where to
+# stop scanning raw text with its own `interesting` regex, so _CodeSpanParser overrides BOTH
+# set_cdata_mode (the scan boundary) and parse_endtag (the closer itself) - overriding only the
+# latter would leave a pre-3.13 parser consuming `</script data-x>` as raw data and running the
+# region on to the document's next canonical closer, swallowing the authored block between.
+_RAW_TEXT_CLOSE_RES = {}
+_END_TAG_ATTRS = r'(?:[^>"\']|"[^"]*"|\'[^\']*\')*'
+
+# `<![CDATA[ ... ]]>` is a CDATA section only when the CURRENT NODE is a foreign (SVG/MathML)
+# element; when it is an HTML element a browser treats `<!` + junk as a BOGUS COMMENT that ends
+# at the very first `>`, so markup after that `>` is LIVE. html.parser consumes the whole marked
+# section in every context (and, before 3.13, raises on an unknown section keyword), which would
+# hide a real code block from the guardrail.
+_FOREIGN_ROOTS = frozenset(("svg", "math"))
+
+# Children of these are inserted in the HTML namespace, so foreign content ends at them.
+_SVG_HTML_INTEGRATION = frozenset(("foreignobject", "desc", "title"))
+_MATHML_TEXT_INTEGRATION = frozenset(("mi", "mo", "mn", "ms", "mtext"))
+_ANNOTATION_HTML_ENCODINGS = frozenset(("text/html", "application/xhtml+xml"))
+
+# The HTML start tags that BREAK OUT of foreign content: a browser pops the open foreign
+# elements and inserts these in the HTML namespace. Without them a malformed foreign wrapper
+# (`<svg><p><![CDATA[>...`) would keep a stale `svg` on the stack and hide a live code block.
+_FOREIGN_BREAKOUT_TAGS = frozenset((
+    "b", "big", "blockquote", "body", "br", "center", "code", "dd", "div", "dl", "dt", "em",
+    "embed", "h1", "h2", "h3", "h4", "h5", "h6", "head", "hr", "i", "img", "li", "listing",
+    "menu", "meta", "nobr", "ol", "p", "pre", "ruby", "s", "small", "span", "strong", "strike",
+    "sub", "sup", "table", "tt", "u", "ul", "var",
+))
+_FONT_BREAKOUT_ATTRS = ("color", "face", "size")
+
+
+def _raw_text_close_re(elem):
+    rx = _RAW_TEXT_CLOSE_RES.get(elem)
+    if rx is None:
+        rx = re.compile(r"</%s(?=[\t\n\r\f />])%s>" % (re.escape(elem), _END_TAG_ATTRS),
+                        re.IGNORECASE)
+        _RAW_TEXT_CLOSE_RES[elem] = rx
+    return rx
+
+
+class _CodeSpanParser(HTMLParser):
+    """Record the offsets of every real `<pre>` element and of the `<code>` elements inside
+    it, so the code-block checks read PARSED elements instead of matching text.
+
+    Each `<pre>` record carries its parsed attributes, the span of its inner content
+    (offsets into the ORIGINAL document, so a payload is always sliced from the bytes that
+    ship), whether an ancestor is a `figure.cmh-kql`, and the `<code>` elements found under
+    it. `unclosed` is True when a `<pre>` or a `<code>` never got its own end tag - the
+    shape a raw `<script>`/`<style>`/`<!--` opened inside a code block produces, which the
+    browser's raw-text mode swallows the same way, so the callers fail CLOSED on it.
+
+    Everything a text scan got wrong falls out of parsing: a `>` inside a QUOTED attribute
+    value no longer ends a tag, comments and raw-text/RCDATA bodies and `<![CDATA[ ]]>`
+    sections contribute no elements, and a construct mentioned inside any of them cannot
+    start a match that swallows the author's real block.
+    """
+
+    def __init__(self, html):
+        super().__init__(convert_charrefs=True)
+        self._starts = _line_starts(html)
+        self._stack = []   # [_OpenElement]
+        self._final = False   # the whole document has been handed to feed()
+        self.pres = []
+        self.unclosed = False
+
+    def parse_document(self, html):
+        """Parse a COMPLETE document. Feeding the whole string at once is what lets an
+        unterminated comment be resolved the way a browser resolves it (it runs to the end of
+        the document) instead of the way the host interpreter happens to resolve it."""
+        self._final = True
+        self.feed(html)
+        self.close()
+
+    # -- offsets ---------------------------------------------------------- #
+
+    def _off(self):
+        ln, col = self.getpos()
+        return self._starts[ln - 1] + col
+
+    def _start_tag_end(self):
+        return self._off() + len(self.get_starttag_text() or "")
+
+    # -- cross-version comment and raw-text boundaries --------------------- #
+
+    def parse_comment(self, i, report=True):
+        rawdata = self.rawdata
+        if not rawdata.startswith("<!--", i):
+            raise AssertionError("unexpected call to parse_comment()")
+        m = _COMMENT_ABRUPT_CLOSE_RE.match(rawdata, i + 4) or _COMMENT_CLOSE_RE.search(rawdata, i + 4)
+        if m:
+            if report:
+                self.handle_comment(rawdata[i + 4:m.start()])
+            return m.end()
+        # Unterminated: a browser treats the rest of the document as comment data. Say so
+        # explicitly rather than leaving it to the host - before 3.13 html.parser resumes
+        # tokenizing after the next `>`, which resurrects markup a browser never renders.
+        return self._unterminated(i + 4, self.handle_comment if report else (lambda _d: None))
+
+    def set_cdata_mode(self, elem, **kwargs):
+        # Install the raw-text scan boundary a BROWSER uses: the region ends at `</name`
+        # followed by whitespace, `/` or `>`. Before 3.13 html.parser stops only at the
+        # canonical `</script>`, so `</script data-x>` is consumed as raw data and the region
+        # runs on to the document's next canonical closer - swallowing the authored block
+        # between. parse_endtag below then consumes the whole end tag from that point.
+        # The guard also REFUSES the base parser's own call (which fires right after
+        # handle_starttag on 3.13 for its RCDATA table): inside FOREIGN content only script and
+        # style are raw text, so an SVG `<title>` must be parsed, not swallowed as text.
+        if self._stack:
+            top = self._stack[-1]
+            if (top[0] == elem.lower() and top[3] != "html"
+                    and elem.lower() not in _FOREIGN_RAW_TEXT_ELEMENTS):
+                return
+        super().set_cdata_mode(elem, **kwargs)
+        self.interesting = re.compile(r"</%s(?=[\t\n\r\f />])" % re.escape(self.cdata_elem),
+                                      re.IGNORECASE)
+
+    def parse_endtag(self, i):
+        elem = self.cdata_elem
+        if elem is not None:
+            m = _raw_text_close_re(elem).match(self.rawdata, i)
+            if m:
+                self.handle_endtag(elem)
+                self.clear_cdata_mode()
+                return m.end()
+        return super().parse_endtag(i)
+
+    def parse_html_declaration(self, i):
+        # Replaced wholesale so `<!...>` is resolved identically on every interpreter. Only
+        # inside FOREIGN content is `<![CDATA[ ... ]]>` a CDATA section; everywhere else a
+        # browser treats `<!` + junk as a BOGUS COMMENT that ends at the very first `>`, so
+        # markup after that `>` is LIVE. html.parser instead consumes the whole marked section
+        # in every context (and, before 3.13, raises on an unknown section keyword), which would
+        # hide a real code block behind a `<![CDATA[` an author never meant as one.
+        rawdata = self.rawdata
+        if rawdata.startswith("<!--", i):
+            return self.parse_comment(i)
+        if rawdata[i:i + 9].lower() == "<!doctype":
+            gt = rawdata.find(">", i + 9)
+            if gt < 0:
+                return self._unterminated(i + 2, self.handle_decl)
+            self.handle_decl(rawdata[i + 2:gt])
+            return gt + 1
+        if rawdata.startswith("<![CDATA[", i) and self._current_is_foreign():
+            j = rawdata.find("]]>", i + 9)
+            if j < 0:
+                return self._unterminated(i + 3, self.unknown_decl)
+            self.unknown_decl(rawdata[i + 3:j])
+            return j + 3
+        return self.parse_bogus_comment(i)
+
+    def _unterminated(self, start, handler):
+        """A construct with no closer: a browser consumes the rest of the document."""
+        if not self._final:
+            return -1   # more data may still arrive; the base class re-tries
+        handler(self.rawdata[start:])
+        return len(self.rawdata)
+
+    # -- element tracking -------------------------------------------------- #
+
+    def _current_is_foreign(self):
+        """Whether the CURRENT NODE is an SVG/MathML element. That - not merely having a
+        foreign ANCESTOR - is what decides whether `<![CDATA[` opens a section: a browser only
+        recognizes one when the adjusted current node is outside the HTML namespace."""
+        return bool(self._stack) and self._stack[-1][3] != "html"
+
+    def _child_namespace(self, tag, ad):
+        """The namespace a new `tag` is inserted in, applying HTML5's foreign-content rules:
+        integration points and MathML text integration points put their children back in the
+        HTML namespace, and a BREAKOUT start tag pops the open foreign elements first."""
+        top = self._stack[-1] if self._stack else None
+        parent_ns = top[3] if top is not None else "html"
+        parent_integration = top[4] if top is not None else False
+        if parent_ns == "html" or parent_integration:
+            return "svg" if tag == "svg" else ("math" if tag == "math" else "html")
+        if tag in _FOREIGN_BREAKOUT_TAGS or (
+                tag == "font" and any(a in ad for a in _FONT_BREAKOUT_ATTRS)):
+            self._break_out_of_foreign()
+            return "html"
+        return parent_ns
+
+    def _break_out_of_foreign(self):
+        """Pop foreign elements until the current node is HTML or an integration point, as a
+        browser does for a breakout start tag. Without it `<svg><p>` would leave a stale `svg`
+        current and a following `<![CDATA[` would hide a live block."""
+        while self._stack:
+            top = self._stack[-1]
+            if top[3] == "html" or top[4]:
+                return
+            if top[0] in ("pre", "code") and top[1] is not None:
+                self.unclosed = True
+            self._stack.pop()
+
+    @staticmethod
+    def _is_integration_point(tag, ns, ad):
+        """Whether this element's CHILDREN are inserted in the HTML namespace."""
+        if ns == "svg":
+            return tag in _SVG_HTML_INTEGRATION
+        if ns == "math":
+            if tag in _MATHML_TEXT_INTEGRATION:
+                return True
+            return (tag == "annotation-xml"
+                    and (ad.get("encoding") or "").strip().lower() in _ANNOTATION_HTML_ENCODINGS)
+        return False
+
+    def _open_pre(self):
+        for entry in reversed(self._stack):
+            if entry[0] == "pre":
+                return entry[1]
+        return None
+
+    def _implicit_close(self, tag):
+        # HTML5 "close a p element": a block-level start tag closes an open <p> (and a new <li>
+        # closes an open <li>). Without it a `<p><figure class="cmh-kql">` followed by a stray
+        # `</p>` would pop the FIGURE too, so a block a browser puts inside that figure would be
+        # judged outside it. This mirrors _DocParser, so both tolerant parsers agree.
+        if tag in P_CLOSERS:
+            self._close_scoped("p", _P_CLOSE_BOUNDARY)
+        if tag == "li":
+            self._close_scoped("li", _LI_CLOSE_BOUNDARY)
+
+    def _close_scoped(self, target, boundary):
+        for i in range(len(self._stack) - 1, -1, -1):
+            t = self._stack[i][0]
+            if t == target:
+                for entry in self._stack[i:]:
+                    if entry[0] in ("pre", "code") and entry[1] is not None:
+                        self.unclosed = True
+                del self._stack[i:]
+                return
+            if t in boundary:
+                return  # target is not in scope; do not close it
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        ad = _DocParser._attrs_dict(attrs)
+        ns = self._child_namespace(tag, ad)
+        if ns == "html":
+            self._implicit_close(tag)
+        rec = None
+        if tag == "pre" and ns == "html":
+            rec = {"attrs": ad, "start": self._off(), "inner_start": self._start_tag_end(),
+                   "inner": None, "codes": [],
+                   "in_kql_figure": any(e[2] for e in self._stack)}
+            self.pres.append(rec)
+        elif tag == "code" and ns == "html":
+            owner = self._open_pre()
+            if owner is not None:
+                rec = {"attrs": ad, "start": self._off(),
+                       "inner_start": self._start_tag_end(), "inner": None}
+                owner["codes"].append(rec)
+        # A VOID element has no content and no end tag, so it never owns a code block and never
+        # needs to be popped. Keeping voids off the stack matches _DocParser and keeps a
+        # void-heavy document from growing the stack (and every unmatched end tag's scan of it).
+        # (A foreign element is never void: `<svg><rect/>` is self-closing markup, handled below.)
+        if tag not in VOID or ns != "html":
+            self._stack.append((tag, rec,
+                                tag == "figure" and ns == "html"
+                                and parsed_attrs_have_class(ad, "cmh-kql"),
+                                ns, self._is_integration_point(tag, ns, ad)))
+        raw = _RAW_TEXT_ELEMENTS if ns == "html" else _FOREIGN_RAW_TEXT_ELEMENTS
+        if tag in raw:
+            self.set_cdata_mode(tag)
+
+    def handle_startendtag(self, tag, attrs):
+        # HTML5: a trailing slash on a NON-void HTML tag is ignored, so `<pre/>` opens an element
+        # that still needs `</pre>` and `<textarea/>` still opens raw text. In FOREIGN content
+        # the slash really does close the element, so `<svg><rect/>` leaves nothing open.
+        tag = tag.lower()
+        if self._stack and self._stack[-1][3] != "html" and not self._stack[-1][4]:
+            ad = _DocParser._attrs_dict(attrs)
+            if self._child_namespace(tag, ad) != "html":
+                return  # a self-closed foreign element: opened and closed at once
+        if tag not in VOID:
+            self.handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        end = self._off()
+        for i in range(len(self._stack) - 1, -1, -1):
+            if self._stack[i][0] != tag:
+                continue
+            for entry in self._stack[i + 1:]:
+                if entry[0] in ("pre", "code") and entry[1] is not None:
+                    self.unclosed = True   # implicitly closed: it never got its own closer
+            own = self._stack[i][1]
+            if own is not None:
+                own["inner"] = (own["inner_start"], end)
+            del self._stack[i:]
+            return
+        # An end tag with no open element is ignored, exactly as a browser ignores it.
+
+    def close(self):
+        super().close()
+        for entry in self._stack:
+            if entry[0] in ("pre", "code") and entry[1] is not None:
+                self.unclosed = True
+
+
+class CodeSpans:
+    """The parsed result.
+
+    `pres` is a read-only tuple of `<pre>` records; each record is a read-only mapping with
+    `attrs` (the parsed attribute dict), `inner` (an `(start, end)` offset pair into the
+    ORIGINAL document, or None when the element never closed), `codes` (a tuple of the same
+    shape for the `<code>` elements inside it) and `in_kql_figure`. INVARIANT: `inner is None`
+    implies `unclosed` is True, so a caller that slices `inner` MUST null-check it (the element
+    is already reported through the fail-closed flag). `unclosed` is True when a `<pre>`/`<code>`
+    never got its own end tag, so the structure cannot be trusted; `failed` is True when the
+    parse itself blew up, in which case NO block was collected and every consumer must fail
+    closed rather than conclude the document is clean. The records are frozen because the result
+    is CACHED and shared between checks - a consumer that stamped a field on one would silently
+    poison the next check's view.
+    """
+
+    __slots__ = ("pres", "unclosed", "failed")
+
+    def __init__(self, pres, unclosed, failed=False):
+        self.pres = pres
+        self.unclosed = unclosed
+        self.failed = failed
+
+
+def _freeze_pres(pres):
+    frozen = []
+    for pre in pres:
+        rec = dict(pre)
+        rec["attrs"] = MappingProxyType(dict(pre["attrs"]))
+        codes = []
+        for c in pre["codes"]:
+            cr = dict(c)
+            cr["attrs"] = MappingProxyType(dict(c["attrs"]))
+            codes.append(MappingProxyType(cr))
+        rec["codes"] = tuple(codes)
+        frozen.append(MappingProxyType(rec))
+    return tuple(frozen)
+
+
+@functools.lru_cache(maxsize=1)
+def code_block_spans(html):
+    """Parse `html` and return the `CodeSpans` for its `<pre>`/`<code>` elements.
+
+    Cached for the last document because more than one check needs the same spans for the
+    same (multi-megabyte) document per validation run. A malformed document never raises: the
+    parser is tolerant, and anything it could not close is reported through `unclosed` so the
+    callers fail closed instead of silently inspecting nothing.
+    """
+    p = _CodeSpanParser(html)
+    try:
+        p.parse_document(html)
+    except Exception:
+        # A tolerant parse should not raise, but a code-block guardrail must never be the thing
+        # that crashes a validation run. Report NOTHING (a partial block list would let a check
+        # conclude the rest of the document is clean) and flag the failure so every consumer
+        # fails CLOSED.
+        return CodeSpans((), True, True)
+    return CodeSpans(_freeze_pres(p.pres), p.unclosed)
 
 
 def _is_json_attrs(ad):

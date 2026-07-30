@@ -118,10 +118,10 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
         self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
 
     def test_kql_scan_is_not_blinded_by_a_script_named_inside_a_comment(self):
-        # CMH-KQL-08 shares the one-pass mask (checks/parsing.authored_html). Masking
-        # script/style BEFORE comments let a "<script" NAMED INSIDE A COMMENT open a mask that
-        # ran to the document's next real </script> - the layer JS always supplies one - blanking
-        # the authored block, so an unrunnable KQL block silently passed this hard-ERROR gate.
+        # CMH-KQL-08 shares the tokenizer (checks/parsing.code_block_spans). A "<script" NAMED
+        # INSIDE A COMMENT must not open a raw-text region that runs to the document's next real
+        # </script> - the layer JS always supplies one - blanking the authored block, which let
+        # an unrunnable KQL block silently pass this hard-ERROR gate.
         bare = ('<!-- move the <script> tag later -->'
                 '<pre><code class="language-kusto">%s</code></pre>' % KQL_INNER)
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + bare)
@@ -129,9 +129,8 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
         self.assertError(doc, "is not runnable")
 
     def test_kql_scan_pairs_the_script_opener_with_its_own_closer(self):
-        # The mask alternation must keep opener and closer PAIRED: without the backreference a
-        # <script> region ended at a `"</style>"` string literal and its unfinished `<pre>`
-        # swallowed the real block.
+        # A raw-text region must end at its OWN closer: a <script> region that ended at a
+        # `"</style>"` string literal left an unfinished `<pre>` that swallowed the real block.
         js = JS_REGION.replace(
             "<script>\n",
             '<script>\nvar css = "</style>";\nvar u = "<pre><code class=\'language-kusto\'>X";\n',
@@ -140,6 +139,73 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + bare)
         doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), js, main])
         self.assertError(doc, "is not runnable")
+
+    # ------------------------------------------------------------------ #
+    # CMH-KQL-08 scan boundary: blocks come from PARSED element spans, so the
+    # four blind spots a text scan had are closed (#759).
+    # ------------------------------------------------------------------ #
+
+    _RAW_TEXT_ELEMENTS = ("textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript")
+
+    def _bare_kusto(self, pre_attrs=""):
+        return ('<pre%s><code class="language-kusto">%s</code></pre>' % (pre_attrs, KQL_INNER))
+
+    def _kql_content(self, html):
+        main = MAIN.replace("<p>content</p>", "<p>content</p>" + html)
+        return build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION])
+
+    def test_a_raw_text_element_body_cannot_swallow_a_bare_kql_block(self):
+        # #759 blind spot 1: every HTML raw-text / RCDATA element parses its content as
+        # characters, so a `<pre data-cmh-kql-no-cluster>` quoted inside one is prose. A text
+        # scan matched that quoted opener, saw its marker, skipped it - and consumed the real
+        # block's closer on the way, so the unrunnable block passed this hard-ERROR gate.
+        for elem in self._RAW_TEXT_ELEMENTS:
+            with self.subTest(elem=elem):
+                doc = self._kql_content(
+                    '<%s>example: <pre data-cmh-kql-no-cluster><code class="language-kusto">'
+                    'T</%s>\n' % (elem, elem)
+                    + self._bare_kusto())
+                self.assertError(doc, "is not runnable")
+
+    def test_cdata_in_foreign_content_cannot_swallow_a_bare_kql_block(self):
+        # #759 blind spot 2: inside <svg>/<math> a `<![CDATA[ ... ]]>` section is a declaration
+        # whose content is character data, so a marked opener quoted there must neither be read
+        # as authored markup nor swallow the real block that follows.
+        doc = self._kql_content(
+            '<svg class="cm-skip" aria-hidden="true">'
+            '<![CDATA[ <pre data-cmh-kql-no-cluster><code class="language-kusto">T ]]></svg>\n'
+            + self._bare_kusto())
+        self.assertError(doc, "is not runnable")
+
+    def test_the_legacy_comment_close_ends_the_comment_for_the_kql_scan(self):
+        # #759 blind spot 3: `--!>` is a legal comment close, so markup after it is live. Not
+        # recognizing it left the comment open to the document's next `-->` (the layer always
+        # supplies one), blanking the authored block and silencing the runnable gate.
+        doc = self._kql_content(
+            '<!-- example: <pre><code class="language-kusto">T</code></pre> --!>\n'
+            + self._bare_kusto())
+        self.assertError(doc, "is not runnable")
+
+    def test_a_gt_inside_a_quoted_attribute_does_not_hide_the_no_cluster_marker(self):
+        # #759 blind spot 4: matching attributes with `[^>]*` ends the tag at the FIRST `>`, even
+        # one inside a quoted value, so an explicit data-cmh-kql-no-cluster marker sitting after
+        # such a value was never seen and a deliberate clusterless snippet was falsely rejected.
+        doc = self._kql_content(self._bare_kusto(' title="a > b" data-cmh-kql-no-cluster'))
+        self.assertOkNoWarn(doc)
+
+    def test_a_failed_parse_is_a_hard_error(self):
+        # CMH-KQL-08 is a hard gate, so an empty block list from a FAILED parse must not read as
+        # "no unrunnable KQL found" - the tokenizer hands back no blocks and the rule refuses.
+        doc = self._kql_content(self._bare_kusto())
+        from checks import parsing as _parsing
+        validate.code_block_spans.cache_clear()
+        with mock.patch.object(_parsing._CodeSpanParser, "parse_document",
+                               side_effect=RuntimeError("boom")):
+            errors, _warnings = _validate_text(doc)
+        validate.code_block_spans.cache_clear()
+        self.assertTrue(any("could not be parsed to locate its KQL code blocks" in e
+                            for e in errors),
+                        "expected a fail-closed KQL error, got: %r" % errors)
 
     def test_kql_figure_without_run_link_errors(self):
         # A framed KQL figure MUST carry a Run in Azure Data Explorer link; a missing one
