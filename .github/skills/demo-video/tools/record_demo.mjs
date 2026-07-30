@@ -820,11 +820,13 @@ async function captureTerminal(args) {
   let childExited = false;
   let driverError = null;
   let overflowed = false;
-  // 192MB of captured BYTES, not code units. Finalisation is the real peak: scrubbing builds a
-  // second copy plus a per-character offset map, and JSON.stringify another, so the resident cost is
-  // several times what was captured. A limit that only bounded the capture would still OOM in the
-  // step that writes the cast - which is the recording this exists to save.
-  const maxMb = args["max-mb"] == null ? 192 : args["max-mb"];
+  // 48MB of captured BYTES, not code units. The binding constraint is not the capture, it is
+  // FINALISATION: scrubbing builds a projection, an offset map and a second copy of every event,
+  // then JSON.stringify builds another - measured at roughly 25x the captured size in resident
+  // memory. A limit that only bounded the capture would still run out of memory in the step that
+  // writes the cast, losing the recording this exists to save. A real session is well under this:
+  // a 24 minute Copilot capture is a few megabytes.
+  const maxMb = args["max-mb"] == null ? 48 : args["max-mb"];
   const maxBytes = captureLimitBytes(maxMb);
   const guardSize = makeSizeGuard(maxBytes, () => {
     overflowed = true;

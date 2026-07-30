@@ -45,16 +45,20 @@ export function recordCapture(dir, bytes, { now = () => new Date().toISOString()
   const captures = readLedger(file).filter((entry) => entry && entry.digest !== digest);
   captures.push({ digest, at: now() });
   const trimmed = captures.slice(-maxEntries);
+  const staging = `${file}.${process.pid}.${Date.now()}.tmp`;
   try {
     fs.mkdirSync(dir, { recursive: true });
     // Written to a unique temporary file and renamed into place. A read-modify-write of the whole
     // ledger is not atomic, so two captures finishing together could otherwise leave a
     // half-written file - which a later read would reject, marking a cast this machine really did
     // capture as foreign. Rename is atomic, so a reader always sees one whole ledger or the other.
-    const staging = `${file}.${process.pid}.${Date.now()}.tmp`;
     fs.writeFileSync(staging, JSON.stringify({ captures: trimmed }, null, 2));
     fs.renameSync(staging, file);
-  } catch (e) { /* a ledger we cannot write just means a later render warns */ }
+  } catch (e) {
+    // A ledger we cannot write just means a later render warns - but do not leave the staging file
+    // behind to accumulate.
+    try { fs.rmSync(staging, { force: true }); } catch (cleanupErr) { /* nothing else to try */ }
+  }
   return digest;
 }
 

@@ -31,31 +31,71 @@ const MAX_BUFFER = 64 * 1024;
 // every space-separated key - the kind of regression that shows up as a credential in a published
 // video, not as a failing test - so the word groups are matched explicitly and bounded.
 const ASSIGNED_KEYWORD = /passwords?|passwd|pwd|secrets?|api[-_ ]?keys?|apikey|access[-_ ]?tokens?|auth[-_ ]?tokens?|refresh[-_ ]?tokens?|client[-_ ]?secrets?|tokens?|credentials?|account[-_ ]?keys?|shared[-_ ]?access[-_ ]?keys?|primary[-_ ]?keys?|secondary[-_ ]?keys?|connection[-_ ]?strings?/i;
-// Every assignment separator is examined, from the left, and the scan resumes just AFTER the
-// separator rather than after the whole match. That last detail is the point: with plain
-// `matchAll`, a benign outer assignment swallows its value and the engine resumes past it, so
-// `env=DB_PASSWORD_PROD=swordfish` and `...?format=json&access_token=abc` matched only the harmless
-// outer key and the credential inside sailed through - clean scan, credential in the video.
+// Every assignment separator is examined, from the left, and the key is read BACKWARDS from it.
+// That is what catches a credential nested inside another assignment: with plain `matchAll` a benign
+// outer assignment swallowed its whole value and the engine resumed past it, so
+// `env=DB_PASSWORD_PROD=swordfish` and `...?format=json&access_token=abc` scanned CLEAN.
 //
-// Walking separators is also what keeps it linear: each one is looked at once, the key is read
-// backwards over a bounded number of word groups, and the value forwards to the first delimiter.
-const ASSIGN_SEP = /\s*[:=]\s*/g;
-const KEY_TAIL = /(?:^|[^\w.-])([\w.-]+(?:[ ][\w.-]+){0,4})$/;
-const VALUE_HEAD = /^["']?(?!\[redacted\])([^\s"';,]{6,})["']?/i;
+// Everything here is deliberately character-at-a-time rather than regex. `\s*[:=]\s*` looks
+// harmless but retries its leading `\s*` at every position, which made 80K of spaces take 32
+// seconds - the same class of hang the rewrite existed to remove. And the key is grown one word
+// group at a time until it NAMES a secret, so the shortest suffix wins: a 250-character variable
+// name is still read in full (no arbitrary look-back window), while `API_KEY=x client_secret=y`
+// keeps its two keys separate instead of swallowing everything between them.
+const KEY_CHAR = /[\w.-]/;
+const IS_SPACE = /\s/;
+// `&` ends a value: a token in a URL query string must not eat the parameters that follow it.
+const VALUE_END = /[\s"';,&]/;
+const MAX_KEY_GROUPS = 5;
+
+function readKey(plain, sepStart) {
+  let start = sepStart;
+  for (let groups = 0; groups < MAX_KEY_GROUPS; groups++) {
+    let word = start;
+    while (word > 0 && KEY_CHAR.test(plain[word - 1])) word -= 1;
+    if (word === start) return null;
+    start = word;
+    const candidate = plain.slice(start, sepStart);
+    if (ASSIGNED_KEYWORD.test(candidate)) return { key: candidate, start };
+    // Several keywords are written with spaces (`api key`, `shared access key`), so one space may
+    // be crossed to keep looking leftwards.
+    if (start > 0 && plain[start - 1] === " ") start -= 1;
+    else return null;
+  }
+  return null;
+}
 
 function* findAssignments(plain) {
-  ASSIGN_SEP.lastIndex = 0;
-  for (const sep of plain.matchAll(ASSIGN_SEP)) {
-    // Bounded look-back: a key is a handful of word groups, never a paragraph.
-    const before = plain.slice(Math.max(0, sep.index - 200), sep.index);
-    const key = KEY_TAIL.exec(before);
-    if (!key || !ASSIGNED_KEYWORD.test(key[1])) continue;
-    const after = plain.slice(sep.index + sep[0].length);
-    const value = VALUE_HEAD.exec(after);
-    if (!value) continue;
-    const start = sep.index - key[1].length;
-    const text = key[1] + sep[0] + value[0];
-    yield Object.assign([text, key[1], sep[0], value[1]], { index: start, input: plain });
+  for (let i = 0; i < plain.length; i++) {
+    const ch = plain[i];
+    if (ch !== ":" && ch !== "=") continue;
+    let sepStart = i;
+    while (sepStart > 0 && IS_SPACE.test(plain[sepStart - 1])) sepStart -= 1;
+    let sepEnd = i + 1;
+    while (sepEnd < plain.length && IS_SPACE.test(plain[sepEnd])) sepEnd += 1;
+
+    const found = readKey(plain, sepStart);
+    if (!found) continue;
+
+    let valueStart = sepEnd;
+    const quote = plain[valueStart] === '"' || plain[valueStart] === "'" ? plain[valueStart] : null;
+    if (quote) valueStart += 1;
+    let valueEnd = valueStart;
+    while (valueEnd < plain.length && !VALUE_END.test(plain[valueEnd])) valueEnd += 1;
+    const value = plain.slice(valueStart, valueEnd);
+    if (value.length < 6) continue;
+    // Already scrubbed: re-reporting it would make the gate refuse a cast this tool just cleaned.
+    if (value.toLowerCase().startsWith("[redacted]")) continue;
+
+    let end = valueEnd;
+    if (quote && plain[end] === quote) end += 1;
+    const text = plain.slice(found.start, end);
+    yield Object.assign([text, found.key, plain.slice(sepStart, sepEnd), value], {
+      index: found.start,
+      input: plain,
+    });
+    // Resume after the SEPARATOR, not after the value, so a nested assignment is still examined.
+    i = sepEnd - 1;
   }
 }
 
@@ -241,22 +281,31 @@ function project(raw, { dropNewlines = false } = {}) {
       i = end + 1;
     }
   }
-  let plain = "";
-  const map = [];
+  // The projection is built from SLICES and its offset map lives in a typed array. Appending one
+  // character at a time and pushing one boxed number per character cost roughly 40x the input in
+  // heap - on a rule set the safety gate runs over a whole multi-megabyte session, that made
+  // finalisation the thing most likely to run out of memory and lose the recording.
+  const parts = [];
+  const map = new Int32Array(raw.length + 1);
+  let mapped = 0;
+  const keep = (from, to) => {
+    if (to > from) parts.push(raw.slice(from, to));
+    for (let i = from; i < to; i++) map[mapped++] = i;
+  };
   let at = 0;
   for (const [index, match] of matches.entries()) {
-    for (let i = at; i < match.index; i++) { plain += raw[i]; map.push(i); }
+    keep(at, match.index);
     // A style escape is dropped (so a painted token rejoins); anything that moves or erases the
     // cursor becomes a space (so it can never glue two unrelated runs into one apparent token).
     if (!dropWhole.has(index) && !ANSI_STYLE.test(match[0]) && !/^[\r\n]+$/.test(match[0])) {
-      plain += " ";
-      map.push(match.index);
+      parts.push(" ");
+      map[mapped++] = match.index;
     }
     at = match.index + match[0].length;
   }
-  for (let i = at; i < raw.length; i++) { plain += raw[i]; map.push(i); }
-  map.push(raw.length);
-  return { plain, map };
+  keep(at, raw.length);
+  map[mapped] = raw.length;
+  return { plain: parts.join(""), map };
 }
 
 // xterm replays the stream into a GRID, so a replacement shorter than what it replaced pulls the
