@@ -46,6 +46,15 @@ const KEY_CHAR = /[\w.-]/;
 const IS_SPACE = /\s/;
 // `&` ends a value: a token in a URL query string must not eat the parameters that follow it.
 const VALUE_END = /[\s"';,&]/;
+// And a value is BOUNDED. The unwrapped pass (which exists so a hard-wrapped token still matches)
+// removes bare newlines with nothing in their place, so consecutive lines are glued together - and
+// an unbounded value scan then runs from every keyword separator to the end of the joined
+// transcript. That is O(n) per separator over O(n) separators: an env dump of 4000 assignment lines
+// took 11.6 SECONDS to scan, it collapsed every following line into one runaway redaction (deleting
+// them from the transcript the reviewer is shown, and counting three secrets as one), and the
+// resulting fragmented marker made the gate refuse the tool's own correctly-scrubbed cast.
+// No real credential is longer than this, and a wrapped one spans a line or two at most.
+const MAX_VALUE = 512;
 const MAX_KEY_GROUPS = 5;
 
 function readKey(plain, sepStart) {
@@ -65,7 +74,7 @@ function readKey(plain, sepStart) {
   return null;
 }
 
-function* findAssignments(plain) {
+function* findAssignments(plain, { joins } = {}) {
   for (let i = 0; i < plain.length; i++) {
     const ch = plain[i];
     if (ch !== ":" && ch !== "=") continue;
@@ -81,7 +90,8 @@ function* findAssignments(plain) {
     const quote = plain[valueStart] === '"' || plain[valueStart] === "'" ? plain[valueStart] : null;
     if (quote) valueStart += 1;
     let valueEnd = valueStart;
-    while (valueEnd < plain.length && !VALUE_END.test(plain[valueEnd])) valueEnd += 1;
+    const limit = Math.min(plain.length, valueStart + MAX_VALUE);
+    while (valueEnd < limit && !VALUE_END.test(plain[valueEnd])) valueEnd += 1;
     const value = plain.slice(valueStart, valueEnd);
     if (value.length < 6) continue;
     // Already scrubbed: re-reporting it would make the gate refuse a cast this tool just cleaned.
@@ -287,6 +297,9 @@ function project(raw, { dropNewlines = false } = {}) {
   // finalisation the thing most likely to run out of memory and lose the recording.
   const parts = [];
   const map = new Int32Array(raw.length + 1);
+  // Where a line break was removed to rejoin the text. A rule that scans forward needs to know:
+  // without it a value runs from one assignment straight through every line that follows.
+  const joins = [];
   let mapped = 0;
   const keep = (from, to) => {
     if (to > from) parts.push(raw.slice(from, to));
@@ -301,11 +314,12 @@ function project(raw, { dropNewlines = false } = {}) {
       parts.push(" ");
       map[mapped++] = match.index;
     }
+    else if (dropNewlines) joins.push(mapped);
     at = match.index + match[0].length;
   }
   keep(at, raw.length);
   map[mapped] = raw.length;
-  return { plain: parts.join(""), map };
+  return { plain: parts.join(""), map, joins: new Set(joins) };
 }
 
 // xterm replays the stream into a GRID, so a replacement shorter than what it replaced pulls the
@@ -318,13 +332,13 @@ function fitWidth(replacement, original) {
 }
 
 function collectSpans(raw, rules, options) {
-  const { plain, map } = project(raw, options);
+  const { plain, map, joins } = project(raw, options);
   const spans = [];
   for (const rule of rules) {
     if (options.unwrapOnly && !rule.unwrapSafe) continue;
     // A rule may bring its own scanner. `matchAll` resumes AFTER each match, which is wrong for a
     // rule whose match can CONTAIN another candidate - see findAssignments.
-    const matches = rule.find ? rule.find(plain) : (rule.re.lastIndex = 0, plain.matchAll(rule.re));
+    const matches = rule.find ? rule.find(plain, { joins }) : (rule.re.lastIndex = 0, plain.matchAll(rule.re));
     for (const match of matches) {
       const replacement = (rule.replace || (() => REDACTED))(...match);
       if (replacement === match[0]) continue;

@@ -113,6 +113,13 @@ browser phase in between. So the turns are declared in a file rather than typed 
 
 These are deliberate, and are covered by review rather than by a test:
 
+- **The unwrapped pass over-redacts a multi-line env dump** (tracked as #793). `assigned-secret` also
+  runs over the projection with bare newlines removed, so it can join a value to the assignment on
+  the following line: every secret is still removed, but the surrounding lines are blanked from the
+  transcript and the redaction count under-reports. The same root cause can leave the emitted marker
+  fragmented so the gate re-flags the tool's own clean output. Both fail SAFE - no credential
+  survives - and the obvious fixes each break a genuinely hard-wrapped value (DEMO-SAFE-21), so this
+  is left open rather than shipped half-right.
 - **The clips themselves.** Whether a montage reads well, whether a beat filmed the right thing, and
   whether anything sensitive is visible are judgements about pixels. The tool supports the judgement
   (`scan` for the cast, `frames` for the clip) but cannot make it. Every capture is reviewed by a
