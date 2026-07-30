@@ -540,6 +540,15 @@ test("the assigned-secret rule stays linear on a pathological line (DEMO-SAFE-25
     assert.ok(!scrubbed.includes("swordfish"), `${key} kept its value`);
     assert.equal(scrubText(scrubbed, DEFAULT_RULES), scrubbed, `${key} is not idempotent`);
   }
+  // Many secret-shaped assignments on ONE line is its own pathological shape: a query string of
+  // repeated `token=...&` gives every separator a value to scan, so a scan that did not stop at the
+  // next boundary would be quadratic again.
+  const repeated = "token=123456&".repeat(16000);
+  const repeatStart = Date.now();
+  scrubText(repeated, DEFAULT_RULES);
+  const repeatMs = Date.now() - repeatStart;
+  assert.ok(repeatMs < 5000, `${repeated.length} chars of repeated assignments took ${repeatMs}ms`);
+
   // An identifier that names nothing secret is untouched, which is what keeps the clip readable.
   for (const benign of ["duration=1234567890", "the quick brown fox jumps over: something"]) {
     assert.equal(scrubText(benign, DEFAULT_RULES), benign, `${benign} should be left alone`);
