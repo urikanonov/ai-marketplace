@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.276.0";
+const CMH_VERSION = "1.278.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -5773,6 +5773,97 @@ function richConsumeUrl(text, i, ctx) {
 // Marker pairs the wrap buttons/shortcuts insert around the selection.
 var NOTE_FORMAT_WRAP = { bold: ["**", "**"], italic: ["*", "*"], underline: ["__", "__"], strike: ["~~", "~~"], code: ["`", "`"] };
 
+// One source of truth for the formatting toolbar, so the floating new-comment composer and the
+// side-pane reply/edit editors offer exactly the same controls and can never drift apart. Each
+// entry's `html` is injected VERBATIM into the button, so it must stay a literal here - never a
+// computed, configurable, or document-derived string.
+var NOTE_FORMAT_BUTTONS = [
+  { fmt: "bold", title: "Bold (Ctrl+B)", label: "Bold", html: "<strong>B</strong>" },
+  { fmt: "italic", title: "Italic (Ctrl+I)", label: "Italic", html: "<em>I</em>" },
+  { fmt: "underline", title: "Underline (Ctrl+U)", label: "Underline", html: '<span style="text-decoration:underline">U</span>' },
+  { fmt: "strike", title: "Strikethrough", label: "Strikethrough", html: "<s>S</s>" },
+  { fmt: "code", title: "Inline code", label: "Inline code", html: "&lt;/&gt;" },
+  { fmt: "link", title: "Link (Ctrl+K)", label: "Insert link", html: "&#128279;" },
+  { fmt: "list", title: "Bullet list", label: "Bullet list", html: "&#8226;" }
+];
+
+function noteFormatBarHtml() {
+  var out = '<div class="cm-format-bar" role="group" aria-label="Comment formatting">';
+  for (var i = 0; i < NOTE_FORMAT_BUTTONS.length; i++) {
+    var b = NOTE_FORMAT_BUTTONS[i];
+    out += '<button type="button" data-fmt="' + escapeHtml(b.fmt) + '" title="' + escapeHtml(b.title)
+      + '" aria-label="' + escapeHtml(b.label) + '">' + b.html + "</button>";
+  }
+  return out + "</div>";
+}
+
+function noteFormatBarElement() {
+  var host = document.createElement("div");
+  host.innerHTML = noteFormatBarHtml();
+  return host.firstElementChild;
+}
+
+// Wire a `.cm-format-bar`'s buttons to `ta`; returns a remover for every listener it added.
+function wireNoteFormatBar(bar, ta) {
+  var offs = [];
+  if (bar && ta) {
+    // A click during an IME pre-edit would splice markers into provisional composition text, so
+    // track the composition and let the buttons no-op until it commits (the keyboard shortcuts get
+    // the same guarantee from the event's own `isComposing`).
+    var composing = false;
+    var onCompStart = function () { composing = true; ta.__cmhComposing = true; };
+    var onCompEnd = function () { composing = false; ta.__cmhComposing = false; };
+    ta.addEventListener("compositionstart", onCompStart);
+    ta.addEventListener("compositionend", onCompEnd);
+    offs.push(function () {
+      ta.removeEventListener("compositionstart", onCompStart);
+      ta.removeEventListener("compositionend", onCompEnd);
+    });
+    bar.querySelectorAll("button[data-fmt]").forEach(function (btn) {
+      // preventDefault on pointer/mouse down keeps the textarea's selection from collapsing when the
+      // button takes focus (mousedown for desktop, pointerdown so touch devices are covered too); the
+      // action runs on click.
+      var down = function (e) { e.preventDefault(); };
+      var click = function (e) {
+        e.preventDefault();
+        if (composing) return;
+        applyNoteFormat(ta, btn.getAttribute("data-fmt"));
+      };
+      btn.addEventListener("pointerdown", down);
+      btn.addEventListener("mousedown", down);
+      btn.addEventListener("click", click);
+      offs.push(function () {
+        btn.removeEventListener("pointerdown", down);
+        btn.removeEventListener("mousedown", down);
+        btn.removeEventListener("click", click);
+      });
+    });
+  }
+  return function () { while (offs.length) { try { offs.pop()(); } catch (e) {} } };
+}
+
+// True while an IME composition is in progress in `ta` (tracked by `wireNoteFormatBar`). The event's
+// own `isComposing` is the primary signal; this covers engines that report a Ctrl-modified keydown
+// with `isComposing` already false before `compositionend`, so a surface's save/cancel keys stay
+// guarded too - not just the formatting shortcuts.
+function isNoteComposing(ta) {
+  return !!(ta && ta.__cmhComposing);
+}
+
+// Ctrl/Cmd+B/I/U/K formatting shortcuts. Returns true when the key was consumed, so each surface
+// keeps its own Enter (save) and Escape (cancel) handling below it.
+function handleNoteFormatShortcut(e, ta) {
+  if (e.isComposing || isNoteComposing(ta)) return false;
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return false;
+  var k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  var fmt = k === "b" ? "bold" : k === "i" ? "italic" : k === "u" ? "underline" : k === "k" ? "link" : null;
+  if (!fmt) return false;
+  e.preventDefault();
+  e.stopPropagation();
+  applyNoteFormat(ta, fmt);
+  return true;
+}
+
 // Replace [start,end) in the textarea with text using execCommand("insertText") so the browser's
 // native undo/redo stack is preserved (setRangeText does NOT preserve undo in Chromium); fall back
 // to setRangeText when execCommand is unavailable.
@@ -5952,15 +6043,7 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
       <span class="label">drag to move</span>
     </div>
     <div class="quote"></div>
-    <div class="cm-format-bar" role="group" aria-label="Comment formatting">
-      <button type="button" data-fmt="bold" title="Bold (Ctrl+B)" aria-label="Bold"><strong>B</strong></button>
-      <button type="button" data-fmt="italic" title="Italic (Ctrl+I)" aria-label="Italic"><em>I</em></button>
-      <button type="button" data-fmt="underline" title="Underline (Ctrl+U)" aria-label="Underline"><span style="text-decoration:underline">U</span></button>
-      <button type="button" data-fmt="strike" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
-      <button type="button" data-fmt="code" title="Inline code" aria-label="Inline code">&lt;/&gt;</button>
-      <button type="button" data-fmt="link" title="Link (Ctrl+K)" aria-label="Insert link">&#128279;</button>
-      <button type="button" data-fmt="list" title="Bullet list" aria-label="Bullet list">&#8226;</button>
-    </div>
+    ${noteFormatBarHtml()}
     <textarea aria-label="Review comment" placeholder="Write your review comment... (**bold** *italic* __underline__, Ctrl/Cmd+Enter to save, Esc to cancel)"></textarea>
     <div class="row">
       <button type="button" data-act="cancel">Cancel</button>
@@ -6088,23 +6171,10 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   cleanups.push(addListener(cancelBtn, "click", () => closeComposerElement(el)));
   cleanups.push(addListener(saveBtn, "click", () => saveComposerElement(el)));
   const formatBar = el.querySelector(".cm-format-bar");
-  if (formatBar) {
-    formatBar.querySelectorAll("button[data-fmt]").forEach((btn) => {
-      // preventDefault on pointer/mouse down keeps the textarea's selection from collapsing when the
-      // button takes focus (mousedown for desktop, pointerdown so touch devices are covered too); the
-      // action runs on click.
-      cleanups.push(addListener(btn, "pointerdown", (e) => e.preventDefault()));
-      cleanups.push(addListener(btn, "mousedown", (e) => e.preventDefault()));
-      cleanups.push(addListener(btn, "click", (e) => { e.preventDefault(); applyNoteFormat(ta, btn.getAttribute("data-fmt")); }));
-    });
-  }
+  cleanups.push(wireNoteFormatBar(formatBar, ta));
   cleanups.push(addListener(ta, "keydown", (e) => {
-    if (e.isComposing) return;
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
-      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      const fmt = k === "b" ? "bold" : k === "i" ? "italic" : k === "u" ? "underline" : k === "k" ? "link" : null;
-      if (fmt) { e.preventDefault(); e.stopPropagation(); applyNoteFormat(ta, fmt); return; }
-    }
+    if (e.isComposing || isNoteComposing(ta)) return;
+    if (handleNoteFormatShortcut(e, ta)) return;
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveComposerElement(el); }
     else if (e.key === "Escape") { e.preventDefault(); closeComposerElement(el); }
   }));
@@ -6976,6 +7046,10 @@ function _buildInlineReplyEditor(initialText, saveLabel, onSave, onCancel, opts)
   ta.setAttribute("aria-label", o.label || "Write a reply");
   ta.placeholder = o.placeholder || "Write a reply...";
   ta.value = initialText || "";
+  // The side pane offers the same rich-text editing as the new-comment composer (issue #774): the
+  // shared toolbar above the textarea plus the Ctrl/Cmd formatting shortcuts.
+  const formatBar = noteFormatBarElement();
+  wireNoteFormatBar(formatBar, ta);
   const actions = document.createElement("div");
   actions.className = "cm-reply-compose-actions";
   const cancel = document.createElement("button");
@@ -6983,7 +7057,7 @@ function _buildInlineReplyEditor(initialText, saveLabel, onSave, onCancel, opts)
   const save = document.createElement("button");
   save.type = "button"; save.className = "cm-reply-save"; save.textContent = saveLabel;
   actions.appendChild(cancel); actions.appendChild(save);
-  wrap.appendChild(ta); wrap.appendChild(actions);
+  wrap.appendChild(formatBar); wrap.appendChild(ta); wrap.appendChild(actions);
   function doSave() {
     const val = ta.value.trim();
     if (!val) { ta.setAttribute("aria-invalid", "true"); ta.classList.add("cm-invalid"); ta.focus(); return; }
@@ -6991,11 +7065,18 @@ function _buildInlineReplyEditor(initialText, saveLabel, onSave, onCancel, opts)
   }
   cancel.addEventListener("click", function () { onCancel(); });
   save.addEventListener("click", doSave);
-  ta.addEventListener("keydown", function (e) {
+  // Clear the blank-note invalid state as soon as the reviewer types or formats, matching the
+  // floating composer (a toolbar action dispatches its own `input` event).
+  ta.addEventListener("input", function () { ta.removeAttribute("aria-invalid"); ta.classList.remove("cm-invalid"); });
+  // The editor now holds seven toolbar buttons plus Cancel/Save, so bind the keys on the WRAPPER,
+  // not the textarea: Escape from a focused button must cancel THIS editor rather than bubbling to
+  // the document handler, which would discard an unrelated floating composer's draft.
+  wrap.addEventListener("keydown", function (e) {
     // Ignore shortcuts mid-IME composition so Escape/Enter cannot discard a draft the composer is
     // still assembling (e.g. a CJK candidate window).
-    if (e.isComposing) return;
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doSave(); }
+    if (e.isComposing || isNoteComposing(ta)) return;
+    if (handleNoteFormatShortcut(e, ta)) return;
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); doSave(); }
     else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onCancel(); }
   });
   wrap._focus = function () { setTimeout(function () { try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {} }, 0); };
@@ -12020,7 +12101,7 @@ function showHelp(restoreEl) {
           '<li>The agent addresses the comments and marks them handled in this same file; handled comments are pruned on the next load and never reappear in the bundle.</li>' +
         '</ul>') +
       T('Formatting your comment',
-        '<p>Comment notes support lightweight rich text (WhatsApp / Office style). Type the markers, or select text and use the composer toolbar or a shortcut:</p>' +
+        '<p>Comment notes support lightweight rich text (WhatsApp / Office style). Type the markers, or select text and use the toolbar or a shortcut - in the composer AND in the side panel when you reply to or edit a comment:</p>' +
         '<ul>' +
           '<li><code>**bold**</code> or <kbd>Ctrl</kbd>+<kbd>B</kbd> for <strong>bold</strong>.</li>' +
           '<li><code>*italic*</code> or <kbd>Ctrl</kbd>+<kbd>I</kbd> for <em>italic</em>.</li>' +

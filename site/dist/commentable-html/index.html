@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.276.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.278.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -458,12 +458,27 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.278.0] - 2026-07-30</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Replying to a comment or editing a comment or reply in the side pane now offers the SAME rich-text editing as writing a new comment: the inline editor carries the formatting toolbar (bold, italic, underline, strikethrough, inline code, link, bullet list) above its textarea, and Ctrl/Cmd+B/I/U/K apply the matching markers to the selection. The notes always RENDERED rich, but the markers were undiscoverable exactly where most follow-up writing happens. The floating new-comment composer and the side pane now build the toolbar and the shortcuts from one shared source (<code>noteFormatBarHtml</code> / <code>wireNoteFormatBar</code> / <code>handleNoteFormatShortcut</code>), so the two surfaces cannot drift apart.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The side-pane inline reply/edit editor&#x27;s key handling now lives on the editor wrapper rather than its textarea, so Ctrl/Cmd+Enter, Esc, and the formatting shortcuts also work while focus is on one of the editor&#x27;s buttons. Previously Esc pressed there fell through to the document handler, which would discard an unrelated open composer&#x27;s draft while leaving the inline editor open.</li>
+              <li>The side-pane inline editor now clears the blank-note invalid state (<code>aria-invalid</code> and the red border) as soon as the reviewer types or formats, matching the floating composer; it used to stay marked invalid until the editor closed.</li>
+              <li>A formatting-toolbar click during an IME composition is ignored on both surfaces, so markers can no longer be spliced into provisional (for example CJK candidate) text. The same tracked composition state also guards each editor&#x27;s save and cancel keys, so Ctrl/Cmd+Enter and Esc stay inert mid-composition even on an engine that reports the keydown with <code>isComposing</code> already false.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.276.0] - 2026-07-29</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The two author-time scans that locate code blocks - the syntax-highlighting guardrail (CMH-VAL-11) and the runnable-KQL rule (CMH-KQL-08) - now read PARSED elements instead of matching text over a masked copy of the document. The mask closed the two real defects it was built for, but a text scan still drew the block boundary in four places a browser does not, and each one could hide a real raw block from a guardrail that exists to catch it: - every HTML raw-text / RCDATA element holds text, not markup, yet only <code>&lt;script&gt;</code> and <code>&lt;style&gt;</code> were treated that way. A <code>&lt;pre&gt;</code>/<code>&lt;code&gt;</code> written inside a <code>&lt;textarea&gt;</code>, <code>&lt;title&gt;</code>, <code>&lt;xmp&gt;</code>, <code>&lt;iframe&gt;</code>, <code>&lt;noembed&gt;</code>, <code>&lt;noframes&gt;</code> or <code>&lt;noscript&gt;</code> was read as authored markup, and its unpaired opener could swallow the author&#x27;s real block that followed; - a <code>&lt;![CDATA[ ... ]]&gt;</code> section in foreign content (<code>&lt;svg&gt;</code>/<code>&lt;math&gt;</code>) is a declaration whose content is character data, so a block quoted there was both flagged on its own and able to hide a later real one; - the legacy comment close <code>--!&gt;</code> was not recognized, so a comment ending that way stayed &quot;open&quot; to the document&#x27;s next <code>--&gt;</code> - which the layer always supplies - blanking every authored block in between; - matching attributes up to the first <code>&gt;</code> ended a tag inside a QUOTED attribute value, so <code>&lt;code title=&quot;a &gt; b&quot; class=&quot;language-python&quot;&gt;</code> lost its language label entirely and a <code>data-cmh-kql-no-cluster</code> marker written after such a value was invisible.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.275.0] - 2026-07-29</h3></div>
             <div class="group-label">Fixed</div>
@@ -472,8 +487,6 @@
               <li>Re-running <code>Export Offline</code> on an already-offline document that contains a mermaid diagram (or a chart the built-in renderer does not draw) now produces a working download instead of an &quot;Offline export is missing the vendored mermaid bundle&quot; error toast. An Offline export consumes the vendored payload and removes it, so the file it produces carries the libraries inline and no payload at all; the exporter now reads those already-inlined copies and their MIT notices before the strip removes them and re-emits them, so a re-export reuses what is already local. Because re-emitting a captured script grants it execution and the document being exported is untrusted, the <code>data-cmh-offline-lib</code> marker alone is not taken as proof this exporter wrote it: a captured copy must sit in the head, carry exactly the attribute shape the exporter emits (which rules out <code>src</code>, any <code>type</code> - so inert data and a non-executing MIME-parameter type are never promoted to code - and <code>nomodule</code>, whose body never ran), pass the same network-import check the loader strip applies to every other surviving script, and carry no byte sequence that would open a script-data escape. An adjacent MIT notice naming the same library is required as a licensing condition, so the library and its notice always travel together. A document that has neither a payload nor a qualifying inlined copy still fails loudly.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.273.0] - 2026-07-29</h3></div>
             <div class="group-label">Fixed</div>
@@ -510,15 +523,7 @@
               <li>Validator warnings now have one shared fatal/advisory split (<code>validate.ADVISORY_PREFIXES</code>, <code>is_advisory()</code>, <code>partition_warnings()</code>), honoured by <code>retrofit.py</code>, <code>content_replace.py</code>, <code>chart_block.py</code> and the <code>--strict</code> and stamping paths of <code>finalize.py</code>, <code>upgrade.py</code> and <code>validate.py</code>. An advisory names something the author cannot clear, so it is always reported but never blocks a fail-closed tool and never withholds the <code>commentable-html-validated</code> stamp. Today the set holds exactly one prefix: a code block carrying deliberately hand-written INERT markup, which the authoring tools pass through verbatim by design - without this, the scan fix above would have made such a document impossible to write back or stamp. Markup that is not inert stays FATAL: inertness is decided by a whole-tag allowlist (every <code>&lt;</code> must open a well-formed inline formatting tag carrying at most a quoted <code>class</code>), so a raw <code>&lt;script&gt;</code>, an <code>&lt;iframe&gt;</code>, any <code>style</code>/<code>is</code>/<code>data-*</code>/event attribute, an unquoted attribute, or a stray <code>&lt;</code> keeps blocking - a <code>&lt;pre&gt;</code> body is parsed as markup and that content executes. Text between the tags is escaped source and is never inspected, so a code sample that merely mentions <code>onclick=</code> or <code>javascript:</code> is not flagged. The check also fails CLOSED when a raw <code>&lt;script&gt;</code> or <code>&lt;!--</code> opened inside a code block swallows its <code>&lt;/code&gt;&lt;/pre&gt;</code>: it reports the unpaired <code>&lt;pre&gt;</code> rather than silently inspecting nothing. The theme-contrast advisory is deliberately not in the advisory set - its near-miss band ships a concrete <code>--suggest</code> fix, so it is clearable and still fails <code>--strict</code>; <code>retrofit.py</code> keeps its own long-standing carve-out for it, and now fails closed (every warning fatal) if the validator cannot be imported. <code>upgrade.py --strict</code> likewise aborts instead of committing when the validator is unavailable, and <code>deck_validate.py --strict</code> - the command the skill tells deck authors to finish with - shares the same contract, so an advisory-only deck no longer exits 1.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.268.0] - 2026-07-29</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>An Offline export no longer inlines Chart.js for a document that never calls it. The exporter decided by SHAPE - any <code>figure.chart canvas</code> or <code>canvas.cmh-chart</code> - but a canvas carrying <code>data-cmh-chart-points</code> / <code>data-cmh-chart-source</code> is drawn by the runtime&#x27;s own 2D renderer and never touches Chart.js, so a report whose charts are all built-in shipped roughly a megabyte of dead library in every offline file (and, with no diagram either, the vendored payload with it). The decision is now made on EVIDENCE: the library travels only when the document has a chart canvas the built-in renderer will not draw, or a surviving script that mentions the <code>Chart</code> global. The superset selector stays load-bearing - an author who attaches their own Chart.js to any canvas, including one that also carries the built-in attributes, still gets the library inlined, and the evidence match is deliberately loose (it covers indirect construction such as <code>const C = window.Chart; new C(...)</code> and every executable script MIME type) because a false positive only costs bytes while a false negative would ship a chart that never renders.</li>
-              <li>An offline re-export can no longer accumulate a second copy of an inlined library. The libraries the exporter injects now carry a marker it removes them by, instead of being recognized by their own bundled text. A script that merely names a bundle file (in a comment, say) but uses the <code>Chart</code> global is also no longer removed as if it were a loader shim, and a chart script placed in the document head is moved below the inlined library so it cannot run before it.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">226 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">227 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -40,11 +40,11 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `40-doc-comments.js` | CMH-DOCCMT | Document-wide comments. |
 | `41-selection.js` | CMH-SEL, CMH-CORE, CMH-RICH | Selection handling and the add-comment popup; keeps the add-comment menu above open composers. |
 | `43-identity.js` | CMH-AUTHOR | Reviewer identity: per-browser author name (localStorage, seedable via `data-cm-author`), the author pill, and the sidebar identity control (editable, future-comments only). |
-| `43-rich-text.js` | CMH-RICH | Rich-text note renderer (`renderRichNote` tokenizer) and composer formatting helpers (`applyNoteFormat`). |
+| `43-rich-text.js` | CMH-RICH | Rich-text note renderer (`renderRichNote` tokenizer) and the shared formatting toolbar/shortcut helpers (`applyNoteFormat`, `noteFormatBarHtml`, `wireNoteFormatBar`, `handleNoteFormatShortcut`). |
 | `44-threads.js` | CMH-THREAD | Single-level comment threads: reply grouping (`threadRoots`/`repliesOf`), `threadIds`, and orphan-reply pruning. |
 | `41-selection.js` | CMH-SEL, CMH-CORE | Selection handling and the add-comment popup. |
 | `45-composer.js` | CMH-A11Y, CMH-CORE, CMH-RICH | Per-instance comment composer (parallel-safe); hosts the formatting toolbar + shortcuts. |
-| `50-sidebar.js` | CMH-SIDE, CMH-PERSIST, CMH-RICH | Sidebar rendering and durable embedded-delete persistence from per-card deletes; renders the reviewer note rich and carries the hidden raw-source element. |
+| `50-sidebar.js` | CMH-SIDE, CMH-PERSIST, CMH-RICH | Sidebar rendering and durable embedded-delete persistence from per-card deletes; renders the reviewer note rich, carries the hidden raw-source element, and gives the inline reply/edit editors the shared formatting toolbar + shortcuts. |
 | `51-comment-search.js` | CMH-SEARCH, CMH-RICH | Comment search / filter row: case-insensitive filter of the rendered cards (matching the hidden raw note source so markers/URLs stay searchable), shown/total count, clear button. |
 | `52-hover-bubble.js` | CMH-CORE | Hover bubble to open a comment. |
 | `53-comment-popover.js` | CMH-CORE, CMH-RICH | Inline on-screen comment dialog opened from the hover bubble (renders the note rich; note + Edit button; an outside pointer click closes it and is swallowed, a keyboard-activated one is not). |

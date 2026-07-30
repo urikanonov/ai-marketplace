@@ -117,7 +117,7 @@ function showHelp(restoreEl) {
           '<li>The agent addresses the comments and marks them handled in this same file; handled comments are pruned on the next load and never reappear in the bundle.</li>' +
         '</ul>') +
       T('Formatting your comment',
-        '<p>Comment notes support lightweight rich text (WhatsApp / Office style). Type the markers, or select text and use the composer toolbar or a shortcut:</p>' +
+        '<p>Comment notes support lightweight rich text (WhatsApp / Office style). Type the markers, or select text and use the toolbar or a shortcut - in the composer AND in the side panel when you reply to or edit a comment:</p>' +
         '<ul>' +
           '<li><code>**bold**</code> or <kbd>Ctrl</kbd>+<kbd>B</kbd> for <strong>bold</strong>.</li>' +
           '<li><code>*italic*</code> or <kbd>Ctrl</kbd>+<kbd>I</kbd> for <em>italic</em>.</li>' +

@@ -191,6 +191,16 @@ test.describe("rich-text comment notes (CMH-RICH)", () => {
     await composer.locator('[data-fmt="list"]').click();
     await ta.pressSequentially("item");
     await expect(ta).toHaveValue("- item");
+
+    // A click during an IME pre-edit is ignored on this surface too (the toolbar wiring is shared
+    // with the side pane, so both call sites get the guard).
+    await ta.fill("hello world");
+    await ta.evaluate((el) => { el.setSelectionRange(0, 5); el.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })); });
+    await composer.locator('[data-fmt="bold"]').click();
+    await expect(ta).toHaveValue("hello world");
+    await ta.evaluate((el) => { el.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true })); el.setSelectionRange(0, 5); });
+    await composer.locator('[data-fmt="bold"]').click();
+    await expect(ta).toHaveValue("**hello** world");
   });
 
   test("Ctrl/Cmd+B/I/U/K shortcuts wrap the selection and Ctrl+Enter still saves (CMH-RICH-06)", async ({ page }) => {
@@ -331,5 +341,186 @@ test.describe("rich-text comment notes (CMH-RICH)", () => {
     await openSearch(page);
     await page.locator("#cmSearchInput").fill("ticket");
     await expect(page.locator('#commentList .cm-card[data-cid="crootrich1"]')).toBeVisible();
+  });
+
+  test("the side-pane reply and edit editors offer the same formatting toolbar (CMH-RICH-15)", async ({ page }) => {
+    await openInline(page);
+    await addTextComment(page, SEL, "root note");
+
+    await page.locator(".cm-card .cm-reply-btn").first().click();
+    const reply = page.locator(".cm-card .cm-reply-compose").last();
+    const bar = reply.locator('.cm-format-bar[role="group"]');
+    await expect(bar).toHaveAttribute("aria-label", /formatting/i);
+    for (const fmt of ["bold", "italic", "underline", "strike", "code", "link", "list"]) {
+      const btn = bar.locator(`button[data-fmt="${fmt}"]`);
+      await expect(btn).toHaveAttribute("type", "button");
+      expect((await btn.getAttribute("aria-label"))?.trim()).toBeTruthy();
+    }
+    const ta = reply.locator("textarea");
+    // The toolbar fits the narrow side pane on ONE row (every button shares the same top edge).
+    const tops = await bar.locator("button[data-fmt]").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    expect(new Set(tops).size).toBe(1);
+    const wraps = { bold: "**hello** world", italic: "*hello* world", underline: "__hello__ world", strike: "~~hello~~ world", code: "`hello` world" };
+    for (const [fmt, expected] of Object.entries(wraps)) {
+      await ta.fill("hello world");
+      await ta.evaluate((el) => el.setSelectionRange(0, 5));
+      await bar.locator(`[data-fmt="${fmt}"]`).click();
+      await expect(ta).toHaveValue(expected);
+    }
+    await ta.fill("hello world");
+    await ta.evaluate((el) => el.setSelectionRange(0, 5));
+    await bar.locator('[data-fmt="link"]').click();
+    await expect(ta).toHaveValue("[hello](url) world");
+    await ta.fill("a\nb");
+    await ta.evaluate((el) => el.setSelectionRange(0, 3));
+    await bar.locator('[data-fmt="list"]').click();
+    await expect(ta).toHaveValue("- a\n- b");
+
+    // A toolbar click during an IME pre-edit is ignored, so markers are never spliced into
+    // provisional composition text; once the composition commits the button works again.
+    await ta.fill("hello world");
+    await ta.evaluate((el) => { el.setSelectionRange(0, 5); el.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })); });
+    await bar.locator('[data-fmt="bold"]').click();
+    await expect(ta).toHaveValue("hello world");
+    await ta.evaluate((el) => { el.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true })); el.setSelectionRange(0, 5); });
+    await bar.locator('[data-fmt="bold"]').click();
+    await expect(ta).toHaveValue("**hello** world");
+
+    await ta.fill("reply note");
+    await reply.locator(".cm-reply-save").click();
+    await expect(page.locator(".cm-reply-compose")).toHaveCount(0);
+
+    // Editing the thread ROOT note in the side pane offers the same toolbar.
+    await page.locator('.cm-card .cm-entry-root [data-act="edit"]').first().click();
+    const rootEdit = page.locator(".cm-card .cm-entry-root .cm-reply-compose");
+    const rootTa = rootEdit.locator("textarea");
+    await expect(rootTa).toHaveValue("root note");
+    await rootTa.evaluate((el) => el.setSelectionRange(0, 4));
+    await rootEdit.locator('.cm-format-bar [data-fmt="bold"]').click();
+    await expect(rootTa).toHaveValue("**root** note");
+
+    // ... and so does editing a REPLY.
+    await page.locator('[data-reply-cid] [data-act="reply-edit"]').first().click();
+    const replyEdit = page.locator("[data-reply-cid] .cm-reply-compose");
+    const replyTa = replyEdit.locator("textarea");
+    await expect(replyTa).toHaveValue("reply note");
+    await replyTa.evaluate((el) => el.setSelectionRange(0, 5));
+    await replyEdit.locator('.cm-format-bar [data-fmt="code"]').click();
+    await expect(replyTa).toHaveValue("`reply` note");
+
+    // Anti-drift: the side pane and the floating composer render the SAME button set, in the same
+    // order, because both build it from one shared source.
+    const paneFmts = await replyEdit.locator(".cm-format-bar button[data-fmt]").evaluateAll((els) => els.map((e) => e.getAttribute("data-fmt")));
+    const composer = await openComposer(page, SEL, 1);
+    const composerFmts = await composer.locator(".cm-format-bar button[data-fmt]").evaluateAll((els) => els.map((e) => e.getAttribute("data-fmt")));
+    expect(paneFmts).toEqual(["bold", "italic", "underline", "strike", "code", "link", "list"]);
+    expect(composerFmts).toEqual(paneFmts);
+  });
+
+  test("the side-pane toolbar keeps >=44px touch targets on a phone (CMH-RICH-17)", async ({ page }) => {
+    await openInline(page);
+    await addTextComment(page, SEL, "root note");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator(".cm-card .cm-reply-btn").first().click();
+    const buttons = page.locator(".cm-reply-compose .cm-format-bar button[data-fmt]");
+    await expect(buttons).toHaveCount(7);
+    const boxes = await buttons.evaluateAll((els) => els.map((e) => {
+      const r = e.getBoundingClientRect();
+      return { w: r.width, h: r.height, left: r.left, right: r.right };
+    }));
+    const paneBox = await page.locator("#sidebar").evaluate((e) => {
+      const r = e.getBoundingClientRect();
+      return { left: r.left, right: r.right };
+    });
+    for (const b of boxes) {
+      expect(b.h).toBeGreaterThanOrEqual(44);
+      expect(b.w).toBeGreaterThanOrEqual(44);
+      // The bar wraps rather than spilling out of the pane, so no button is clipped off-screen.
+      expect(b.left).toBeGreaterThanOrEqual(paneBox.left - 0.5);
+      expect(b.right).toBeLessThanOrEqual(paneBox.right + 0.5);
+    }
+  });
+
+  test("Ctrl/Cmd+B/I/U/K work in the side-pane reply editor and Ctrl+Enter still saves (CMH-RICH-16)", async ({ page }) => {
+    await openInline(page);
+    await addTextComment(page, SEL, "root note");
+    await page.locator(".cm-card .cm-reply-btn").first().click();
+    const editor = page.locator(".cm-card .cm-reply-compose").last();
+    const ta = editor.locator("textarea");
+    const shortcuts = { b: "**pick** me", i: "*pick* me", u: "__pick__ me" };
+    for (const [key, expected] of Object.entries(shortcuts)) {
+      await ta.fill("pick me");
+      await ta.evaluate((el) => el.setSelectionRange(0, 4));
+      await ta.press(`Control+${key}`);
+      await expect(ta).toHaveValue(expected);
+    }
+    await ta.fill("pick me");
+    await ta.evaluate((el) => el.setSelectionRange(0, 4));
+    await ta.press("Control+k");
+    await expect(ta).toHaveValue("[pick](url) me");
+    // Cmd (Meta) works too, so the macOS shortcut the Help panel advertises is real.
+    await ta.fill("pick me");
+    await ta.evaluate((el) => el.setSelectionRange(0, 4));
+    await ta.press("Meta+b");
+    await expect(ta).toHaveValue("**pick** me");
+    // The shortcuts and Escape also work while focus is on a toolbar button, so the seven new
+    // focusable controls never leak Escape to the document handler behind the editor.
+    await ta.fill("pick me");
+    await ta.evaluate((el) => el.setSelectionRange(0, 4));
+    await editor.locator('[data-fmt="bold"]').focus();
+    await editor.locator('[data-fmt="bold"]').press("Control+i");
+    await expect(ta).toHaveValue("*pick* me");
+    // A blank save marks the field invalid, and formatting (not just typing) clears that state.
+    await ta.fill("   ");
+    await editor.locator(".cm-reply-save").click();
+    await expect(ta).toHaveAttribute("aria-invalid", "true");
+    await expect(ta).toHaveClass(/cm-invalid/);
+    await editor.locator('[data-fmt="bold"]').click();
+    await expect(ta).not.toHaveAttribute("aria-invalid", "true");
+    await expect(ta).not.toHaveClass(/cm-invalid/);
+    await ta.fill("   ");
+    await editor.locator(".cm-reply-save").click();
+    await expect(ta).toHaveAttribute("aria-invalid", "true");
+    await ta.fill("real text");
+    await expect(ta).not.toHaveAttribute("aria-invalid", "true");
+    // Escape pressed on a toolbar button closes THIS editor only: an unrelated floating composer
+    // keeps its draft, because the editor's key handling never reaches the document handler.
+    const other = await openComposer(page, SEL, 1);
+    await other.locator("textarea").fill("unrelated draft");
+    await editor.locator('[data-fmt="bold"]').focus();
+    await editor.locator('[data-fmt="bold"]').press("Escape");
+    await expect(page.locator(".cm-reply-compose")).toHaveCount(0);
+    await expect(other).toHaveCount(1);
+    await expect(other.locator("textarea")).toHaveValue("unrelated draft");
+    await other.locator("textarea").press("Escape");
+    expect((await storedComments(page)).length).toBe(1);
+
+    // Mid-composition the editor swallows save and cancel too, even when the engine reports the
+    // keydown with `isComposing` already false: the tracked composition state still guards them.
+    await page.locator(".cm-card .cm-reply-btn").first().click();
+    const editor3 = page.locator(".cm-card .cm-reply-compose").last();
+    const ta3 = editor3.locator("textarea");
+    await ta3.fill("mid composition");
+    await ta3.evaluate((el) => el.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })));
+    await ta3.press("Control+Enter");
+    await expect(editor3).toHaveCount(1);
+    expect((await storedComments(page)).length).toBe(1);
+    await ta3.press("Escape");
+    await expect(editor3).toHaveCount(1);
+    await expect(ta3).toHaveValue("mid composition");
+    // Once the composition commits, both work again.
+    await ta3.evaluate((el) => el.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true })));
+    await ta3.press("Control+Enter");
+    await expect(page.locator(".cm-reply-compose")).toHaveCount(0);
+    expect((await storedComments(page)).length).toBe(2);
+    // Ctrl+Enter still saves the reply, markers and all.
+    await page.locator(".cm-card .cm-reply-btn").first().click();
+    const editor2 = page.locator(".cm-card .cm-reply-compose").last();
+    await editor2.locator("textarea").fill("**saved** reply");
+    await editor2.locator("textarea").press("Control+Enter");
+    await expect(page.locator(".cm-reply-compose")).toHaveCount(0);
+    const stored = await storedComments(page);
+    expect(stored.length).toBe(3);
+    expect(stored.some((c) => c.note === "**saved** reply")).toBe(true);
   });
 });
