@@ -1,0 +1,27 @@
+{
+  "steps": [
+    {
+      "mark": "trust",
+      "expect": "Do you trust the files in this folder?",
+      "timeoutMs": 45000,
+      "optional": true,
+      "delayMs": 800,
+      "send": "2"
+    },
+    {
+      "mark": "ask",
+      "idleMs": 4000,
+      "submitMs": 1500,
+      "send": "Write md2html.mjs and a short PLAN.md, then run 2 rounds of multi-duck on them and finish with a PANEL SUMMARY table of the consolidated findings."
+    },
+    {
+      "mark": "quit",
+      "expect": "PANEL SUMMARY",
+      "timeoutMs": 5400000,
+      "idleMs": 6000,
+      "delayMs": 3000,
+      "submitMs": 1500,
+      "send": "/exit"
+    }
+  ]
+}
