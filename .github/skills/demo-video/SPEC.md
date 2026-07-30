@@ -6,7 +6,7 @@ dev-only tooling: nothing here is distributed, and nothing it produces is commit
 Run the suite from `.github/skills/demo-video`:
 
 ``bash
-node --test tests/timeline.test.mjs tests/redact.test.mjs tests/cli.test.mjs
+node --test "tests/*.test.mjs"
 ``
 
 The required `validate` CI job runs the same command.

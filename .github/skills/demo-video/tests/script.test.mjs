@@ -189,8 +189,10 @@ test("every committed capture recipe parses and is documented (DEMO-SCRIPT-07)",
     assert.ok(ask.enter && ask.submitMs >= 1000, `${name} ask needs enter with submitMs >= 1000`);
     // Naming the file is not enough - it has to be shown as the runnable thing, or the reader still
     // cannot re-record the clip. The command addresses the recipe by absolute path (the session must
-    // not run from the checkout), so match the flag and the filename rather than one literal spelling.
-    assert.match(skill, new RegExp(`--script[^\\n]*${name.replace(/[.]/g, "\\.")}`),
+    // not run from the checkout), so look for the flag and the filename on one line rather than
+    // matching one literal spelling of the path.
+    const documented = skill.split("\n").some((line) => line.includes("--script") && line.includes(name));
+    assert.ok(documented,
       `SKILL.md should show ${name} as a runnable --script command so the clip can be re-recorded`);
   }
 });
