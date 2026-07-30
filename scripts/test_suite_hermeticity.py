@@ -1,0 +1,294 @@
+#!/usr/bin/env python3
+"""The scripts unit suite must never touch the repository it runs in.
+
+Git hooks export location variables (`GIT_DIR`, `GIT_INDEX_FILE`, `GIT_WORK_TREE`, ...) that point
+at the REAL repository. A test that spawns `git` in its own temporary directory INHERITS them, so
+the command silently targets the real repo instead of the temp one: `git add` stages a fixture into
+the real index, `git commit` puts a stray commit on the current branch, and the checker under test
+reads the real index rather than the fixture. That is not theoretical - it is how the fixtures
+`a.md` and `old.md` came to be tracked on `main` (#778, and the duplicate reports #772 and #773),
+and it also made the conflict-marker suite FAIL on its own leftovers.
+
+`scripts/_git_test_env.clean_git_env()` exists to scrub exactly those variables (#283). These two
+guards keep every test on it: the static one is the general rule (any test that spawns git routes
+its environment through the helper), and the behavioral one proves the rule is load-bearing by
+running the real-git suite under an inherited hook environment and asserting the ambient repository
+comes out byte-identical.
+"""
+import ast
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _git_test_env import clean_git_env  # noqa: E402
+
+SCRIPTS = Path(__file__).resolve().parent
+SELF = Path(__file__).name
+HOOK = SCRIPTS.parent / ".githooks" / "pre-push"
+
+# The subprocess entry points a test can use to spawn a command.
+_SPAWNERS = {"run", "Popen", "check_output", "check_call", "call"}
+
+
+def _argv_literal(node):
+    """The literal head of an argv expression, unwrapping `["git", ...] + more`."""
+    while isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        node = node.left
+    return node if isinstance(node, (ast.List, ast.Tuple)) else None
+
+
+def _git_argv_names(tree):
+    """Names bound to an argv literal that starts with "git" (`cmd = ["git", ...]`), so a spawn
+    that passes the variable rather than the literal is still recognized."""
+    names = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        argv = _argv_literal(node.value)
+        if argv is None or not argv.elts:
+            continue
+        first = argv.elts[0]
+        if not (isinstance(first, ast.Constant) and first.value == "git"):
+            continue
+        for target in node.targets:
+            names.add(ast.unparse(target))
+    return names
+
+
+def _scrubbed_env_expressions(tree):
+    """Source of every expression that holds a `clean_git_env(...)` result, so `env=self.env` is
+    accepted only when `self.env` was actually built by the helper.
+
+    Matching is by expression SOURCE within the module, so a module that binds `env = clean_git_env(...)`
+    also whitelists a helper's `env=env` parameter. That is deliberate - the point is to reject
+    `env=os.environ.copy()`, not to do full dataflow - and the hook-level scrub is what makes
+    hermeticity independent of this rule's precision."""
+    scrubbed = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if "clean_git_env" not in ast.unparse(node.value):
+            continue
+        for target in node.targets:
+            scrubbed.add(ast.unparse(target))
+    return scrubbed
+
+
+def _spawns_git(tree, argv_names=None):
+    """Every subprocess call in `tree` that spawns git.
+
+    A bare `git --version` probe is exempt: it reads no repository, so an inherited GIT_DIR cannot
+    make it act on one."""
+    argv_names = argv_names if argv_names is not None else _git_argv_names(tree)
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        # `subprocess.run(...)` / `sp.run(...)`, and the bare `run(...)` of
+        # `from subprocess import run`. Matching the NAME rather than resolving the import keeps
+        # this loud: a false positive is a visible failure a test author fixes by scrubbing, while a
+        # false negative would be silent - the failure mode this whole module exists to prevent.
+        if isinstance(node.func, ast.Attribute):
+            name = node.func.attr
+        elif isinstance(node.func, ast.Name):
+            name = node.func.id
+        else:
+            continue
+        if name not in _SPAWNERS:
+            continue
+        # `subprocess.run(["git", ...])` and the keyword form `subprocess.run(args=["git", ...])`.
+        argv_node = node.args[0] if node.args else None
+        if argv_node is None:
+            for kw in node.keywords:
+                if kw.arg == "args":
+                    argv_node = kw.value
+                    break
+        if argv_node is None:
+            continue
+        argv = _argv_literal(argv_node)
+        if argv is None:
+            head = argv_node
+            while isinstance(head, ast.BinOp) and isinstance(head.op, ast.Add):
+                head = head.left
+            if ast.unparse(head) in argv_names:
+                found.append(node)
+            continue
+        if not argv.elts:
+            continue
+        first = argv.elts[0]
+        if not (isinstance(first, ast.Constant) and first.value == "git"):
+            continue
+        rest = [e.value for e in argv.elts[1:] if isinstance(e, ast.Constant)]
+        if rest == ["--version"]:
+            continue
+        found.append(node)
+    return found
+
+
+def _test_modules():
+    return sorted(p for p in SCRIPTS.glob("test_*.py") if p.name != SELF)
+
+
+class StaticGitEnvRule(unittest.TestCase):
+    """Any scripts test that spawns git must scrub the inherited git environment."""
+
+    def test_every_git_spawning_call_passes_a_scrubbed_env(self):
+        offenders = []
+        for path in _test_modules():
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            scrubbed = _scrubbed_env_expressions(tree)
+            for call in _spawns_git(tree):
+                env = next((kw.value for kw in call.keywords if kw.arg == "env"), None)
+                if env is None:
+                    offenders.append("%s:%d (no env=)" % (path.name, call.lineno))
+                    continue
+                source = ast.unparse(env)
+                # `env=os.environ.copy()` satisfies "an env was passed" while still carrying the
+                # inherited GIT_DIR, so require the value to come from the helper.
+                if "clean_git_env" not in source and source not in scrubbed:
+                    offenders.append("%s:%d (env=%s)" % (path.name, call.lineno, source))
+        self.assertEqual(
+            offenders, [],
+            "these git spawns do not scrub the ambient git environment (GIT_DIR and friends), so "
+            "under a git hook they target the REAL repo instead of their temp one - pass "
+            "env=clean_git_env(): %r" % (offenders,))
+
+
+class HookScrubsTheGitEnvironment(unittest.TestCase):
+    """The suite-level net: the pre-push hook runs the test suites with the variables removed.
+
+    A per-test rule cannot see a test that shells out to a wrapper which spawns git in turn, so the
+    hook is what makes hermeticity independent of any individual test."""
+
+    #: What a line has to mention to count as "this launches a test suite".
+    SUITE_TOKENS = ("unittest discover", "-m unittest", "pytest", "run_plugin_python_tests.py")
+
+    def _hook_source(self):
+        if not HOOK.exists():
+            self.skipTest("pre-push hook not present")
+        # Collapse shell line continuations first: the plugin-suite invocation is split across two
+        # lines, so a line-oriented scan would see `run "plugin Python tests ..." \` (no suite token)
+        # and `"$PY" scripts/run_plugin_python_tests.py ...` (does not start with `run `), and match
+        # neither - a silent false pass for that branch.
+        return re.sub(r"\\\r?\n\s*", " ", HOOK.read_text(encoding="utf-8"))
+
+    def test_no_test_suite_is_launched_without_scrubbing(self):
+        source = self._hook_source()
+        self.assertIn("run_hermetic", source, "the pre-push hook defines no scrubbing wrapper")
+        # A denylist, not an allowlist: a suite added later is caught even though this test has
+        # never heard of it.
+        offenders = [line.strip() for line in source.splitlines()
+                     if line.strip().startswith("run ")
+                     and any(token in line for token in self.SUITE_TOKENS)]
+        self.assertEqual(
+            offenders, [],
+            "these pre-push lines launch a test suite without scrubbing the inherited git "
+            "environment - use run_hermetic: %r" % (offenders,))
+
+    def test_both_known_suites_are_still_launched_hermetically(self):
+        # The denylist above cannot tell "protected" from "absent", so pin that the two suites this
+        # hook is supposed to run are actually there, and hermetic.
+        source = self._hook_source()
+        for suite in ("-m unittest discover -s scripts", "run_plugin_python_tests.py"):
+            launched = [line.strip() for line in source.splitlines()
+                        if suite in line and line.strip().startswith("run_hermetic ")]
+            self.assertTrue(launched,
+                            "the pre-push hook no longer launches %r through run_hermetic" % (suite,))
+
+    def test_the_hook_unsets_every_variable_the_helper_scrubs(self):
+        source = self._hook_source()
+        import _git_test_env
+        # Read the tokens off the `unset` command itself: a variable named only in a comment must
+        # not satisfy this.
+        unset_tokens = set()
+        for match in re.finditer(r"^\s*unset\s+(.+)$", source, re.MULTILINE):
+            unset_tokens.update(match.group(1).split())
+        missing = [v for v in _git_test_env._GIT_LOCATION_VARS if v not in unset_tokens]
+        self.assertEqual(
+            missing, [],
+            "the pre-push hook's unset list has drifted from _git_test_env._GIT_LOCATION_VARS: %r"
+            % (missing,))
+
+
+class AmbientRepoIsUntouched(unittest.TestCase):
+    """Run the real-git suite under an inherited hook environment; the repo must not change."""
+
+    #: The class that drives real git plumbing against a throwaway repository. It owns the exact
+    #: fixtures (a.md, b.md, new.md, old.md) that leaked into `main`, and it runs in seconds, so it
+    #: is the representative case; the hook-level scrub and the static rule cover every other
+    #: module. Fully qualified so a rename cannot silently turn this into a no-op.
+    MODULE = "test_check_conflict_markers.StagedEndToEndTest"
+    #: The number of real-git tests that class must run, so a nested suite that collected nothing
+    #: (or skipped everything) cannot pass by exiting 0 without spawning git at all.
+    MIN_TESTS = 3
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.repo = Path(self.tmp.name)
+        self.env = clean_git_env()
+        if not self._git("init", "-q", "-b", "main"):
+            self.skipTest("git init failed (git missing, or too old for -b)")
+        (self.repo / "keep.md").write_text("keep\n", encoding="utf-8")
+        self._git("add", "keep.md")
+        self._git("commit", "-qm", "base")
+
+    def _git(self, *args):
+        proc = subprocess.run(["git", "-C", str(self.repo)] + list(args),
+                              capture_output=True, text=True, env=self.env)
+        return proc.returncode == 0
+
+    def _capture(self, *args):
+        return subprocess.run(["git", "-C", str(self.repo)] + list(args),
+                              capture_output=True, text=True, env=self.env).stdout
+
+    def _snapshot(self):
+        # Status/HEAD alone would miss a stray branch, tag, stash, reflog entry, or a `git config`
+        # write - all of which a regressed test could leave behind on the ambient repository.
+        return {
+            "status": self._capture("status", "--porcelain"),
+            "head": self._capture("rev-parse", "HEAD").strip(),
+            "log": self._capture("log", "--oneline"),
+            "refs": self._capture("for-each-ref", "--format=%(refname) %(objectname)"),
+            "reflog": self._capture("reflog", "--format=%H %gs"),
+            "stash": self._capture("stash", "list"),
+            "config": self._capture("config", "--local", "--list"),
+            "files": sorted(p.name for p in self.repo.iterdir() if p.name != ".git"),
+        }
+
+    def test_the_real_git_suite_does_not_touch_an_inherited_repository(self):
+        before = self._snapshot()
+        # Exactly what a git hook hands its child process: the location variables of the repository
+        # the hook is running for, with the work tree as the working directory.
+        hooked = dict(self.env)
+        hooked["GIT_DIR"] = str(self.repo / ".git")
+        hooked["GIT_INDEX_FILE"] = str(self.repo / ".git" / "index")
+        hooked["GIT_WORK_TREE"] = str(self.repo)
+        proc = subprocess.run([sys.executable, "-m", "unittest", self.MODULE],
+                              cwd=str(SCRIPTS), env=hooked, capture_output=True, text=True)
+        after = self._snapshot()
+        self.assertEqual(after, before,
+                         "%s changed the inherited repository: %r -> %r" % (self.MODULE, before, after))
+        self.assertEqual(proc.returncode, 0,
+                         "%s must pass with git location variables inherited (it reads the ambient "
+                         "repo instead of its own fixtures when it does not scrub them):\n%s"
+                         % (self.MODULE, proc.stderr[-3000:]))
+        ran = re.search(r"^Ran (\d+) tests?", proc.stderr, re.MULTILINE)
+        self.assertIsNotNone(ran, "could not read the nested test count from:\n%s" % proc.stderr[-2000:])
+        self.assertGreaterEqual(
+            int(ran.group(1)), self.MIN_TESTS,
+            "%s ran %s tests; a nested suite that collects nothing would pass this guard without "
+            "ever spawning git" % (self.MODULE, ran.group(1)))
+        skipped = re.search(r"\bskipped=([1-9]\d*)", proc.stderr)
+        self.assertIsNone(skipped,
+                          "the nested real-git tests were skipped, so nothing was actually "
+                          "exercised:\n%s" % proc.stderr[-2000:])
+
+
+if __name__ == "__main__":
+    unittest.main()

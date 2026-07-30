@@ -2,11 +2,16 @@
 """Tests for scripts/check_conflict_markers.py."""
 
 import importlib.util
+import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _git_test_env import clean_git_env  # noqa: E402
 
 _MODULE_PATH = Path(__file__).with_name("check_conflict_markers.py")
 _spec = importlib.util.spec_from_file_location("check_conflict_markers", _MODULE_PATH)
@@ -194,6 +199,14 @@ class StagedEndToEndTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.addCleanup(self.tmp.cleanup)
+        # A git hook exports GIT_DIR / GIT_INDEX_FILE / GIT_WORK_TREE for the REAL repository, and
+        # those win over `-C`. Inheriting them made this suite stage its fixtures into that repo and
+        # read its index instead of the temp one (#778) - so scrub them for BOTH this class's own
+        # git calls and the subprocesses `ccm` spawns, which inherit os.environ.
+        self.env = clean_git_env()
+        self._env_patch = mock.patch.dict(os.environ, self.env, clear=True)
+        self._env_patch.start()
+        self.addCleanup(self._env_patch.stop)
         if not self._git("init", "-q", "-b", "main"):
             self.skipTest("git is not available")
         self._git("config", "user.email", "t@example.com")
@@ -205,7 +218,7 @@ class StagedEndToEndTest(unittest.TestCase):
     def _git(self, *args):
         try:
             subprocess.run(["git", "-C", str(self.root)] + list(args),
-                           check=True, capture_output=True)
+                           check=True, capture_output=True, env=self.env)
         except (FileNotFoundError, subprocess.CalledProcessError):
             return False
         return True
