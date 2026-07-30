@@ -77,6 +77,15 @@ class CodeBlockSpansTests(unittest.TestCase):
         html = '<![CDATA[><pre><code class="language-kusto">evil</code></pre>]]>'
         self.assertEqual(self._inners(html), ["evil"])
 
+    def test_cdata_at_an_html_integration_point_is_a_bogus_comment(self):
+        # An HTML integration point inside foreign content returns to HTML tokenization, so
+        # `<![CDATA[` there is a bogus comment again and the block after its first `>` is LIVE.
+        for host in ("foreignObject", "desc", "annotation-xml"):
+            with self.subTest(host=host):
+                html = ('<svg><%s><![CDATA[><pre><code class="language-python">real</code></pre>'
+                        ']]></%s></svg>' % (host, host))
+                self.assertEqual(self._inners(html), ["real"])
+
     def test_a_comment_holds_no_block(self):
         html = ('<!-- <pre><code class="language-python">quoted</code></pre> -->'
                 '<pre><code class="language-python">real</code></pre>')
@@ -127,6 +136,21 @@ class CodeBlockSpansTests(unittest.TestCase):
         # match would make an uppercase class a spurious FATAL "not runnable" error.
         html = '<figure class="CMH-KQL"><pre><code class="language-kusto">T</code></pre></figure>'
         self.assertEqual([p["in_kql_figure"] for p in self._spans(html).pres], [True])
+
+    def test_a_block_level_start_tag_closes_an_open_p_before_it_nests(self):
+        # HTML5 closes an open <p> when <figure> starts, so the later stray </p> pops nothing and
+        # the block really is inside the figure. Popping the figure with that </p> instead would
+        # judge a framed KQL block unframed.
+        html = ('<p><figure class="cmh-kql"></p>'
+                '<pre><code class="language-kusto">T</code></pre></figure>')
+        self.assertEqual([p["in_kql_figure"] for p in self._spans(html).pres], [True])
+
+    def test_a_p_is_not_closed_across_a_scope_boundary(self):
+        # The implicit close must respect HTML5 scope: a <div> inside a <table> cell does not
+        # reach back past the table to close a <p> outside it.
+        html = ('<p><table><td><div>'
+                '<pre><code class="language-python">real</code></pre></div></td></table>')
+        self.assertEqual(self._inners(html), ["real"])
 
     def test_a_self_closed_pre_still_needs_its_end_tag(self):
         # HTML5 ignores the trailing slash on a non-void element, so `<pre/>` opens an element.

@@ -604,6 +604,13 @@ _RAW_TEXT_CLOSE_RES = {}
 # block (and, before 3.13, raises on an unknown section keyword).
 _FOREIGN_ROOTS = frozenset(("svg", "math"))
 
+# An HTML INTEGRATION POINT returns to HTML tokenization inside foreign content, so a `<![CDATA[`
+# there is a bogus comment again and the markup after its first `>` is live. `annotation-xml` is
+# only an integration point with an HTML `encoding`, but treating it as one unconditionally errs
+# toward INSPECTING more, which is the safe direction for a guardrail. (An SVG `<title>` is an
+# integration point too, but it is in _RAW_TEXT_ELEMENTS, so its content is text either way.)
+_HTML_INTEGRATION_POINTS = frozenset(("foreignobject", "desc", "title", "annotation-xml"))
+
 
 def _raw_text_close_re(elem):
     rx = _RAW_TEXT_CLOSE_RES.get(elem)
@@ -715,7 +722,12 @@ class _CodeSpanParser(HTMLParser):
     # -- element tracking -------------------------------------------------- #
 
     def _in_foreign(self):
-        return any(t in _FOREIGN_ROOTS for (t, _r, _k) in self._stack)
+        for (t, _r, _k) in reversed(self._stack):
+            if t in _HTML_INTEGRATION_POINTS:
+                return False
+            if t in _FOREIGN_ROOTS:
+                return True
+        return False
 
     def _open_pre(self):
         for (t, rec, _k) in reversed(self._stack):
@@ -723,8 +735,31 @@ class _CodeSpanParser(HTMLParser):
                 return rec
         return None
 
+    def _implicit_close(self, tag):
+        # HTML5 "close a p element": a block-level start tag closes an open <p> (and a new <li>
+        # closes an open <li>). Without it a `<p><figure class="cmh-kql">` followed by a stray
+        # `</p>` would pop the FIGURE too, so a block a browser puts inside that figure would be
+        # judged outside it. This mirrors _DocParser, so both tolerant parsers agree.
+        if tag in P_CLOSERS:
+            self._close_scoped("p", _P_CLOSE_BOUNDARY)
+        if tag == "li":
+            self._close_scoped("li", _LI_CLOSE_BOUNDARY)
+
+    def _close_scoped(self, target, boundary):
+        for i in range(len(self._stack) - 1, -1, -1):
+            t = self._stack[i][0]
+            if t == target:
+                for (tt, rec, _k) in self._stack[i:]:
+                    if tt in ("pre", "code") and rec is not None:
+                        self.unclosed = True
+                del self._stack[i:]
+                return
+            if t in boundary:
+                return  # target is not in scope; do not close it
+
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
+        self._implicit_close(tag)
         ad = _DocParser._attrs_dict(attrs)
         rec = None
         if tag == "pre":
