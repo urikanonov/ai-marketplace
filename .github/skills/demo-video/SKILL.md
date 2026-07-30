@@ -89,31 +89,56 @@ layout to cut the file size.
 
 A published clip is an unattended capture that can run for an hour and a half, so the ask is not
 retyped from memory - it is committed. `--script` drives the session from a recipe, and each step
-waits for its cue (a marker, a file, or a window of quiet) before sending, so the capture survives an
-agent that pauses mid-thought:
+waits for its cue (a file that this run produced, a marker in the output, or a window of quiet)
+before sending, so the capture survives an agent that pauses mid-thought.
 
-```bash
-# multi-duck: examples/duck-session.json
-node tools/record_demo.mjs capture --cols 120 --rows 30 \
-  --script examples/duck-session.json --out ../../../tmp/demo-video/duck.cast.json \
+Run it from a SCRATCH directory, never from a checkout. `capture` spawns the session with the
+current working directory, so filming from inside the repo puts repository paths on screen in a
+published video - which is why the commands below `cd` out first and address the tool, the recipe and
+the output by absolute path:
+
+```powershell
+cd C:\demo                              # a scratch dir, NOT a checkout
+$skill = "C:\path\to\ai-marketplace\.github\skills\demo-video"
+
+# multi-duck: --script examples/duck-session.json
+node "$skill\tools\record_demo.mjs" capture --cols 120 --rows 30 `
+  --script "$skill\examples\duck-session.json" `
+  --out "C:\path\to\ai-marketplace\tmp\demo-video\duck.cast.json" `
   -- copilot --banner --no-remote --allow-all --disable-builtin-mcps
 
-# commentable-html round trip: examples/loop-session.json (waits on the review bundle, then pastes it)
-node tools/record_demo.mjs capture --cols 120 --rows 30 \
-  --script examples/loop-session.json --out ../../../tmp/demo-video/loop.cast.json \
+# commentable-html round trip: --script examples/loop-session.json
+# (waits on the review bundle the browser phase writes, then pastes it back into the same session)
+node "$skill\tools\record_demo.mjs" capture --cols 120 --rows 30 `
+  --script "$skill\examples\loop-session.json" `
+  --out "C:\path\to\ai-marketplace\tmp\demo-video\loop.cast.json" `
   -- copilot --banner --no-remote --allow-all --disable-builtin-mcps
 ```
 
-Run it from a scratch directory (`C:\demo`, not a checkout) so no repo path reaches the clip, and use
-`--allow-all` rather than `--allow-all-tools`: the skill reads its own reference files, and a path
-permission dialog stops an unattended capture dead. The `ask` step records the text it sent into the
-cast mark, and `render` quotes THAT on the title card, so the card can never drift from the session -
-which is why the ask is kept to one sentence, and why `--ask` is only an override for a card that
-would otherwise be unreadable.
+`--allow-all` is what keeps an unattended capture from stalling: it covers tools, paths and URLs, so
+no permission dialog can appear with nobody there to answer it. Be clear-eyed that it is the BROAD
+grant, not just the path prompt the skill's own reference files trigger - which is the other reason
+the session belongs in a scratch directory with nothing in it worth reaching.
+
+The `ask` step records the text it sent into the cast mark, and `render` quotes THAT on the title
+card, so the card can never drift from the session - which is why the ask is kept to one sentence,
+and why `--ask` is only an override for a card that would otherwise be unreadable. Give the ask
+`submitMs` of at least a second: Enter has to be a separate write once the composer has settled, or
+the TUI takes the return as typed text and the session sits on a full prompt line forever.
 
 The prompt is the whole recipe: `render` cannot fabricate a summary the session never produced. Ask
 for the artifact you want on screen at the end (a `PANEL SUMMARY` table, a review bundle) and let the
-`quit` step wait for it.
+`quit` step wait for it - but only ever wait for something the AGENT produces. A marker the recipe
+itself typed is echoed back by the terminal within seconds, which silently reduces the step to a bare
+idle wait; `normalizeScript` refuses that recipe at parse time rather than letting it cost you the
+session.
+
+A capture does not stop when the interesting part does: the session keeps recording until the `quit`
+step fires, so a cast normally carries a long idle tail (the multi-duck recording sat idle for 26
+minutes between the summary and the `/exit`). TRIM THE CAST BEFORE RENDERING - keep events up to the
+last one before that trailing gap, drop the marks past it, and restate `durationMs` - or the clip
+spends its ending on an empty prompt and the exit screen. There is no `--until` flag yet; see the
+open issue for making this part of `render`.
 
 ## Check what you filmed
 

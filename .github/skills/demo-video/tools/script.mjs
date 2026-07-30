@@ -15,6 +15,15 @@ import path from "node:path";
 export const DEFAULT_TIMEOUT_MS = 900000;
 export const DEFAULT_IDLE_MS = 4000;
 
+// Every key a step is allowed to carry. Unknown keys are REFUSED rather than ignored, because the
+// failure they cause is silent and expensive: `expects` for `expect`, or `submitMS` for `submitMs`,
+// parses clean and then degrades the step to a bare idle wait - which is exactly the gate that ends
+// a ninety-minute capture early. A typo should cost a second at parse time, not the whole session.
+const STEP_KEYS = new Set([
+  "mark", "expect", "expectFile", "idleMs", "timeoutMs", "delayMs",
+  "enter", "paste", "optional", "submitMs", "send", "sendFile",
+]);
+
 function fail(message) {
   throw new Error(`capture script: ${message}`);
 }
@@ -41,6 +50,9 @@ export function normalizeScript(raw, baseDir = process.cwd()) {
   const seen = new Set();
   const normalized = steps.map((step, i) => {
     if (!step || typeof step !== "object") fail(`step ${i} is not an object`);
+    for (const key of Object.keys(step)) {
+      if (!STEP_KEYS.has(key)) fail(`step ${i} has unknown key "${key}"`);
+    }
     const mark = typeof step.mark === "string" && step.mark.trim() ? step.mark.trim() : null;
     if (!mark) fail(`step ${i} needs a mark; the mark is how a render finds this turn in the cast`);
     if (seen.has(mark)) fail(`duplicate mark "${mark}"; marks name split points and must be unique`);
@@ -83,7 +95,43 @@ export function normalizeScript(raw, baseDir = process.cwd()) {
       file: source.file,
     };
   });
+  // A marker the recipe TYPED cannot mean "the agent produced it". The TUI paints the submitted turn
+  // back into the transcript, so an `expect` that appears in an earlier `send` is satisfied by the
+  // echo within seconds - silently demoting the step to a bare idle wait, which is the only thing
+  // then standing between a ninety-minute capture and an early `/exit`. Measured on a real 65 minute
+  // multi-duck session: the stream fell quiet for 5 to 6 seconds 73 times while the agent was
+  // working, against an idle gate of 6s. That capture survived by under a second, 73 times over.
+  // Refuse it at parse time - the recipe is wrong, and finding out at minute 20 costs the session.
+  for (let i = 0; i < normalized.length; i++) {
+    const expect = normalized[i].expect;
+    if (!expect) continue;
+    for (let j = 0; j < i; j++) {
+      const earlier = normalized[j].text;
+      if (earlier && earlier.includes(expect)) {
+        fail(`step ${i} ("${normalized[i].mark}") waits for ${JSON.stringify(expect)}, but step ${j} `
+          + `("${normalized[j].mark}") sends it - the terminal echoes the prompt, so the wait would be `
+          + `satisfied by the recipe's own text. Wait for something only the agent can produce, or `
+          + `drop expect and raise idleMs.`);
+      }
+    }
+  }
   return { steps: normalized };
+}
+
+// A file-backed wait must mean "the file this run produced", not "a file exists". The loop capture
+// waits on a review bundle at a FIXED path in the scratch directory, so a bundle left by the
+// previous recording is already there when the step starts - and an existence check would paste the
+// STALE review into a session that has not finished the new report, producing a clip that is
+// coherently wrong rather than obviously broken. Freshness is the whole guarantee.
+export function fileReady(file, startedAt, stat = fs.statSync) {
+  if (!file) return false;
+  let info;
+  try {
+    info = stat(file);
+  } catch {
+    return false;
+  }
+  return info.mtimeMs >= startedAt;
 }
 
 export function readScript(file) {

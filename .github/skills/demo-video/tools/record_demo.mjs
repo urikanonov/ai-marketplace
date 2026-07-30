@@ -42,7 +42,7 @@ import http from "http";
 import { planBeats, fitTimeline, compressTimeline, coalesceEvents, applySpeedWindows, parseSpeedWindows, MIN_BEAT_MS } from "./timeline.mjs";
 import { REPORT_BEATS } from "./report-beats.mjs";
 import { DEFAULT_RULES, homeRules, scanText, scrubEvents, scrubText, createScrubber } from "./redact.mjs";
-import { readScript, stepReady, stepPayload, stepSubmit, makeSizeGuard, captureLimitBytes } from "./script.mjs";
+import { readScript, stepReady, stepPayload, stepSubmit, fileReady, makeSizeGuard, captureLimitBytes } from "./script.mjs";
 import { recordCapture, wasCapturedHere } from "./provenance.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -901,7 +901,7 @@ async function captureTerminal(args) {
             lastDataAt,
             now: Date.now(),
             startedAt,
-            fileExists: step.expectFile ? fs.existsSync(step.expectFile) : false,
+            fileExists: step.expectFile ? fileReady(step.expectFile, startedAt) : false,
           });
           if (state.skip) {
             console.warn(`  script: optional step "${step.mark}" ${state.reason}; skipping`);

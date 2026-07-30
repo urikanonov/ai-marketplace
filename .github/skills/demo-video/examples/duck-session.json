@@ -16,9 +16,8 @@
     },
     {
       "mark": "quit",
-      "expect": "PANEL SUMMARY",
       "timeoutMs": 5400000,
-      "idleMs": 6000,
+      "idleMs": 30000,
       "delayMs": 3000,
       "submitMs": 1500,
       "send": "/exit"
