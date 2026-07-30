@@ -17,11 +17,135 @@ const MAX_BUFFER = 64 * 1024;
 // Keyword-anchored assignments: `password: hunter2`, `AZURE_CLIENT_SECRET=...`, `SECRET_KEY=...`.
 // The key is kept (it is what makes the clip readable) and only the VALUE is replaced. The keyword
 // can sit ANYWHERE in the identifier - `AZURE_CLIENT_SECRET` has it at the end, `SECRET_KEY` and
-// `DB_PASSWORD_PROD` do not - so the identifier is matched loosely on BOTH sides. Anchoring only at
-// the tail (or relying on a leading `\b`, which never fires after `_`) misses how environment
-// variables are really named. The negative lookahead stops an already-redacted value from being
-// reported as a fresh finding.
-const ASSIGNED = /\b[\w.-]*?(?:passwords?|passwd|pwd|secrets?|api[-_ ]?keys?|apikey|access[-_ ]?tokens?|auth[-_ ]?tokens?|refresh[-_ ]?tokens?|client[-_ ]?secrets?|tokens?|credentials?|account[-_ ]?keys?|shared[-_ ]?access[-_ ]?keys?|primary[-_ ]?keys?|secondary[-_ ]?keys?|connection[-_ ]?strings?)[\w.-]*?\b(\s*[:=]\s*)["']?(?!\[redacted\])[^\s"';,]{6,}["']?/gi;
+// `DB_PASSWORD_PROD` do not - so the keyword is looked for INSIDE the identifier rather than
+// anchored to either end.
+//
+// The identifier is matched ONCE, greedily, and the keyword test happens afterwards in `replace`.
+// The previous shape wrapped the keyword alternation in two unbounded lazy runs
+// (`[\w.-]*?...[\w.-]*?`), which made the engine retry the whole alternation from every offset of
+// every long word-character run: quadratic, and measured at 2.9s for 144KB of `password_` repeated,
+// on a rule the safety gate runs over the WHOLE uncompressed session. A cast is megabytes.
+//
+// The key may contain SPACES, because several of the keywords do (`api key`, `shared access key`,
+// `connection string`). A first attempt used a single `[\w.-]` class and silently stopped catching
+// every space-separated key - the kind of regression that shows up as a credential in a published
+// video, not as a failing test - so the word groups are matched explicitly and bounded.
+const ASSIGNED_KEYWORD = /passwords?|passwd|pwd|secrets?|api[-_ ]?keys?|apikey|access[-_ ]?tokens?|auth[-_ ]?tokens?|refresh[-_ ]?tokens?|client[-_ ]?secrets?|tokens?|credentials?|account[-_ ]?keys?|shared[-_ ]?access[-_ ]?keys?|primary[-_ ]?keys?|secondary[-_ ]?keys?|connection[-_ ]?strings?/i;
+// Every assignment separator is examined, from the left, and the key is read BACKWARDS from it.
+// That is what catches a credential nested inside another assignment: with plain `matchAll` a benign
+// outer assignment swallowed its whole value and the engine resumed past it, so
+// `env=DB_PASSWORD_PROD=swordfish` and `...?format=json&access_token=abc` scanned CLEAN.
+//
+// Everything here is deliberately character-at-a-time rather than regex. `\s*[:=]\s*` looks
+// harmless but retries its leading `\s*` at every position, which made 80K of spaces take 32
+// seconds - the same class of hang the rewrite existed to remove. And the key is grown one word
+// group at a time until it NAMES a secret, so the shortest suffix wins: a 250-character variable
+// name is still read in full (no arbitrary look-back window), while `API_KEY=x client_secret=y`
+// keeps its two keys separate instead of swallowing everything between them.
+const KEY_CHAR = /[\w.-]/;
+const IS_SPACE = /\s/;
+// `&` ends a value: a token in a URL query string must not eat the parameters that follow it.
+const VALUE_END = /[\s"';,&]/;
+// And a value is BOUNDED. The unwrapped pass (which exists so a hard-wrapped token still matches)
+// removes bare newlines with nothing in their place, so consecutive lines are glued together - and
+// an unbounded value scan then runs from every keyword separator to the end of the joined
+// transcript. That is O(n) per separator over O(n) separators: an env dump of 4000 assignment lines
+// took 11.6 SECONDS to scan, it collapsed every following line into one runaway redaction (deleting
+// them from the transcript the reviewer is shown, and counting three secrets as one), and the
+// resulting fragmented marker made the gate refuse the tool's own correctly-scrubbed cast.
+// No real credential is longer than this, and a wrapped one spans a line or two at most.
+const MAX_VALUE = 512;
+const MAX_KEY_GROUPS = 5;
+
+function readKey(plain, sepStart, joins) {
+  // A key never spans a rejoined line break. Without this the unwrapped pass read backwards through
+  // the break and took the previous line''s VALUE as part of this key - so `hunter2xxAPI_TOKEN` was
+  // treated as one identifier, and the redaction swallowed the line before it.
+  const blocked = (at) => Boolean(joins && joins.has(at));
+  let start = sepStart;
+  for (let groups = 0; groups < MAX_KEY_GROUPS; groups++) {
+    let word = start;
+    while (word > 0 && !blocked(word) && KEY_CHAR.test(plain[word - 1])) word -= 1;
+    if (word === start) return null;
+    start = word;
+    const candidate = plain.slice(start, sepStart);
+    if (ASSIGNED_KEYWORD.test(candidate)) return { key: candidate, start };
+    // Several keywords are written with spaces (`api key`, `shared access key`), so one space may
+    // be crossed to keep looking leftwards.
+    if (start > 0 && !blocked(start) && plain[start - 1] === " ") start -= 1;
+    else return null;
+  }
+  return null;
+}
+
+// Does the text at `from` begin a NEW assignment rather than continue the value before it? Used
+// only at a rejoined line break, where the break itself is no longer visible. A new assignment is a
+// run of key characters, then a SINGLE `=` or `:`, then something. A doubled `=` is base64 padding,
+// not a separator - that distinction is what keeps a wrapped connection string (whose continuation
+// ends `==;`) matched in full while an env dump's next line is left alone.
+function startsNewAssignment(plain, from, limit) {
+  let i = from;
+  while (i < limit && KEY_CHAR.test(plain[i])) i += 1;
+  if (i === from) return false;
+  const c = plain[i];
+  if (c !== "=" && c !== ":") return false;
+  if (plain[i + 1] === c) return false;
+  return i + 1 < limit && !VALUE_END.test(plain[i + 1]);
+}
+
+function* findAssignments(plain, { joins } = {}) {
+  for (let i = 0; i < plain.length; i++) {
+    const ch = plain[i];
+    if (ch !== ":" && ch !== "=") continue;
+    let sepStart = i;
+    while (sepStart > 0 && IS_SPACE.test(plain[sepStart - 1])) sepStart -= 1;
+    let sepEnd = i + 1;
+    while (sepEnd < plain.length && IS_SPACE.test(plain[sepEnd])) sepEnd += 1;
+
+    const found = readKey(plain, sepStart, joins);
+    if (!found) continue;
+
+    let valueStart = sepEnd;
+    const quote = plain[valueStart] === '"' || plain[valueStart] === "'" ? plain[valueStart] : null;
+    if (quote) valueStart += 1;
+    let valueEnd = valueStart;
+    const limit = Math.min(plain.length, valueStart + MAX_VALUE);
+    while (valueEnd < limit) {
+      // The unwrapped pass removes bare line breaks so a value the application hard-wrapped is
+      // matched in full. That also glues an env dump into one run, where this value would otherwise
+      // swallow every assignment that follows - blanking those lines out of the transcript the
+      // reviewer reads, counting three secrets as one, and leaving a fragmented marker that made
+      // the gate refuse the tool's own clean output.
+      //
+      // So at a rejoined break, look at what follows: a NEW assignment (a key, then a single
+      // separator, then a value) means the break was a real line ending and this value stops here.
+      // Anything else is a continuation and is taken. `==` is not a separator - base64 padding is
+      // how a wrapped connection string continues, and treating it as one truncated exactly the
+      // wrapped value this pass exists to catch.
+      if (joins && joins.has(valueEnd) && startsNewAssignment(plain, valueEnd, limit)) break;
+      if (VALUE_END.test(plain[valueEnd])) break;
+      valueEnd += 1;
+    }
+    const value = plain.slice(valueStart, valueEnd);
+    if (value.length < 6) continue;
+    // Already scrubbed: re-reporting it would make the gate refuse a cast this tool just cleaned.
+    // The marker is matched by its OPENING only, because splicing deliberately re-emits control
+    // bytes inside a replaced span (so the replay keeps its columns and line breaks) - which can
+    // leave the marker itself split, as `[r<ESC>[1;31medacted\n]`. Demanding the closing bracket
+    // meant the scrubber's own output scanned dirty and render refused it.
+    if (/^\[redacted/i.test(value)) continue;
+
+    let end = valueEnd;
+    if (quote && plain[end] === quote) end += 1;
+    const text = plain.slice(found.start, end);
+    yield Object.assign([text, found.key, plain.slice(sepStart, sepEnd), value], {
+      index: found.start,
+      input: plain,
+    });
+    // Resume after the SEPARATOR, not after the value, so a nested assignment is still examined.
+    i = sepEnd - 1;
+  }
+}
 
 // A PEM block is the one credential shape that spans lines, so the streaming scrubber has to treat
 // it specially: everything else is guaranteed whitespace-free.
@@ -95,8 +219,8 @@ export const DEFAULT_RULES = [
   },
   {
     name: "assigned-secret",
-    re: ASSIGNED,
-    replace: (match, sep) => `${match.slice(0, match.indexOf(sep))}${sep}${REDACTED}`,
+    find: findAssignments,
+    replace: (match, key, sep) => `${key}${sep}${REDACTED}`,
     // The VALUE half stops at whitespace, so unwrapping cannot make this rule run away across the
     // transcript the way a line-oriented one would - and a wrapped value is exactly the case that
     // otherwise leaves its continuation sitting on the next line.
@@ -205,22 +329,35 @@ function project(raw, { dropNewlines = false } = {}) {
       i = end + 1;
     }
   }
-  let plain = "";
-  const map = [];
+  // The projection is built from SLICES and its offset map lives in a typed array. Appending one
+  // character at a time and pushing one boxed number per character cost roughly 40x the input in
+  // heap - on a rule set the safety gate runs over a whole multi-megabyte session, that made
+  // finalisation the thing most likely to run out of memory and lose the recording.
+  const parts = [];
+  const map = new Int32Array(raw.length + 1);
+  // Where a line break was removed to rejoin the text. A rule that scans forward needs to know:
+  // without it a value runs from one assignment straight through every line that follows.
+  const joins = [];
+  let mapped = 0;
+  const keep = (from, to) => {
+    if (to > from) parts.push(raw.slice(from, to));
+    for (let i = from; i < to; i++) map[mapped++] = i;
+  };
   let at = 0;
   for (const [index, match] of matches.entries()) {
-    for (let i = at; i < match.index; i++) { plain += raw[i]; map.push(i); }
+    keep(at, match.index);
     // A style escape is dropped (so a painted token rejoins); anything that moves or erases the
     // cursor becomes a space (so it can never glue two unrelated runs into one apparent token).
     if (!dropWhole.has(index) && !ANSI_STYLE.test(match[0]) && !/^[\r\n]+$/.test(match[0])) {
-      plain += " ";
-      map.push(match.index);
+      parts.push(" ");
+      map[mapped++] = match.index;
     }
+    else if (dropNewlines) joins.push(mapped);
     at = match.index + match[0].length;
   }
-  for (let i = at; i < raw.length; i++) { plain += raw[i]; map.push(i); }
-  map.push(raw.length);
-  return { plain, map };
+  keep(at, raw.length);
+  map[mapped] = raw.length;
+  return { plain: parts.join(""), map, joins: new Set(joins) };
 }
 
 // xterm replays the stream into a GRID, so a replacement shorter than what it replaced pulls the
@@ -233,12 +370,14 @@ function fitWidth(replacement, original) {
 }
 
 function collectSpans(raw, rules, options) {
-  const { plain, map } = project(raw, options);
+  const { plain, map, joins } = project(raw, options);
   const spans = [];
   for (const rule of rules) {
     if (options.unwrapOnly && !rule.unwrapSafe) continue;
-    rule.re.lastIndex = 0;
-    for (const match of plain.matchAll(rule.re)) {
+    // A rule may bring its own scanner. `matchAll` resumes AFTER each match, which is wrong for a
+    // rule whose match can CONTAIN another candidate - see findAssignments.
+    const matches = rule.find ? rule.find(plain, { joins }) : (rule.re.lastIndex = 0, plain.matchAll(rule.re));
+    for (const match of matches) {
       const replacement = (rule.replace || (() => REDACTED))(...match);
       if (replacement === match[0]) continue;
       spans.push({
@@ -259,6 +398,17 @@ function collectSpans(raw, rules, options) {
 function applyRules(text, rules) {
   let out = text;
   for (const rule of rules) {
+    // A rule with its own scanner is applied by SPAN, from the right, so earlier offsets stay valid.
+    if (rule.find) {
+      const found = [...rule.find(out)];
+      for (let i = found.length - 1; i >= 0; i--) {
+        const match = found[i];
+        const replaced = (rule.replace || (() => REDACTED))(...match);
+        const text2 = rule.pad === false ? replaced : fitWidth(replaced, match[0]);
+        out = out.slice(0, match.index) + text2 + out.slice(match.index + match[0].length);
+      }
+      continue;
+    }
     rule.re.lastIndex = 0;
     out = out.replace(rule.re, (...args) => {
       const replaced = (rule.replace || (() => REDACTED))(...args);

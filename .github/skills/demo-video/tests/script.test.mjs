@@ -7,7 +7,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { normalizeScript, readScript, stepReady, stepPayload, stepSubmit, DEFAULT_IDLE_MS } from "../tools/script.mjs";
+import {
+  normalizeScript, readScript, stepReady, stepPayload, stepSubmit, makeSizeGuard, captureLimitBytes, DEFAULT_IDLE_MS,
+} from "../tools/script.mjs";
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "demo-video-script-"));
 const write = (name, body) => {
@@ -123,4 +125,40 @@ test("readScript reports the file it could not use (DEMO-SCRIPT-06)", () => {
   assert.throws(() => readScript(broken), /not valid JSON/);
   const good = write("good.json", JSON.stringify({ steps: [{ mark: "a", send: "hi" }] }));
   assert.equal(readScript(good).steps[0].mark, "a");
+});
+
+// A capture holds everything it records in memory, because the raw stream is never written to disk
+// unscrubbed. Memory is therefore the binding constraint, and running out of it loses a recording
+// that took twenty minutes to make - so the size is bounded and the session is ended cleanly at the
+// limit rather than dying with nothing.
+test("the capture size limit fires once and keeps what was recorded (DEMO-CAP-01)", () => {
+  const fired = [];
+  const guard = makeSizeGuard(1000, (total) => fired.push(total));
+
+  assert.equal(guard(400), false, "under the limit is not an overflow");
+  assert.equal(guard(500), false, "exactly at the limit is not an overflow");
+  assert.equal(fired.length, 0);
+
+  assert.equal(guard(200), true, "crossing the limit reports an overflow");
+  assert.equal(fired.length, 1, "the session is ended once, not once per chunk");
+  assert.equal(fired[0], 1100, "the callback is told how much had been captured");
+
+  // Data keeps arriving while the child is being torn down; it must not re-fire.
+  guard(5000);
+  guard(5000);
+  assert.equal(fired.length, 1, "an already-ended session must not be ended again");
+
+  assert.throws(() => makeSizeGuard(0, () => {}), /positive number of bytes/);
+  assert.throws(() => makeSizeGuard(Number.NaN, () => {}), /positive number of bytes/);
+});
+
+test("the capture limit is parsed strictly (DEMO-CAP-02)", () => {
+  assert.equal(captureLimitBytes(1), 1024 * 1024);
+  assert.equal(captureLimitBytes("0.5"), 512 * 1024);
+  // A silently ignored limit is the failure this exists to prevent: the operator would believe the
+  // capture was bounded when it was not.
+  for (const bad of ["abc", "", 0, -1, Number.NaN, Infinity, null, undefined]) {
+    assert.throws(() => captureLimitBytes(bad), /--max-mb must be a positive number/,
+      `should have rejected ${JSON.stringify(bad)}`);
+  }
 });

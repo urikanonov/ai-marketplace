@@ -57,6 +57,13 @@ node tools/record_demo.mjs capture --cols 120 --rows 30 -- copilot
 node tools/record_demo.mjs render --cast ../../../tmp/demo-video/session-<stamp>.cast.json --seconds 45
 ```
 
+A capture is bounded by `--max-mb` (48 by default). Everything recorded is held in memory, because
+the raw stream is never written to disk unscrubbed; at the limit the session is ended cleanly and the
+cast is still written from what was captured, so a long run degrades into a shorter clip rather than
+an out-of-memory crash that loses the recording. The ceiling is set by FINALISATION - scrubbing and
+serialising peak at roughly 25x the captured size - not by what can be held, so raise it only with
+that multiplier in mind. A real 24 minute Copilot session is a few megabytes.
+
 `render` replays the cast into a real terminal emulator (xterm.js) on a compressed clock: any gap
 longer than the idle threshold collapses to a short hold with a visible "skipping ahead Ns" badge, so
 the model thinking, the test run and the duck panel do not cost the viewer the wall clock. Gaps below

@@ -506,3 +506,132 @@ test("a credential wrapped with an erase or cursor escape at the break is still 
   const glued = "abcdefghij\u001b[0Gklmnopqrstuvwxyz0123";
   assert.equal(scanText(glued, DEFAULT_RULES).length, 0, "a movement escape must not glue two runs");
 });
+
+// The safety gate runs every rule over the WHOLE uncompressed session, and a cast is megabytes. The
+// assigned-secret rule used to wrap its keyword alternation in two unbounded lazy runs, so the
+// engine retried the whole alternation from every offset of every long word-character run: 144KB of
+// `password_` repeated took 2.9 SECONDS, and the cost quadrupled with every doubling. On a real cast
+// that is a hang, on exactly the large sessions this tool exists to compress.
+//
+// The bound below is deliberately loose. Linear behaviour lands around 20ms here; the quadratic
+// shape needed ~47 SECONDS for this input. Anything in between is still a pass, so the test cannot
+// fail because a CI runner was busy - only because the complexity regressed.
+test("the assigned-secret rule stays linear on a pathological line (DEMO-SAFE-25)", () => {
+  const pathological = "password_".repeat(64000); // ~576KB with no whitespace and no assignment
+  const started = Date.now();
+  const out = scrubText(pathological, DEFAULT_RULES);
+  const elapsed = Date.now() - started;
+  assert.equal(out, pathological, "a run with no assignment must be left exactly alone");
+  assert.ok(elapsed < 5000, `scrubbing ${pathological.length} chars took ${elapsed}ms; the rule has gone super-linear`);
+
+  // And it must still fire on the real shape, wherever the keyword sits in the identifier - and
+  // however the key is punctuated. A first attempt at the linear rewrite used a single `[\w.-]`
+  // class and silently stopped catching every SPACE-separated key, which is the kind of regression
+  // that surfaces as a credential in a published video rather than as a failing test.
+  const keys = [
+    "password", "AZURE_CLIENT_SECRET", "SECRET_KEY", "DB_PASSWORD_PROD", "api-key",
+    "api key", "access token", "shared access key", "connection string",
+    `${"x".repeat(130)}_password`,
+  ];
+  for (const key of keys) {
+    const line = `${key}=` + join("swordfish", "-9182736455");
+    const scrubbed = scrubText(line, DEFAULT_RULES);
+    assert.ok(scrubbed.startsWith(`${key}=`), `${key} lost its key`);
+    assert.ok(!scrubbed.includes("swordfish"), `${key} kept its value`);
+    assert.equal(scrubText(scrubbed, DEFAULT_RULES), scrubbed, `${key} is not idempotent`);
+  }
+  // Many secret-shaped assignments on ONE line is its own pathological shape: a query string of
+  // repeated `token=...&` gives every separator a value to scan, so a scan that did not stop at the
+  // next boundary would be quadratic again.
+  const repeated = "token=123456&".repeat(16000);
+  const repeatStart = Date.now();
+  scrubText(repeated, DEFAULT_RULES);
+  const repeatMs = Date.now() - repeatStart;
+  assert.ok(repeatMs < 5000, `${repeated.length} chars of repeated assignments took ${repeatMs}ms`);
+
+  // An identifier that names nothing secret is untouched, which is what keeps the clip readable.
+  for (const benign of ["duration=1234567890", "the quick brown fox jumps over: something"]) {
+    assert.equal(scrubText(benign, DEFAULT_RULES), benign, `${benign} should be left alone`);
+  }
+});
+
+// The leak the linear rewrite introduced, and the reason the rule walks separators instead of using
+// matchAll. A benign OUTER assignment swallowed its whole value and the engine resumed past it, so
+// the credential nested inside was never looked at: `env=DB_PASSWORD_PROD=...` and a URL carrying
+// `?...&access_token=...` both scanned CLEAN. A session printing a URL with a token in it is not an
+// exotic case, and a clean scan is what tells the operator the clip is safe to publish.
+test("a credential nested inside another assignment is still caught (DEMO-SAFE-28)", () => {
+  const value = join("swordfish", "-9182736455");
+  const nested = [
+    `env=DB_PASSWORD_PROD=${value}`,
+    `query=access_token=${value}`,
+    `https://example.test/cb?format=json&access_token=${value}&next=/home`,
+    `docker run -e API_KEY=${value} image:tag`,
+  ];
+  for (const line of nested) {
+    assert.ok(scanText(line, DEFAULT_RULES).length > 0, `the gate missed: ${line}`);
+    const scrubbed = scrubText(line, DEFAULT_RULES);
+    assert.ok(!scrubbed.includes("swordfish"), `the value survived: ${line}`);
+    // The surrounding text is what makes the clip readable - only the value goes.
+    assert.ok(scrubbed.includes("access_token") || scrubbed.includes("PASSWORD") || scrubbed.includes("API_KEY"),
+      `the key was lost: ${scrubbed}`);
+    assert.equal(scrubText(scrubbed, DEFAULT_RULES), scrubbed, `not idempotent: ${line}`);
+  }
+  // Two secrets in one line must BOTH go, not just the first.
+  const both = `a=API_KEY=${value}&b=client_secret=${value}`;
+  const out = scrubText(both, DEFAULT_RULES);
+  assert.equal(out.includes("swordfish"), false, `one of the two survived: ${out}`);
+});
+
+// The unwrapped pass removes bare line breaks so a value the application hard-wrapped is still
+// matched in full. That also glues an env dump into one run, and the value scan could not tell a
+// wrap continuation from the next assignment: every following line was swallowed into one runaway
+// redaction (blanking them out of the transcript the reviewer reads, and counting three secrets as
+// one), and the resulting fragmented marker made the gate refuse the tool's own clean output.
+test("a rejoined line break does not let one value swallow the next assignment (DEMO-SAFE-29)", () => {
+  const dump = [
+    `DB_PASSWORD=${join("hunter", "2xx9911")}`,
+    `API_TOKEN=${join("abcdef", "9912345")}`,
+    `CLIENT_SECRET=${join("zzzzzz", "zz44556")}`,
+  ].join("\n") + "\n";
+
+  const out = scrubEvents([{ t: 0, data: dump }], { rules: DEFAULT_RULES });
+  // Each secret goes, and each is COUNTED - an under-count misleads the human doing the final read.
+  assert.equal(out.redactions, 3, `expected three redactions, got ${out.redactions}`);
+  for (const secret of ["hunter", "abcdef", "zzzzzz"]) {
+    assert.ok(!out.transcript.includes(`${secret}2xx9911`) && !out.transcript.includes(`${secret}9912345`),
+      "a secret survived");
+  }
+  // Every key survives: the transcript has to be what the clip shows, not a blanked-out region.
+  for (const key of ["DB_PASSWORD", "API_TOKEN", "CLIENT_SECRET"]) {
+    assert.ok(out.transcript.includes(`${key}=`), `${key} was blanked out of the transcript`);
+  }
+  assert.equal(out.transcript.split("\n").length, dump.split("\n").length, "lines were lost");
+
+  // A genuine hard wrap is still taken in full - the case this pass exists for, including a
+  // connection string whose continuation legitimately contains `==;`.
+  const azure = `AccountKey=abc123DEF456ghi\r\n678stu901VWX234yz==;EndpointSuffix=core\r\n`;
+  assert.ok(!scrubText(azure, DEFAULT_RULES).includes("678stu901VWX234yz"), "a wrapped tail survived");
+  const simple = `api_key=abcdefghijkl\nmnopqrstuvwx`;
+  assert.ok(!scrubText(simple, DEFAULT_RULES).includes("mnopqrstuvwx"), "a wrapped tail survived");
+});
+
+// Splicing deliberately re-emits control bytes inside a replaced span, so the replay keeps its
+// columns and line breaks - which can leave the marker itself split, as `[r<ESC>[1;31medacted\n]`.
+// Demanding the closing bracket made the scrubber's own output scan DIRTY, so render refused a cast
+// this tool had just cleaned: a safe demo became unrenderable.
+test("the scrubber's own output always scans clean (DEMO-SAFE-30)", () => {
+  const inputs = [
+    `secret: ab\u001b[1;31mc123def\n?format=json&token=val:colon99`,
+    `password=${join("hunter", "2xx9911")}`,
+    `DB_PASSWORD=${join("aaa", "bbb1234")}\nAPI_TOKEN=${join("ccc", "ddd5678")}\n`,
+    `AccountKey=abc123DEF456ghi\r\n678stu901VWX234yz==;EndpointSuffix=core`,
+    `https://e.test/?access_token=${join("swordfish", "-918273")}&next=/home`,
+  ];
+  for (const input of inputs) {
+    const once = scrubText(input, DEFAULT_RULES);
+    assert.equal(scanText(once, DEFAULT_RULES).length, 0,
+      `the gate would refuse this tool's own output for ${JSON.stringify(input)}: ${JSON.stringify(once)}`);
+    assert.equal(scrubText(once, DEFAULT_RULES), once, "scrubbing is not idempotent");
+  }
+});
