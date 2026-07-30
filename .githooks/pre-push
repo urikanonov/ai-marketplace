@@ -34,6 +34,31 @@ run() {
   fi
 }
 
+# Git exports its location variables to every hook, and they WIN over `git -C <dir>`. A test that
+# spawns git in its own temp directory therefore operated on THIS repository instead: it staged
+# fixtures into the real index, put a stray commit on the branch, and left the working tree dirty
+# (issue #778, and the duplicate reports #772 / #773 - that is how `a.md` and `old.md` reached
+# `main`). Run the test SUITES with those variables removed, so hermeticity does not depend on what
+# each individual test remembers to do - including a test that shells out to a wrapper which spawns
+# git in turn, which no per-test rule can see. The unset happens in a subshell, so the hook's own
+# git calls below are unaffected. Keep this list in step with `_GIT_LOCATION_VARS` in
+# scripts/_git_test_env.py (scripts/test_suite_hermeticity.py fails if they drift apart).
+run_hermetic() {
+  _desc=$1
+  shift
+  echo "pre-push: $_desc"
+  if ! (
+    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX \
+      GIT_CEILING_DIRECTORIES GIT_NAMESPACE GIT_DISCOVERY_ACROSS_FILESYSTEM \
+      GIT_INDEX_VERSION
+    "$@"
+  ); then
+    echo "pre-push: FAILED - $_desc" >&2
+    status=1
+  fi
+}
+
 # Mirrors the required `validate` job: Markdown hygiene, manifest/plugin/skill
 # validation, no-Backlog guard, script unit tests, and the changelog sync + history guard.
 run "Markdown hygiene" "$PY" scripts/validate_markdown.py
@@ -44,7 +69,7 @@ else
   echo "pre-push: marketplace validator deps missing; 'pip install jsonschema pyyaml' to enable (skipping)." >&2
 fi
 
-run "script unit tests" "$PY" -m unittest discover -s scripts -p "test_*.py"
+run_hermetic "script unit tests" "$PY" -m unittest discover -s scripts -p "test_*.py"
 run "spec test references" "$PY" scripts/check_spec_test_refs.py
 run "doc-surface declarations for new features" "$PY" scripts/check_doc_surfaces.py
 run "forbidden secret-bearing files" "$PY" scripts/check_forbidden_files.py
@@ -54,9 +79,9 @@ run "Backlog.md artifacts absent" "$PY" scripts/check_no_backlog.py
 # run, so a docs/scripts/site-only push does not rerun every plugin's suite (the slow part
 # of this hook). Set PREPUSH_FULL=1 to run them all. CI shards and always runs the full set.
 if [ "${PREPUSH_FULL:-0}" = "1" ] || ! git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
-  run "plugin Python tests (all)" "$PY" scripts/run_plugin_python_tests.py --require-discovered
+  run_hermetic "plugin Python tests (all)" "$PY" scripts/run_plugin_python_tests.py --require-discovered
 else
-  run "plugin Python tests (changed plugins vs origin/main; PREPUSH_FULL=1 for all)" \
+  run_hermetic "plugin Python tests (changed plugins vs origin/main; PREPUSH_FULL=1 for all)" \
     "$PY" scripts/run_plugin_python_tests.py --changed-only --base-ref origin/main
 fi
 
