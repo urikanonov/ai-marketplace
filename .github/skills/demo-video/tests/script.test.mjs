@@ -162,3 +162,28 @@ test("the capture limit is parsed strictly (DEMO-CAP-02)", () => {
       `should have rejected ${JSON.stringify(bad)}`);
   }
 });
+
+
+// The committed recipes are the only reason these clips can be re-recorded: a published clip is a
+// 90-minute unattended capture, and nobody rebuilds one from memory. So they are treated as shipped
+// artifacts - they must parse, they must carry the ask whose text becomes the title card, and they
+// must be reachable from SKILL.md, because a recipe nobody can find is a recipe nobody re-runs.
+test("every committed capture recipe parses and is documented (DEMO-SCRIPT-07)", () => {
+  const dir = path.join(import.meta.dirname, "..", "examples");
+  const recipes = fs.readdirSync(dir).filter((f) => f.endsWith(".json"));
+  assert.ok(recipes.length, "examples/ should ship at least one capture recipe");
+
+  const skill = fs.readFileSync(path.join(import.meta.dirname, "..", "SKILL.md"), "utf8");
+  for (const name of recipes) {
+    const script = readScript(path.join(dir, name));
+    const ask = script.steps.find((s) => s.mark === "ask");
+    assert.ok(ask, `${name} needs an "ask" step; render quotes its text on the title card`);
+    // The card quotes the prompt VERBATIM, so an ask that does not fit is a card nobody can read.
+    assert.ok(ask.text && ask.text.length <= 220,
+      `${name} ask is ${ask.text?.length} chars; keep it to one sentence so the title card stays readable`);
+    // Enter must be its own write after submitMs, or a TUI composer takes the return as typed text
+    // and the capture sits on a full prompt line forever.
+    assert.ok(ask.enter && ask.submitMs >= 1000, `${name} ask needs enter with submitMs >= 1000`);
+    assert.ok(skill.includes(name), `SKILL.md should name ${name} so the clip can be re-recorded`);
+  }
+});

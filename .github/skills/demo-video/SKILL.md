@@ -85,6 +85,36 @@ node tools/record_demo.mjs render --cast <file.cast.json> \
 (where the summary starts) rather than from the previous render. `--scale` records smaller than the
 layout to cut the file size.
 
+## Re-record a published clip
+
+A published clip is an unattended capture that can run for an hour and a half, so the ask is not
+retyped from memory - it is committed. `--script` drives the session from a recipe, and each step
+waits for its cue (a marker, a file, or a window of quiet) before sending, so the capture survives an
+agent that pauses mid-thought:
+
+```bash
+# multi-duck: examples/duck-session.json
+node tools/record_demo.mjs capture --cols 120 --rows 30 \
+  --script examples/duck-session.json --out ../../../tmp/demo-video/duck.cast.json \
+  -- copilot --banner --no-remote --allow-all --disable-builtin-mcps
+
+# commentable-html round trip: examples/loop-session.json (waits on the review bundle, then pastes it)
+node tools/record_demo.mjs capture --cols 120 --rows 30 \
+  --script examples/loop-session.json --out ../../../tmp/demo-video/loop.cast.json \
+  -- copilot --banner --no-remote --allow-all --disable-builtin-mcps
+```
+
+Run it from a scratch directory (`C:\demo`, not a checkout) so no repo path reaches the clip, and use
+`--allow-all` rather than `--allow-all-tools`: the skill reads its own reference files, and a path
+permission dialog stops an unattended capture dead. The `ask` step records the text it sent into the
+cast mark, and `render` quotes THAT on the title card, so the card can never drift from the session -
+which is why the ask is kept to one sentence, and why `--ask` is only an override for a card that
+would otherwise be unreadable.
+
+The prompt is the whole recipe: `render` cannot fabricate a summary the session never produced. Ask
+for the artifact you want on screen at the end (a `PANEL SUMMARY` table, a review bundle) and let the
+`quit` step wait for it.
+
 ## Check what you filmed
 
 ```bash
