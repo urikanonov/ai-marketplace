@@ -8,7 +8,7 @@
     "node": ">=20.16.0"
   },
   "scripts": {
-    "test": "node --test tests/timeline.test.mjs tests/redact.test.mjs tests/cli.test.mjs",
+    "test": "node --test \"tests/*.test.mjs\"",
     "report": "node tools/record_demo.mjs report",
     "capture": "node tools/record_demo.mjs capture",
     "render": "node tools/record_demo.mjs render",

@@ -11,7 +11,7 @@
     {
       "mark": "ask",
       "idleMs": 4000, "submitMs": 1500,
-      "send": "Use the commentable-html skill to write C:\\demo\\report.html - a short review report for a plan to add rate limiting to our public API. It MUST contain all of: prose paragraphs, an <img> element (a small inline data-URI PNG is fine - use an <img>, not an inline <svg>), a Mermaid diagram, a fenced code diff, and a Chart.js chart, so every kind of content is commentable. Keep the content short - one screen per section. When the file is written, print exactly REPORT-READY on its own line and end your turn."
+      "send": "Use the commentable-html skill to write C:\\demo\\report.html - a short review report on a rate-limiting plan, with prose, an <img>, a Mermaid diagram, a code diff and a Chart.js chart."
     },
     {
       "mark": "paste",

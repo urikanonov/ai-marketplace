@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 
 import {
-  normalizeScript, readScript, stepReady, stepPayload, stepSubmit, makeSizeGuard, captureLimitBytes, DEFAULT_IDLE_MS,
+  normalizeScript, readScript, stepReady, stepPayload, stepSubmit, fileReady, stepGaveUpNotice, makeSizeGuard, captureLimitBytes, DEFAULT_IDLE_MS,
 } from "../tools/script.mjs";
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "demo-video-script-"));
@@ -161,4 +161,105 @@ test("the capture limit is parsed strictly (DEMO-CAP-02)", () => {
     assert.throws(() => captureLimitBytes(bad), /--max-mb must be a positive number/,
       `should have rejected ${JSON.stringify(bad)}`);
   }
+});
+
+
+// The committed recipes are the only reason these clips can be re-recorded: a published clip is a
+// 90-minute unattended capture, and nobody rebuilds one from memory. So they are treated as shipped
+// artifacts - they must parse, they must carry the ask whose text becomes the title card, and they
+// must be reachable from SKILL.md, because a recipe nobody can find is a recipe nobody re-runs.
+test("every committed capture recipe parses and is documented (DEMO-SCRIPT-07)", () => {
+  const dir = path.join(import.meta.dirname, "..", "examples");
+  // Match the recipes by name rather than taking every .json here, so a fixture or a config dropped
+  // beside them later fails on its own terms instead of failing this test for the wrong reason.
+  const recipes = fs.readdirSync(dir).filter((f) => f.endsWith("-session.json"));
+  assert.ok(recipes.length, "examples/ should ship at least one capture recipe");
+
+  const skill = fs.readFileSync(path.join(import.meta.dirname, "..", "SKILL.md"), "utf8");
+  for (const name of recipes) {
+    const script = readScript(path.join(dir, name));
+    const ask = script.steps.find((s) => s.mark === "ask");
+    assert.ok(ask, `${name} needs an "ask" step; render quotes its text on the title card`);
+    // The card quotes the prompt VERBATIM, and 200 is where the card drops to a smaller font, so an
+    // ask past it is a card the viewer has to squint at.
+    assert.ok(ask.text && ask.text.length <= 200,
+      `${name} ask is ${ask.text?.length} chars; keep it to one sentence so the title card stays readable`);
+    // Enter must be its own write after a pause, or a TUI composer takes the return as typed text
+    // and the capture sits on a full prompt line forever. The 450ms default is not enough for it.
+    assert.ok(ask.enter && ask.submitMs >= 1000, `${name} ask needs enter with submitMs >= 1000`);
+    // Naming the file is not enough - it has to be shown as the runnable thing, or the reader still
+    // cannot re-record the clip. The command addresses the recipe by absolute path (the session must
+    // not run from the checkout), so look for the flag and the filename on one line rather than
+    // matching one literal spelling of the path.
+    const documented = skill.split("\n").some((line) => line.includes("--script") && line.includes(name));
+    assert.ok(documented,
+      `SKILL.md should show ${name} as a runnable --script command so the clip can be re-recorded`);
+  }
+});
+
+test("a marker the recipe types itself is refused, not silently demoted to an idle wait (DEMO-SCRIPT-08)", () => {
+  // The terminal paints the submitted turn back into the transcript, so an expect that appears in an
+  // earlier send is satisfied by the echo. The step then rests entirely on idleMs - measured against
+  // a real 65 minute multi-duck session, the stream fell quiet for 5-6s seventy-three times while
+  // the agent worked, so a 6s idle gate was under a second from ending the capture each time.
+  assert.throws(() => normalizeScript({
+    steps: [
+      { mark: "ask", send: "finish with a PANEL SUMMARY table" },
+      { mark: "quit", expect: "PANEL SUMMARY", send: "/exit" },
+    ],
+  }), /step 1 \("quit"\) waits for "PANEL SUMMARY", but step 0 \("ask"\) sends it/);
+
+  // A marker the agent alone can produce is exactly what this is asking for, so it must still pass.
+  const ok = normalizeScript({
+    steps: [
+      { mark: "ask", send: "review the plan" },
+      { mark: "quit", expect: "REVIEW-APPLIED", send: "/exit" },
+    ],
+  });
+  assert.equal(ok.steps[1].expect, "REVIEW-APPLIED");
+
+  // Only EARLIER steps can have echoed; a step may wait for a marker a LATER step goes on to send.
+  assert.doesNotThrow(() => normalizeScript({
+    steps: [
+      { mark: "quit", expect: "DONE", send: "/exit" },
+      { mark: "after", send: "DONE" },
+    ],
+  }));
+});
+
+test("an unknown step key is refused rather than ignored (DEMO-SCRIPT-09)", () => {
+  // `expects` for `expect` parses clean and degrades the step to a bare idle wait - the same silent
+  // failure, arrived at by a typo.
+  assert.throws(() => normalizeScript({ steps: [{ mark: "a", send: "x", expects: "done" }] }),
+    /step 0 has unknown key "expects"/);
+  assert.throws(() => normalizeScript({ steps: [{ mark: "a", send: "x", submitMS: 1500 }] }),
+    /step 0 has unknown key "submitMS"/);
+  assert.doesNotThrow(() => normalizeScript({ steps: [{ mark: "a", send: "x", submitMs: 1500 }] }));
+});
+
+test("a step that gave up says so where it cannot scroll away (DEMO-SCRIPT-11)", () => {
+  // The loop recipe really did spend its whole 25 minute timeout waiting for a marker the agent
+  // never printed, and the closing lines still read like a clean take. The notice has to name the
+  // step and say what it means for the cast, or the operator publishes the wrong ending.
+  const notice = stepGaveUpNotice({ mark: "quit", reason: "timed out after 1500000ms" });
+  assert.match(notice, /step "quit"/);
+  assert.match(notice, /timed out after 1500000ms/);
+  assert.match(notice, /never produced what it was waiting for/);
+  assert.match(notice, /may not show the ending the recipe asked for/);
+});
+
+test("a file-backed wait requires the file THIS run produced (DEMO-SCRIPT-10)", () => {
+  // The loop capture waits on a review bundle at a fixed path in the scratch dir, so last run's
+  // bundle is already sitting there when the step starts. Existence alone would paste the STALE
+  // review into a session that has not finished the new report - a clip that is coherently wrong.
+  const startedAt = 10_000;
+  assert.equal(fileReady("/x/review.md", startedAt, () => ({ mtimeMs: 9_999 })), false, "stale file");
+  assert.equal(fileReady("/x/review.md", startedAt, () => ({ mtimeMs: 10_000 })), true, "written at step start");
+  assert.equal(fileReady("/x/review.md", startedAt, () => ({ mtimeMs: 10_001 })), true, "fresh file");
+  assert.equal(fileReady("/x/review.md", startedAt, () => { throw new Error("ENOENT"); }), false, "absent");
+  assert.equal(fileReady(null, startedAt), false, "no file wanted");
+
+  // And it is really wired into the wait, not just exported: a stale file must not satisfy the step.
+  const step = normalizeScript({ steps: [{ mark: "paste", expectFile: "review.md", send: "x" }] }).steps[0];
+  assert.equal(stepReady(step, { now: startedAt, startedAt, fileExists: false }).ready, false);
 });
