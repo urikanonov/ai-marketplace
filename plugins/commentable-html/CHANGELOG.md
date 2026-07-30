@@ -19,7 +19,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   SHOWING the unscoped rule raised a warning the author could only clear by rewording their
   content. A `<style>` an author puts in their own content still counts, since it really would
   style or hide the page, and an unclosed `<style>` - which a browser runs to end of file - is
-  now flushed by the parser instead of escaping the scan entirely.
+  now flushed by the parser instead of escaping the scan entirely. Each `<style>` is read
+  as its own stylesheet, exactly as a browser parses it, so an unterminated comment in one
+  can no longer hide a live unscoped reset in a later one; a `<style>` whose `type` is not
+  a CSS type renders nothing and no longer counts; and a quoted string VALUE such as
+  `content: ".cm-skip[hidden] --cp-bg: x"` is not a selector or a declaration, so it can
+  no longer satisfy either check.
 - The retired `--START-COMMENTS-EXPORT--` marker check, which is about markup rather than CSS,
   now reads an ALLOW-list of the layer's own CSS, COMMENT UI and JS regions. A deny-list could not
   be made safe: user text reaches `<title>`, `data-doc-label` and every other attribute -

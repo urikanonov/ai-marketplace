@@ -59,25 +59,32 @@ def _check_layer_descriptor(parser, nonportable, active_regions):
 
 
 _CSS_STRING_ESCAPE = "\\"
+# A browser applies a <style> only when its type is absent, empty, or text/css.
+_CSS_STYLE_TYPES = ("", "text/css")
 
 
-def _css_without_comments(css):
-    """Blank CSS comments to same-length spaces, keeping line breaks.
+def _css_declarations_view(css):
+    """Blank CSS comments and string CONTENTS to same-length spaces, keeping line breaks.
 
-    A commented-out declaration is not a declaration: leaving comments in let a quoted
-    `--cp-bg:` SATISFY the theme ERROR on a document that declares none, and made a rule someone
-    commented out while debugging still raise the unscoped-`[hidden]` warning. Same-length
+    What survives is exactly the part of a stylesheet that can be a selector or a declaration,
+    which is what checks 9 and 10 ask about. Commented-out text is not a declaration (a quoted
+    `--cp-bg:` must not SATISFY the theme ERROR, and a rule commented out while debugging must
+    not still raise the unscoped-`[hidden]` warning), and neither is a string VALUE: live CSS
+    such as `content: ".cm-skip[hidden] --cp-bg: x"` declares neither of them. Same-length
     blanking keeps the `(?m)^[ \\t]*` anchor of that warning's regex meaningful.
 
-    This is a small LEXER rather than a regex because both mistakes are reachable: `/*` and `*/`
-    inside a quoted CSS string are ordinary characters (treating them as delimiters would blank
-    the LIVE declarations between them), and an unterminated comment runs to end of input in a
-    real parser (leaving it intact would let its text satisfy a check). Escapes are honored, so a
-    quote escaped inside a string cannot end it early.
+    This is a small LEXER rather than a regex because every one of these mistakes is reachable:
+    `/*` and `*/` inside a quoted string are ordinary characters (treating them as delimiters
+    would blank the LIVE declarations between them), an unterminated comment runs to end of
+    input in a real parser (leaving it intact would let its text satisfy a check), and a string
+    ENDS at a raw newline (a bad-string token), so a stray quote cannot swallow the rest of the
+    stylesheet. Escapes are honored, so an escaped quote cannot end a string early and an
+    escaped newline continues it.
     """
     out = list(css)
     i, n = 0, len(css)
     quote = None        # the quote character while inside a string
+    string_at = -1      # where an open string's CONTENT began, or -1
     comment_at = -1     # where an open comment began, or -1
     while i < n:
         ch = css[i]
@@ -91,10 +98,13 @@ def _css_without_comments(css):
             if ch == _CSS_STRING_ESCAPE:
                 i += 2
                 continue
-            if ch == quote:
+            if ch == quote or ch in "\r\n":
+                # A newline ends the string as a bad-string token; the quote itself stays.
+                _blank_css_span(out, string_at, i)
                 quote = None
         elif ch in "\"'":
             quote = ch
+            string_at = i + 1
         elif ch == "/" and i + 1 < n and css[i + 1] == "*":
             comment_at = i
             i += 2
@@ -102,6 +112,8 @@ def _css_without_comments(css):
         i += 1
     if comment_at >= 0:
         _blank_css_span(out, comment_at, n)  # end of input closes an open comment
+    elif quote is not None:
+        _blank_css_span(out, string_at, n)
     return "".join(out)
 
 
@@ -109,6 +121,23 @@ def _blank_css_span(out, start, end):
     for k in range(start, end):
         if out[k] not in "\r\n":
             out[k] = " "
+
+
+def _layer_css(parser):
+    """The document's live CSS, one stylesheet at a time.
+
+    Each <style> is lexed INDEPENDENTLY because a browser parses it as its own stylesheet: an
+    unterminated comment in one cannot comment out a later element's rules, which - when the
+    bodies were joined first - let a stray `/*` anywhere hide a live unscoped reset from
+    check 9. A non-CSS `type` is dropped for the same reason it renders nothing.
+    """
+    bodies = []
+    for style in getattr(parser, "styles", []):
+        attrs = style.get("attrs") or {}
+        if (attrs.get("type") or "").strip().lower() not in _CSS_STYLE_TYPES:
+            continue
+        bodies.append(_css_declarations_view(style.get("body") or ""))
+    return "\n".join(bodies)
 
 
 def _check_content_markers(html, parser):
@@ -262,11 +291,10 @@ def _check_theme_and_skip(html, parser, nonportable):
     # (CMH-VAL-20). Text is not a stylesheet: scanning the raw document let authored prose, a
     # reviewer's embedded comment, or even a layer <script> that merely MENTIONS `--cp-bg:`
     # satisfy - or forge - a verdict about what the document actually declares. Every parsed
-    # <style> counts wherever it sits, because one an author puts in their own content is still
-    # live CSS that really would style (or hide) the page: the narrowing is by CSS-ness, not by
-    # region, which is also why a code sample SHOWING a rule is correctly not a rule.
-    css = _css_without_comments(
-        "\n".join((style.get("body") or "") for style in getattr(parser, "styles", [])))
+    # CSS <style> counts wherever it sits, because one an author puts in their own content is
+    # still live CSS that really would style (or hide) the page: the narrowing is by CSS-ness,
+    # not by region, which is also why a code sample SHOWING a rule is correctly not a rule.
+    css = _layer_css(parser)
     if re.search(r"(?m)^[ \t]*\[hidden\]\s*\{\s*display:\s*none", css):
         warnings.append("found an unscoped '[hidden] { display: none }' rule - scope it to '.cm-skip[hidden], .cm-skip [hidden]' so it cannot hide host elements")
     if not nonportable and ".cm-skip[hidden]" not in css:

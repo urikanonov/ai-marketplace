@@ -700,7 +700,7 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
         # an unterminated comment runs to end of input in a real parser (so its text must not
         # satisfy a check), and `/*` inside a quoted CSS string is an ordinary character (so
         # treating it as a delimiter would blank the LIVE declarations after it).
-        from checks.layer import _css_without_comments as strip
+        from checks.layer import _css_declarations_view as strip
 
         unterminated = "/* --cp-bg: #fff"
         self.assertNotIn("--cp-bg", strip(unterminated),
@@ -714,6 +714,73 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
             out = strip(src)
             self.assertEqual(len(out), len(src), "blanking must preserve offsets")
             self.assertEqual(out.count("\n"), src.count("\n"), "line breaks must survive")
+
+    def test_an_open_comment_cannot_cross_a_style_boundary(self):
+        # A browser parses each <style> as its OWN stylesheet, so an unterminated `/*` in one
+        # cannot comment out a LATER element's rules. Stripping a JOINED string let a stray
+        # comment anywhere in the document hide a live, dangerous unscoped reset from check 9.
+        doc = self._with_content(
+            "<style>\n/* an author's unterminated comment\n</style>\n"
+            "<style>\n[hidden] { display: none !important; }\n</style>")
+        self.assertWarn(doc, "unscoped '[hidden]")
+
+    def test_a_style_with_a_non_css_type_is_not_a_stylesheet(self):
+        # A browser applies a <style> only when its type is absent, empty, or text/css. Reading
+        # every <style> body let `<style type="text/plain">` - which renders nothing - satisfy
+        # the CSS checks for a document that declares no theme and no scoped rule.
+        css = (
+            "/*\nBEGIN: commentable-html - CSS\n*/\n"
+            ":root { color: #000; }\n"
+            "/*\nEND: commentable-html - CSS\n*/"
+        )
+        doc = self._with_content(
+            '<style type="text/plain">\n'
+            ":root { --cp-bg: #fff; }\n"
+            ".cm-skip[hidden] { display: none !important; }\n"
+            "</style>",
+            css=css)
+        errors, warnings = _validate_text(doc)
+        self.assertTrue(any("theme variables are not defined" in e for e in errors),
+                        "a non-CSS <style> must not satisfy the theme ERROR: %r" % errors)
+        self.assertTrue(any("missing the scoped" in w for w in warnings), warnings)
+
+    def test_a_quoted_css_string_is_not_a_selector_or_a_declaration(self):
+        # A string VALUE can never be a selector or a declaration name, so its text must not
+        # decide any of the three CSS verdicts: `content: ".cm-skip[hidden] --cp-bg: x"` is live
+        # CSS that declares neither, and an unscoped reset quoted in one is not a live rule.
+        css = (
+            "/*\nBEGIN: commentable-html - CSS\n*/\n"
+            ':root::before { content: ".cm-skip[hidden] --cp-bg: #fff"; }\n'
+            "/*\nEND: commentable-html - CSS\n*/"
+        )
+        errors, warnings = _validate_text(build(css=css))
+        self.assertTrue(any("theme variables are not defined" in e for e in errors),
+                        "a quoted string must not satisfy the theme ERROR: %r" % errors)
+        self.assertTrue(any("missing the scoped" in w for w in warnings), warnings)
+
+        quoted_reset = (
+            "/*\nBEGIN: commentable-html - CSS\n*/\n"
+            ":root { --cp-bg: #fff; }\n"
+            ".cm-skip[hidden], .cm-skip [hidden] { display: none !important; }\n"
+            ':root::after { content: "\\A[hidden] { display: none !important; }"; }\n'
+            "/*\nEND: commentable-html - CSS\n*/"
+        )
+        _errors, warnings2 = _validate_text(build(css=quoted_reset))
+        self.assertFalse(any("unscoped '[hidden]" in w for w in warnings2),
+                         "a quoted reset is not a live rule: %r" % warnings2)
+
+    def test_an_unterminated_css_string_ends_at_the_newline(self):
+        # CSS terminates a string at a raw newline (a bad-string token), so an author's stray
+        # quote cannot swallow every declaration after it. Letting the string run on blanked the
+        # layer's real theme declaration and failed a valid document.
+        from checks.layer import _css_declarations_view as view
+
+        src = 'a { content: "oops\n:root { --cp-bg: #fff; }\n'
+        out = view(src)
+        self.assertIn("--cp-bg", out,
+                      "a string must not swallow the next line's declaration")
+        self.assertEqual(len(out), len(src), "blanking must preserve offsets")
+        self.assertEqual(out.count("\n"), src.count("\n"), "line breaks must survive")
 
     def test_a_commented_out_css_rule_is_not_a_rule(self):
         # A commented-out declaration is not a declaration, in either direction: a quoted
