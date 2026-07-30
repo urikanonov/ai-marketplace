@@ -93,7 +93,8 @@ browser phase in between. So the turns are declared in a file rather than typed 
 | DEMO-SAFE-26 | Provenance is decided OUT OF BAND, never by the cast. `render` warns when a cast was captured elsewhere, because the home-path and account-name rules are built from whoever is RENDERING - so a foreign cast is scanned with the wrong rules and a clean scan means very little. Reading that from a `scrubbedBy` field inside the file let anyone suppress the warning by claiming it. `capture` now records the digest of exactly the bytes it wrote in a local ledger and `render` hashes the file it was handed, so a cast from anywhere else is simply not in this machine's ledger whatever it says about itself. The ledger holds only digests. | `tests/provenance.test.mjs` - `provenance cannot be asserted by the cast's own contents (DEMO-SAFE-26)` |
 | DEMO-SAFE-27 | The provenance ledger is bounded and fails CLOSED. It keeps a fixed number of recent digests so it cannot grow without limit, re-recording the same cast does not duplicate its entry, and a damaged or unreadable ledger makes every cast unrecognised - and therefore warned about - rather than throwing or silently vouching for everything. | `tests/provenance.test.mjs` - `the ledger stays bounded and survives a damaged file (DEMO-SAFE-27)` |
 | DEMO-SAFE-28 | A credential nested inside another assignment is caught. Matching with `matchAll` resumes AFTER each match, so a benign OUTER assignment swallowed its whole value and the credential inside it was never examined - `env=DB_PASSWORD_PROD=...` and a URL carrying `?...&access_token=...` both scanned CLEAN, and a clean scan is exactly what tells the operator a clip is safe to publish. The rule walks every assignment separator instead, reading the key backwards over a bounded number of word groups and the value forwards to the first delimiter, so nesting is examined and the cost stays linear. Two secrets on one line both go. | `tests/redact.test.mjs` - `a credential nested inside another assignment is still caught (DEMO-SAFE-28)` |
-
+| DEMO-SAFE-29 | A rejoined line break does not let one value swallow the next assignment. The unwrapped pass removes bare newlines so a hard-wrapped value is still matched in full, which also glues an env dump into one run - and the value then ran through every assignment that followed, blanking those lines out of the transcript the reviewer reads and counting three secrets as one. At a rejoined break the scan now asks whether what follows begins a NEW assignment (key, a SINGLE separator, then a value); a doubled `=` is base64 padding, not a separator, which is what keeps a wrapped connection string ending `==;` matched in full. The key is read backwards only as far as the break, so it cannot absorb the previous line's value. | `tests/redact.test.mjs` - `a rejoined line break does not let one value swallow the next assignment (DEMO-SAFE-29)` |
+| DEMO-SAFE-30 | The scrubber's own output always scans clean. Splicing deliberately re-emits control bytes inside a replaced span so the replay keeps its columns and line breaks, which can leave the marker itself split (`[r<ESC>[1;31medacted\n]`). Matching the marker by its closing bracket therefore made the gate re-flag text this tool had just cleaned, and `render` refused a cast that was already safe - a demo that could never be filmed. The marker is recognised by its opening. | `tests/redact.test.mjs` - `the scrubber's own output always scans clean (DEMO-SAFE-30)` |
 ## Capture limits
 
 | Feature id | Behavior | Covering tests |
@@ -113,13 +114,6 @@ browser phase in between. So the turns are declared in a file rather than typed 
 
 These are deliberate, and are covered by review rather than by a test:
 
-- **The unwrapped pass over-redacts a multi-line env dump** (tracked as #793). `assigned-secret` also
-  runs over the projection with bare newlines removed, so it can join a value to the assignment on
-  the following line: every secret is still removed, but the surrounding lines are blanked from the
-  transcript and the redaction count under-reports. The same root cause can leave the emitted marker
-  fragmented so the gate re-flags the tool's own clean output. Both fail SAFE - no credential
-  survives - and the obvious fixes each break a genuinely hard-wrapped value (DEMO-SAFE-21), so this
-  is left open rather than shipped half-right.
 - **The clips themselves.** Whether a montage reads well, whether a beat filmed the right thing, and
   whether anything sensitive is visible are judgements about pixels. The tool supports the judgement
   (`scan` for the cast, `frames` for the clip) but cannot make it. Every capture is reviewed by a

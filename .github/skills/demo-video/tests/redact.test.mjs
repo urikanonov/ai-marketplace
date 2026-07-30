@@ -573,3 +573,56 @@ test("a credential nested inside another assignment is still caught (DEMO-SAFE-2
   const out = scrubText(both, DEFAULT_RULES);
   assert.equal(out.includes("swordfish"), false, `one of the two survived: ${out}`);
 });
+
+// The unwrapped pass removes bare line breaks so a value the application hard-wrapped is still
+// matched in full. That also glues an env dump into one run, and the value scan could not tell a
+// wrap continuation from the next assignment: every following line was swallowed into one runaway
+// redaction (blanking them out of the transcript the reviewer reads, and counting three secrets as
+// one), and the resulting fragmented marker made the gate refuse the tool's own clean output.
+test("a rejoined line break does not let one value swallow the next assignment (DEMO-SAFE-29)", () => {
+  const dump = [
+    `DB_PASSWORD=${join("hunter", "2xx9911")}`,
+    `API_TOKEN=${join("abcdef", "9912345")}`,
+    `CLIENT_SECRET=${join("zzzzzz", "zz44556")}`,
+  ].join("\n") + "\n";
+
+  const out = scrubEvents([{ t: 0, data: dump }], { rules: DEFAULT_RULES });
+  // Each secret goes, and each is COUNTED - an under-count misleads the human doing the final read.
+  assert.equal(out.redactions, 3, `expected three redactions, got ${out.redactions}`);
+  for (const secret of ["hunter", "abcdef", "zzzzzz"]) {
+    assert.ok(!out.transcript.includes(`${secret}2xx9911`) && !out.transcript.includes(`${secret}9912345`),
+      "a secret survived");
+  }
+  // Every key survives: the transcript has to be what the clip shows, not a blanked-out region.
+  for (const key of ["DB_PASSWORD", "API_TOKEN", "CLIENT_SECRET"]) {
+    assert.ok(out.transcript.includes(`${key}=`), `${key} was blanked out of the transcript`);
+  }
+  assert.equal(out.transcript.split("\n").length, dump.split("\n").length, "lines were lost");
+
+  // A genuine hard wrap is still taken in full - the case this pass exists for, including a
+  // connection string whose continuation legitimately contains `==;`.
+  const azure = `AccountKey=abc123DEF456ghi\r\n678stu901VWX234yz==;EndpointSuffix=core\r\n`;
+  assert.ok(!scrubText(azure, DEFAULT_RULES).includes("678stu901VWX234yz"), "a wrapped tail survived");
+  const simple = `api_key=abcdefghijkl\nmnopqrstuvwx`;
+  assert.ok(!scrubText(simple, DEFAULT_RULES).includes("mnopqrstuvwx"), "a wrapped tail survived");
+});
+
+// Splicing deliberately re-emits control bytes inside a replaced span, so the replay keeps its
+// columns and line breaks - which can leave the marker itself split, as `[r<ESC>[1;31medacted\n]`.
+// Demanding the closing bracket made the scrubber's own output scan DIRTY, so render refused a cast
+// this tool had just cleaned: a safe demo became unrenderable.
+test("the scrubber's own output always scans clean (DEMO-SAFE-30)", () => {
+  const inputs = [
+    `secret: ab\u001b[1;31mc123def\n?format=json&token=val:colon99`,
+    `password=${join("hunter", "2xx9911")}`,
+    `DB_PASSWORD=${join("aaa", "bbb1234")}\nAPI_TOKEN=${join("ccc", "ddd5678")}\n`,
+    `AccountKey=abc123DEF456ghi\r\n678stu901VWX234yz==;EndpointSuffix=core`,
+    `https://e.test/?access_token=${join("swordfish", "-918273")}&next=/home`,
+  ];
+  for (const input of inputs) {
+    const once = scrubText(input, DEFAULT_RULES);
+    assert.equal(scanText(once, DEFAULT_RULES).length, 0,
+      `the gate would refuse this tool's own output for ${JSON.stringify(input)}: ${JSON.stringify(once)}`);
+    assert.equal(scrubText(once, DEFAULT_RULES), once, "scrubbing is not idempotent");
+  }
+});

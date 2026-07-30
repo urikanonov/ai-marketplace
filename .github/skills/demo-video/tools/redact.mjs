@@ -57,21 +57,40 @@ const VALUE_END = /[\s"';,&]/;
 const MAX_VALUE = 512;
 const MAX_KEY_GROUPS = 5;
 
-function readKey(plain, sepStart) {
+function readKey(plain, sepStart, joins) {
+  // A key never spans a rejoined line break. Without this the unwrapped pass read backwards through
+  // the break and took the previous line''s VALUE as part of this key - so `hunter2xxAPI_TOKEN` was
+  // treated as one identifier, and the redaction swallowed the line before it.
+  const blocked = (at) => Boolean(joins && joins.has(at));
   let start = sepStart;
   for (let groups = 0; groups < MAX_KEY_GROUPS; groups++) {
     let word = start;
-    while (word > 0 && KEY_CHAR.test(plain[word - 1])) word -= 1;
+    while (word > 0 && !blocked(word) && KEY_CHAR.test(plain[word - 1])) word -= 1;
     if (word === start) return null;
     start = word;
     const candidate = plain.slice(start, sepStart);
     if (ASSIGNED_KEYWORD.test(candidate)) return { key: candidate, start };
     // Several keywords are written with spaces (`api key`, `shared access key`), so one space may
     // be crossed to keep looking leftwards.
-    if (start > 0 && plain[start - 1] === " ") start -= 1;
+    if (start > 0 && !blocked(start) && plain[start - 1] === " ") start -= 1;
     else return null;
   }
   return null;
+}
+
+// Does the text at `from` begin a NEW assignment rather than continue the value before it? Used
+// only at a rejoined line break, where the break itself is no longer visible. A new assignment is a
+// run of key characters, then a SINGLE `=` or `:`, then something. A doubled `=` is base64 padding,
+// not a separator - that distinction is what keeps a wrapped connection string (whose continuation
+// ends `==;`) matched in full while an env dump's next line is left alone.
+function startsNewAssignment(plain, from, limit) {
+  let i = from;
+  while (i < limit && KEY_CHAR.test(plain[i])) i += 1;
+  if (i === from) return false;
+  const c = plain[i];
+  if (c !== "=" && c !== ":") return false;
+  if (plain[i + 1] === c) return false;
+  return i + 1 < limit && !VALUE_END.test(plain[i + 1]);
 }
 
 function* findAssignments(plain, { joins } = {}) {
@@ -83,7 +102,7 @@ function* findAssignments(plain, { joins } = {}) {
     let sepEnd = i + 1;
     while (sepEnd < plain.length && IS_SPACE.test(plain[sepEnd])) sepEnd += 1;
 
-    const found = readKey(plain, sepStart);
+    const found = readKey(plain, sepStart, joins);
     if (!found) continue;
 
     let valueStart = sepEnd;
@@ -91,11 +110,30 @@ function* findAssignments(plain, { joins } = {}) {
     if (quote) valueStart += 1;
     let valueEnd = valueStart;
     const limit = Math.min(plain.length, valueStart + MAX_VALUE);
-    while (valueEnd < limit && !VALUE_END.test(plain[valueEnd])) valueEnd += 1;
+    while (valueEnd < limit) {
+      // The unwrapped pass removes bare line breaks so a value the application hard-wrapped is
+      // matched in full. That also glues an env dump into one run, where this value would otherwise
+      // swallow every assignment that follows - blanking those lines out of the transcript the
+      // reviewer reads, counting three secrets as one, and leaving a fragmented marker that made
+      // the gate refuse the tool's own clean output.
+      //
+      // So at a rejoined break, look at what follows: a NEW assignment (a key, then a single
+      // separator, then a value) means the break was a real line ending and this value stops here.
+      // Anything else is a continuation and is taken. `==` is not a separator - base64 padding is
+      // how a wrapped connection string continues, and treating it as one truncated exactly the
+      // wrapped value this pass exists to catch.
+      if (joins && joins.has(valueEnd) && startsNewAssignment(plain, valueEnd, limit)) break;
+      if (VALUE_END.test(plain[valueEnd])) break;
+      valueEnd += 1;
+    }
     const value = plain.slice(valueStart, valueEnd);
     if (value.length < 6) continue;
     // Already scrubbed: re-reporting it would make the gate refuse a cast this tool just cleaned.
-    if (value.toLowerCase().startsWith("[redacted]")) continue;
+    // The marker is matched by its OPENING only, because splicing deliberately re-emits control
+    // bytes inside a replaced span (so the replay keeps its columns and line breaks) - which can
+    // leave the marker itself split, as `[r<ESC>[1;31medacted\n]`. Demanding the closing bracket
+    // meant the scrubber's own output scanned dirty and render refused it.
+    if (/^\[redacted/i.test(value)) continue;
 
     let end = valueEnd;
     if (quote && plain[end] === quote) end += 1;
