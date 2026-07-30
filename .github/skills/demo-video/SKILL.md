@@ -99,21 +99,39 @@ the output by absolute path:
 
 ```powershell
 cd C:\demo                              # a scratch dir, NOT a checkout
-$skill = "C:\path\to\ai-marketplace\.github\skills\demo-video"
+$repo  = "C:\path\to\ai-marketplace"    # the only line to edit
+$skill = "$repo\.github\skills\demo-video"
 
 # multi-duck: --script examples/duck-session.json
 node "$skill\tools\record_demo.mjs" capture --cols 120 --rows 30 `
   --script "$skill\examples\duck-session.json" `
-  --out "C:\path\to\ai-marketplace\tmp\demo-video\duck.cast.json" `
-  -- copilot --banner --no-remote --allow-all --disable-builtin-mcps
-
-# commentable-html round trip: --script examples/loop-session.json
-# (waits on the review bundle the browser phase writes, then pastes it back into the same session)
-node "$skill\tools\record_demo.mjs" capture --cols 120 --rows 30 `
-  --script "$skill\examples\loop-session.json" `
-  --out "C:\path\to\ai-marketplace\tmp\demo-video\loop.cast.json" `
+  --out "$repo\tmp\demo-video\duck.cast.json" `
   -- copilot --banner --no-remote --allow-all --disable-builtin-mcps
 ```
+
+The multi-duck clip is that one command. The commentable-html round trip is TWO phases that run
+against each other, and the capture is only half of it: the recipe's `paste` step blocks on a review
+bundle at `C:\demo\review.md`, which the BROWSER phase writes. Start the capture, wait for the agent
+to write `C:\demo\report.html`, then drive the montage in a second shell - `--review-out` is what
+closes the loop, writing the bundle (atomically, so the capture can never paste a half-written file)
+to exactly the path the recipe waits on:
+
+```powershell
+# shell 1: --script examples/loop-session.json - the agent writes the report, then waits for review
+node "$skill\tools\record_demo.mjs" capture --cols 120 --rows 30 `
+  --script "$skill\examples\loop-session.json" `
+  --out "$repo\tmp\demo-video\loop.cast.json" `
+  -- copilot --banner --no-remote --allow-all --disable-builtin-mcps
+
+# shell 2, once C:\demo\report.html exists: film the review and hand it back
+node "$skill\tools\record_demo.mjs" report --example "C:\demo\report.html" `
+  --review-out "C:\demo\review.md" --snapshot-out "C:\demo\report-before.html"
+```
+
+`loop-session.json` hardcodes `C:\demo` (`report.html`, `review.md`), so that scratch path is
+load-bearing for this clip: a different directory works for the duck recipe but silently breaks the
+round trip. `--snapshot-out` keeps the report AS REVIEWED, because the agent edits it in place and
+without the copy the "before" side of the round trip is gone.
 
 `--allow-all` is what keeps an unattended capture from stalling: it covers tools, paths and URLs, so
 no permission dialog can appear with nobody there to answer it. Be clear-eyed that it is the BROAD
@@ -131,14 +149,18 @@ for the artifact you want on screen at the end (a `PANEL SUMMARY` table, a revie
 `quit` step wait for it - but only ever wait for something the AGENT produces. A marker the recipe
 itself typed is echoed back by the terminal within seconds, which silently reduces the step to a bare
 idle wait; `normalizeScript` refuses that recipe at parse time rather than letting it cost you the
-session.
+session. An agent may simply never print the marker even after doing the work, so read the closing
+lines of a capture: a step that gave up says so there, and that cast is not the ending you asked for.
 
 A capture does not stop when the interesting part does: the session keeps recording until the `quit`
 step fires, so a cast normally carries a long idle tail (the multi-duck recording sat idle for 26
-minutes between the summary and the `/exit`). TRIM THE CAST BEFORE RENDERING - keep events up to the
-last one before that trailing gap, drop the marks past it, and restate `durationMs` - or the clip
-spends its ending on an empty prompt and the exit screen. There is no `--until` flag yet; see the
-open issue for making this part of `render`.
+minutes between the summary and the `/exit`). TRIM THE CAST BEFORE RENDERING - drop the events after
+the last one before that trailing gap, and the marks that pointed past it - or the clip spends its
+ending on an empty prompt and the exit screen. There is no `--until` flag yet; see the open issue for
+making this part of `render`. Editing the cast changes its bytes, so `render` will no longer find it
+in this machine's capture ledger and will warn that this machine did not capture it. After a hand
+trim that warning is EXPECTED and is not a safety signal: the scan still runs with this machine's
+rules, so a clean scan still means what it says.
 
 ## Check what you filmed
 

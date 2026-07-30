@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 
 import {
-  normalizeScript, readScript, stepReady, stepPayload, stepSubmit, fileReady, makeSizeGuard, captureLimitBytes, DEFAULT_IDLE_MS,
+  normalizeScript, readScript, stepReady, stepPayload, stepSubmit, fileReady, stepGaveUpNotice, makeSizeGuard, captureLimitBytes, DEFAULT_IDLE_MS,
 } from "../tools/script.mjs";
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "demo-video-script-"));
@@ -233,6 +233,17 @@ test("an unknown step key is refused rather than ignored (DEMO-SCRIPT-09)", () =
   assert.throws(() => normalizeScript({ steps: [{ mark: "a", send: "x", submitMS: 1500 }] }),
     /step 0 has unknown key "submitMS"/);
   assert.doesNotThrow(() => normalizeScript({ steps: [{ mark: "a", send: "x", submitMs: 1500 }] }));
+});
+
+test("a step that gave up says so where it cannot scroll away (DEMO-SCRIPT-11)", () => {
+  // The loop recipe really did spend its whole 25 minute timeout waiting for a marker the agent
+  // never printed, and the closing lines still read like a clean take. The notice has to name the
+  // step and say what it means for the cast, or the operator publishes the wrong ending.
+  const notice = stepGaveUpNotice({ mark: "quit", reason: "timed out after 1500000ms" });
+  assert.match(notice, /step "quit"/);
+  assert.match(notice, /timed out after 1500000ms/);
+  assert.match(notice, /never produced what it was waiting for/);
+  assert.match(notice, /may not show the ending the recipe asked for/);
 });
 
 test("a file-backed wait requires the file THIS run produced (DEMO-SCRIPT-10)", () => {

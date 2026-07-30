@@ -42,7 +42,7 @@ import http from "http";
 import { planBeats, fitTimeline, compressTimeline, coalesceEvents, applySpeedWindows, parseSpeedWindows, MIN_BEAT_MS } from "./timeline.mjs";
 import { REPORT_BEATS } from "./report-beats.mjs";
 import { DEFAULT_RULES, homeRules, scanText, scrubEvents, scrubText, createScrubber } from "./redact.mjs";
-import { readScript, stepReady, stepPayload, stepSubmit, fileReady, makeSizeGuard, captureLimitBytes } from "./script.mjs";
+import { readScript, stepReady, stepPayload, stepSubmit, fileReady, stepGaveUpNotice, makeSizeGuard, captureLimitBytes } from "./script.mjs";
 import { recordCapture, wasCapturedHere } from "./provenance.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -819,6 +819,8 @@ async function captureTerminal(args) {
   // The driver waits on the session; if the session ends, every wait it is in must end too.
   let childExited = false;
   let driverError = null;
+  // Steps that gave up waiting. Kept so the END of a capture can say so - see the warning below.
+  const timedOutSteps = [];
   let overflowed = false;
   // 48MB of captured BYTES, not code units. The binding constraint is not the capture, it is
   // FINALISATION: scrubbing builds a projection, an offset map and a second copy of every event,
@@ -909,7 +911,15 @@ async function captureTerminal(args) {
             break;
           }
           if (state.ready) {
-            if (state.timedOut) console.warn(`  script: step "${step.mark}" ${state.reason}; sending anyway`);
+            if (state.timedOut) {
+              // A non-optional step that gives up is NOT a clean run: the session did not do the
+              // thing the recipe waited for. Send anyway (the alternative is hanging), but remember
+              // it - a warning that scrolled past forty minutes ago is a warning nobody saw, and the
+              // shipped loop recipe really did time out waiting for a marker the agent never printed
+              // while its summary line still read like a clean capture.
+              timedOutSteps.push({ mark: step.mark, reason: state.reason });
+              console.warn(`  script: step "${step.mark}" ${state.reason}; sending anyway`);
+            }
             break;
           }
           await sleep(200);
@@ -1004,6 +1014,12 @@ async function captureTerminal(args) {
   if (overflowed) {
     console.warn(`  NOTE: the session was cut short at the ${maxMb}MB capture limit, so this cast is `
       + "not the whole session.");
+  }
+  // The expensive silent miss: a step waited its whole timeout, the session never produced what the
+  // recipe asked for, and the closing summary still read like a clean take. Say it here, where it
+  // cannot scroll away, because deciding to re-run is a lot cheaper than publishing the wrong clip.
+  for (const step of timedOutSteps) {
+    console.warn(`  WARNING: ${stepGaveUpNotice(step)}`);
   }
   const leftover = scanText(castText(cast), rules);
   if (leftover.length) console.warn(`  WARNING: ${leftover.length} finding(s) survived scrubbing - render will refuse this cast`);

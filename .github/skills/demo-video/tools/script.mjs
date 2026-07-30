@@ -118,6 +118,16 @@ export function normalizeScript(raw, baseDir = process.cwd()) {
   return { steps: normalized };
 }
 
+// A step that gave up is reported TWICE on purpose: once where it happens, and once in the closing
+// summary. A capture runs for up to ninety minutes, so a warning printed at minute twenty has
+// scrolled far out of sight by the end - and the shipped loop recipe really did spend its whole
+// twenty-five minute timeout waiting for a marker the agent never printed, while the closing lines
+// still read like a clean take. Deciding to re-run is much cheaper than publishing the wrong ending.
+export function stepGaveUpNotice(step) {
+  return `step "${step.mark}" ${step.reason} - the session never produced what it was waiting for, `
+    + "so this cast may not show the ending the recipe asked for.";
+}
+
 // A file-backed wait must mean "the file this run produced", not "a file exists". The loop capture
 // waits on a review bundle at a FIXED path in the scratch directory, so a bundle left by the
 // previous recording is already there when the step starts - and an existence check would paste the
