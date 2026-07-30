@@ -78,13 +78,44 @@ class CodeBlockSpansTests(unittest.TestCase):
         self.assertEqual(self._inners(html), ["evil"])
 
     def test_cdata_at_an_html_integration_point_is_a_bogus_comment(self):
-        # An HTML integration point inside foreign content returns to HTML tokenization, so
-        # `<![CDATA[` there is a bogus comment again and the block after its first `>` is LIVE.
-        for host in ("foreignObject", "desc", "annotation-xml"):
+        # An HTML integration point puts its CHILDREN in the HTML namespace, and `<![CDATA[` is a
+        # section only when the CURRENT NODE is foreign. So inside a `<div>` under a
+        # `<foreignObject>` it is a bogus comment ending at the first `>`, and the block is LIVE.
+        for host in ("foreignObject", "desc", "title"):
             with self.subTest(host=host):
-                html = ('<svg><%s><![CDATA[><pre><code class="language-python">real</code></pre>'
-                        ']]></%s></svg>' % (host, host))
+                html = ('<svg><%s><div><![CDATA[><pre><code class="language-python">real'
+                        '</code></pre>]]></div></%s></svg>' % (host, host))
                 self.assertEqual(self._inners(html), ["real"])
+
+    def test_cdata_directly_inside_a_foreign_element_is_still_a_section(self):
+        # The current node there is the SVG element itself, which IS foreign, so a browser really
+        # does open a CDATA section - reading its quoted markup as live would be a false positive.
+        html = '<svg><foreignObject><![CDATA[><pre><code class="language-python">q</code></pre>]]>'
+        self.assertEqual(self._spans(html).pres, ())
+
+    def test_annotation_xml_is_an_integration_point_only_with_an_html_encoding(self):
+        # Without `encoding="text/html"` its contents stay MathML foreign content, so the CDATA
+        # section there is real; with one, its children are HTML and the block after `>` is live.
+        bare = ('<math><annotation-xml><![CDATA[><pre><code class="language-python">q'
+                '</code></pre>]]></annotation-xml></math>')
+        self.assertEqual(self._spans(bare).pres, ())
+        html_enc = ('<math><annotation-xml encoding="text/html"><div><![CDATA[>'
+                    '<pre><code class="language-python">real</code></pre>]]></div>'
+                    '</annotation-xml></math>')
+        self.assertEqual(self._inners(html_enc), ["real"])
+
+    def test_a_breakout_start_tag_ends_foreign_content(self):
+        # A browser pops the open foreign elements at an HTML breakout start tag, so the CDATA
+        # after it is a bogus comment and the block is live. Keeping a stale `svg` on the stack
+        # hid a real block from BOTH guardrails.
+        html = ('<svg><p><![CDATA[><pre><code class="language-python">real</code></pre>]]>'
+                '</p></svg>')
+        self.assertEqual(self._inners(html), ["real"])
+
+    def test_a_raw_text_name_inside_foreign_content_is_parsed_normally(self):
+        # An SVG `<title>` is not HTML's RCDATA `<title>`; only script/style stay raw text there.
+        html = '<svg><title><div><pre><code class="language-python">real</code></pre></div></title></svg>'
+        self.assertEqual(self._inners(html), ["real"])
 
     def test_a_comment_holds_no_block(self):
         html = ('<!-- <pre><code class="language-python">quoted</code></pre> -->'
@@ -209,12 +240,17 @@ class CodeBlockSpansTests(unittest.TestCase):
 
     def test_the_records_are_read_only(self):
         # The result is CACHED and shared between checks, so a consumer that stamped a field on a
-        # record would silently poison the next check's view of the same document.
+        # record - or on its nested attribute mapping - would silently poison the next check's
+        # view of the same document.
         spans = self._spans('<pre><code class="language-python">x</code></pre>')
         with self.assertRaises(TypeError):
             spans.pres[0]["in_kql_figure"] = True
         with self.assertRaises(TypeError):
+            spans.pres[0]["attrs"]["class"] = "x"
+        with self.assertRaises(TypeError):
             spans.pres[0]["codes"][0]["attrs"] = {}
+        with self.assertRaises(TypeError):
+            spans.pres[0]["codes"][0]["attrs"]["class"] = "language-kusto"
 
     def test_the_result_is_cached_per_document(self):
         html = '<pre><code class="language-python">x</code></pre>'

@@ -35,9 +35,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   raw-text set; the raw-text closer (`</script data-x>`, `</script/>`, which only Python 3.13+
   honours); the comment closes (`-->`, `--!>`, `<!-->`, `<!--->` - and NOT `-- >`, which the
   pre-3.13 delegate wrongly accepted); an unterminated comment running to the end of the document
-  rather than resuming after the next `>`;   and CDATA, which is a section only inside `<svg>`/`<math>` (and not at an HTML integration point
-  such as `foreignObject` or `desc`, where HTML tokenization resumes) and a bogus comment ending at
-  the first `>` everywhere else. Payloads are still sliced from the
+  rather than resuming after the next `>`;   and CDATA, which is a section only when the CURRENT NODE is a foreign (`<svg>`/`<math>`)
+  element - under an HTML integration point (`foreignObject`, `desc`, `title`, an
+  `annotation-xml` with an HTML `encoding`, or a MathML text integration point) or after an HTML
+  breakout start tag such as `<p>` or `<div>`, which pops the open foreign elements, it is a
+  bogus comment ending at the first `>`, exactly as it is in ordinary HTML. Payloads are still
+  sliced from the
   ORIGINAL document, so the language, the emptiness test and the highlight classification are
   decided on the bytes that ship, and the fail-closed warning for a code block whose structure a raw
   `<script>`/`<style>`/`<!--` destroyed is unchanged. If the parse itself fails, no blocks are

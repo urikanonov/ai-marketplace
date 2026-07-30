@@ -573,13 +573,13 @@ class _DocParser(HTMLParser):
 # on older interpreters (3.13 added xmp/iframe/noembed/noframes/textarea/title) - so the
 # boundary is identical on every Python the skill runs on. `noscript` is raw text in a
 # scripting-ENABLED browser, which is the only mode a commentable document ever runs in.
-# The set is applied unconditionally, including inside SVG/MathML where a browser would
-# parse an element of the same name normally: a code block inside an SVG `<title>` is not a
-# real shape, and a rule that depended on foreign-content state would land differently on
-# 3.13 (whose parser makes its own raw-text decisions) than on 3.12.
 _RAW_TEXT_ELEMENTS = frozenset((
     "script", "style", "textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript",
 ))
+
+# Only script and style stay raw text inside FOREIGN content; the rest are ordinary parsed
+# elements there (an SVG `<title>` is not HTML's RCDATA `<title>`).
+_FOREIGN_RAW_TEXT_ELEMENTS = frozenset(("script", "style"))
 
 # A comment ends at `-->` or at the legacy `--!>` (the HTML comment-end-bang state), and a
 # `<!-->` / `<!--->` closes abruptly. A whitespace-separated `-- >` does NOT close one, which is
@@ -593,29 +593,44 @@ _COMMENT_ABRUPT_CLOSE_RE = re.compile(r"-?>")
 
 # HTML closes a raw-text element on `</name` followed by whitespace, `/` or `>`, so
 # `</script data-x>` and `</script/>` ARE the end tag (with a parse error for the ignored
-# attribute). html.parser only honours the canonical `</script>` before 3.13, which lets the
-# raw-text region run on to the document's next canonical closer and swallow the authored block
-# between - so _CodeSpanParser.parse_endtag applies this boundary itself on every host.
+# attribute). An end tag is still a TAG, so a `>` inside a quoted attribute value there does not
+# end it. html.parser only honours the canonical `</script>` before 3.13 AND decides where to
+# stop scanning raw text with its own `interesting` regex, so _CodeSpanParser overrides BOTH
+# set_cdata_mode (the scan boundary) and parse_endtag (the closer itself) - overriding only the
+# latter would leave a pre-3.13 parser consuming `</script data-x>` as raw data and running the
+# region on to the document's next canonical closer, swallowing the authored block between.
 _RAW_TEXT_CLOSE_RES = {}
+_END_TAG_ATTRS = r'(?:[^>"\']|"[^"]*"|\'[^\']*\')*'
 
-# `<![CDATA[ ... ]]>` is only a CDATA section inside FOREIGN content. Everywhere else a browser
-# treats `<!` + junk as a BOGUS COMMENT that ends at the very first `>`, so markup after that `>`
-# is LIVE - while html.parser consumes the whole marked section, which would hide a real code
-# block (and, before 3.13, raises on an unknown section keyword).
+# `<![CDATA[ ... ]]>` is a CDATA section only when the CURRENT NODE is a foreign (SVG/MathML)
+# element; when it is an HTML element a browser treats `<!` + junk as a BOGUS COMMENT that ends
+# at the very first `>`, so markup after that `>` is LIVE. html.parser consumes the whole marked
+# section in every context (and, before 3.13, raises on an unknown section keyword), which would
+# hide a real code block from the guardrail.
 _FOREIGN_ROOTS = frozenset(("svg", "math"))
 
-# An HTML INTEGRATION POINT returns to HTML tokenization inside foreign content, so a `<![CDATA[`
-# there is a bogus comment again and the markup after its first `>` is live. `annotation-xml` is
-# only an integration point with an HTML `encoding`, but treating it as one unconditionally errs
-# toward INSPECTING more, which is the safe direction for a guardrail. (An SVG `<title>` is an
-# integration point too, but it is in _RAW_TEXT_ELEMENTS, so its content is text either way.)
-_HTML_INTEGRATION_POINTS = frozenset(("foreignobject", "desc", "title", "annotation-xml"))
+# Children of these are inserted in the HTML namespace, so foreign content ends at them.
+_SVG_HTML_INTEGRATION = frozenset(("foreignobject", "desc", "title"))
+_MATHML_TEXT_INTEGRATION = frozenset(("mi", "mo", "mn", "ms", "mtext"))
+_ANNOTATION_HTML_ENCODINGS = frozenset(("text/html", "application/xhtml+xml"))
+
+# The HTML start tags that BREAK OUT of foreign content: a browser pops the open foreign
+# elements and inserts these in the HTML namespace. Without them a malformed foreign wrapper
+# (`<svg><p><![CDATA[>...`) would keep a stale `svg` on the stack and hide a live code block.
+_FOREIGN_BREAKOUT_TAGS = frozenset((
+    "b", "big", "blockquote", "body", "br", "center", "code", "dd", "div", "dl", "dt", "em",
+    "embed", "h1", "h2", "h3", "h4", "h5", "h6", "head", "hr", "i", "img", "li", "listing",
+    "menu", "meta", "nobr", "ol", "p", "pre", "ruby", "s", "small", "span", "strong", "strike",
+    "sub", "sup", "table", "tt", "u", "ul", "var",
+))
+_FONT_BREAKOUT_ATTRS = ("color", "face", "size")
 
 
 def _raw_text_close_re(elem):
     rx = _RAW_TEXT_CLOSE_RES.get(elem)
     if rx is None:
-        rx = re.compile(r"</%s(?=[\t\n\r\f />])[^>]*>" % re.escape(elem), re.IGNORECASE)
+        rx = re.compile(r"</%s(?=[\t\n\r\f />])%s>" % (re.escape(elem), _END_TAG_ATTRS),
+                        re.IGNORECASE)
         _RAW_TEXT_CLOSE_RES[elem] = rx
     return rx
 
@@ -640,7 +655,7 @@ class _CodeSpanParser(HTMLParser):
     def __init__(self, html):
         super().__init__(convert_charrefs=True)
         self._starts = _line_starts(html)
-        self._stack = []   # [(tag, record or None, is_kql_figure)]
+        self._stack = []   # [_OpenElement]
         self._final = False   # the whole document has been handed to feed()
         self.pres = []
         self.unclosed = False
@@ -678,6 +693,24 @@ class _CodeSpanParser(HTMLParser):
         # tokenizing after the next `>`, which resurrects markup a browser never renders.
         return self._unterminated(i + 4, self.handle_comment if report else (lambda _d: None))
 
+    def set_cdata_mode(self, elem, **kwargs):
+        # Install the raw-text scan boundary a BROWSER uses: the region ends at `</name`
+        # followed by whitespace, `/` or `>`. Before 3.13 html.parser stops only at the
+        # canonical `</script>`, so `</script data-x>` is consumed as raw data and the region
+        # runs on to the document's next canonical closer - swallowing the authored block
+        # between. parse_endtag below then consumes the whole end tag from that point.
+        # The guard also REFUSES the base parser's own call (which fires right after
+        # handle_starttag on 3.13 for its RCDATA table): inside FOREIGN content only script and
+        # style are raw text, so an SVG `<title>` must be parsed, not swallowed as text.
+        if self._stack:
+            top = self._stack[-1]
+            if (top[0] == elem.lower() and top[3] != "html"
+                    and elem.lower() not in _FOREIGN_RAW_TEXT_ELEMENTS):
+                return
+        super().set_cdata_mode(elem, **kwargs)
+        self.interesting = re.compile(r"</%s(?=[\t\n\r\f />])" % re.escape(self.cdata_elem),
+                                      re.IGNORECASE)
+
     def parse_endtag(self, i):
         elem = self.cdata_elem
         if elem is not None:
@@ -704,7 +737,7 @@ class _CodeSpanParser(HTMLParser):
                 return self._unterminated(i + 2, self.handle_decl)
             self.handle_decl(rawdata[i + 2:gt])
             return gt + 1
-        if rawdata.startswith("<![CDATA[", i) and self._in_foreign():
+        if rawdata.startswith("<![CDATA[", i) and self._current_is_foreign():
             j = rawdata.find("]]>", i + 9)
             if j < 0:
                 return self._unterminated(i + 3, self.unknown_decl)
@@ -721,18 +754,55 @@ class _CodeSpanParser(HTMLParser):
 
     # -- element tracking -------------------------------------------------- #
 
-    def _in_foreign(self):
-        for (t, _r, _k) in reversed(self._stack):
-            if t in _HTML_INTEGRATION_POINTS:
-                return False
-            if t in _FOREIGN_ROOTS:
+    def _current_is_foreign(self):
+        """Whether the CURRENT NODE is an SVG/MathML element. That - not merely having a
+        foreign ANCESTOR - is what decides whether `<![CDATA[` opens a section: a browser only
+        recognizes one when the adjusted current node is outside the HTML namespace."""
+        return bool(self._stack) and self._stack[-1][3] != "html"
+
+    def _child_namespace(self, tag, ad):
+        """The namespace a new `tag` is inserted in, applying HTML5's foreign-content rules:
+        integration points and MathML text integration points put their children back in the
+        HTML namespace, and a BREAKOUT start tag pops the open foreign elements first."""
+        top = self._stack[-1] if self._stack else None
+        parent_ns = top[3] if top is not None else "html"
+        parent_integration = top[4] if top is not None else False
+        if parent_ns == "html" or parent_integration:
+            return "svg" if tag == "svg" else ("math" if tag == "math" else "html")
+        if tag in _FOREIGN_BREAKOUT_TAGS or (
+                tag == "font" and any(a in ad for a in _FONT_BREAKOUT_ATTRS)):
+            self._break_out_of_foreign()
+            return "html"
+        return parent_ns
+
+    def _break_out_of_foreign(self):
+        """Pop foreign elements until the current node is HTML or an integration point, as a
+        browser does for a breakout start tag. Without it `<svg><p>` would leave a stale `svg`
+        current and a following `<![CDATA[` would hide a live block."""
+        while self._stack:
+            top = self._stack[-1]
+            if top[3] == "html" or top[4]:
+                return
+            if top[0] in ("pre", "code") and top[1] is not None:
+                self.unclosed = True
+            self._stack.pop()
+
+    @staticmethod
+    def _is_integration_point(tag, ns, ad):
+        """Whether this element's CHILDREN are inserted in the HTML namespace."""
+        if ns == "svg":
+            return tag in _SVG_HTML_INTEGRATION
+        if ns == "math":
+            if tag in _MATHML_TEXT_INTEGRATION:
                 return True
+            return (tag == "annotation-xml"
+                    and (ad.get("encoding") or "").strip().lower() in _ANNOTATION_HTML_ENCODINGS)
         return False
 
     def _open_pre(self):
-        for (t, rec, _k) in reversed(self._stack):
-            if t == "pre":
-                return rec
+        for entry in reversed(self._stack):
+            if entry[0] == "pre":
+                return entry[1]
         return None
 
     def _implicit_close(self, tag):
@@ -749,8 +819,8 @@ class _CodeSpanParser(HTMLParser):
         for i in range(len(self._stack) - 1, -1, -1):
             t = self._stack[i][0]
             if t == target:
-                for (tt, rec, _k) in self._stack[i:]:
-                    if tt in ("pre", "code") and rec is not None:
+                for entry in self._stack[i:]:
+                    if entry[0] in ("pre", "code") and entry[1] is not None:
                         self.unclosed = True
                 del self._stack[i:]
                 return
@@ -759,15 +829,17 @@ class _CodeSpanParser(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
-        self._implicit_close(tag)
         ad = _DocParser._attrs_dict(attrs)
+        ns = self._child_namespace(tag, ad)
+        if ns == "html":
+            self._implicit_close(tag)
         rec = None
-        if tag == "pre":
+        if tag == "pre" and ns == "html":
             rec = {"attrs": ad, "start": self._off(), "inner_start": self._start_tag_end(),
                    "inner": None, "codes": [],
-                   "in_kql_figure": any(k for (_t, _r, k) in self._stack)}
+                   "in_kql_figure": any(e[2] for e in self._stack)}
             self.pres.append(rec)
-        elif tag == "code":
+        elif tag == "code" and ns == "html":
             owner = self._open_pre()
             if owner is not None:
                 rec = {"attrs": ad, "start": self._off(),
@@ -776,16 +848,26 @@ class _CodeSpanParser(HTMLParser):
         # A VOID element has no content and no end tag, so it never owns a code block and never
         # needs to be popped. Keeping voids off the stack matches _DocParser and keeps a
         # void-heavy document from growing the stack (and every unmatched end tag's scan of it).
-        if tag not in VOID:
+        # (A foreign element is never void: `<svg><rect/>` is self-closing markup, handled below.)
+        if tag not in VOID or ns != "html":
             self._stack.append((tag, rec,
-                                tag == "figure" and parsed_attrs_have_class(ad, "cmh-kql")))
-        if tag in _RAW_TEXT_ELEMENTS:
+                                tag == "figure" and ns == "html"
+                                and parsed_attrs_have_class(ad, "cmh-kql"),
+                                ns, self._is_integration_point(tag, ns, ad)))
+        raw = _RAW_TEXT_ELEMENTS if ns == "html" else _FOREIGN_RAW_TEXT_ELEMENTS
+        if tag in raw:
             self.set_cdata_mode(tag)
 
     def handle_startendtag(self, tag, attrs):
-        # HTML5: a trailing slash on a NON-void tag is ignored, so `<pre/>` opens an element
-        # that still needs `</pre>` and `<textarea/>` still opens raw text.
-        if tag.lower() not in VOID:
+        # HTML5: a trailing slash on a NON-void HTML tag is ignored, so `<pre/>` opens an element
+        # that still needs `</pre>` and `<textarea/>` still opens raw text. In FOREIGN content
+        # the slash really does close the element, so `<svg><rect/>` leaves nothing open.
+        tag = tag.lower()
+        if self._stack and self._stack[-1][3] != "html" and not self._stack[-1][4]:
+            ad = _DocParser._attrs_dict(attrs)
+            if self._child_namespace(tag, ad) != "html":
+                return  # a self-closed foreign element: opened and closed at once
+        if tag not in VOID:
             self.handle_starttag(tag, attrs)
 
     def handle_endtag(self, tag):
@@ -794,8 +876,8 @@ class _CodeSpanParser(HTMLParser):
         for i in range(len(self._stack) - 1, -1, -1):
             if self._stack[i][0] != tag:
                 continue
-            for (t, rec, _k) in self._stack[i + 1:]:
-                if t in ("pre", "code") and rec is not None:
+            for entry in self._stack[i + 1:]:
+                if entry[0] in ("pre", "code") and entry[1] is not None:
                     self.unclosed = True   # implicitly closed: it never got its own closer
             own = self._stack[i][1]
             if own is not None:
@@ -806,8 +888,8 @@ class _CodeSpanParser(HTMLParser):
 
     def close(self):
         super().close()
-        for (t, rec, _k) in self._stack:
-            if t in ("pre", "code") and rec is not None:
+        for entry in self._stack:
+            if entry[0] in ("pre", "code") and entry[1] is not None:
                 self.unclosed = True
 
 
@@ -839,7 +921,13 @@ def _freeze_pres(pres):
     frozen = []
     for pre in pres:
         rec = dict(pre)
-        rec["codes"] = tuple(MappingProxyType(dict(c)) for c in pre["codes"])
+        rec["attrs"] = MappingProxyType(dict(pre["attrs"]))
+        codes = []
+        for c in pre["codes"]:
+            cr = dict(c)
+            cr["attrs"] = MappingProxyType(dict(c["attrs"]))
+            codes.append(MappingProxyType(cr))
+        rec["codes"] = tuple(codes)
         frozen.append(MappingProxyType(rec))
     return tuple(frozen)
 
