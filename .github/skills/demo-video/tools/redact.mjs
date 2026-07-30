@@ -31,7 +31,33 @@ const MAX_BUFFER = 64 * 1024;
 // every space-separated key - the kind of regression that shows up as a credential in a published
 // video, not as a failing test - so the word groups are matched explicitly and bounded.
 const ASSIGNED_KEYWORD = /passwords?|passwd|pwd|secrets?|api[-_ ]?keys?|apikey|access[-_ ]?tokens?|auth[-_ ]?tokens?|refresh[-_ ]?tokens?|client[-_ ]?secrets?|tokens?|credentials?|account[-_ ]?keys?|shared[-_ ]?access[-_ ]?keys?|primary[-_ ]?keys?|secondary[-_ ]?keys?|connection[-_ ]?strings?/i;
-const ASSIGNED = /(?<![\w.-])([\w.-]+(?:[ ][\w.-]+){0,4})(\s*[:=]\s*)["']?(?!\[redacted\])[^\s"';,]{6,}["']?/gi;
+// Every assignment separator is examined, from the left, and the scan resumes just AFTER the
+// separator rather than after the whole match. That last detail is the point: with plain
+// `matchAll`, a benign outer assignment swallows its value and the engine resumes past it, so
+// `env=DB_PASSWORD_PROD=swordfish` and `...?format=json&access_token=abc` matched only the harmless
+// outer key and the credential inside sailed through - clean scan, credential in the video.
+//
+// Walking separators is also what keeps it linear: each one is looked at once, the key is read
+// backwards over a bounded number of word groups, and the value forwards to the first delimiter.
+const ASSIGN_SEP = /\s*[:=]\s*/g;
+const KEY_TAIL = /(?:^|[^\w.-])([\w.-]+(?:[ ][\w.-]+){0,4})$/;
+const VALUE_HEAD = /^["']?(?!\[redacted\])([^\s"';,]{6,})["']?/i;
+
+function* findAssignments(plain) {
+  ASSIGN_SEP.lastIndex = 0;
+  for (const sep of plain.matchAll(ASSIGN_SEP)) {
+    // Bounded look-back: a key is a handful of word groups, never a paragraph.
+    const before = plain.slice(Math.max(0, sep.index - 200), sep.index);
+    const key = KEY_TAIL.exec(before);
+    if (!key || !ASSIGNED_KEYWORD.test(key[1])) continue;
+    const after = plain.slice(sep.index + sep[0].length);
+    const value = VALUE_HEAD.exec(after);
+    if (!value) continue;
+    const start = sep.index - key[1].length;
+    const text = key[1] + sep[0] + value[0];
+    yield Object.assign([text, key[1], sep[0], value[1]], { index: start, input: plain });
+  }
+}
 
 // A PEM block is the one credential shape that spans lines, so the streaming scrubber has to treat
 // it specially: everything else is guaranteed whitespace-free.
@@ -105,11 +131,8 @@ export const DEFAULT_RULES = [
   },
   {
     name: "assigned-secret",
-    re: ASSIGNED,
-    // The keyword test lives here, not in the pattern: an identifier that does not name a secret is
-    // returned unchanged, and `collectSpans` skips any match whose replacement equals the original.
-    // That keeps the regex linear while the rule still only fires on a secret-shaped key.
-    replace: (match, key, sep) => (ASSIGNED_KEYWORD.test(key) ? `${key}${sep}${REDACTED}` : match),
+    find: findAssignments,
+    replace: (match, key, sep) => `${key}${sep}${REDACTED}`,
     // The VALUE half stops at whitespace, so unwrapping cannot make this rule run away across the
     // transcript the way a line-oriented one would - and a wrapped value is exactly the case that
     // otherwise leaves its continuation sitting on the next line.
@@ -250,8 +273,10 @@ function collectSpans(raw, rules, options) {
   const spans = [];
   for (const rule of rules) {
     if (options.unwrapOnly && !rule.unwrapSafe) continue;
-    rule.re.lastIndex = 0;
-    for (const match of plain.matchAll(rule.re)) {
+    // A rule may bring its own scanner. `matchAll` resumes AFTER each match, which is wrong for a
+    // rule whose match can CONTAIN another candidate - see findAssignments.
+    const matches = rule.find ? rule.find(plain) : (rule.re.lastIndex = 0, plain.matchAll(rule.re));
+    for (const match of matches) {
       const replacement = (rule.replace || (() => REDACTED))(...match);
       if (replacement === match[0]) continue;
       spans.push({
@@ -272,6 +297,17 @@ function collectSpans(raw, rules, options) {
 function applyRules(text, rules) {
   let out = text;
   for (const rule of rules) {
+    // A rule with its own scanner is applied by SPAN, from the right, so earlier offsets stay valid.
+    if (rule.find) {
+      const found = [...rule.find(out)];
+      for (let i = found.length - 1; i >= 0; i--) {
+        const match = found[i];
+        const replaced = (rule.replace || (() => REDACTED))(...match);
+        const text2 = rule.pad === false ? replaced : fitWidth(replaced, match[0]);
+        out = out.slice(0, match.index) + text2 + out.slice(match.index + match[0].length);
+      }
+      continue;
+    }
     rule.re.lastIndex = 0;
     out = out.replace(rule.re, (...args) => {
       const replaced = (rule.replace || (() => REDACTED))(...args);

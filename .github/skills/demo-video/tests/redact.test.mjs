@@ -545,3 +545,31 @@ test("the assigned-secret rule stays linear on a pathological line (DEMO-SAFE-25
     assert.equal(scrubText(benign, DEFAULT_RULES), benign, `${benign} should be left alone`);
   }
 });
+
+// The leak the linear rewrite introduced, and the reason the rule walks separators instead of using
+// matchAll. A benign OUTER assignment swallowed its whole value and the engine resumed past it, so
+// the credential nested inside was never looked at: `env=DB_PASSWORD_PROD=...` and a URL carrying
+// `?...&access_token=...` both scanned CLEAN. A session printing a URL with a token in it is not an
+// exotic case, and a clean scan is what tells the operator the clip is safe to publish.
+test("a credential nested inside another assignment is still caught (DEMO-SAFE-28)", () => {
+  const value = join("swordfish", "-9182736455");
+  const nested = [
+    `env=DB_PASSWORD_PROD=${value}`,
+    `query=access_token=${value}`,
+    `https://example.test/cb?format=json&access_token=${value}&next=/home`,
+    `docker run -e API_KEY=${value} image:tag`,
+  ];
+  for (const line of nested) {
+    assert.ok(scanText(line, DEFAULT_RULES).length > 0, `the gate missed: ${line}`);
+    const scrubbed = scrubText(line, DEFAULT_RULES);
+    assert.ok(!scrubbed.includes("swordfish"), `the value survived: ${line}`);
+    // The surrounding text is what makes the clip readable - only the value goes.
+    assert.ok(scrubbed.includes("access_token") || scrubbed.includes("PASSWORD") || scrubbed.includes("API_KEY"),
+      `the key was lost: ${scrubbed}`);
+    assert.equal(scrubText(scrubbed, DEFAULT_RULES), scrubbed, `not idempotent: ${line}`);
+  }
+  // Two secrets in one line must BOTH go, not just the first.
+  const both = `a=API_KEY=${value}&b=client_secret=${value}`;
+  const out = scrubText(both, DEFAULT_RULES);
+  assert.equal(out.includes("swordfish"), false, `one of the two survived: ${out}`);
+});

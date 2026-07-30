@@ -820,7 +820,11 @@ async function captureTerminal(args) {
   let childExited = false;
   let driverError = null;
   let overflowed = false;
-  const maxMb = args["max-mb"] == null ? 512 : args["max-mb"];
+  // 192MB of captured BYTES, not code units. Finalisation is the real peak: scrubbing builds a
+  // second copy plus a per-character offset map, and JSON.stringify another, so the resident cost is
+  // several times what was captured. A limit that only bounded the capture would still OOM in the
+  // step that writes the cast - which is the recording this exists to save.
+  const maxMb = args["max-mb"] == null ? 192 : args["max-mb"];
   const maxBytes = captureLimitBytes(maxMb);
   const guardSize = makeSizeGuard(maxBytes, () => {
     overflowed = true;
@@ -875,7 +879,7 @@ async function captureTerminal(args) {
       // of it loses a recording that took twenty minutes to make. So the size is bounded and the
       // capture is ENDED cleanly at the limit - the operator keeps what was recorded up to that
       // point and is told plainly why it stopped, instead of the process dying with nothing.
-      guardSize(data.length);
+      guardSize(Buffer.byteLength(data, "utf8"));
     });
     // Scripted turns are driven from here, alongside the live stdin forwarding above (an operator
     // watching can still intervene). Each step waits for its own condition, sends, and records a
