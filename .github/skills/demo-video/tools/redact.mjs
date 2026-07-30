@@ -20,13 +20,18 @@ const MAX_BUFFER = 64 * 1024;
 // `DB_PASSWORD_PROD` do not - so the keyword is looked for INSIDE the identifier rather than
 // anchored to either end.
 //
-// The identifier is matched ONCE, as a bounded unit, and the keyword test happens afterwards in
-// `replace`. The previous shape wrapped the keyword alternation in two unbounded lazy runs
+// The identifier is matched ONCE, greedily, and the keyword test happens afterwards in `replace`.
+// The previous shape wrapped the keyword alternation in two unbounded lazy runs
 // (`[\w.-]*?...[\w.-]*?`), which made the engine retry the whole alternation from every offset of
 // every long word-character run: quadratic, and measured at 2.9s for 144KB of `password_` repeated,
 // on a rule the safety gate runs over the WHOLE uncompressed session. A cast is megabytes.
+//
+// The key may contain SPACES, because several of the keywords do (`api key`, `shared access key`,
+// `connection string`). A first attempt used a single `[\w.-]` class and silently stopped catching
+// every space-separated key - the kind of regression that shows up as a credential in a published
+// video, not as a failing test - so the word groups are matched explicitly and bounded.
 const ASSIGNED_KEYWORD = /passwords?|passwd|pwd|secrets?|api[-_ ]?keys?|apikey|access[-_ ]?tokens?|auth[-_ ]?tokens?|refresh[-_ ]?tokens?|client[-_ ]?secrets?|tokens?|credentials?|account[-_ ]?keys?|shared[-_ ]?access[-_ ]?keys?|primary[-_ ]?keys?|secondary[-_ ]?keys?|connection[-_ ]?strings?/i;
-const ASSIGNED = /(?<![\w.-])([\w.-]{1,120})(\s*[:=]\s*)["']?(?!\[redacted\])[^\s"';,]{6,}["']?/g;
+const ASSIGNED = /(?<![\w.-])([\w.-]+(?:[ ][\w.-]+){0,4})(\s*[:=]\s*)["']?(?!\[redacted\])[^\s"';,]{6,}["']?/gi;
 
 // A PEM block is the one credential shape that spans lines, so the streaming scrubber has to treat
 // it specially: everything else is guaranteed whitespace-free.

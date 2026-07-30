@@ -524,14 +524,24 @@ test("the assigned-secret rule stays linear on a pathological line (DEMO-SAFE-25
   assert.equal(out, pathological, "a run with no assignment must be left exactly alone");
   assert.ok(elapsed < 5000, `scrubbing ${pathological.length} chars took ${elapsed}ms; the rule has gone super-linear`);
 
-  // And it must still fire on the real shape, wherever the keyword sits in the identifier.
-  for (const key of ["password", "AZURE_CLIENT_SECRET", "SECRET_KEY", "DB_PASSWORD_PROD", "api-key"]) {
+  // And it must still fire on the real shape, wherever the keyword sits in the identifier - and
+  // however the key is punctuated. A first attempt at the linear rewrite used a single `[\w.-]`
+  // class and silently stopped catching every SPACE-separated key, which is the kind of regression
+  // that surfaces as a credential in a published video rather than as a failing test.
+  const keys = [
+    "password", "AZURE_CLIENT_SECRET", "SECRET_KEY", "DB_PASSWORD_PROD", "api-key",
+    "api key", "access token", "shared access key", "connection string",
+    `${"x".repeat(130)}_password`,
+  ];
+  for (const key of keys) {
     const line = `${key}=` + join("swordfish", "-9182736455");
     const scrubbed = scrubText(line, DEFAULT_RULES);
     assert.ok(scrubbed.startsWith(`${key}=`), `${key} lost its key`);
     assert.ok(!scrubbed.includes("swordfish"), `${key} kept its value`);
+    assert.equal(scrubText(scrubbed, DEFAULT_RULES), scrubbed, `${key} is not idempotent`);
   }
   // An identifier that names nothing secret is untouched, which is what keeps the clip readable.
-  const benign = "duration=1234567890";
-  assert.equal(scrubText(benign, DEFAULT_RULES), benign);
+  for (const benign of ["duration=1234567890", "the quick brown fox jumps over: something"]) {
+    assert.equal(scrubText(benign, DEFAULT_RULES), benign, `${benign} should be left alone`);
+  }
 });
