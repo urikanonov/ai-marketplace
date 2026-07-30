@@ -42,7 +42,8 @@ import http from "http";
 import { planBeats, fitTimeline, compressTimeline, coalesceEvents, applySpeedWindows, parseSpeedWindows, MIN_BEAT_MS } from "./timeline.mjs";
 import { REPORT_BEATS } from "./report-beats.mjs";
 import { DEFAULT_RULES, homeRules, scanText, scrubEvents, scrubText, createScrubber } from "./redact.mjs";
-import { readScript, stepReady, stepPayload, stepSubmit } from "./script.mjs";
+import { readScript, stepReady, stepPayload, stepSubmit, makeSizeGuard, captureLimitBytes } from "./script.mjs";
+import { recordCapture, wasCapturedHere } from "./provenance.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SKILL = path.resolve(HERE, "..");
@@ -105,7 +106,7 @@ function resolveOptionalPath(pkg, ...rest) {
 const STRING_KEYS = new Set([
   "example", "out", "cast", "clip", "seconds", "cols", "rows", "idle", "hold",
   "width", "height", "count", "font", "frames-dir", "scale", "tail", "head", "end-hold", "intro", "ask",
-  "script", "review-out", "snapshot-out", "split", "speed-windows", "example-after", "seconds-resolved", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "dpr",
+  "script", "review-out", "snapshot-out", "split", "speed-windows", "example-after", "seconds-resolved", "max-mb", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "dpr",
 ]);
 const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "help"]);
 // Which options each subject actually reads. Validating against the union instead means
@@ -113,7 +114,7 @@ const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "help"]);
 // told nothing, and gets a clip that is not what they asked for.
 const SUBJECT_FLAGS = {
   report: ["example", "out", "seconds", "width", "height", "scale", "list", "review-out", "snapshot-out"],
-  capture: ["out", "cols", "rows", "script"],
+  capture: ["out", "cols", "rows", "script", "max-mb"],
   render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "head", "end-hold", "intro", "ask", "speed-windows", "allow-findings"],
   loop: ["cast", "example", "example-after", "seconds-resolved", "out", "split", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "idle", "hold", "width", "height", "font", "scale", "dpr", "intro", "end-hold", "ask", "allow-findings"],
   scan: ["cast"],
@@ -818,6 +819,15 @@ async function captureTerminal(args) {
   // The driver waits on the session; if the session ends, every wait it is in must end too.
   let childExited = false;
   let driverError = null;
+  let overflowed = false;
+  const maxMb = args["max-mb"] == null ? 512 : args["max-mb"];
+  const maxBytes = captureLimitBytes(maxMb);
+  const guardSize = makeSizeGuard(maxBytes, () => {
+    overflowed = true;
+    console.warn(`\n  capture: reached the ${maxMb}MB limit (--max-mb); ending the session and `
+      + "keeping what was recorded so far.");
+    try { child.kill(); } catch (e) { /* already gone */ }
+  });
   const onInput = (data) => { try { child.write(data.toString("utf8")); } catch (e) { /* child is gone */ } };
   const onResize = () => { try { child.resize(process.stdout.columns || cols, process.stdout.rows || rows); } catch (e) { /* child is gone */ } };
   // Raw mode belongs to the CALLER's terminal, so it must be handed back on every path - a throw, a
@@ -860,6 +870,12 @@ async function captureTerminal(args) {
       buffer = (buffer + data).slice(-65536);
       seen += data.length;
       lastDataAt = Date.now();
+      // Everything captured is held in memory until the child exits, because the raw stream is
+      // never written to disk unscrubbed. That makes memory the binding constraint, and running out
+      // of it loses a recording that took twenty minutes to make. So the size is bounded and the
+      // capture is ENDED cleanly at the limit - the operator keeps what was recorded up to that
+      // point and is told plainly why it stopped, instead of the process dying with nothing.
+      guardSize(data.length);
     });
     // Scripted turns are driven from here, alongside the live stdin forwarding above (an operator
     // watching can still intervene). Each step waits for its own condition, sends, and records a
@@ -960,7 +976,11 @@ async function captureTerminal(args) {
     marks,
     events: scrubbed.events.map((e) => ({ t: e.t, data: e.data })),
   };
-  fs.writeFileSync(outFile, JSON.stringify(cast));
+  const castBytes = JSON.stringify(cast);
+  fs.writeFileSync(outFile, castBytes);
+  // Provenance is recorded OUT OF BAND - see tools/provenance.mjs. The `scrubbedBy` field above is
+  // a claim the file makes about itself and is never trusted for this decision.
+  recordCapture(OUT_ROOT, castBytes);
   const transcriptFile = outFile.replace(/\.cast\.json$/, "") + ".transcript.txt";
   fs.writeFileSync(transcriptFile, scrubbed.transcript);
 
@@ -975,13 +995,17 @@ async function captureTerminal(args) {
   console.log(`\ncast:       ${outFile}`);
   console.log(`transcript: ${transcriptFile}`);
   console.log(`redacted:   ${scrubbed.redactions} match(es) scrubbed before writing`);
+  if (overflowed) {
+    console.warn(`  NOTE: the session was cut short at the ${maxMb}MB capture limit, so this cast is `
+      + "not the whole session.");
+  }
   const leftover = scanText(castText(cast), rules);
   if (leftover.length) console.warn(`  WARNING: ${leftover.length} finding(s) survived scrubbing - render will refuse this cast`);
   console.log("READ THE TRANSCRIPT before you render or publish: automated redaction is a net, not a gate.");
   // node-pty keeps handles alive after the child exits, so the process would hang on its own - but
   // exiting outright can truncate a piped stdout, losing the paths just printed. Flush, then go.
   await new Promise((done) => process.stdout.write("", done));
-  process.exit(driverError ? 1 : (exitCode || 0));
+  process.exit(driverError || overflowed ? 1 : (exitCode || 0));
 }
 
 // A cast's COMMAND is shown in the clip's title bar, so the gate has to read it too - scanning only
@@ -990,17 +1014,31 @@ function castText(cast) {
   return `${cast.command || ""}\n${cast.events.map((e) => e.data).join("")}`;
 }
 
+// This machine's ledger has no record of capturing this cast, so it was scrubbed with SOMEONE ELSE'S
+// home path and account name - a clean scan here says very little. Said once, in one place.
+function warnForeignCast(capturedHere) {
+  if (capturedHere) return;
+  console.warn("WARNING: this machine did not capture this cast, so it was never scrubbed at source,");
+  console.warn("         and the home/account rules used here are THIS machine's. Read the whole");
+  console.warn("         transcript before publishing anything rendered from it.");
+}
+
 function readCast(args) {
   if (!args.cast) throw new Error("--cast <file.cast.json> is required");
   const file = path.resolve(String(args.cast));
   if (!fs.existsSync(file)) throw new Error(`cast not found: ${file}`);
-  const cast = JSON.parse(fs.readFileSync(file, "utf8"));
+  const bytes = fs.readFileSync(file, "utf8");
+  const cast = JSON.parse(bytes);
   if (!Array.isArray(cast.events)) throw new Error(`${file} is not a cast (no events array)`);
-  return { file, cast };
+  // Decided from the BYTES against this machine's ledger, never from anything the cast says about
+  // itself. A `scrubbedBy` field is a claim the file makes, and a forged one would suppress exactly
+  // the warning that says the scan used the wrong machine's home/account rules.
+  return { file, cast, capturedHere: wasCapturedHere(OUT_ROOT, bytes) };
 }
 
 function scanCast(args) {
-  const { file, cast } = readCast(args);
+  const { file, cast, capturedHere } = readCast(args);
+  warnForeignCast(capturedHere);
   const text = castText(cast);
   const findings = scanText(text, rulesForThisMachine());
   console.log(`cast:     ${file}`);
@@ -1328,7 +1366,7 @@ function reviewPreamble() {
 // same runBeats, just scoped to the iframe, so a beat added to the standalone montage appears in
 // this clip too.
 async function recordLoop(args) {
-  const { cast } = readCast(args);
+  const { cast, capturedHere } = readCast(args);
   const rules = rulesForThisMachine();
   const findings = scanText(castText(cast), rules);
   if (findings.length && !args["allow-findings"]) {
@@ -1337,9 +1375,7 @@ async function recordLoop(args) {
       + "Re-capture or add a rule to tools/redact.mjs rather than publishing it.",
     );
   }
-  if (cast.scrubbedBy !== "demo-video") {
-    console.warn("WARNING: this cast was not captured by demo-video, so it was never scrubbed at source.");
-  }
+  warnForeignCast(capturedHere);
 
   const splitLabel = args.split ? String(args.split) : "paste";
   const mark = (cast.marks || []).find((m) => m.label === splitLabel);
@@ -1559,7 +1595,7 @@ async function copyAllBundle(page, scope, warnings) {
 }
 
 async function renderTerminal(args) {
-  const { cast } = readCast(args);
+  const { cast, capturedHere } = readCast(args);
   const rules = rulesForThisMachine();
   const findings = scanText(castText(cast), rules);
   if (findings.length && !args["allow-findings"]) {
@@ -1571,11 +1607,7 @@ async function renderTerminal(args) {
   // A cast this tool did not capture was never scrubbed at capture time, and the machine-specific
   // rules here cannot know another operator's home path or account name - so a clean scan says much
   // less than it appears to.
-  if (cast.scrubbedBy !== "demo-video") {
-    console.warn("WARNING: this cast was not captured by demo-video, so it was never scrubbed at");
-    console.warn("         source, and the home/account rules used here are THIS machine's. Read the");
-    console.warn("         whole transcript before publishing anything rendered from it.");
-  }
+  warnForeignCast(capturedHere);
 
   const cols = cast.cols || 120;
   const rows = cast.rows || 30;

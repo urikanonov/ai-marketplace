@@ -125,6 +125,30 @@ export function stepReady(step, { buffer = "", lastDataAt = 0, now = 0, startedA
   return { ready: false, reason: waiting };
 }
 
+// Everything a capture records is held in memory until the child exits, because the raw stream is
+// never written to disk unscrubbed - so memory is the binding constraint, and running out of it
+// loses a recording that took twenty minutes to make. This bounds it: the guard fires ONCE, at the
+// moment the limit is crossed, so the caller can end the session cleanly and keep what it has
+// instead of dying with nothing.
+export function makeSizeGuard(maxBytes, onOverflow) {
+  if (!Number.isFinite(maxBytes) || maxBytes <= 0) fail("the capture size limit must be a positive number of bytes");
+  let total = 0;
+  let fired = false;
+  return (length) => {
+    total += length;
+    if (fired || total <= maxBytes) return fired;
+    fired = true;
+    onOverflow(total);
+    return true;
+  };
+}
+
+export function captureLimitBytes(mb) {
+  const value = Number(mb);
+  if (!Number.isFinite(value) || value <= 0) fail(`--max-mb must be a positive number, got ${JSON.stringify(mb)}`);
+  return Math.round(value * 1024 * 1024);
+}
+
 // What actually goes down the pipe. Kept separate from the sending so a test can assert the Enter
 // policy without a pty, and so a bracketed-paste terminal cannot swallow the newline: the text and
 // the Enter are written as one string in the order a person would produce them. A file-backed step

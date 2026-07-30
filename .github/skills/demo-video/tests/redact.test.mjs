@@ -506,3 +506,32 @@ test("a credential wrapped with an erase or cursor escape at the break is still 
   const glued = "abcdefghij\u001b[0Gklmnopqrstuvwxyz0123";
   assert.equal(scanText(glued, DEFAULT_RULES).length, 0, "a movement escape must not glue two runs");
 });
+
+// The safety gate runs every rule over the WHOLE uncompressed session, and a cast is megabytes. The
+// assigned-secret rule used to wrap its keyword alternation in two unbounded lazy runs, so the
+// engine retried the whole alternation from every offset of every long word-character run: 144KB of
+// `password_` repeated took 2.9 SECONDS, and the cost quadrupled with every doubling. On a real cast
+// that is a hang, on exactly the large sessions this tool exists to compress.
+//
+// The bound below is deliberately loose. Linear behaviour lands around 20ms here; the quadratic
+// shape needed ~47 SECONDS for this input. Anything in between is still a pass, so the test cannot
+// fail because a CI runner was busy - only because the complexity regressed.
+test("the assigned-secret rule stays linear on a pathological line (DEMO-SAFE-25)", () => {
+  const pathological = "password_".repeat(64000); // ~576KB with no whitespace and no assignment
+  const started = Date.now();
+  const out = scrubText(pathological, DEFAULT_RULES);
+  const elapsed = Date.now() - started;
+  assert.equal(out, pathological, "a run with no assignment must be left exactly alone");
+  assert.ok(elapsed < 5000, `scrubbing ${pathological.length} chars took ${elapsed}ms; the rule has gone super-linear`);
+
+  // And it must still fire on the real shape, wherever the keyword sits in the identifier.
+  for (const key of ["password", "AZURE_CLIENT_SECRET", "SECRET_KEY", "DB_PASSWORD_PROD", "api-key"]) {
+    const line = `${key}=` + join("swordfish", "-9182736455");
+    const scrubbed = scrubText(line, DEFAULT_RULES);
+    assert.ok(scrubbed.startsWith(`${key}=`), `${key} lost its key`);
+    assert.ok(!scrubbed.includes("swordfish"), `${key} kept its value`);
+  }
+  // An identifier that names nothing secret is untouched, which is what keeps the clip readable.
+  const benign = "duration=1234567890";
+  assert.equal(scrubText(benign, DEFAULT_RULES), benign);
+});

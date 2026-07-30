@@ -17,11 +17,16 @@ const MAX_BUFFER = 64 * 1024;
 // Keyword-anchored assignments: `password: hunter2`, `AZURE_CLIENT_SECRET=...`, `SECRET_KEY=...`.
 // The key is kept (it is what makes the clip readable) and only the VALUE is replaced. The keyword
 // can sit ANYWHERE in the identifier - `AZURE_CLIENT_SECRET` has it at the end, `SECRET_KEY` and
-// `DB_PASSWORD_PROD` do not - so the identifier is matched loosely on BOTH sides. Anchoring only at
-// the tail (or relying on a leading `\b`, which never fires after `_`) misses how environment
-// variables are really named. The negative lookahead stops an already-redacted value from being
-// reported as a fresh finding.
-const ASSIGNED = /\b[\w.-]*?(?:passwords?|passwd|pwd|secrets?|api[-_ ]?keys?|apikey|access[-_ ]?tokens?|auth[-_ ]?tokens?|refresh[-_ ]?tokens?|client[-_ ]?secrets?|tokens?|credentials?|account[-_ ]?keys?|shared[-_ ]?access[-_ ]?keys?|primary[-_ ]?keys?|secondary[-_ ]?keys?|connection[-_ ]?strings?)[\w.-]*?\b(\s*[:=]\s*)["']?(?!\[redacted\])[^\s"';,]{6,}["']?/gi;
+// `DB_PASSWORD_PROD` do not - so the keyword is looked for INSIDE the identifier rather than
+// anchored to either end.
+//
+// The identifier is matched ONCE, as a bounded unit, and the keyword test happens afterwards in
+// `replace`. The previous shape wrapped the keyword alternation in two unbounded lazy runs
+// (`[\w.-]*?...[\w.-]*?`), which made the engine retry the whole alternation from every offset of
+// every long word-character run: quadratic, and measured at 2.9s for 144KB of `password_` repeated,
+// on a rule the safety gate runs over the WHOLE uncompressed session. A cast is megabytes.
+const ASSIGNED_KEYWORD = /passwords?|passwd|pwd|secrets?|api[-_ ]?keys?|apikey|access[-_ ]?tokens?|auth[-_ ]?tokens?|refresh[-_ ]?tokens?|client[-_ ]?secrets?|tokens?|credentials?|account[-_ ]?keys?|shared[-_ ]?access[-_ ]?keys?|primary[-_ ]?keys?|secondary[-_ ]?keys?|connection[-_ ]?strings?/i;
+const ASSIGNED = /(?<![\w.-])([\w.-]{1,120})(\s*[:=]\s*)["']?(?!\[redacted\])[^\s"';,]{6,}["']?/g;
 
 // A PEM block is the one credential shape that spans lines, so the streaming scrubber has to treat
 // it specially: everything else is guaranteed whitespace-free.
@@ -96,7 +101,10 @@ export const DEFAULT_RULES = [
   {
     name: "assigned-secret",
     re: ASSIGNED,
-    replace: (match, sep) => `${match.slice(0, match.indexOf(sep))}${sep}${REDACTED}`,
+    // The keyword test lives here, not in the pattern: an identifier that does not name a secret is
+    // returned unchanged, and `collectSpans` skips any match whose replacement equals the original.
+    // That keeps the regex linear while the rule still only fires on a secret-shaped key.
+    replace: (match, key, sep) => (ASSIGNED_KEYWORD.test(key) ? `${key}${sep}${REDACTED}` : match),
     // The VALUE half stops at whitespace, so unwrapping cannot make this rule run away across the
     // transcript the way a line-oriented one would - and a wrapped value is exactly the case that
     // otherwise leaves its continuation sitting on the next line.
