@@ -1004,7 +1004,7 @@ main > section:nth-of-type(even) {
   gap: 1.75rem;
   /* The diagram is mostly whitespace, so it yields width to the steps: a step body that wraps past
      two lines pushes the whole explainer taller than the diagram it sits beside. */
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
   align-items: center;
 }
 
@@ -1107,7 +1107,19 @@ main > section:nth-of-type(even) {
   width: 100%;
   height: auto;
 }
-/* Demo preview */
+
+/* The diagram's own panel must not be the SAME colour as the card it sits in. The base rule fills
+   it with --cp-surface, which is exactly the card's background on an odd band (both #ffffff), so
+   the panel vanished. Fill it from the page background instead, and flip to the elevated tone on
+   an even band, where the card itself is --cp-bg - so it contrasts whichever band it lands in,
+   in both colour schemes, and on the vertical (mobile) twin, which shares the class. */
+.loop-explainer .loop-fig-bg {
+  fill: var(--cp-bg);
+}
+
+main > section:nth-of-type(even) .loop-explainer .loop-fig-bg {
+  fill: var(--cp-bg-elevated);
+}/* Demo preview */
 .demo-frame {
   border: 1px solid var(--cp-border);
   border-radius: var(--cp-radius);

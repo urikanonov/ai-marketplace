@@ -177,3 +177,35 @@ test("no review step outgrows the diagram it sits beside (SITE-VIDEO-09)", async
     expect(step.lines, `"${step.text}" wraps to ${step.lines} lines`).toBeLessThanOrEqual(2);
   }
 });
+
+test("the loop diagram panel contrasts with the card it sits in (SITE-VIDEO-10)", async ({ page }) => {
+  // The base fill is --cp-surface, which IS the card's own background on an odd band, so the
+  // panel disappeared into the card. Check the rendered colours rather than the rule: the point
+  // is a visible edge, in either colour scheme, and on the vertical twin phones get.
+  const rgb = (value) => (value.match(/\d+/g) || []).slice(0, 3).map(Number);
+  const perceptibleGap = (a, b) => {
+    const [ar, ag, ab] = rgb(a);
+    const [br, bg, bb] = rgb(b);
+    return Math.abs(ar - br) + Math.abs(ag - bg) + Math.abs(ab - bb);
+  };
+
+  for (const scheme of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme: scheme });
+    for (const width of [1180, 380]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+      const shown = await page.evaluate(() => {
+        const card = document.querySelector("#review-loop .section-block");
+        // Only one of the horizontal/vertical twins is displayed at a time.
+        const panel = Array.from(document.querySelectorAll("#review-loop .loop-fig-bg"))
+          .find((n) => n.getBoundingClientRect().width > 0);
+        return panel ? { card: getComputedStyle(card).backgroundColor, panel: getComputedStyle(panel).fill } : null;
+      });
+      expect(shown, `no visible diagram at ${width}px`).not.toBeNull();
+      expect(
+        perceptibleGap(shown.card, shown.panel),
+        `${scheme} at ${width}px: panel ${shown.panel} on card ${shown.card}`,
+      ).toBeGreaterThan(20);
+    }
+  }
+});
