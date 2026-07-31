@@ -303,6 +303,11 @@
     video.addEventListener("loadedmetadata", function () {
       video.playbackRate = wantedRate;
     });
+    video.addEventListener("ratechange", function () {
+      rateButtons.forEach(function (b) {
+        b.setAttribute("aria-pressed", Number(b.getAttribute("data-rate")) === video.playbackRate ? "true" : "false");
+      });
+    });
 
     overlay.appendChild(video);
     overlay.appendChild(speeds);
@@ -313,6 +318,10 @@
 
     function open(trigger) {
       video.setAttribute("src", trigger.getAttribute("data-video"));
+      var thumbPoster = trigger.querySelector("img");
+      if (thumbPoster) {
+        video.setAttribute("poster", thumbPoster.currentSrc || thumbPoster.src);
+      }
       setRate(1);
       var label = trigger.getAttribute("data-video-label");
       overlay.setAttribute("aria-label", label ? label : "Demo video");
@@ -328,11 +337,16 @@
     }
 
     function hide() {
+      if (document.fullscreenElement && overlay.contains(document.fullscreenElement)) {
+        var exited = document.exitFullscreen();
+        if (exited && typeof exited.catch === "function") { exited.catch(function () {}); }
+      }
       // Pause AND drop the source: leaving it attached keeps the clip buffering behind a closed
       // overlay, and on some browsers keeps its audio alive.
       video.pause();
       overlay.setAttribute("hidden", "");
       video.removeAttribute("src");
+      video.removeAttribute("poster");
       video.load();
       if (lastFocus && typeof lastFocus.focus === "function") {
         lastFocus.focus();
@@ -344,11 +358,21 @@
         open(trigger);
       });
     });
+    // A click is dispatched on the nearest common ancestor of press and release, so a drag that
+    // STARTS on the video or a speed pill and ends on the backdrop reports the overlay as its
+    // target - dismissing the clip on a 20px slip off a pill, or on a scrub that leaves the video.
+    // Track where the press began and require both ends on the same dismissing element.
+    var pressedOn = null;
+    overlay.addEventListener("pointerdown", function (e) {
+      pressedOn = e.target;
+    });
     overlay.addEventListener("click", function (e) {
+      var from = pressedOn;
+      pressedOn = null;
       // Dismiss on the BACKDROP or the close button only. Testing "not the video" would also catch
       // the speed buttons, which live in the overlay too - pressing 1.5x would set the rate and
       // then immediately close the clip you were about to watch.
-      if (e.target === overlay || e.target === close) {
+      if ((e.target === overlay && from === overlay) || (e.target === close && from === close)) {
         hide();
       }
     });
@@ -357,6 +381,11 @@
         return;
       }
       if (e.key === "Escape") {
+        // Escape is ALSO the key that leaves fullscreen. Tearing the overlay down here would
+        // destroy the clip instead, losing the position, so let the browser handle it first.
+        if (document.fullscreenElement && overlay.contains(document.fullscreenElement)) {
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         hide();
@@ -370,10 +399,16 @@
         }
         var first = focusable[0];
         var last = focusable[focusable.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
+        var active = document.activeElement;
+        // Clicking dead space inside the overlay blurs to <body>, which is INSIDE no control - so
+        // without this, Tab would walk into the page behind the modal.
+        if (!overlay.contains(active)) {
+          e.preventDefault();
+          (e.shiftKey ? last : first).focus();
+        } else if (e.shiftKey && active === first) {
           e.preventDefault();
           last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
+        } else if (!e.shiftKey && active === last) {
           e.preventDefault();
           first.focus();
         }

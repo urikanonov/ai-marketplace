@@ -87,7 +87,15 @@ test("pressing a speed keeps the clip open and actually changes the rate (SITE-V
     await expect(overlay).toBeVisible();
     await expect(overlay.locator(`.lightbox-speed[data-rate="${rate}"]`)).toHaveAttribute("aria-pressed", "true");
     // Loading a source resets playbackRate to the default, so a rate set only on the live
-    // property silently reverts to 1x as soon as the clip loads.
+    // property silently reverts to 1x as soon as the clip loads. Reading the live rate right after
+    // the click does NOT observe that - assert the default too, and force a reload to prove the
+    // rate survives it.
+    expect(await video.evaluate((v) => v.playbackRate)).toBe(Number(rate));
+    expect(await video.evaluate((v) => v.defaultPlaybackRate)).toBe(Number(rate));
+    await video.evaluate((v) => new Promise((r) => {
+      v.load();
+      v.addEventListener("loadedmetadata", r, { once: true });
+    }));
     expect(await video.evaluate((v) => v.playbackRate)).toBe(Number(rate));
   }
 
@@ -208,4 +216,60 @@ test("the loop diagram panel contrasts with the card it sits in (SITE-VIDEO-10)"
       ).toBeGreaterThan(20);
     }
   }
+});
+
+test("the backdrop and the close button dismiss, but a drag off a control does not (SITE-VIDEO-11)", async ({ page }) => {
+  const overlay = await openLightbox(page, "/commentable-html/");
+
+  // A click is dispatched on the nearest common ancestor of press and release, so a drag that
+  // starts on a control and ends on the backdrop reports the OVERLAY as its target. Without
+  // tracking where the press began, a 20px slip off a speed pill closes the clip.
+  const pill = overlay.locator('.lightbox-speed[data-rate="2"]');
+  const box = await pill.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y - 80);
+  await page.mouse.up();
+  await expect(overlay).toBeVisible();
+
+  // The same for a scrub that leaves the video.
+  const video = overlay.locator("video");
+  const vb = await video.boundingBox();
+  await page.mouse.move(vb.x + vb.width / 2, vb.y + vb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(vb.x + vb.width / 2, vb.y - 60);
+  await page.mouse.up();
+  await expect(overlay).toBeVisible();
+
+  // The backdrop still dismisses - it is the primary affordance for a modal, and nothing else
+  // pinned it, so a rule that only honoured the close button would have shipped green.
+  await page.mouse.click(4, 4);
+  await expect(overlay).toBeHidden();
+
+  // ...and so does the close button.
+  await page.locator(".video-thumb").first().click();
+  await expect(overlay).toBeVisible();
+  await overlay.locator(".lightbox-close").click();
+  await expect(overlay).toBeHidden();
+});
+
+test("the overlay shows the poster while the clip loads, and clears it after (SITE-VIDEO-12)", async ({ page }) => {
+  const overlay = await openLightbox(page, "/commentable-html/");
+  const video = overlay.locator("video");
+  // preload="none" leaves the element with no intrinsic size, so without a poster a real network
+  // shows a 300x150 black box until metadata arrives. The poster is already downloaded.
+  await expect(video).toHaveAttribute("poster", /poster-commentable-html\.jpg/);
+  await page.keyboard.press("Escape");
+  // Cleared on close, or the next clip opens showing the previous one's still.
+  expect(await video.getAttribute("poster")).toBeNull();
+});
+
+test("the clips and posters are served with their real media types (SITE-VIDEO-13)", async ({ request }) => {
+  // Served as application/octet-stream, Chromium sniffs and plays anyway - but that diverges from
+  // Pages and is what makes a local preview fail in Firefox.
+  const clip = await request.get("/assets/demo-multi-duck.webm");
+  expect(clip.status()).toBe(200);
+  expect(clip.headers()["content-type"]).toBe("video/webm");
+  const poster = await request.get("/assets/poster-multi-duck.jpg");
+  expect(poster.headers()["content-type"]).toBe("image/jpeg");
 });

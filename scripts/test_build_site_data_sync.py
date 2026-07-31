@@ -415,3 +415,29 @@ class StylesConcatTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StampsMediaAssetsTest(unittest.TestCase):
+    """A re-recorded clip keeps its filename, so without a stamp a returning visitor keeps the
+    cached one - and the whole point of the recorder is that these get re-recorded."""
+
+    def test_stamps_the_demo_clips_and_posters(self):
+        clip = bsd._asset_hash(bsd.REPO_ROOT, "demo-multi-duck.webm")
+        poster = bsd._asset_hash(bsd.REPO_ROOT, "poster-multi-duck.jpg")
+        html = ('<button data-video="../assets/demo-multi-duck.webm">'
+                '<img src="../assets/poster-multi-duck.jpg" /></button>')
+        out = bsd.stamp_assets(html, bsd.REPO_ROOT)
+        # The clip URL lives in data-video, not href/src, so the attribute set has to cover it.
+        self.assertIn('data-video="../assets/demo-multi-duck.webm?v=%s"' % clip, out)
+        self.assertIn('src="../assets/poster-multi-duck.jpg?v=%s"' % poster, out)
+
+    def test_every_served_clip_and_poster_is_stamped_on_the_built_pages(self):
+        for page in ("commentable-html", "multi-duck"):
+            path = os.path.join(bsd.REPO_ROOT, bsd.SITE_OUT, page, "index.html")
+            with open(path, encoding="utf-8") as fh:
+                built = fh.read()
+            for match in re.finditer(r'(?:data-video|src)="[^"]*assets/([^"?]+\.(?:webm|jpg))([^"]*)"', built):
+                name, query = match.group(1), match.group(2)
+                self.assertTrue(
+                    query.startswith("?v="),
+                    "%s on the %s page is served without a cache-busting stamp" % (name, page))

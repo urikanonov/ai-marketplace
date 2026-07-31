@@ -16,6 +16,11 @@ const TYPES = {
   ".xml": "application/xml; charset=utf-8",
   ".txt": "text/plain; charset=utf-8",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  // Without this the clips are served as application/octet-stream: Chromium sniffs and plays them
+  // anyway, but that diverges from Pages and is exactly what makes Firefox refuse a local preview.
+  ".webm": "video/webm",
   ".ico": "image/x-icon",
   ".zip": "application/zip",
 };

@@ -44,9 +44,22 @@ def write_text(path, text):
 # stale stylesheet or script after a deploy (the query changes exactly when the file does).
 # Icons are omitted: they change rarely and a cached favicon does not misrender page content.
 # The generated pages always use double-quoted attributes, which this pattern targets.
-CACHE_BUSTED_ASSETS = ("styles.css", "site.js")
+# The demo clips and their posters are stamped too: a re-recorded clip keeps its filename, so
+# without the hash a returning visitor keeps serving the cached one forever - and these exist to
+# be re-recorded. `data-video` carries the clip URL (the thumbnail is a button, not a media
+# element), so the attribute set has to include it or the clips would go unstamped.
+CACHE_BUSTED_ASSETS = (
+    "styles.css",
+    "site.js",
+    "demo-commentable-html.webm",
+    "demo-commentable-html-loop.webm",
+    "demo-multi-duck.webm",
+    "poster-commentable-html.jpg",
+    "poster-commentable-html-loop.jpg",
+    "poster-multi-duck.jpg",
+)
 _ASSET_REF_RE = re.compile(
-    r'(?P<attr>href|src)="(?P<path>(?:\.{1,2}/)*assets/(?P<file>%s))(?:[?#][^"]*)?"'
+    r'(?P<attr>href|src|data-video)="(?P<path>(?:\.{1,2}/)*assets/(?P<file>%s))(?:[?#][^"]*)?"'
     % "|".join(re.escape(name) for name in CACHE_BUSTED_ASSETS))
 
 

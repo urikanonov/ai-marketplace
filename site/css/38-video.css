@@ -10,7 +10,7 @@
 .video-grid {
   display: grid;
   gap: 1.25rem;
-  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(19rem, 100%), 1fr));
 }
 
 /* One clip (the multi-duck page) should not stretch to the full column width. */
@@ -23,9 +23,9 @@
   display: block;
   width: 100%;
   padding: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--cp-border);
   border-radius: 14px;
-  background: var(--card);
+  background: var(--cp-surface);
   color: inherit;
   cursor: pointer;
   overflow: hidden;
@@ -37,7 +37,7 @@
 .video-thumb:hover,
 .video-thumb:focus-visible {
   transform: translateY(-2px);
-  border-color: var(--accent);
+  border-color: var(--cp-accent);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
 }
 
@@ -53,7 +53,7 @@
   height: auto;
   aspect-ratio: 16 / 10;
   object-fit: cover;
-  background: var(--muted-bg, #f3f0ea);
+  background: var(--cp-surface-soft);
 }
 
 .video-play {
@@ -78,7 +78,7 @@
 
 .video-thumb:hover .video-play span,
 .video-thumb:focus-visible .video-play span {
-  background: var(--accent);
+  background: var(--cp-accent);
   transform: scale(1.06);
 }
 
@@ -100,7 +100,7 @@
 }
 
 .video-thumb-note {
-  color: var(--muted);
+  color: var(--cp-text-muted);
   font-size: 0.92rem;
 }
 
@@ -196,7 +196,8 @@
 }
 
 .lightbox-speed[aria-pressed="true"] {
-  background: var(--accent);
+  background: var(--cp-accent);
+  color: var(--cp-accent-fg);
   font-weight: 700;
 }
 
@@ -232,8 +233,8 @@
   width: 1.9rem;
   height: 1.9rem;
   border-radius: 50%;
-  background: var(--accent-soft, rgba(190, 24, 70, 0.1));
-  color: var(--accent);
+  background: var(--cp-accent-soft);
+  color: var(--cp-accent);
   font-weight: 700;
   font-size: 0.95rem;
 }
@@ -245,7 +246,7 @@
 
 .loop-step-body p {
   margin: 0;
-  color: var(--muted);
+  color: var(--cp-text-muted);
 }
 
 @media (max-width: 860px) {
@@ -265,24 +266,24 @@
 }
 
 .feature-frame {
-  border: 1px solid var(--border);
+  border: 1px solid var(--cp-border);
   border-radius: 14px;
   overflow: hidden;
-  background: var(--card);
+  background: var(--cp-surface);
 }
 
 .feature-dots {
   display: flex;
   gap: 0.4rem;
   padding: 0.6rem 0.8rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--cp-border);
 }
 
 .feature-dot {
   width: 0.62rem;
   height: 0.62rem;
   border-radius: 50%;
-  background: var(--border);
+  background: var(--cp-border);
 }
 
 .feature-img {
@@ -292,7 +293,7 @@
 }
 
 .feature-caption {
-  color: var(--muted);
+  color: var(--cp-text-muted);
   text-align: center;
   font-size: 0.95rem;
 }
@@ -321,4 +322,16 @@
 
 main > section:nth-of-type(even) .loop-explainer .loop-fig-bg {
   fill: var(--cp-bg-elevated);
+}
+/* Chromium's default focus ring is a 1px black outline: invisible on the dark-theme card and on
+   the near-black pill bar. These controls state their own, visible in both schemes. */
+.video-thumb:focus-visible {
+  outline: 3px solid var(--cp-accent);
+  outline-offset: 2px;
+}
+
+.lightbox-speed:focus-visible,
+.lightbox-video .lightbox-close:focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: 2px;
 }
