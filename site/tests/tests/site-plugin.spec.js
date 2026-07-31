@@ -7,8 +7,8 @@ installNetworkBlock(test);
 
 test("the review-loop diagram swaps to a vertical, uncramped layout on a mobile viewport (SITE-WHY-04)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
-  const horizontal = page.locator("#why .loop-fig-h");
-  const vertical = page.locator("#why .loop-fig-v");
+  const horizontal = page.locator("#review-loop .loop-fig-h");
+  const vertical = page.locator("#review-loop .loop-fig-v");
   await expect(horizontal).toHaveCount(1);
   await expect(vertical).toHaveCount(1);
   // Desktop shows the wide horizontal diagram; the tall variant is hidden.
@@ -583,59 +583,42 @@ test("the plugin page footer credits mermaid and Chart.js (SITE-CREDIT-01)", asy
 });
 
 
-test("the plugin page leads with a review-workflow showcase and a real UI screenshot above the feature grid (SITE-PLUGIN-23)", async ({ page }) => {
+test("the plugin page leads with the demo clips, and keeps the review steps and the UI screenshot (SITE-PLUGIN-23)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
 
   // The hero lead itself lands the one-line value prop, not only the prose lower down.
   await expect(page.locator("header.hero p.lead")).toContainText(/code review for your AI's plans and reports/i);
 
-  const showcase = page.locator("#showcase");
-  await expect(showcase).toHaveCount(1);
-
-  // The showcase is a contained CARD (a visible background, a real border, rounded corners, a
-  // drop shadow, and padding), so it reads as a cohesive unit instead of floating loose on the page.
-  const card = showcase.locator(".showcase-card");
-  await expect(card).toHaveCount(1);
-  const cardStyle = await card.evaluate((el) => {
-    const s = getComputedStyle(el);
-    return {
-      bg: s.backgroundColor,
-      border: parseFloat(s.borderTopWidth),
-      pad: parseFloat(s.paddingTop),
-      radius: parseFloat(s.borderTopLeftRadius),
-      shadow: s.boxShadow,
-    };
-  });
-  expect(cardStyle.bg).not.toBe("rgba(0, 0, 0, 0)");
-  expect(cardStyle.border).toBeGreaterThan(0);
-  expect(cardStyle.pad).toBeGreaterThan(0);
-  expect(cardStyle.radius).toBeGreaterThan(0);
-  expect(cardStyle.shadow).not.toBe("none");
-
-  // The gap below the showcase is tight (the card sits close to the next section) - the block's own
-  // bottom padding is small AND the following "Why" section's top padding is trimmed, so the visible
-  // gap between the showcase card and the "Why" section card is about half the default section gap.
-  const showcasePadBottom = await showcase.evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom));
-  expect(showcasePadBottom).toBeLessThanOrEqual(16);
-  const cardToWhyGap = await page.evaluate(() => {
-    const card = document.querySelector("#showcase .showcase-card").getBoundingClientRect();
-    const why = document.querySelector("#why .section-block").getBoundingClientRect();
-    return why.top - card.bottom;
-  });
-  expect(cardToWhyGap).toBeGreaterThan(0);
-  expect(cardToWhyGap).toBeLessThanOrEqual(36);
-
-  // The showcase leads the page: it is the FIRST element after the hero header (not buried below
-  // other blocks), so the value proposition is on the first screen.
+  // The demo clips now lead the page: showing the loop beats describing it, so the video block is
+  // the FIRST element after the hero header, where the standalone showcase card used to sit.
+  const video = page.locator("#video");
+  await expect(video).toHaveCount(1);
   const afterHero = await page.evaluate(() => {
-    const showcase = document.querySelector("#showcase");
-    return showcase.previousElementSibling === document.querySelector("main > header.hero");
+    const v = document.querySelector("#video");
+    return v.previousElementSibling === document.querySelector("main > header.hero");
   });
   expect(afterHero).toBe(true);
 
-  // A real product screenshot (the specific landing crop) that shows a report with a HIGHLIGHTED
-  // selection and the comment window - not a composer-only image - framed, that decodes.
-  const img = showcase.locator("img.showcase-img");
+  // The concrete review workflow (Select -> Comment inline -> Copy all -> Reload) survives the
+  // showcase's removal: it now reads beside the loop diagram it describes.
+  const steps = page.locator("ol.loop-steps");
+  await expect(steps).toHaveAttribute("role", "list");
+  await expect(steps.locator(".loop-step")).toHaveCount(4);
+  for (const label of ["Select", "Comment inline", "Copy all", "Reload"]) {
+    await expect(steps).toContainText(label);
+  }
+  await expect(steps.getByRole("listitem")).toHaveCount(4);
+  // The steps sit next to the diagram rather than under it, so the two read as one explainer.
+  const sideBySide = await page.evaluate(() => {
+    const fig = document.querySelector(".loop-explainer .loop-figure").getBoundingClientRect();
+    const list = document.querySelector(".loop-explainer .loop-steps").getBoundingClientRect();
+    return list.left >= fig.right - 1;
+  });
+  expect(sideBySide).toBe(true);
+
+  // The real product screenshot is kept, rehomed under the feature grid's heading: a report with a
+  // HIGHLIGHTED selection and the comment window, framed, that decodes.
+  const img = page.locator("#features .feature-shot img.feature-img");
   await expect(img).toBeVisible();
   await expect(img).toHaveAttribute("src", /tutorial\/assets\/landing-composer\.png$/);
   await expect(img).toHaveAttribute("alt", /inline comment window/i);
@@ -644,84 +627,73 @@ test("the plugin page leads with a review-workflow showcase and a real UI screen
   await expect(img).toHaveAttribute("alt", /highlighted/i);
   await img.scrollIntoViewIfNeeded();
   await expect.poll(() => img.evaluate((el) => el.naturalWidth)).toBeGreaterThan(0);
-  // Pin the replacement asset's intrinsic dimensions so a swap back to a differently-sized
-  // (e.g. composer-only) image is caught.
+  // Pin the asset's intrinsic dimensions so a swap to a differently-sized image is caught.
   const natural = await img.evaluate((el) => ({ w: el.naturalWidth, h: el.naturalHeight }));
   expect(natural).toEqual({ w: 1140, h: 500 });
 
-  // The concrete review workflow (Select -> Comment inline -> Copy all -> Reload) renders as four
-  // numbered steps, so a first-time visitor sees how they would use it without scrolling.
-  await expect(showcase.locator(".showcase-flow .showcase-step")).toHaveCount(4);
-  for (const label of ["Select", "Comment inline", "Copy all", "Reload"]) {
-    await expect(showcase.locator(".showcase-flow")).toContainText(label);
-  }
-  // The steps expose explicit ARIA list semantics (role="list" is the VoiceOver safeguard for the
-  // list-style:none list, whose implicit role Safari drops); pin the attribute so removing it fails.
-  const flow = showcase.locator("ol.showcase-flow");
-  await expect(flow).toHaveAttribute("role", "list");
-  await expect(flow.getByRole("listitem")).toHaveCount(4);
-
-  // The showcase CTA bridges straight to the live demo.
-  await expect(showcase.locator(".showcase-cta")).toHaveAttribute("href", "#demo");
-
-  // The showcase sits ABOVE both Install and the feature grid in document order.
+  // The clips sit ABOVE both Install and the feature grid in document order.
   const placement = await page.evaluate(() => {
-    const showcase = document.querySelector("#showcase");
+    const v = document.querySelector("#video");
     const install = document.querySelector("#install");
     const features = document.querySelector("#features");
     const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
     return {
-      beforeInstall: Boolean(showcase.compareDocumentPosition(install) & FOLLOWING),
-      beforeFeatures: Boolean(showcase.compareDocumentPosition(features) & FOLLOWING),
+      beforeInstall: Boolean(v.compareDocumentPosition(install) & FOLLOWING),
+      beforeFeatures: Boolean(v.compareDocumentPosition(features) & FOLLOWING),
     };
   });
   expect(placement.beforeInstall).toBe(true);
   expect(placement.beforeFeatures).toBe(true);
 });
 
-
-test("the showcase screenshot scales within a mobile viewport with no horizontal overflow (SITE-PLUGIN-24)", async ({ page }) => {
+test("the product screenshot scales within a mobile viewport with no horizontal overflow (SITE-PLUGIN-24)", async ({ page }) => {
   await page.setViewportSize({ width: 380, height: 900 });
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
 
-  const img = page.locator("#showcase img.showcase-img");
+  const img = page.locator("#features .feature-shot img.feature-img");
   await expect(img).toBeVisible();
   // The image scales down responsively and stays FULLY within the viewport - both its left and
   // right edges are on-screen (not merely narrower than the viewport while shifted off an edge).
   const box = await img.boundingBox();
   expect(box.x).toBeGreaterThanOrEqual(0);
   expect(box.x + box.width).toBeLessThanOrEqual(380);
-  // The showcase block itself introduces no horizontal overflow at phone width.
+  // The figure itself introduces no horizontal overflow at phone width.
   const noOverflow = await page
-    .locator("#showcase")
+    .locator("#features .feature-shot")
     .evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
   expect(noOverflow).toBe(true);
-  // The card collapses to a single column: the screenshot stacks above the steps.
-  const shot = await page.locator("#showcase .showcase-shot").boundingBox();
-  const copy = await page.locator("#showcase .showcase-copy").boundingBox();
-  expect(shot.y + shot.height).toBeLessThanOrEqual(copy.y + 1);
 
-  // It also collapses early - at a tablet width (820px, still below the ~900px breakpoint) - so the
-  // narrow-copy two-column squeeze in the tablet band is gone, not only at phone width.
+  // ...and it stays overflow-free with the image within the viewport in the tablet band too.
   await page.setViewportSize({ width: 820, height: 1100 });
-  const tShot = await page.locator("#showcase .showcase-shot").boundingBox();
-  const tCopy = await page.locator("#showcase .showcase-copy").boundingBox();
-  expect(tShot.y + tShot.height).toBeLessThanOrEqual(tCopy.y + 1);
-  // ...and it stays overflow-free with the image within the viewport in that tablet band too.
-  const tImg = await page.locator("#showcase img.showcase-img").boundingBox();
+  const tImg = await img.boundingBox();
   expect(tImg.x).toBeGreaterThanOrEqual(0);
   expect(tImg.x + tImg.width).toBeLessThanOrEqual(820);
   const tNoOverflow = await page
-    .locator("#showcase")
+    .locator("#features .feature-shot")
     .evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
   expect(tNoOverflow).toBe(true);
+
+  // The demo clips collapse to a single column at phone width rather than squeezing side by side.
+  await page.setViewportSize({ width: 380, height: 900 });
+  const thumbs = page.locator("#video .video-thumb");
+  const count = await thumbs.count();
+  expect(count).toBeGreaterThan(0);
+  for (let i = 0; i < count; i += 1) {
+    const tb = await thumbs.nth(i).boundingBox();
+    expect(tb.x).toBeGreaterThanOrEqual(0);
+    expect(tb.x + tb.width).toBeLessThanOrEqual(380);
+  }
+  const videoNoOverflow = await page
+    .locator("#video")
+    .evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+  expect(videoNoOverflow).toBe(true);
 });
 
 
-test("the showcase screenshot renders small and stays crisp on HiDPI (SITE-PLUGIN-25)", async ({ page }) => {
+test("the product screenshot renders small and stays crisp on HiDPI (SITE-PLUGIN-25)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
 
-  const img = page.locator("#showcase img.showcase-img");
+  const img = page.locator("#features .feature-shot img.feature-img");
   await expect(img).toBeVisible();
   await img.scrollIntoViewIfNeeded();
   await expect.poll(() => img.evaluate((el) => el.naturalWidth)).toBeGreaterThan(0);

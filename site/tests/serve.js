@@ -43,9 +43,51 @@ const server = http.createServer((req, res) => {
       res.end("not found");
       return;
     }
+    // Re-stat: the size below must be the index file's, not the directory's.
+    stat = fs.statSync(filePath);
   }
   const ext = path.extname(filePath).toLowerCase();
-  res.writeHead(200, { "Content-Type": TYPES[ext] || "application/octet-stream" });
+  const type = TYPES[ext] || "application/octet-stream";
+  // Byte ranges matter for the demo clips: a browser seeks by asking for a range, so a server
+  // that only ever returns 200 with the whole file makes the scrub bar unusable. GitHub Pages
+  // serves ranges, so without this the local preview and the suite would disagree with production.
+  const total = stat.size;
+  const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || "");
+  if (range) {
+    const startRaw = range[1];
+    const endRaw = range[2];
+    let start;
+    let end;
+    if (startRaw === "") {
+      // A suffix range ("bytes=-500") asks for the LAST n bytes.
+      const suffix = Number(endRaw);
+      if (!endRaw || Number.isNaN(suffix)) {
+        res.writeHead(416, { "Content-Range": "bytes */" + total });
+        res.end();
+        return;
+      }
+      start = Math.max(0, total - suffix);
+      end = total - 1;
+    } else {
+      start = Number(startRaw);
+      end = endRaw === "" ? total - 1 : Number(endRaw);
+    }
+    if (Number.isNaN(start) || Number.isNaN(end) || start > end || start >= total) {
+      res.writeHead(416, { "Content-Range": "bytes */" + total });
+      res.end();
+      return;
+    }
+    end = Math.min(end, total - 1);
+    res.writeHead(206, {
+      "Content-Type": type,
+      "Accept-Ranges": "bytes",
+      "Content-Range": "bytes " + start + "-" + end + "/" + total,
+      "Content-Length": end - start + 1,
+    });
+    fs.createReadStream(filePath, { start: start, end: end }).pipe(res);
+    return;
+  }
+  res.writeHead(200, { "Content-Type": type, "Accept-Ranges": "bytes", "Content-Length": total });
   fs.createReadStream(filePath).pipe(res);
 });
 

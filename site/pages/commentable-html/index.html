@@ -88,30 +88,42 @@
       </div>
     </header>
 
-    <div id="showcase" class="showcase">
+    <section id="video">
       <div class="wrap">
-        <div class="showcase-card">
-          <figure class="showcase-shot">
-            <div class="showcase-frame">
-              <span class="showcase-dots" aria-hidden="true"><span class="showcase-dot"></span><span class="showcase-dot"></span><span class="showcase-dot"></span></span>
-              <img class="showcase-img" src="tutorial/assets/landing-composer.png" width="1140" height="500" alt="A commentable HTML report with '165 million' highlighted in a paragraph and an inline comment window open beside it: the quoted '165 million' selection above a 'Write your review comment' box with Cancel and Save comment buttons." />
-            </div>
-            <figcaption class="showcase-caption">Select any text and a comment window opens right where you mean it - no alt-tabbing to the chat.</figcaption>
-          </figure>
-          <div class="showcase-copy">
-            <h2 class="section-title showcase-title">The review loop, in four steps</h2>
-            <p class="showcase-lead">Turn any HTML plan or report into something you comment on inline and round-trip back to the agent - a tight review loop instead of describing changes in prose.</p>
-            <ol class="showcase-flow" role="list">
-              <li class="showcase-step"><span class="showcase-step-n" aria-hidden="true">1</span><div class="showcase-step-body"><h3>Select</h3><p>Highlight any paragraph, table cell, chart, diagram node, or code block.</p></div></li>
-              <li class="showcase-step"><span class="showcase-step-n" aria-hidden="true">2</span><div class="showcase-step-body"><h3>Comment inline</h3><p>Leave a note in the window that opens right on your selection.</p></div></li>
-              <li class="showcase-step"><span class="showcase-step-n" aria-hidden="true">3</span><div class="showcase-step-body"><h3>Copy all</h3><p>Hand the agent one structured bundle of every open comment.</p></div></li>
-              <li class="showcase-step"><span class="showcase-step-n" aria-hidden="true">4</span><div class="showcase-step-body"><h3>Reload</h3><p>The agent edits and marks notes handled; handled comments prune away.</p></div></li>
-            </ol>
-            <a class="btn btn-primary showcase-cta" href="#demo">Demo</a>
+        <div class="section-block video-block">
+          <h2 class="section-title">See it in motion</h2>
+          <p class="lead">The whole loop in a few seconds: leave comments on a live document, hand them back, and watch the agent apply every one.</p>
+          <div class="video-grid">
+            <button type="button" class="video-thumb"
+                    data-video="../assets/demo-commentable-html.webm"
+                    data-video-label="Reviewing a report in the browser">
+              <span class="video-thumb-media">
+                <img src="../assets/poster-commentable-html.jpg" width="800" height="500" loading="lazy" decoding="async"
+                     alt="A commentable HTML report with the comment sidebar open and a note being written on a chart" />
+                <span class="video-play" aria-hidden="true"><span><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span></span>
+              </span>
+              <span class="video-thumb-label">
+                <span class="video-thumb-title">Reviewing in the browser</span>
+                <span class="video-thumb-note">Comment on prose, a table, a diagram, a code diff and a chart.</span>
+              </span>
+            </button>
+            <button type="button" class="video-thumb"
+                    data-video="../assets/demo-commentable-html-loop.webm"
+                    data-video-label="The full round trip with the agent">
+              <span class="video-thumb-media">
+                <img src="../assets/poster-commentable-html-loop.jpg" width="800" height="500" loading="lazy" decoding="async"
+                     alt="A terminal where the agent applies the pasted review comments back into the report" />
+                <span class="video-play" aria-hidden="true"><span><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span></span>
+              </span>
+              <span class="video-thumb-label">
+                <span class="video-thumb-title">The full round trip</span>
+                <span class="video-thumb-note">The agent writes the report, you review it, the agent applies every comment.</span>
+              </span>
+            </button>
           </div>
         </div>
       </div>
-    </div>
+    </section>
 
     <section id="why">
       <div class="wrap">
@@ -121,7 +133,13 @@
           <p><strong>Commentable HTML closes that loop - it is a code review for your plan.</strong> Select any paragraph, table cell, chart, diagram, or code block and comment in place, exactly where you mean it, then one <em>Copy all</em> hands the agent a structured bundle of every note. It <strong>drastically shortens the AI planning and iteration loop</strong>: you stay in the document and return to the chat only at the end.</p>
         </div>
         <!-- Inline (light) twin of plugins/commentable-html/docs/assets/review-loop.svg; keep the two in sync if the labels or flow change. -->
+      </div>
+    </section>
+
+    <section id="review-loop">
+      <div class="wrap">
         <div class="section-block why-loop-block">
+        <div class="loop-explainer">
         <figure class="loop-figure">
           <svg class="loop-fig-h" viewBox="0 0 640 250" role="img" aria-labelledby="loopFigTitle loopFigDesc">
             <title id="loopFigTitle">Commentable HTML self-review loop</title>
@@ -176,8 +194,19 @@
             <text class="loop-fig-sub" x="108" y="387" text-anchor="start" font-size="15">Reload and repeat</text>
           </svg>
         </figure>
+        <ol class="loop-steps" role="list">
+          <li class="loop-step"><span class="loop-step-n" aria-hidden="true">1</span><div class="loop-step-body"><h3>Select</h3><p>Any text, table cell, chart, diagram node, or code block.</p></div></li>
+          <li class="loop-step"><span class="loop-step-n" aria-hidden="true">2</span><div class="loop-step-body"><h3>Comment inline</h3><p>A note opens right on your selection.</p></div></li>
+          <li class="loop-step"><span class="loop-step-n" aria-hidden="true">3</span><div class="loop-step-body"><h3>Copy all</h3><p>One structured bundle of every open comment.</p></div></li>
+          <li class="loop-step"><span class="loop-step-n" aria-hidden="true">4</span><div class="loop-step-body"><h3>Reload</h3><p>The agent edits; handled comments prune away.</p></div></li>
+        </ol>
         </div>
+        </div>
+      </div>
+    </section>
 
+    <section id="compare">
+      <div class="wrap">
         <div class="section-block prose why-mediums">
           <h3 class="why-sub" id="mediums" data-anchor>Chat, Markdown, HTML - or a tight loop?</h3>
           <p>Your agent can draft a brilliant plan in seconds. The real bottleneck is everything after - reading it, reacting to it, and getting your changes back into the model. Where that review happens decides how fast you actually move.</p>
@@ -222,6 +251,13 @@
       <div class="wrap">
         <h2 class="section-title">What you get</h2>
         <p class="section-sub">A full code-review layer that travels with the document; export to one portable HTML file when you want to share.</p>
+        <figure class="feature-shot">
+          <div class="feature-frame">
+            <span class="feature-dots" aria-hidden="true"><span class="feature-dot"></span><span class="feature-dot"></span><span class="feature-dot"></span></span>
+            <img class="feature-img" src="tutorial/assets/landing-composer.png" width="1140" height="500" loading="lazy" decoding="async" alt="A commentable HTML report with '165 million' highlighted in a paragraph and an inline comment window open beside it: the quoted '165 million' selection above a 'Write your review comment' box with Cancel and Save comment buttons." />
+          </div>
+          <figcaption class="feature-caption">Select any text and a comment window opens right where you mean it - no alt-tabbing to the chat.</figcaption>
+        </figure>
         <div class="grid">
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9l-4 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/></svg></span><h3>Comment on anything</h3><p>Prose, table cells, code blocks, KQL queries, charts, images, and mermaid diagram nodes are all selectable and commentable.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><rect x="5" y="10" width="3" height="8" rx="0.5"/><rect x="10.5" y="5" width="3" height="13" rx="0.5"/><rect x="16" y="13" width="3" height="5" rx="0.5"/></svg></span><h3>Rich content, not just prose</h3><p>Author Chart.js charts, Mermaid diagrams, drag-and-drop triage boards, rendered code diffs (inline or side-by-side), and syntax-highlighted code and KQL snippets - all first-class, and every one of them individually commentable.</p></div>
