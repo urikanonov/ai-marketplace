@@ -1042,14 +1042,25 @@ function castText(cast) {
 // fires, so without this the clip spends its ending on an empty prompt and the exit screen. Says
 // what it dropped, because silently shortening someone's session is its own kind of surprise.
 function trimForRender(cast, args) {
-  if (args.until == null && args["until-gap"] == null) return cast;
+  if (args.until == null && args["until-gap"] == null) {
+    // Accepting an option and then ignoring it is the same failure the argument contract exists to
+    // prevent: the operator asked for something and got a clip of the whole session instead.
+    if (args["until-after"] != null) {
+      throw new Error("--until-after only means something alongside --until or --until-gap");
+    }
+    return cast;
+  }
   const out = trimCast(cast, {
     until: args.until == null ? null : String(args.until),
     untilGap: args["until-gap"] == null ? null : numberOpt(args, "until-gap", 0),
-    after: args["until-after"] == null ? "ask" : String(args["until-after"]),
+    after: args["until-after"] == null ? null : String(args["until-after"]),
   });
   console.log(`trimmed:  ${out.kept} of ${out.kept + out.dropped} events `
     + `(${(out.cutAtMs / 1000).toFixed(1)}s of a ${(out.sourceMs / 1000).toFixed(1)}s session)`);
+  if (out.searchedWholeCast) {
+    console.warn("  NOTE: this cast has no \"ask\" mark, so --until searched the WHOLE session - "
+      + "including the prompt, which usually contains the marker word itself. Check the ending.");
+  }
   return out.cast;
 }
 

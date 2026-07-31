@@ -88,3 +88,65 @@ test("a marker that never appears is refused, not silently ignored (DEMO-TRIM-07
   assert.throws(() => trimCast(castFixture(), {}), /nothing to trim by/);
   assert.throws(() => trimCast(castFixture(), { untilGap: 0 }), /positive number of seconds/);
 });
+
+
+test("a mark-less capture can still be trimmed by gap alone (DEMO-TRIM-08)", () => {
+  // marks are only written by the SCRIPT driver, so every hand-driven capture ships none - and
+  // dead-air trimming is most useful on exactly those. Demanding an "ask" mark for a flag that
+  // never needed one refused the case it was built for.
+  const cast = {
+    events: [{ t: 0, data: "hi\r\n" }, { t: 500, data: "working\r\n" }, { t: 90000, data: "idle\r\n" }],
+  };
+  const out = trimCast(cast, { untilGap: 30 });
+  assert.equal(out.kept, 2);
+  assert.equal(out.cast.events[out.cast.events.length - 1].t, 500);
+
+  // ...and --until on a mark-less cast searches everything, but SAYS so, because that is the very
+  // trap the mark anchor exists to avoid.
+  const withMarker = trimCast({
+    events: [{ t: 0, data: "run it\r\n" }, { t: 800, data: "DONE\r\n" }, { t: 90000, data: "x\r\n" }],
+  }, { until: "DONE" });
+  assert.equal(withMarker.searchedWholeCast, true);
+  assert.equal(withMarker.kept, 2);
+});
+
+test("an explicitly named mark must exist, and a mark with no index is refused (DEMO-TRIM-09)", () => {
+  const cast = {
+    marks: [{ label: "ask", t: 0, eventIndex: 0 }],
+    events: [{ t: 0, data: "a\r\n" }, { t: 1000, data: "DONE\r\n" }],
+  };
+  // A typo in --until-after must not quietly become a whole-cast search.
+  assert.throws(() => trimCast(cast, { until: "DONE", after: "quit" }), /no "quit" mark to search after/);
+
+  // A mark that carries no usable index is the same trap wearing a disguise: it would silently
+  // search from the start, and the last hit can be the echoed prompt itself.
+  const noIndex = { marks: [{ label: "ask", t: 0 }], events: cast.events };
+  assert.throws(() => trimCast(noIndex, { until: "DONE" }), /"ask" mark .* has no eventIndex/);
+});
+
+test("a marker split across two pty writes is still found (DEMO-TRIM-10)", () => {
+  // capture pushes one event per onData chunk and the boundaries are arbitrary, so a short token
+  // can straddle two events. Testing each event alone reports the marker "never appears" and
+  // refuses to trim - the expensive failure, on a session that did exactly what was asked.
+  const cast = {
+    marks: [{ label: "ask", t: 0, eventIndex: 0 }],
+    events: [
+      { t: 0, data: "ask\r\n" },
+      { t: 1000, data: "PANEL SUM" },
+      { t: 1100, data: "MARY here\r\n" },
+      { t: 90000, data: "idle\r\n" },
+    ],
+  };
+  const out = trimCast(cast, { until: "PANEL SUMMARY" });
+  assert.equal(out.kept, 3, "should cut at the event that completed the marker");
+});
+
+test("a trim that keeps no time at all is refused (DEMO-TRIM-11)", () => {
+  // An agent that thinks for longer than the gap before printing anything leaves a "clip" of the
+  // echoed prompt. Rendering takes minutes, so say it now rather than after.
+  const cast = {
+    marks: [{ label: "ask", t: 0, eventIndex: 0 }],
+    events: [{ t: 0, data: "ask\r\n" }, { t: 90000, data: "late\r\n" }],
+  };
+  assert.throws(() => trimCast(cast, { untilGap: 30 }), /kept span has no duration/);
+});

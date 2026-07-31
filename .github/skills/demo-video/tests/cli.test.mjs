@@ -134,7 +134,7 @@ test("a Windows shim is launched through its interpreter (DEMO-CLI-04)", () => {
 });
 
 
-test("a trim cannot decide what the safety gate sees (DEMO-TRIM-06)", () => {
+test("a trim cannot decide what the safety gate sees (DEMO-TRIM-12)", () => {
   // The whole point of trimming is to drop the tail - so if the gate ran on the KEPT span, an
   // operator could trim a leaked credential out of the gate's view and publish everything before
   // it. The scan runs on the whole cast, before any trim, and still refuses.
@@ -161,7 +161,7 @@ test("a trim cannot decide what the safety gate sees (DEMO-TRIM-06)", () => {
   }
 });
 
-test("render refuses a trim it cannot honour rather than filming the whole tail (DEMO-TRIM-07)", () => {
+test("render refuses a trim it cannot honour rather than filming the whole tail (DEMO-TRIM-13)", () => {
   const cast = tempCast({
     version: 1,
     command: "npm test",
