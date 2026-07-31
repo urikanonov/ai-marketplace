@@ -216,6 +216,20 @@ these are NOT covered, and only your own eyes will catch them:
 - **A credential you typed with a backspace**, or one a full-screen TUI draws out of stream order:
   the scrubber reads the byte stream, while the viewer reads the rendered grid.
 
+**Everything visible in the terminal chrome is published too, not just the output.** The window
+title bar is part of the frame, and it holds the launch command. On a real machine that command is
+an inventory of internal tooling - which MCP servers you disable, which hosts you point at - and
+none of it is a secret by any rule, so redaction cannot catch it. The clip therefore shows the
+PROGRAM NAME only (`copilot`), with the path and every flag dropped; pass `--show-command` when the
+invocation genuinely is the story. The title card follows the same rule: with no `-p` prompt and no
+`--ask` it degrades to the program name rather than painting the whole invocation in large type.
+
+**Posters are a first-class review surface.** A poster is a frame of the clip, and on a web page it
+loads on FIRST PAINT - so whatever is in it is seen without anyone pressing play. Review the poster
+with the same eyes as the clip. This is not hypothetical: the launch command shipped in every frame
+of two clips on the public site AND in their posters, past two review rounds, because the eye reads
+a title bar as chrome rather than as content.
+
 Read the transcript, then look at the frames, before anything is published. If the net misses a
 shape, add a rule to `tools/redact.mjs` with a test - do not just re-run.
 

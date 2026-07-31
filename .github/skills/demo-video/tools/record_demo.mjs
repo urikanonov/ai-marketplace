@@ -110,15 +110,15 @@ const STRING_KEYS = new Set([
   "script", "review-out", "snapshot-out", "split", "speed-windows", "example-after", "seconds-resolved", "max-mb", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "dpr",
   "until", "until-after", "until-gap",
 ]);
-const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "help"]);
+const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "show-command", "help"]);
 // Which options each subject actually reads. Validating against the union instead means
 // `scan --out x` or `capture --seconds 10` is accepted and then silently ignored - the caller is
 // told nothing, and gets a clip that is not what they asked for.
 const SUBJECT_FLAGS = {
   report: ["example", "out", "seconds", "width", "height", "scale", "list", "review-out", "snapshot-out"],
   capture: ["out", "cols", "rows", "script", "max-mb"],
-  render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "head", "end-hold", "intro", "ask", "speed-windows", "allow-findings", "until", "until-after", "until-gap"],
-  loop: ["cast", "example", "example-after", "seconds-resolved", "out", "split", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "idle", "hold", "width", "height", "font", "scale", "dpr", "intro", "end-hold", "ask", "allow-findings"],
+  render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "head", "end-hold", "intro", "ask", "speed-windows", "allow-findings", "show-command", "until", "until-after", "until-gap"],
+  loop: ["cast", "example", "example-after", "seconds-resolved", "out", "split", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "idle", "hold", "width", "height", "font", "scale", "dpr", "intro", "end-hold", "ask", "allow-findings", "show-command"],
   scan: ["cast"],
   frames: ["clip", "out", "count", "frames-dir"],
 };
@@ -541,6 +541,22 @@ function makeContext(page, budgetMs, warnings, scope = page) {
     },
   };
   return ctx;
+}
+
+// What the terminal window chrome may say. The launch command is what the operator TYPED, and on a
+// real machine that is an inventory of internal tooling - MCP server names, hosts, org-specific
+// flags. None of it is a secret by any rule, so it survives every redaction pass and then plays in
+// every frame, including the poster. The program name alone carries the whole meaning a viewer
+// needs, so that is the default and the full command is opt-in.
+export function windowLabel(command, options = {}) {
+  const raw = String(command == null ? "" : command).trim();
+  if (!raw) return "session";
+  // parseArgs stores the CLI spelling; a direct caller uses the camelCase one.
+  if (options.showCommand === true || options["show-command"] === true) return raw;
+  const quoted = /^"([^"]*)"/.exec(raw) || /^'([^']*)'/.exec(raw);
+  const first = quoted ? quoted[1] : raw.split(/\s+/)[0];
+  const base = first.split(/[\\/]/).pop() || first;
+  return base.replace(/\.(exe|cmd|bat|ps1|com)$/i, "") || "session";
 }
 
 async function saveVideo(page, context, outFile) {
@@ -1112,7 +1128,7 @@ function scanCast(args) {
   return findings;
 }
 
-function terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask }) {
+function terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask, title }) {
   const xtermJs = fs.readFileSync(resolveOptionalPath("@xterm/xterm", "lib", "xterm.js"), "utf8");
   const xtermCss = fs.readFileSync(resolveOptionalPath("@xterm/xterm", "css", "xterm.css"), "utf8");
   const payload = scriptJson({
@@ -1168,7 +1184,7 @@ function terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask }) {
 <script>${xtermJs}</script>
 <script>
   const DATA = ${payload};
-  document.getElementById("title").textContent = ${scriptJson(String(cast.command || "session"))};
+  document.getElementById("title").textContent = ${scriptJson(title)};
   const term = new Terminal({
     cols: DATA.cols, rows: DATA.rows, fontSize: DATA.fontSize, convertEol: false,
     fontFamily: 'Cascadia Mono, Consolas, "DejaVu Sans Mono", monospace',
@@ -1239,14 +1255,17 @@ const CLEAR_COMMENTS_SCRIPT = `(() => {
 // from the session the moment either changes, and a viewer comparing the card with the terminal
 // underneath it will spot the difference immediately. `--ask` stays as an override for a cast
 // captured before marks carried their text.
-function askFromCast(cast, args, preferredMark = "ask") {
+export function askFromCast(cast, args, preferredMark = "ask") {
   if (args.ask) return String(args.ask);
   const marks = Array.isArray(cast.marks) ? cast.marks : [];
   const chosen = marks.find((m) => m.label === preferredMark && m.text) || marks.find((m) => m.text);
   if (chosen) return String(chosen.text).trim();
   const fromCommand = /(?:^|\s)-p\s+(.+)$/s.exec(String(cast.command || ""));
   if (fromCommand) return fromCommand[1].replace(/^["']|["']$/g, "");
-  return String(cast.command || "session");
+  // NOT the raw command. With no prompt to state there is nothing worth reading here, and the
+  // invocation would be painted across the card in the largest type in the clip - a louder leak
+  // than the window chrome that prompted this.
+  return windowLabel(cast.command, args);
 }
 
 // The card has to hold whatever the real prompt turned out to be, and a real prompt is often a
@@ -1266,7 +1285,7 @@ function askFontPx(ask) {
 // terminal is an xterm exactly like the standalone render; the report lives in a full-viewport
 // iframe on top of it. Node drives the phases through `window.__stage`, and because page.evaluate
 // awaits a returned promise, the handshake needs no polling.
-function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, reportUrl }) {
+function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, reportUrl, title }) {
   const xtermJs = fs.readFileSync(resolveOptionalPath("@xterm/xterm", "lib", "xterm.js"), "utf8");
   const xtermCss = fs.readFileSync(resolveOptionalPath("@xterm/xterm", "css", "xterm.css"), "utf8");
   const payload = scriptJson({
@@ -1334,7 +1353,7 @@ function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, reportUr
 <script>${xtermJs}</script>
 <script>
   const DATA = ${payload};
-  document.getElementById("title").textContent = ${scriptJson(String(cast.command || "session"))};
+  document.getElementById("title").textContent = ${scriptJson(title)};
   const term = new Terminal({
     cols: DATA.cols, rows: DATA.rows, fontSize: DATA.fontSize, convertEol: false,
     fontFamily: 'Cascadia Mono, Consolas, "DejaVu Sans Mono", monospace',
@@ -1516,6 +1535,7 @@ async function recordLoop(args) {
       endHoldMs,
       ask,
       reportUrl: `./${encodeURIComponent(reportName)}`,
+      title: windowLabel(cast.command, args),
     });
     // The stage is written NEXT TO the report and loaded from file://, for the same reason the
     // standalone montage is: a generated report links its runtime with absolute `file:///` URLs, and
@@ -1732,7 +1752,7 @@ async function renderTerminal(args) {
   try {
     ensureDir(stageDir);
     const pageFile = path.join(stageDir, "player.html");
-    fs.writeFileSync(pageFile, terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask }));
+    fs.writeFileSync(pageFile, terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask, title: windowLabel(cast.command, args) }));
     const videoDir = path.join(stageDir, "video");
     ensureDir(videoDir);
     browser = await chromium.launch();
@@ -1870,8 +1890,11 @@ const USAGE = `demo-video recorder
   node record_demo.mjs capture [--out <f.cast.json>] [--cols 120] [--rows 30] [--script <f.json>] [--max-mb 48] -- <cmd...>
   node record_demo.mjs render  --cast <file.cast.json> [--seconds 45] [--idle 900] [--out <file.webm>]
                                [--until "<marker>"] [--until-after <mark>] [--until-gap <seconds>]
+                               [--show-command]
   node record_demo.mjs scan    --cast <file.cast.json>
   node record_demo.mjs frames  --clip <file.webm> [--count 12]
+
+The window chrome shows the PROGRAM NAME only; --show-command publishes the whole launch command.
 
 Everything is written under tmp/demo-video (gitignored). Nothing is committed.`;
 
