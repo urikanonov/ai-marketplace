@@ -132,3 +132,50 @@ test("a Windows shim is launched through its interpreter (DEMO-CLI-04)", () => {
   assert.deepEqual(exe, { file: "C:\\tools\\copilot.exe", args: ["-p", "hi"] });
   assert.deepEqual(launchSpec("/usr/bin/copilot", ["-p"], "linux"), { file: "/usr/bin/copilot", args: ["-p"] });
 });
+
+
+test("a trim cannot decide what the safety gate sees (DEMO-TRIM-06)", () => {
+  // The whole point of trimming is to drop the tail - so if the gate ran on the KEPT span, an
+  // operator could trim a leaked credential out of the gate's view and publish everything before
+  // it. The scan runs on the whole cast, before any trim, and still refuses.
+  const dirty = tempCast({
+    version: 1,
+    command: "npm test",
+    cols: 80,
+    rows: 24,
+    scrubbedBy: "demo-video",
+    marks: [{ label: "ask", t: 0, eventIndex: 0, text: "do the thing" }],
+    events: [
+      { t: 0, data: "do the thing\r\n" },
+      { t: 1000, data: "DONE\r\n" },
+      // Only in the tail, which --until drops.
+      { t: 2000, data: "gh auth login --with-token ghp_0123456789abcdefghijklmnopqrstuvwxyzAB\r\n" },
+    ],
+  });
+  try {
+    const render = run(["render", "--cast", dirty.file, "--until", "DONE"]);
+    assert.notEqual(render.status, 0, "a trim hid a credential from the gate");
+    assert.match(render.stderr, /scans dirty/i);
+  } finally {
+    dirty.cleanup();
+  }
+});
+
+test("render refuses a trim it cannot honour rather than filming the whole tail (DEMO-TRIM-07)", () => {
+  const cast = tempCast({
+    version: 1,
+    command: "npm test",
+    cols: 80,
+    rows: 24,
+    scrubbedBy: "demo-video",
+    marks: [{ label: "ask", t: 0, eventIndex: 0, text: "do the thing" }],
+    events: [{ t: 0, data: "do the thing\r\n" }, { t: 1000, data: "DONE\r\n" }],
+  });
+  try {
+    const res = run(["render", "--cast", cast.file, "--until", "NEVER-PRINTED"]);
+    assert.notEqual(res.status, 0, "a mistyped marker silently rendered the whole session");
+    assert.match(res.stderr, /never appears after the "ask" mark/);
+  } finally {
+    cast.cleanup();
+  }
+});

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail if any tracked file looks like a secret-bearing file.
+"""Fail if any tracked file looks like a secret-bearing file or a scratch dump.
 
 This is the enforceable equivalent of a "block .env / .pem / .key" push rule for
 a public, user-owned repository. GitHub push rulesets are only available on
@@ -47,6 +47,22 @@ FORBIDDEN_GLOBS = (
 # Suffixes that turn an otherwise-matching name into a safe, shareable template.
 ALLOWED_SUFFIXES = (".example", ".sample", ".template", ".dist")
 
+# Scratch dumps that belong in the gitignored tmp/, never in the tree. The root-anchored
+# .gitignore block only swallows these at the REPO ROOT, but an agent's working directory is
+# usually a subdirectory - which is how a 180KB, unreferenced `changes.diff` came to live
+# inside .github/skills/demo-video, and `diff_local.patch` before it. Nothing in this repo
+# legitimately tracks a .diff or .patch, so refusing them outright costs nothing.
+SCRATCH_GLOBS = (
+    "*.diff",
+    "*.patch",
+)
+
+
+def is_scratch_artifact(path: str) -> bool:
+    """Return True when the file looks like a committed scratch diff or patch dump."""
+    name = path.replace("\\", "/").rsplit("/", 1)[-1].lower()
+    return any(fnmatch.fnmatchcase(name, pattern) for pattern in SCRATCH_GLOBS)
+
 
 def is_forbidden(path: str) -> bool:
     """Return True when the file at `path` looks like committed secret material."""
@@ -85,15 +101,24 @@ def main() -> int:
     files = tracked_files()
     if files is None:
         return 0
+    status = 0
     offenders = sorted(path for path in files if is_forbidden(path))
     if offenders:
         print("check_forbidden_files: secret-bearing files must never be committed:")
         for path in offenders:
             print(f"  - {path}")
         print("Remove them, add the pattern to .gitignore, and rotate any exposed secret.")
-        return 1
-    print("check_forbidden_files: no secret-bearing files are tracked. OK")
-    return 0
+        status = 1
+    scratch = sorted(path for path in files if is_scratch_artifact(path))
+    if scratch:
+        print("check_forbidden_files: scratch diff/patch dumps must never be committed:")
+        for path in scratch:
+            print(f"  - {path}")
+        print("Write them to the gitignored tmp/ instead, with an absolute or tmp/-prefixed path.")
+        status = 1
+    if status == 0:
+        print("check_forbidden_files: no secret-bearing files or scratch dumps are tracked. OK")
+    return status
 
 
 if __name__ == "__main__":
