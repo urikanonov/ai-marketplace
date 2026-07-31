@@ -46,13 +46,13 @@
   display: block;
 }
 
-/* width/height on the img reserve the box before it loads, so nothing shifts. */
+/* width/height on the img reserve the box before it loads, so nothing shifts. Deliberately no
+   aspect-ratio or object-fit: forcing one ratio on posters of differing shapes both crops the
+   terminal capture and makes the box snap once CSS lands, which is the shift this avoids. */
 .video-thumb-media img {
   display: block;
   width: 100%;
   height: auto;
-  aspect-ratio: 16 / 10;
-  object-fit: cover;
   background: var(--cp-surface-soft);
 }
 

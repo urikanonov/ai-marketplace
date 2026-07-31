@@ -12,20 +12,22 @@ const openLightbox = async (page, url) => {
   return overlay;
 };
 
-test("the commentable-html page offers two demo clips between the loop and why sections (SITE-VIDEO-01)", async ({ page }) => {
+test("the commentable-html page leads with two demo clips, ahead of the whole rationale (SITE-VIDEO-01)", async ({ page }) => {
   const resp = await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   expect(resp.status()).toBeLessThan(400);
   const block = page.locator("#video");
   await expect(block).toBeVisible();
   await expect(block.locator(".video-thumb")).toHaveCount(2);
 
-  // Position is the point: the clips introduce the loop before the argument for it.
-  const order = await page.evaluate(() => {
-    const ids = Array.from(document.querySelectorAll("section[id]")).map((s) => s.id);
-    return { video: ids.indexOf("video"), why: ids.indexOf("why") };
-  });
-  expect(order.video).toBeGreaterThanOrEqual(0);
-  expect(order.video).toBeLessThan(order.why);
+  // Position is the point, and it is the WHOLE rationale the clips lead - not just #why. Asserting
+  // only "video before why" let the spec drift into describing a layout the page did not have.
+  const ids = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("main > section[id]")).map((s) => s.id));
+  expect(ids[0]).toBe("video");
+  for (const after of ["why", "review-loop", "compare", "install", "features"]) {
+    expect(ids.indexOf(after), `#video should precede #${after}`).toBeGreaterThan(0);
+    expect(ids.indexOf("video")).toBeLessThan(ids.indexOf(after));
+  }
 });
 
 test("the multi-duck page pairs its copy with a single clip before the why section (SITE-VIDEO-02)", async ({ page }) => {
@@ -281,4 +283,24 @@ test("the clips and posters are served with their real media types (SITE-VIDEO-1
   expect(clip.headers()["content-type"]).toBe("video/webm");
   const poster = await request.get("/assets/poster-multi-duck.jpg");
   expect(poster.headers()["content-type"]).toBe("image/jpeg");
+});
+
+test("a cross-origin clip source is refused (SITE-VIDEO-14)", async ({ page }) => {
+  const resp = await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  expect(resp.status()).toBeLessThan(400);
+  // Authored markup is trusted today, but a page that ever built data-video from a query or hash
+  // would turn one click into a fetch to an arbitrary host. Safety should be a property of the
+  // code, not of a CSP meta tag someone may later relax.
+  await page.locator(".video-thumb").first().evaluate((el) => {
+    el.setAttribute("data-video", "https://example.invalid/tracker.webm");
+  });
+  await page.locator(".video-thumb").first().click();
+  const overlay = page.locator(".lightbox-video");
+  await expect(overlay).toBeHidden();
+  expect(await overlay.locator("video").getAttribute("src")).toBeNull();
+
+  // A same-origin clip still opens.
+  await page.locator(".video-thumb").nth(1).click();
+  await expect(overlay).toBeVisible();
+  expect(await overlay.locator("video").getAttribute("src")).toContain("/assets/demo-commentable-html-loop.webm");
 });

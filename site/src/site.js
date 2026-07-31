@@ -344,7 +344,21 @@
     }
 
     function open(trigger) {
-      video.setAttribute("src", trigger.getAttribute("data-video"));
+      // Same-origin by construction, not by luck. The markup is authored today, but a future page
+      // that built data-video from a query or hash would otherwise turn one click into a fetch to
+      // an arbitrary host - a tracking pixel wearing a play button. The CSP blocks it too; this
+      // makes it a property of the code rather than of a meta tag someone may relax.
+      var src = trigger.getAttribute("data-video") || "";
+      var resolved;
+      try {
+        resolved = new URL(src, window.location.href);
+      } catch (err) {
+        return;
+      }
+      if (resolved.origin !== window.location.origin) {
+        return;
+      }
+      video.setAttribute("src", resolved.href);
       var thumbPoster = trigger.querySelector("img");
       if (thumbPoster) {
         video.setAttribute("poster", thumbPoster.currentSrc || thumbPoster.src);

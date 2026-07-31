@@ -677,125 +677,6 @@ main > section:nth-of-type(even) {
 }
 .callout-title { margin: 0 0 6px; font-size: 1.05rem; color: var(--cp-accent); }
 .callout p { margin: 0; color: var(--cp-text-muted); font-size: 0.95rem; line-height: 1.6; }
-/* Hero showcase: a real product screenshot paired with the concrete four-step review loop,
-   placed right after the hero (above Install and the feature grid) so the concrete value
-   proposition - comment inline, then round-trip to the agent - leads the page instead of being
-   buried below Install and the feature grid. A plain <div> (not a <section>) so it does not shift
-   the section striping below it. */
-/* Vertical padding only - the nested .wrap already provides the 20px horizontal gutter, so
-   adding it here too would double the side margins and over-shrink the screenshot on mobile. */
-.showcase { padding: 8px 0 8px; }
-
-/* The showcase already keeps a small bottom padding; the following "Why" section otherwise adds its
-   full 48px section top padding on top of that, doubling the gap. Halve the gap by trimming the top
-   padding of the section that immediately follows the showcase. */
-.showcase + #why { padding-top: 20px; }
-
-/* One defined card so the showcase reads as a cohesive, contained unit rather than floating
-   loose on the page background. The screenshot sits in a fixed, modest column so it downscales
-   (stays crisp on HiDPI/retina screens, where a larger CSS size would upscale and blur) and reads
-   as a supporting visual next to the copy. */
-.showcase-card {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 34px;
-  align-items: center;
-  background: var(--cp-bg-elevated);
-  border: 1px solid var(--cp-border-strong);
-  border-radius: var(--cp-radius);
-  box-shadow: var(--cp-shadow);
-  padding: 30px 34px;
-}
-
-/* Framed screenshot: a subtle browser-chrome mock (dots bar) plus border, rounded corners, and
-   a drop shadow so it reads as a polished product shot rather than a raw screengrab. Capped at a
-   modest width so its native 1140px source always downscales - never upscales - and stays sharp.
-   The frame chrome is intentionally a FIXED light palette (not the --cp-* theme vars) because the
-   screenshot inside is always a light-mode capture: a dark-mode dots bar around a white shot reads
-   as a broken window, so the whole framed "browser window" stays light in both themes. */
-.showcase-shot { margin: 0; min-width: 0; }
-.showcase-frame {
-  width: 400px;
-  max-width: 100%;
-  background: #ffffff;
-  border: 1px solid #d7d7d7;
-  border-radius: 12px;
-  box-shadow: var(--cp-shadow);
-  overflow: hidden;
-}
-.showcase-dots {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  background: #f2f2f2;
-  border-bottom: 1px solid #d7d7d7;
-}
-.showcase-dot { width: 9px; height: 9px; border-radius: 50%; background: #bdbdbd; }
-/* Scale down responsively - never a fixed width that could overflow a small screen. */
-.showcase-img { display: block; width: 100%; height: auto; }
-.showcase-caption {
-  margin-top: 10px;
-  max-width: 400px;
-  font-size: 0.82rem;
-  line-height: 1.4;
-  color: var(--cp-text-muted);
-  text-align: center;
-}
-
-.showcase-copy { min-width: 0; }
-.showcase-title { margin-bottom: 10px; }
-.showcase-lead {
-  font-size: 1.05rem;
-  color: var(--cp-text-muted);
-  margin-bottom: 22px;
-}
-.showcase-flow {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin: 0 0 24px;
-}
-.showcase-step { display: flex; gap: 14px; align-items: flex-start; }
-.showcase-step-n {
-  flex: 0 0 auto;
-  width: 2em;
-  height: 2em;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: var(--cp-accent-soft);
-  color: var(--cp-accent);
-  font-weight: 700;
-  font-size: 0.95rem;
-}
-.showcase-step-body h3 { font-size: 1.02rem; margin-bottom: 2px; }
-.showcase-step-body p { color: var(--cp-text-muted); font-size: 0.95rem; }
-.showcase-cta { display: inline-flex; }
-
-/* Below ~900px the fixed small image + copy get cramped side by side, so collapse to a single
-   centered column early (well before phone width) - the screenshot stacks above the steps. The
-   image already scales to 100% width so it never overflows or forces a horizontal scroll. */
-@media (max-width: 900px) {
-  .showcase { padding: 4px 0 8px; }
-  .showcase-card {
-    grid-template-columns: 1fr;
-    gap: 22px;
-    padding: 22px 20px;
-    justify-items: center;
-  }
-  /* Single column: the framed screenshot fills the column but stays capped at its 400px width
-     (centered), so it shrinks to fit a narrow phone column without overflowing, yet never GROWS
-     past 400px on a wider tablet column (which would exceed the small-image cap and, at ~740px,
-     upscale the 1140px source and blur it). */
-  .showcase-shot { width: 100%; }
-  .showcase-frame { width: 100%; max-width: 400px; margin-inline: auto; }
-  .showcase-caption { max-width: 400px; margin-inline: auto; }
-  .showcase-copy { width: 100%; }
-  .showcase-lead { font-size: 1rem; }
-}
 /* Demo video blocks: a grid of poster thumbnails that open a clip in the lightbox.
    The thumbnail is a button, not a video, so a visit costs one small poster image
    instead of several megabytes of clip. */
@@ -844,13 +725,13 @@ main > section:nth-of-type(even) {
   display: block;
 }
 
-/* width/height on the img reserve the box before it loads, so nothing shifts. */
+/* width/height on the img reserve the box before it loads, so nothing shifts. Deliberately no
+   aspect-ratio or object-fit: forcing one ratio on posters of differing shapes both crops the
+   terminal capture and makes the box snap once CSS lands, which is the shift this avoids. */
 .video-thumb-media img {
   display: block;
   width: 100%;
   height: auto;
-  aspect-ratio: 16 / 10;
-  object-fit: cover;
   background: var(--cp-surface-soft);
 }
 
