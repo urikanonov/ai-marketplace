@@ -205,3 +205,24 @@ test("a trim that dropped nothing says so, because that is what too large a gap 
     cast.cleanup();
   }
 });
+
+test("--until-after on its own is refused, not accepted and ignored (DEMO-TRIM-21)", () => {
+  // Accepting an option and then doing nothing with it is the failure the argument contract exists
+  // to prevent: the operator asked to cut somewhere and would have got the whole session.
+  const cast = tempCast({
+    version: 1,
+    command: "npm test",
+    cols: 80,
+    rows: 24,
+    scrubbedBy: "demo-video",
+    marks: [{ label: "ask", t: 0, eventIndex: 0, text: "do the thing" }],
+    events: [{ t: 0, data: "do the thing\r\n" }, { t: 1000, data: "DONE\r\n" }],
+  });
+  try {
+    const res = run(["render", "--cast", cast.file, "--until-after", "ask"]);
+    assert.notEqual(res.status, 0, "--until-after was accepted and silently ignored");
+    assert.match(res.stderr, /--until-after only means something alongside --until or --until-gap/);
+  } finally {
+    cast.cleanup();
+  }
+});

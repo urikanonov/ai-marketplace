@@ -199,3 +199,44 @@ test("an explicitly named default mark is still required (DEMO-TRIM-17)", () => 
   assert.equal(trimCast(markless, { until: "DONE" }).kept, 2);
   assert.throws(() => trimCast(markless, { until: "DONE", after: "ask" }), /no "ask" mark to search after/);
 });
+
+test("a private CSI is parsed, not mistaken for a truncated escape (DEMO-TRIM-19)", () => {
+  // CSI parameter bytes include < = > (device-attribute and mode queries a TUI sends constantly).
+  // Omitting them from the parameter class makes the sequence look truncated, so it is held as
+  // pending and swallows the text after it - hiding a marker that was plainly on screen.
+  const cast = {
+    marks: [{ label: "ask", t: 0, eventIndex: 0 }],
+    events: [
+      { t: 0, data: "ask\r\n" },
+      { t: 1000, data: "\u001b[>4;2mPANEL SUMMARY here\r\n" },
+      { t: 90000, data: "idle\r\n" },
+    ],
+  };
+  assert.equal(trimCast(cast, { until: "PANEL SUMMARY" }).kept, 2);
+});
+
+test("an OSC payload cannot satisfy the marker (DEMO-TRIM-20)", () => {
+  // A window-title OSC routinely carries the prompt text, and none of it is on screen. Consuming
+  // only the two-byte introducer leaves that payload as visible text, so the trim would cut on
+  // something the viewer never saw.
+  const cast = {
+    marks: [{ label: "ask", t: 0, eventIndex: 0 }],
+    events: [
+      { t: 0, data: "ask\r\n" },
+      { t: 1000, data: "\u001b]0;PANEL SUMMARY\u0007working\r\n" },
+      { t: 90000, data: "idle\r\n" },
+    ],
+  };
+  assert.throws(() => trimCast(cast, { until: "PANEL SUMMARY" }), /never appears/);
+
+  // ...and the ST-terminated form is handled the same way.
+  const st = {
+    marks: [{ label: "ask", t: 0, eventIndex: 0 }],
+    events: [
+      { t: 0, data: "ask\r\n" },
+      { t: 1000, data: "\u001b]2;PANEL SUMMARY\u001b\\ok\r\n" },
+      { t: 90000, data: "idle\r\n" },
+    ],
+  };
+  assert.throws(() => trimCast(st, { until: "PANEL SUMMARY" }), /never appears/);
+});

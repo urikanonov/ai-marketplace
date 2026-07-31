@@ -9,11 +9,13 @@
 // It is a pure function of (cast, options) so the awkward parts - which occurrence of the marker,
 // where the tail really begins - are testable without rendering anything.
 
-// One escape, anchored, so a chunk can be walked sequence by sequence. The two-character C1 form
-// deliberately EXCLUDES `[`: that byte introduces a CSI sequence, and letting it match here would
-// swallow the first two characters of every CSI - turning an incomplete `ESC [ 3` at a chunk
-// boundary into the visible text "3", and a complete `ESC [ 3 2 m` into "32m".
-const ESC_ONE = /^(?:\u001b\[[0-9;:?]*[ -\/]*[@-~]|\u001b[@-Z\\\]^_])/;
+// One escape, anchored, so a chunk can be walked sequence by sequence. Three forms, in order:
+// an OSC (window title, hyperlink) run through its BEL or ST terminator - its payload is NOT on
+// screen, so leaving it as visible text would let a window title satisfy the marker; a CSI, whose
+// parameter bytes include the private `<=>?` a TUI sends constantly (omit them and the sequence
+// looks truncated, swallowing the text after it); and the two-character C1 form, which deliberately
+// EXCLUDES `[` and `]` because those introduce the first two.
+const ESC_ONE = /^(?:\u001b\][\s\S]*?(?:\u0007|\u001b\\)|\u001b\[[0-9;:<=>?]*[ -\/]*[@-~]|\u001b[@-Z\\^_])/;
 // Colour and weight carry no position, so removing them REJOINS a token the terminal drew in two
 // colours. Everything else moves the cursor or erases, which means the runs either side were never
 // adjacent on screen - replacing those with a space keeps them from being spliced into a marker
