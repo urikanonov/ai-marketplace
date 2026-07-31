@@ -337,8 +337,11 @@ test("Tab is trapped inside the open lightbox (SITE-VIDEO-15)", async ({ page })
     expect(await inOverlay(), `focus escaped after ${i + 1} Shift+Tab presses`).toBe(true);
   }
 
-  // Even when focus has been knocked outside by a click on overlay dead space.
-  await page.evaluate(() => document.body.focus());
+  // Even when focus has been knocked outside by a click on overlay dead space. Blur rather than
+  // focus <body>: it has no tabindex, so body.focus() is a no-op that leaves focus in the overlay
+  // and makes this assertion pass against a runtime with no recovery branch at all.
+  await page.evaluate(() => document.activeElement.blur());
+  expect(await inOverlay()).toBe(false);
   await page.keyboard.press("Tab");
   expect(await inOverlay()).toBe(true);
 });
