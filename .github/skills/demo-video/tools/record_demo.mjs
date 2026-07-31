@@ -44,6 +44,7 @@ import { REPORT_BEATS } from "./report-beats.mjs";
 import { DEFAULT_RULES, homeRules, scanText, scrubEvents, scrubText, createScrubber } from "./redact.mjs";
 import { readScript, stepReady, stepPayload, stepSubmit, fileReady, stepGaveUpNotice, makeSizeGuard, captureLimitBytes } from "./script.mjs";
 import { recordCapture, wasCapturedHere } from "./provenance.mjs";
+import { trimCast } from "./trim.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SKILL = path.resolve(HERE, "..");
@@ -107,6 +108,7 @@ const STRING_KEYS = new Set([
   "example", "out", "cast", "clip", "seconds", "cols", "rows", "idle", "hold",
   "width", "height", "count", "font", "frames-dir", "scale", "tail", "head", "end-hold", "intro", "ask",
   "script", "review-out", "snapshot-out", "split", "speed-windows", "example-after", "seconds-resolved", "max-mb", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "dpr",
+  "until", "until-after", "until-gap",
 ]);
 const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "help"]);
 // Which options each subject actually reads. Validating against the union instead means
@@ -115,7 +117,7 @@ const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "help"]);
 const SUBJECT_FLAGS = {
   report: ["example", "out", "seconds", "width", "height", "scale", "list", "review-out", "snapshot-out"],
   capture: ["out", "cols", "rows", "script", "max-mb"],
-  render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "head", "end-hold", "intro", "ask", "speed-windows", "allow-findings"],
+  render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "head", "end-hold", "intro", "ask", "speed-windows", "allow-findings", "until", "until-after", "until-gap"],
   loop: ["cast", "example", "example-after", "seconds-resolved", "out", "split", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "idle", "hold", "width", "height", "font", "scale", "dpr", "intro", "end-hold", "ask", "allow-findings"],
   scan: ["cast"],
   frames: ["clip", "out", "count", "frames-dir"],
@@ -1036,6 +1038,39 @@ function castText(cast) {
   return `${cast.command || ""}\n${cast.events.map((e) => e.data).join("")}`;
 }
 
+// The tail of a real capture is dead air: the session records on until the script's quit step
+// fires, so without this the clip spends its ending on an empty prompt and the exit screen. Says
+// what it dropped, because silently shortening someone's session is its own kind of surprise.
+function trimForRender(cast, args) {
+  if (args.until == null && args["until-gap"] == null) {
+    // Accepting an option and then ignoring it is the same failure the argument contract exists to
+    // prevent: the operator asked for something and got a clip of the whole session instead.
+    if (args["until-after"] != null) {
+      throw new Error("--until-after only means something alongside --until or --until-gap");
+    }
+    return cast;
+  }
+  const out = trimCast(cast, {
+    until: args.until == null ? null : String(args.until),
+    untilGap: args["until-gap"] == null ? null : numberOpt(args, "until-gap", 0),
+    after: args["until-after"] == null ? null : String(args["until-after"]),
+  });
+  console.log(`trimmed:  ${out.kept} of ${out.kept + out.dropped} events `
+    + `(${(out.cutAtMs / 1000).toFixed(1)}s of a ${(out.sourceMs / 1000).toFixed(1)}s session)`);
+  // A gap threshold is a value to STOP at, so one LARGER than the silence before the driver's
+  // /exit never stops the walk and the trim runs on through the dead air it was asked to remove.
+  // That failure is invisible until someone watches the ending, so say it here.
+  if (out.dropped === 0) {
+    console.warn("  NOTE: this trim dropped nothing. If the session has an idle tail, --until-gap is "
+      + "probably LARGER than the silence before it - lower it below the recipe's quit idleMs.");
+  }
+  if (out.searchedWholeCast) {
+    console.warn("  NOTE: this cast has no \"ask\" mark, so --until searched the WHOLE session - "
+      + "including the prompt, which usually contains the marker word itself. Check the ending.");
+  }
+  return out.cast;
+}
+
 // This machine's ledger has no record of capturing this cast, so it was scrubbed with SOMEONE ELSE'S
 // home path and account name - a clean scan here says very little. Said once, in one place.
 function warnForeignCast(capturedHere) {
@@ -1617,9 +1652,11 @@ async function copyAllBundle(page, scope, warnings) {
 }
 
 async function renderTerminal(args) {
-  const { cast, capturedHere } = readCast(args);
+  const { cast: fullCast, capturedHere } = readCast(args);
   const rules = rulesForThisMachine();
-  const findings = scanText(castText(cast), rules);
+  // Scanned BEFORE any trim, deliberately. The gate exists to stop a secret reaching a published
+  // clip, and scanning only the kept span would let a trim decide what the gate gets to see.
+  const findings = scanText(castText(fullCast), rules);
   if (findings.length && !args["allow-findings"]) {
     throw new Error(
       `this cast still scans dirty (${findings.length} finding(s)); run 'scan --cast <file>' to see them. `
@@ -1630,6 +1667,8 @@ async function renderTerminal(args) {
   // rules here cannot know another operator's home path or account name - so a clean scan says much
   // less than it appears to.
   warnForeignCast(capturedHere);
+
+  const cast = trimForRender(fullCast, args);
 
   const cols = cast.cols || 120;
   const rows = cast.rows || 30;
@@ -1830,6 +1869,7 @@ const USAGE = `demo-video recorder
   node record_demo.mjs loop    --cast <file.cast.json> --example <report.html> [--split paste]
   node record_demo.mjs capture [--out <f.cast.json>] [--cols 120] [--rows 30] [--script <f.json>] [--max-mb 48] -- <cmd...>
   node record_demo.mjs render  --cast <file.cast.json> [--seconds 45] [--idle 900] [--out <file.webm>]
+                               [--until "<marker>"] [--until-after <mark>] [--until-gap <seconds>]
   node record_demo.mjs scan    --cast <file.cast.json>
   node record_demo.mjs frames  --clip <file.webm> [--count 12]
 

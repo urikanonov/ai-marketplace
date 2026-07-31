@@ -154,13 +154,30 @@ lines of a capture: a step that gave up says so there, and that cast is not the 
 
 A capture does not stop when the interesting part does: the session keeps recording until the `quit`
 step fires, so a cast normally carries a long idle tail (the multi-duck recording sat idle for 26
-minutes between the summary and the `/exit`). TRIM THE CAST BEFORE RENDERING - drop the events after
-the last one before that trailing gap, and the marks that pointed past it - or the clip spends its
-ending on an empty prompt and the exit screen. There is no `--until` flag yet; see the open issue for
-making this part of `render`. Editing the cast changes its bytes, so `render` will no longer find it
-in this machine's capture ledger and will warn that this machine did not capture it. After a hand
-trim that warning is EXPECTED and is not a safety signal: the scan still runs with this machine's
-rules, so a clean scan still means what it says.
+minutes between the summary and the `/exit`). `--until` cuts it, and `render` reports what it
+dropped:
+
+```powershell
+node "$skill\tools\record_demo.mjs" render --cast "$repo\tmp\demo-video\duck.cast.json" `
+  --until "PANEL SUMMARY" --until-gap 10 --seconds 38 --scale 0.6
+```
+
+`--until` cuts at the LAST occurrence of the marker, and it looks only AFTER the `ask` mark
+(`--until-after` names a different one) - searching the whole cast would match the ASK, because the
+prompt that asks for an artifact contains the marker word itself, and the clip would end where it
+began. `--until-gap` then extends the cut to the last event before the session goes quiet for that
+long, since the terminal repaints for a moment after the summary lands and cutting on the marker
+alone ends the clip abruptly; it also works on its own, measured from the mark. A marker that never
+appears is refused rather than silently rendering the whole tail - which is the expensive mistake,
+because the clip looks fine until you watch its ending.
+
+Keep `--until-gap` well BELOW the recipe's `quit` idle gate (`duck-session.json` uses 30s, so 10
+here). The gap is a threshold to STOP at: if it is larger than the silence before the driver's
+`/exit`, nothing stops the walk and the trim runs on through the dead air it was meant to remove.
+`render` warns when a trim dropped nothing, which is what that mistake looks like.
+
+The safety scan runs on the WHOLE cast before any trim, so trimming can never decide what the gate
+gets to see.
 
 ## Check what you filmed
 
