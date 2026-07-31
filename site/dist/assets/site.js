@@ -316,6 +316,33 @@
 
     var lastFocus = null;
 
+    // Safari and iOS put a video into fullscreen through their own API, where
+    // document.fullscreenElement stays null - so a standard-only check would tear the overlay
+    // down on the very key the viewer pressed to come back out of fullscreen.
+    function overlayIsFullscreen() {
+      var el = document.fullscreenElement || document.webkitFullscreenElement || null;
+      if (el && overlay.contains(el)) {
+        return true;
+      }
+      return video.webkitDisplayingFullscreen === true;
+    }
+
+    function leaveFullscreen() {
+      try {
+        if (video.webkitDisplayingFullscreen === true && typeof video.webkitExitFullscreen === "function") {
+          video.webkitExitFullscreen();
+          return;
+        }
+        var exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (typeof exit === "function") {
+          var done = exit.call(document);
+          if (done && typeof done.catch === "function") { done.catch(function () {}); }
+        }
+      } catch (err) {
+        /* leaving fullscreen is best effort; never block the close */
+      }
+    }
+
     function open(trigger) {
       video.setAttribute("src", trigger.getAttribute("data-video"));
       var thumbPoster = trigger.querySelector("img");
@@ -337,9 +364,8 @@
     }
 
     function hide() {
-      if (document.fullscreenElement && overlay.contains(document.fullscreenElement)) {
-        var exited = document.exitFullscreen();
-        if (exited && typeof exited.catch === "function") { exited.catch(function () {}); }
+      if (overlayIsFullscreen()) {
+        leaveFullscreen();
       }
       // Pause AND drop the source: leaving it attached keeps the clip buffering behind a closed
       // overlay, and on some browsers keeps its audio alive.
@@ -358,21 +384,34 @@
         open(trigger);
       });
     });
-    // A click is dispatched on the nearest common ancestor of press and release, so a drag that
-    // STARTS on the video or a speed pill and ends on the backdrop reports the overlay as its
-    // target - dismissing the clip on a 20px slip off a pill, or on a scrub that leaves the video.
-    // Track where the press began and require both ends on the same dismissing element.
+    // The close button is unambiguous, so it dismisses on ANY activation. It must not go through
+    // the press/release pairing below: keyboard and assistive-technology activation produce a
+    // click with no pointerdown at all, which would leave Enter unable to close the dialog.
+    close.addEventListener("click", function (e) {
+      e.stopPropagation();
+      pressedOn = null;
+      hide();
+    });
+
+    // The BACKDROP is different. A click is dispatched on the nearest common ancestor of press and
+    // release, so a drag that starts on the video or a speed pill and ends on the backdrop reports
+    // the overlay as its target - dismissing the clip on a 20px slip off a pill, or on a scrub
+    // that leaves the video. Require both ends of the gesture on the backdrop itself.
     var pressedOn = null;
     overlay.addEventListener("pointerdown", function (e) {
       pressedOn = e.target;
     });
+    // A press that never becomes a click must not leave its origin behind for the next one.
+    overlay.addEventListener("pointercancel", function () {
+      pressedOn = null;
+    });
+    overlay.addEventListener("contextmenu", function () {
+      pressedOn = null;
+    });
     overlay.addEventListener("click", function (e) {
       var from = pressedOn;
       pressedOn = null;
-      // Dismiss on the BACKDROP or the close button only. Testing "not the video" would also catch
-      // the speed buttons, which live in the overlay too - pressing 1.5x would set the rate and
-      // then immediately close the clip you were about to watch.
-      if ((e.target === overlay && from === overlay) || (e.target === close && from === close)) {
+      if (e.target === overlay && from === overlay) {
         hide();
       }
     });
@@ -383,7 +422,7 @@
       if (e.key === "Escape") {
         // Escape is ALSO the key that leaves fullscreen. Tearing the overlay down here would
         // destroy the clip instead, losing the position, so let the browser handle it first.
-        if (document.fullscreenElement && overlay.contains(document.fullscreenElement)) {
+        if (overlayIsFullscreen()) {
           return;
         }
         e.preventDefault();

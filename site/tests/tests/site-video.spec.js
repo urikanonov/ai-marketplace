@@ -251,6 +251,15 @@ test("the backdrop and the close button dismiss, but a drag off a control does n
   await expect(overlay).toBeVisible();
   await overlay.locator(".lightbox-close").click();
   await expect(overlay).toBeHidden();
+
+  // KEYBOARD activation must close it too. Requiring a matching pointerdown for dismissal breaks
+  // exactly this: Enter and assistive technology produce a click with no pointer event at all, so
+  // a mouse-only test passes while the button is dead for anyone not using a mouse.
+  await page.locator(".video-thumb").first().click();
+  await expect(overlay).toBeVisible();
+  await overlay.locator(".lightbox-close").focus();
+  await page.keyboard.press("Enter");
+  await expect(overlay).toBeHidden();
 });
 
 test("the overlay shows the poster while the clip loads, and clears it after (SITE-VIDEO-12)", async ({ page }) => {
