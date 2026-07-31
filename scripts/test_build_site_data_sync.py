@@ -429,6 +429,38 @@ class StampsMediaAssetsTest(unittest.TestCase):
         self.assertIn('data-video="../assets/demo-multi-duck.webm?v=%s"' % clip, out)
         self.assertIn('src="../assets/poster-multi-duck.jpg?v=%s"' % poster, out)
 
+    def test_stamps_the_tutorial_images(self):
+        # Driven by the tutorial's own assets DIRECTORY, not a hand-maintained name list: the
+        # tutorial ships ~21 images that come from the plugin docs, so listing them by name would
+        # rot the moment one is added or renamed.
+        name = "garden-01-top-light.png"
+        digest = bsd._tutorial_asset_hash(bsd.REPO_ROOT, name)
+        html = '<p><img src="assets/%s" alt="x" loading="lazy" /></p>' % name
+        out = bsd.stamp_tutorial_assets(html, bsd.REPO_ROOT)
+        self.assertIn('src="assets/%s?v=%s"' % (name, digest), out)
+
+    def test_the_tutorial_stamp_tracks_the_bytes(self):
+        name = "garden-01-top-light.png"
+        path = os.path.join(bsd.REPO_ROOT, bsd.TUTORIAL_IMAGES_DST, name)
+        with open(path, "rb") as fh:
+            original = fh.read()
+        first = bsd._tutorial_asset_hash(bsd.REPO_ROOT, name)
+        self.assertEqual(first, bsd._tutorial_asset_hash(bsd.REPO_ROOT, name))
+        try:
+            with open(path, "wb") as fh:
+                fh.write(original + b"\n")
+            self.assertNotEqual(first, bsd._tutorial_asset_hash(bsd.REPO_ROOT, name))
+        finally:
+            with open(path, "wb") as fh:
+                fh.write(original)
+        self.assertEqual(first, bsd._tutorial_asset_hash(bsd.REPO_ROOT, name))
+
+    def test_a_reference_to_a_missing_tutorial_image_is_left_alone(self):
+        # Only files that actually sit in the tutorial assets directory are stamped, so a link to
+        # something else that happens to start with assets/ is not rewritten into a broken URL.
+        html = '<img src="assets/not-a-tutorial-image.png" />'
+        self.assertEqual(bsd.stamp_tutorial_assets(html, bsd.REPO_ROOT), html)
+
     def test_every_served_clip_and_poster_is_stamped_on_the_built_pages(self):
         # Globbed, not a list of the pages that happen to have clips today: an unstamped clip
         # added to any other page would otherwise ship green.
@@ -437,6 +469,7 @@ class StampsMediaAssetsTest(unittest.TestCase):
                  for base, _dirs, names in os.walk(out_root)
                  for name in names if name.endswith(".html")]
         self.assertTrue(pages, "no built pages found")
+        checked = 0
         for path in pages:
             page = os.path.relpath(path, out_root)
             with open(path, encoding="utf-8") as fh:
@@ -444,15 +477,17 @@ class StampsMediaAssetsTest(unittest.TestCase):
             for match in re.finditer(
                     r'(?:data-video|src|href)="([^"?]+\.(?:webm|mp4|jpg|jpeg|png))([^"]*)"', built):
                 ref, query = match.group(1), match.group(2)
-                # Resolve the reference against the page that holds it: the tutorial page has its
-                # own assets/ directory (images synced from the plugin docs) which is NOT the
-                # site's shared assets/ and is unstamped for reasons that predate this work.
+                # Resolve the reference against the page that holds it. EVERY assets/ directory
+                # counts - the site's shared one and the tutorial's own - because a regenerated
+                # screenshot keeps its filename exactly as a re-recorded clip does.
                 resolved = os.path.normpath(os.path.join(os.path.dirname(path), ref))
-                if os.path.dirname(resolved) != os.path.join(out_root, "assets"):
+                if os.path.basename(os.path.dirname(resolved)) != "assets":
                     continue
+                checked += 1
                 self.assertTrue(
                     query.startswith("?v="),
                     "%s on the %s page is served without a cache-busting stamp" % (ref, page))
+        self.assertTrue(checked, "no stamped media references were examined")
 
 class SiteDistHasNoStrayFilesTest(unittest.TestCase):
     """site/dist IS the published Pages artifact - pages.yml uploads the whole directory.

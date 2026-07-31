@@ -168,6 +168,7 @@ def build_page(root, source_rel, region_fillers):
         else:
             raise SystemExit("build_page: unknown region filler kind %r (use 'inline' or 'block')" % kind)
     out = stamp_assets(out, root)
+    out = stamp_tutorial_assets(out, root)
     return apply_page_banner(out, source_rel)
 
 
@@ -190,6 +191,54 @@ def stamp_assets(text, root):
         return '%s="%s?v=%s"' % (match.group("attr"), match.group("path"), cache[name])
 
     return _ASSET_REF_RE.sub(repl, text)
+
+
+# The tutorial's images are stamped by DIRECTORY rather than by name. They are regenerated
+# (`npm run shots` re-renders them whenever the tutorial changes) and keep their filenames, so an
+# updated screenshot would otherwise sit in a returning visitor's cache while the prose around it
+# describes the new one. There are ~19 of them and they come from the plugin docs, not site/src, so
+# adding each to CACHE_BUSTED_ASSETS by hand is the wrong shape - the list would rot on the first
+# rename. Matching is anchored on the FILE existing in the tutorial assets directory, which also
+# keeps a same-named file elsewhere from being rewritten into a broken URL.
+#
+# A reference that already carries a query is not matched (the pattern ends at the closing quote),
+# so this never double-stamps what stamp_assets already handled. The prefix is deliberately loose:
+# the tutorial page uses `assets/x.png` while the plugin page points at the same image as
+# `tutorial/assets/x.png`, and both must be stamped.
+_TUTORIAL_ASSET_REF_RE = re.compile(
+    r'(?P<attr>src|href)="(?P<path>(?:[\w.\-]+/)*assets/(?P<file>[\w.\-]+'
+    r'\.(?:png|jpg|jpeg|webm|mp4)))"')
+
+
+def _tutorial_asset_names(root):
+    directory = os.path.join(root, TUTORIAL_IMAGES_DST)
+    try:
+        return frozenset(os.listdir(directory))
+    except OSError:
+        return frozenset()
+
+
+def _tutorial_asset_hash(root, name):
+    path = os.path.join(root, TUTORIAL_IMAGES_DST, name)
+    with open(path, "rb") as fh:
+        return hashlib.sha256(fh.read()).hexdigest()[:12]
+
+
+def stamp_tutorial_assets(text, root):
+    """Append a ?v=<content-hash> query to every reference to a tutorial image, wherever the page
+    that holds it sits. A name that is not a real tutorial image is left untouched."""
+    names = _tutorial_asset_names(root)
+    cache = {}
+
+    def repl(match):
+        name = match.group("file")
+        if name not in names:
+            return match.group(0)
+        if name not in cache:
+            cache[name] = _tutorial_asset_hash(root, name)
+        return '%s="%s?v=%s"' % (match.group("attr"), match.group("path"), cache[name])
+
+    return _TUTORIAL_ASSET_REF_RE.sub(repl, text)
 
 
 def replace_region_block(text, name, inner):
