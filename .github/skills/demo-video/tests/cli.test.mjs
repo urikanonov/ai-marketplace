@@ -179,3 +179,29 @@ test("render refuses a trim it cannot honour rather than filming the whole tail 
     cast.cleanup();
   }
 });
+
+test("a trim that dropped nothing says so, because that is what too large a gap looks like (DEMO-TRIM-18)", () => {
+  // --until-gap is a threshold to STOP at. Set larger than the silence before the driver's /exit,
+  // it never stops the walk and the trim runs on through the dead air it was meant to remove -
+  // invisible until someone watches the ending.
+  const cast = tempCast({
+    version: 1,
+    command: "npm test",
+    cols: 80,
+    rows: 24,
+    scrubbedBy: "demo-video",
+    marks: [{ label: "ask", t: 0, eventIndex: 0, text: "do the thing" }],
+    events: [
+      { t: 0, data: "do the thing\r\n" },
+      { t: 1000, data: "DONE\r\n" },
+      { t: 35000, data: "/exit\r\n" },
+    ],
+  });
+  try {
+    // 60s threshold against a 34s tail silence: nothing stops the walk.
+    const res = run(["render", "--cast", cast.file, "--until", "DONE", "--until-gap", "60", "--seconds", "5"]);
+    assert.match(res.stderr + res.stdout, /this trim dropped nothing/);
+  } finally {
+    cast.cleanup();
+  }
+});

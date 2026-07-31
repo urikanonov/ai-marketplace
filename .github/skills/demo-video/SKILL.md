@@ -159,7 +159,7 @@ dropped:
 
 ```powershell
 node "$skill\tools\record_demo.mjs" render --cast "$repo\tmp\demo-video\duck.cast.json" `
-  --until "PANEL SUMMARY" --until-gap 45 --seconds 38 --scale 0.6
+  --until "PANEL SUMMARY" --until-gap 10 --seconds 38 --scale 0.6
 ```
 
 `--until` cuts at the LAST occurrence of the marker, and it looks only AFTER the `ask` mark
@@ -170,6 +170,11 @@ long, since the terminal repaints for a moment after the summary lands and cutti
 alone ends the clip abruptly; it also works on its own, measured from the mark. A marker that never
 appears is refused rather than silently rendering the whole tail - which is the expensive mistake,
 because the clip looks fine until you watch its ending.
+
+Keep `--until-gap` well BELOW the recipe's `quit` idle gate (`duck-session.json` uses 30s, so 10
+here). The gap is a threshold to STOP at: if it is larger than the silence before the driver's
+`/exit`, nothing stops the walk and the trim runs on through the dead air it was meant to remove.
+`render` warns when a trim dropped nothing, which is what that mistake looks like.
 
 The safety scan runs on the WHOLE cast before any trim, so trimming can never decide what the gate
 gets to see.

@@ -1057,6 +1057,13 @@ function trimForRender(cast, args) {
   });
   console.log(`trimmed:  ${out.kept} of ${out.kept + out.dropped} events `
     + `(${(out.cutAtMs / 1000).toFixed(1)}s of a ${(out.sourceMs / 1000).toFixed(1)}s session)`);
+  // A gap threshold is a value to STOP at, so one LARGER than the silence before the driver's
+  // /exit never stops the walk and the trim runs on through the dead air it was asked to remove.
+  // That failure is invisible until someone watches the ending, so say it here.
+  if (out.dropped === 0) {
+    console.warn("  NOTE: this trim dropped nothing. If the session has an idle tail, --until-gap is "
+      + "probably LARGER than the silence before it - lower it below the recipe's quit idleMs.");
+  }
   if (out.searchedWholeCast) {
     console.warn("  NOTE: this cast has no \"ask\" mark, so --until searched the WHOLE session - "
       + "including the prompt, which usually contains the marker word itself. Check the ending.");

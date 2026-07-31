@@ -148,5 +148,54 @@ test("a trim that keeps no time at all is refused (DEMO-TRIM-11)", () => {
     marks: [{ label: "ask", t: 0, eventIndex: 0 }],
     events: [{ t: 0, data: "ask\r\n" }, { t: 90000, data: "late\r\n" }],
   };
-  assert.throws(() => trimCast(cast, { untilGap: 30 }), /kept span has no duration/);
+  assert.throws(() => trimCast(cast, { untilGap: 30 }), /keeps nothing after the mark/);
+});
+
+
+test("a marker split inside the escape that colours it is still found (DEMO-TRIM-14)", () => {
+  // A pty can split a chunk anywhere, including mid-CSI. Stripping each event on its own leaves a
+  // half-escape wedged in the middle of the marker, and the trim refuses a session that did
+  // exactly what was asked. SGR carries no position, so dropping it rejoins the token.
+  const cast = {
+    marks: [{ label: "ask", t: 0, eventIndex: 0 }],
+    events: [
+      { t: 0, data: "ask\r\n" },
+      { t: 1000, data: "PANEL \u001b[3" },
+      { t: 1100, data: "2mSUMMARY here\r\n" },
+      { t: 90000, data: "idle\r\n" },
+    ],
+  };
+  assert.equal(trimCast(cast, { until: "PANEL SUMMARY" }).kept, 3);
+});
+
+test("cursor motion does not glue unrelated runs into a marker (DEMO-TRIM-15)", () => {
+  // Dropping every escape would splice text that the terminal never showed side by side: after a
+  // cursor home the next run is painted somewhere else entirely. A positional escape is a break.
+  const cast = {
+    marks: [{ label: "ask", t: 0, eventIndex: 0 }],
+    events: [
+      { t: 0, data: "ask\r\n" },
+      { t: 1000, data: "PANEL SUM" },
+      { t: 1100, data: "\u001b[HMARY\r\n" },
+      { t: 90000, data: "idle\r\n" },
+    ],
+  };
+  assert.throws(() => trimCast(cast, { until: "PANEL SUMMARY" }), /never appears/);
+});
+
+test("a trim that keeps nothing after the anchor is refused (DEMO-TRIM-16)", () => {
+  // The guard has to measure from the ANCHOR, not from event zero: a session with a long startup
+  // and an ask 45s in has plenty of "duration" while showing nothing but the prompt.
+  const cast = {
+    marks: [{ label: "ask", t: 45000, eventIndex: 1 }],
+    events: [{ t: 0, data: "banner\r\n" }, { t: 45000, data: "ask\r\n" }, { t: 90000, data: "late\r\n" }],
+  };
+  assert.throws(() => trimCast(cast, { untilGap: 30 }), /nothing after the .* mark|no duration/);
+});
+
+test("an explicitly named default mark is still required (DEMO-TRIM-17)", () => {
+  // Omitting `after` means "use the ask if there is one"; naming it means "there must be one".
+  const markless = { events: [{ t: 0, data: "a\r\n" }, { t: 800, data: "DONE\r\n" }, { t: 90000, data: "x\r\n" }] };
+  assert.equal(trimCast(markless, { until: "DONE" }).kept, 2);
+  assert.throws(() => trimCast(markless, { until: "DONE", after: "ask" }), /no "ask" mark to search after/);
 });

@@ -9,7 +9,19 @@
 // It is a pure function of (cast, options) so the awkward parts - which occurrence of the marker,
 // where the tail really begins - are testable without rendering anything.
 
-const ESC_RE = /\u001b\[[0-9;?]*[ -\/]*[@-~]|\u001b[@-_]/g;
+// One escape, anchored, so a chunk can be walked sequence by sequence. The two-character C1 form
+// deliberately EXCLUDES `[`: that byte introduces a CSI sequence, and letting it match here would
+// swallow the first two characters of every CSI - turning an incomplete `ESC [ 3` at a chunk
+// boundary into the visible text "3", and a complete `ESC [ 3 2 m` into "32m".
+const ESC_ONE = /^(?:\u001b\[[0-9;:?]*[ -\/]*[@-~]|\u001b[@-Z\\\]^_])/;
+// Colour and weight carry no position, so removing them REJOINS a token the terminal drew in two
+// colours. Everything else moves the cursor or erases, which means the runs either side were never
+// adjacent on screen - replacing those with a space keeps them from being spliced into a marker
+// that was never displayed. This is the same split `redact.mjs` makes, for the same reason.
+const SGR_ONE = /^\u001b\[[0-9;:?]*m$/;
+// An escape truncated by a chunk boundary is held until the next event completes it, but a stream
+// of malformed bytes must not accumulate forever.
+const MAX_PENDING = 64;
 
 function fail(message) {
   throw new Error(`trim: ${message}`);
@@ -37,16 +49,40 @@ function markIndex(cast, after, required) {
   return mark.eventIndex;
 }
 
-// A pty chunk boundary is arbitrary, so a short marker can straddle two events and testing each
-// one alone reports it "never appears" - refusing to trim a session that did exactly what was
-// asked. Carrying the tail of the previous event makes the match independent of chunking.
+// A pty chunk boundary is arbitrary, so a short marker can straddle two events - and the split can
+// land INSIDE the escape that colours it. Testing each event alone reports the marker "never
+// appears", refusing to trim a session that did exactly what was asked. This walks the stream
+// statefully: escapes are classified rather than blanket-stripped, a truncated escape is held for
+// the next event to complete, and the visible tail is carried so the match ignores chunking.
 function findLastMarker(events, from, until) {
   let found = -1;
   let carry = "";
+  let pending = "";
   for (let i = from + 1; i < events.length; i++) {
-    const text = carry + String(events[i].data).replace(ESC_RE, "");
+    const raw = pending + String(events[i].data);
+    pending = "";
+    let visible = "";
+    let j = 0;
+    while (j < raw.length) {
+      const esc = raw.indexOf("\u001b", j);
+      if (esc < 0) { visible += raw.slice(j); break; }
+      visible += raw.slice(j, esc);
+      const rest = raw.slice(esc);
+      const match = ESC_ONE.exec(rest);
+      if (!match) {
+        // Truncated by the chunk boundary: hold it so the next event can finish it. If it never
+        // completes within a sane length it is not an escape, so treat it as a break and move on.
+        if (rest.length < MAX_PENDING) { pending = rest; break; }
+        visible += " ";
+        j = esc + 1;
+        continue;
+      }
+      visible += SGR_ONE.test(match[0]) ? "" : " ";
+      j = esc + match[0].length;
+    }
+    const text = carry + visible;
     if (text.includes(until)) found = i;
-    carry = text.slice(-(until.length - 1) || text.length);
+    carry = until.length > 1 ? text.slice(-(until.length - 1)) : "";
   }
   return found;
 }
@@ -91,10 +127,12 @@ export function trimCast(cast, { until = null, untilGap = null, after = null } =
   }
 
   const kept = events.slice(0, cut + 1);
-  // Rendering takes minutes, so a clip that is only the echoed prompt - an agent that thought for
-  // longer than the gap before printing anything - should say so now rather than after.
-  if (kept[kept.length - 1].t <= kept[0].t) {
-    fail("the kept span has no duration; raise --until-gap, or check the marker");
+  // Measured from the ANCHOR, not from event zero. A session with a long banner and an ask 45
+  // seconds in has plenty of "duration" while showing nothing but the prompt, and rendering costs
+  // minutes - so a clip with nothing after the anchor should say so now rather than after.
+  const anchor = Math.max(from, 0);
+  if (cut <= anchor) {
+    fail("the trim keeps nothing after the mark; raise --until-gap, or check the marker");
   }
   const marks = (cast.marks || []).filter((m) => !Number.isInteger(m.eventIndex) || m.eventIndex <= cut);
   return {
