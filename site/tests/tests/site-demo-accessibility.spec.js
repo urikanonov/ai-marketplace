@@ -214,6 +214,11 @@ test("copy button restores its original label after a rapid double click", async
   const label = (await btn.textContent()).trim();
   await btn.click();
   await btn.click();
+  // Wait for the copied state FIRST. The restore timer only starts once the clipboard write
+  // resolves, so asserting the final label straight after the clicks puts the write and the
+  // 1500ms restore on one deadline - and under a loaded machine that budget is what runs out,
+  // which made this the suite's flakiest test rather than a real regression.
+  await expect(btn).toHaveText("copied");
   await expect(btn).toHaveText(label, { timeout: 4000 });
 });
 
