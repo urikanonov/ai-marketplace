@@ -413,5 +413,68 @@ class StylesConcatTests(unittest.TestCase):
             bsd.ordered_css_parts(root)
 
 
+
+
+class StampsMediaAssetsTest(unittest.TestCase):
+    """A re-recorded clip keeps its filename, so without a stamp a returning visitor keeps the
+    cached one - and the whole point of the recorder is that these get re-recorded."""
+
+    def test_stamps_the_demo_clips_and_posters(self):
+        clip = bsd._asset_hash(bsd.REPO_ROOT, "demo-multi-duck.webm")
+        poster = bsd._asset_hash(bsd.REPO_ROOT, "poster-multi-duck.jpg")
+        html = ('<button data-video="../assets/demo-multi-duck.webm">'
+                '<img src="../assets/poster-multi-duck.jpg" /></button>')
+        out = bsd.stamp_assets(html, bsd.REPO_ROOT)
+        # The clip URL lives in data-video, not href/src, so the attribute set has to cover it.
+        self.assertIn('data-video="../assets/demo-multi-duck.webm?v=%s"' % clip, out)
+        self.assertIn('src="../assets/poster-multi-duck.jpg?v=%s"' % poster, out)
+
+    def test_every_served_clip_and_poster_is_stamped_on_the_built_pages(self):
+        # Globbed, not a list of the pages that happen to have clips today: an unstamped clip
+        # added to any other page would otherwise ship green.
+        out_root = os.path.join(bsd.REPO_ROOT, bsd.SITE_OUT)
+        pages = [os.path.join(base, name)
+                 for base, _dirs, names in os.walk(out_root)
+                 for name in names if name.endswith(".html")]
+        self.assertTrue(pages, "no built pages found")
+        for path in pages:
+            page = os.path.relpath(path, out_root)
+            with open(path, encoding="utf-8") as fh:
+                built = fh.read()
+            for match in re.finditer(
+                    r'(?:data-video|src|href)="([^"?]+\.(?:webm|mp4|jpg|jpeg|png))([^"]*)"', built):
+                ref, query = match.group(1), match.group(2)
+                # Resolve the reference against the page that holds it: the tutorial page has its
+                # own assets/ directory (images synced from the plugin docs) which is NOT the
+                # site's shared assets/ and is unstamped for reasons that predate this work.
+                resolved = os.path.normpath(os.path.join(os.path.dirname(path), ref))
+                if os.path.dirname(resolved) != os.path.join(out_root, "assets"):
+                    continue
+                self.assertTrue(
+                    query.startswith("?v="),
+                    "%s on the %s page is served without a cache-busting stamp" % (ref, page))
+
+class SiteDistHasNoStrayFilesTest(unittest.TestCase):
+    """site/dist IS the published Pages artifact - pages.yml uploads the whole directory.
+
+    --check compares the files the generator knows about; it has no sweep for arbitrary extra
+    files, so a scratch file dropped in here ships live with CI green. Two range-test fixtures
+    (test.txt, empty.txt) reached this branch exactly that way.
+    """
+
+    ALLOWED_TOP_LEVEL = {
+        "assets", "commentable-html", "multi-duck", "skills",
+        "urikan-ai-marketplace-auto-updater", "index.html", "llms.txt", "sitemap.xml",
+    }
+
+    def test_no_unexpected_entries_at_the_top_level(self):
+        out = os.path.join(bsd.REPO_ROOT, bsd.SITE_OUT)
+        found = set(os.listdir(out))
+        stray = sorted(found - self.ALLOWED_TOP_LEVEL)
+        self.assertEqual(
+            stray, [],
+            "unexpected entries in the published site/dist: %s - scratch belongs in tmp/" % stray)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,352 @@
+/* Demo video blocks: a grid of poster thumbnails that open a clip in the lightbox.
+   The thumbnail is a button, not a video, so a visit costs one small poster image
+   instead of several megabytes of clip. */
+
+.video-block {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.video-grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(19rem, 100%), 1fr));
+}
+
+/* One clip (the multi-duck page) should not stretch to the full column width. */
+.video-grid-single {
+  grid-template-columns: minmax(0, 34rem);
+  justify-content: center;
+}
+
+.video-thumb {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 1px solid var(--cp-border);
+  border-radius: 14px;
+  background: var(--cp-surface);
+  color: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  text-align: left;
+  font: inherit;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.video-thumb:hover,
+.video-thumb:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--cp-accent);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+}
+
+.video-thumb-media {
+  position: relative;
+  display: block;
+}
+
+/* width/height on the img reserve the box before it loads, so nothing shifts. Deliberately no
+   aspect-ratio or object-fit: forcing one ratio on posters of differing shapes both crops the
+   terminal capture and makes the box snap once CSS lands, which is the shift this avoids. */
+.video-thumb-media img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--cp-surface-soft);
+}
+
+.video-play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.video-play span {
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 50%;
+  background: rgba(17, 17, 17, 0.62);
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.video-thumb:hover .video-play span,
+.video-thumb:focus-visible .video-play span {
+  background: var(--cp-accent);
+  transform: scale(1.06);
+}
+
+.video-play svg {
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-left: 0.2rem;
+  fill: currentColor;
+}
+
+.video-thumb-label {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.85rem 1rem 1rem;
+}
+
+.video-thumb-title {
+  font-weight: 700;
+}
+
+.video-thumb-note {
+  color: var(--cp-text-muted);
+  font-size: 0.92rem;
+}
+
+/* The video overlay reuses the image lightbox chrome; only the media differs. */
+.lightbox-video video {
+  max-width: min(96vw, 1200px);
+  max-height: 88vh;
+  border-radius: 10px;
+  background: #000;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .video-thumb,
+  .video-play span {
+    transition: none;
+  }
+
+  .video-thumb:hover,
+  .video-thumb:focus-visible {
+    transform: none;
+  }
+
+  .video-thumb:hover .video-play span,
+  .video-thumb:focus-visible .video-play span {
+    transform: none;
+  }
+}
+
+/* Multi-duck: a compact split - copy on the left, one thumbnail on the right. */
+.video-split {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  align-items: center;
+}
+
+.video-split-copy {
+  display: grid;
+  gap: 0.6rem;
+  align-content: center;
+}
+
+.video-split .video-thumb-label {
+  padding: 0.7rem 0.9rem 0.8rem;
+}
+
+.video-thumb-sm {
+  max-width: 30rem;
+  justify-self: end;
+  width: 100%;
+}
+
+@media (max-width: 760px) {
+  .video-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .video-thumb-sm {
+    justify-self: stretch;
+    max-width: none;
+  }
+}
+
+/* Playback speed. The native seek bar handles scrubbing; browsers disagree about where (or
+   whether) they expose a rate control, so these are always present. */
+.lightbox-speeds {
+  position: absolute;
+  left: 50%;
+  bottom: 3vh;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.3rem;
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.72);
+}
+
+.lightbox-speed {
+  min-width: 3rem;
+  padding: 0.3rem 0.6rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.lightbox-speed:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.lightbox-speed[aria-pressed="true"] {
+  background: var(--cp-accent);
+  color: var(--cp-accent-fg);
+  font-weight: 700;
+}
+
+/* The four steps sit beside the loop diagram instead of in their own section. */
+.loop-explainer {
+  display: grid;
+  gap: 1.75rem;
+  /* The diagram is mostly whitespace, so it yields width to the steps: a step body that wraps past
+     two lines pushes the whole explainer taller than the diagram it sits beside. */
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  align-items: center;
+}
+
+.loop-steps {
+  display: grid;
+  gap: 0.9rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: none;
+}
+
+.loop-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.8rem;
+  align-items: start;
+}
+
+.loop-step-n {
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  background: var(--cp-accent-soft);
+  color: var(--cp-accent);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.loop-step-body h3 {
+  margin: 0 0 0.15rem;
+  font-size: 1.02rem;
+}
+
+.loop-step-body p {
+  margin: 0;
+  color: var(--cp-text-muted);
+}
+
+@media (max-width: 860px) {
+  .loop-explainer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The composer screenshot, rehomed under "What you get". */
+.feature-shot {
+  /* Rendered SMALL and centred: the asset is 1140px wide, so a full-width render would upscale
+     past its own pixels and blur on a HiDPI screen. Capping it keeps a 2x display downscaling. */
+  max-width: 420px;
+  margin: 0 auto 1.75rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.feature-frame {
+  border: 1px solid var(--cp-border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--cp-surface);
+}
+
+.feature-dots {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid var(--cp-border);
+}
+
+.feature-dot {
+  width: 0.62rem;
+  height: 0.62rem;
+  border-radius: 50%;
+  background: var(--cp-border);
+}
+
+.feature-img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.feature-caption {
+  color: var(--cp-text-muted);
+  text-align: center;
+  font-size: 0.95rem;
+}
+
+/* Inside the two-column explainer the diagram fills its own column instead of keeping the
+   centred 640px cap it needs when it stands alone. */
+.loop-explainer .loop-figure {
+  max-width: none;
+  margin: 0;
+  width: 100%;
+}
+
+.loop-explainer .loop-figure .loop-fig-h {
+  width: 100%;
+  height: auto;
+}
+
+/* The diagram's own panel must not be the SAME colour as the card it sits in. The base rule fills
+   it with --cp-surface, which is exactly the card's background on an odd band (both #ffffff), so
+   the panel vanished. Fill it from the page background instead, and flip to the elevated tone on
+   an even band, where the card itself is --cp-bg - so it contrasts whichever band it lands in,
+   in both colour schemes, and on the vertical (mobile) twin, which shares the class. */
+.loop-explainer .loop-fig-bg {
+  fill: var(--cp-bg);
+}
+
+main > section:nth-of-type(even) .loop-explainer .loop-fig-bg {
+  fill: var(--cp-bg-elevated);
+}
+/* Chromium's default focus ring is a 1px black outline: invisible on the dark-theme card and on
+   the near-black pill bar. These controls state their own, visible in both schemes. */
+.video-thumb:focus-visible {
+  outline: 3px solid var(--cp-accent);
+  outline-offset: 2px;
+}
+
+.lightbox-speed:focus-visible,
+.lightbox-video .lightbox-close:focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: 2px;
+}
+
+/* A heading that exists for structure, not for looks. The rationale is three sibling sections now,
+   and without a heading of its own each one reads to a screen reader as a child of the previous
+   section's h2 - so the split that is obvious visually is invisible in heading navigation. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

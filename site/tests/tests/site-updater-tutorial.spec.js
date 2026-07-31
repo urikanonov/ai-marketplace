@@ -334,8 +334,13 @@ test("the auto-updater and multi-duck pages lead with the Why section and place 
   for (const path of ["/urikan-ai-marketplace-auto-updater/", "/multi-duck/"]) {
     await page.goto(path, { waitUntil: "domcontentloaded" });
     const ids = await page.locator("main > section").evaluateAll((els) => els.map((e) => e.id));
-    // The rationale (Why) section comes first, right after the hero header.
-    expect(ids[0]).toBe("why");
+    // The rationale (Why) leads the PROSE, right after the hero. A demo block may sit above it -
+    // showing the thing beats arguing for it - but nothing else may push the rationale down.
+    const lead = ids.filter((id) => id !== "video");
+    expect(lead[0]).toBe("why");
+    if (ids.includes("video")) {
+      expect(ids.indexOf("video")).toBeLessThan(ids.indexOf("why"));
+    }
     // ...and the Install section sits below it (not above the rationale).
     expect(ids.indexOf("why")).toBeLessThan(ids.indexOf("install"));
   }

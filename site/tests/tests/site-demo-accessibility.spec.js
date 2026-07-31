@@ -140,22 +140,26 @@ test("the medium comparison table stacks without horizontal overflow on a narrow
 
 test("the Why section presents the medium comparison table and the HTML blog reference", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
-  const why = page.locator("#why");
-  const table = why.locator("table.compare");
+  // The rationale is now three background slices - the argument, the review-loop explainer, and
+  // the medium comparison - rather than one continuous slab, so the table has its own section.
+  const why = page.locator("#why, #compare");
+  const table = page.locator("#compare table.compare");
   await expect(table).toBeVisible();
   // Four media rows, with Commentable HTML as the highlighted row.
   await expect(table.locator("tbody tr")).toHaveCount(4);
   await expect(table.locator("tr.compare-hero", { hasText: "Commentable HTML" })).toHaveCount(1);
   // The section references the external HTML blog post, opening in a new tab.
-  const blog = why.locator('a[href*="unreasonable-effectiveness-of-html"]').first();
+  const blog = page.locator("#why").locator('a[href*="unreasonable-effectiveness-of-html"]').first();
   await expect(blog).toHaveAttribute("target", "_blank");
   await expect(blog).toHaveAttribute("rel", /noopener/);
 });
 
 
-test("the review-loop diagram lives in the Why section, not the loop section", async ({ page }) => {
+test("the review-loop diagram lives in the review-loop explainer, not the loop section", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#why .loop-figure")).toHaveCount(1);
+  // Two different things both called "loop": the review-loop DIAGRAM (agent <-> you) and the
+  // "three ways to run the loop" columns. Keep them in separate sections and never confuse them.
+  await expect(page.locator("#review-loop .loop-figure")).toHaveCount(1);
   await expect(page.locator("#loop .loop-figure")).toHaveCount(0);
   // The loop section keeps its heading and the three-column self/peer/reviewer steps.
   await expect(page.locator("#loop .section-title")).toHaveCount(1);
@@ -210,6 +214,11 @@ test("copy button restores its original label after a rapid double click", async
   const label = (await btn.textContent()).trim();
   await btn.click();
   await btn.click();
+  // Wait for the copied state FIRST. The restore timer only starts once the clipboard write
+  // resolves, so asserting the final label straight after the clicks puts the write and the
+  // 1500ms restore on one deadline - and under a loaded machine that budget is what runs out,
+  // which made this the suite's flakiest test rather than a real regression.
+  await expect(btn).toHaveText("copied");
   await expect(btn).toHaveText(label, { timeout: 4000 });
 });
 

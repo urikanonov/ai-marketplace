@@ -234,6 +234,244 @@
     });
   }
 
+  // Demo clips open in an overlay and play at their native size. The thumbnail is a real button
+  // carrying the clip's source, so nothing but a poster image is fetched until it is pressed - a
+  // page that embedded three multi-megabyte videos would otherwise pay for them on every visit.
+  function initVideoLightbox() {
+    var triggers = document.querySelectorAll("[data-video]");
+    if (!triggers.length) {
+      return;
+    }
+    var overlay = document.createElement("div");
+    overlay.className = "lightbox lightbox-video";
+    overlay.setAttribute("hidden", "");
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-label", "Demo video");
+    var video = document.createElement("video");
+    video.setAttribute("controls", "");
+    video.setAttribute("playsinline", "");
+    // The clips have no audio track; muted states that, and keeps a browser from ever deciding a
+    // demo should make noise in a reader's office.
+    video.setAttribute("muted", "");
+    video.muted = true;
+    video.setAttribute("preload", "none");
+    // Picture-in-picture would pop the clip out of the overlay the lightbox controls, leaving a
+    // floating window the close button and Escape no longer govern. Note this deliberately does
+    // NOT restrict playback rate: the browser's own speed menu stays available alongside the
+    // explicit 1x/1.5x/2x buttons.
+    video.setAttribute("disablePictureInPicture", "");
+    video.setAttribute("controlsList", "nodownload noremoteplayback");
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "lightbox-close";
+    close.setAttribute("aria-label", "Close demo video");
+    close.innerHTML = "&times;";
+    // A demo clip is something you skim: the native seek bar covers scrubbing, but browsers hide
+    // playback speed behind different menus (or omit it), so the rates are offered explicitly.
+    var speeds = document.createElement("div");
+    speeds.className = "lightbox-speeds";
+    speeds.setAttribute("role", "group");
+    speeds.setAttribute("aria-label", "Playback speed");
+    var rates = [1, 1.5, 2];
+    var rateButtons = rates.map(function (rate) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "lightbox-speed";
+      b.setAttribute("data-rate", String(rate));
+      b.setAttribute("aria-pressed", rate === 1 ? "true" : "false");
+      b.textContent = rate + "x";
+      b.addEventListener("click", function () {
+        setRate(rate);
+      });
+      speeds.appendChild(b);
+      return b;
+    });
+
+    var wantedRate = 1;
+
+    function setRate(rate) {
+      wantedRate = rate;
+      // defaultPlaybackRate AND playbackRate: loading a source resets the live rate to the
+      // default, so setting only the live one silently reverts to 1x the moment the clip loads -
+      // the button would light up while the video kept playing at normal speed.
+      video.defaultPlaybackRate = rate;
+      video.playbackRate = rate;
+      rateButtons.forEach(function (b) {
+        b.setAttribute("aria-pressed", Number(b.getAttribute("data-rate")) === rate ? "true" : "false");
+      });
+    }
+
+    // preload="none" means the media arrives well after the overlay opens, so re-assert the rate
+    // once it does.
+    video.addEventListener("loadedmetadata", function () {
+      video.playbackRate = wantedRate;
+    });
+    video.addEventListener("ratechange", function () {
+      rateButtons.forEach(function (b) {
+        b.setAttribute("aria-pressed", Number(b.getAttribute("data-rate")) === video.playbackRate ? "true" : "false");
+      });
+    });
+
+    overlay.appendChild(video);
+    overlay.appendChild(speeds);
+    overlay.appendChild(close);
+    document.body.appendChild(overlay);
+
+    var lastFocus = null;
+
+    // Safari and iOS put a video into fullscreen through their own API, where
+    // document.fullscreenElement stays null - so a standard-only check would tear the overlay
+    // down on the very key the viewer pressed to come back out of fullscreen.
+    function overlayIsFullscreen() {
+      var el = document.fullscreenElement || document.webkitFullscreenElement || null;
+      if (el && overlay.contains(el)) {
+        return true;
+      }
+      return video.webkitDisplayingFullscreen === true;
+    }
+
+    function leaveFullscreen() {
+      try {
+        if (video.webkitDisplayingFullscreen === true && typeof video.webkitExitFullscreen === "function") {
+          video.webkitExitFullscreen();
+          return;
+        }
+        var exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (typeof exit === "function") {
+          var done = exit.call(document);
+          if (done && typeof done.catch === "function") { done.catch(function () {}); }
+        }
+      } catch (err) {
+        /* leaving fullscreen is best effort; never block the close */
+      }
+    }
+
+    function open(trigger) {
+      // Same-origin by construction, not by luck. The markup is authored today, but a future page
+      // that built data-video from a query or hash would otherwise turn one click into a fetch to
+      // an arbitrary host - a tracking pixel wearing a play button. The CSP blocks it too; this
+      // makes it a property of the code rather than of a meta tag someone may relax.
+      var src = trigger.getAttribute("data-video") || "";
+      var resolved;
+      try {
+        resolved = new URL(src, window.location.href);
+      } catch (err) {
+        return;
+      }
+      if (resolved.origin !== window.location.origin) {
+        return;
+      }
+      video.setAttribute("src", resolved.href);
+      var thumbPoster = trigger.querySelector("img");
+      if (thumbPoster) {
+        video.setAttribute("poster", thumbPoster.currentSrc || thumbPoster.src);
+      }
+      setRate(1);
+      var label = trigger.getAttribute("data-video-label");
+      overlay.setAttribute("aria-label", label ? label : "Demo video");
+      lastFocus = trigger;
+      overlay.removeAttribute("hidden");
+      close.focus();
+      // Autoplay is the point of pressing play, but a browser may refuse it; the controls are
+      // there either way, so a rejected promise is not an error worth surfacing.
+      var played = video.play();
+      if (played && typeof played.catch === "function") {
+        played.catch(function () {});
+      }
+    }
+
+    function hide() {
+      if (overlayIsFullscreen()) {
+        leaveFullscreen();
+      }
+      // Pause AND drop the source: leaving it attached keeps the clip buffering behind a closed
+      // overlay, and on some browsers keeps its audio alive.
+      video.pause();
+      overlay.setAttribute("hidden", "");
+      video.removeAttribute("src");
+      video.removeAttribute("poster");
+      video.load();
+      if (lastFocus && typeof lastFocus.focus === "function") {
+        lastFocus.focus();
+      }
+    }
+
+    triggers.forEach(function (trigger) {
+      trigger.addEventListener("click", function () {
+        open(trigger);
+      });
+    });
+    // The close button is unambiguous, so it dismisses on ANY activation. It must not go through
+    // the press/release pairing below: keyboard and assistive-technology activation produce a
+    // click with no pointerdown at all, which would leave Enter unable to close the dialog.
+    close.addEventListener("click", function (e) {
+      e.stopPropagation();
+      pressedOn = null;
+      hide();
+    });
+
+    // The BACKDROP is different. A click is dispatched on the nearest common ancestor of press and
+    // release, so a drag that starts on the video or a speed pill and ends on the backdrop reports
+    // the overlay as its target - dismissing the clip on a 20px slip off a pill, or on a scrub
+    // that leaves the video. Require both ends of the gesture on the backdrop itself.
+    var pressedOn = null;
+    overlay.addEventListener("pointerdown", function (e) {
+      pressedOn = e.target;
+    });
+    // A press that never becomes a click must not leave its origin behind for the next one.
+    overlay.addEventListener("pointercancel", function () {
+      pressedOn = null;
+    });
+    overlay.addEventListener("contextmenu", function () {
+      pressedOn = null;
+    });
+    overlay.addEventListener("click", function (e) {
+      var from = pressedOn;
+      pressedOn = null;
+      if (e.target === overlay && from === overlay) {
+        hide();
+      }
+    });
+    document.addEventListener("keydown", function (e) {
+      if (overlay.hasAttribute("hidden")) {
+        return;
+      }
+      if (e.key === "Escape") {
+        // Escape is ALSO the key that leaves fullscreen. Tearing the overlay down here would
+        // destroy the clip instead, losing the position, so let the browser handle it first.
+        if (overlayIsFullscreen()) {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        hide();
+        return;
+      }
+      if (e.key === "Tab") {
+        var focusable = Array.prototype.slice
+          .call(overlay.querySelectorAll('button, video[controls], [tabindex]:not([tabindex="-1"])'));
+        if (!focusable.length) {
+          return;
+        }
+        var first = focusable[0];
+        var last = focusable[focusable.length - 1];
+        var active = document.activeElement;
+        // Clicking dead space inside the overlay blurs to <body>, which is INSIDE no control - so
+        // without this, Tab would walk into the page behind the modal.
+        if (!overlay.contains(active)) {
+          e.preventDefault();
+          (e.shiftKey ? last : first).focus();
+        } else if (e.shiftKey && active === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    });
+  }
   function initLightbox() {
     // Content images (the tutorial screenshots) open at full size in an overlay.
     // Decorative chrome images (nav brand/hero logo) are excluded.
@@ -414,5 +652,6 @@
     initInstallTabs();
     initDemoSwitch();
     initLightbox();
+    initVideoLightbox();
   });
 })();
