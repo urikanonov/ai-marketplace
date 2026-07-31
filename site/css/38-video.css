@@ -335,3 +335,18 @@ main > section:nth-of-type(even) .loop-explainer .loop-fig-bg {
   outline: 3px solid #ffffff;
   outline-offset: 2px;
 }
+
+/* A heading that exists for structure, not for looks. The rationale is three sibling sections now,
+   and without a heading of its own each one reads to a screen reader as a child of the previous
+   section's h2 - so the split that is obvious visually is invisible in heading navigation. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

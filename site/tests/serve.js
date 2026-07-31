@@ -25,10 +25,21 @@ const TYPES = {
   ".zip": "application/zip",
 };
 
+// Containment is decided ONCE, on a fully resolved path, and every later read uses the value this
+// returns - never the raw request. Resolving first also collapses "..", symlinks and the mixed
+// separators Windows accepts, so the check cannot be walked around by spelling the path differently.
+function safeResolve(urlPath) {
+  const resolved = path.resolve(ROOT, "." + path.sep + urlPath);
+  if (resolved !== ROOT && !resolved.startsWith(ROOT + path.sep)) {
+    return null;
+  }
+  return resolved;
+}
+
 const server = http.createServer((req, res) => {
   const urlPath = decodeURIComponent((req.url || "/").split("?")[0]);
-  let filePath = path.join(ROOT, urlPath);
-  if (filePath !== ROOT && !filePath.startsWith(ROOT + path.sep)) {
+  let filePath = safeResolve(urlPath);
+  if (!filePath) {
     res.writeHead(403);
     res.end("forbidden");
     return;
@@ -42,8 +53,9 @@ const server = http.createServer((req, res) => {
     return;
   }
   if (stat.isDirectory()) {
-    filePath = path.join(filePath, "index.html");
-    if (!fs.existsSync(filePath)) {
+    // Re-resolve rather than join: the index must be inside ROOT on its own terms.
+    filePath = safeResolve(path.join(urlPath, "index.html"));
+    if (!filePath || !fs.existsSync(filePath)) {
       res.writeHead(404);
       res.end("not found");
       return;

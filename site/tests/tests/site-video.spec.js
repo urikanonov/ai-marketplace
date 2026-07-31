@@ -106,7 +106,23 @@ test("pressing a speed keeps the clip open and actually changes the rate (SITE-V
   await expect(overlay).toBeVisible();
 });
 
-test("the clip is seekable and hides picture-in-picture and download (SITE-VIDEO-06)", async ({ page }) => {
+test("every published clip is seekable and hides picture-in-picture and download (SITE-VIDEO-06)", async ({ page }) => {
+  // All THREE clips, not just the first: any one of them can regress to an unseekable webm - the
+  // failure this pins - while a single-clip check stays green.
+  for (const [path, index] of [["/commentable-html/", 0], ["/commentable-html/", 1], ["/multi-duck/", 0]]) {
+    await page.goto(path, { waitUntil: "domcontentloaded" });
+    await page.locator(".video-thumb").nth(index).click();
+    const scoped = page.locator(".lightbox-video");
+    await expect(scoped).toBeVisible();
+    const clip = scoped.locator("video");
+    await clip.evaluate((v) => new Promise((r) => (v.readyState >= 1 ? r() : v.addEventListener("loadedmetadata", r, { once: true }))));
+    const info = await clip.evaluate((v) => ({ duration: v.duration, seekable: v.seekable.length > 0, src: v.getAttribute("src") }));
+    expect(Number.isFinite(info.duration), `${info.src} has no finite duration`).toBe(true);
+    expect(info.duration).toBeGreaterThan(1);
+    expect(info.seekable, `${info.src} is not seekable`).toBe(true);
+    await page.keyboard.press("Escape");
+  }
+
   const overlay = await openLightbox(page, "/commentable-html/");
   const video = overlay.locator("video");
   await video.evaluate((v) => new Promise((r) => (v.readyState >= 1 ? r() : v.addEventListener("loadedmetadata", r, { once: true }))));
@@ -303,4 +319,31 @@ test("a cross-origin clip source is refused (SITE-VIDEO-14)", async ({ page }) =
   await page.locator(".video-thumb").nth(1).click();
   await expect(overlay).toBeVisible();
   expect(await overlay.locator("video").getAttribute("src")).toContain("/assets/demo-commentable-html-loop.webm");
+});
+
+test("Tab is trapped inside the open lightbox (SITE-VIDEO-15)", async ({ page }) => {
+  const overlay = await openLightbox(page, "/commentable-html/");
+  // A modal that lets Tab walk into the page behind it is a modal in name only, and either wrap
+  // branch could regress while Escape and focus-restore keep passing.
+  const inOverlay = () => page.evaluate(() =>
+    document.querySelector(".lightbox-video").contains(document.activeElement));
+
+  for (let i = 0; i < 8; i += 1) {
+    await page.keyboard.press("Tab");
+    expect(await inOverlay(), `focus escaped after ${i + 1} Tab presses`).toBe(true);
+  }
+  for (let i = 0; i < 8; i += 1) {
+    await page.keyboard.press("Shift+Tab");
+    expect(await inOverlay(), `focus escaped after ${i + 1} Shift+Tab presses`).toBe(true);
+  }
+
+  // Even when focus has been knocked outside by a click on overlay dead space.
+  await page.evaluate(() => document.body.focus());
+  await page.keyboard.press("Tab");
+  expect(await inOverlay()).toBe(true);
+});
+
+test("the clips are muted, so a demo never makes noise unasked (SITE-VIDEO-16)", async ({ page }) => {
+  const overlay = await openLightbox(page, "/commentable-html/");
+  expect(await overlay.locator("video").evaluate((v) => v.muted)).toBe(true);
 });

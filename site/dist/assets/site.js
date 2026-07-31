@@ -251,6 +251,10 @@
     var video = document.createElement("video");
     video.setAttribute("controls", "");
     video.setAttribute("playsinline", "");
+    // The clips have no audio track; muted states that, and keeps a browser from ever deciding a
+    // demo should make noise in a reader's office.
+    video.setAttribute("muted", "");
+    video.muted = true;
     video.setAttribute("preload", "none");
     // Picture-in-picture would pop the clip out of the overlay the lightbox controls, leaving a
     // floating window the close button and Escape no longer govern. Note this deliberately does
