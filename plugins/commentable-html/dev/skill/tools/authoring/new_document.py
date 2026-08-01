@@ -44,12 +44,18 @@ none); slides and board do not. Syntax highlighting is baked into raw language-l
 blocks by default (opt out with --no-highlight) so a created document is never raw. The result
 is self-validated with validate.py before it is written; validation errors print to stderr and
 exit 1, and validator warnings print to stderr (the document is still not finished - it MUST be
-finalized and strict-validated before it is shared). Output goes to stdout unless --out is given.
+finalized and strict-validated before it is shared). When the document cannot be CHECKED at all
+(an unimportable or crashing validator, a `validate` module resolved from outside this skill, or
+a validator answering in an unexpected shape - i.e. a broken or partial install) the tool FAILS
+CLOSED: nothing is written and it exits non-zero naming the actual cause. Pass
+--allow-unvalidated-output to knowingly accept unchecked output; that flag never suppresses a
+real validation failure. Output goes to stdout unless --out is given.
 """
 import argparse
 import hashlib
 import html as _html
 import html.parser as _html_parser
+import importlib.util
 import os
 from pathlib import Path
 import re
@@ -60,6 +66,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+_TOOLS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 import _brand_profile  # noqa: E402
 import doc_stamp  # noqa: E402
 import recommend_kind  # noqa: E402
@@ -339,31 +346,108 @@ def _warn_kind_mismatch(kind, content, filename=None):
         sys.stderr.write(warning + "\n")
 
 
-def _self_validate(html_out, base_dir=None):
-    """Validate `html_out` with validate.py. Returns (errors, warnings) lists, or
-    (None, None) only when the validator module is genuinely unavailable (degrade gracefully).
+def _canonical(path):
+    """Resolve for COMPARISON: symlinks and junctions followed, Windows casing folded.
+
+    A plain abspath+startswith rejects the real validator when the skill is reached through
+    a junction or a differently-cased path, which would turn this guard into a false alarm.
+    """
+    if not path:
+        return ""
+    return os.path.normcase(os.path.realpath(path))
+
+
+def _contained(path):
+    """True when `path` lives inside this skill's own tools/validate directory.
+
+    Both sides are compared in two forms - fully resolved, and merely absolute - so a
+    junction, a differently-cased path, OR a per-file symlink of validate.py to a shared
+    location all still count as the real validator rather than tripping the guard.
+    """
+    if not isinstance(path, (str, os.PathLike)) or not path:
+        return False
+    expected = os.path.join(_TOOLS_DIR, "validate")
+    candidates = {_canonical(path), os.path.normcase(os.path.abspath(path))}
+    bases = {_canonical(expected), os.path.normcase(os.path.abspath(expected))}
+    return any(c.startswith(b + os.sep) for c in candidates if c for b in bases if b)
+
+
+def _load_validator():
+    """Return (module, None), or (None, reason) when it cannot be used.
+
+    Every failure becomes a REASON rather than an exception, because the caller's whole job
+    is to distinguish "checked and bad" from "could not check". The origin is checked BEFORE
+    the import, so an unrelated `validate` earlier on sys.path is refused without executing
+    its module body; an already-imported module is re-checked by its `__file__`.
+    """
+    module = sys.modules.get("validate")
+    if module is None:
+        try:
+            spec = importlib.util.find_spec("validate")
+        except Exception as exc:  # noqa: BLE001  a broken parent package, a bad sys.path entry
+            return None, "the sibling 'validate' tool could not be located (%s: %s)" % (
+                type(exc).__name__, exc)
+        if spec is None:
+            return None, "the sibling 'validate' tool is not importable (no module named 'validate')"
+        if not _contained(getattr(spec, "origin", "") or ""):
+            return None, ("the 'validate' module on sys.path is %s, not this skill's "
+                          "tools/validate/validate.py" % (spec.origin or "an unknown location"))
+        try:
+            import validate as module  # noqa: F401
+        except Exception as exc:  # noqa: BLE001
+            _toolpath.warn_missing_tool("validate", "self-validation of the new document")
+            return None, "the sibling 'validate' tool could not be imported (%s: %s)" % (
+                type(exc).__name__, exc)
+    if not _contained(getattr(module, "__file__", "") or ""):
+        return None, ("the imported 'validate' module is %s, not this skill's "
+                      "tools/validate/validate.py" % (getattr(module, "__file__", "")
+                                                      or "an unknown location"))
+    return module, None
+
+
+def _self_validate_result(html_out, base_dir=None):
+    """Validate `html_out` with validate.py.
+
+    Returns ((errors, warnings), None), or (None, reason it could not be CHECKED at all).
+    A "could not check" is deliberately NOT reported as an empty error list: returning
+    (None, None) here used to read as "no errors, no warnings" in main() and write the
+    document unvalidated on exactly the broken or partial install this check exists for.
     base_dir is where NonPortable companion refs resolve for the existence check (the
     file's final directory), or None to check structure only and defer companion
     resolution to when the placed file is validated."""
-    try:
-        import validate as _validate
-    except ImportError:
-        _toolpath.warn_missing_tool("validate", "self-validation of the new document")
-        return None, None
+    module, reason = _load_validator()
+    if module is None:
+        return None, reason
     # The temp file location does not affect validation: base_dir is passed explicitly,
     # so companion refs never resolve against the temp file's directory. Use the system
     # temp dir (not os.getcwd(), which may be read-only, e.g. C:\Windows\System32).
-    fd, tmp = tempfile.mkstemp(suffix=".html")
+    tmp = None
     try:
+        fd, tmp = tempfile.mkstemp(suffix=".html")
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             fh.write(html_out)
-        errors, warnings = _validate.validate(tmp, base_dir=base_dir)
-        return errors, warnings
+        outcome = module.validate(tmp, base_dir=base_dir)
+    except Exception as exc:  # noqa: BLE001
+        # A validator that crashes, or a temp dir that cannot be written, means the check did
+        # not happen - the same "could not be checked" signal, so it takes the same gate.
+        return None, "the validator could not run (%s: %s)" % (type(exc).__name__, exc)
     finally:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
+        if tmp is not None:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+    if not (isinstance(outcome, tuple) and len(outcome) == 2
+            and all(isinstance(part, list) for part in outcome)):
+        # Checking the MEMBERS matters as much as the arity: a `(None, None)` would satisfy a
+        # bare 2-tuple test and then read as "no errors, no warnings", i.e. fail-open again.
+        return None, "the validator returned an unexpected result (%r)" % (outcome,)
+    return outcome, None
+
+
+def _self_validate(html_out, base_dir=None):
+    """(errors, warnings) when the document could be checked, else None."""
+    return _self_validate_result(html_out, base_dir)[0]
 
 
 def _skill_root():
@@ -596,6 +680,14 @@ def main(argv):
     parser.add_argument("--no-stats", action="store_true",
                         help="do not bake the section/word/reading-time overview strip for "
                              "report/plan documents (baking is ON by default; ignored for other kinds)")
+    parser.add_argument("--allow-unvalidated-output", action="store_true",
+                        help="write the document even when it could not be CHECKED at all - an "
+                             "unimportable or crashing validator, a 'validate' module resolved "
+                             "from outside this skill, or a validator that answers in an "
+                             "unexpected shape. Off by default: this tool's guarantee is that "
+                             "what it writes validates, and silently dropping that guarantee on "
+                             "a broken install is the wrong direction. It never suppresses a "
+                             "real validation failure.")
     args = parser.parse_args(argv[1:])
     out_path = resolve_output_path(args.out, force=args.force)
 
@@ -727,12 +819,28 @@ def main(argv):
         sys.stderr.write("new_document: %s\n" % exc)
         return 2
 
-    errors, warnings = _self_validate(out_html, base_dir=validate_base)
-    if errors:
-        sys.stderr.write("new_document: the generated document does not validate:\n")
-        for e in errors:
-            sys.stderr.write("  - %s\n" % e)
-        return 1
+    result, reason = _self_validate_result(out_html, base_dir=validate_base)
+    if result is None:
+        # The document could not be CHECKED (a broken or partial install), which is not the
+        # same as being invalid. Writing it anyway would drop this tool's one guarantee
+        # precisely where something is already wrong, so fail closed unless the caller opted
+        # in knowingly.
+        if not args.allow_unvalidated_output:
+            sys.stderr.write(
+                "new_document: the generated document could not be self-validated - %s - so "
+                "nothing was written. Reinstall or re-extract the skill, or pass "
+                "--allow-unvalidated-output to write it unchecked.\n" % reason)
+            return 1
+        sys.stderr.write("new_document: WARNING - writing a document that was not "
+                         "self-validated (%s).\n" % reason)
+        warnings = []
+    else:
+        errors, warnings = result
+        if errors:
+            sys.stderr.write("new_document: the generated document does not validate:\n")
+            for e in errors:
+                sys.stderr.write("  - %s\n" % e)
+            return 1
     # Surface validator warnings (they used to be discarded). A warning here means the document is
     # valid but not finished - it MUST still be finalized and strict-validated before it is shared.
     for w in list(warnings or []) + brand_warnings:

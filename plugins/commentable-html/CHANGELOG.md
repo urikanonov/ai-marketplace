@@ -4,6 +4,25 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.291.0] - 2026-08-02
+
+### Fixed
+
+- `tools/authoring/new_document.py` no longer writes a document it could not self-validate. Its
+  `_self_validate` returned `(None, None)` when the sibling `validate` module was unimportable;
+  `main()` unpacked that into errors/warnings, `if errors:` was falsy, and the new document was
+  written UNVALIDATED - so the one self-check the generator has disappeared exactly on the broken
+  or partial install it exists for. It now fails CLOSED by default: nothing reaches `--out` or
+  stdout and it exits non-zero naming the actual cause. The seam is hardened the same way
+  `chart_block.py` was: a `validate` module resolved from outside this skill's own tools dir is
+  refused BEFORE its module body runs (compared canonically, so a junction or a differently-cased
+  path does not false-alarm), and a crashing validator or an unexpected return shape (notably
+  `(None, None)`, which would otherwise read as "no errors, no warnings") counts as "could not
+  check" rather than escaping as a traceback. A caller who knowingly accepts unchecked output
+  passes the new `--allow-unvalidated-output`, which writes it with a warning; that flag never
+  suppresses a real validation failure.
+
+
 ## [1.285.0] - 2026-08-02
 
 ### Added
