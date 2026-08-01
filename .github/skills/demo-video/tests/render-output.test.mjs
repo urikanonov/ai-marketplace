@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   windowLabel,
   promptFromCommand,
+  joinCommand,
   askFromCast,
   terminalPage,
   stagePage,
@@ -26,7 +27,7 @@ function buildTerminalPage(cast, args) {
     endHoldMs: 0,
     introMs: 0,
     ask: askFromCast(cast, args),
-    title: windowLabel(cast.command, args),
+    title: windowLabel(cast.argv || cast.command, args),
     xterm: XTERM,
   });
 }
@@ -40,7 +41,7 @@ function buildStagePage(cast, args) {
     endHoldMs: 0,
     ask: askFromCast(cast, args),
     reportUrl: "./report.html",
-    title: windowLabel(cast.command, args),
+    title: windowLabel(cast.argv || cast.command, args),
     xterm: XTERM,
   });
 }
@@ -51,12 +52,32 @@ test("the launch command is reduced to its program name (DEMO-SAFE-31)", () => {
   assert.equal(windowLabel("/usr/local/bin/copilot -p 'do the thing'"), "copilot");
   // A quoted program path with spaces is one token, not two.
   assert.equal(windowLabel('"C:\\Program Files\\Copilot\\copilot.exe" --disable-mcp-server azure'), "copilot");
-  // ...and so is an UNQUOTED one, which is the shape a cast actually stores. Splitting on
-  // whitespace here published a directory-name fragment - the same internal-inventory leak class.
+  // ...and so is an UNQUOTED one, which is the shape a legacy cast stores. Splitting on whitespace
+  // here published a directory-name fragment - the same internal-inventory leak class.
   assert.equal(windowLabel("C:\\Program Files\\Copilot\\copilot.exe --flag"), "copilot");
   assert.equal(
     windowLabel("C:\\Users\\alice\\Contoso Secret Project\\bin\\copilot.exe --banner"),
     "copilot");
+  // ...but recovering that path must NOT run across argument boundaries: a VALUE ending in .exe
+  // once dragged the flag before it into the label ("copilot --config secrets").
+  assert.equal(windowLabel("copilot --config secrets.exe --disable-mcp-server azure"), "copilot");
+  assert.equal(windowLabel("copilot --out C:\\tmp\\report.exe --banner"), "copilot");
+  // The scan is greedy, so a DIRECTORY that merely contains a dotted name does not end it early -
+  // "contoso.com Projects" used to publish "contoso".
+  assert.equal(windowLabel("C:\\Users\\alice\\contoso.com Projects\\bin\\copilot.exe --x"), "copilot");
+  assert.equal(windowLabel("C:\\Users\\alice\\My.cmd Tools\\bin\\copilot.exe"), "copilot");
+  // A rooted path with NO recognisable executable extension is published only when what follows it
+  // is a flag; if the next token could be part of a split path, nothing is published rather than
+  // the directory fragment the first token would give.
+  assert.equal(windowLabel("/usr/local/bin/copilot -p do the thing"), "copilot");
+  assert.equal(windowLabel("/usr/local/bin/copilot"), "copilot");
+  assert.equal(windowLabel("C:\\Users\\alice\\Contoso Secret Project\\bin\\copilot --x"), "session");
+  assert.equal(windowLabel("/Users/alice/Contoso Secret Project/bin/copilot --x"), "session");
+  assert.equal(windowLabel("/opt/Acme Stealth Project/bin/copilot --banner"), "session");
+  // A basename that begins with a dash is not a plausible program name either.
+  assert.equal(windowLabel("bin/-weird.exe"), "session");
+  // A `-p` sitting inside another argument's quoted VALUE is not the prompt flag.
+  assert.equal(windowLabel('copilot --note "value -p hidden" --banner'), "copilot");
   assert.equal(windowLabel(""), "session");
   assert.equal(windowLabel(null), "session");
   assert.equal(windowLabel("   "), "session");
@@ -73,6 +94,23 @@ test("the launch command is reduced to its program name (DEMO-SAFE-31)", () => {
     assert.ok(!label.includes("--"), `flags survived into ${label}`);
     assert.ok(!/mcp|kusto|geneva|azure|nexus|token/i.test(label), `internal detail survived into ${label}`);
   }
+});
+
+test("a cast's argv gives the program name exactly, with no guessing (DEMO-SAFE-35)", () => {
+  // Reverse engineering the program out of a joined string is lossy in both directions: a path with
+  // spaces looks like several arguments, and a VALUE ending in .exe looks like a path. A cast now
+  // stores argv, so the label is read straight off argv[0] and neither shape can mislead it.
+  assert.equal(windowLabel(["C:\\Program Files\\Copilot\\copilot.exe", "--config", "secrets.exe"]), "copilot");
+  assert.equal(windowLabel(["/usr/local/bin/copilot", "--disable-mcp-server", "kusto"]), "copilot");
+  assert.equal(windowLabel([]), "session");
+  assert.equal(windowLabel(["--disable-mcp-server", "kusto"]), "session");
+  // Opting in still renders the whole invocation, re-quoted so it stays readable.
+  assert.match(
+    windowLabel(["C:\\Program Files\\Copilot\\copilot.exe", "--banner"], { "show-command": true }),
+    /^"C:\\Program Files\\Copilot\\copilot\.exe" --banner$/);
+  // The prompt is read off argv too.
+  assert.equal(promptFromCommand(["copilot", "-p", "review this", "--disable-mcp-server", "kusto"]),
+    "review this");
 });
 
 test("an operator can still opt into showing the whole command (DEMO-SAFE-32)", () => {
@@ -101,6 +139,29 @@ test("a -p prompt never drags the flags that follow it (DEMO-SAFE-33)", () => {
   assert.equal(promptFromCommand("copilot --banner"), null);
   assert.equal(promptFromCommand("copilot -p"), null);
   assert.equal(promptFromCommand(null), null);
+  // `-p` inside ANOTHER argument's quoted value is not the prompt flag, so an unrelated argument is
+  // never painted across the card.
+  assert.equal(promptFromCommand('copilot --note "value -p hidden words" --banner'), null);
+  // A quoted prompt is one token, so it may legitimately begin with a dash.
+  assert.equal(promptFromCommand('copilot -p "-leading dash prompt" --banner'), "-leading dash prompt");
+  assert.equal(promptFromCommand("copilot -p=inline --banner"), "inline");
+  // `-p="x y"` starts BARE, so the flag is still recognised even though its value is quoted.
+  assert.equal(promptFromCommand('copilot -p="review this" --disable-mcp-server kusto'), "review this");
+});
+
+test("the stored command round-trips a path with spaces (DEMO-SAFE-36)", () => {
+  // This is the line that keeps windowLabel safe for tool-produced casts: joining argv bare loses
+  // the boundary, and the path then reads as several tokens. It had no test, so reverting it was
+  // silent - the same "safety lives in an uncovered line" class as the page-builder gap.
+  const argv = ["/opt/Acme Stealth Project/bin/copilot", "--banner", "--disable-mcp-server", "kusto"];
+  const stored = joinCommand(argv);
+  assert.equal(stored, '"/opt/Acme Stealth Project/bin/copilot" --banner --disable-mcp-server kusto');
+  assert.equal(windowLabel(stored), "copilot");
+  // Without the quoting the path is unrecoverable, and nothing may be published.
+  assert.equal(windowLabel(argv.join(" ")), "session");
+  // An embedded quote is escaped rather than closing the value early.
+  assert.equal(joinCommand(['say "hi" now']), '"say \\"hi\\" now"');
+  assert.equal(joinCommand([]), "");
 
   for (const command of [
     'copilot -p "review this" --disable-mcp-server kusto',
@@ -123,12 +184,20 @@ test("the title card never falls back to the raw command (DEMO-SAFE-33)", () => 
   assert.equal(
     askFromCast({ command: 'copilot -p "review this" --disable-mcp-server kusto' }, {}),
     "review this");
-  // A real prompt is still preferred, an explicit --ask still wins, and a mark beats both.
+  // A real prompt is still preferred, an explicit --ask still wins, and the ask MARK beats both.
   assert.equal(askFromCast({ command: "copilot -p write the docs" }, {}), "write the docs");
   assert.equal(askFromCast({ command: LEAKY }, { ask: "a short ask" }), "a short ask");
   assert.equal(
     askFromCast({ command: LEAKY, marks: [{ label: "ask", text: " from the mark " }] }, {}),
     "from the mark");
+  // But ONLY that mark. Falling back to "any mark with text" published whatever the next step
+  // carried - a paste step's payload is a whole review bundle, in the largest type in the clip.
+  assert.equal(
+    askFromCast({
+      command: "copilot --disable-mcp-server kusto",
+      marks: [{ label: "ask", text: "" }, { label: "paste", text: "host.internal review bundle" }],
+    }, {}),
+    "copilot");
 });
 
 // The helpers above are only worth anything if the PAGES actually use them. Reverting either page
@@ -152,5 +221,17 @@ test("neither rendered page publishes the launch command (DEMO-SAFE-34)", () => 
     // Opting in still works, so the flag is not silently dead.
     const shown = build({ cols: 80, rows: 24, command: LEAKY }, { "show-command": true });
     assert.ok(shown.includes("disable-mcp-server"), `${name} page ignored --show-command`);
+
+    // A cast that carries argv is labelled from argv, not from the flattened string - so the
+    // exact-program path is actually wired into the pages and is not dead code.
+    const fromArgv = build({
+      cols: 80,
+      rows: 24,
+      command: "C:\\Users\\demo\\Contoso Secret Project\\bin\\copilot --disable-mcp-server kusto",
+      argv: ["C:\\Users\\demo\\Contoso Secret Project\\bin\\copilot", "--disable-mcp-server", "kusto"],
+    }, {});
+    assert.ok(fromArgv.includes('"copilot"'), `${name} page did not label from argv`);
+    assert.ok(!fromArgv.includes("Contoso"), `${name} page published a path fragment`);
+    assert.ok(!fromArgv.includes("disable-mcp-server"), `${name} page published the flags`);
   }
 });

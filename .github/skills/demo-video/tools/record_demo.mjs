@@ -553,27 +553,94 @@ function makeContext(page, budgetMs, warnings, scope = page) {
 // flags. None of it is a secret by any rule, so it survives every redaction pass and then plays in
 // every frame, including the poster. The program name alone carries the whole meaning a viewer
 // needs, so that is the default and the full command is opt-in.
+// Join argv back into the string a cast stores, re-quoting any element that holds whitespace so the
+// result round-trips. Joining bare loses the boundary, and a path with spaces then reads as several
+// tokens - which is how a directory name reached the window chrome.
+export function joinCommand(argv) {
+  return (Array.isArray(argv) ? argv : [])
+    .map((a) => (/\s/.test(String(a)) ? '"' + String(a).replace(/"/g, '\\"') + '"' : String(a)))
+    .join(" ");
+}
+
+// Split a stored command string back into argv, tracking which tokens were QUOTED. Reverse
+// engineering a joined string is inherently lossy, which is why a cast now stores `argv` too and
+// the helpers below prefer it; this is the fallback for a legacy or foreign cast.
+export function tokenizeCommand(raw) {
+  const tokens = [];
+  let current = "";
+  let quote = null;
+  let quoted = false;
+  let started = false;
+  const push = () => {
+    if (started) tokens.push({ value: current, quoted });
+    current = "";
+    quoted = false;
+    started = false;
+  };
+  for (let i = 0; i < String(raw == null ? "" : raw).length; i++) {
+    const ch = raw[i];
+    if (quote) {
+      if (ch === "\\" && raw[i + 1] === quote) { current += quote; i += 1; continue; }
+      if (ch === quote) { quote = null; continue; }
+      current += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      // Only a token that BEGINS with a quote is a quoted value. `-p="x y"` starts bare, so the
+      // flag is still recognised; `"value -p hidden"` starts quoted, so its inner -p is not.
+      if (!started) quoted = true;
+      started = true;
+      continue;
+    }
+    if (/\s/.test(ch)) { push(); continue; }
+    current += ch;
+    started = true;
+  }
+  push();
+  return tokens;
+}
+
+// What the terminal window chrome may say. The launch command is what the operator TYPED, and on a
+// real machine that is an inventory of internal tooling - MCP server names, hosts, org-specific
+// flags. None of it is a secret by any rule, so it survives every redaction pass and then plays in
+// every frame, including the poster. The program name alone carries the whole meaning a viewer
+// needs, so that is the default and the full command is opt-in.
 export function windowLabel(command, options = {}) {
-  const raw = String(command == null ? "" : command).trim();
+  // A cast stores argv, so the program is known EXACTLY and nothing has to be guessed back out of
+  // a joined string. Everything below is the fallback for a cast that predates that.
+  const isArgv = Array.isArray(command);
+  const raw = isArgv ? joinCommand(command).trim() : String(command == null ? "" : command).trim();
   if (!raw) return "session";
   // parseArgs stores the CLI spelling; a direct caller uses the camelCase one.
   if (options.showCommand === true || options["show-command"] === true) return raw;
-  // Leading NAME=value assignments are the shell's, not the program - and one of them can be a
-  // token. Skip them rather than publishing the first one as the window title.
-  let rest = raw;
-  let assignment = /^[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+/.exec(rest);
-  while (assignment) {
-    rest = rest.slice(assignment[0].length);
-    assignment = /^[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+/.exec(rest);
+
+  let first;
+  if (isArgv) {
+    first = String(command[0] == null ? "" : command[0]).trim();
+  } else {
+    const tokens = tokenizeCommand(raw);
+    // Leading NAME=value assignments are the shell's, not the program - and one can carry a token.
+    let i = 0;
+    while (i < tokens.length && !tokens[i].quoted
+           && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i].value)) i += 1;
+    first = i < tokens.length ? tokens[i].value : "";
+    // An UNQUOTED path with spaces was flattened by an older capture, so the first token is only a
+    // FRAGMENT of it. Recover the whole path - but ONLY when the command starts at a path root, or
+    // the scan would run across argument boundaries and republish a flag ("copilot --config x.exe").
+    // Greedy, so a directory that merely CONTAINS a dotted name ("contoso.com Projects") does not
+    // end the match early.
+    if ((!tokens[0] || !tokens[0].quoted)
+        && /^(?:[A-Za-z]:[\\/]|[\\/]|\.{1,2}[\\/]|~[\\/])/.test(raw)) {
+      const whole = /^(.*\.(?:exe|cmd|bat|ps1))(?=\s|$)/i.exec(raw);
+      // With no recognisable executable extension the path cannot be reassembled. The first token
+      // is the whole program only when what FOLLOWS it is a flag (or nothing); anything else means
+      // the path was split across tokens, and publishing the first one would leak a directory name.
+      const next = tokens[1];
+      if (whole) first = whole[1];
+      else if (next && !next.value.startsWith("-")) return "session";
+    }
   }
-  const quoted = /^"([^"]*)"/.exec(rest) || /^'([^']*)'/.exec(rest);
-  // An UNQUOTED path with spaces is the normal shape here: capture stores argv joined by spaces, so
-  // the quoting is already gone by the time a cast is written. Splitting on whitespace would then
-  // publish a directory-name fragment - "C:\Users\me\Contoso Secret Project\bin\copilot.exe" would
-  // render as "Contoso" - which is the same internal-inventory leak this whole guard exists to
-  // stop. Prefer the longest leading run that ends in a known executable extension.
-  const withExt = quoted ? null : /^(.*?\.(?:exe|cmd|bat|ps1|com))(?=\s|$)/i.exec(rest);
-  const first = quoted ? quoted[1] : (withExt ? withExt[1] : (rest.split(/\s+/)[0] || ""));
   // Anything that is not a plausible bare program name - a flag, a leftover assignment, an empty
   // token - is NOT published. The whole premise here is that a command's shape cannot be trusted.
   if (!first || first.startsWith("-") || first.includes("=")) return "session";
@@ -585,23 +652,30 @@ export function windowLabel(command, options = {}) {
 // The prompt a `-p` invocation carried, and NOTHING after it. The extraction used to run to the end
 // of the string, so `copilot -p "review this" --disable-mcp-server kusto` painted the flags across
 // the title card in the largest type in the clip - the same leak the window chrome had, on a louder
-// surface. A quoted prompt ends at its closing quote; an unquoted one ends at the next flag.
+// surface. Matching is done on TOKENS, so a `-p` sitting inside another argument's quoted value is
+// not mistaken for the flag.
 export function promptFromCommand(command) {
-  const raw = String(command == null ? "" : command);
-  const at = /(?:^|\s)-p(?:\s+|=)/.exec(raw);
-  if (!at) return null;
-  const after = raw.slice(at.index + at[0].length).trim();
-  if (!after) return null;
-  const quoted = /^"([^"]*)"/.exec(after) || /^'([^']*)'/.exec(after);
-  if (quoted) return quoted[1].trim() || null;
-  // Unquoted: stop at the first token that looks like a flag, so trailing options never ride along.
-  const words = [];
-  for (const word of after.split(/\s+/)) {
-    if (/^-/.test(word)) break;
-    words.push(word);
+  const tokens = Array.isArray(command)
+    ? command.map((a) => ({ value: String(a), quoted: false }))
+    : tokenizeCommand(command);
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token.quoted) continue;
+    let rest = null;
+    if (token.value === "-p") rest = tokens.slice(i + 1);
+    else if (token.value.startsWith("-p=")) return token.value.slice(3).trim() || null;
+    if (!rest) continue;
+    if (!rest.length) return null;
+    // A quoted prompt is exactly one token, so it may legitimately begin with a dash.
+    if (rest[0].quoted) return rest[0].value.trim() || null;
+    const words = [];
+    for (const word of rest) {
+      if (!word.quoted && word.value.startsWith("-")) break;
+      words.push(word.value);
+    }
+    return words.join(" ").trim() || null;
   }
-  const prompt = words.join(" ").replace(/^["']|["']$/g, "").trim();
-  return prompt || null;
+  return null;
 }
 
 async function saveVideo(page, context, outFile) {
@@ -1035,9 +1109,7 @@ async function captureTerminal(args) {
   // can carry a credential (`curl -H "Authorization: Bearer ..."`), so it is scrubbed like output.
   // Argv elements holding whitespace are re-quoted so the stored string round-trips: joining them
   // bare loses the boundary, and a Windows path with a space then reads as several tokens.
-  const commandLine = scrubText(
-    command.map((a) => (/\s/.test(a) ? '"' + String(a).replace(/"/g, '\\"') + '"' : a)).join(" "),
-    rules);
+  const commandLine = scrubText(joinCommand(command), rules);
 
   // Scrub BEFORE anything touches the disk: the raw stream is never persisted.
   const scrubbed = scrubEvents(events, { rules });
@@ -1045,6 +1117,10 @@ async function captureTerminal(args) {
     version: 1,
     recordedAt: new Date().toISOString(),
     command: commandLine,
+    // The SAME invocation as argv, so the program name is known exactly rather than reverse
+    // engineered out of a joined string (a path with spaces, or a value ending in .exe, cannot be
+    // told apart once flattened). Scrubbed element-wise for the same reason `command` is.
+    argv: command.map((a) => scrubText(String(a), rules)),
     cols,
     rows,
     // Provenance, NOT identity: the machine-specific rules (home path, account name) are built from
@@ -1098,9 +1174,12 @@ async function captureTerminal(args) {
 }
 
 // A cast's COMMAND is shown in the clip's title bar, so the gate has to read it too - scanning only
-// the output would wave through a credential passed on the command line.
+// the output would wave through a credential passed on the command line. `argv` carries the same
+// invocation and is what the label now reads, so it is scanned as well: a cast whose two forms ever
+// diverge must not have an unscanned half.
 function castText(cast) {
-  return `${cast.command || ""}\n${cast.events.map((e) => e.data).join("")}`;
+  const argv = Array.isArray(cast.argv) ? cast.argv.join("\n") : "";
+  return `${cast.command || ""}\n${argv}\n${cast.events.map((e) => e.data).join("")}`;
 }
 
 // The tail of a real capture is dead air: the session records on until the script's quit step
@@ -1307,14 +1386,17 @@ const CLEAR_COMMENTS_SCRIPT = `(() => {
 export function askFromCast(cast, args, preferredMark = "ask") {
   if (args.ask) return String(args.ask);
   const marks = Array.isArray(cast.marks) ? cast.marks : [];
-  const chosen = marks.find((m) => m.label === preferredMark && m.text) || marks.find((m) => m.text);
+  // ONLY the mark that is meant to state the ask. Falling back to "any mark with text" published
+  // whatever the next step happened to carry - a `paste` step's payload is a whole review bundle,
+  // and it would be painted across the card in the largest type in the clip.
+  const chosen = marks.find((m) => m.label === preferredMark && m.text);
   if (chosen) return String(chosen.text).trim();
-  const fromCommand = promptFromCommand(cast.command);
+  const fromCommand = promptFromCommand(cast.argv || cast.command);
   if (fromCommand) return fromCommand;
   // NOT the raw command. With no prompt to state there is nothing worth reading here, and the
   // invocation would be painted across the card in the largest type in the clip - a louder leak
   // than the window chrome that prompted this.
-  return windowLabel(cast.command, args);
+  return windowLabel(cast.argv || cast.command, args);
 }
 
 // The card has to hold whatever the real prompt turned out to be, and a real prompt is often a
@@ -1584,7 +1666,7 @@ async function recordLoop(args) {
       endHoldMs,
       ask,
       reportUrl: `./${encodeURIComponent(reportName)}`,
-      title: windowLabel(cast.command, args),
+      title: windowLabel(cast.argv || cast.command, args),
     });
     // The stage is written NEXT TO the report and loaded from file://, for the same reason the
     // standalone montage is: a generated report links its runtime with absolute `file:///` URLs, and
@@ -1801,7 +1883,7 @@ async function renderTerminal(args) {
   try {
     ensureDir(stageDir);
     const pageFile = path.join(stageDir, "player.html");
-    fs.writeFileSync(pageFile, terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask, title: windowLabel(cast.command, args) }));
+    fs.writeFileSync(pageFile, terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask, title: windowLabel(cast.argv || cast.command, args) }));
     const videoDir = path.join(stageDir, "video");
     ensureDir(videoDir);
     browser = await chromium.launch();
