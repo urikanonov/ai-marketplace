@@ -46,6 +46,10 @@ RUNNER = "run_script_tests.py"
 _DISCOVER_RE = re.compile(r"unittest\s+discover\b")
 _SCRIPTS_DIR_RE = re.compile(
     r"(?:(?:-s|--start-directory)[=\s]+|discover\s+(?:-[a-zA-Z]+\s+)*)[\"']?\.?[\\/]?scripts\b")
+#: Running one module by path (`python scripts/test_build_site_data.py`) skips the runner just as
+#: completely as discovering the whole suite does, so it is the same offence.
+_DIRECT_MODULE_RE = re.compile(
+    r"\bpython[0-9.]*\b.*?[\s\"'=]\.?[\\/]?scripts[\\/]test_[\w*?.-]+\.py")
 
 # The subprocess entry points a test can use to spawn a command.
 _SPAWNERS = {"run", "Popen", "check_output", "check_call", "call"}
@@ -244,17 +248,18 @@ class EverySuiteLaunchGoesThroughTheLeakGuard(unittest.TestCase):
     cannot slip past by rewording."""
 
     def _launchers(self, source):
-        """Lines of `source` that discover tests under `scripts/` themselves.
+        """Lines of `source` that run tests under `scripts/` outside the runner.
 
-        There is no exemption for a single named module: a targeted run leaks exactly the same way
-        the whole suite does, and the runner takes `--pattern` for that case, so reverting a step to
-        direct discovery is caught however narrow it is."""
+        Both spellings count: discovering the suite, and running ONE module by path. A targeted run
+        leaks exactly the same way the whole suite does, and the runner takes `--pattern` for that
+        case, so reverting a step to a direct run is caught however narrow it is."""
         found = []
         # Drop shell comments so the RATIONALE for this rule cannot trip the rule.
         source = re.sub(r"(?m)^\s*#.*$", "", source)
         for line in re.sub(r"\\\r?\n\s*", " ", source).splitlines():
             stripped = line.strip()
-            if _DISCOVER_RE.search(stripped) and _SCRIPTS_DIR_RE.search(stripped):
+            discovers = _DISCOVER_RE.search(stripped) and _SCRIPTS_DIR_RE.search(stripped)
+            if discovers or _DIRECT_MODULE_RE.search(stripped):
                 found.append(stripped)
         return found
 
@@ -322,11 +327,14 @@ class EverySuiteLaunchGoesThroughTheLeakGuard(unittest.TestCase):
                      "run: python -m unittest discover -s=scripts",
                      "run: python -m unittest discover scripts",
                      "run: python -m unittest discover -v scripts",
-                     'run: python -m unittest discover -s scripts -p "test_build_site_data.py"'):
+                     'run: python -m unittest discover -s scripts -p "test_build_site_data.py"',
+                     "run: python scripts/test_build_site_data.py",
+                     "run: python -X dev ./scripts/test_task.py"):
             self.assertEqual(len(self._launchers(line)), 1, "not caught: %s" % line)
         for line in ("run: python scripts/run_script_tests.py",
                      "run: python scripts/run_script_tests.py --pattern test_build_site_data.py",
                      "run: python -m unittest discover -s plugins/x/dev/tests",
+                     "run: python plugins/x/dev/tests/test_thing.py",
                      "        # a comment about unittest discover -s scripts is not a launcher"):
             self.assertEqual(self._launchers(line), [], "false positive: %s" % line)
 

@@ -197,6 +197,24 @@ class WorktreeState(unittest.TestCase):
             tracked.write_text("qqq\n", encoding="utf-8")
             self.assertNotEqual(rst.worktree_state(tmp), before)
 
+    def test_detaching_head_at_the_same_commit_is_a_change(self):
+        # Status, HEAD, refs, diff, and the untracked digest all stay identical when a suite
+        # detaches HEAD or switches to another branch at the same commit, so the checked-out REF
+        # has to be part of the snapshot: leaving the developer somewhere else is a real change.
+        with tempfile.TemporaryDirectory() as tmp:
+            env = clean_git_env()
+            if not self._init(tmp, env):
+                self.skipTest("git is not available")
+            (Path(tmp) / "keep.md").write_bytes(b"keep\n")
+            self._commit(tmp, env, "keep.md", "base")
+            before = rst.worktree_state(tmp)
+            head_before = self._head(tmp, env)
+            subprocess.run(["git", "-C", tmp, "checkout", "--detach", "-q"], check=True,
+                           capture_output=True, text=True, env=env)
+            self.assertEqual(self._head(tmp, env), head_before,
+                             "the commit moved, so this would be caught without the ref probe")
+            self.assertNotEqual(rst.worktree_state(tmp), before)
+
     def _init(self, root, env):
         proc = subprocess.run(["git", "-C", str(root), "init", "-q", "-b", "main"],
                               capture_output=True, text=True, env=env)

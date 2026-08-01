@@ -41,11 +41,15 @@ HINT = ("write scratch files under tempfile.TemporaryDirectory() (or another abs
 
 #: What "the repository is unchanged" means. `git status --porcelain` alone would miss a suite that
 #: COMMITTED its fixtures (status comes back clean), moved a ref, or rewrote the CONTENT of a file
-#: that was already dirty before the run - so HEAD, the refs, and the full diff are all part of the
-#: snapshot. Untracked files are hashed separately, since status only names them.
+#: that was already dirty before the run - so HEAD, the CHECKED-OUT REF (a suite that detached HEAD
+#: or switched to another branch at the same commit leaves every other probe identical), the refs,
+#: and the full diff are all part of the snapshot. Untracked files are hashed separately, since
+#: status only names them. A detached HEAD records the ref probe as unavailable, which is stable and
+#: therefore still comparable.
 _PROBES = (
     ("status", ["status", "--porcelain"]),
     ("head", ["rev-parse", "HEAD"]),
+    ("branch", ["symbolic-ref", "-q", "HEAD"]),
     ("refs", ["for-each-ref", "--format=%(refname) %(objectname)"]),
     ("diff", ["diff", "HEAD"]),
 )

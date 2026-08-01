@@ -342,7 +342,7 @@ sharded job's matrix a complete `1..N` cover so an entry can never be silently d
 - Site suite: from `site/tests`, `npm ci --ignore-scripts`, `npx playwright install chromium`, then
   `npx playwright test`. Filter with `-g "SITE-DEMO-08"` while iterating.
 - A plugin suite: from `plugins/<plugin>/dev`, the same `npm ci` / install / `npm test` flow.
-- Generator tests: `python scripts/test_build_site_data.py`.
+- Generator tests: `python scripts/run_script_tests.py --pattern test_build_site_data.py`.
 - The whole `scripts/` suite: `python scripts/run_script_tests.py`. Always use the runner rather than
   `unittest discover` directly - it runs the suite from a throwaway working directory and fails if a
   test left a file behind or changed the repository tree, which is the guard that keeps scratch
