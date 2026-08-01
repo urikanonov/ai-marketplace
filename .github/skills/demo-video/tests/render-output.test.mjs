@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   windowLabel,
   promptFromCommand,
+  tokenizeCommand,
   joinCommand,
   askFromCast,
   terminalPage,
@@ -190,6 +191,14 @@ test("the title card never falls back to the raw command (DEMO-SAFE-33)", () => 
   assert.equal(
     askFromCast({ command: LEAKY, marks: [{ label: "ask", text: " from the mark " }] }, {}),
     "from the mark");
+  // Precedence: an explicit --ask, then the ask mark, then the -p prompt, then the program name.
+  assert.equal(
+    askFromCast({ command: "copilot -p from the prompt", marks: [{ label: "ask", text: "from the mark" }] },
+      { ask: "from the flag" }),
+    "from the flag");
+  assert.equal(
+    askFromCast({ command: "copilot -p from the prompt", marks: [{ label: "ask", text: "from the mark" }] }, {}),
+    "from the mark");
   // But ONLY that mark. Falling back to "any mark with text" published whatever the next step
   // carried - a paste step's payload is a whole review bundle, in the largest type in the clip.
   assert.equal(
@@ -198,6 +207,24 @@ test("the title card never falls back to the raw command (DEMO-SAFE-33)", () => 
       marks: [{ label: "ask", text: "" }, { label: "paste", text: "host.internal review bundle" }],
     }, {}),
     "copilot");
+});
+
+test("the command tokenizer keeps quoted values whole (DEMO-SAFE-37)", () => {
+  // Both label and prompt extraction read tokens, so the quoting rules are load-bearing for two
+  // separate leak guards and are worth pinning on their own.
+  assert.deepEqual(tokenizeCommand('copilot --note "a b" -p x'),
+    [{ value: "copilot", quoted: false }, { value: "--note", quoted: false },
+      { value: "a b", quoted: true }, { value: "-p", quoted: false }, { value: "x", quoted: false }]);
+  // A token that merely CONTAINS a quoted section is not itself a quoted value, which is what lets
+  // `-p="x y"` still be recognised as the flag while `"value -p hidden"` is not.
+  assert.deepEqual(tokenizeCommand('-p="x y"'), [{ value: "-p=x y", quoted: false }]);
+  // An escaped quote stays in the value instead of closing it early.
+  assert.deepEqual(tokenizeCommand('"say \\"hi\\" now"'), [{ value: 'say "hi" now', quoted: true }]);
+  assert.deepEqual(tokenizeCommand(""), []);
+  assert.deepEqual(tokenizeCommand(null), []);
+  // An empty quoted argument is a real, distinct token.
+  assert.deepEqual(tokenizeCommand('copilot ""'),
+    [{ value: "copilot", quoted: false }, { value: "", quoted: true }]);
 });
 
 // The helpers above are only worth anything if the PAGES actually use them. Reverting either page

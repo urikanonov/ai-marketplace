@@ -2022,6 +2022,7 @@ const USAGE = `demo-video recorder
 
   node record_demo.mjs report  [--seconds 10] [--example <file>] [--out <file.webm>] [--list]
   node record_demo.mjs loop    --cast <file.cast.json> --example <report.html> [--split paste]
+                               [--show-command]
   node record_demo.mjs capture [--out <f.cast.json>] [--cols 120] [--rows 30] [--script <f.json>] [--max-mb 48] -- <cmd...>
   node record_demo.mjs render  --cast <file.cast.json> [--seconds 45] [--idle 900] [--out <file.webm>]
                                [--until "<marker>"] [--until-after <mark>] [--until-gap <seconds>]
