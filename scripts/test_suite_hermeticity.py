@@ -14,6 +14,12 @@ guards keep every test on it: the static one is the general rule (any test that 
 its environment through the helper), and the behavioral one proves the rule is load-bearing by
 running the real-git suite under an inherited hook environment and asserting the ambient repository
 comes out byte-identical.
+
+Scrubbing the environment closes only one of the two leak vectors, though. The other one (#791) is
+plainer: a test that writes a bare relative filename puts it in whatever directory the suite was
+launched from, and both `pre-push` and CI launch it from the repository root. `run_script_tests.py`
+closes that by running the suite from a throwaway cwd, so a third guard here keeps every launcher
+on it.
 """
 import ast
 import os
@@ -30,6 +36,11 @@ from _git_test_env import clean_git_env  # noqa: E402
 SCRIPTS = Path(__file__).resolve().parent
 SELF = Path(__file__).name
 HOOK = SCRIPTS.parent / ".githooks" / "pre-push"
+WORKFLOWS = SCRIPTS.parent / ".github" / "workflows"
+#: The launcher that runs the suite from a throwaway cwd and fails on anything left behind.
+RUNNER = "run_script_tests.py"
+#: How the full scripts suite is discovered; a launcher that spells this out is bypassing RUNNER.
+FULL_SUITE = "unittest discover -s scripts"
 
 # The subprocess entry points a test can use to spawn a command.
 _SPAWNERS = {"run", "Popen", "check_output", "check_call", "call"}
@@ -166,7 +177,8 @@ class HookScrubsTheGitEnvironment(unittest.TestCase):
     hook is what makes hermeticity independent of any individual test."""
 
     #: What a line has to mention to count as "this launches a test suite".
-    SUITE_TOKENS = ("unittest discover", "-m unittest", "pytest", "run_plugin_python_tests.py")
+    SUITE_TOKENS = ("unittest discover", "-m unittest", "pytest", "run_plugin_python_tests.py",
+                    RUNNER)
 
     def _hook_source(self):
         if not HOOK.exists():
@@ -194,7 +206,7 @@ class HookScrubsTheGitEnvironment(unittest.TestCase):
         # The denylist above cannot tell "protected" from "absent", so pin that the two suites this
         # hook is supposed to run are actually there, and hermetic.
         source = self._hook_source()
-        for suite in ("-m unittest discover -s scripts", "run_plugin_python_tests.py"):
+        for suite in (RUNNER, "run_plugin_python_tests.py"):
             launched = [line.strip() for line in source.splitlines()
                         if suite in line and line.strip().startswith("run_hermetic ")]
             self.assertTrue(launched,
@@ -213,6 +225,69 @@ class HookScrubsTheGitEnvironment(unittest.TestCase):
             missing, [],
             "the pre-push hook's unset list has drifted from _git_test_env._GIT_LOCATION_VARS: %r"
             % (missing,))
+
+
+class EverySuiteLaunchGoesThroughTheLeakGuard(unittest.TestCase):
+    """Nothing may launch the full scripts suite except `run_script_tests.py`.
+
+    Scrubbing the git environment closes one leak vector; it does nothing about the other one
+    (#791): a test that writes a bare relative filename lands it in whatever directory the suite
+    was launched from, which for `pre-push` and CI is the repository root. `run_script_tests.py`
+    runs the suite from a throwaway cwd and fails on anything left behind, so it only protects the
+    launches that actually use it - hence this rule. It is a denylist, so a launcher added later is
+    caught even though this test has never heard of it."""
+
+    def _launchers(self, source):
+        """Lines of `source` that discover the FULL scripts suite themselves.
+
+        A single-module run (`-p "test_build_site_data.py"` in the pages workflow) is not the
+        suite and is left alone."""
+        found = []
+        for line in re.sub(r"\\\r?\n\s*", " ", source).splitlines():
+            stripped = line.strip()
+            if FULL_SUITE not in stripped:
+                continue
+            if "-p " in stripped and "test_*.py" not in stripped:
+                continue
+            found.append(stripped)
+        return found
+
+    def test_the_pre_push_hook_launches_the_suite_through_the_runner(self):
+        if not HOOK.exists():
+            self.skipTest("pre-push hook not present")
+        source = HOOK.read_text(encoding="utf-8")
+        self.assertIn(RUNNER, source,
+                      "the pre-push hook no longer runs the scripts suite through %s, so a test "
+                      "that writes a scratch file into the cwd would dirty the repo root again"
+                      % RUNNER)
+        self.assertEqual(
+            self._launchers(source), [],
+            "these pre-push lines discover the scripts suite directly instead of running it "
+            "through %s: %r" % (RUNNER, self._launchers(source)))
+
+    def test_no_workflow_launches_the_suite_directly(self):
+        if not WORKFLOWS.is_dir():
+            self.skipTest("no workflows directory")
+        offenders = []
+        for path in sorted(WORKFLOWS.glob("*.yml")):
+            offenders += ["%s: %s" % (path.name, line)
+                          for line in self._launchers(path.read_text(encoding="utf-8"))]
+        self.assertEqual(
+            offenders, [],
+            "these CI steps discover the scripts suite directly, so a test that leaks a file into "
+            "the cwd goes unnoticed - run it through scripts/%s: %r" % (RUNNER, offenders))
+
+    def test_every_job_that_runs_the_suite_still_runs_it(self):
+        # The denylist cannot tell "guarded" from "deleted", so pin that both `validate.yml` jobs
+        # (`validate` and `cross-platform`) still run the suite - through the runner.
+        validate = WORKFLOWS / "validate.yml"
+        if not validate.exists():
+            self.skipTest("validate workflow not present")
+        source = validate.read_text(encoding="utf-8")
+        self.assertGreaterEqual(
+            source.count(RUNNER), 2,
+            "validate.yml should run the scripts suite through scripts/%s in both the `validate` "
+            "and `cross-platform` jobs" % RUNNER)
 
 
 class AmbientRepoIsUntouched(unittest.TestCase):

@@ -35,6 +35,16 @@ spec-and-test rules in [../AGENTS.md](../AGENTS.md); where they overlap, AGENTS.
   would see instead.
 - **Keep tests deterministic and hermetic.** No dependence on wall-clock, network, or ordering. Sort
   any collected output before asserting on it.
+- **Never write a scratch file with a bare relative name.** A test that opens `"a.md"` puts it in the
+  caller's working directory, which for the `pre-push` hook and CI is the repository root - so the tree
+  is dirty after every push (a following `git rebase` then refuses to run), and an unrelated PR's
+  `git add -A` can commit the residue. That is exactly how `a.md` and `old.md` reached `main` (#791).
+  Build every fixture under a `tempfile.TemporaryDirectory()` (or another ABSOLUTE temp path) and pass
+  absolute paths. Likewise, spawn `git` with an explicit `-C <tempdir>` or `cwd=`, and route its
+  environment through `scripts/_git_test_env.clean_git_env()` so an inherited `GIT_DIR` cannot redirect
+  it at the real repository (#778). `scripts/run_script_tests.py` runs the whole suite from a throwaway
+  cwd and fails if anything is left in it or if the repository tree changed, so a regression here is
+  caught on the very first push - but write the test hermetically in the first place.
 
 ## Playwright specifics
 
@@ -333,6 +343,11 @@ sharded job's matrix a complete `1..N` cover so an entry can never be silently d
   `npx playwright test`. Filter with `-g "SITE-DEMO-08"` while iterating.
 - A plugin suite: from `plugins/<plugin>/dev`, the same `npm ci` / install / `npm test` flow.
 - Generator tests: `python scripts/test_build_site_data.py`.
+- The whole `scripts/` suite: `python scripts/run_script_tests.py`. Always use the runner rather than
+  `unittest discover` directly - it runs the suite from a throwaway working directory and fails if a
+  test left a file behind or changed the repository tree, which is the guard that keeps scratch
+  fixtures out of the repo root. If you are editing files while the (slow) suite runs, the tree diff
+  will flag YOUR edits; pass `--no-worktree-check` for that case - the sandbox check still applies.
 - The `pre-push` hook and CI run the validators, the Python script unit tests, the changelog/version
   gates, and the `--check` drift guards on every push. The browser (Playwright) suites are the slower,
   occasionally flaky gates: they do NOT run in the pre-push hook by default (set `RUN_E2E=1` to include
@@ -342,6 +357,9 @@ sharded job's matrix a complete `1..N` cover so an entry can never be silently d
 ## Pitfall checklist
 
 - Did the new test fail on the OLD code? If it passed before your change, it is not pinning the change.
+- Does every scratch file the test writes live under a `tempfile.TemporaryDirectory()`, and does every
+  `git` spawn name its directory (`-C` / `cwd=`) with `clean_git_env()`? A bare relative name dirties
+  the repository root.
 - For a CSS or content change, did you run `build_site_data.py` before running the browser suite?
 - For a layout assertion, is the viewport one where the behavior is actually observable?
 - For a show/hide change, are you asserting visibility rather than a computed style on a hidden element?
