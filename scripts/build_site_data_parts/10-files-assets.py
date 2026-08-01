@@ -168,7 +168,7 @@ def build_page(root, source_rel, region_fillers):
         else:
             raise SystemExit("build_page: unknown region filler kind %r (use 'inline' or 'block')" % kind)
     out = stamp_assets(out, root)
-    out = stamp_tutorial_assets(out, root)
+    out = stamp_tutorial_assets(out, root, source_rel)
     return apply_page_banner(out, source_rel)
 
 
@@ -202,38 +202,61 @@ def stamp_assets(text, root):
 # keeps a same-named file elsewhere from being rewritten into a broken URL.
 #
 # A reference that already carries a query is not matched (the pattern ends at the closing quote),
-# so this never double-stamps what stamp_assets already handled. The prefix is deliberately loose:
-# the tutorial page uses `assets/x.png` while the plugin page points at the same image as
-# `tutorial/assets/x.png`, and both must be stamped.
+# so this never double-stamps what stamp_assets already handled. The prefix is restricted to the two
+# shapes the site actually emits: the tutorial page's own `assets/x.png` and the plugin page's
+# `tutorial/assets/x.png` for the SAME image. It deliberately does not accept an arbitrary path
+# segment - `../assets/x.png` resolves somewhere else entirely, and stamping it with a tutorial
+# image's digest would be a silently wrong cache key on an unrelated file.
 _TUTORIAL_ASSET_REF_RE = re.compile(
-    r'(?P<attr>src|href)="(?P<path>(?:[\w.\-]+/)*assets/(?P<file>[\w.\-]+'
+    r'(?P<attr>src|href)="(?P<path>(?:\./)?(?:tutorial/)?assets/(?P<file>[\w.\-]+'
     r'\.(?:png|jpg|jpeg|webm|mp4)))"')
 
 
 def _tutorial_asset_names(root):
-    directory = os.path.join(root, TUTORIAL_IMAGES_DST)
+    directory = os.path.join(root, TUTORIAL_IMAGES_SRC)
     try:
-        return frozenset(os.listdir(directory))
+        return frozenset(n for n in os.listdir(directory)
+                         if os.path.isfile(os.path.join(directory, n)))
     except OSError:
         return frozenset()
 
 
 def _tutorial_asset_hash(root, name):
-    path = os.path.join(root, TUTORIAL_IMAGES_DST, name)
-    with open(path, "rb") as fh:
-        return hashlib.sha256(fh.read()).hexdigest()[:12]
+    # Hash the SOURCE, not the copy under site/dist. sync_tutorial_images runs AFTER the pages are
+    # built, so hashing the destination stamped a page with the PREVIOUS build's bytes and then
+    # overwrote them - the stamp lagged a build behind and pointed at content the visitor no longer
+    # got, defeating the whole point. The sync is a byte-for-byte copy, so the source IS the served
+    # content and hashing it is correct regardless of build order.
+    path = os.path.join(root, TUTORIAL_IMAGES_SRC, name)
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read()
+    except OSError as exc:
+        raise SystemExit("cannot read tutorial image %s (%s); it is a committed source, not "
+                         "generated - restore it" % (path, exc))
+    return hashlib.sha256(data).hexdigest()[:12]
 
 
-def stamp_tutorial_assets(text, root):
-    """Append a ?v=<content-hash> query to every reference to a tutorial image, wherever the page
-    that holds it sits. A name that is not a real tutorial image is left untouched."""
+def stamp_tutorial_assets(text, root, source_rel=None):
+    """Append a ?v=<content-hash> query to every reference to a tutorial image. A reference is
+    stamped only when it RESOLVES to a real file in the tutorial assets directory, so a same-named
+    file served from the site's shared assets/ can never pick up a tutorial image's digest."""
     names = _tutorial_asset_names(root)
     cache = {}
+    # Where the page holding these references will be served from, so `assets/x.png` on the tutorial
+    # page and `tutorial/assets/x.png` on the plugin page are each resolved on their own terms.
+    page_dir = os.path.dirname(os.path.relpath(source_rel, SITE_PAGES)) if source_rel else ""
+    tutorial_dir = os.path.normpath(os.path.join(root, TUTORIAL_IMAGES_DST))
 
     def repl(match):
         name = match.group("file")
         if name not in names:
             return match.group(0)
+        if source_rel is not None:
+            target = os.path.normpath(
+                os.path.join(root, SITE_OUT, page_dir, match.group("path").replace("/", os.sep)))
+            if os.path.dirname(target) != tutorial_dir:
+                return match.group(0)
         if name not in cache:
             cache[name] = _tutorial_asset_hash(root, name)
         return '%s="%s?v=%s"' % (match.group("attr"), match.group("path"), cache[name])
