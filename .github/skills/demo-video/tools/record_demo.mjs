@@ -1256,7 +1256,10 @@ function scanCast(args) {
   return findings;
 }
 
-export function terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask, title, xterm = null }) {
+export function terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask, args = {}, xterm = null }) {
+  // The label is computed HERE, from the cast, so a caller cannot pass the raw command by mistake
+  // or by a revert. That bypass is exactly how this leak shipped, one layer up.
+  const title = windowLabel(cast.argv || cast.command, args);
   const xtermJs = xterm ? xterm.js : fs.readFileSync(resolveOptionalPath("@xterm/xterm", "lib", "xterm.js"), "utf8");
   const xtermCss = xterm ? xterm.css : fs.readFileSync(resolveOptionalPath("@xterm/xterm", "css", "xterm.css"), "utf8");
   const payload = scriptJson({
@@ -1416,7 +1419,8 @@ function askFontPx(ask) {
 // terminal is an xterm exactly like the standalone render; the report lives in a full-viewport
 // iframe on top of it. Node drives the phases through `window.__stage`, and because page.evaluate
 // awaits a returned promise, the handshake needs no polling.
-export function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, reportUrl, title, xterm = null }) {
+export function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, reportUrl, args = {}, xterm = null }) {
+  const title = windowLabel(cast.argv || cast.command, args);
   const xtermJs = xterm ? xterm.js : fs.readFileSync(resolveOptionalPath("@xterm/xterm", "lib", "xterm.js"), "utf8");
   const xtermCss = xterm ? xterm.css : fs.readFileSync(resolveOptionalPath("@xterm/xterm", "css", "xterm.css"), "utf8");
   const payload = scriptJson({
@@ -1666,7 +1670,7 @@ async function recordLoop(args) {
       endHoldMs,
       ask,
       reportUrl: `./${encodeURIComponent(reportName)}`,
-      title: windowLabel(cast.argv || cast.command, args),
+      args,
     });
     // The stage is written NEXT TO the report and loaded from file://, for the same reason the
     // standalone montage is: a generated report links its runtime with absolute `file:///` URLs, and
@@ -1883,7 +1887,7 @@ async function renderTerminal(args) {
   try {
     ensureDir(stageDir);
     const pageFile = path.join(stageDir, "player.html");
-    fs.writeFileSync(pageFile, terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask, title: windowLabel(cast.argv || cast.command, args) }));
+    fs.writeFileSync(pageFile, terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask, args }));
     const videoDir = path.join(stageDir, "video");
     ensureDir(videoDir);
     browser = await chromium.launch();

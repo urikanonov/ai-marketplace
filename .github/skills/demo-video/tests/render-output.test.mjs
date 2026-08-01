@@ -27,7 +27,7 @@ function buildTerminalPage(cast, args) {
     endHoldMs: 0,
     introMs: 0,
     ask: askFromCast(cast, args),
-    title: windowLabel(cast.argv || cast.command, args),
+    args,
     xterm: XTERM,
   });
 }
@@ -41,7 +41,7 @@ function buildStagePage(cast, args) {
     endHoldMs: 0,
     ask: askFromCast(cast, args),
     reportUrl: "./report.html",
-    title: windowLabel(cast.argv || cast.command, args),
+    args,
     xterm: XTERM,
   });
 }
