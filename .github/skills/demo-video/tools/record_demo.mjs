@@ -572,7 +572,7 @@ export function tokenizeCommand(raw) {
   let quoted = false;
   let started = false;
   const push = () => {
-    if (started) tokens.push({ value: current, quoted });
+    if (started) tokens.push({ value: current, quoted, closed: quote === null });
     current = "";
     quoted = false;
     started = false;
@@ -580,7 +580,9 @@ export function tokenizeCommand(raw) {
   for (let i = 0; i < String(raw == null ? "" : raw).length; i++) {
     const ch = raw[i];
     if (quote) {
-      if (ch === "\\" && raw[i + 1] === quote) { current += quote; i += 1; continue; }
+      // Backslash-escaping is a double-quote convention; inside single quotes a backslash is
+      // literal, and treating it as an escape swallows a Windows path that ends in a separator.
+      if (ch === "\\" && quote === '"' && raw[i + 1] === quote) { current += quote; i += 1; continue; }
       if (ch === quote) { quote = null; continue; }
       current += ch;
       continue;
@@ -630,6 +632,9 @@ export function windowLabel(command, options = {}) {
       assignment = /^[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+/.exec(rest);
     }
     const tokens = tokenizeCommand(rest);
+    // An unterminated quote swallowed the rest of the line, so the token is not a value at all -
+    // trusting it published the whole flag tail as the window title.
+    if (tokens.some((t) => !t.closed)) return "session";
     first = tokens.length ? tokens[0].value : "";
     // An UNQUOTED path with spaces was flattened by an older capture, so the first token is only a
     // FRAGMENT of it. Recover the whole path - but ONLY when the command starts at a path root, or
@@ -650,7 +655,10 @@ export function windowLabel(command, options = {}) {
   // Anything that is not a plausible bare program name - a flag, a leftover assignment, an empty
   // token - is NOT published. The whole premise here is that a command's shape cannot be trusted.
   if (!first || first.startsWith("-") || first.includes("=")) return "session";
-  const base = first.split(/[\\/]/).pop() || first;
+  // A token ending in a path separator has no basename; falling back to the whole token published
+  // the entire path. Every other rejection here fails closed, and so does this one.
+  const base = first.split(/[\\/]/).pop();
+  if (!base) return "session";
   const label = base.replace(/\.(exe|cmd|bat|ps1|com)$/i, "");
   return label && !label.startsWith("-") ? label : "session";
 }
@@ -661,12 +669,15 @@ export function windowLabel(command, options = {}) {
 // surface. Matching is done on TOKENS, so a `-p` sitting inside another argument's quoted value is
 // not mistaken for the flag.
 export function promptFromCommand(command) {
+  // An argv element IS an exact token, so it is treated as quoted: a prompt may then legitimately
+  // begin with a dash, and a following positional argument is never joined onto it.
   const tokens = Array.isArray(command)
-    ? command.map((a) => ({ value: String(a), quoted: false }))
+    ? command.map((a) => ({ value: String(a), quoted: true, closed: true }))
     : tokenizeCommand(command);
+  if (tokens.some((t) => !t.closed)) return null;
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
-    if (token.quoted) continue;
+    if (token.quoted && !token.value.startsWith("-p")) continue;
     let rest = null;
     if (token.value === "-p") rest = tokens.slice(i + 1);
     else if (token.value.startsWith("-p=")) return token.value.slice(3).trim() || null;
@@ -1125,8 +1136,10 @@ async function captureTerminal(args) {
     command: commandLine,
     // The SAME invocation as argv, so the program name is known exactly rather than reverse
     // engineered out of a joined string (a path with spaces, or a value ending in .exe, cannot be
-    // told apart once flattened). Scrubbed element-wise for the same reason `command` is.
-    argv: command.map((a) => scrubText(String(a), rules)),
+    // told apart once flattened). DERIVED FROM the scrubbed line rather than scrubbed element-wise:
+    // a rule that spans argument boundaries only fires on the joined text, so splitting first could
+    // let something through that `command` itself would have caught.
+    argv: tokenizeCommand(commandLine).map((t) => t.value),
     cols,
     rows,
     // Provenance, NOT identity: the machine-specific rules (home path, account name) are built from

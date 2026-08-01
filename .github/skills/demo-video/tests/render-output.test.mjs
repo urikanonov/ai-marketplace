@@ -79,6 +79,13 @@ test("the launch command is reduced to its program name (DEMO-SAFE-31)", () => {
   assert.equal(windowLabel("bin/-weird.exe"), "session");
   // A `-p` sitting inside another argument's quoted VALUE is not the prompt flag.
   assert.equal(windowLabel('copilot --note "value -p hidden" --banner'), "copilot");
+  // An unterminated quote swallowed the rest of the line, so nothing in it can be trusted -
+  // publishing that token put the whole flag tail in the window title.
+  assert.equal(windowLabel('"C:\\Program Files\\copilot.exe --banner'), "session");
+  assert.equal(windowLabel('"C:\\Contoso Secret Project\\bin\\" --disable-mcp-server kusto'), "session");
+  // A token ending in a separator has no basename; falling back to the whole token published the
+  // entire path, so this fails closed like every other rejection here.
+  assert.equal(windowLabel('"C:\\Contoso Secret Project\\bin\\"'), "session");
   assert.equal(windowLabel(""), "session");
   assert.equal(windowLabel(null), "session");
   assert.equal(windowLabel("   "), "session");
@@ -117,9 +124,14 @@ test("a cast's argv gives the program name exactly, with no guessing (DEMO-SAFE-
   assert.match(
     windowLabel(["C:\\Program Files\\Copilot\\copilot.exe", "--banner"], { "show-command": true }),
     /^"C:\\Program Files\\Copilot\\copilot\.exe" --banner$/);
-  // The prompt is read off argv too.
+  // The prompt is read off argv too, where each element is an EXACT token: a prompt may begin with
+  // a dash, and a following positional argument is never joined onto it.
   assert.equal(promptFromCommand(["copilot", "-p", "review this", "--disable-mcp-server", "kusto"]),
     "review this");
+  assert.equal(promptFromCommand(["copilot", "-p", "--summarize the log"]), "--summarize the log");
+  assert.equal(promptFromCommand(["copilot", "-p", "review", "internal-host-name"]), "review");
+  // An unterminated quote means the rest of the line was swallowed, so no prompt is trusted.
+  assert.equal(promptFromCommand('copilot -p "never closed --disable-mcp-server kusto'), null);
 });
 
 test("an operator can still opt into showing the whole command (DEMO-SAFE-32)", () => {
@@ -220,19 +232,34 @@ test("the title card never falls back to the raw command (DEMO-SAFE-33)", () => 
 test("the command tokenizer keeps quoted values whole (DEMO-SAFE-37)", () => {
   // Both label and prompt extraction read tokens, so the quoting rules are load-bearing for two
   // separate leak guards and are worth pinning on their own.
-  assert.deepEqual(tokenizeCommand('copilot --note "a b" -p x'),
-    [{ value: "copilot", quoted: false }, { value: "--note", quoted: false },
-      { value: "a b", quoted: true }, { value: "-p", quoted: false }, { value: "x", quoted: false }]);
+  assert.deepEqual(tokenizeCommand('copilot --note "a b" -p x'), [
+    { value: "copilot", quoted: false, closed: true },
+    { value: "--note", quoted: false, closed: true },
+    { value: "a b", quoted: true, closed: true },
+    { value: "-p", quoted: false, closed: true },
+    { value: "x", quoted: false, closed: true },
+  ]);
   // A token that merely CONTAINS a quoted section is not itself a quoted value, which is what lets
   // `-p="x y"` still be recognised as the flag while `"value -p hidden"` is not.
-  assert.deepEqual(tokenizeCommand('-p="x y"'), [{ value: "-p=x y", quoted: false }]);
+  assert.deepEqual(tokenizeCommand('-p="x y"'), [{ value: "-p=x y", quoted: false, closed: true }]);
   // An escaped quote stays in the value instead of closing it early.
-  assert.deepEqual(tokenizeCommand('"say \\"hi\\" now"'), [{ value: 'say "hi" now', quoted: true }]);
+  assert.deepEqual(tokenizeCommand('"say \\"hi\\" now"'),
+    [{ value: 'say "hi" now', quoted: true, closed: true }]);
+  // A backslash before a double quote is an escape - that is how joinCommand emits an embedded
+  // quote - so a Windows path written with a trailing separator inside quotes does NOT close, and
+  // is reported unclosed rather than silently swallowing the rest of the line as a value.
+  assert.deepEqual(tokenizeCommand('"C:\\bin\\" x'),
+    [{ value: 'C:\\bin" x', quoted: true, closed: false }]);
+  // An unterminated quote is reported, so callers can refuse to trust it.
+  assert.deepEqual(tokenizeCommand('"never closed'),
+    [{ value: "never closed", quoted: true, closed: false }]);
   assert.deepEqual(tokenizeCommand(""), []);
   assert.deepEqual(tokenizeCommand(null), []);
   // An empty quoted argument is a real, distinct token.
-  assert.deepEqual(tokenizeCommand('copilot ""'),
-    [{ value: "copilot", quoted: false }, { value: "", quoted: true }]);
+  assert.deepEqual(tokenizeCommand('copilot ""'), [
+    { value: "copilot", quoted: false, closed: true },
+    { value: "", quoted: true, closed: true },
+  ]);
 });
 
 // The helpers above are only worth anything if the PAGES actually use them. Reverting either page
