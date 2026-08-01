@@ -65,6 +65,13 @@ def sandbox_leftovers(sandbox):
     return sorted(p.relative_to(root).as_posix() for p in root.rglob("*"))
 
 
+#: A stale index stat-cache makes git report line-ending noise - a CRLF working tree against an
+#: LF-normalized HEAD - on one call and nothing on the next, so two snapshots of an untouched
+#: repository could differ and fail the run for a change nobody made. Refreshing the cache first
+#: makes the probes deterministic. It is the git equivalent of what `git status` does anyway.
+_REFRESH = ["update-index", "-q", "--refresh"]
+
+
 def untracked_digest(repo_root, env=None):
     """`path sha256` for every untracked, non-ignored file, or None when it cannot be listed.
 
@@ -107,6 +114,13 @@ def worktree_state(repo_root, env=None):
     env = clean_git_env() if env is None else env
     parts = []
     unavailable = 0
+    try:
+        # Exits non-zero merely because files ARE modified, and can lose a race for `index.lock`;
+        # neither is a reason to fail, so the result is deliberately ignored.
+        subprocess.run(["git", "-C", str(repo_root)] + _REFRESH,
+                       capture_output=True, text=True, env=env)
+    except OSError:
+        return None
     for name, args in _PROBES:
         try:
             proc = subprocess.run(["git", "-C", str(repo_root)] + args,

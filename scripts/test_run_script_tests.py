@@ -15,6 +15,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run_script_tests as rst  # noqa: E402
@@ -103,6 +104,41 @@ class WorktreeState(unittest.TestCase):
         self.assertIsNone(rst.worktree_state(""))
         with tempfile.TemporaryDirectory() as tmp:
             self.assertIsNone(rst.worktree_state(tmp))
+
+    def test_the_index_is_refreshed_before_the_probes(self):
+        # Without this, `git diff HEAD` and `git status` report line-ending noise on one call and
+        # nothing on the next (a CRLF working tree against an LF-normalized HEAD), so the runner
+        # would fail nondeterministically - and its message would send the author straight to the
+        # escape hatch for a change nobody made.
+        calls = []
+
+        def fake_run(argv, **kwargs):
+            calls.append(list(argv))
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        with mock.patch.object(rst.subprocess, "run", side_effect=fake_run):
+            rst.worktree_state("/repo")
+        self.assertTrue(calls, "worktree_state ran no git commands")
+        self.assertIn("--refresh", calls[0],
+                      "the first git call must refresh the index stat-cache, got %r" % (calls[0],))
+
+    def test_a_crlf_working_tree_snapshots_consistently(self):
+        # The condition that made the real runner flake: HEAD is LF-normalized, the working tree
+        # holds CRLF, and the index stat-cache goes stale while the (multi-minute) suite runs.
+        with tempfile.TemporaryDirectory() as tmp:
+            env = clean_git_env()
+            if not self._init(tmp, env):
+                self.skipTest("git is not available")
+            root = Path(tmp)
+            (root / ".gitattributes").write_bytes(b"* text=auto eol=lf\n")
+            tracked = root / "keep.md"
+            tracked.write_bytes(b"one\ntwo\n")
+            self._commit(tmp, env, ".", "base")
+            tracked.write_bytes(b"one\r\ntwo\r\n")
+            first = rst.worktree_state(tmp)
+            os.utime(tracked, None)
+            self.assertEqual(rst.worktree_state(tmp), first,
+                             "an untouched repository snapshotted differently twice")
 
     def test_a_repository_without_commits_is_still_compared(self):
         # `rev-parse HEAD` fails before the first commit; that must not blank the whole snapshot.
