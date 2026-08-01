@@ -429,30 +429,164 @@ class StampsMediaAssetsTest(unittest.TestCase):
         self.assertIn('data-video="../assets/demo-multi-duck.webm?v=%s"' % clip, out)
         self.assertIn('src="../assets/poster-multi-duck.jpg?v=%s"' % poster, out)
 
+    def test_stamps_the_tutorial_images(self):
+        # Driven by the tutorial's own assets DIRECTORY, not a hand-maintained name list: the
+        # tutorial ships ~21 images that come from the plugin docs, so listing them by name would
+        # rot the moment one is added or renamed.
+        name = "garden-01-top-light.png"
+        digest = bsd._tutorial_asset_hash(bsd.REPO_ROOT, name)
+        tutorial_src = os.path.join(bsd.SITE_PAGES, "commentable-html", "tutorial", "index.html")
+        html = '<p><img src="assets/%s" alt="x" loading="lazy" /></p>' % name
+        out = bsd.stamp_tutorial_assets(html, bsd.REPO_ROOT, tutorial_src)
+        self.assertIn('src="assets/%s?v=%s"' % (name, digest), out)
+
+        # The SAME image is referenced from the plugin page one directory up, so narrowing the
+        # stamper to the tutorial page's own spelling would silently leave that copy stale.
+        plugin_src = os.path.join(bsd.SITE_PAGES, "commentable-html", "index.html")
+        plugin_html = '<img src="tutorial/assets/%s" />' % name
+        plugin_out = bsd.stamp_tutorial_assets(plugin_html, bsd.REPO_ROOT, plugin_src)
+        self.assertIn('src="tutorial/assets/%s?v=%s"' % (name, digest), plugin_out)
+
+        # Idempotent: an already-stamped reference is not stamped twice.
+        self.assertEqual(bsd.stamp_tutorial_assets(out, bsd.REPO_ROOT, tutorial_src), out)
+
+        # A `./`-prefixed reference resolves to the same place, so it is stamped too - the
+        # normalisation that makes that true is otherwise unexercised.
+        dotted = bsd.stamp_tutorial_assets(
+            '<img src="./assets/%s" />' % name, bsd.REPO_ROOT, tutorial_src)
+        self.assertIn('src="./assets/%s?v=%s"' % (name, digest), dotted)
+
+        # Vector and modern raster formats are stamped as well: review-loop.svg already sits in the
+        # tutorial assets directory, so the day a page references it by URL it must not ship
+        # unstamped just because the extension list was raster-only.
+        svg = bsd.stamp_tutorial_assets(
+            '<img src="assets/review-loop.svg" />', bsd.REPO_ROOT, tutorial_src)
+        self.assertIn('src="assets/review-loop.svg?v=%s"'
+                      % bsd._tutorial_asset_hash(bsd.REPO_ROOT, "review-loop.svg"), svg)
+
+    def test_a_same_named_shared_asset_does_not_take_the_tutorial_digest(self):
+        # `assets/x.png` means the SHARED assets dir on the hub page and the TUTORIAL one on the
+        # tutorial page. Matching on filename alone would stamp an unrelated shared file with a
+        # tutorial image's digest - a silently wrong cache key that never expires.
+        name = "garden-01-top-light.png"
+        hub_src = os.path.join(bsd.SITE_PAGES, "index.html")
+        html = '<img src="assets/%s" />' % name
+        self.assertEqual(bsd.stamp_tutorial_assets(html, bsd.REPO_ROOT, hub_src), html)
+
+    def test_the_tutorial_stamp_tracks_the_bytes(self):
+        # Built in a temp root: mutating the real committed image and restoring it in a `finally`
+        # leaves a corrupted binary behind if the process is killed between the two writes.
+        name = "garden-01-top-light.png"
+        with tempfile.TemporaryDirectory() as root:
+            src_dir = os.path.join(root, bsd.TUTORIAL_IMAGES_SRC)
+            os.makedirs(src_dir)
+            path = os.path.join(src_dir, name)
+            with open(path, "wb") as fh:
+                fh.write(b"first bytes")
+            first = bsd._tutorial_asset_hash(root, name)
+            self.assertEqual(first, bsd._tutorial_asset_hash(root, name))
+            with open(path, "wb") as fh:
+                fh.write(b"second bytes")
+            self.assertNotEqual(first, bsd._tutorial_asset_hash(root, name))
+
+    def test_a_missing_tutorial_image_fails_loudly(self):
+        # The name guard normally makes this unreachable, but a file deleted between the listing
+        # and the read must not surface as a bare traceback.
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root, bsd.TUTORIAL_IMAGES_SRC))
+            with self.assertRaises(SystemExit) as caught:
+                bsd._tutorial_asset_hash(root, "gone.png")
+            self.assertIn("gone.png", str(caught.exception))
+
+    def test_a_page_source_outside_site_pages_fails_loudly(self):
+        # Resolving against anything else makes every reference land outside the tutorial directory,
+        # so the page would ship with zero stamps and no error at all.
+        with self.assertRaises(SystemExit):
+            bsd.stamp_tutorial_assets('<img src="assets/x.png" />', bsd.REPO_ROOT,
+                                      os.path.join("plugins", "x", "index.html"))
+
+    def test_a_reference_to_a_missing_tutorial_image_is_left_alone(self):
+        # Only files that actually sit in the tutorial assets directory are stamped, so a link to
+        # something else that happens to start with assets/ is not rewritten into a broken URL.
+        tutorial_src = os.path.join(bsd.SITE_PAGES, "commentable-html", "tutorial", "index.html")
+        html = '<img src="assets/not-a-tutorial-image.png" />'
+        self.assertEqual(bsd.stamp_tutorial_assets(html, bsd.REPO_ROOT, tutorial_src), html)
+
+    def test_the_stamp_hashes_the_source_not_the_copy_in_dist(self):
+        # sync_tutorial_images copies source -> dist AFTER the pages are built, so hashing the dist
+        # copy stamped each page with the PREVIOUS build's bytes and then overwrote them: the stamp
+        # lagged a build behind and named content the visitor no longer received. Pin the direction.
+        with tempfile.TemporaryDirectory() as root:
+            src_dir = os.path.join(root, bsd.TUTORIAL_IMAGES_SRC)
+            dst_dir = os.path.join(root, bsd.TUTORIAL_IMAGES_DST)
+            os.makedirs(src_dir)
+            os.makedirs(dst_dir)
+            with open(os.path.join(src_dir, "shot.png"), "wb") as fh:
+                fh.write(b"the new bytes")
+            with open(os.path.join(dst_dir, "shot.png"), "wb") as fh:
+                fh.write(b"the stale bytes from the previous build")
+            expected = bsd.hashlib.sha256(b"the new bytes").hexdigest()[:12]
+            self.assertEqual(bsd._tutorial_asset_hash(root, "shot.png"), expected)
+
+    def test_the_tutorial_stamp_matches_the_bytes_that_ship(self):
+        # The stamp is computed while building the pages, but the images are copied into site/dist
+        # AFTERWARDS. Hashing the destination therefore stamped a page with the PREVIOUS build's
+        # bytes, so a regenerated screenshot shipped under its old cache key - exactly the staleness
+        # the stamp exists to prevent. Pin the stamp against the bytes actually served.
+        page = os.path.join(bsd.REPO_ROOT, bsd.TUTORIAL_PAGE)
+        with open(page, encoding="utf-8") as fh:
+            built = fh.read()
+        refs = re.findall(r'src="assets/([\w.\-]+\.(?:png|jpg|jpeg))\?v=([0-9a-f]{12})"', built)
+        self.assertTrue(refs, "the tutorial page has no stamped images")
+        for name, stamp in refs:
+            served = os.path.join(bsd.REPO_ROOT, bsd.TUTORIAL_IMAGES_DST, name)
+            with open(served, "rb") as fh:
+                digest = bsd.hashlib.sha256(fh.read()).hexdigest()[:12]
+            self.assertEqual(stamp, digest,
+                             "%s is stamped %s but the shipped bytes hash to %s" % (name, stamp, digest))
+
     def test_every_served_clip_and_poster_is_stamped_on_the_built_pages(self):
         # Globbed, not a list of the pages that happen to have clips today: an unstamped clip
         # added to any other page would otherwise ship green.
         out_root = os.path.join(bsd.REPO_ROOT, bsd.SITE_OUT)
+        tutorial_dir = os.path.normpath(os.path.join(bsd.REPO_ROOT, bsd.TUTORIAL_IMAGES_DST))
         pages = [os.path.join(base, name)
                  for base, _dirs, names in os.walk(out_root)
                  for name in names if name.endswith(".html")]
         self.assertTrue(pages, "no built pages found")
+        checked_dirs = set()
         for path in pages:
             page = os.path.relpath(path, out_root)
             with open(path, encoding="utf-8") as fh:
                 built = fh.read()
             for match in re.finditer(
-                    r'(?:data-video|src|href)="([^"?]+\.(?:webm|mp4|jpg|jpeg|png))([^"]*)"', built):
+                    r'(?:data-video|src|href)="([^"?]+\.(?:webm|mp4|jpg|jpeg|png|gif|webp|svg))([^"]*)"', built):
                 ref, query = match.group(1), match.group(2)
-                # Resolve the reference against the page that holds it: the tutorial page has its
-                # own assets/ directory (images synced from the plugin docs) which is NOT the
-                # site's shared assets/ and is unstamped for reasons that predate this work.
-                resolved = os.path.normpath(os.path.join(os.path.dirname(path), ref))
-                if os.path.dirname(resolved) != os.path.join(out_root, "assets"):
+                # An off-site asset is not ours to stamp, and os.path.join would mangle its URL
+                # into a path that happens to end in `assets`.
+                if ref.startswith(("http://", "https://", "//", "data:")):
                     continue
+                # Resolve the reference against the page that holds it. EVERY assets/ directory
+                # counts - the site's shared one and the tutorial's own - because a regenerated
+                # screenshot keeps its filename exactly as a re-recorded clip does.
+                resolved = os.path.normpath(os.path.join(os.path.dirname(path), ref))
+                holder = os.path.dirname(resolved)
+                if os.path.basename(holder) != "assets":
+                    continue
+                # The site's own icons are deliberately exempt (CACHE_BUSTED_ASSETS): they change
+                # rarely and a cached favicon does not misrender a page. Tutorial images are the
+                # opposite - regenerated in place under the same filename - so nothing there is
+                # exempt whatever its extension.
+                if holder != tutorial_dir and ref.lower().endswith((".svg", ".ico")):
+                    continue
+                checked_dirs.add(holder)
                 self.assertTrue(
                     query.startswith("?v="),
                     "%s on the %s page is served without a cache-busting stamp" % (ref, page))
+        # Naming the directories keeps this from passing vacuously on the shared assets alone:
+        # narrowing the filter back to site/dist/assets must fail here.
+        self.assertIn(os.path.normpath(os.path.join(out_root, "assets")), checked_dirs)
+        self.assertIn(tutorial_dir, checked_dirs)
 
 class SiteDistHasNoStrayFilesTest(unittest.TestCase):
     """site/dist IS the published Pages artifact - pages.yml uploads the whole directory.

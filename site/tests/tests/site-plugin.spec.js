@@ -620,7 +620,9 @@ test("the plugin page leads with the demo clips, and keeps the review steps and 
   // HIGHLIGHTED selection and the comment window, framed, that decodes.
   const img = page.locator("#features .feature-shot img.feature-img");
   await expect(img).toBeVisible();
-  await expect(img).toHaveAttribute("src", /tutorial\/assets\/landing-composer\.png$/);
+  // The src carries the cache-bust stamp: the screenshot is REGENERATED in place by npm run shots,
+  // so without it a returning visitor keeps the old image beside prose describing the new one.
+  await expect(img).toHaveAttribute("src", /tutorial\/assets\/landing-composer\.png\?v=[0-9a-f]{12}$/);
   await expect(img).toHaveAttribute("alt", /inline comment window/i);
   await expect(img).toHaveAttribute("alt", /Write your review comment/i);
   await expect(img).toHaveAttribute("alt", /165 million/i);
