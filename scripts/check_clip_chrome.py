@@ -33,18 +33,19 @@ CLIP_DIR = os.path.join("site", "dist", "assets")
 # The chrome strip, right of the traffic lights and left of the window edge.
 STRIP = "crop=iw-66:24:46:1"
 # A patch of the same row further right, used only to tell a terminal frame from a browser one: the
-# terminal is near-black there, a browser page is light.
-KIND = "crop=200:16:300:8"
+# A patch from the MIDDLE of the frame, used only to tell a terminal frame from a browser one: the
+# terminal is near-black there, a browser page is light. It is deliberately far from the title strip
+# - an earlier version sampled the strip's own row, so the command text raised the reading and the
+# leaking frames scored closer to a fade than to the terminal they plainly were.
+KIND = "crop=400:200:200:200"
 # Luminance spread above which the strip is carrying something drawn rather than a flat fill. A
 # masked box measures 0; antialiased text on this theme measures far above this.
 FLAT_TOLERANCE = 12.0
-# Mean luminance below which a frame is the terminal rather than a browser page.
-TERMINAL_MAX_MEAN = 90.0
-# How settled a terminal frame must be before it is judged, in frames (25fps). The fade IN ghosts
-# for a while, so the look-back is long; the fade OUT is short, and a long look-ahead would stop the
-# check ever reaching the end of a segment - which is exactly where the mask ran out.
-LOOK_BACK = 15
-LOOK_AHEAD = 5
+# Mean luminance below which a frame is UNAMBIGUOUSLY the terminal. Measured: a settled terminal
+# frame reads 29-36 and the cross-fade jumps straight to 42 and climbs, so this sits in the gap.
+# Being strict is what lets every terminal frame be judged - including the LAST ones in a segment,
+# which is exactly where the mask ran out and the command was published.
+TERMINAL_MAX_MEAN = 38.0
 
 
 def find_ffmpeg():
@@ -78,6 +79,15 @@ def _measure(ffmpeg, clip, crop, keys):
         hit = re.search(r"lavfi\.signalstats\.(\w+)=([\d.\-]+)", line)
         if hit and current is not None and hit.group(1) in keys:
             current[hit.group(1)] = float(hit.group(2))
+    # A parse that finds frames but not their measurements would sail through every later check:
+    # a missing YAVG would read as "browser, skip" and a missing YMIN/YMAX as "perfectly flat".
+    # That is the silent-failure mode this whole script exists to replace, so it is fatal here.
+    for index, frame in enumerate(frames):
+        missing = [k for k in keys if k not in frame]
+        if missing:
+            raise SystemExit("ffmpeg produced no %s for frame %d of %s; the signalstats output was "
+                             "not understood, so the scan cannot be trusted"
+                             % (", ".join(missing), index, clip))
     return frames
 
 
@@ -90,27 +100,26 @@ def scan_clip(ffmpeg, clip):
     if len(strip) != len(kind):
         raise SystemExit("frame count mismatch reading %s (%d vs %d)" % (clip, len(strip), len(kind)))
 
-    dark = [row.get("YAVG", 255.0) <= TERMINAL_MAX_MEAN for row in kind]
+    dark = [row["YAVG"] <= TERMINAL_MAX_MEAN for row in kind]
     bad = []
     for i, row in enumerate(strip):
-        # Only frames well INSIDE a terminal segment are judged. The clip cross-fades between the
-        # terminal and a browser; mid-fade the whole terminal scales, so a fixed crop straddles
-        # chrome and content and both fade tails always look "not flat". The look-BACK is long
-        # (a fade-in settles slowly) and the look-AHEAD is short, so the END of a segment is still
-        # judged - which is exactly where the mask ran out and the command was published.
-        if i < LOOK_BACK or i + LOOK_AHEAD >= len(dark):
+        # EVERY unambiguously-terminal frame is judged, with no positional window. A cross-fade
+        # frame is excluded because it is not unambiguously terminal, not because of where it sits -
+        # so the last frames of a segment are still checked, and that is precisely where the mask
+        # ran out and the command was published.
+        if not dark[i]:
             continue
-        if not all(dark[i - LOOK_BACK:i + LOOK_AHEAD + 1]):
-            continue
-        spread = row.get("YMAX", 0.0) - row.get("YMIN", 0.0)
-        if spread > FLAT_TOLERANCE:
-            bad.append((row["t"], spread))
+        if row["YMAX"] - row["YMIN"] > FLAT_TOLERANCE:
+            bad.append((row["t"], row["YMAX"] - row["YMIN"]))
     return bad
 
 
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("clips", nargs="*", help="clips to scan (default: every published clip)")
+    parser.add_argument("--require-ffmpeg", action="store_true",
+                        help="fail instead of skipping when ffmpeg is unavailable (used by CI, "
+                             "where a skipped scan would be a green gate that checked nothing)")
     args = parser.parse_args(argv)
 
     ffmpeg = find_ffmpeg()
@@ -123,10 +132,14 @@ def main(argv):
         raise SystemExit("no published clips found under %s" % CLIP_DIR)
 
     if not ffmpeg:
-        # Degrade rather than fail: this runs anywhere, and CI without ffmpeg should say so loudly
-        # instead of reporting a pass it did not earn.
-        print("check_clip_chrome: SKIPPED - no ffmpeg on PATH (set DEMO_CLIP_FFMPEG to override).")
-        print("  Playwright's bundled ffmpeg is VP8-only and cannot decode these clips.")
+        message = ("no ffmpeg on PATH (set DEMO_CLIP_FFMPEG to override). Playwright's bundled "
+                   "ffmpeg is VP8-only and cannot decode these clips.")
+        if args.require_ffmpeg:
+            # Fail CLOSED. A gate that goes green having scanned nothing is worse than no gate,
+            # because it reads as proof the clips were checked.
+            raise SystemExit("check_clip_chrome: FAILED - " + message)
+        # Locally, degrade rather than fail, but say so loudly instead of reporting a pass.
+        print("check_clip_chrome: SKIPPED - " + message)
         return 0
 
     failed = False
