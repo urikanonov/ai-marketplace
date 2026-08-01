@@ -69,7 +69,19 @@ else
   echo "pre-push: marketplace validator deps missing; 'pip install jsonschema pyyaml' to enable (skipping)." >&2
 fi
 
-run_hermetic "script unit tests" "$PY" -m unittest discover -s scripts -p "test_*.py"
+# The scripts suite always runs through run_script_tests.py, never `unittest discover` directly:
+# the runner launches it from a THROWAWAY working directory and fails if the suite left anything
+# in it, or if this repository changed while it ran. That is what keeps a test's scratch fixture
+# out of the repo root (issue #791 - `a.md` and `old.md` reached `main` that way).
+# A long run while you keep editing would trip the repository diff on YOUR edits rather than on a
+# leak; opt out of just that diff with PREPUSH_ALLOW_TREE_EDITS=1 instead of skipping every check
+# with --no-verify. The sandbox check still runs.
+_scripts_opts=""
+if [ "${PREPUSH_ALLOW_TREE_EDITS:-0}" = "1" ]; then
+  _scripts_opts="--no-worktree-check"
+fi
+# shellcheck disable=SC2086 # deliberate word splitting: zero or one option
+run_hermetic "script unit tests" "$PY" scripts/run_script_tests.py $_scripts_opts
 run "spec test references" "$PY" scripts/check_spec_test_refs.py
 run "doc-surface declarations for new features" "$PY" scripts/check_doc_surfaces.py
 run "forbidden secret-bearing files" "$PY" scripts/check_forbidden_files.py

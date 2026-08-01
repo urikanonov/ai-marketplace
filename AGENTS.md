@@ -528,12 +528,21 @@ This turns on two hooks: `pre-commit` runs the manifest and Markdown validators 
 tracked-file guards (secret-bearing files, Backlog artifacts, and unresolved conflict markers in the
 staged content) before each commit,
 and `pre-push` runs the deterministic gate that mirrors the required CI checks before each push -
-the validators, the script unit tests, the changed plugins' Python suites (via
+the validators, the script unit tests (via `scripts/run_script_tests.py`), the changed plugins' Python
+suites (via
 `scripts/run_plugin_python_tests.py --changed-only`; set `PREPUSH_FULL=1` to run every plugin's
 suite), `check_changelog_sync`, `check_version_bump`, and the
 `build_site_data.py` / layer `build.py` / fixtures `--check` drift guards - so a push that would fail
 a required check is caught locally first. The slower, occasionally flaky browser (Playwright) suites
 are not run by default; set `RUN_E2E=1 git push` to include them (CI is their authoritative gate).
+
+The script unit tests always go through `scripts/run_script_tests.py`, never `unittest discover`
+directly: the runner launches the suite from a THROWAWAY working directory and then fails if the
+suite left anything in it, or if the repository working tree changed while it ran. That is what keeps
+a test's scratch fixture out of the repo root - a bare relative filename used to land `a.md`,
+`b.md`, `new.md`, and `old.md` beside `AGENTS.md` on every push, two of which were then swept into
+`main` (#791). The hook, both `validate.yml` jobs, and any launcher added later are held to it by
+`scripts/test_suite_hermeticity.py`.
 
 The `pre-push` hook is SLOW - it runs the full script unit tests plus the changed plugins' Python
 suites (or every plugin's suite with `PREPUSH_FULL=1`), so

@@ -8,7 +8,8 @@ runtime code, and it targets both Claude Code and the GitHub Copilot CLI.
 Because the shipped surface is an instruction document, its "features" are the promises the SKILL.md
 makes and the plugin's registration and dual-host packaging. Each is pinned by a covering test that
 runs in the required `validate` and `cross-platform` CI jobs (they run
-`python -m unittest discover -s scripts -p "test_*.py"`). The plugin has no browser runtime, so its
+`python scripts/run_script_tests.py`, which discovers `scripts/test_*.py`). The plugin has no browser
+runtime, so its
 tests are Python, not Playwright; the site page for the plugin is covered separately by the
 `SITE-MDUCK-*` rows in `site/tests/SPEC.md`.
 
