@@ -230,6 +230,26 @@ test("tutorial image lightbox opens via keyboard, traps Tab, and restores focus 
 });
 
 
+test("every tutorial image is cache-busted and still decodes (SITE-TUT-09)", async ({ page }) => {
+  await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
+  const images = page.locator(".tutorial img");
+  const count = await images.count();
+  expect(count).toBeGreaterThan(0);
+  for (let i = 0; i < count; i += 1) {
+    const img = images.nth(i);
+    const src = await img.getAttribute("src");
+    // The screenshots are regenerated in place by `npm run shots` and keep their filenames, so an
+    // updated image would otherwise sit in a returning visitor's cache behind the new prose.
+    expect(src, `tutorial image ${i} is served without a cache-busting stamp`)
+      .toMatch(/^assets\/[\w.-]+\.(?:png|jpg|jpeg)\?v=[0-9a-f]{12}$/);
+    // A stamp that points at nothing is worse than a stale image, so the stamped URL must resolve.
+    await img.scrollIntoViewIfNeeded();
+    await expect.poll(() => img.evaluate((el) => el.naturalWidth),
+      { message: `tutorial image ${src} did not decode` }).toBeGreaterThan(0);
+  }
+});
+
+
 test("the tutorial leads with the value proposition and ends with the Help and About reference (SITE-TUT-08)", async ({ page }) => {
   await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
   // Leads with a value-proposition paragraph (not example-file logistics). Match a short durable
