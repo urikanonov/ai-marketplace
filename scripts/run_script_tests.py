@@ -23,6 +23,8 @@ variables are scrubbed too (see `_git_test_env`), so the runner is safe to call 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import os
 import subprocess
 import sys
 import tempfile
@@ -36,6 +38,17 @@ REPO_ROOT = SCRIPTS.parent
 
 HINT = ("write scratch files under tempfile.TemporaryDirectory() (or another absolute temp path) "
         "and clean them up; never a bare relative name, which lands in the caller's cwd")
+
+#: What "the repository is unchanged" means. `git status --porcelain` alone would miss a suite that
+#: COMMITTED its fixtures (status comes back clean), moved a ref, or rewrote the CONTENT of a file
+#: that was already dirty before the run - so HEAD, the refs, and the full diff are all part of the
+#: snapshot. Untracked files are hashed separately, since status only names them.
+_PROBES = (
+    ("status", ["status", "--porcelain"]),
+    ("head", ["rev-parse", "HEAD"]),
+    ("refs", ["for-each-ref", "--format=%(refname) %(objectname)"]),
+    ("diff", ["diff", "HEAD"]),
+)
 
 
 def discover_argv(tests_dir, pattern="test_*.py", python=None):
@@ -52,40 +65,95 @@ def sandbox_leftovers(sandbox):
     return sorted(p.relative_to(root).as_posix() for p in root.rglob("*"))
 
 
-def worktree_state(repo_root, env=None):
-    """`git status --porcelain` for `repo_root`, or None when that cannot be read.
+def untracked_digest(repo_root, env=None):
+    """`path sha256` for every untracked, non-ignored file, or None when it cannot be listed.
 
-    None means "unknown" (git missing, or not a repository), never "clean" - an unknown state is
-    compared against another unknown one, so it can neither raise nor silently pass a real leak.
+    `git status` names an untracked file but says nothing about its CONTENT, so a suite that
+    overwrote one would otherwise look like no change at all.
     """
     if not repo_root:
         return None
+    env = clean_git_env() if env is None else env
     try:
-        proc = subprocess.run(["git", "-C", str(repo_root), "status", "--porcelain"],
-                              capture_output=True, text=True,
-                              env=clean_git_env() if env is None else env)
+        proc = subprocess.run(["git", "-C", str(repo_root), "ls-files", "--others",
+                               "--exclude-standard", "-z"],
+                              capture_output=True, text=True, env=env)
     except OSError:
         return None
-    return proc.stdout if proc.returncode == 0 else None
+    if proc.returncode != 0:
+        return None
+    lines = []
+    for name in sorted(part for part in proc.stdout.split("\0") if part):
+        path = Path(repo_root) / name
+        try:
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            digest = "<unreadable>"
+        lines.append("%s %s\n" % (name, digest))
+    return "".join(lines)
+
+
+def worktree_state(repo_root, env=None):
+    """A snapshot of the repository the suite must not disturb, or None when it cannot be read.
+
+    A probe that git refuses (`rev-parse HEAD` in a repository with no commits, say) is recorded as
+    unavailable rather than dropping the whole snapshot, so a partially readable repository is still
+    compared. None is returned only when NOTHING could be read - git missing, or the path is not a
+    repository. None means "unknown", never "clean": `describe_leak` treats a snapshot that went
+    from known to unknown as a change, because that is what deleting `.git` mid-run looks like.
+    """
+    if not repo_root:
+        return None
+    env = clean_git_env() if env is None else env
+    parts = []
+    unavailable = 0
+    for name, args in _PROBES:
+        try:
+            proc = subprocess.run(["git", "-C", str(repo_root)] + args,
+                                  capture_output=True, text=True, env=env)
+        except OSError:
+            return None
+        if proc.returncode == 0:
+            text = proc.stdout
+        else:
+            text = "<unavailable>"
+            unavailable += 1
+        parts.append("[%s]\n%s" % (name, text if text.endswith("\n") else text + "\n"))
+    digest = untracked_digest(repo_root, env)
+    if digest is None:
+        unavailable += 1
+        digest = "<unavailable>\n"
+    parts.append("[untracked]\n%s" % digest)
+    if unavailable == len(_PROBES) + 1:
+        return None
+    return "".join(parts)
 
 
 def describe_leak(leftovers, before, after):
     """Human-readable problems for a finished run; empty when the run left nothing behind.
 
-    `before`/`after` are `worktree_state` results: a tree that was ALREADY dirty is not blamed on
-    the suite, only a difference is.
+    `before`/`after` are `worktree_state` results. A tree that was ALREADY dirty is not blamed on
+    the suite, only a DIFFERENCE is - including a difference where one side is None, since a
+    repository that stopped being readable while the suite ran certainly changed.
     """
     problems = []
     if leftovers:
         problems.append("the suite left %d path(s) in its working directory: %s"
                         % (len(leftovers), ", ".join(leftovers)))
-    if before is not None and after is not None and before != after:
-        problems.append("the repository working tree changed while the suite ran (if you edited "
-                        "files during the run, that is this message - rerun on a quiet tree, or "
-                        "pass --no-worktree-check).\n"
-                        "--- git status before ---\n%s--- git status after ---\n%s"
-                        % (before, after))
+    if (before is not None or after is not None) and before != after:
+        problems.append(
+            "the repository changed while the suite ran. If you were editing files during the run, "
+            "rerun on a quiet tree; ONLY if you must keep editing, pass --no-worktree-check "
+            "(from the pre-push hook: PREPUSH_ALLOW_TREE_EDITS=1 git push). Never use it to "
+            "silence a real leak - this is the only check that catches a test writing an ABSOLUTE "
+            "path into the repository.\n"
+            "--- before ---\n%s--- after ---\n%s"
+            % (_render_state(before), _render_state(after)))
     return problems
+
+
+def _render_state(state):
+    return "<unreadable repository>\n" if state is None else state
 
 
 def main(argv=None):
@@ -103,16 +171,23 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     env = clean_git_env()
-    repo_root = None if args.no_worktree_check else (args.repo_root or None)
+    repo_root = args.repo_root or None
+    if repo_root:
+        # The suite used to run WITH the repository root as its cwd, so the root was importable.
+        # Keep that true from the sandbox, or a test that imports a top-level package would start
+        # failing for a reason that has nothing to do with what it tests.
+        inherited = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = str(repo_root) + (os.pathsep + inherited if inherited else "")
+    watched = None if args.no_worktree_check else repo_root
     # `ignore_cleanup_errors` keeps a leaked open handle on Windows from masking the real verdict.
     try:
         sandbox = tempfile.TemporaryDirectory(prefix="script-tests-", ignore_cleanup_errors=True)
     except TypeError:  # Python < 3.10
         sandbox = tempfile.TemporaryDirectory(prefix="script-tests-")
     with sandbox as cwd:
-        before = worktree_state(repo_root, env)
+        before = worktree_state(watched, env)
         proc = subprocess.run(discover_argv(args.tests_dir, args.pattern), cwd=cwd, env=env)
-        after = worktree_state(repo_root, env)
+        after = worktree_state(watched, env)
         leftovers = sandbox_leftovers(cwd)
         problems = describe_leak(leftovers, before, after)
         if problems:

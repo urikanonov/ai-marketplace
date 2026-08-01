@@ -84,13 +84,100 @@ class LeakDescription(unittest.TestCase):
         self.assertEqual(len(problems), 1)
         self.assertIn("?? a.md", problems[0])
 
-    def test_an_unavailable_worktree_state_is_not_a_leak(self):
-        # `git` missing, or the runner pointed at a non-repository: unknown is not "changed".
+    def test_a_repository_that_stopped_being_readable_is_a_change(self):
+        # Deleting or corrupting `.git` mid-run makes the second probe fail. Treating that as
+        # "unknown, so fine" would let the most destructive suite of all pass.
+        self.assertEqual(len(rst.describe_leak([], "", None)), 1)
+        self.assertEqual(len(rst.describe_leak([], None, "")), 1)
+
+    def test_a_repository_that_was_never_readable_is_not_a_leak(self):
+        # git missing, or the runner pointed at a non-repository: nothing to compare.
         self.assertEqual(rst.describe_leak([], None, None), [])
-        self.assertEqual(rst.describe_leak([], "", None), [])
 
     def test_a_worktree_that_was_already_dirty_is_not_blamed_on_the_suite(self):
         self.assertEqual(rst.describe_leak([], "?? scratch.txt\n", "?? scratch.txt\n"), [])
+
+
+class WorktreeState(unittest.TestCase):
+    def test_no_repository_is_unknown_rather_than_clean(self):
+        self.assertIsNone(rst.worktree_state(""))
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(rst.worktree_state(tmp))
+
+    def test_a_repository_without_commits_is_still_compared(self):
+        # `rev-parse HEAD` fails before the first commit; that must not blank the whole snapshot.
+        with tempfile.TemporaryDirectory() as tmp:
+            if not self._init(tmp, clean_git_env()):
+                self.skipTest("git is not available")
+            before = rst.worktree_state(tmp)
+            self.assertIsNotNone(before)
+            (Path(tmp) / "a.md").write_text("x", encoding="utf-8")
+            self.assertNotEqual(rst.worktree_state(tmp), before)
+
+    def test_a_committed_fixture_is_still_a_change(self):
+        # `git status --porcelain` alone comes back clean after a commit, so the snapshot has to
+        # carry HEAD as well.
+        with tempfile.TemporaryDirectory() as tmp:
+            env = clean_git_env()
+            if not self._init(tmp, env):
+                self.skipTest("git is not available")
+            (Path(tmp) / "keep.md").write_text("keep\n", encoding="utf-8")
+            self._commit(tmp, env, "keep.md", "base")
+            before = rst.worktree_state(tmp)
+            head_before = self._head(tmp, env)
+            (Path(tmp) / "a.md").write_text("x", encoding="utf-8")
+            self._commit(tmp, env, "a.md", "stray")
+            self.assertNotEqual(self._head(tmp, env), head_before,
+                                "the fixture did not actually commit, so this proves nothing")
+            self.assertEqual(self._status(tmp, env), "",
+                             "the tree is dirty, so status alone would already have caught this")
+            self.assertNotEqual(rst.worktree_state(tmp), before)
+
+    def test_rewriting_an_untracked_file_is_a_change(self):
+        # Status names an untracked file but not its content, so an overwrite would otherwise be
+        # invisible - the untracked digest is what catches it.
+        with tempfile.TemporaryDirectory() as tmp:
+            env = clean_git_env()
+            if not self._init(tmp, env):
+                self.skipTest("git is not available")
+            scratch = Path(tmp) / "scratch.md"
+            scratch.write_text("before\n", encoding="utf-8")
+            before = rst.worktree_state(tmp)
+            scratch.write_text("after\n", encoding="utf-8")
+            self.assertEqual(self._status(tmp, env), "?? scratch.md",
+                             "status is unchanged, which is the point of this test")
+            self.assertNotEqual(rst.worktree_state(tmp), before)
+
+    def test_rewriting_an_already_dirty_tracked_file_is_a_change(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = clean_git_env()
+            if not self._init(tmp, env):
+                self.skipTest("git is not available")
+            tracked = Path(tmp) / "keep.md"
+            tracked.write_text("one\n", encoding="utf-8")
+            self._commit(tmp, env, "keep.md", "base")
+            tracked.write_text("two\n", encoding="utf-8")
+            before = rst.worktree_state(tmp)
+            tracked.write_text("qqq\n", encoding="utf-8")
+            self.assertNotEqual(rst.worktree_state(tmp), before)
+
+    def _init(self, root, env):
+        proc = subprocess.run(["git", "-C", str(root), "init", "-q", "-b", "main"],
+                              capture_output=True, text=True, env=env)
+        return proc.returncode == 0
+
+    def _commit(self, root, env, path, message):
+        for args in (["add", path], ["commit", "-qm", message]):
+            subprocess.run(["git", "-C", str(root)] + args, check=True,
+                           capture_output=True, text=True, env=env)
+
+    def _head(self, root, env):
+        return subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"],
+                              capture_output=True, text=True, env=env).stdout.strip()
+
+    def _status(self, root, env):
+        return subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
+                              capture_output=True, text=True, env=env).stdout.strip()
 
 
 class DiscoverArgv(unittest.TestCase):

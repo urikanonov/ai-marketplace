@@ -39,8 +39,13 @@ HOOK = SCRIPTS.parent / ".githooks" / "pre-push"
 WORKFLOWS = SCRIPTS.parent / ".github" / "workflows"
 #: The launcher that runs the suite from a throwaway cwd and fails on anything left behind.
 RUNNER = "run_script_tests.py"
-#: How the full scripts suite is discovered; a launcher that spells this out is bypassing RUNNER.
-FULL_SUITE = "unittest discover -s scripts"
+#: Spellings of "discover the scripts suite yourself". Long options, `-s=scripts`, `./scripts`, and
+#: the POSITIONAL start directory (`unittest discover scripts`) all count, so a launcher cannot slip
+#: past by rewording the same command. Matching is per line, which a YAML folded scalar could in
+#: principle split; that is the known limit of a text rule, and the runner is what actually gates.
+_DISCOVER_RE = re.compile(r"unittest\s+discover\b")
+_SCRIPTS_DIR_RE = re.compile(
+    r"(?:(?:-s|--start-directory)[=\s]+|discover\s+(?:-[a-zA-Z]+\s+)*)[\"']?\.?[\\/]?scripts\b")
 
 # The subprocess entry points a test can use to spawn a command.
 _SPAWNERS = {"run", "Popen", "check_output", "check_call", "call"}
@@ -228,29 +233,33 @@ class HookScrubsTheGitEnvironment(unittest.TestCase):
 
 
 class EverySuiteLaunchGoesThroughTheLeakGuard(unittest.TestCase):
-    """Nothing may launch the full scripts suite except `run_script_tests.py`.
+    """Nothing may launch the scripts suite except `run_script_tests.py`.
 
     Scrubbing the git environment closes one leak vector; it does nothing about the other one
     (#791): a test that writes a bare relative filename lands it in whatever directory the suite
     was launched from, which for `pre-push` and CI is the repository root. `run_script_tests.py`
     runs the suite from a throwaway cwd and fails on anything left behind, so it only protects the
-    launches that actually use it - hence this rule. It is a denylist, so a launcher added later is
-    caught even though this test has never heard of it."""
+    launches that actually use it - hence this rule. It matches the command by SHAPE (long options,
+    a `./scripts` start directory, and a `--pattern` glob all count), so a launcher added later
+    cannot slip past by rewording."""
 
     def _launchers(self, source):
-        """Lines of `source` that discover the FULL scripts suite themselves.
+        """Lines of `source` that discover tests under `scripts/` themselves.
 
-        A single-module run (`-p "test_build_site_data.py"` in the pages workflow) is not the
-        suite and is left alone."""
+        There is no exemption for a single named module: a targeted run leaks exactly the same way
+        the whole suite does, and the runner takes `--pattern` for that case, so reverting a step to
+        direct discovery is caught however narrow it is."""
         found = []
+        # Drop shell comments so the RATIONALE for this rule cannot trip the rule.
+        source = re.sub(r"(?m)^\s*#.*$", "", source)
         for line in re.sub(r"\\\r?\n\s*", " ", source).splitlines():
             stripped = line.strip()
-            if FULL_SUITE not in stripped:
-                continue
-            if "-p " in stripped and "test_*.py" not in stripped:
-                continue
-            found.append(stripped)
+            if _DISCOVER_RE.search(stripped) and _SCRIPTS_DIR_RE.search(stripped):
+                found.append(stripped)
         return found
+
+    def _workflows(self):
+        return sorted(p for pat in ("*.yml", "*.yaml") for p in WORKFLOWS.glob(pat))
 
     def test_the_pre_push_hook_launches_the_suite_through_the_runner(self):
         if not HOOK.exists():
@@ -269,13 +278,27 @@ class EverySuiteLaunchGoesThroughTheLeakGuard(unittest.TestCase):
         if not WORKFLOWS.is_dir():
             self.skipTest("no workflows directory")
         offenders = []
-        for path in sorted(WORKFLOWS.glob("*.yml")):
+        for path in self._workflows():
             offenders += ["%s: %s" % (path.name, line)
                           for line in self._launchers(path.read_text(encoding="utf-8"))]
         self.assertEqual(
             offenders, [],
             "these CI steps discover the scripts suite directly, so a test that leaks a file into "
             "the cwd goes unnoticed - run it through scripts/%s: %r" % (RUNNER, offenders))
+
+    def test_no_workflow_disables_the_repository_check(self):
+        # `--no-worktree-check` exists for a local run on a tree the author is still editing.
+        # In CI nothing else touches the tree, so passing it there would only blind the one check
+        # that catches a test writing an ABSOLUTE path into the repository.
+        if not WORKFLOWS.is_dir():
+            self.skipTest("no workflows directory")
+        offenders = []
+        for path in self._workflows():
+            offenders += ["%s: %s" % (path.name, line.strip())
+                          for line in path.read_text(encoding="utf-8").splitlines()
+                          if RUNNER in line and "--no-worktree-check" in line]
+        self.assertEqual(offenders, [],
+                         "these CI steps disable the runner's repository check: %r" % (offenders,))
 
     def test_every_job_that_runs_the_suite_still_runs_it(self):
         # The denylist cannot tell "guarded" from "deleted", so pin that both `validate.yml` jobs
@@ -288,6 +311,24 @@ class EverySuiteLaunchGoesThroughTheLeakGuard(unittest.TestCase):
             source.count(RUNNER), 2,
             "validate.yml should run the scripts suite through scripts/%s in both the `validate` "
             "and `cross-platform` jobs" % RUNNER)
+
+    def test_the_rule_catches_a_reworded_launcher(self):
+        # The rule is only worth having if it survives an equivalent spelling, so pin the ones a
+        # future edit is most likely to reach for - including the narrow, single-module revert that
+        # `pages.yml` used to do.
+        for line in ('run: python -m unittest discover -s scripts -p "test_*.py"',
+                     "run: python -m unittest discover --start-directory scripts",
+                     'run: python -m unittest discover -t . -s ./scripts -p "test_check_*.py"',
+                     "run: python -m unittest discover -s=scripts",
+                     "run: python -m unittest discover scripts",
+                     "run: python -m unittest discover -v scripts",
+                     'run: python -m unittest discover -s scripts -p "test_build_site_data.py"'):
+            self.assertEqual(len(self._launchers(line)), 1, "not caught: %s" % line)
+        for line in ("run: python scripts/run_script_tests.py",
+                     "run: python scripts/run_script_tests.py --pattern test_build_site_data.py",
+                     "run: python -m unittest discover -s plugins/x/dev/tests",
+                     "        # a comment about unittest discover -s scripts is not a launcher"):
+            self.assertEqual(self._launchers(line), [], "false positive: %s" % line)
 
 
 class AmbientRepoIsUntouched(unittest.TestCase):

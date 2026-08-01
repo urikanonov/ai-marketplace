@@ -43,7 +43,7 @@ jobs:
         if: github.event_name != 'pull_request'
         run: python scripts/build_site_data.py
       - name: Run site generator unit tests
-        run: python -m unittest discover -s scripts -p "test_build_site_data.py"
+        run: python scripts/run_script_tests.py --pattern test_build_site_data.py
       - name: Install ffmpeg for the clip scan
         # ubuntu-latest no longer ships ffmpeg, and Playwright's bundled one is VP8-only so it
         # cannot decode these VP9 clips. The scan fails closed without a decoder, which is how this
