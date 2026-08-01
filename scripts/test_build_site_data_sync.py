@@ -539,7 +539,7 @@ class StampsMediaAssetsTest(unittest.TestCase):
             with open(path, encoding="utf-8") as fh:
                 built = fh.read()
             for match in re.finditer(
-                    r'(?:data-video|src|href)="([^"?]+\.(?:webm|mp4|jpg|jpeg|png))([^"]*)"', built):
+                    r'(?:data-video|src|href)="([^"?]+\.(?:webm|mp4|jpg|jpeg|png|gif|webp|svg))([^"]*)"', built):
                 ref, query = match.group(1), match.group(2)
                 # An off-site asset is not ours to stamp, and os.path.join would mangle its URL
                 # into a path that happens to end in `assets`.
@@ -549,9 +549,16 @@ class StampsMediaAssetsTest(unittest.TestCase):
                 # counts - the site's shared one and the tutorial's own - because a regenerated
                 # screenshot keeps its filename exactly as a re-recorded clip does.
                 resolved = os.path.normpath(os.path.join(os.path.dirname(path), ref))
-                if os.path.basename(os.path.dirname(resolved)) != "assets":
+                holder = os.path.dirname(resolved)
+                if os.path.basename(holder) != "assets":
                     continue
-                checked_dirs.add(os.path.dirname(resolved))
+                # The site's own icons are deliberately exempt (CACHE_BUSTED_ASSETS): they change
+                # rarely and a cached favicon does not misrender a page. Tutorial images are the
+                # opposite - regenerated in place under the same filename - so nothing there is
+                # exempt whatever its extension.
+                if holder != tutorial_dir and ref.lower().endswith((".svg", ".ico")):
+                    continue
+                checked_dirs.add(holder)
                 self.assertTrue(
                     query.startswith("?v="),
                     "%s on the %s page is served without a cache-busting stamp" % (ref, page))

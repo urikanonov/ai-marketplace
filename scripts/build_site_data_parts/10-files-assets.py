@@ -209,7 +209,7 @@ def stamp_assets(text, root):
 # image's digest would be a silently wrong cache key on an unrelated file.
 _TUTORIAL_ASSET_REF_RE = re.compile(
     r'(?P<attr>src|href)="(?P<path>(?:\./)?(?:tutorial/)?assets/(?P<file>[\w.\-]+'
-    r'\.(?:png|jpg|jpeg|webm|mp4)))"')
+    r'\.(?:png|jpg|jpeg|gif|webp|svg|webm|mp4)))"')
 
 
 def _tutorial_asset_names(root):
