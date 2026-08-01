@@ -237,26 +237,27 @@ def _tutorial_asset_hash(root, name):
     return hashlib.sha256(data).hexdigest()[:12]
 
 
-def stamp_tutorial_assets(text, root, source_rel=None):
+def stamp_tutorial_assets(text, root, source_rel):
     """Append a ?v=<content-hash> query to every reference to a tutorial image. A reference is
     stamped only when it RESOLVES to a real file in the tutorial assets directory, so a same-named
-    file served from the site's shared assets/ can never pick up a tutorial image's digest."""
+    file served from the site's shared assets/ can never pick up a tutorial image's digest.
+    `source_rel` is REQUIRED: without the page's own location there is nothing to resolve against,
+    and defaulting it would silently reinstate filename-only matching."""
     names = _tutorial_asset_names(root)
     cache = {}
     # Where the page holding these references will be served from, so `assets/x.png` on the tutorial
     # page and `tutorial/assets/x.png` on the plugin page are each resolved on their own terms.
-    page_dir = os.path.dirname(os.path.relpath(source_rel, SITE_PAGES)) if source_rel else ""
+    page_dir = os.path.dirname(os.path.relpath(source_rel, SITE_PAGES))
     tutorial_dir = os.path.normpath(os.path.join(root, TUTORIAL_IMAGES_DST))
 
     def repl(match):
         name = match.group("file")
         if name not in names:
             return match.group(0)
-        if source_rel is not None:
-            target = os.path.normpath(
-                os.path.join(root, SITE_OUT, page_dir, match.group("path").replace("/", os.sep)))
-            if os.path.dirname(target) != tutorial_dir:
-                return match.group(0)
+        target = os.path.normpath(
+            os.path.join(root, SITE_OUT, page_dir, match.group("path").replace("/", os.sep)))
+        if os.path.dirname(target) != tutorial_dir:
+            return match.group(0)
         if name not in cache:
             cache[name] = _tutorial_asset_hash(root, name)
         return '%s="%s?v=%s"' % (match.group("attr"), match.group("path"), cache[name])

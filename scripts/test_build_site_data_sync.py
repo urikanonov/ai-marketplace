@@ -450,6 +450,20 @@ class StampsMediaAssetsTest(unittest.TestCase):
         # Idempotent: an already-stamped reference is not stamped twice.
         self.assertEqual(bsd.stamp_tutorial_assets(out, bsd.REPO_ROOT, tutorial_src), out)
 
+        # A `./`-prefixed reference resolves to the same place, so it is stamped too - the
+        # normalisation that makes that true is otherwise unexercised.
+        dotted = bsd.stamp_tutorial_assets(
+            '<img src="./assets/%s" />' % name, bsd.REPO_ROOT, tutorial_src)
+        self.assertIn('src="./assets/%s?v=%s"' % (name, digest), dotted)
+
+        # Vector and modern raster formats are stamped as well: review-loop.svg already sits in the
+        # tutorial assets directory, so the day a page references it by URL it must not ship
+        # unstamped just because the extension list was raster-only.
+        svg = bsd.stamp_tutorial_assets(
+            '<img src="assets/review-loop.svg" />', bsd.REPO_ROOT, tutorial_src)
+        self.assertIn('src="assets/review-loop.svg?v=%s"'
+                      % bsd._tutorial_asset_hash(bsd.REPO_ROOT, "review-loop.svg"), svg)
+
     def test_a_same_named_shared_asset_does_not_take_the_tutorial_digest(self):
         # `assets/x.png` means the SHARED assets dir on the hub page and the TUTORIAL one on the
         # tutorial page. Matching on filename alone would stamp an unrelated shared file with a
