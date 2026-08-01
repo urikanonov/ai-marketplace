@@ -498,6 +498,13 @@ class StampsMediaAssetsTest(unittest.TestCase):
                 bsd._tutorial_asset_hash(root, "gone.png")
             self.assertIn("gone.png", str(caught.exception))
 
+    def test_a_page_source_outside_site_pages_fails_loudly(self):
+        # Resolving against anything else makes every reference land outside the tutorial directory,
+        # so the page would ship with zero stamps and no error at all.
+        with self.assertRaises(SystemExit):
+            bsd.stamp_tutorial_assets('<img src="assets/x.png" />', bsd.REPO_ROOT,
+                                      os.path.join("plugins", "x", "index.html"))
+
     def test_a_reference_to_a_missing_tutorial_image_is_left_alone(self):
         # Only files that actually sit in the tutorial assets directory are stamped, so a link to
         # something else that happens to start with assets/ is not rewritten into a broken URL.

@@ -248,6 +248,10 @@ def stamp_tutorial_assets(text, root, source_rel):
     # Where the page holding these references will be served from, so `assets/x.png` on the tutorial
     # page and `tutorial/assets/x.png` on the plugin page are each resolved on their own terms.
     page_dir = os.path.dirname(os.path.relpath(source_rel, SITE_PAGES))
+    if os.path.isabs(source_rel) or page_dir.split(os.sep)[0] == os.pardir:
+        raise SystemExit("stamp_tutorial_assets needs a page source under %s (got %s); resolving "
+                         "against anything else silently stamps nothing"
+                         % (SITE_PAGES, source_rel))
     tutorial_dir = os.path.normpath(os.path.join(root, TUTORIAL_IMAGES_DST))
 
     def repl(match):
