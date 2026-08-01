@@ -226,3 +226,26 @@ test("--until-after on its own is refused, not accepted and ignored (DEMO-TRIM-2
     cast.cleanup();
   }
 });
+
+
+test("--show-command is opt-in and scoped to the subjects that film a cast (DEMO-SAFE-32)", () => {
+  // The safe default is worth nothing if the opt-in flag is unreachable or, worse, silently
+  // accepted on a subject that then ignores it.
+  for (const subject of ["render", "loop"]) {
+    const accepted = run([subject, "--show-command", "--cast", "does-not-exist.json"]);
+    assert.doesNotMatch(accepted.stderr, /unknown option|does not use/,
+      `${subject} rejected --show-command`);
+  }
+  for (const subject of ["report", "capture", "scan", "frames"]) {
+    const rejected = run([subject, "--show-command"]);
+    assert.notEqual(rejected.status, 0, `${subject} accepted --show-command`);
+    assert.match(rejected.stderr, /does not use --show-command/);
+  }
+
+  // It takes no value: swallowing the next token set it to a STRING, and the strict boolean check
+  // then fell back to the safe label - the operator asked to publish the command and silently did
+  // not get it. It must fail loudly instead.
+  const withValue = run(["render", "--show-command", "yes", "--cast", "nope.json"]);
+  assert.notEqual(withValue.status, 0, "--show-command swallowed a value");
+  assert.match(withValue.stderr, /unexpected argument: yes/);
+});
