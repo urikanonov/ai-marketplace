@@ -87,6 +87,14 @@ test("the launch command is reduced to its program name (DEMO-SAFE-31)", () => {
   // publishing it as the window title would be a worse leak than the flags this fix removes.
   assert.equal(windowLabel("FOO=bar copilot --banner"), "copilot");
   assert.equal(windowLabel("API_TOKEN=abc123 KUSTO_HOST=internal.example copilot --banner"), "copilot");
+  // An assignment IN FRONT of a spaced path must not skip the path recovery: checking the raw
+  // string rather than what follows the assignments republished the directory fragment.
+  assert.equal(
+    windowLabel("FOO=bar C:\\Users\\alice\\Contoso Secret Project\\bin\\copilot.exe --banner"),
+    "copilot");
+  assert.equal(
+    windowLabel("FOO=bar C:\\Users\\alice\\Contoso Secret Project\\bin\\copilot --banner"),
+    "session");
   // Nothing that is not a plausible bare program name may be published at all.
   assert.equal(windowLabel("--disable-mcp-server kusto"), "session");
   assert.equal(windowLabel("API_TOKEN=abc123"), "session");

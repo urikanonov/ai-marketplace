@@ -619,20 +619,26 @@ export function windowLabel(command, options = {}) {
   if (isArgv) {
     first = String(command[0] == null ? "" : command[0]).trim();
   } else {
-    const tokens = tokenizeCommand(raw);
     // Leading NAME=value assignments are the shell's, not the program - and one can carry a token.
-    let i = 0;
-    while (i < tokens.length && !tokens[i].quoted
-           && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i].value)) i += 1;
-    first = i < tokens.length ? tokens[i].value : "";
+    // They are stripped off the STRING first so everything below, including the path recovery,
+    // operates on the actual command; checking the raw string would skip a command that opens with
+    // an assignment and fall back to the leaky first token.
+    let rest = raw;
+    let assignment = /^[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+/.exec(rest);
+    while (assignment) {
+      rest = rest.slice(assignment[0].length);
+      assignment = /^[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+/.exec(rest);
+    }
+    const tokens = tokenizeCommand(rest);
+    first = tokens.length ? tokens[0].value : "";
     // An UNQUOTED path with spaces was flattened by an older capture, so the first token is only a
     // FRAGMENT of it. Recover the whole path - but ONLY when the command starts at a path root, or
     // the scan would run across argument boundaries and republish a flag ("copilot --config x.exe").
     // Greedy, so a directory that merely CONTAINS a dotted name ("contoso.com Projects") does not
     // end the match early.
     if ((!tokens[0] || !tokens[0].quoted)
-        && /^(?:[A-Za-z]:[\\/]|[\\/]|\.{1,2}[\\/]|~[\\/])/.test(raw)) {
-      const whole = /^(.*\.(?:exe|cmd|bat|ps1))(?=\s|$)/i.exec(raw);
+        && /^(?:[A-Za-z]:[\\/]|[\\/]|\.{1,2}[\\/]|~[\\/])/.test(rest)) {
+      const whole = /^(.*\.(?:exe|cmd|bat|ps1))(?=\s|$)/i.exec(rest);
       // With no recognisable executable extension the path cannot be reassembled. The first token
       // is the whole program only when what FOLLOWS it is a flag (or nothing); anything else means
       // the path was split across tokens, and publishing the first one would leak a directory name.
