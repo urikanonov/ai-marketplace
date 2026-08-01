@@ -44,6 +44,10 @@ jobs:
         run: python scripts/build_site_data.py
       - name: Run site generator unit tests
         run: python -m unittest discover -s scripts -p "test_build_site_data.py"
+      - name: Check no published clip shows its launch command
+        # ffmpeg is preinstalled on ubuntu-latest and decodes VP9. The script degrades to a loud
+        # SKIP rather than a silent pass if that ever stops being true.
+        run: python scripts/check_clip_chrome.py
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
