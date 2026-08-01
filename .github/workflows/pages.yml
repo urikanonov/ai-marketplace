@@ -44,6 +44,15 @@ jobs:
         run: python scripts/build_site_data.py
       - name: Run site generator unit tests
         run: python -m unittest discover -s scripts -p "test_build_site_data.py"
+      - name: Install ffmpeg for the clip scan
+        # ubuntu-latest no longer ships ffmpeg, and Playwright's bundled one is VP8-only so it
+        # cannot decode these VP9 clips. The scan fails closed without a decoder, which is how this
+        # was caught rather than silently skipped.
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+      - name: Check no published clip shows its launch command
+        # --require-ffmpeg makes the gate FAIL rather than skip if the decoder is missing: a green
+        # gate that scanned nothing reads as proof the clips were checked.
+        run: python scripts/check_clip_chrome.py --require-ffmpeg
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
