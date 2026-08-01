@@ -558,7 +558,20 @@ function makeContext(page, budgetMs, warnings, scope = page) {
 // tokens - which is how a directory name reached the window chrome.
 export function joinCommand(argv) {
   return (Array.isArray(argv) ? argv : [])
-    .map((a) => (/\s/.test(String(a)) ? '"' + String(a).replace(/"/g, '\\"') + '"' : String(a)))
+    // Backslashes are escaped BEFORE quotes, or a value ending in one would emit `\"` and be read
+    // back as an escaped quote - the token would then swallow the rest of the line. This form is
+    // for STORAGE (it must round-trip through tokenizeCommand); use displayCommand for the screen.
+    .map((a) => (/\s/.test(String(a))
+      ? '"' + String(a).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"'
+      : String(a)))
+    .join(" ");
+}
+
+// The same invocation as a human reads it. Storage has to escape backslashes so the string parses
+// back exactly; a viewer should just see the path they typed, so this quotes without doubling.
+export function displayCommand(argv) {
+  return (Array.isArray(argv) ? argv : [])
+    .map((a) => (/\s/.test(String(a)) ? '"' + String(a) + '"' : String(a)))
     .join(" ");
 }
 
@@ -580,9 +593,14 @@ export function tokenizeCommand(raw) {
   for (let i = 0; i < String(raw == null ? "" : raw).length; i++) {
     const ch = raw[i];
     if (quote) {
-      // Backslash-escaping is a double-quote convention; inside single quotes a backslash is
-      // literal, and treating it as an escape swallows a Windows path that ends in a separator.
-      if (ch === "\\" && quote === '"' && raw[i + 1] === quote) { current += quote; i += 1; continue; }
+      // Backslash escaping is a double-quote convention, and it covers a literal backslash as well
+      // as a quote - joinCommand escapes both, so a value ending in a separator round-trips instead
+      // of turning its closing quote into an escaped one.
+      if (ch === "\\" && quote === '"' && (raw[i + 1] === quote || raw[i + 1] === "\\")) {
+        current += raw[i + 1];
+        i += 1;
+        continue;
+      }
       if (ch === quote) { quote = null; continue; }
       current += ch;
       continue;
@@ -612,7 +630,7 @@ export function windowLabel(command, options = {}) {
   // A cast stores argv, so the program is known EXACTLY and nothing has to be guessed back out of
   // a joined string. Everything below is the fallback for a cast that predates that.
   const isArgv = Array.isArray(command);
-  const raw = isArgv ? joinCommand(command).trim() : String(command == null ? "" : command).trim();
+  const raw = isArgv ? displayCommand(command).trim() : String(command == null ? "" : command).trim();
   if (!raw) return "session";
   // parseArgs stores the CLI spelling; a direct caller uses the camelCase one.
   if (options.showCommand === true || options["show-command"] === true) return raw;

@@ -180,8 +180,13 @@ test("the stored command round-trips a path with spaces (DEMO-SAFE-36)", () => {
   assert.equal(windowLabel(stored), "copilot");
   // Without the quoting the path is unrecoverable, and nothing may be published.
   assert.equal(windowLabel(argv.join(" ")), "session");
-  // An embedded quote is escaped rather than closing the value early.
+  // An embedded quote is escaped rather than closing the value early, and so is a backslash - a
+  // value ending in a path separator must round-trip rather than escaping its own closing quote.
   assert.equal(joinCommand(['say "hi" now']), '"say \\"hi\\" now"');
+  assert.equal(joinCommand(["C:\\Contoso Secret Project\\bin\\"]),
+    '"C:\\\\Contoso Secret Project\\\\bin\\\\"');
+  assert.equal(tokenizeCommand(joinCommand(["C:\\Contoso Secret Project\\bin\\"]))[0].value,
+    "C:\\Contoso Secret Project\\bin\\");
   assert.equal(joinCommand([]), "");
 
   for (const command of [
@@ -245,11 +250,12 @@ test("the command tokenizer keeps quoted values whole (DEMO-SAFE-37)", () => {
   // An escaped quote stays in the value instead of closing it early.
   assert.deepEqual(tokenizeCommand('"say \\"hi\\" now"'),
     [{ value: 'say "hi" now', quoted: true, closed: true }]);
-  // A backslash before a double quote is an escape - that is how joinCommand emits an embedded
-  // quote - so a Windows path written with a trailing separator inside quotes does NOT close, and
-  // is reported unclosed rather than silently swallowing the rest of the line as a value.
-  assert.deepEqual(tokenizeCommand('"C:\\bin\\" x'),
-    [{ value: 'C:\\bin" x', quoted: true, closed: false }]);
+  // A backslash escapes a quote OR another backslash, so a value ending in a separator round-trips
+  // instead of turning its own closing quote into an escaped one.
+  assert.deepEqual(tokenizeCommand('"C:\\\\Contoso Secret Project\\\\bin\\\\" --banner'), [
+    { value: "C:\\Contoso Secret Project\\bin\\", quoted: true, closed: true },
+    { value: "--banner", quoted: false, closed: true },
+  ]);
   // An unterminated quote is reported, so callers can refuse to trust it.
   assert.deepEqual(tokenizeCommand('"never closed'),
     [{ value: "never closed", quoted: true, closed: false }]);
