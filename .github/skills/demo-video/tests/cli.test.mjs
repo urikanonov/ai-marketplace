@@ -241,4 +241,11 @@ test("--show-command is opt-in and scoped to the subjects that film a cast (DEMO
     assert.notEqual(rejected.status, 0, `${subject} accepted --show-command`);
     assert.match(rejected.stderr, /does not use --show-command/);
   }
+
+  // It takes no value: swallowing the next token set it to a STRING, and the strict boolean check
+  // then fell back to the safe label - the operator asked to publish the command and silently did
+  // not get it. It must fail loudly instead.
+  const withValue = run(["render", "--show-command", "yes", "--cast", "nope.json"]);
+  assert.notEqual(withValue.status, 0, "--show-command swallowed a value");
+  assert.match(withValue.stderr, /unexpected argument: yes/);
 });

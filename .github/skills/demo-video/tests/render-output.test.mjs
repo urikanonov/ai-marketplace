@@ -51,6 +51,12 @@ test("the launch command is reduced to its program name (DEMO-SAFE-31)", () => {
   assert.equal(windowLabel("/usr/local/bin/copilot -p 'do the thing'"), "copilot");
   // A quoted program path with spaces is one token, not two.
   assert.equal(windowLabel('"C:\\Program Files\\Copilot\\copilot.exe" --disable-mcp-server azure'), "copilot");
+  // ...and so is an UNQUOTED one, which is the shape a cast actually stores. Splitting on
+  // whitespace here published a directory-name fragment - the same internal-inventory leak class.
+  assert.equal(windowLabel("C:\\Program Files\\Copilot\\copilot.exe --flag"), "copilot");
+  assert.equal(
+    windowLabel("C:\\Users\\alice\\Contoso Secret Project\\bin\\copilot.exe --banner"),
+    "copilot");
   assert.equal(windowLabel(""), "session");
   assert.equal(windowLabel(null), "session");
   assert.equal(windowLabel("   "), "session");

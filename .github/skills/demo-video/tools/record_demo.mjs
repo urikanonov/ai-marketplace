@@ -111,6 +111,10 @@ const STRING_KEYS = new Set([
   "until", "until-after", "until-gap",
 ]);
 const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "show-command", "help"]);
+// Flags that never take a value. Without this, `--show-command yes` swallows `yes` as the value and
+// the strict boolean check below then falls back to the SAFE label - the operator asked to publish
+// the command and silently did not get it.
+const BOOLEAN_FLAGS = new Set(["list", "allow-findings", "show-command", "help"]);
 // Which options each subject actually reads. Validating against the union instead means
 // `scan --out x` or `capture --seconds 10` is accepted and then silently ignored - the caller is
 // told nothing, and gets a clip that is not what they asked for.
@@ -158,7 +162,8 @@ function parseArgs(argv) {
     if (Object.prototype.hasOwnProperty.call(out, key)) throw new Error(`option --${key} was given twice`);
     if (eq > 2) { out[key] = a.slice(eq + 1); continue; }
     const next = argv[i + 1];
-    if (next !== undefined && !next.startsWith("--")) { out[key] = argv[++i]; }
+    if (BOOLEAN_FLAGS.has(key)) { out[key] = true; }
+    else if (next !== undefined && !next.startsWith("--")) { out[key] = argv[++i]; }
     else if (STRING_KEYS.has(key)) { throw new Error(`Option --${key} requires a value`); }
     else { out[key] = true; }
   }
@@ -562,7 +567,13 @@ export function windowLabel(command, options = {}) {
     assignment = /^[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+/.exec(rest);
   }
   const quoted = /^"([^"]*)"/.exec(rest) || /^'([^']*)'/.exec(rest);
-  const first = quoted ? quoted[1] : (rest.split(/\s+/)[0] || "");
+  // An UNQUOTED path with spaces is the normal shape here: capture stores argv joined by spaces, so
+  // the quoting is already gone by the time a cast is written. Splitting on whitespace would then
+  // publish a directory-name fragment - "C:\Users\me\Contoso Secret Project\bin\copilot.exe" would
+  // render as "Contoso" - which is the same internal-inventory leak this whole guard exists to
+  // stop. Prefer the longest leading run that ends in a known executable extension.
+  const withExt = quoted ? null : /^(.*?\.(?:exe|cmd|bat|ps1|com))(?=\s|$)/i.exec(rest);
+  const first = quoted ? quoted[1] : (withExt ? withExt[1] : (rest.split(/\s+/)[0] || ""));
   // Anything that is not a plausible bare program name - a flag, a leftover assignment, an empty
   // token - is NOT published. The whole premise here is that a command's shape cannot be trusted.
   if (!first || first.startsWith("-") || first.includes("=")) return "session";
@@ -1022,7 +1033,11 @@ async function captureTerminal(args) {
 
   // The COMMAND is part of the clip too - it is the title bar of the render - and a real invocation
   // can carry a credential (`curl -H "Authorization: Bearer ..."`), so it is scrubbed like output.
-  const commandLine = scrubText(command.join(" "), rules);
+  // Argv elements holding whitespace are re-quoted so the stored string round-trips: joining them
+  // bare loses the boundary, and a Windows path with a space then reads as several tokens.
+  const commandLine = scrubText(
+    command.map((a) => (/\s/.test(a) ? '"' + String(a).replace(/"/g, '\\"') + '"' : a)).join(" "),
+    rules);
 
   // Scrub BEFORE anything touches the disk: the raw stream is never persisted.
   const scrubbed = scrubEvents(events, { rules });
