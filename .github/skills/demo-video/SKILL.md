@@ -220,9 +220,14 @@ these are NOT covered, and only your own eyes will catch them:
 title bar is part of the frame, and it holds the launch command. On a real machine that command is
 an inventory of internal tooling - which MCP servers you disable, which hosts you point at - and
 none of it is a secret by any rule, so redaction cannot catch it. The clip therefore shows the
-PROGRAM NAME only (`copilot`), with the path and every flag dropped; pass `--show-command` when the
-invocation genuinely is the story. The title card follows the same rule: with no `-p` prompt and no
-`--ask` it degrades to the program name rather than painting the whole invocation in large type.
+PROGRAM NAME only (`copilot`), with the path, any leading `NAME=value` environment assignment, and
+every flag dropped; anything that is not a plausible bare program name degrades to `session`. Pass
+`--show-command` when the invocation genuinely is the story.
+
+**The title card is the loudest surface of all** - it is the largest type in the clip. It states the
+prompt that was actually typed, and it is bounded: a `-p` prompt ends at its closing quote (or at the
+next flag when unquoted), so flags written after the prompt never ride onto it. With no prompt and
+no `--ask` it degrades to the program name rather than painting the whole invocation.
 
 **Posters are a first-class review surface.** A poster is a frame of the clip, and on a web page it
 loads on FIRST PAINT - so whatever is in it is seen without anyone pressing play. Review the poster

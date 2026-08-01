@@ -553,10 +553,44 @@ export function windowLabel(command, options = {}) {
   if (!raw) return "session";
   // parseArgs stores the CLI spelling; a direct caller uses the camelCase one.
   if (options.showCommand === true || options["show-command"] === true) return raw;
-  const quoted = /^"([^"]*)"/.exec(raw) || /^'([^']*)'/.exec(raw);
-  const first = quoted ? quoted[1] : raw.split(/\s+/)[0];
+  // Leading NAME=value assignments are the shell's, not the program - and one of them can be a
+  // token. Skip them rather than publishing the first one as the window title.
+  let rest = raw;
+  let assignment = /^[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+/.exec(rest);
+  while (assignment) {
+    rest = rest.slice(assignment[0].length);
+    assignment = /^[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+/.exec(rest);
+  }
+  const quoted = /^"([^"]*)"/.exec(rest) || /^'([^']*)'/.exec(rest);
+  const first = quoted ? quoted[1] : (rest.split(/\s+/)[0] || "");
+  // Anything that is not a plausible bare program name - a flag, a leftover assignment, an empty
+  // token - is NOT published. The whole premise here is that a command's shape cannot be trusted.
+  if (!first || first.startsWith("-") || first.includes("=")) return "session";
   const base = first.split(/[\\/]/).pop() || first;
-  return base.replace(/\.(exe|cmd|bat|ps1|com)$/i, "") || "session";
+  const label = base.replace(/\.(exe|cmd|bat|ps1|com)$/i, "");
+  return label && !label.startsWith("-") ? label : "session";
+}
+
+// The prompt a `-p` invocation carried, and NOTHING after it. The extraction used to run to the end
+// of the string, so `copilot -p "review this" --disable-mcp-server kusto` painted the flags across
+// the title card in the largest type in the clip - the same leak the window chrome had, on a louder
+// surface. A quoted prompt ends at its closing quote; an unquoted one ends at the next flag.
+export function promptFromCommand(command) {
+  const raw = String(command == null ? "" : command);
+  const at = /(?:^|\s)-p(?:\s+|=)/.exec(raw);
+  if (!at) return null;
+  const after = raw.slice(at.index + at[0].length).trim();
+  if (!after) return null;
+  const quoted = /^"([^"]*)"/.exec(after) || /^'([^']*)'/.exec(after);
+  if (quoted) return quoted[1].trim() || null;
+  // Unquoted: stop at the first token that looks like a flag, so trailing options never ride along.
+  const words = [];
+  for (const word of after.split(/\s+/)) {
+    if (/^-/.test(word)) break;
+    words.push(word);
+  }
+  const prompt = words.join(" ").replace(/^["']|["']$/g, "").trim();
+  return prompt || null;
 }
 
 async function saveVideo(page, context, outFile) {
@@ -1128,9 +1162,9 @@ function scanCast(args) {
   return findings;
 }
 
-function terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask, title }) {
-  const xtermJs = fs.readFileSync(resolveOptionalPath("@xterm/xterm", "lib", "xterm.js"), "utf8");
-  const xtermCss = fs.readFileSync(resolveOptionalPath("@xterm/xterm", "css", "xterm.css"), "utf8");
+export function terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask, title, xterm = null }) {
+  const xtermJs = xterm ? xterm.js : fs.readFileSync(resolveOptionalPath("@xterm/xterm", "lib", "xterm.js"), "utf8");
+  const xtermCss = xterm ? xterm.css : fs.readFileSync(resolveOptionalPath("@xterm/xterm", "css", "xterm.css"), "utf8");
   const payload = scriptJson({
     cols: cast.cols || 120,
     rows: cast.rows || 30,
@@ -1260,8 +1294,8 @@ export function askFromCast(cast, args, preferredMark = "ask") {
   const marks = Array.isArray(cast.marks) ? cast.marks : [];
   const chosen = marks.find((m) => m.label === preferredMark && m.text) || marks.find((m) => m.text);
   if (chosen) return String(chosen.text).trim();
-  const fromCommand = /(?:^|\s)-p\s+(.+)$/s.exec(String(cast.command || ""));
-  if (fromCommand) return fromCommand[1].replace(/^["']|["']$/g, "");
+  const fromCommand = promptFromCommand(cast.command);
+  if (fromCommand) return fromCommand;
   // NOT the raw command. With no prompt to state there is nothing worth reading here, and the
   // invocation would be painted across the card in the largest type in the clip - a louder leak
   // than the window chrome that prompted this.
@@ -1285,9 +1319,9 @@ function askFontPx(ask) {
 // terminal is an xterm exactly like the standalone render; the report lives in a full-viewport
 // iframe on top of it. Node drives the phases through `window.__stage`, and because page.evaluate
 // awaits a returned promise, the handshake needs no polling.
-function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, reportUrl, title }) {
-  const xtermJs = fs.readFileSync(resolveOptionalPath("@xterm/xterm", "lib", "xterm.js"), "utf8");
-  const xtermCss = fs.readFileSync(resolveOptionalPath("@xterm/xterm", "css", "xterm.css"), "utf8");
+export function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, reportUrl, title, xterm = null }) {
+  const xtermJs = xterm ? xterm.js : fs.readFileSync(resolveOptionalPath("@xterm/xterm", "lib", "xterm.js"), "utf8");
+  const xtermCss = xterm ? xterm.css : fs.readFileSync(resolveOptionalPath("@xterm/xterm", "css", "xterm.css"), "utf8");
   const payload = scriptJson({
     cols: cast.cols || 120,
     rows: cast.rows || 30,

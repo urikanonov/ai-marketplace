@@ -226,3 +226,19 @@ test("--until-after on its own is refused, not accepted and ignored (DEMO-TRIM-2
     cast.cleanup();
   }
 });
+
+
+test("--show-command is opt-in and scoped to the subjects that film a cast (DEMO-SAFE-32)", () => {
+  // The safe default is worth nothing if the opt-in flag is unreachable or, worse, silently
+  // accepted on a subject that then ignores it.
+  for (const subject of ["render", "loop"]) {
+    const accepted = run([subject, "--show-command", "--cast", "does-not-exist.json"]);
+    assert.doesNotMatch(accepted.stderr, /unknown option|does not use/,
+      `${subject} rejected --show-command`);
+  }
+  for (const subject of ["report", "capture", "scan", "frames"]) {
+    const rejected = run([subject, "--show-command"]);
+    assert.notEqual(rejected.status, 0, `${subject} accepted --show-command`);
+    assert.match(rejected.stderr, /does not use --show-command/);
+  }
+});
