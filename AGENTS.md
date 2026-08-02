@@ -540,7 +540,7 @@ measured ~30 minutes here (script unit tests 639.8s, the plugin Python suites up
 result was that 52% of observed pushes used `--no-verify` - so the hook protected nothing half the
 time. A fast hook that always runs beats a thorough hook that is routinely bypassed. When the
 suites do run they fan out across the CPUs (`--jobs auto`: the plugin suites ~2.8x here, the script
-suite ~6-10x - 987.0s serial to 98.5s across 16 workers, 159.7s on a busier run).
+suite ~6-13x - 987.0s serial to 74.6s across 16 workers, 159.7s on a busier one).
 
 ```bash
 git push                        # fast gates only (seconds)
@@ -570,7 +570,7 @@ passes; the two `validate.yml` jobs pass a FIXED `--jobs 4` so the shard a test 
 depend on the runner's CPU count): the parent snapshots the repository ONCE, then fans the suite out
 across worker processes, each running a deterministic stride of the discovered TESTS from a sandbox
 the PARENT owns and inspects, so the leak guard is per worker and one slow module cannot pin the
-wall time (987.0s -> 98.5s across 16 workers here; on a 4-CPU CI runner the whole suite is ~20s
+wall time (987.0s -> 74.6s across 16 workers here; on a 4-CPU CI runner the whole suite is ~20s
 serial, so the CI win is smaller). Aggregation fails CLOSED - a worker that fails, crashes, cannot
 be launched, discovers no tests, or discovers a DIFFERENT number of tests than its peers reds the
 run. Because a worker runs a slice of a class rather than a whole file, class and module fixtures

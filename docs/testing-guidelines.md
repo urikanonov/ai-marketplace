@@ -383,7 +383,7 @@ sharded job's matrix a complete `1..N` cover so an entry can never be silently d
   fixtures out of the repo root. `--jobs` keeps that guard: the PARENT creates and inspects each
   worker's sandbox (so a test cannot exit the process to skip the check) and takes the repository
   snapshot once around the whole run, while each worker runs a deterministic stride of the
-  discovered tests (987.0s serial -> 98.5s across 16 workers here; the same suite is only ~20s on a
+  discovered tests (987.0s serial -> 74.6s across 16 workers here; the same suite is only ~20s on a
   4-CPU CI runner, so the CI win is much smaller). The workers must all discover the same number of
   tests and, between them, run every one exactly once, or the run reds - a green run in which tests
   silently never executed is the failure mode that check exists for.

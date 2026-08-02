@@ -39,6 +39,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -204,7 +205,7 @@ def _cleanup_after(path):
         shutil.rmtree(path, ignore_errors=True)
 
 
-def build_child_argv(index, total, job_index, jobs, args, sandbox=None, python=None):
+def build_child_argv(index, total, job_index, jobs, args, sandbox=None, token="", python=None):
     """Argv for one worker: its composed shard plus the suite selection.
 
     Deliberately omits --jobs (a worker can never recurse into another fan-out) and passes
@@ -220,6 +221,8 @@ def build_child_argv(index, total, job_index, jobs, args, sandbox=None, python=N
             "--shard", "%d/%d" % (idx, tot)]
     if sandbox is not None:
         argv += ["--sandbox", str(sandbox)]
+    if token:
+        argv += ["--coverage-token", token]
     return argv
 
 
@@ -246,26 +249,32 @@ def aggregate_results(results):
 #: population - hence the digest, and hence the cross-check rather than trusting each worker's own
 #: arithmetic. The line is printed AFTER the run, so a worker that ends early cannot have announced
 #: work it never did. The count is what the shard was ASKED to run: unittest's `testsRun` undercounts
-#: a class whose `setUpClass` raises SkipTest, which is a legitimate pass, not a gap.
-COVERAGE = "run_script_tests: shard %d/%d population %s ran %d of %d"
-_COVERAGE_RE = re.compile(
-    r"^run_script_tests: shard \d+/\d+ population ([0-9a-f]+) ran (\d+) of (\d+)$", re.M)
+#: a class whose `setUpClass` raises SkipTest, which is a legitimate pass, not a gap. The TOKEN is a
+#: fresh id per fan-out, because this runner's own tests run the runner: without it a worker that
+#: replays a nested run's output would report several markers and fail its own coverage check.
+COVERAGE = "run_script_tests: shard %d/%d token %s population %s ran %d of %d"
 
 
-def check_coverage(outputs, index=1, total=1):
+def coverage_re(token):
+    return re.compile(r"^run_script_tests: shard \d+/\d+ token %s population ([0-9a-f]+) "
+                      r"ran (\d+) of (\d+)$" % re.escape(token), re.M)
+
+
+def check_coverage(outputs, index=1, total=1, token=""):
     """Error messages when the workers did not, between them, run the parent's shard exactly once.
 
     `outputs` is each worker's captured output, in job order; `index`/`total` is the shard the
     PARENT was itself asked for (`1/1` for a plain `--jobs` run), since the workers cover only that
-    slice of the discovered population. Fails CLOSED: a worker that reported nothing (or more than
-    once), a worker that discovered a different suite than its peers, or a set of shards whose
-    counts do not add up is an error - all of which mean tests may have run zero times while every
-    worker still exited 0.
+    slice of the discovered population; `token` identifies THIS fan-out's markers. Fails CLOSED: a
+    worker that reported nothing (or more than once), a worker that discovered a different suite
+    than its peers, or a set of shards whose counts do not add up is an error - all of which mean
+    tests may have run zero times while every worker still exited 0.
     """
     errors = []
     seen = []
+    pattern = coverage_re(token)
     for job, text in enumerate(outputs, start=1):
-        matches = _COVERAGE_RE.findall(text or "")
+        matches = pattern.findall(text or "")
         if len(matches) != 1:
             errors.append("worker %d/%d reported what it ran %d time(s), not once, so the suite "
                           "cannot be confirmed covered" % (job, len(outputs), len(matches)))
@@ -311,8 +320,12 @@ def run_parallel(index, total, jobs, args, env):
                               text=True, encoding="utf-8", errors="replace", env=env)
 
     with contextlib.ExitStack() as stack:
+        # A fresh id per fan-out: this runner's own tests run the runner, so a worker replaying a
+        # nested run's output would otherwise look like a worker reporting several times.
+        token = uuid.uuid4().hex
         sandboxes = [stack.enter_context(_sandbox()) for _ in range(jobs)]
-        commands = [build_child_argv(index, total, j, jobs, args, sandbox=sandboxes[j - 1])
+        commands = [build_child_argv(index, total, j, jobs, args, sandbox=sandboxes[j - 1],
+                                     token=token)
                     for j in range(1, jobs + 1)]
         results = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
@@ -344,14 +357,14 @@ def run_parallel(index, total, jobs, args, env):
         # Only meaningful when every worker passed: a failed worker already reds the run, and its
         # output is the thing to read. This is the check that catches a GREEN run in which some
         # tests never executed.
-        errors += check_coverage([res.stdout for res in results], index, total)
+        errors += check_coverage([res.stdout for res in results], index, total, token)
         rc = 1 if errors else 0
     for message in errors:
         print("run_script_tests: %s" % message, file=sys.stderr)
     return rc, leftovers
 
 
-def run_shard(tests_dir, pattern, index, total, cwd):
+def run_shard(tests_dir, pattern, index, total, cwd, token=""):
     """Run shard `index`/`total` of the discovered suite in THIS process, from `cwd`.
 
     Discovery happens after the chdir, so even a module that writes at import time lands in the
@@ -381,7 +394,8 @@ def run_shard(tests_dir, pattern, index, total, cwd):
         # block-buffered against it - a marker appended to a half-written progress line would not
         # parse.
         sys.stderr.flush()
-        sys.stdout.write("\n" + (COVERAGE % (index, total, digest, len(mine), len(tests))) + "\n")
+        sys.stdout.write("\n" + (COVERAGE % (index, total, token, digest, len(mine), len(tests)))
+                         + "\n")
         sys.stdout.flush()
         return rc
     finally:
@@ -560,6 +574,9 @@ def main(argv=None):
     parser.add_argument("--sandbox", default=None,
                         help="run a --shard from this existing directory instead of a fresh one "
                              "(used internally by --jobs, so the PARENT owns the leftover check)")
+    parser.add_argument("--coverage-token", default="",
+                        help="tag this shard's coverage report with the parent's run id "
+                             "(used internally by --jobs)")
     args = parser.parse_args(argv)
 
     try:
@@ -632,7 +649,8 @@ def main(argv=None):
             os.environ.update(env)
             if repo_root and str(repo_root) not in sys.path:
                 sys.path.insert(0, str(repo_root))
-            returncode = run_shard(args.tests_dir, args.pattern, index, total, cwd)
+            returncode = run_shard(args.tests_dir, args.pattern, index, total, cwd,
+                                   args.coverage_token)
         else:
             returncode = subprocess.run(discover_argv(args.tests_dir, args.pattern),
                                         cwd=cwd, env=env).returncode

@@ -378,7 +378,8 @@ class JobResolution(unittest.TestCase):
 class WorkerArgv(unittest.TestCase):
     def _args(self, **over):
         base = dict(tests_dir="/repo/scripts", pattern="test_*.py", repo_root="/repo",
-                    no_worktree_check=False, shard="1/1", jobs="4", sandbox=None)
+                    no_worktree_check=False, shard="1/1", jobs="4", sandbox=None,
+                    coverage_token="")
         base.update(over)
         return argparse.Namespace(**base)
 
@@ -402,6 +403,10 @@ class WorkerArgv(unittest.TestCase):
         # (os._exit) cannot skip the leftover check.
         argv = rst.build_child_argv(1, 1, 1, 2, self._args(), sandbox="/tmp/box", python="py")
         self.assertEqual(argv[argv.index("--sandbox") + 1], "/tmp/box")
+
+    def test_a_worker_is_told_which_fan_out_it_belongs_to(self):
+        argv = rst.build_child_argv(1, 1, 1, 2, self._args(), token="run42", python="py")
+        self.assertEqual(argv[argv.index("--coverage-token") + 1], "run42")
 
     def test_a_worker_inherits_the_suite_selection(self):
         argv = rst.build_child_argv(1, 1, 1, 2,
@@ -439,47 +444,57 @@ class DuplicateTests(unittest.TestCase):
 class CoverageCrossCheck(unittest.TestCase):
     """Each worker discovers independently, so the parent must confirm they saw the same suite."""
 
-    def _report(self, index, total, digest, ran, discovered):
-        return "noise\n" + (rst.COVERAGE % (index, total, digest, ran, discovered)) + "\nmore\n"
+    def _report(self, index, total, digest, ran, discovered, token="tok"):
+        return ("noise\n" + (rst.COVERAGE % (index, total, token, digest, ran, discovered))
+                + "\nmore\n")
 
     def test_a_complete_partition_is_accepted(self):
         outputs = [self._report(1, 2, "abc123", 5, 10), self._report(2, 2, "abc123", 5, 10)]
-        self.assertEqual(rst.check_coverage(outputs), [])
+        self.assertEqual(rst.check_coverage(outputs, token="tok"), [])
 
     def test_a_worker_that_discovered_a_different_suite_reds_the_run(self):
         # An import error collapses a module into one _FailedTest, so that worker strides a
         # DIFFERENT population and the union of shards is no longer the suite. A digest, not a
         # count: two workers can see the same NUMBER of tests and still not the same tests.
         outputs = [self._report(1, 2, "abc123", 5, 10), self._report(2, 2, "def456", 5, 10)]
-        problems = rst.check_coverage(outputs)
+        problems = rst.check_coverage(outputs, token="tok")
         self.assertEqual(len(problems), 1)
         self.assertIn("did not all discover the same suite", problems[0])
 
     def test_shards_that_do_not_add_up_red_the_run(self):
         outputs = [self._report(1, 2, "abc123", 5, 10), self._report(2, 2, "abc123", 4, 10)]
-        problems = rst.check_coverage(outputs)
+        problems = rst.check_coverage(outputs, token="tok")
         self.assertEqual(len(problems), 1)
         self.assertIn("9", problems[0])
 
     def test_a_silent_worker_reds_the_run(self):
-        problems = rst.check_coverage([self._report(1, 2, "abc123", 5, 10), "nothing to see"])
+        problems = rst.check_coverage([self._report(1, 2, "abc123", 5, 10), "nothing to see"],
+                                      token="tok")
         self.assertTrue(problems)
 
     def test_a_worker_that_reports_twice_reds_the_run(self):
-        # A test whose own output echoes the marker (or a worker that somehow ran twice) must not
-        # let the parent pick whichever line it likes.
+        # A worker that somehow ran twice must not let the parent pick whichever line it likes.
         doubled = self._report(1, 2, "abc123", 5, 10) + self._report(1, 2, "abc123", 5, 10)
-        self.assertTrue(rst.check_coverage([doubled, self._report(2, 2, "abc123", 5, 10)]))
+        self.assertTrue(rst.check_coverage([doubled, self._report(2, 2, "abc123", 5, 10)],
+                                           token="tok"))
+
+    def test_a_nested_runs_report_is_ignored(self):
+        # This runner's own tests RUN the runner, so a worker replays nested markers. Only the
+        # markers carrying this fan-out's token count.
+        nested = self._report(1, 3, "999999", 7, 21, token="other")
+        outputs = [nested + self._report(1, 2, "abc123", 5, 10),
+                   self._report(2, 2, "abc123", 5, 10) + nested]
+        self.assertEqual(rst.check_coverage(outputs, token="tok"), [])
 
     def test_the_parents_own_shard_is_what_must_be_covered(self):
         # With --shard I/N AND --jobs, the workers cover only the parent's slice of the population,
         # so comparing their sum against the WHOLE population would fail every such run.
         outputs = [self._report(1, 6, "abc123", 2, 9), self._report(4, 6, "abc123", 1, 9)]
-        self.assertEqual(rst.check_coverage(outputs, index=1, total=3), [])
-        self.assertTrue(rst.check_coverage(outputs, index=1, total=1))
+        self.assertEqual(rst.check_coverage(outputs, index=1, total=3, token="tok"), [])
+        self.assertTrue(rst.check_coverage(outputs, index=1, total=1, token="tok"))
 
     def test_no_output_at_all_reds_the_run(self):
-        self.assertTrue(rst.check_coverage([]))
+        self.assertTrue(rst.check_coverage([], token="tok"))
 
     def test_the_digest_follows_the_tests_and_their_order(self):
         class Sample(unittest.TestCase):
@@ -795,6 +810,30 @@ class ParallelRunnerEndToEnd(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stdout[-3000:] + proc.stderr[-3000:])
             self.assertEqual(len(list(marker.iterdir())), 2,
                              "shard 1/3 of 6 tests should have run 2 of them")
+
+    def test_a_test_that_itself_runs_a_fan_out_does_not_break_the_coverage_check(self):
+        # This runner's own suite runs the runner, so a worker replays a nested run's coverage
+        # markers into its own output. CI caught exactly that: the worker looked like it had
+        # reported five times.
+        with tempfile.TemporaryDirectory() as tmp:
+            inner = Path(tmp) / "inner"
+            inner.mkdir()
+            _fake_suite(inner, "test_inner.py", CLEAN_TEST)
+            outer = Path(tmp) / "outer"
+            outer.mkdir()
+            _fake_suite(outer, "test_clean.py", CLEAN_TEST)
+            _fake_suite(outer, "test_nested.py",
+                        "import subprocess\nimport sys\nimport unittest\n\n\n"
+                        "class Nested(unittest.TestCase):\n"
+                        "    def test_runs_the_runner(self):\n"
+                        "        proc = subprocess.run([sys.executable, %r, '--tests-dir', %r,\n"
+                        "                               '--repo-root', '', '--jobs', '2'],\n"
+                        "                              capture_output=True, text=True)\n"
+                        "        print(proc.stdout)\n"
+                        "        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)\n"
+                        % (str(SCRIPTS / "run_script_tests.py"), str(inner)))
+            proc = self._run(outer, jobs="2")
+            self.assertEqual(proc.returncode, 0, proc.stdout[-3000:] + proc.stderr[-3000:])
 
     def test_a_worker_runs_with_the_git_environment_scrubbed(self):
         # In-process shards must see the same scrubbed environment the serial subprocess gets, or
