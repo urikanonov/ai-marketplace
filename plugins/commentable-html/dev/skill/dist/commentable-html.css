@@ -806,6 +806,12 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 
 .cm-composer {
   position: fixed; z-index: 210; width: 360px; max-width: 92vw;
+  /* The editor autogrows (42-autogrow.js), so bound the whole surface to the viewport and let it
+     scroll: a box taller than the screen could never be clamped back into view, which would put
+     Cancel/Save permanently out of reach on a short (landscape phone) viewport. `border-box` keeps
+     that bound honest - it must include this surface's own padding and border - and `dvh` tracks the
+     viewport a mobile browser's retractable toolbars actually leave visible. */
+  box-sizing: border-box; max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); overflow-y: auto;
   background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 12px;
   box-shadow: var(--cp-shadow); padding: var(--cp-chrome-card-y);
   display: flex; flex-direction: column; gap: var(--cp-chrome-card-gap);
@@ -853,6 +859,8 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 }
 .cm-composer textarea {
   resize: vertical; min-height: 70px; padding: var(--cp-chrome-shell-x) var(--cp-chrome-action-x);
+  /* Autogrows to fit the draft (42-autogrow.js) up to this cap, then scrolls. */
+  --cmh-grow-max: 45vh;
   background: var(--cp-bg-elevated); border: 1px solid var(--cp-border); border-radius: 6px;
   color: var(--cp-text); font-family: inherit; font-size: var(--cp-chrome-font);
 }
@@ -870,6 +878,9 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 
 .cm-comment-popover {
   position: fixed; z-index: 215; width: 320px; max-width: 92vw;
+  /* Same bound as the composer: the edit form autogrows, so the surface itself stays viewport-sized
+     and scrolls rather than growing past the screen with its Save button. */
+  box-sizing: border-box; max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); overflow-y: auto;
   background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 12px;
   box-shadow: var(--cp-shadow); padding: var(--cp-chrome-card-y);
   display: flex; flex-direction: column; gap: var(--cp-chrome-card-gap);
@@ -902,6 +913,8 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 }
 .cm-comment-popover-input {
   width: 100%; box-sizing: border-box; resize: vertical; min-height: 5rem;
+  /* Autogrows to fit the draft (42-autogrow.js) up to this cap, then scrolls. */
+  --cmh-grow-max: 40vh;
   padding: 0.35rem 0.5rem; font: inherit; font-size: var(--cp-chrome-body-font);
   line-height: 1.5; border: 1px solid var(--cp-border); border-radius: 6px;
   background: var(--cp-surface); color: var(--cp-text);
@@ -2170,10 +2183,15 @@ html[data-theme="dark"] .cm-author-pill {
   width: 100%;
   box-sizing: border-box;
   resize: vertical;
-  min-height: 2.4rem;
+  /* The reply is often the most substantive thing a reviewer writes, so it is typed at the SAME
+     size as the note it answers and as the composer (issue #851), and the box autogrows (42-autogrow.js)
+     from a two-line start up to this cap, after which it scrolls instead of pushing Save out of the card.
+     The cap is a custom property, not a `max-height`, so it never bounds the native resize handle. */
+  min-height: 3.4rem;
+  --cmh-grow-max: 40vh;
   padding: 0.35rem 0.5rem;
   font: inherit;
-  font-size: var(--cp-chrome-small-font, 0.82rem);
+  font-size: var(--cp-chrome-font, 0.85rem);
   line-height: 1.4;
   border: 1px solid var(--cp-border, #cbd5e1);
   border-radius: 6px;

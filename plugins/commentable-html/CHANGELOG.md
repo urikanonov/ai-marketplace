@@ -57,6 +57,23 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 
 ## [1.351.0] - 2026-08-02
 
+## [1.353.0] - 2026-08-02
+### Changed
+
+- The reply box in the comments panel is no longer uncomfortable to write in (issue #851). Its text
+  was rendered with the SMALL chrome token (`--cp-chrome-small-font`, the one used for timestamps
+  and metadata), so a reply was typed about 15% smaller than the comment it answers and smaller than
+  the composer that comment was written in; it now uses the regular `--cp-chrome-font`, matching both.
+- Every authoring textarea now AUTOGROWS to fit what is being written - the side-pane inline
+  reply/edit editor, the floating comment composer, and the in-document comment dialog's editor.
+  A multi-paragraph reply no longer has to be written into a two-line box, scrolled inside, or
+  dragged open by hand on every reply. Growth stops at a cap (the box then scrolls, so Cancel/Save
+  are never pushed out of the panel), removing text shrinks the box back, an editor opened on
+  existing text starts at content size, and a floating composer or dialog that grew keeps itself
+  fully on screen so its Save button stays reachable. Dragging the resize handle still wins -
+  autogrow stops for an editor the reviewer has sized by hand, the cap does not bound that drag,
+  and the hand-picked size now survives a re-render of the comments panel.
+
 ### Fixed
 
 - A wide diagram no longer prints with washed-out edges. The scroll-fade mask that cues horizontal

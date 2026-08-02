@@ -119,10 +119,15 @@ html[data-theme="dark"] .cm-author-pill {
   width: 100%;
   box-sizing: border-box;
   resize: vertical;
-  min-height: 2.4rem;
+  /* The reply is often the most substantive thing a reviewer writes, so it is typed at the SAME
+     size as the note it answers and as the composer (issue #851), and the box autogrows (42-autogrow.js)
+     from a two-line start up to this cap, after which it scrolls instead of pushing Save out of the card.
+     The cap is a custom property, not a `max-height`, so it never bounds the native resize handle. */
+  min-height: 3.4rem;
+  --cmh-grow-max: 40vh;
   padding: 0.35rem 0.5rem;
   font: inherit;
-  font-size: var(--cp-chrome-small-font, 0.82rem);
+  font-size: var(--cp-chrome-font, 0.85rem);
   line-height: 1.4;
   border: 1px solid var(--cp-border, #cbd5e1);
   border-radius: 6px;

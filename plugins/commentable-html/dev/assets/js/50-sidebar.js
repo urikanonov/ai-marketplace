@@ -102,6 +102,12 @@ function renderComments() {
       // (that would append bare markers instead of wrapping the word).
       selStart: _dta ? _dta.selectionStart : null, selEnd: _dta ? _dta.selectionEnd : null,
       selDir: _dta ? _dta.selectionDirection : null,
+      // Carry the editor's height across the rebuild: a height the reviewer dragged by hand must
+      // survive (or an unrelated re-render would quietly snap it back to autogrow), and even an
+      // autogrown one is worth restoring, since a rebuilt editor can land in a card the search
+      // filter is hiding, where it cannot measure itself.
+      height: _dta ? (_dta.style.height || null) : null,
+      manual: !!(_dta && cmhAutogrowManualHeight(_dta)),
     };
   }
   _activeInlineEditor = null;
@@ -294,6 +300,13 @@ function _reopenInlineDraft(snap) {
     const ta = _activeInlineEditor.el.querySelector("textarea");
     if (ta) {
       ta.value = snap.value;
+      if (snap.height) {
+        ta.style.height = snap.height;
+        // A hand-dragged height latches as manual; an autogrown one is only a starting point, so
+        // record it as this layer's own so the manual detector is not fooled by it.
+        if (snap.manual) ta._cmhAutogrowManual = true;
+        else { ta._cmhAutogrowH = ta.style.height; cmhAutogrowResize(ta); }
+      } else cmhAutogrowResize(ta);
       const r = _clampSelRange(snap, ta.value.length);
       // Set the range synchronously as well as through the deferred focus below: a toolbar click that
       // lands before the timer runs reads the selection straight off the textarea.
@@ -483,6 +496,7 @@ function _buildInlineReplyEditor(initialText, saveLabel, onSave, onCancel, opts)
   // Clear the blank-note invalid state as soon as the reviewer types or formats, matching the
   // floating composer (a toolbar action dispatches its own `input` event).
   ta.addEventListener("input", function () { ta.removeAttribute("aria-invalid"); ta.classList.remove("cm-invalid"); });
+  cmhAutogrow(ta);
   // The editor now holds seven toolbar buttons plus Cancel/Save, so bind the keys on the WRAPPER,
   // not the textarea: Escape from a focused button must cancel THIS editor rather than bubbling to
   // the document handler, which would discard an unrelated floating composer's draft.
@@ -609,6 +623,7 @@ function openInlineReply(card, rootId) {
     function () { _closeActiveInlineEditor(); });
   if (btn) btn.hidden = true;
   row.appendChild(editor);
+  cmhAutogrowResize(editor.querySelector("textarea"));
   _activeInlineEditor = { el: editor, kind: "reply", targetId: rootId, restore: function () { editor.remove(); if (btn) { btn.hidden = false; try { btn.focus(); } catch (e) {} } } };
   editor._focus();
   // First-reply identity prompt (issue #645).
@@ -675,6 +690,7 @@ function openInlineNoteEdit(entry, cid) {
   entry.classList.add("cm-reply-editing");
   noteEl.hidden = true;
   noteEl.insertAdjacentElement("afterend", editor);
+  cmhAutogrowResize(editor.querySelector("textarea"));
   _activeInlineEditor = { el: editor, kind: kind, targetId: cid, restore: function () {
     editor.remove();
     noteEl.hidden = false;

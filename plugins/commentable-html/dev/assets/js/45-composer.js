@@ -71,6 +71,7 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   quoteEl.id = _quoteId;
   ta.setAttribute("aria-describedby", _quoteId);
   ta.addEventListener("input", () => { ta.removeAttribute("aria-invalid"); ta.classList.remove("cm-invalid"); });
+  cmhAutogrow(ta, function () { cmhClampIntoViewport(el); });
 
   el._mode = mode;
   el._editingId = (comment && mode === "edit") ? comment.id : null;
@@ -127,6 +128,7 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   ta.value = comment ? comment.note : "";
 
   document.body.appendChild(el);
+  cmhAutogrowResize(ta);
   bringToFront(el);
 
   let anchorRect;
@@ -386,6 +388,7 @@ function closeComposerElement(el) {
   if (el._editingId) openEditComposers.delete(el._editingId);
   if (lastFocusedComposer === el) lastFocusedComposer = null;
   if (typeof el._cleanup === "function") el._cleanup();
+  cmhForgetClampedSurface(el);
   const opener = el._opener;
   el.remove();
   // Return focus to whatever opened the composer (e.g. a keyboard-focused diff

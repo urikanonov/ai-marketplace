@@ -156,6 +156,7 @@ function closeCommentPopover() {
   _popoverArmed = false;
   _releasePopoverFormatBar();
   if (_popoverResizeObs) { try { _popoverResizeObs.disconnect(); } catch (e) {} _popoverResizeObs = null; }
+  cmhForgetClampedSurface(commentPopover);
   commentPopover.remove();
   commentPopover = null;
   _popoverAnchorMark = null;
@@ -292,6 +293,7 @@ function _renderCommentPopoverEdit(c) {
   _releasePopoverFormatBar();
   _popoverFormatOff = wireNoteFormatBar(formatBar, ta);
   ta.value = c.note == null ? "" : c.note;
+  cmhAutogrow(ta, function () { cmhClampIntoViewport(el); });
   function doSave() {
     const val = ta.value.trim();
     if (!val) {
