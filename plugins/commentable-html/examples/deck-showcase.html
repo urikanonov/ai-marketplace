@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.325.0" />
+<meta name="commentable-html-version" content="1.326.0" />
 <meta name="commentable-html-kind" content="slides" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.325.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.326.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML Showcase</title>
 
@@ -5037,7 +5037,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.325.0";
+const CMH_VERSION = "1.326.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -6168,26 +6168,57 @@ var GALLERY_CARD_SEL = MERMAID_HOST_TOKENS.map(function (s) {
 // from the same normalized tokens: a literal `pre.mermaid` here left a standalone `div.mermaid` host
 // unrecognised, and its Add button escaped the host's box (issue #769).
 var CLIP_CONTAINER_SEL = MERMAID_HOST_TOKENS
-  .concat([CMH_CHART_FIGURE_SEL, "table", ".cmh-diff-raw"]).join(", ");
-function _clipContainerFor(node) {
+  .concat([CMH_CHART_FIGURE_SEL, "table", ".cmh-diff-raw"]).filter(Boolean).join(", ");
+// Both container vocabularies in one selector, so one walk finds every recognised box: the gallery
+// CARD shapes (a direct child of `.cmh-diagram-gallery`, which includes a plain `<figure>` wrapper
+// that the generic list does not name) and the generic clip/scroll containers. Every list is
+// `filter(Boolean)`ed before it is joined: an absent vocabulary would otherwise leave an empty token
+// (`", table, ..."`), and one invalid selector makes `closest()` THROW for every floating control in
+// the document.
+var CLIP_CHAIN_SEL = [GALLERY_CARD_SEL, CLIP_CONTAINER_SEL].filter(Boolean).join(", ");
+// A recognised container only BOUNDS a control if it actually CLIPS. Everything the layer ships does
+// (`overflow-x:auto` on both diagram hosts and `figure.chart`, the scrolling table wrapper, the
+// gallery card), but a gallery card's inner `pre.mermaid` deliberately ships `overflow:visible` and
+// grows to the diagram it holds, and an author can set `overflow:visible` on any of them. Bounding a
+// control by a box its content legitimately spills out of would clip a control anchored to something
+// the reader can plainly see - a risk that grew the moment the WHOLE chain started to count rather
+// than only the nearest box. `display:contents` generates no box at all, so its empty rect would
+// hide every control inside it.
+function _clipsItsContent(el) {
+  if (typeof getComputedStyle !== "function") return true;
+  const cs = getComputedStyle(el);
+  if (!cs) return true;
+  if (cs.display === "contents") return false;
+  return cs.overflowX !== "visible" || cs.overflowY !== "visible";
+}
+// EVERY recognised clip container around `node`, nearest first - not just the nearest one. Clipping
+// composes: a diagram host can sit inside a scrolling table wrapper, a `figure.chart`, or a
+// `.cmh-diff-raw`, and the OUTER box clips the inner one just as the inner box clips its content. A
+// single `closest()` let the inner box SHADOW the outer scroller, so a control anchored to a target
+// the outer box had scrolled out of view stayed visible over unrelated content (issue #823) - the
+// defect issue #769 fixed, in reverse. Callers intersect the whole chain, which also subsumes the
+// gallery-card case the old resolver hard-preferred: for a `<figure><pre class="mermaid">...</pre></figure>`
+// card the button is now bounded by the figure's scroll card, so it can no longer detach while the
+// figure scrolls.
+function _clipContainersFor(node) {
   const el = node && (node.nodeType === 1 ? node : node.parentElement);
-  if (!el || !el.closest) return null;
-  // Prefer the gallery CARD (a direct child of .cmh-diagram-gallery) FIRST, then fall back to the
-  // generic clip containers. Otherwise, for a supported `<figure><pre class="mermaid">...</pre></figure>`
-  // card, `closest()` starting at the svg would match the inner `pre.mermaid` (the nearer ancestor)
-  // before the outer figure, and clamp the button to the non-scrolling pre instead of the figure's
-  // scroll card - so the whole-diagram button could detach while the figure scrolls.
-  // A table is now rendered inside a `.cmh-table-scroll` wrapper (61-table-scroll.js), and it is
-  // the WRAPPER that scrolls and clips - the table itself can be wider than its visible box. Lift
-  // a table clip container to its wrapper so a bubble anchored to a cell scrolled out of view is
-  // clipped, instead of being clamped to the full (over-wide) table rect. `closest` (not the
-  // immediate parent) because an INNER table of a nested pair sits in a `td`, several levels below
-  // the wrapper that actually clips it.
-  const gallery = el.closest(GALLERY_CARD_SEL);
-  if (gallery) return gallery;
-  const generic = el.closest(CLIP_CONTAINER_SEL);
-  if (generic && generic.tagName === "TABLE") return generic.closest(".cmh-table-scroll") || generic;
-  return generic;
+  if (!el || !el.closest) return [];
+  const chain = [];
+  let cur = el;
+  while (cur) {
+    const hit = cur.closest(CLIP_CHAIN_SEL);
+    if (!hit) break;
+    // A table is rendered inside a `.cmh-table-scroll` wrapper (61-table-scroll.js), and it is the
+    // WRAPPER that scrolls and clips - the table itself can be wider than its visible box, so the
+    // wrapper stands in for it. A bubble anchored to a cell scrolled out of view is then clipped
+    // instead of being clamped to the full (over-wide) table rect. `closest` (not the immediate
+    // parent) because an INNER table of a nested pair sits in a `td`, several levels below the
+    // wrapper that actually clips it.
+    const box = hit.tagName === "TABLE" ? (hit.closest(".cmh-table-scroll") || hit) : hit;
+    if (chain.indexOf(box) === -1 && _clipsItsContent(box)) chain.push(box);
+    cur = hit.parentElement;
+  }
+  return chain;
 }
 function _intersectRects(a, b) {
   const left = Math.max(a.left, b.left);
@@ -6202,16 +6233,25 @@ function _clipAwareRect(node, rect) {
     left: 4, right: window.innerWidth - 4, top: 4, bottom: window.innerHeight - 4,
   });
   if (!visible) return null;
-  const clip = _clipContainerFor(node);
-  if (clip) visible = _intersectRects(visible, clip.getBoundingClientRect());
+  const clips = _clipContainersFor(node);
+  for (let i = 0; i < clips.length && visible; i++) {
+    visible = _intersectRects(visible, clips[i].getBoundingClientRect());
+  }
   return visible;
 }
 function _floatingBounds(node) {
-  const clip = _clipContainerFor(node);
   const viewport = { left: 8, right: window.innerWidth - 8, top: 8, bottom: window.innerHeight - 8 };
-  if (!clip) return viewport;
-  const clipped = _intersectRects(viewport, clip.getBoundingClientRect());
-  return clipped || viewport;
+  let bounds = viewport;
+  const clips = _clipContainersFor(node);
+  for (let i = 0; i < clips.length; i++) {
+    // An empty intersection means the box is off-screen (or the chain does not overlap at all); the
+    // control is already hidden by `_clipAwareRect()` in that case, so fall back to the viewport
+    // rather than clamping to nothing.
+    const next = _intersectRects(bounds, clips[i].getBoundingClientRect());
+    if (!next) return viewport;
+    bounds = next;
+  }
+  return bounds;
 }
 function _clamp(v, min, max) {
   if (max < min) return min;

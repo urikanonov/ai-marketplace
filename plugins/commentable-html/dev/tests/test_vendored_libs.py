@@ -858,7 +858,7 @@ class RuntimeParityTests(unittest.TestCase):
     def test_the_clip_layer_derives_its_containers_from_the_shared_constant(self):
         """CMH-RESP-02: the clip-container selectors must DERIVE their hosts, not re-type them.
 
-        `_clipContainerFor()` in `20-mermaid.js` resolves the box a floating diagram control is
+        `_clipContainersFor()` in `20-mermaid.js` resolves the boxes a floating diagram control is
         clamped to. Its container lists have to name the mermaid hosts, and re-typing them there is
         exactly how a standalone `div.mermaid` fell out of the clip layer while `pre.mermaid` kept
         it (issue #769): the list was written once as `pre.mermaid` alone and never revisited when
@@ -895,13 +895,20 @@ class RuntimeParityTests(unittest.TestCase):
                 "%s must be BUILT from MERMAID_HOST_TOKENS; a list that re-types the hosts (or is "
                 "assembled some other way) can drift from the vocabulary again" % name)
         # And the resolver has to actually USE them - a derived constant nothing queries leaves the
-        # clip layer on whatever literal replaced it.
-        resolver = self._function_body(code, "_clipContainerFor")
+        # clip layer on whatever literal replaced it. Both vocabularies now meet in ONE walk
+        # selector (CMH-RESP-12 intersects the whole chain of clipping ancestors), so pin that seam
+        # in both directions: the walk selector is built from both lists, and the resolver queries
+        # the walk selector.
         for name in ("GALLERY_CARD_SEL", "CLIP_CONTAINER_SEL"):
-            self.assertIn(
-                name, resolver,
-                "_clipContainerFor() must query %s; a derived selector the resolver never uses "
-                "does not clip anything" % name)
+            self.assertRegex(
+                code, r"var CLIP_CHAIN_SEL\s*=[^;]*%s" % name,
+                "CLIP_CHAIN_SEL must be built from %s; a walk selector that re-types either "
+                "vocabulary can drift from it again" % name)
+        resolver = self._function_body(code, "_clipContainersFor")
+        self.assertIn(
+            "CLIP_CHAIN_SEL", resolver,
+            "_clipContainersFor() must query CLIP_CHAIN_SEL; a derived selector the resolver never "
+            "uses does not clip anything")
         for host in self._mermaid_hosts():
             self.assertNotIn(
                 host, "".join(literals),

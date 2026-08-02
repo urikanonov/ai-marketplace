@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.325.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.326.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.326.0] - 2026-08-02</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A floating control (the hover bubble, the <strong>Add Comment</strong> buttons, the whole-diagram button) is now bounded by the intersection of EVERY clipping container around its target, not just the nearest one. A diagram host inside a scrolling table wrapper, inside a <code>figure.chart</code>, or inside a raw diff block is itself clipped by that outer box, so a target the outer box has scrolled out of view now hides the control instead of leaving it floating over unrelated content, and a target that is only partly visible clamps the control to the visible intersection. Previously the resolver honoured only the first matching ancestor, so the inner box shadowed the outer scroller. Only a container that genuinely clips takes part, so a recognised box an author left <code>overflow: visible</code> (or a <code>display: contents</code> one, which generates no box at all) no longer bounds a control anchored to content that plainly spills out of it.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.325.0] - 2026-08-02</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -508,6 +515,8 @@
               <li>Both <code>Clear all comments</code> items take their accessible name from their visible label instead of an <code>aria-label=&quot;Clear Comments&quot;</code> override, so a screen reader announces (and a voice-control user can speak) the same name that is printed on the destructive control.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.322.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -515,8 +524,6 @@
               <li>Export Offline no longer trusts the first <code>cmhVendoredRichLibs</code> block it finds, and never ships a library without its MIT notice. The payload is INFRASTRUCTURE, so it is now resolved from the document being exported as a payload-id script OUTSIDE the content root and EXACTLY one of them: an authored decoy planted inside the content region used to come first in document order and win, and its compressed bytes were inflated and inlined into an export whose own CSP allows inline script - document-supplied code running in a file the recipient believes is a clean skill-generated export. A document that has a candidate but cannot single one out (two of them, or a content boundary that cannot be pinned down because the content-root id is missing or duplicated) is now a loud, distinct failure rather than &quot;no payload&quot;, so it cannot quietly hand the export to the document&#x27;s own copies. The authoring step collapses a rich document to exactly one payload copy, so a finalized document is never born in that state. The consume-and-strip also removed only the FIRST payload block, leaving a second one - including one parked in a <code>&lt;template&gt;</code> - inside a file that is supposed to carry the libraries inline and no payload at all; every infrastructure block is now stripped, while a payload-id script inside the content root is preserved as the authored content it is (and no longer exempt from the network-import strip). Finally, a library and its notice travel as ONE unit: a payload whose notice text had been stripped, or replaced by a non-string value, used to re-emit the library bytes with no notice at all - a silent MIT compliance break - and now fails the export naming the missing NOTICE and the remedy rather than a bundle the document does carry.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.321.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -559,16 +566,7 @@
               <li>The export-intent toast no longer re-derives the dialog&#x27;s swallow condition. It asks the dialog&#x27;s own predicate, so the announcement can never disagree with whether the export click runs. That predicate keys on the dismiss listener being ARMED (it is registered a tick after the dialog opens), not merely on the dialog existing, so the two windows where nothing is swallowed - the pre-registration tick and a mid-edit dialog - now announce the export that does run instead of suppressing it.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.310.0] - 2026-08-02</h3></div>
-            <div class="group-label">Security</div>
-            <ul>
-              <li>The Offline export no longer leaves top-level navigation as an open exfiltration channel, and states exactly what it can and cannot promise. The zero-network CSP blocks every subresource path, but no policy delivered in a <code>&lt;meta&gt;</code> can restrict where a script NAVIGATES the document (<code>navigate-to</code> was dropped from CSP Level 3 and ships in no browser; <code>sandbox</code> is ignored in a meta-delivered policy), so an inline script the export deliberately preserves could beacon the whole document - every reviewer comment with it - by assigning <code>location.href</code>. The loader strip now removes a runnable inline script that carries a direct scripted navigation to a network URL literal (a <code>location.href</code> assignment, a <code>location.assign</code> or <code>.replace</code> call, an assignment to a prefixed or statement-position <code>location</code>, or a prefixed <code>open(</code> call, reached through a repeatable chain of the global prefixes <code>window</code>, <code>self</code>, <code>top</code>, <code>parent</code>, <code>globalThis</code>, <code>document</code> and <code>frames</code>), exactly as it already removed one carrying a remote dynamic module load, and the strict validator applies the identical pattern so a hand-authored offline file with that shape is no longer certified offline-clean. When the export drops a script, it now says so in the download toast instead of removing it silently.</li>
-              <li>Offline exports now carry <code>&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;</code> (replacing any authored referrer meta, since the last one declared wins) and drop per-element <code>referrerpolicy</code> attributes, so a navigation that still happens - a reader clicking an authored link - leaks no referrer.</li>
-              <li>The residual is documented rather than implied away, in BOTH directions. The strip reads raw source for a literal shape, so it misses an aliased sink (<code>var l = location; l.href = ...</code>), computed access, a URL assembled at runtime, a bare unprefixed <code>open(...)</code>, a bare <code>location =</code> that does not follow a statement delimiter, anything inside a script carrying one of the four reserved ids the strip skips, and any other navigation sink (a synthesized anchor click, a script-injected refresh meta). In the other direction it removes any preserved script that navigates to a network URL literal at all - an intentional SSO redirect or help popup included - and over-matches a script whose comment or string merely spells one of those shapes. See the CMH-OFFLINE-05 spec row, which also records why per-script hashes were rejected as a fix.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">243 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">244 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
