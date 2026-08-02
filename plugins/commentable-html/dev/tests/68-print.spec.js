@@ -375,11 +375,12 @@ test("CMH-PRINT-08: print drops the diagram scroll-fade mask on both mermaid hos
   expect(onScreen.divHost.mask, "the unprefixed on-screen cue survives on div.mermaid").toContain("linear-gradient");
 
   await page.emulateMedia({ media: "print" });
-  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
 
   const inPrint = await readMasks();
-  // Both the prefixed and unprefixed properties are asserted: the rule sets both, so resetting only
-  // one would still print faded edges in the engine that honors the other.
+  // Both properties are read, but they are ONE signal here: Chromium aliases -webkit-mask-image and
+  // mask-image into a single computed value, so no Chromium assertion can tell them apart. That the
+  // stylesheet still declares BOTH (which matters for a report opened in another browser) is pinned
+  // textually in tests/test_vendored_libs.py instead.
   expect(inPrint.preHost.webkitMask, "a pre.mermaid host prints with no edge mask").toBe("none");
   expect(inPrint.divHost.webkitMask, "a div.mermaid host prints with no edge mask").toBe("none");
   expect(inPrint.preHost.mask, "a pre.mermaid host prints with no unprefixed edge mask").toBe("none");

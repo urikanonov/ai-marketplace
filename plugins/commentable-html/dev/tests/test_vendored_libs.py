@@ -955,19 +955,30 @@ class RuntimeParityTests(unittest.TestCase):
             "longer declared is dead CSS. Note the cap must target the rendered `svg` INSIDE the "
             "host, not the host box." % (sorted(capped), sorted(self._mermaid_hosts())))
 
-    def _iter_css_rules(self, css):
+    def _iter_css_rules(self, css, name="<css>"):
         """Yield `(at_rule_preludes, selector, declarations)` for every rule in a stylesheet.
 
         A plain scan, not a CSS parser: it tracks the stack of enclosing at-rule preludes (so a
-        rule's media context is known) and treats a declaration block as brace-free, which holds
-        for this project's flat CSS. Feed it COMMENT-STRIPPED text, for the same reason the cap
-        pin above strips comments - prose that merely describes a rule must not stand in for it.
+        rule's media context is known) and assumes a declaration block is brace-free and
+        quote-balanced, that every at-rule carries a block, and that braces balance. All of that
+        holds for this project's flat CSS today, and all of it is ASSERTED - naming the offending
+        FILE - rather than assumed. Get any of it wrong silently and the scan mis-attributes a
+        rule's media context (a nested block ends early and over-pops the at-rule stack; a
+        block-less `@layer base;` merges into the next prelude), which either hides a print-scoped
+        mask or blames this file for a construct introduced in a different partial. `_scan_js`
+        above self-checks for the same reason: a guard against silent drift must not drift
+        silently. Feed it COMMENT-STRIPPED text, so prose describing a rule cannot stand in for it.
         """
         rules, stack, i, start, n = [], [], 0, 0, len(css)
         while i < n:
             ch = css[i]
             if ch == "{":
                 prelude = css[start:i].strip()
+                self.assertNotIn(
+                    ";", prelude,
+                    "%s has a block-less at-rule statement (`@import`, `@layer base;`, `@charset`) "
+                    "before this block, so it merged into the following prelude %r. This scanner "
+                    "does not model statement at-rules; teach it before relying on it." % (name, prelude[:120]))
                 if prelude.startswith("@"):
                     stack.append(prelude)
                     i += 1
@@ -975,7 +986,21 @@ class RuntimeParityTests(unittest.TestCase):
                     continue
                 end = css.find("}", i)
                 end = n if end == -1 else end
-                rules.append((tuple(stack), prelude, css[i + 1:end]))
+                decls = css[i + 1:end]
+                self.assertNotIn(
+                    "{", decls,
+                    "%s now has a declaration block containing a nested `{` (CSS nesting, or a "
+                    "brace inside a value). This scanner is a flat brace walk and would mis-read "
+                    "the media context of the rules around it - teach it the new construct before "
+                    "relying on it. Block: %r" % (name, decls[:120]))
+                for quote in ('"', "'"):
+                    self.assertEqual(
+                        decls.count(quote) % 2, 0,
+                        "%s has a declaration block with an unbalanced %s quote, so a `}` inside a "
+                        "string ended it early and every following rule loses its media context. "
+                        "Teach this scanner about strings before relying on it. Block: %r"
+                        % (name, quote, decls[:120]))
+                rules.append((tuple(stack), prelude, decls))
                 i = end + 1
                 start = i
                 continue
@@ -986,22 +1011,55 @@ class RuntimeParityTests(unittest.TestCase):
                 start = i
                 continue
             i += 1
+        self.assertEqual(
+            stack, [],
+            "%s left at-rule(s) %s unclosed when the scan finished, so every rule's media context "
+            "is suspect. Braces do not balance (or an unsupported construct fooled the scan)."
+            % (name, stack))
         return rules
 
+    @staticmethod
+    def _is_screen_only_media(prelude):
+        """True only when EVERY comma branch of an `@media` prelude requires the screen type.
+
+        A media list is a union, so one permissive branch admits print: `@media screen, all` and
+        `@media screen, (min-width: 0px)` both match a printer while still starting with the word
+        `screen`. Requiring every branch to name `screen` is what makes this guard mean what it
+        says. `only screen` is the same media type with the legacy hack prefix, so it counts.
+        """
+        if not prelude.startswith("@media"):
+            return False
+        query = prelude[len("@media"):]
+        branches = [b.strip() for b in query.split(",")]
+        return bool(branches) and all(
+            re.match(r"^(only\s+)?screen(\s+and\b.*)?$", branch, re.I) for branch in branches)
+
     def test_the_diagram_scroll_fade_mask_is_screen_only_on_exactly_the_shared_mermaid_hosts(self):
-        """CMH-PRINT-08: the scroll cue exists in ONE media context, so print cannot inherit it.
+        """CMH-PRINT-08: the scroll cue lives in a screen-only context, so print cannot inherit it.
 
         The edge fade tells a reader a wide diagram scrolls horizontally inside its own box. Paper
         does not scroll, so a mask that survives into print only washes out the printed diagram's
-        edges. The robust expression is to declare the mask `screen`-only at the source rather than
-        to add a second, print-scoped reset: a reset is a SECOND surface that can drift (exactly how
-        `div.mermaid` fell out of the tall-media cap while `pre.mermaid` kept it, CMH-PRINT-07), and
-        it would also owe a `measureCss()` mirror by the paired-print-surfaces convention.
+        edges. The expression is to declare the mask `screen`-only at its single source rather than
+        to add a print-scoped reset in `92-print.css`: the cue is a pure screen affordance, and a
+        reset would be a redundant SECOND rule naming the same host set, which is exactly the shape
+        that let `div.mermaid` fall out of the tall-media cap while `pre.mermaid` kept it
+        (CMH-PRINT-07).
 
-        Pinned in both directions, across every stylesheet partial: there is exactly ONE such rule,
-        it sits inside a screen-only `@media` block, and it covers exactly the shared
-        `CMH_MERMAID_SEL` vocabulary - so the mask can neither leak back into print nor fade one
-        host shape while leaving the other alone.
+        Pinned in both directions, across every stylesheet partial: EVERY rule that masks a
+        scroll-fade host sits in a screen-only `@media` context (each comma branch of the query must
+        name `screen`, since a media list is a union and one permissive branch would admit print),
+        and the union of the hosts they fade is exactly the shared `CMH_MERMAID_SEL` vocabulary - so
+        the mask can neither leak back into print nor fade one host shape while leaving the other
+        alone. Rules are counted rather than required to be exactly one, so a behavior-preserving
+        split (one rule per host, or a theme variant) is not a false red, while a leaked print
+        duplicate still fails on its own media context.
+
+        This pin owns the MEDIA CONTEXT and the host set; that the cue is still LIVE on screen is
+        owned by the browser specs (`68-print.spec.js` CMH-PRINT-08 and `51-charts-mobile.spec.js`
+        CMH-RESP-09), which read the computed style. It also owns the prefixed/unprefixed pair:
+        Chromium aliases `-webkit-mask-image` and `mask-image` into one computed value, so no
+        browser assertion in this Chromium-only suite can tell them apart, while the standalone
+        reports are opened in arbitrary browsers where both declarations matter.
         """
         css_dir = os.path.join(_paths.DEV, "assets", "css")
         faded = []
@@ -1009,34 +1067,51 @@ class RuntimeParityTests(unittest.TestCase):
             if not name.endswith(".css"):
                 continue
             css = self._strip_css_comments(self._read_css(name))
-            for media, selector, decls in self._iter_css_rules(css):
-                if "cmh-diagram-scroll-fade" in selector and "mask-image" in decls:
-                    faded.append((name, media, selector))
-        self.assertEqual(
-            len(faded), 1,
-            "expected exactly one scroll-fade mask rule across the CSS partials; found %d (%s). A "
-            "second one is a second surface that can disagree with the first - which is the drift "
-            "this pin exists to prevent. Re-point this check if the rule legitimately moved."
-            % (len(faded), [(n, s.strip()) for n, _m, s in faded]))
-        name, media, selector = faded[0]
+            for media, selector, decls in self._iter_css_rules(css, name):
+                # Anchored matches: `.cmh-diagram-scroll-fades` is not the class, and a bare
+                # `mask-image` substring test would be satisfied by `-webkit-mask-image` alone -
+                # both would let an edit that BREAKS the cue satisfy this guard.
+                if (re.search(r"\bcmh-diagram-scroll-fade\b(?![-\w])", selector)
+                        and re.search(r"(?<![-\w])mask-image\s*:", decls)):
+                    faded.append((name, media, selector, decls))
         self.assertTrue(
-            any(re.match(r"@media\s+screen\b", prelude) for prelude in media),
-            "the scroll-fade mask rule in %s is no longer inside a screen-only @media block (at-rule "
-            "context: %s). Outside one it applies in PRINT too, and a wide diagram prints with faded "
-            "left and right edges for a scroll that paper cannot do." % (name, list(media)))
-        for prelude in media:
-            self.assertNotIn(
-                "print", prelude,
-                "the scroll-fade mask rule in %s sits in an at-rule context that names print (%r); "
-                "the cue is for scrolling, which paper does not do." % (name, prelude))
-        selector = re.sub(r"\[[^\]]*\]", "[]", selector)
-        faded_hosts = set(re.findall(r"([A-Za-z][\w-]*\.[\w-]+)\.cmh-diagram-scroll-fade", selector))
+            faded,
+            "no scroll-fade mask rule found in any CSS partial. Either the cue was deleted (a wide "
+            "diagram no longer signals that it scrolls) or it moved somewhere this check cannot "
+            "see; re-point this check at whatever replaced it.")
+        hosts = set()
+        for name, media, selector, decls in faded:
+            self.assertTrue(
+                any(self._is_screen_only_media(prelude) for prelude in media),
+                "the scroll-fade mask rule in %s is not inside a screen-only @media block (at-rule "
+                "context: %s). Outside one it applies in PRINT too, and a wide diagram prints with "
+                "faded left and right edges for a scroll that paper cannot do. Note a media LIST is "
+                "a union: every comma branch must name `screen`, or the rule still matches paper."
+                % (name, list(media)))
+            for prelude in media:
+                self.assertNotIn(
+                    "print", prelude,
+                    "the scroll-fade mask rule in %s sits in an at-rule context that names print "
+                    "(%r); the cue is for scrolling, which paper does not do." % (name, prelude))
+            self.assertRegex(
+                decls, r"-webkit-mask-image\s*:",
+                "the scroll-fade mask rule in %s dropped the `-webkit-mask-image` declaration. The "
+                "reports are standalone HTML opened in arbitrary browsers, and no assertion in this "
+                "Chromium-only suite can catch it (Chromium aliases the two properties), so the "
+                "pair is pinned here." % name)
+            # An attribute-selector VALUE is not a faded host: `[data-x="div.mermaid.cmh-diagram-
+            # scroll-fade"]` would otherwise satisfy the vocabulary check while the real rule faded
+            # nothing - the same "text near the rule stands in for the rule" hole the comment
+            # stripping closes.
+            cleaned = re.sub(r"\[[^\]]*\]", "[]", selector)
+            hosts |= set(re.findall(
+                r"([A-Za-z][\w-]*\.[\w-]+)\.cmh-diagram-scroll-fade(?![-\w])", cleaned))
         self.assertEqual(
-            faded_hosts, set(self._mermaid_hosts()),
-            "the scroll-fade mask rule and the shared CMH_MERMAID_SEL vocabulary have diverged "
+            hosts, set(self._mermaid_hosts()),
+            "the scroll-fade mask rules and the shared CMH_MERMAID_SEL vocabulary have diverged "
             "(faded hosts: %s; declared: %s). A declared host with no fade loses the scroll cue; a "
             "faded host that is no longer declared is dead CSS."
-            % (sorted(faded_hosts), sorted(self._mermaid_hosts())))
+            % (sorted(hosts), sorted(self._mermaid_hosts())))
 
     def test_every_runtime_selector_is_recognised_by_the_author_time_detector(self):
         markup = {
