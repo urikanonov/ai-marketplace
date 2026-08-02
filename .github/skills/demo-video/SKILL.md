@@ -133,6 +133,28 @@ load-bearing for this clip: a different directory works for the duck recipe but 
 round trip. `--snapshot-out` keeps the report AS REVIEWED, because the agent edits it in place and
 without the copy the "before" side of the round trip is gone.
 
+Capturing is only half the job - the three clips are then RENDERED from what those phases produced,
+and each takes different flags:
+
+```powershell
+# demo-commentable-html-loop.webm - the round trip. --example is the report AS REVIEWED and
+# --example-after the one the agent then fixed.
+node "$skill\tools\record_demo.mjs" loop --cast "$repo\tmp\demo-video\loop.cast.json" `
+  --example "C:\demo\report-before.html" --example-after "C:\demo\report.html" `
+  --scale 0.6 --out "$repo\tmp\rerecord-review\demo-commentable-html-loop.webm"
+
+# demo-multi-duck.webm - the duck cast, with the summary left at its natural pace
+node "$skill\tools\record_demo.mjs" render --cast "$repo\tmp\demo-video\duck.cast.json" `
+  --seconds 42.7 --idle 900 --hold 320 --head 60 --tail 60 --scale 0.6 `
+  --out "$repo\tmp\rerecord-review\demo-multi-duck.webm"
+```
+
+**Pass `--example-after`, or the loop clip ends on nothing.** A capture keeps recording until its
+`quit` step fires, so the cast runs on past the last interesting output; without the resolved report
+to cut to, the clip spends its closing seconds on an empty terminal tearing the session down. With it
+the clip ends where the story does. `render` needs no `--ask` when the cast came from the committed
+recipe - its `ask` mark is already one readable sentence, and the card quotes that.
+
 **Render every publishable clip at `--scale 0.6`.** It is not only a file-size lever: the required
 `site` gate (`scripts/check_clip_chrome.py`) reads the window chrome at fixed video pixels, which
 hold at that scale. Rendered larger, the traffic lights land inside the strip it inspects and every
