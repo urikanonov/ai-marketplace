@@ -22,7 +22,7 @@ def _frames(kinds, spreads):
     `kinds` is a string of 't' (settled terminal), 'f' (mid cross-fade) and 'b' (browser) frames;
     `spreads` is the luminance spread of each frame's title strip.
     """
-    strip = [{"t": i * 0.04, "YMIN": 0.0, "YMAX": s} for i, s in enumerate(spreads)]
+    strip = [{"t": i * 0.04, "YMIN": 0.0, "YMAX": s, "SATMAX": 10.0} for i, s in enumerate(spreads)]
     means = {"t": 30.0, "f": 60.0, "b": 200.0}
     kind = [{"YAVG": means[k]} for k in kinds]
     return strip, kind
@@ -135,6 +135,57 @@ class FfmpegAvailabilityTests(unittest.TestCase):
             self.assertEqual(ccc.main(["clip.webm"]), 0)
         finally:
             ccc.find_ffmpeg = original
+
+
+class CropGeometryTests(unittest.TestCase):
+    """The offsets are VIDEO pixels at the publish scale, and must not chase the frame size.
+
+    The window chrome is styled in fixed CSS pixels, so it lands on the same video pixels whatever
+    the terminal grid is: the 864x540 and 1078x620 published clips put their traffic lights on
+    exactly the same pixels. Scaling these offsets by the frame width therefore MOVES them off the
+    chrome, which is a real trap - an attempt at exactly that rejected the 1078x620 clip outright.
+    """
+
+    def test_the_strip_stops_before_the_terminal(self):
+        # Running the strip to the bottom of the chrome BLOCK (video y=25) overlapped the terminal's
+        # first row, and that row's antialiased top read as a strip that is not flat - 14 frames of
+        # a clean clip flagged with no text anywhere near the title bar.
+        top, height = 1, 22
+        self.assertEqual(ccc.STRIP, "crop=iw-66:%d:46:%d" % (height, top))
+        self.assertLess(top + height, 25)
+
+    def test_the_strip_still_covers_where_a_title_would_be_drawn(self):
+        # The lights span video y=11..18 and a title is set on that row, starting at x=46. Narrowing
+        # the strip to dodge the terminal must not narrow it past the thing it exists to catch.
+        top, height = 1, 22
+        self.assertLessEqual(top, 11)
+        self.assertGreaterEqual(top + height, 18)
+
+
+class ScaleGuardTests(unittest.TestCase):
+    """A clip rendered at another scale is measured in the wrong place, and must say so."""
+
+    def _scan(self, satmax):
+        strip = [{"t": 0.4, "YMIN": 0.0, "YMAX": 1.0, "SATMAX": satmax}]
+        kind = [{"YAVG": 30.0}]
+        calls = iter([strip, kind])
+        original = ccc._measure
+        ccc._measure = lambda *a, **k: next(calls)
+        try:
+            return ccc.scan_clip("ffmpeg", "clip.webm")
+        finally:
+            ccc._measure = original
+
+    def test_colour_in_the_strip_is_reported_as_a_scale_problem_not_a_leak(self):
+        # At scale 1 the traffic lights sit inside the strip, so EVERY terminal frame "leaks". That
+        # phantom reads exactly like the real thing; saying "re-mask or re-record" sent a reviewer
+        # hunting for text that was not there.
+        with self.assertRaises(SystemExit) as caught:
+            self._scan(200.0)
+        self.assertIn("--scale 0.6", str(caught.exception))
+
+    def test_a_grey_chrome_strip_is_scanned_normally(self):
+        self.assertEqual(self._scan(10.0), [])
 
 
 if __name__ == "__main__":

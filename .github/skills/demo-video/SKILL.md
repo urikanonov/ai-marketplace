@@ -133,6 +133,25 @@ load-bearing for this clip: a different directory works for the duck recipe but 
 round trip. `--snapshot-out` keeps the report AS REVIEWED, because the agent edits it in place and
 without the copy the "before" side of the round trip is gone.
 
+**Render every publishable clip at `--scale 0.6`.** It is not only a file-size lever: the required
+`site` gate (`scripts/check_clip_chrome.py`) reads the window chrome at fixed video pixels, which
+hold at that scale. Rendered larger, the traffic lights land inside the strip it inspects and every
+terminal frame reports a leak - the gate names the scale when it sees colour there, but it costs a
+render either way. The three published clips are `demo-commentable-html.webm` (the `report` subject),
+`demo-commentable-html-loop.webm` (the `loop` subject) and `demo-multi-duck.webm` (`render` over the
+duck cast).
+
+A freshly rendered clip needs NO hand-applied ffmpeg mask: the chrome draws no title and the loop's
+phase caption clears it, so the strip is born flat. Confirm it before publishing rather than
+assuming, and check the clips you are replacing too, so a regression is obvious:
+
+```powershell
+python "$repo\scripts\check_clip_chrome.py" --require-ffmpeg <new clips...>
+```
+
+That needs a full ffmpeg build; Playwright's bundled one is VP8-only and cannot decode these VP9
+clips. Point `DEMO_CLIP_FFMPEG` at a real build if `ffmpeg` is not on PATH.
+
 `--allow-all` is what keeps an unattended capture from stalling: it covers tools, paths and URLs, so
 no permission dialog can appear with nobody there to answer it. Be clear-eyed that it is the BROAD
 grant, not just the path prompt the skill's own reference files trigger - which is the other reason

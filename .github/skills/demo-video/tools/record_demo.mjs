@@ -1293,10 +1293,22 @@ function scanCast(args) {
   return findings;
 }
 
+// What the chrome DRAWS. `windowLabel` decides what it may SAY, and its answer is still what the
+// title card falls back to - but the strip itself stays empty, because `scripts/check_clip_chrome.py`
+// fails a published clip whose terminal title bar is not FLAT. That gate is deliberately not a text
+// recogniser: "the strip is not flat" is the property that cannot be argued with. Drawing even a safe
+// label there would mean masking every clip by hand before publishing, and that hand mask is exactly
+// what shipped ten leaking frames when it stopped 0.44s before its segment ended (#815). Rendering
+// nothing makes a clip born flat, so a re-record needs no manual patching to be publishable.
+function chromeTitle(cast, args = {}) {
+  const opted = args.showCommand === true || args["show-command"] === true;
+  return opted ? windowLabel(cast.argv || cast.command, args) : "";
+}
+
 export function terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask, args = {}, xterm = null }) {
   // The label is computed HERE, from the cast, so a caller cannot pass the raw command by mistake
   // or by a revert. That bypass is exactly how this leak shipped, one layer up.
-  const title = windowLabel(cast.argv || cast.command, args);
+  const title = chromeTitle(cast, args);
   const xtermJs = xterm ? xterm.js : fs.readFileSync(resolveOptionalPath("@xterm/xterm", "lib", "xterm.js"), "utf8");
   const xtermCss = xterm ? xterm.css : fs.readFileSync(resolveOptionalPath("@xterm/xterm", "css", "xterm.css"), "utf8");
   const payload = scriptJson({
@@ -1457,7 +1469,7 @@ function askFontPx(ask) {
 // iframe on top of it. Node drives the phases through `window.__stage`, and because page.evaluate
 // awaits a returned promise, the handshake needs no polling.
 export function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, reportUrl, args = {}, xterm = null }) {
-  const title = windowLabel(cast.argv || cast.command, args);
+  const title = chromeTitle(cast, args);
   const xtermJs = xterm ? xterm.js : fs.readFileSync(resolveOptionalPath("@xterm/xterm", "lib", "xterm.js"), "utf8");
   const xtermCss = xterm ? xterm.css : fs.readFileSync(resolveOptionalPath("@xterm/xterm", "css", "xterm.css"), "utf8");
   const payload = scriptJson({
@@ -1494,7 +1506,7 @@ export function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, r
   #report.on { opacity: 1; pointer-events: auto; }
   /* A caption for each phase, so a viewer knows they are watching one loop rather than three
      unrelated clips spliced together. */
-  #phase { position: fixed; left: 50%; top: 26px; transform: translateX(-50%); z-index: 7;
+  #phase { position: fixed; left: 50%; top: 72px; transform: translateX(-50%); z-index: 7;
     padding: 14px 30px; border-radius: 999px; background: #0d1117; color: #e6edf3;
     border: 2px solid rgba(240,246,252,0.34); font-size: 24px; font-weight: 700; letter-spacing: .3px;
     box-shadow: 0 14px 40px rgba(0,0,0,.5); opacity: 0; transition: opacity 300ms ease;

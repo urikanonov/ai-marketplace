@@ -30,9 +30,25 @@ import tempfile
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLIP_DIR = os.path.join("site", "dist", "assets")
 
-# The chrome strip, right of the traffic lights and left of the window edge.
-STRIP = "crop=iw-66:24:46:1"
-# A patch of the same row further right, used only to tell a terminal frame from a browser one: the
+# The regions below are in VIDEO pixels at the publish scale (`--scale 0.6`, what SKILL.md
+# documents and every published clip uses). They do NOT scale with the frame size: the window chrome
+# is styled in fixed CSS pixels, so it lands on the same video pixels whatever the terminal grid is.
+# Two published clips of different shapes (864x540 and 1078x620) put their traffic lights on exactly
+# the same pixels, which is why anchoring these offsets to the frame WIDTH would be wrong.
+#
+# What the offsets DO depend on is the scale, so a clip rendered at another one is measured in the
+# wrong place - at scale 1 the lights sit inside the strip. That is diagnosed explicitly rather than
+# reported as a phantom leak (see LIGHTS_SATURATION); the numbers come from the page CSS in
+# `.github/skills/demo-video/tools/record_demo.mjs`, scaled by 0.6:
+#   .wrap    padding 18px 20px      -> chrome starts at y=18, content is inset 20px each side
+#   .dot     11px, gap 8px, three   -> the lights span x=20..69   (video 12..41)
+#   .title   margin-left 8px        -> a window title starts at x=77  (video 46)
+#   .chrome  padding-bottom 12px    -> the terminal starts at y=41  (video 25)
+#
+# The strip stops SHORT of the terminal. Running it to the bottom of the chrome block overlapped the
+# terminal's first row, and that row's antialiased top read as a strip that is not flat - 14 frames
+# of a clean clip flagged with no text anywhere near the title bar.
+STRIP = "crop=iw-66:22:46:1"
 # A patch from the MIDDLE of the frame, used only to tell a terminal frame from a browser one: the
 # terminal is near-black there, a browser page is light. It is deliberately far from the title strip
 # - an earlier version sampled the strip's own row, so the command text raised the reading and the
@@ -46,6 +62,11 @@ FLAT_TOLERANCE = 12.0
 # Being strict is what lets every terminal frame be judged - including the LAST ones in a segment,
 # which is exactly where the mask ran out and the command was published.
 TERMINAL_MAX_MEAN = 38.0
+# Saturation above which the strip is holding something COLOURED. Nothing in the title bar is: the
+# chrome is grey on near-black. The traffic lights are vivid, so this catches a clip whose scale
+# pushed them into the strip, which otherwise surfaces as an unexplainable flatness failure.
+LIGHTS_SATURATION = 80.0
+
 
 
 def find_ffmpeg():
@@ -93,8 +114,9 @@ def _measure(ffmpeg, clip, crop, keys):
 
 def scan_clip(ffmpeg, clip):
     """Return the list of (t, spread) for frames whose terminal title strip is not flat."""
-    strip = _measure(ffmpeg, clip, STRIP, ("YMIN", "YMAX"))
+    strip = _measure(ffmpeg, clip, STRIP, ("YMIN", "YMAX", "SATMAX"))
     kind = _measure(ffmpeg, clip, KIND, ("YAVG",))
+
     if not strip:
         raise SystemExit("no frames decoded from %s" % clip)
     if len(strip) != len(kind):
@@ -109,6 +131,14 @@ def scan_clip(ffmpeg, clip):
         # ran out and the command was published.
         if not dark[i]:
             continue
+        # These offsets hold at the publish scale only. Rendered larger, the traffic lights land
+        # inside the strip and every terminal frame "leaks" - a phantom that reads exactly like the
+        # real thing and sends the operator hunting for text that is not there. Say so instead.
+        if row["SATMAX"] > LIGHTS_SATURATION:
+            raise SystemExit(
+                "%s has colour in its title strip at t=%.2fs, which means the traffic lights are "
+                "inside it: this clip was not rendered at the publish scale. Re-render it with "
+                "--scale 0.6 (see the demo-video SKILL.md) and scan again." % (clip, row["t"]))
         if row["YMAX"] - row["YMIN"] > FLAT_TOLERANCE:
             bad.append((row["t"], row["YMAX"] - row["YMIN"]))
     return bad

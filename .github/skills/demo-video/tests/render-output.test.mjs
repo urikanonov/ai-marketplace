@@ -280,7 +280,9 @@ test("neither rendered page publishes the launch command (DEMO-SAFE-34)", () => 
   for (const [name, build] of [["terminal", buildTerminalPage], ["stage", buildStagePage]]) {
     for (const command of commands) {
       const html = build({ cols: 80, rows: 24, command }, {});
-      assert.ok(html.includes('"copilot"'), `${name} page lost the safe label`);
+      // That a SAFE label survives is DEMO-SAFE-38's business now: the chrome draws nothing by
+      // default, so for a command carrying a prompt the label appears nowhere on the page. What
+      // this row pins is the leak - no flags, no operator path, in either page.
       assert.ok(!html.includes("disable-mcp-server"),
         `${name} page published the launch flags for: ${command}`);
     }
@@ -301,5 +303,72 @@ test("neither rendered page publishes the launch command (DEMO-SAFE-34)", () => 
     assert.ok(fromArgv.includes('"copilot"'), `${name} page did not label from argv`);
     assert.ok(!fromArgv.includes("Contoso"), `${name} page published a path fragment`);
     assert.ok(!fromArgv.includes("disable-mcp-server"), `${name} page published the flags`);
+  }
+});
+
+// What the chrome may say and what it DOES say are separate questions. `scripts/check_clip_chrome.py`
+// fails a published clip whose terminal title strip is not FLAT, because flatness is the one property
+// that cannot be argued with - it is deliberately not a text recogniser. So a safe label is still text,
+// and a clip rendered with one has to be masked by hand before it can ship. That mask is the fragile
+// step that already published ten leaking frames when it stopped 0.44s early (#815). Render the chrome
+// empty instead, so a freshly recorded clip is born flat and a re-record needs no manual patching.
+function chromeTitleOf(html) {
+  const m = /getElementById\("title"\)\.textContent = (.*);/.exec(html);
+  assert.ok(m, "the page no longer sets the chrome title at all");
+  return JSON.parse(m[1]);
+}
+
+// The phase caption is an overlay pinned to the top of the loop clip, and it used to start ABOVE
+// the bottom of the window chrome - so its rounded top edge and border crossed the title strip.
+// That reads as "the title bar is not empty" to `scripts/check_clip_chrome.py`, which fails a clip
+// whose terminal title strip is not flat, and it looked wrong too: the pill sat across the traffic
+// lights. Derive both numbers from the page's own CSS so this cannot drift back.
+function cssPx(css, rule, prop) {
+  const block = new RegExp(`${rule}\\s*\\{([^}]*)\\}`).exec(css);
+  assert.ok(block, `no ${rule} rule in the stage page`);
+  const value = new RegExp(`(?:^|[;\\s])${prop}:\\s*(-?[\\d.]+)px`).exec(block[1]);
+  assert.ok(value, `${rule} has no ${prop}`);
+  return Number(value[1]);
+}
+
+test("the phase caption never overlaps the window chrome (DEMO-SAFE-39)", () => {
+  const css = buildStagePage({ cols: 80, rows: 24, command: LEAKY }, {});
+  // The chrome block: the wrap's top padding, the traffic lights, and the gap under them.
+  const chromeBottom = cssPx(css, "\\.wrap", "padding")
+    + cssPx(css, "\\.dot", "height")
+    + cssPx(css, "\\.chrome", "padding-bottom");
+  // The SHADOW counts, not just the box: a blur reaches above the pill by (blur - offset), and a
+  // soft gradient over the strip is still a strip that is not flat. The first cut of this fix
+  // cleared the border but left the shadow bleeding in, and the gate still failed.
+  const shadow = /#phase\s*\{[^}]*box-shadow:\s*0\s+(\d+)px\s+(\d+)px/.exec(css);
+  assert.ok(shadow, "#phase has no box-shadow to account for");
+  const reach = Number(shadow[2]) - Number(shadow[1]);
+  const top = cssPx(css, "#phase", "top");
+  assert.ok(top - reach >= chromeBottom,
+    `the phase caption reaches ${top - reach}px, inside the chrome that ends at ${chromeBottom}px`);
+});
+
+test("the window chrome carries no text unless the operator opts in (DEMO-SAFE-38)", () => {
+
+  for (const [name, build] of [["terminal", buildTerminalPage], ["stage", buildStagePage]]) {
+    for (const cast of [
+      { cols: 80, rows: 24, command: LEAKY },
+      { cols: 80, rows: 24, command: "copilot --banner" },
+      {
+        cols: 80,
+        rows: 24,
+        command: "C:\\Users\\demo\\Contoso Secret Project\\bin\\copilot --disable-mcp-server kusto",
+        argv: ["C:\\Users\\demo\\Contoso Secret Project\\bin\\copilot", "--disable-mcp-server", "kusto"],
+      },
+    ]) {
+      assert.equal(chromeTitleOf(build(cast, {})), "",
+        `${name} page drew text in the chrome, so the clip cannot pass the flatness gate`);
+    }
+    // Opting in still shows the whole command, so the flag is not silently dead.
+    assert.equal(
+      chromeTitleOf(build({ cols: 80, rows: 24, command: LEAKY }, { "show-command": true })),
+      LEAKY,
+      `${name} page ignored --show-command`,
+    );
   }
 });
