@@ -17,6 +17,16 @@ let _popoverEditing = false;
 // needless trust boundary and an injection sink.
 let _popoverCid = null;
 let _popoverNoteId = null;
+// Removes the formatting toolbar's listeners; the toolbar itself dies with the editor markup, so
+// this only has to run when the editor is replaced or the dialog closes.
+let _popoverFormatOff = null;
+
+function _releasePopoverFormatBar() {
+  if (!_popoverFormatOff) return;
+  const off = _popoverFormatOff;
+  _popoverFormatOff = null;
+  try { off(); } catch (e) {}
+}
 
 function _positionCommentPopover(mark) {
   if (!commentPopover || !mark) return false;
@@ -42,6 +52,7 @@ function closeCommentPopover() {
   if (!commentPopover) return;
   if (_popoverDismiss) { document.removeEventListener("click", _popoverDismiss, true); _popoverDismiss = null; }
   if (_popoverKeydown) { document.removeEventListener("keydown", _popoverKeydown, true); _popoverKeydown = null; }
+  _releasePopoverFormatBar();
   commentPopover.remove();
   commentPopover = null;
   _popoverAnchorMark = null;
@@ -86,6 +97,7 @@ function _renderCommentPopoverView(c) {
   const el = commentPopover;
   if (!el) return;
   _popoverEditing = false;
+  _releasePopoverFormatBar();
   el.classList.remove("is-editing");
   const noteId = _popoverNoteId;
   el.innerHTML =
@@ -166,7 +178,14 @@ function _renderCommentPopoverEdit(c) {
     + '<button type="button" data-act="edit-cancel">Cancel</button>'
     + '<button type="button" class="primary" data-act="edit-save">Save</button>'
     + "</div>";
+  const wrap = el.querySelector(".cm-comment-popover-edit");
   const ta = el.querySelector("textarea");
+  // The dialog offers the same rich-text editing as the floating composer and the side pane
+  // (issue #776): the shared toolbar above the textarea plus the Ctrl/Cmd formatting shortcuts.
+  const formatBar = noteFormatBarElement();
+  wrap.insertBefore(formatBar, ta);
+  _releasePopoverFormatBar();
+  _popoverFormatOff = wireNoteFormatBar(formatBar, ta);
   ta.value = c.note == null ? "" : c.note;
   function doSave() {
     const val = ta.value.trim();
@@ -195,18 +214,48 @@ function _renderCommentPopoverEdit(c) {
     _focusPopoverEditButton();
     if (typeof _afterInlineSaveQuota === "function") _afterInlineSaveQuota(ok, "edit");
   }
+  const acts = el.querySelector(".cm-comment-popover-acts");
+  // A pointer press on Save/Cancel ends an IME composition before the click arrives, so the click
+  // alone cannot tell it began mid-composition. Latch the state at press time (and swallow that
+  // press so it does not end the composition), so an accidental activation during a candidate
+  // window neither commits nor discards the draft. A keyboard activation has no press, so the live
+  // composition state answers for it.
+  let _pressedComposing = false;
+  const actsDown = (e) => {
+    _pressedComposing = isNoteComposing(ta);
+    if (_pressedComposing) { e.preventDefault(); e.stopPropagation(); }
+  };
+  acts.addEventListener("pointerdown", actsDown);
+  acts.addEventListener("mousedown", actsDown);
+  function actsComposing() {
+    const was = _pressedComposing || isNoteComposing(ta);
+    _pressedComposing = false;
+    return was;
+  }
   el.querySelector('[data-act="edit-save"]').addEventListener("click", (e) => {
     e.preventDefault(); e.stopPropagation();
+    if (actsComposing()) return;
     doSave();
   });
   el.querySelector('[data-act="edit-cancel"]').addEventListener("click", (e) => {
     e.preventDefault(); e.stopPropagation();
+    if (actsComposing()) return;
     _cancelCommentPopoverEdit();
   });
-  ta.addEventListener("keydown", (e) => {
-    if (e.isComposing) return;
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doSave(); }
-  });
+  // Clear the blank-note invalid state as soon as the reviewer types or formats, matching the
+  // other editors (a toolbar action dispatches its own `input` event).
+  ta.addEventListener("input", () => { ta.removeAttribute("aria-invalid"); ta.classList.remove("cm-invalid"); });
+  // Bind on the CONTAINERS, not the textarea, so the shortcuts and Ctrl/Cmd+Enter also work from a
+  // focused toolbar, Cancel, or Save button (they would otherwise be dead keyboard ends). The
+  // dialog's Escape stays with the capture-phase document handler, which already scopes it to the
+  // dialog; the acts row is a sibling of the editor, so both get the handler.
+  const onEditorKeydown = (e) => {
+    if (e.isComposing || isNoteComposing(ta)) return;
+    if (handleNoteFormatShortcut(e, ta)) return;
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); doSave(); }
+  };
+  wrap.addEventListener("keydown", onEditorKeydown);
+  acts.addEventListener("keydown", onEditorKeydown);
   _positionCommentPopover(_popoverAnchorMark);
   setTimeout(() => { try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {} }, 0);
 }
@@ -255,9 +304,12 @@ function openCommentPopover(id, mark) {
   _popoverKeydown = (e) => {
     if (e.key !== "Escape") return;
     // Mid-IME-composition Escape dismisses the candidate window; it must not cancel the edit
-    // (the sidebar and composer editors ignore composition for the same reason).
+    // (the sidebar and composer editors ignore composition for the same reason). The tracked
+    // composition state covers engines that report the keydown with `isComposing` already false.
     if (e.isComposing) return;
     if (_popoverEditing) {
+      const ta = commentPopover && commentPopover.querySelector("textarea");
+      if (isNoteComposing(ta)) return;
       // Escape belongs to the editor only while focus is inside it: another overlay's Escape (a
       // Help panel, a confirm dialog) must not silently discard the draft sitting behind it.
       if (!(e.target && e.target.closest && e.target.closest(".cm-comment-popover"))) return;

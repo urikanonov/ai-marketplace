@@ -136,3 +136,6 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-RICH-16 | help | opt-out: a parity fix - the deck already demonstrates the formatting shortcuts; the same shortcuts in the side pane show nothing new on a slide |
 | CMH-RICH-17 | opt-out: a mobile touch-target invariant for a toolbar the reader already knows about; there is no new capability to document | opt-out: a touch-target size invariant, not something a viewer needs shown on a slide |
 | CMH-PRINT-07 | opt-out: a print-layout invariant - a diagram simply fits the printed page; there is nothing for a reader to learn or do | opt-out: print/PDF page-fit correctness, not something a viewer needs shown on a slide |
+| CMH-RICH-18 | help | opt-out: a parity fix - the deck already demonstrates the formatting toolbar; the same toolbar in the in-document dialog shows nothing new on a slide |
+| CMH-RICH-19 | help | opt-out: a parity fix - the deck already demonstrates the formatting shortcuts; the same shortcuts in the in-document dialog show nothing new on a slide |
+| CMH-RICH-20 | opt-out: a mobile touch-target invariant for a toolbar the reader already knows about; there is no new capability to document | opt-out: a touch-target size invariant, not something a viewer needs shown on a slide |

@@ -4,6 +4,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.285.0] - 2026-08-02
+
+### Added
+
+- The in-document comment dialog (the one you get by clicking a highlight) now offers the same
+  rich-text editing as the floating composer and the side panel. Its Edit form carries the shared
+  formatting toolbar (bold, italic, underline, strikethrough, inline code, link, bullet list) above
+  the textarea, and Ctrl/Cmd+B/I/U/K apply the matching formatting - from the textarea and from a
+  focused toolbar, Cancel, or Save button, since the keys are bound to the editor and action
+  containers rather than the textarea. Ctrl/Cmd+Enter still saves
+  and Escape still cancels back to the rendered note with the dialog left open; a blank save still
+  marks the field invalid, and formatting (not just typing) now clears that state. Mid-IME-composition
+  the toolbar, save, and cancel are all inert, so a candidate window can never splice markers into
+  provisional text or discard the draft. The toolbar is tightened to fit the fixed-width dialog on one
+  row, and keeps a >=44px touch target on phones (wrapping rather than overflowing).
 ## [1.282.0] - 2026-08-02
 
 ### Fixed

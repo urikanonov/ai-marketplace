@@ -47,7 +47,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `50-sidebar.js` | CMH-SIDE, CMH-PERSIST, CMH-RICH | Sidebar rendering and durable embedded-delete persistence from per-card deletes; renders the reviewer note rich, carries the hidden raw-source element, and gives the inline reply/edit editors the shared formatting toolbar + shortcuts. |
 | `51-comment-search.js` | CMH-SEARCH, CMH-RICH | Comment search / filter row: case-insensitive filter of the rendered cards (matching the hidden raw note source so markers/URLs stay searchable), shown/total count, clear button. |
 | `52-hover-bubble.js` | CMH-CORE | Hover bubble to open a comment. |
-| `53-comment-popover.js` | CMH-CORE, CMH-RICH | Inline on-screen comment dialog opened from the hover bubble (renders the note rich; note + Edit button; an outside pointer click closes it and is swallowed, a keyboard-activated one is not). |
+| `53-comment-popover.js` | CMH-CORE, CMH-RICH | Inline on-screen comment dialog opened from the hover bubble (renders the note rich; note + Edit button, whose in-place editor carries the shared formatting toolbar and shortcuts; an outside pointer click closes it and is swallowed, a keyboard-activated one is not). |
 | `54-sidebar-toggle.js` | CMH-SIDE, CMH-A11Y | Sidebar open/close. |
 | `55-toolbar-menu.js` | CMH-MENU, CMH-UI | Toolbar overflow menu. |
 | `56-copy-clear.js` | CMH-COPY | Copy all + Clear all. |

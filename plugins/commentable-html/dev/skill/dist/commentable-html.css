@@ -897,6 +897,15 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 }
 .cm-comment-popover-meta { color: var(--cp-text-muted); font-size: var(--cp-chrome-small-font); }
 .cm-comment-popover-edit { display: flex; flex-direction: column; }
+/* The shared formatting toolbar (issue #776) sits above the textarea in a narrow fixed-width
+   dialog, so tighten it (as the side pane does) to keep all seven buttons on one row. */
+.cm-comment-popover-edit .cm-format-bar { margin: 0 0 0.35rem; gap: 3px; }
+.cm-comment-popover-edit .cm-format-bar button { min-width: 26px; padding: 2px 5px; font-size: 0.8rem; }
+/* On phones the dialog is still a touch surface, so its toolbar keeps the repo-wide >=44px touch
+   target (it wraps to a second row rather than overflowing the dialog). */
+@media (max-width: 640px) {
+  .cm-comment-popover-edit .cm-format-bar button { min-width: 44px; min-height: 44px; padding: 0.4rem; }
+}
 .cm-comment-popover-input {
   width: 100%; box-sizing: border-box; resize: vertical; min-height: 5rem;
   padding: 0.35rem 0.5rem; font: inherit; font-size: var(--cp-chrome-body-font);
