@@ -507,6 +507,24 @@ class HtmlBlindnessTests(unittest.TestCase):
         self.assertNotIn('id="cmhVendoredRichLibs">{"encoding"', out)
 
 
+    def test_a_rich_document_is_collapsed_to_exactly_one_payload_copy(self):
+        # The runtime resolves the payload as infrastructure and refuses to guess between two
+        # candidates (CMH-OFFLINE-08), so a rich document left with a stale second copy would be
+        # un-exportable. Finalize must heal it, and the next run must be a no-op.
+        html = _doc(CHART)
+        span = vendored_libs.find_blob(html)
+        doubled = html[:span[1]] + html[span[0]:span[1]] + html[span[1]:]
+        self.assertEqual(doubled.count('id="cmhVendoredRichLibs"'), 2)
+        blob = html[span[0]:span[1]]
+        out, changed = vendored_libs.apply(doubled, blob)
+        self.assertTrue(changed)
+        self.assertEqual(out.count('id="cmhVendoredRichLibs"'), 1)
+        self.assertIsNotNone(vendored_libs.find_blob(out))
+        again, changed_again = vendored_libs.apply(out, blob)
+        self.assertFalse(changed_again)
+        self.assertEqual(again, out)
+
+
 class RuntimeParityTests(unittest.TestCase):
     """CMH-SIZE-01 / CMH-CHART-12 / CMH-PRINT-07: one shared selector definition, pinned.
 

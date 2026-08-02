@@ -4,6 +4,29 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.322.0] - 2026-08-02
+
+### Fixed
+
+- Export Offline no longer trusts the first `cmhVendoredRichLibs` block it finds, and never ships a
+  library without its MIT notice. The payload is INFRASTRUCTURE, so it is now resolved from the
+  document being exported as a payload-id script OUTSIDE the content root and EXACTLY one of them:
+  an authored decoy planted inside the content region used to come first in document order and win,
+  and its compressed bytes were inflated and inlined into an export whose own CSP allows inline
+  script - document-supplied code running in a file the recipient believes is a clean
+  skill-generated export. A document that has a candidate but cannot single one out (two of them, or
+  a content boundary that cannot be pinned down because the content-root id is missing or
+  duplicated) is now a loud, distinct failure rather than "no payload", so it cannot quietly hand
+  the export to the document's own copies. The authoring step collapses a rich document to exactly
+  one payload copy, so a finalized document is never born in that state. The consume-and-strip also
+  removed only the FIRST payload block, leaving a second one - including one parked in a
+  `<template>` - inside a file that is supposed to carry the libraries inline and no payload at all;
+  every infrastructure block is now stripped, while a payload-id script inside the content root is
+  preserved as the authored content it is (and no longer exempt from the network-import strip).
+  Finally, a library and its notice travel as ONE unit: a payload whose notice text had been
+  stripped, or replaced by a non-string value, used to re-emit the library bytes with no notice at
+  all - a silent MIT compliance break - and now fails the export naming the missing NOTICE and the
+  remedy rather than a bundle the document does carry.
 ## [1.321.0] - 2026-08-02
 
 ### Fixed

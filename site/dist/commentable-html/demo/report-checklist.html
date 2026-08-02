@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.321.0" />
+<meta name="commentable-html-version" content="1.322.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.321.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.322.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Release readiness review</title>
 
@@ -4135,7 +4135,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.321.0";
+const CMH_VERSION = "1.322.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -15774,7 +15774,12 @@ function _stripOfflineNetworkLoads(doc) {
   });
   doc.querySelectorAll("script").forEach(function (s) {
     const id = s.getAttribute("id") || "";
-    if (/^(?:embeddedComments|handledCommentIds|commentableHtmlLayer|cmhVendoredRichLibs)$/.test(id)) return;
+    // The layer's own data blocks carry reviewer text and must not be read as code. The vendored
+    // payload is deliberately NOT exempt: it is inert `application/json` (so the type check below
+    // already skips it) and it is stripped later anyway, while an AUTHORED script that merely
+    // borrows the payload id is preserved as content by the strip - so exempting the id would hand
+    // that script a free pass past the network-import scan every other script has to clear.
+    if (/^(?:embeddedComments|handledCommentIds|commentableHtmlLayer)$/.test(id)) return;
     if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return;
     const body = s.textContent || "";
     if (_offlineScriptHasNetworkEgress(body)) {
@@ -15876,24 +15881,130 @@ function _stripOfflineRichRenderers(doc) {
     }
   });
 }
-let _offlineVendoredRichLibsPromise = null;
+// The vendored payload is INFRASTRUCTURE, not content: `tools/authoring/vendored_libs.py` places it
+// outside the authored content root (immediately before `</body>`), and this exporter is the only
+// thing that writes one. Resolving it as "the first element with that id" would instead hand an
+// AUTHORED decoy inside the content region the win, and its compressed bytes would be inflated and
+// inlined into an export whose own CSP is `script-src 'unsafe-inline'` - document-supplied bytes
+// executing in a file the recipient believes is a clean skill-generated export. So require the id on
+// a script OUTSIDE `#commentRoot`, and require EXACTLY one.
+//
+// Ambiguity is a distinct state from ABSENCE, and only absence is benign. A document with no
+// infrastructure payload is the normal re-export case (an earlier Offline export consumed it), which
+// legitimately falls back to the library copies already inlined in the file. So two candidates - or
+// a document whose content boundary cannot be pinned down - must THROW rather than report "no
+// payload": reporting absence would quietly hand the same export to those document-supplied copies,
+// which is the substitution this whole rule exists to prevent.
+//
+// The BOUNDARY itself must be unambiguous for that rule to mean anything. A duplicate id is legal
+// HTML and `getElementById` silently takes the first one, so a planted `id="commentRoot"` wrapped
+// around the genuine root would re-point the boundary: the real payload would count as content and a
+// decoy placed after the wrapper as infrastructure, handing the win straight back to the decoy.
+//
+// The payload id is matched as an ATTRIBUTE VALUE, never written as an id-attribute selector
+// literal: this source is inlined verbatim into every export, and a literal would make an exported
+// file look like it still carries a payload block to anything scanning its text.
+//
+// WHAT THIS DOES AND DOES NOT AUTHENTICATE (the boundary, stated so the next reader does not
+// overestimate it). Position and uniqueness authenticate the payload against an author of the
+// CONTENT REGION - the untrusted part of a tool-generated document - by making displacement of the
+// genuine payload impossible without becoming visibly ambiguous. They prove nothing against an
+// author of the WHOLE FILE, who can simply omit the genuine payload and put their own block before
+// `</body>`: no rule about position can tell those apart, and such an author can already run script
+// in the document anyway. Against that adversary the argument is the same as CMH-OFFLINE-07's - the
+// zero-network CSP, and the fact that capture grants no capability the source document did not
+// already have. Resolution deliberately runs on the DOCUMENT BEING EXPORTED rather than the live
+// DOM, so a content-region script cannot rewrite the candidate set after the fact for a document
+// served over http(s); under `file://` the export base falls back to a snapshot of the live DOM, so
+// there the two are the same document and only the boundary above applies.
+const _OFFLINE_PAYLOAD_ID = "cmhVendoredRichLibs";
+const _OFFLINE_PAYLOAD_UNRESOLVED = "Offline export cannot identify the vendored rich-content payload in this document: it carries more than one, or its content root is missing or duplicated.";
+function _offlineVendoredPayloadBlocks(node) {
+  return Array.prototype.filter.call(node.querySelectorAll("script"), function (s) {
+    return s.getAttribute("id") === _OFFLINE_PAYLOAD_ID;
+  });
+}
+// `querySelectorAll` does not descend into a `<template>`'s content (it is a separate fragment), yet
+// serialization preserves it and a script adopted out of a template runs, so a payload parked in a
+// template would ride into an export that claims to carry none. The STRIP therefore walks template
+// content recursively, carrying the outermost template ELEMENT as the block's anchor so containment
+// is judged where the template actually sits in the document (a fragment node is inside no element).
+// RESOLUTION deliberately does not walk templates: a template-parked block is inert and can never be
+// this document's live payload.
+function _offlinePayloadBlocksWithAnchor(node, anchor) {
+  const found = _offlineVendoredPayloadBlocks(node).map(function (s) {
+    return { el: s, anchor: anchor || s };
+  });
+  Array.prototype.forEach.call(node.querySelectorAll("template"), function (t) {
+    if (t.content) Array.prototype.push.apply(found, _offlinePayloadBlocksWithAnchor(t.content, anchor || t));
+  });
+  return found;
+}
+function _offlineContentRoot(d) {
+  // An id SELECTOR (unlike getElementById) matches every element carrying the id, so a duplicate is
+  // visible here rather than silently resolved away.
+  const roots = d.querySelectorAll("#commentRoot");
+  return roots.length === 1 ? roots[0] : null;
+}
+// Decide, ONCE and against the PRISTINE document, both which block is the payload and which blocks
+// are infrastructure to strip. Deciding either later would judge containment against a document this
+// exporter has already rearranged - the chart hoist legitimately moves an author script out of the
+// content root - so an authored payload-id script would first become a second "infrastructure"
+// candidate and then be deleted as one.
+function _offlineResolveVendoredPayload(d) {
+  const contentRoot = _offlineContentRoot(d);
+  // Without a single content root there is no boundary to be outside OF, so nothing can be verified
+  // as authored content - but a document with no block at all is still plainly payload-less.
+  const infrastructure = _offlinePayloadBlocksWithAnchor(d, null).filter(function (b) {
+    return !(contentRoot && contentRoot.contains(b.anchor));
+  });
+  const strip = infrastructure.map(function (b) { return b.el; });
+  // Only a block that is not parked in a template can be this document's live payload.
+  const live = infrastructure.filter(function (b) { return b.el === b.anchor; });
+  if (!live.length) return { text: "", ambiguous: false, strip: strip };
+  if (!contentRoot || live.length > 1) return { text: "", ambiguous: true, strip: strip };
+  return { text: live[0].el.textContent || "{}", ambiguous: false, strip: strip };
+}
 function _offlineLiveDocNeedsRichLibs() {
   return !!root.querySelector(CMH_RICH_CONTENT_SEL);
 }
-function _ensureOfflineVendoredRichLibsPromise() {
-  if (_offlineVendoredRichLibsPromise) return _offlineVendoredRichLibsPromise;
-  _offlineVendoredRichLibsPromise = (async function () {
-    const el = document.getElementById("cmhVendoredRichLibs");
-    if (!el) return {};
-    const payload = JSON.parse(el.textContent || "{}");
+// Inflating the bundle costs a megabyte of gunzip, so it is cached - but keyed on the PAYLOAD TEXT,
+// never on "whichever document was asked first". The bytes that ship must come from the document
+// being exported, and a script inside the content region can rewrite the live DOM before an export
+// runs; keying on the text means a live-document prewarm is reused only when the export resolves
+// byte-identical payload text, and anything else is resolved and inflated afresh.
+let _offlineVendoredRichLibsCache = null;
+function _offlineInflateVendoredPayload(text) {
+  if (_offlineVendoredRichLibsCache && _offlineVendoredRichLibsCache.text === text) {
+    return _offlineVendoredRichLibsCache.promise;
+  }
+  const pending = (async function () {
+    const payload = JSON.parse(text || "{}");
     return {
       mermaid: await _offlineInflateVendoredScript(payload.mermaidGzipBase64),
       chartjs: await _offlineInflateVendoredScript(payload.chartjsGzipBase64),
-      mermaidLicense: String(payload.mermaidLicense || ""),
-      chartjsLicense: String(payload.chartjsLicense || ""),
+      mermaidLicense: _offlinePayloadLicense(payload.mermaidLicense),
+      chartjsLicense: _offlinePayloadLicense(payload.chartjsLicense),
     };
   })();
-  return _offlineVendoredRichLibsPromise;
+  // Only a SUCCESS is worth memoizing. A rejection cached forever would make one bad state - an idle
+  // prewarm that raced a half-loaded document, say - stick for the rest of the session, so every
+  // later export keeps failing on a document that is fine.
+  const promise = pending.catch(function (e) {
+    if (_offlineVendoredRichLibsCache && _offlineVendoredRichLibsCache.text === text) {
+      _offlineVendoredRichLibsCache = null;
+    }
+    throw e;
+  });
+  _offlineVendoredRichLibsCache = { text: text, promise: promise };
+  return promise;
+}
+// A notice read out of the payload JSON is untrusted input, so only a STRING counts. Coercing
+// whatever the JSON held would turn `{}` or `true` into "[object Object]" / "true" - text that is
+// not blank, so it would sail past the missing-notice refusal below and be emitted AS the MIT
+// notice, which is the compliance break dressed up as a notice.
+function _offlinePayloadLicense(value) {
+  return typeof value === "string" ? value : "";
 }
 async function _offlineInflateVendoredScript(b64) {
   const raw = String(b64 || "").trim();
@@ -15905,13 +16016,28 @@ async function _offlineInflateVendoredScript(b64) {
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
   return new Response(stream).text();
 }
-async function _offlineVendoredRichLibs() {
-  try { return await _ensureOfflineVendoredRichLibsPromise(); }
-  catch (e) { throw new Error("Offline export could not parse the vendored rich-content bundle."); }
+async function _offlineVendoredRichLibs(resolved) {
+  if (resolved.ambiguous) {
+    const err = new Error(_OFFLINE_PAYLOAD_UNRESOLVED);
+    err.cmhPayloadUnresolved = true;
+    throw err;
+  }
+  if (!resolved.text) return {};
+  try { return await _offlineInflateVendoredPayload(resolved.text); }
+  catch (e) {
+    // An unresolvable payload is a different failure from a corrupt one, and saying so is what makes
+    // the fail-closed path actionable instead of misleading.
+    if (e && e.cmhPayloadUnresolved) throw e;
+    throw new Error("Offline export could not parse the vendored rich-content bundle.");
+  }
 }
 function _primeOfflineVendoredRichLibs() {
   if (!_offlineLiveDocNeedsRichLibs()) return;
-  const warm = function () { _ensureOfflineVendoredRichLibsPromise().catch(function () {}); };
+  const warm = function () {
+    const resolved = _offlineResolveVendoredPayload(document);
+    if (!resolved.text) return;
+    _offlineInflateVendoredPayload(resolved.text).catch(function () {});
+  };
   if (typeof requestIdleCallback === "function") requestIdleCallback(warm, { timeout: 2000 });
   else setTimeout(warm, 0);
 }
@@ -15940,8 +16066,12 @@ function _offlineDocReferencesChartLib(doc) {
   const docRoot = doc.getElementById("commentRoot");
   return Array.prototype.some.call(doc.querySelectorAll("script:not([src])"), function (s) {
     // The layer's own data blocks carry reviewer text; skip them by id exactly as the network strip
-    // does, so a comment quoting "Chart" cannot decide a megabyte.
-    if (/^(?:embeddedComments|handledCommentIds|commentableHtmlLayer|cmhVendoredRichLibs|reviewedSections)$/.test(s.getAttribute("id") || "")) return false;
+    // does, so a comment quoting "Chart" cannot decide a megabyte. The vendored payload is NOT on
+    // that list: it is inert `application/json` (the runnable-type check below already skips it),
+    // while an AUTHORED runnable script that borrows the payload id is now preserved into the
+    // export, so ignoring its evidence would ship a document whose chart script survives with no
+    // library to call.
+    if (/^(?:embeddedComments|handledCommentIds|commentableHtmlLayer|reviewedSections)$/.test(s.getAttribute("id") || "")) return false;
     // A library THIS exporter inlined on an earlier pass is not the author's evidence; counting it
     // would make every re-export re-inline it forever.
     if (_offlineIsInlinedLibScript(s)) return false;
@@ -16000,7 +16130,10 @@ function _offlineAppendLibNotice(doc, head, name, license) {
   // Neutralize any "--" so the comment cannot terminate early or serialize as invalid HTML (the
   // vendored MIT texts have none today; this keeps it safe if an upstream refresh introduces one).
   const text = String(license || "").replace(/-{2,}/g, function (m) { return m.split("").join(" "); });
-  if (!text.trim()) return;
+  // Unreachable while every caller resolves the notice with the library (below), and it stays a
+  // THROW rather than a quiet return so a future caller cannot reintroduce the silent omission this
+  // whole path exists to prevent.
+  if (!text.trim()) throw new Error("Offline export is missing the MIT notice for the vendored " + name + " bundle.");
   head.appendChild(doc.createComment(
     " " + _OFFLINE_LIB_NOTICE_LEAD + name + _OFFLINE_LIB_NOTICE_TAIL + "\n"
     + text + "\n"));
@@ -16022,9 +16155,17 @@ function _offlineHoistChartScripts(doc) {
   });
   scripts.forEach(function (s) { body.appendChild(s); });
 }
-function _offlineRemoveVendoredBundleScript(doc) {
-  const el = doc.getElementById("cmhVendoredRichLibs");
-  if (el) el.remove();
+function _offlineRemoveVendoredBundleScript(payload) {
+  // EVERY infrastructure payload block, not just the resolved one, and including any parked in a
+  // `<template>`: an export carries the libraries inline and no payload at all, so a second copy
+  // must not ride along as a megabyte of inflatable base64 in a file that claims to have none.
+  //
+  // The set was decided against the PRISTINE document (see `_offlineResolveVendoredPayload`), so a
+  // block INSIDE the content root is never in it: an authored document may legitimately show one as
+  // an EXAMPLE, `tools/authoring/vendored_libs.py` refuses to cut it for exactly that reason (review
+  // found real cases twice), and deleting it would be silent content loss that also shifts every
+  // comment anchor measured after it.
+  payload.strip.forEach(function (el) { el.remove(); });
 }
 // An Offline export CONSUMES the vendored payload and removes it, so the file it produces carries
 // the libraries inline and no payload at all. Re-exporting that file therefore has nothing to
@@ -16140,39 +16281,47 @@ function _offlineMissingLibError(name, unlicensed) {
   }
   return new Error("Offline export is missing the vendored " + name + " bundle.");
 }
-async function _offlineInlineRichLibs(doc, referencesChartLib, inlinedLibs) {
+async function _offlineInlineRichLibs(doc, referencesChartLib, inlinedLibs, payload) {
   const head = doc.head || doc.querySelector("head");
   if (!head) return;
   const needMermaid = _offlineDocUsesMermaid(doc);
   const needCharts = _offlineDocNeedsChartLib(doc, referencesChartLib);
   if (!needMermaid && !needCharts) {
-    _offlineRemoveVendoredBundleScript(doc);
+    _offlineRemoveVendoredBundleScript(payload);
     return;
   }
-  const bundle = await _offlineVendoredRichLibs();
+  const bundle = await _offlineVendoredRichLibs(payload);
   const captured = inlinedLibs || {};
   // The payload wins when it carries the library (a fresh copy of the vendored bytes); the captured
-  // copy is the fallback for a document that no longer has a payload.
-  const lib = function (key) {
-    if (bundle[key]) return { code: bundle[key], license: bundle[key + "License"] || "", unlicensed: false };
-    return {
-      code: captured[key] || "",
-      license: captured[key + "License"] || "",
+  // copy is the fallback for a document that no longer has a payload. Whichever source is chosen,
+  // its bytes and its MIT notice travel as ONE unit: an Offline export inlines the library, which
+  // makes it a redistribution, and MIT requires the notice to accompany it. A missing notice is
+  // therefore a refusal, not a silent omission. There is deliberately no cross-source fallback on
+  // the notice alone: letting a noticeless payload fall through to the captured copy would let
+  // anyone who can strip a notice force document-supplied bytes instead.
+  const lib = function (key, name) {
+    const source = bundle[key] ? bundle : captured;
+    const code = String(source[key] || "");
+    if (!code.trim()) {
       // Only when licensing was the SOLE reason nothing could be reused: a copy this exporter
       // rejected for provenance makes the licence an unproven cause, so fall back to the generic
       // message rather than name a cause that may be wrong.
-      unlicensed: !!captured[key + "Unlicensed"] && !captured[key + "Rejected"],
-    };
+      throw _offlineMissingLibError(name, !!captured[key + "Unlicensed"] && !captured[key + "Rejected"]);
+    }
+    const license = String(source[key + "License"] || "");
+    if (!license.trim()) {
+      throw new Error("Offline export is missing the MIT notice for the vendored " + name
+        + " bundle. Re-run the authoring finalize step to refresh the vendored payload.");
+    }
+    return { code: code, license: license };
   };
   if (needCharts) {
-    const chartjs = lib("chartjs");
-    if (!chartjs.code) throw _offlineMissingLibError("Chart.js", chartjs.unlicensed);
+    const chartjs = lib("chartjs", "Chart.js");
     _offlineAppendLibNotice(doc, head, "Chart.js", chartjs.license);
     _offlineAppendInlineScript(doc, head, chartjs.code, { "data-cmh-offline-lib": "chartjs" });
   }
   if (needMermaid) {
-    const mermaid = lib("mermaid");
-    if (!mermaid.code) throw _offlineMissingLibError("mermaid", mermaid.unlicensed);
+    const mermaid = lib("mermaid", "mermaid");
     _offlineAppendLibNotice(doc, head, "mermaid", mermaid.license);
     _offlineAppendInlineScript(doc, head, mermaid.code, { "data-cmh-offline-lib": "mermaid" });
     _offlineAppendInlineScript(doc, head,
@@ -16225,19 +16374,24 @@ async function _offlineInlineRichLibs(doc, referencesChartLib, inlinedLibs) {
       + "})();",
       { "data-cmh-offline-lib-init": "mermaid" });
   }
-  _offlineRemoveVendoredBundleScript(doc);
+  _offlineRemoveVendoredBundleScript(payload);
 }
 async function _buildOfflineHtml(portableHtml) {
   const doc = _offlineDocFromHtml(portableHtml);
   // Read the "does this document use Chart.js" evidence BEFORE anything is stripped, so a script the
   // loader strip removes cannot take the only sign of the library with it.
   const referencesChartLib = _offlineDocReferencesChartLib(doc);
+  // Resolve the payload against the PRISTINE document, before any strip or hoist runs: the hoist
+  // legitimately moves an author chart script out of the content root, so resolving later would let
+  // this exporter's own rearrangement turn an authored payload-id script into a second
+  // "infrastructure" candidate and refuse a document that is perfectly fine.
+  const vendoredPayload = _offlineResolveVendoredPayload(doc);
   const inlinedRichLibs = _offlineCaptureInlinedRichLibs(doc);
   _stripOfflineRichRenderers(doc);
   const droppedScripts = _stripOfflineNetworkLoads(doc);
   _stripOfflineEventHandlers(doc);
   _offlineHoistChartScripts(doc);
-  await _offlineInlineRichLibs(doc, referencesChartLib, inlinedRichLibs);
+  await _offlineInlineRichLibs(doc, referencesChartLib, inlinedRichLibs, vendoredPayload);
   _ensureOfflineCsp(doc);
   const html = _retargetLayerDescriptor(_serializeOfflineDoc(doc), "offline").replace(/\n{3,}/g, "\n\n");
   return { html: html, droppedScripts: droppedScripts };

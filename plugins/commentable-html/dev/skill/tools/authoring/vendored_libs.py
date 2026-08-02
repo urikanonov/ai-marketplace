@@ -283,6 +283,18 @@ def apply(html, source_blob=None):
             out = out[:start] + out[end:]
         return out, True
     span = scan.blob_spans[0] if scan.blob_spans else None
+    if len(scan.blob_spans) > 1:
+        # A rich document keeps exactly ONE payload. The runtime resolves the payload as
+        # infrastructure and refuses to guess between two candidates (it fails the Offline export
+        # loudly rather than inflate the wrong one), so leaving a stale second copy here - which the
+        # UNUSED branch above already collapses - would hand back a finalized document that cannot
+        # be exported. Keep the LAST copy (the canonical after-content position when one is already
+        # there) and drop the rest, back to front so earlier offsets stay valid, then let the
+        # single-copy path below place it.
+        out = html
+        for start, end in sorted(scan.blob_spans[:-1], reverse=True):
+            out = out[:start] + out[end:]
+        return apply(out, source_blob)[0], True
     if span:
         # Already after the content root: leave it exactly as it is. Relocating an
         # already-placed payload would churn bytes on every finalize.
