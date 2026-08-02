@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.279.0";
+const CMH_VERSION = "1.280.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -12846,6 +12846,26 @@ function updateTocReviewMarks(states, active) {
     }
   }
 }
+// The tall-media print cap has to name the mermaid diagram hosts, so it DERIVES them from the one
+// shared vocabulary (CMH_MERMAID_SEL, assets/js/03-selectors.js) instead of re-typing the list:
+// "pre.mermaid, div.mermaid" -> "#commentRoot pre.mermaid svg,#commentRoot div.mermaid svg,". The
+// cap targets the RENDERED SVG inside the host, not the host box, because the SVG is what carries
+// the intrinsic height that overflows a printed page (CMH-PRINT-07).
+//
+// The trailing comma is part of the returned fragment, and an empty or non-string vocabulary
+// yields "" rather than a bare comma: the caller splices this into a selector LIST, and one
+// invalid selector makes a browser drop the WHOLE list - which would silently un-cap the figures
+// and images the same rule carries. (That the constant EXISTS is guaranteed by partial ordering -
+// 03-selectors.js sorts before this file; see assets/js/MODULES.md - not by the check below.)
+function _printMermaidCapSel() {
+  const declared = typeof CMH_MERMAID_SEL === "string" ? CMH_MERMAID_SEL : "";
+  const hosts = declared.split(",")
+    .map(function (host) { return host.trim(); })
+    .filter(Boolean)
+    .map(function (host) { return "#commentRoot " + host + " svg"; })
+    .join(",");
+  return hosts ? hosts + "," : "";
+}
 function _printHeadingPath(c) {
   if (c && c.headingPath && c.headingPath.length) {
     return c.headingPath.map(function (h) { return h && h.text; }).filter(Boolean).join(" > ");
@@ -13105,7 +13125,11 @@ function setupSinglePagePrint() {
       // so on a driver that CANNOT grow the page (a non-honoring driver paginating onto fixed paper) a
       // wide cell wraps instead of being clipped off the sheet edge. Mirrors 92-print.css.
       + "#commentRoot td,#commentRoot th{overflow-wrap:anywhere !important;word-break:break-word !important}"
-      + "#commentRoot pre.mermaid svg,#commentRoot figure svg,#commentRoot figure img,#commentRoot img{"
+      // The mermaid hosts are DERIVED from the shared diagram vocabulary (CMH_MERMAID_SEL in
+      // 03-selectors.js), never re-typed here: re-typing one half of that list is exactly how a
+      // standalone div.mermaid fell out of the print cap while pre.mermaid kept it (CMH-PRINT-07).
+      + _printMermaidCapSel()
+      + "#commentRoot figure svg,#commentRoot figure img,#commentRoot img{"
       + "max-height:8.4in !important;max-width:100% !important;width:auto !important;height:auto !important}"
       // Chart canvases (and any inline SVG) scale to fit the column too, so a narrowed measurement
       // matches print instead of overflowing the capped page width. Mirrors 92-print.css.

@@ -315,6 +315,7 @@
      leaving a near-empty trailing page. width:auto keeps the aspect ratio while it shrinks. Scoped
      away from decks, whose fixed 1080px slides intentionally fill the slide page. */
   #commentRoot:not([data-cmh-mode="deck"]) pre.mermaid svg,
+  #commentRoot:not([data-cmh-mode="deck"]) div.mermaid svg,
   #commentRoot:not([data-cmh-mode="deck"]) figure svg,
   #commentRoot:not([data-cmh-mode="deck"]) figure img,
   #commentRoot:not([data-cmh-mode="deck"]) img {

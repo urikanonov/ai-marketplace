@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.279.0" />
+<meta name="commentable-html-version" content="1.280.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.279.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.280.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Release readiness review</title>
 
@@ -3661,6 +3661,7 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
      leaving a near-empty trailing page. width:auto keeps the aspect ratio while it shrinks. Scoped
      away from decks, whose fixed 1080px slides intentionally fill the slide page. */
   #commentRoot:not([data-cmh-mode="deck"]) pre.mermaid svg,
+  #commentRoot:not([data-cmh-mode="deck"]) div.mermaid svg,
   #commentRoot:not([data-cmh-mode="deck"]) figure svg,
   #commentRoot:not([data-cmh-mode="deck"]) figure img,
   #commentRoot:not([data-cmh-mode="deck"]) img {
@@ -3956,7 +3957,7 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
      content, not a template-owned region.
 -->
 <div class="app">
-<main data-generated="2026-07-30" id="commentRoot" data-cmh-content-root data-comment-key="cmh-132b5c6f45a0" data-doc-label="Release readiness review" data-doc-source="report-checklist.html">
+<main data-generated="2026-08-01" id="commentRoot" data-cmh-content-root data-comment-key="cmh-132b5c6f45a0" data-doc-label="Release readiness review" data-doc-source="report-checklist.html">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
 <header class="cmh-lede">
@@ -4128,7 +4129,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.279.0";
+const CMH_VERSION = "1.280.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -16890,6 +16891,26 @@ function updateTocReviewMarks(states, active) {
     }
   }
 }
+// The tall-media print cap has to name the mermaid diagram hosts, so it DERIVES them from the one
+// shared vocabulary (CMH_MERMAID_SEL, assets/js/03-selectors.js) instead of re-typing the list:
+// "pre.mermaid, div.mermaid" -> "#commentRoot pre.mermaid svg,#commentRoot div.mermaid svg,". The
+// cap targets the RENDERED SVG inside the host, not the host box, because the SVG is what carries
+// the intrinsic height that overflows a printed page (CMH-PRINT-07).
+//
+// The trailing comma is part of the returned fragment, and an empty or non-string vocabulary
+// yields "" rather than a bare comma: the caller splices this into a selector LIST, and one
+// invalid selector makes a browser drop the WHOLE list - which would silently un-cap the figures
+// and images the same rule carries. (That the constant EXISTS is guaranteed by partial ordering -
+// 03-selectors.js sorts before this file; see assets/js/MODULES.md - not by the check below.)
+function _printMermaidCapSel() {
+  const declared = typeof CMH_MERMAID_SEL === "string" ? CMH_MERMAID_SEL : "";
+  const hosts = declared.split(",")
+    .map(function (host) { return host.trim(); })
+    .filter(Boolean)
+    .map(function (host) { return "#commentRoot " + host + " svg"; })
+    .join(",");
+  return hosts ? hosts + "," : "";
+}
 function _printHeadingPath(c) {
   if (c && c.headingPath && c.headingPath.length) {
     return c.headingPath.map(function (h) { return h && h.text; }).filter(Boolean).join(" > ");
@@ -17149,7 +17170,11 @@ function setupSinglePagePrint() {
       // so on a driver that CANNOT grow the page (a non-honoring driver paginating onto fixed paper) a
       // wide cell wraps instead of being clipped off the sheet edge. Mirrors 92-print.css.
       + "#commentRoot td,#commentRoot th{overflow-wrap:anywhere !important;word-break:break-word !important}"
-      + "#commentRoot pre.mermaid svg,#commentRoot figure svg,#commentRoot figure img,#commentRoot img{"
+      // The mermaid hosts are DERIVED from the shared diagram vocabulary (CMH_MERMAID_SEL in
+      // 03-selectors.js), never re-typed here: re-typing one half of that list is exactly how a
+      // standalone div.mermaid fell out of the print cap while pre.mermaid kept it (CMH-PRINT-07).
+      + _printMermaidCapSel()
+      + "#commentRoot figure svg,#commentRoot figure img,#commentRoot img{"
       + "max-height:8.4in !important;max-width:100% !important;width:auto !important;height:auto !important}"
       // Chart canvases (and any inline SVG) scale to fit the column too, so a narrowed measurement
       // matches print instead of overflowing the capped page width. Mirrors 92-print.css.
