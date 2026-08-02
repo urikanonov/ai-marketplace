@@ -15,7 +15,7 @@ Validators (re-run by the harness independently of whatever the agent did, so a 
 produces an invalid artifact is caught even if the agent wrongly reports success):
 - ``validate``      - tools/validate/validate.py --strict <artifact>
 - ``deck_validate`` - tools/deck/deck_validate.py --strict <artifact>
-- ``portable``      - harness-side check that the artifact is a single self-contained file
+- ``shareable``      - harness-side check that the artifact is a single self-contained file
 - ``stamp``         - harness-side check that the artifact carries the validated stamp
 """
 
@@ -93,14 +93,14 @@ FLOWS = [
         "name": "export",
         "output": "output/export.html",
         "seed_files": {},
-        "validators": ["validate", "portable", "stamp"],
+        "validators": ["validate", "shareable", "stamp"],
         "prompt": (
-            "Use the commentable-html skill to create a PORTABLE, self-contained commentable "
+            "Use the commentable-html skill to create a SHAREABLE, self-contained commentable "
             "document (a single HTML file with the review layer and assets embedded, safe to share "
             "with no companion files) from this Markdown content:\n\n"
-            "# Release Notes 2.0\n\nThe portable export bundles everything into one file.\n\n"
+            "# Release Notes 2.0\n\nThe shareable export bundles everything into one file.\n\n"
             "## Highlights\n\n- Single-file handoff.\n- No network needed to review.\n\n"
-            "Follow the skill: build it in portable mode, then MUST finalize and pass "
+            "Follow the skill: build it in shareable mode, then MUST finalize and pass "
             "tools/validate/validate.py --strict. Write the final self-contained HTML to "
             "output/export.html relative to the current working directory. Do not open a browser. "
             "When finished, print the absolute path of output/export.html."

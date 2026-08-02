@@ -53,7 +53,7 @@ commentable-html document, not a flat report.
 > - Round-trip to the agent: Copy all creates a Markdown bundle plus a machine-readable id list;
 >   the agent applies changes, marks handled ids, and handled-comment pruning removes resolved
 >   comments on reload.
-> - Exports: Export as Portable, Export Offline, Plain HTML, and Markdown.
+> - Exports: Export as Shareable, Export Offline, Plain HTML, and Markdown.
 > - Privacy and offline story: comments stay local in browser storage or embedded in the exported
 >   HTML file; there is no server, account, telemetry, or upload; Offline export strips loaders and
 >   inlines vendored diagram and chart runtimes for zero-network review.
@@ -94,7 +94,7 @@ commentable-html document, not a flat report.
 > Act 4 - Behind the scenes (engineers):
 > 15. Anatomy of a file - the region map of layer versus CONTENT.
 > 16. How comments stick - text offsets, structural keys, and widget deltas.
-> 17. Portability internals - Live, Portable, Offline, and Markdown.
+> 17. Shareability internals - Live, Shareable, Offline, and Markdown.
 > 18. Safe and deterministic - the scaffold and strict validator checklist.
 > Act 5 - Close:
 > 19. What's next - five links: create with CHM, learn, found an issue, contribute, read the code.

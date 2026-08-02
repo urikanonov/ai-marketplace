@@ -17,10 +17,10 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
                      body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION])
 
     def test_real_template_is_clean(self):
-        self.assertTrue(os.path.exists(TEMPLATE), "dist/PORTABLE.html not found next to the tests")
+        self.assertTrue(os.path.exists(TEMPLATE), "dist/SHAREABLE.html not found next to the tests")
         errors, warnings = validate.validate(TEMPLATE)
-        self.assertEqual(errors, [], "dist/PORTABLE.html should have no errors, got: %r" % errors)
-        self.assertEqual(warnings, [], "dist/PORTABLE.html should have no warnings, got: %r" % warnings)
+        self.assertEqual(errors, [], "dist/SHAREABLE.html should have no errors, got: %r" % errors)
+        self.assertEqual(warnings, [], "dist/SHAREABLE.html should have no warnings, got: %r" % warnings)
 
     def test_case_insensitive_tags_and_ids_ok(self):
         doc = build()
@@ -37,7 +37,7 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
         token = "\x00DESCRIPTOR\x00"
         single_attr_descriptor = (
             '<script type=\'application/json\' id=\'commentableHtmlLayer\'>'
-            + json.dumps({"version": "1.0.0", "mode": "portable", "regions": EXPECTED_REGIONS},
+            + json.dumps({"version": "1.0.0", "mode": "shareable", "regions": EXPECTED_REGIONS},
                          separators=(",", ":"))
             + "</script>"
         )
@@ -111,8 +111,8 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
         self.assertOkNoWarn(build())
 
     def test_layer_descriptor_mode_must_match_document_mode(self):
-        doc = build().replace('"mode":"portable"', '"mode":"nonportable"', 1)
-        self.assertError(doc, 'commentableHtmlLayer.mode must be "portable" or "offline"')
+        doc = build().replace('"mode":"shareable"', '"mode":"nonshareable"', 1)
+        self.assertError(doc, 'commentableHtmlLayer.mode must be "shareable" or "offline"')
 
     def test_layer_descriptor_offline_mode_is_clean_for_inline_document(self):
         doc = with_offline_mode(build())
@@ -246,7 +246,7 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
         self.assertError(doc, "demo content root survived")
 
     def test_demo_key_with_demo_title_is_ok(self):
-        # Matches dist/PORTABLE.html (demo key + demo <title>): the survivor check is
+        # Matches dist/SHAREABLE.html (demo key + demo <title>): the survivor check is
         # title-gated so the pristine template and its derivatives stay green.
         doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), self._DEMO_MAIN, JS_REGION])
         doc = doc.replace("<head>\n", "<head>\n<title>Commentable HTML - Demo</title>\n", 1)

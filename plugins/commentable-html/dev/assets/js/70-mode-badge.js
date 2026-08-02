@@ -82,16 +82,16 @@ function _embeddedCommentSig() {
     getEmbeddedComments().forEach(function (c) {
       // Use the same id-universe as mergeCommentSets (which drops unsafe ids from the
       // live set), otherwise an unsafe embedded id looks like a "deleted in session"
-      // comment and falsely flips the badge to Not portable.
+      // comment and falsely flips the badge to Not shareable.
       if (c && c.id && SAFE_ID_RE.test(c.id)) _embeddedSigCache.set(c.id, c.updatedAt || c.createdAt || "");
     });
   }
   return _embeddedSigCache;
 }
-// The document is either "Portable" (self-contained and safe to share: assets embedded
-// and every current comment embedded, or none) or "Not portable" (it references external
+// The document is either "Shareable" (self-contained and safe to share: assets embedded
+// and every current comment embedded, or none) or "Not shareable" (it references external
 // skill/companion resources, and/or has comments that are not embedded in the file). The
-// bubble hover explains WHY a file is not portable.
+// bubble hover explains WHY a file is not shareable.
 function isOfflineDocument() {
   const script = document.getElementById("commentableHtmlLayer");
   if (script) {
@@ -104,7 +104,7 @@ function isOfflineDocument() {
 }
 function currentDocState() {
   const reasons = [];
-  if (NONPORTABLE_MODE) reasons.push("it references external skill / companion resources");
+  if (NONSHAREABLE_MODE) reasons.push("it references external skill / companion resources");
   if (typeof widgetStateChanges === "function" && widgetStateChanges().length > 0) {
     reasons.push("a widget's layout was changed in this session and is not saved into the file");
   }
@@ -123,7 +123,7 @@ function currentDocState() {
   }
   // Embedded comments that are neither live nor marked handled still sit in the file even
   // though they were deleted in this session: sharing the file as-is would show them. The
-  // file is stale (not portable) until re-exported.
+  // file is stale (not shareable) until re-exported.
   if (emb.size > 0) {
     const handled = getHandledIds();
     const liveIds = new Set(comments.map(function (c) { return c.id; }));
@@ -135,9 +135,9 @@ function currentDocState() {
     if (isOfflineDocument()) {
       return { type: "Offline", reason: "Offline: self-contained and works with no network - the review layer, styles, charts, and diagrams are all embedded in this one file." };
     }
-    return { type: "Portable", reason: "Portable: self-contained and safe to share (assets embedded and every comment embedded)." };
+    return { type: "Shareable", reason: "Shareable: self-contained and safe to share (assets embedded and every comment embedded)." };
   }
-  return { type: "Not portable", reason: "Not portable because " + reasons.join(", and ") + ". Use Export as Portable to share it." };
+  return { type: "Not shareable", reason: "Not shareable because " + reasons.join(", and ") + ". Use Export as Shareable to share it." };
 }
 function updateDocTypeUi() {
   const st = currentDocState();
@@ -163,18 +163,25 @@ function setupModeUi() {
   if (ver) ver.textContent = "v" + CMH_VERSION;
   const meta = document.querySelector(".cm-sidebar .head-meta");
   if (meta && !meta.querySelector(".cm-brand-icon")) meta.insertAdjacentHTML("afterbegin", cmBrandLink(CMH_ICON_SVG));
-  if (NONPORTABLE_MODE) {
+  if (NONSHAREABLE_MODE) {
+    // The legacy cm-nonportable body hook is set alongside the current one, defensively: it is
+    // applied at RUNTIME (never baked into a document), so nothing shipped depends on it, but a
+    // retrofitted host page or a hand-written stylesheet may still key off the old name.
+    document.body.classList.add("cm-nonshareable");
     document.body.classList.add("cm-nonportable");
-    // In nonportable (companion) mode the portability action embeds everything into one file.
+    // In nonshareable (companion) mode the shareability action embeds everything into one file.
     ["btnSaveHtml", "btnSaveHtmlTop"].forEach(function (id) {
       const b = document.getElementById(id);
       if (b) {
         // Preserve each button's icon + label span; the sidebar button uses the compact
-        // "Portable" label, the overflow-menu item keeps the full "Export as Portable".
+        // "Shareable" label, the overflow-menu item keeps the full "Export as Shareable".
         const span = b.querySelector("span");
-        const label = (id === "btnSaveHtmlTop") ? "Export as Portable" : "Portable";
+        const label = (id === "btnSaveHtmlTop") ? "Export as Shareable" : "Shareable";
         if (span) span.textContent = label; else b.textContent = label;
-        b.title = "Download one self-contained, portable HTML with the commentable-html assets AND the current comments embedded, so it no longer depends on the skill folder or companion files.";
+        // A pre-rename companion document carries the old "Export as Portable" aria-label in its
+        // own markup, so re-stamp it too - otherwise a screen reader keeps announcing the old name.
+        if (b.getAttribute("aria-label")) b.setAttribute("aria-label", "Export as Shareable");
+        b.title = "Download one self-contained, shareable HTML with the commentable-html assets AND the current comments embedded, so it no longer depends on the skill folder or companion files.";
       }
     });
   }

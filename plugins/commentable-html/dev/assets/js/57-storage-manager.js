@@ -483,7 +483,7 @@ function openStorageManager(opts) {
       const onlyComment = _cmhPendingWrites.size === 1 && _cmhPendingWrites.has(CMH_STORE_KEY);
       showToast((onlyComment ? "Your comment is" : "Your edits are")
         + " still not saved - this browser's storage is full. Free space from Manage storage, or use "
-        + "Copy all / Export as Portable to keep it.",
+        + "Copy all / Export as Shareable to keep it.",
         { alert: true, duration: 8000, action: cmhStorageAction(anyKey) });
     }
     if (prevFocus && typeof prevFocus.focus === "function") prevFocus.focus();
@@ -614,7 +614,7 @@ function openStorageManager(opts) {
       emptyNote.appendChild(p);
       if (quota) {
         const actions = el("div", "cm-storage-empty-actions");
-        const exp = el("button", "cm-storage-btn", "Export as Portable");
+        const exp = el("button", "cm-storage-btn", "Export as Shareable");
         exp.type = "button";
         exp.addEventListener("click", function () {
           const b = document.getElementById("btnSaveHtmlTop") || document.getElementById("btnSaveHtml");

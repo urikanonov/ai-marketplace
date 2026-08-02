@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="commentable-html-version" content="1.33.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.33.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.33.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable Visuals Matrix</title>
 
@@ -231,7 +231,7 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-sidebar.is-narrow .head-top h3 { flex-basis: 100%; }
 .cm-sidebar.is-narrow .head-top #btnCopyAll { flex: 1 1 calc(100% - 4rem); }
 .cm-sidebar.is-narrow .head-top .cm-sort { margin-left: 0; }
-/* In narrow layout the export buttons pack two per row (Portable | Offline, then Markdown | Plain
+/* In narrow layout the export buttons pack two per row (Shareable | Offline, then Markdown | Plain
    HTML) instead of one full-width button per row; Clear keeps its own full-width row so the
    destructive action stays visually apart. */
 .cm-sidebar.is-narrow .head-actions button { flex: 1 1 calc(50% - 0.2rem); min-width: 0; justify-content: center; }
@@ -330,9 +330,9 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   padding: 0.12rem 0.5rem; border-radius: 999px; white-space: nowrap;
   border: 1px solid var(--cp-border); color: var(--cp-text-soft);
 }
-.cm-type-badge[data-doc-type="Portable"] { color: var(--cp-success); border-color: var(--cp-success); background: rgba(22, 163, 74, 0.12); }
+.cm-type-badge[data-doc-type="Shareable"] { color: var(--cp-success); border-color: var(--cp-success); background: rgba(22, 163, 74, 0.12); }
 .cm-type-badge[data-doc-type="Offline"] { color: var(--cp-accent); border-color: var(--cp-accent); background: var(--cp-accent-soft); }
-.cm-type-badge[data-doc-type="Not portable"] { color: var(--cp-warning); border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.12); cursor: help; }
+.cm-type-badge[data-doc-type="Not shareable"] { color: var(--cp-warning); border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.12); cursor: help; }
 .cm-version { font-size: 0.66rem; color: var(--cp-text-soft); }
 .cm-brand-icon { vertical-align: -3px; margin-right: 0.15rem; flex: none; }
 .cm-brand-link { color: inherit; text-decoration: none; display: inline-flex; align-items: center; border-radius: 6px; }
@@ -670,7 +670,7 @@ text.cm-mermaid-hl, .cm-mermaid-hl > text { fill: var(--cp-accent) !important; f
 .cm-hl-bubble:hover { filter: brightness(1.08); }
 .cm-hl-bubble svg { width: 12px; height: 12px; display: block; }
 
-/* Portability status badge (shown in the toolbar overflow menu). */
+/* Shareability status badge (shown in the toolbar overflow menu). */
 .cm-mode-badge {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 2px 8px; border-radius: 999px;
@@ -678,21 +678,21 @@ text.cm-mermaid-hl, .cm-mermaid-hl > text { fill: var(--cp-accent) !important; f
   border: 1px solid var(--cp-border-strong); color: var(--cp-text-muted);
   background: var(--cp-surface-soft); white-space: nowrap;
 }
-.cm-mode-badge.is-nonportable { color: var(--cp-warning); border-color: var(--cp-warning); }
-/* Parity with the sidebar .cm-type-badge: the overflow-menu portability badge is colored
+.cm-mode-badge.is-nonshareable { color: var(--cp-warning); border-color: var(--cp-warning); }
+/* Parity with the sidebar .cm-type-badge: the overflow-menu shareability badge is colored
    and gets a help cursor from the same data-doc-type set by updateDocTypeUi. */
-.cm-mode-badge[data-doc-type="Portable"] { color: var(--cp-success); border-color: var(--cp-success); background: rgba(22, 163, 74, 0.12); }
+.cm-mode-badge[data-doc-type="Shareable"] { color: var(--cp-success); border-color: var(--cp-success); background: rgba(22, 163, 74, 0.12); }
 .cm-mode-badge[data-doc-type="Offline"] { color: var(--cp-accent); border-color: var(--cp-accent); background: var(--cp-accent-soft); }
-.cm-mode-badge[data-doc-type="Not portable"] { color: var(--cp-warning); border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.12); cursor: help; }
+.cm-mode-badge[data-doc-type="Not shareable"] { color: var(--cp-warning); border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.12); cursor: help; }
 
-/* NonPortable-only controls are hidden until the layer detects nonportable mode. */
-.cm-nonportable-only { display: none !important; }
-body.cm-nonportable .cm-nonportable-only { display: inline-block !important; }
-body.cm-nonportable .cm-toolbar-menu .cm-nonportable-only { display: block !important; }
+/* NonShareable-only controls are hidden until the layer detects nonshareable mode. */
+.cm-nonshareable-only { display: none !important; }
+body.cm-nonshareable .cm-nonshareable-only { display: inline-block !important; }
+body.cm-nonshareable .cm-toolbar-menu .cm-nonshareable-only { display: block !important; }
 
-/* Inline-only controls (e.g. Export nonportable) are shown only in a portable/inline
-   document and hidden once the file is in nonportable mode. */
-body.cm-nonportable .cm-inline-only { display: none !important; }
+/* Inline-only controls (e.g. Export nonshareable) are shown only in a shareable/inline
+   document and hidden once the file is in nonshareable mode. */
+body.cm-nonshareable .cm-inline-only { display: none !important; }
 .cm-toolbar-menu .cm-inline-only { display: block; }
 
 /* Prominent primary action (Copy all) in the toolbar. */
@@ -716,7 +716,7 @@ body.cm-nonportable .cm-inline-only { display: none !important; }
 }
 .cm-toolbar-menu button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
 
-/* Missing-companion-assets banner (nonportable mode only). Revealed by the tiny
+/* Missing-companion-assets banner (nonshareable mode only). Revealed by the tiny
    inline bootstrap when the external runtime fails to initialize in time. */
 #cmhAssetBanner {
   position: fixed; top: 0; left: 0; right: 0; z-index: 400;
@@ -1207,7 +1207,7 @@ body.cmh-deck-present #menuComment {
      The agent appends every processed comment id to this JSON
      array. On the next page load the IDs are removed from
      localStorage, dropped from the live list, and filtered out
-     of any Copy or Export as Portable so handled comments cannot
+     of any Copy or Export as Shareable so handled comments cannot
      come back through a stale clipboard or blob.
 
      Append-only. Duplicates tolerated. Order does not matter.
@@ -1223,9 +1223,9 @@ body.cmh-deck-present #menuComment {
      BEGIN: commentable-html - EMBEDDED COMMENTS
      ============================================================
      Optional in-HTML snapshot of the comments array, so the file
-     is self-contained for sharing. The "Export as Portable" button in
+     is self-contained for sharing. The "Export as Shareable" button in
      the toolbar writes the current comments here and downloads a
-     fresh copy of the file (named <stem>-portable.html); replace
+     fresh copy of the file (named <stem>-shareable.html); replace
      the original with it to make the comments stick.
 
      On load, the layer merges this list with the localStorage
@@ -1234,7 +1234,7 @@ body.cmh-deck-present #menuComment {
      is then written back to localStorage so reloads converge.
 
      Hand-edit only if you know what you are doing. Normal flow:
-     click "Export as Portable" in the toolbar.
+     click "Export as Shareable" in the toolbar.
 -->
 <script type="application/json" id="embeddedComments">
 []
@@ -1253,9 +1253,9 @@ body.cmh-deck-present #menuComment {
       <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="19" cy="12" r="2" fill="currentColor"/></svg>
     </button>
     <div id="toolbarMenu" class="cm-toolbar-menu" hidden>
-      <span id="cmhModeBadge" class="cm-mode-badge" aria-live="polite" title="Portability of this file"></span>
+      <span id="cmhModeBadge" class="cm-mode-badge" aria-live="polite" title="Shareability of this file"></span>
       <button id="btnShowTop" type="button" title="Show the comments panel"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg><span>Show</span></button>
-      <button id="btnSaveHtmlTop" type="button" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Export as Portable</span></button>
+      <button id="btnSaveHtmlTop" type="button" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Export as Shareable</span></button>
       <button id="btnExportOfflineTop" type="button" title="Download an offline HTML copy with current comments embedded, rendered mermaid saved as inline SVG, and chart canvases saved as PNG images"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v7 M9 7l3 3 3-3 M5 14h14v5H5z M8 16.5h.01 M12 16.5h4"/></svg><span>Export Offline</span></button>
       <button id="btnSavePlainTop" type="button" title="Download a plain copy of this HTML with the comment layer removed (keeps all of your content and styling)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4"/></svg><span>Export to Plain HTML</span></button>
       <button id="btnExportMdTop" type="button" title="Download a .md file (a deterministic block-by-block conversion; comments are appended as a section)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4 M8.5 17v-4l2 2 2-2v4"/></svg><span>Export to Markdown</span></button>
@@ -1267,7 +1267,7 @@ body.cmh-deck-present #menuComment {
 <aside class="cm-sidebar cm-skip" id="sidebar" aria-label="Comments">
   <header>
     <div class="head-meta">
-      <span class="cm-type-badge" id="cmTypeBadge" aria-live="polite" title="Whether this file is portable. Portable means self-contained and safe to share (assets embedded and every comment embedded). Not portable means it references external skill/companion resources and/or has comments not embedded yet - hover shows which."></span>
+      <span class="cm-type-badge" id="cmTypeBadge" aria-live="polite" title="Whether this file is shareable. Shareable means self-contained and safe to share (assets embedded and every comment embedded). Not shareable means it references external skill/companion resources and/or has comments not embedded yet - hover shows which."></span>
       <span class="cm-version" id="cmVersion" title="commentable-html version that generated this file"></span>
       <span class="cm-head-actions">
         <button type="button" id="btnHelp" class="cm-help-btn" title="Open help and about: what every button does and how the review workflow works" aria-haspopup="dialog">Help &amp; About</button>
@@ -1287,7 +1287,7 @@ body.cmh-deck-present #menuComment {
       <span id="cmLastComment"></span>
     </div>
     <div class="head-actions">
-      <button type="button" id="btnSaveHtml" aria-label="Export as Portable" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Portable</span></button>
+      <button type="button" id="btnSaveHtml" aria-label="Export as Shareable" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Shareable</span></button>
       <button type="button" id="btnExportOffline" aria-label="Export Offline" title="Download an offline HTML copy with current comments embedded, rendered mermaid saved as inline SVG, and chart canvases saved as PNG images"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v7 M9 7l3 3 3-3 M5 14h14v5H5z M8 16.5h.01 M12 16.5h4"/></svg><span>Offline</span></button>
       <button type="button" id="btnExportMd" aria-label="Export to Markdown" title="Download a .md file (a deterministic block-by-block conversion; comments are appended as a section)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4 M8.5 17v-4l2 2 2-2v4"/></svg><span>Markdown</span></button>
       <button type="button" id="btnSavePlain" aria-label="Export to Plain HTML" title="Download a plain copy of this HTML with the comment layer removed (keeps all of your content and styling)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4"/></svg><span>Plain HTML</span></button>
@@ -1297,7 +1297,7 @@ body.cmh-deck-present #menuComment {
   <div class="list" id="commentList">
     <div class="cm-empty">
       <p><strong>No comments yet.</strong></p>
-      <p>Select any text in the document. The "Add Comment" popup appears automatically (right-click also works). Comments stay here until the agent processes them. Use <kbd>Copy all</kbd> to send them to the agent, or <kbd>Export as Portable</kbd> (in the <kbd>...</kbd> menu) to embed them into the file so they travel with it.</p>
+      <p>Select any text in the document. The "Add Comment" popup appears automatically (right-click also works). Comments stay here until the agent processes them. Use <kbd>Copy all</kbd> to send them to the agent, or <kbd>Export as Shareable</kbd> (in the <kbd>...</kbd> menu) to embed them into the file so they travel with it.</p>
     </div>
   </div>
   <div id="sidebarResizeHandle" class="cm-sidebar-resize cm-skip" role="separator" aria-orientation="vertical" aria-label="Resize comments sidebar" tabindex="0" title="Drag or use Left and Right arrow keys to resize the comments sidebar"></div>
@@ -1505,7 +1505,7 @@ Incidents
 (() => {
 // Pristine snapshot of the document, captured before any DOM mutation
 // (mermaid render, restored highlights, dynamic composers, etc). Used as a
-// fallback by "Export as Portable" when fetch() of the page URL is unavailable
+// fallback by "Export as Shareable" when fetch() of the page URL is unavailable
 // (e.g., file://, blocked fetch, or CSP). The snapshot is taken on the very first line
 // of the IIFE so it predates every runtime change this script makes.
 const SNAPSHOT_HTML = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
@@ -1563,7 +1563,7 @@ function cmBrandLink(inner) {
 // Small monochrome line-icons (stroke = currentColor) for chrome controls. Kept as
 // path data so a single helper renders them at any size without external assets.
 // Icons consumed by _cmIco() for runtime chrome (TOC, scroll, Help search). The three
-// sidebar action-button icons (Portable/Plain/Clear) are authored inline in
+// sidebar action-button icons (Shareable/Plain/Clear) are authored inline in
 // template.shell.html and are intentionally not duplicated here.
 const _CM_ICONS = {
   expand:   "M8 9l4-4 4 4 M8 15l4 4 4-4",
@@ -1580,15 +1580,15 @@ function _cmIco(name, size) {
     + '" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2"'
     + ' stroke-linecap="round" stroke-linejoin="round"><path d="' + d + '"/></svg>';
 }
-// In nonportable mode the page loads an external commentable-html.assets.js
+// In nonshareable mode the page loads an external commentable-html.assets.js
 // that defines window.__COMMENTABLE_ASSETS__ = { version, css, js } - the string
 // payloads used to rebuild a fully self-contained file for "Export standalone".
 // A separate assets file (never the runtime embedding its own source) avoids any
 // self-referential embedding loop. It is absent in inline/standalone documents.
 const CMH_ASSETS = (typeof window !== "undefined" && window.__COMMENTABLE_ASSETS__) || null;
-// NonPortable = the layer's CSS/JS live in companion files next to this HTML. Detected
+// NonShareable = the layer's CSS/JS live in companion files next to this HTML. Detected
 // by the presence of the assets registry OR an external commentable-html script.
-const NONPORTABLE_MODE = !!CMH_ASSETS
+const NONSHAREABLE_MODE = !!CMH_ASSETS
   || !!document.querySelector('script[src*="commentable-html"], link[href*="commentable-html"]');
 function declaredAssetVersion() {
   const meta = document.querySelector('meta[name="commentable-html-version"]');
@@ -1654,7 +1654,7 @@ function saveComments() {
     // but it will not survive a reload. Surface this as an alert with a recovery path
     // instead of letting the save look successful.
     showToast("Comment NOT saved to this browser (storage full or blocked) - it will be lost on "
-      + "reload. Use Copy all or Export as Portable to keep it.", { alert: true, duration: 8000 });
+      + "reload. Use Copy all or Export as Shareable to keep it.", { alert: true, duration: 8000 });
     return false;
   }
 }
@@ -2334,7 +2334,7 @@ function setupMermaidLayer() {
    Diff lines are commentable: hovering a changed/context line shows a
    "+ comment" button and the comment anchors by (diffIndex, lineKey) - a
    structural anchor, like mermaid nodes - so it survives the layout toggle,
-   reload, copy, and Export as Portable. The rendered view lives inside a .cm-skip
+   reload, copy, and Export as Shareable. The rendered view lives inside a .cm-skip
    host so diff text stays out of the text-offset system, and the raw unified
    diff is preserved in a hidden <script class="cmh-diff-src"> so an exported
    file re-renders on open. */
@@ -3022,7 +3022,7 @@ function setupDiffLayer() {
    Makes any <img> inside #commentRoot commentable. Each image is indexed in
    document order (imageIndex); hovering or keyboard-focusing it reveals a
    floating "+ comment" button, and the comment anchors by (imageIndex) with the
-   src as a fallback key so it survives reload, Copy all, and Export as Portable. This
+   src as a fallback key so it survives reload, Copy all, and Export as Shareable. This
    mirrors the mermaid-node layer: images carry no text offsets, so image
    comments are excluded from backfillContext / restoreHighlights. */
 const imageEls = [];
@@ -4306,7 +4306,7 @@ function _renderWidgetStateCard(changes) {
     <article class="cm-card cm-card-state" data-cm-state="1">
       <div class="cm-card-state-title">Layout change - ${changes.length} item${changes.length === 1 ? "" : "s"} moved</div>
       <ul>${items}</ul>
-      <div class="note">Auto-tracked from the current layout. Included in Copy all so the agent can reformat the source; the file stays Not portable until re-exported.</div>
+      <div class="note">Auto-tracked from the current layout. Included in Copy all so the agent can reformat the source; the file stays Not shareable until re-exported.</div>
     </article>`;
 }
 // Scroll the anchored content (text highlight, mermaid node, diff line, or image) into
@@ -5449,7 +5449,7 @@ function recomputeTextOffsets(persist) {
 // (pre-sort) snapshot; without this a comment on a sorted table cell would mis-anchor for
 // a recipient who has no sort state. Restores original order, recomputes, snapshots, then
 // re-applies the sorted view - leaving the live state untouched. Widget moves are not
-// reverted here because Portable and Offline exports save the moved widget DOM.
+// reverted here because Shareable and Offline exports save the moved widget DOM.
 function _canonicalCommentsForExport() {
   if (!_tableSortState || Object.keys(_tableSortState).length === 0) {
     recomputeTextOffsets(false);
@@ -5604,7 +5604,7 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
   }
 });
 
-/* ---------- Export as Portable (embed comments + download a copy) ---------- */
+/* ---------- Export as Shareable (embed comments + download a copy) ---------- */
 // Strategy: always download a fresh HTML copy with the current comments
 // embedded in the <script id="embeddedComments"> block. The user can keep
 // the copy as-is or replace the original with it. We deliberately do NOT
@@ -5642,7 +5642,7 @@ async function _getBaseHtml() {
   // Prefer the on-disk version (cleaner diff). Fall back to the snapshot
   // taken at IIFE start if fetch fails (file://, network unavailable, blocked).
   // Either base may carry transient body state (a stale/open-sidebar source), so
-  // normalize it here once for every export path (Save, Portable, Offline, Plain).
+  // normalize it here once for every export path (Save, Shareable, Offline, Plain).
   try {
     const r = await fetch(location.href, { cache: "no-store" });
     if (r.ok) {
@@ -5763,10 +5763,10 @@ function _suggestedFilename() {
   const m = name.match(/^(.*?)(\.html?)$/i);
   const stem = m[1];
   const ext = m[2];
-  // "Export as Portable" always produces a self-contained portable file, so tag it.
-  // Strip any prior -comments / -portable suffix first so it never stacks.
-  const clean = stem.replace(/-comments$/i, "").replace(/-portable$/i, "");
-  return clean + "-portable" + ext;
+  // "Export as Shareable" always produces a self-contained shareable file, so tag it.
+  // Strip any prior -comments / -shareable suffix first so it never stacks.
+  const clean = stem.replace(/-comments$/i, "").replace(/-shareable$/i, "");
+  return clean + "-shareable" + ext;
 }
 function _suggestedOfflineFilename() {
   const path = location.pathname;
@@ -5774,7 +5774,7 @@ function _suggestedOfflineFilename() {
   try { name = decodeURIComponent(name); } catch (e) { /* keep raw */ }
   if (!name || !/\.html?$/i.test(name)) name = "commentable.html";
   const m = name.match(/^(.*?)(\.html?)$/i);
-  const clean = m[1].replace(/-comments$/i, "").replace(/-portable$/i, "").replace(/-offline$/i, "");
+  const clean = m[1].replace(/-comments$/i, "").replace(/-shareable$/i, "").replace(/-offline$/i, "");
   return clean + "-offline" + m[2];
 }
 function _downloadHtml(text, filename) {
@@ -5816,7 +5816,7 @@ async function saveHtml() {
 // Produces a standalone copy of the document with the commenting *ability* removed but
 // its appearance intact: the HTML-comment regions (HANDLED IDS, EMBEDDED COMMENTS,
 // COMMENT UI) and the runtime JS are deleted, while every stylesheet is kept - the
-// inline CSS region (or the nonportable companion <link>) carries the document's own
+// inline CSS region (or the nonshareable companion <link>) carries the document's own
 // content styling (tables, sections, code, diff, KQL, images), so the plain copy looks
 // the same. The now-unused .cm-* UI rules are inert because their elements are gone.
 //
@@ -5831,7 +5831,7 @@ function _buildPlainHtml(baseHtml) {
   const layerDescriptorScript = new RegExp("[ \\t]*<scr" + "ipt\\b[^>]*\\sid\\s*=\\s*([\"'])"
     + "commentableHtmlLayer\\1[^>]*>[\\s\\S]*?<\\/scr" + "ipt>\\s*", "i");
   t = t.replace(layerDescriptorScript, "");
-  t = t.replace(/<!--\s*BEGIN: commentable-html - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONPORTABLE BOOTSTRAP\s*-->\s*/i, "");
+  t = t.replace(/<!--\s*BEGIN: commentable-html - NONSHAREABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONSHAREABLE BOOTSTRAP\s*-->\s*/i, "");
   // Remove the HTML-comment regions. The END anchor requires its own "<!-- ... END ... -->"
   // comment: embedded comment notes escape every "<" as \u003c, so a note can never forge
   // a "<!--". That prevents note text like "END: commentable-html - EMBEDDED COMMENTS -->"
@@ -5846,7 +5846,7 @@ function _buildPlainHtml(baseHtml) {
   // the script's own closing tag instead (eat a trailing END marker if present).
   t = t.replace(new RegExp("<!--\\s*=*\\s*BEGIN: commentable-html - JS[\\s\\S]*?"
     + _cmhScriptClosePattern() + "\\s*(?:<!--\\s*=*\\s*END: commentable-html - JS\\s*-->)?"), "");
-  // NonPortable mode loads the runtime from a companion <script src> file; drop only the
+  // NonShareable mode loads the runtime from a companion <script src> file; drop only the
   // JS companion (the CSS companion <link> stays so the content keeps its styling).
   t = t.replace(/[ \t]*<!--\s*commentable-html - layer loaded[^\n]*-->\s*/i, "");
   t = t.replace(_cmhScriptTagPattern("[^>]*commentable-html[^>]*\\.js[^>]*", "\\s*", "ig"), "");
@@ -5881,9 +5881,9 @@ async function saveAsPlain() {
 }
 const _btnSaveHtml = document.getElementById("btnSaveHtml");
 const _btnSaveHtmlTop = document.getElementById("btnSaveHtmlTop");
-// "Export as Portable" always downloads ONE combined/standalone file
+// "Export as Shareable" always downloads ONE combined/standalone file
 // with the current comments embedded: saveStandalone() rebuilds an inline file in
-// nonportable mode and falls back to the in-file embed for inline documents.
+// nonshareable mode and falls back to the in-file embed for inline documents.
 if (_btnSaveHtml) _btnSaveHtml.addEventListener("click", saveStandalone);
 if (_btnSaveHtmlTop) _btnSaveHtmlTop.addEventListener("click", saveStandalone);
 const _btnSavePlain = document.getElementById("btnSavePlain");
@@ -5891,9 +5891,9 @@ const _btnSavePlainTop = document.getElementById("btnSavePlainTop");
 if (_btnSavePlain) _btnSavePlain.addEventListener("click", saveAsPlain);
 if (_btnSavePlainTop) _btnSavePlainTop.addEventListener("click", saveAsPlain);
 
-/* ---------- Export standalone (nonportable -> single self-contained file) ---------- */
-// In nonportable mode the live page only references companion files via <link> and
-// <script src>. To produce ONE portable file we must inline those assets. We do
+/* ---------- Export standalone (nonshareable -> single self-contained file) ---------- */
+// In nonshareable mode the live page only references companion files via <link> and
+// <script src>. To produce ONE shareable file we must inline those assets. We do
 // NOT fetch() them (blocked from file://); instead we read the string payloads
 // from window.__COMMENTABLE_ASSETS__, which loaded as a classic <script src> and
 // therefore works even when the document is opened by double-click (file://).
@@ -5989,7 +5989,7 @@ function _insertBeforeLastTag(html, tag, insertion) {
   if (idx < 0) throw new Error("Could not find </" + tag + "> to inline into.");
   return html.slice(0, idx) + insertion + html.slice(idx);
 }
-function _inlineNonPortableAssets(baseHtml) {
+function _inlineNonShareableAssets(baseHtml) {
   if (!CMH_ASSETS || !CMH_ASSETS.css || !CMH_ASSETS.js) {
     throw new Error("Cannot export standalone: the commentable-html assets file "
       + "(__COMMENTABLE_ASSETS__) did not load. Keep the companion .assets.js next "
@@ -5997,7 +5997,7 @@ function _inlineNonPortableAssets(baseHtml) {
   }
   if (CMH_ASSETS.version && CMH_VERSION && CMH_ASSETS.version !== CMH_VERSION) {
     // Inlining a companion whose CSS/JS is a different version than the running layer
-    // would bake a mismatched runtime into the portable file. Abort with guidance
+    // would bake a mismatched runtime into the shareable file. Abort with guidance
     // rather than emit a document that silently disagrees with itself.
     throw new Error("Cannot export standalone: the companion assets file is version "
       + CMH_ASSETS.version + " but this document's runtime is " + CMH_VERSION
@@ -6008,14 +6008,14 @@ function _inlineNonPortableAssets(baseHtml) {
     throw new Error("Could not find the commentable-html stylesheet <link> to inline.");
   }
   _assertSingleLayerRegions(t);
-  // 1) Strip every piece of nonportable scaffolding BEFORE inlining the payloads, so
+  // 1) Strip every piece of nonshareable scaffolding BEFORE inlining the payloads, so
   //    the marker-like strings inside the runtime source can never be matched and
   //    no leftover companion reference survives. _getBaseHtml() may hand us a
   //    file:// DOM snapshot whose whitespace around trailing markers is collapsed,
   //    so we re-emit the CSS/JS regions from scratch with their own newlines
   //    rather than trusting the snapshot's line breaks.
-  t = _retargetLayerDescriptor(t, "portable");
-  t = t.replace(/[ \t]*<!--\s*BEGIN: commentable-html - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONPORTABLE BOOTSTRAP\s*-->[ \t]*/i, "");
+  t = _retargetLayerDescriptor(t, "shareable");
+  t = t.replace(/[ \t]*<!--\s*BEGIN: commentable-html - NONSHAREABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONSHAREABLE BOOTSTRAP\s*-->[ \t]*/i, "");
   const cssRegion = /[ \t]*<!--\s*=*\s*BEGIN: commentable-html - CSS[\s\S]*?<!--\s*=*\s*END: commentable-html - CSS\s*=*\s*-->[ \t]*\n?/i;
   const jsRegion = /[ \t]*<!--\s*=*\s*BEGIN: commentable-html - JS[\s\S]*?<!--\s*=*\s*END: commentable-html - JS\s*=*\s*-->[ \t]*\n?/i;
   if (cssRegion.test(t)) {
@@ -6059,14 +6059,14 @@ function _inlineNonPortableAssets(baseHtml) {
   return t.replace(/\n{3,}/g, "\n\n");
 }
 function _buildStandaloneHtml(baseHtml, commentArr) {
-  return _inlineNonPortableAssets(_buildSavedHtml(baseHtml, commentArr));
+  return _inlineNonShareableAssets(_buildSavedHtml(baseHtml, commentArr));
 }
 async function saveStandalone() {
-  // "Export as Portable" always yields ONE combined file with the
+  // "Export as Shareable" always yields ONE combined file with the
   // comments embedded. An inline document is already self-contained, so the plain
-  // in-file embed (saveHtml) IS the combined file there; only nonportable documents
-  // need the CSS/JS inlined to become portable.
-  if (!NONPORTABLE_MODE) return saveHtml();
+  // in-file embed (saveHtml) IS the combined file there; only nonshareable documents
+  // need the CSS/JS inlined to become shareable.
+  if (!NONSHAREABLE_MODE) return saveHtml();
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
   catch (e) { showToast("Could not load base HTML."); return; }
@@ -6078,10 +6078,10 @@ async function saveStandalone() {
   const filename = _suggestedFilename();
   const n = exportComments.length;
   _downloadHtml(text, filename);
-  showToast(`Downloaded ${filename} - one portable file, ${n} comment${n === 1 ? "" : "s"} embedded, no companion files needed.`);
+  showToast(`Downloaded ${filename} - one shareable file, ${n} comment${n === 1 ? "" : "s"} embedded, no companion files needed.`);
 }
 
-/* ---------- Export Offline (portable + rendered rich-content snapshots) ---------- */
+/* ---------- Export Offline (shareable + rendered rich-content snapshots) ---------- */
 function _offlineDocFromHtml(html) {
   return new DOMParser().parseFromString(String(html || ""), "text/html");
 }
@@ -6297,10 +6297,10 @@ function _insertOfflineChartGuard(doc) {
   s.textContent = "window.Chart = undefined;";
   head.appendChild(s);
 }
-function _buildOfflineHtml(portableHtml) {
+function _buildOfflineHtml(shareableHtml) {
   const mermaid = _offlineMermaidSnapshots();
   const charts = _offlineChartSnapshots();
-  const doc = _offlineDocFromHtml(portableHtml);
+  const doc = _offlineDocFromHtml(shareableHtml);
   _replaceOfflineMermaid(doc, mermaid);
   _replaceOfflineCharts(doc, charts);
   _stripOfflineRichRenderers(doc);
@@ -6316,14 +6316,14 @@ async function saveOffline() {
   catch (e) { showToast("Could not load base HTML."); return; }
   baseHtml = _applyWidgetLayoutToHtml(baseHtml);
   const exportComments = _exportableComments();
-  let portable;
+  let shareable;
   try {
-    portable = NONPORTABLE_MODE
+    shareable = NONSHAREABLE_MODE
       ? _buildStandaloneHtml(baseHtml, exportComments)
       : _buildSavedHtml(baseHtml, exportComments);
   } catch (e) { showToast(e.message); return; }
   let text;
-  try { text = _buildOfflineHtml(portable); }
+  try { text = _buildOfflineHtml(shareable); }
   catch (e) { showToast(e.message); return; }
   const filename = _suggestedOfflineFilename();
   _downloadHtml(text, filename);
@@ -6418,16 +6418,16 @@ function _embeddedCommentSig() {
     getEmbeddedComments().forEach(function (c) {
       // Use the same id-universe as mergeCommentSets (which drops unsafe ids from the
       // live set), otherwise an unsafe embedded id looks like a "deleted in session"
-      // comment and falsely flips the badge to Not portable.
+      // comment and falsely flips the badge to Not shareable.
       if (c && c.id && SAFE_ID_RE.test(c.id)) _embeddedSigCache.set(c.id, c.updatedAt || c.createdAt || "");
     });
   }
   return _embeddedSigCache;
 }
-// The document is either "Portable" (self-contained and safe to share: assets embedded
-// and every current comment embedded, or none) or "Not portable" (it references external
+// The document is either "Shareable" (self-contained and safe to share: assets embedded
+// and every current comment embedded, or none) or "Not shareable" (it references external
 // skill/companion resources, and/or has comments that are not embedded in the file). The
-// bubble hover explains WHY a file is not portable.
+// bubble hover explains WHY a file is not shareable.
 function isOfflineDocument() {
   const script = document.getElementById("commentableHtmlLayer");
   if (script) {
@@ -6440,7 +6440,7 @@ function isOfflineDocument() {
 }
 function currentDocState() {
   const reasons = [];
-  if (NONPORTABLE_MODE) reasons.push("it references external skill / companion resources");
+  if (NONSHAREABLE_MODE) reasons.push("it references external skill / companion resources");
   if (typeof widgetStateChanges === "function" && widgetStateChanges().length > 0) {
     reasons.push("a widget's layout was changed in this session and is not saved into the file");
   }
@@ -6453,7 +6453,7 @@ function currentDocState() {
   }
   // Embedded comments that are neither live nor marked handled still sit in the file even
   // though they were deleted in this session: sharing the file as-is would show them. The
-  // file is stale (not portable) until re-exported.
+  // file is stale (not shareable) until re-exported.
   if (emb.size > 0) {
     const handled = getHandledIds();
     const liveIds = new Set(comments.map(function (c) { return c.id; }));
@@ -6465,9 +6465,9 @@ function currentDocState() {
     if (isOfflineDocument()) {
       return { type: "Offline", reason: "Offline: self-contained and works with no network - the review layer, styles, charts, and diagrams are all embedded in this one file." };
     }
-    return { type: "Portable", reason: "Portable: self-contained and safe to share (assets embedded and every comment embedded)." };
+    return { type: "Shareable", reason: "Shareable: self-contained and safe to share (assets embedded and every comment embedded)." };
   }
-  return { type: "Not portable", reason: "Not portable because " + reasons.join(", and ") + ". Use Export as Portable to share it." };
+  return { type: "Not shareable", reason: "Not shareable because " + reasons.join(", and ") + ". Use Export as Shareable to share it." };
 }
 function updateDocTypeUi() {
   const st = currentDocState();
@@ -6493,18 +6493,18 @@ function setupModeUi() {
   if (ver) ver.textContent = "v" + CMH_VERSION;
   const meta = document.querySelector(".cm-sidebar .head-meta");
   if (meta && !meta.querySelector(".cm-brand-icon")) meta.insertAdjacentHTML("afterbegin", cmBrandLink(CMH_ICON_SVG));
-  if (NONPORTABLE_MODE) {
-    document.body.classList.add("cm-nonportable");
-    // In nonportable (companion) mode the portability action embeds everything into one file.
+  if (NONSHAREABLE_MODE) {
+    document.body.classList.add("cm-nonshareable");
+    // In nonshareable (companion) mode the shareability action embeds everything into one file.
     ["btnSaveHtml", "btnSaveHtmlTop"].forEach(function (id) {
       const b = document.getElementById(id);
       if (b) {
         // Preserve each button's icon + label span; the sidebar button uses the compact
-        // "Portable" label, the overflow-menu item keeps the full "Export as Portable".
+        // "Shareable" label, the overflow-menu item keeps the full "Export as Shareable".
         const span = b.querySelector("span");
-        const label = (id === "btnSaveHtmlTop") ? "Export as Portable" : "Portable";
+        const label = (id === "btnSaveHtmlTop") ? "Export as Shareable" : "Shareable";
         if (span) span.textContent = label; else b.textContent = label;
-        b.title = "Download one self-contained, portable HTML with the commentable-html assets AND the current comments embedded, so it no longer depends on the skill folder or companion files.";
+        b.title = "Download one self-contained, shareable HTML with the commentable-html assets AND the current comments embedded, so it no longer depends on the skill folder or companion files.";
       }
     });
   }
@@ -6583,7 +6583,7 @@ function showHelp(restoreEl) {
           '</svg>' +
           '<figcaption>The self-review loop: an agent generates the file, you comment inline, Copy all hands the notes back, and you reload the updated file until none remain.</figcaption>' +
         '</figure>' +
-        '<p><strong>Just want to leave a comment?</strong> If someone shared this file with you to review, you do not need an agent or an account - everything you need is in the file itself. Select any text and an <em>Add Comment</em> popup appears; type a note and Save. Your comments live in the panel on the right and persist in this browser. Hand your review back with <strong>Copy all</strong> (paste it to an agent) or <strong>Export as Portable</strong> (one file to send to a person, with your comments baked in).</p>' +
+        '<p><strong>Just want to leave a comment?</strong> If someone shared this file with you to review, you do not need an agent or an account - everything you need is in the file itself. Select any text and an <em>Add Comment</em> popup appears; type a note and Save. Your comments live in the panel on the right and persist in this browser. Hand your review back with <strong>Copy all</strong> (paste it to an agent) or <strong>Export as Shareable</strong> (one file to send to a person, with your comments baked in).</p>' +
         '<p>Every topic below is collapsible; use the search box above to jump straight to an answer.</p>', true) +
       T('Leaving a comment',
         '<ul>' +
@@ -6611,21 +6611,21 @@ function showHelp(restoreEl) {
           '<li><strong>Hide</strong> collapses the panel; a small floating toolbar stays to bring it back. The overflow <kbd>...</kbd> menu holds the export actions and Help.</li>' +
           '<li>The <strong>Help</strong> and <strong>Hide</strong> controls sit together at the top of the panel; <strong>Help</strong> opens this dialog.</li>' +
         '</ul>') +
-      T('Portable or Not portable',
+      T('Shareable or Not shareable',
         '<p>A bubble at the top of the panel shows whether this file is safe to share as-is:</p>' +
         '<ul>' +
-          '<li><strong>Portable</strong> - self-contained: assets are embedded and every comment is embedded in the file, so a recipient sees exactly what you see.</li>' +
-          '<li><strong>Offline</strong> - portable plus rendered mermaid diagrams and chart snapshots embedded, with remote loaders removed for no-network review.</li>' +
-          '<li><strong>Not portable</strong> - the file references external companion resources, or has comments that are not embedded yet, or has embedded comments you deleted this session that are still in the file until you re-export. Hover the bubble for the exact reason.</li>' +
+          '<li><strong>Shareable</strong> - self-contained: assets are embedded and every comment is embedded in the file, so a recipient sees exactly what you see.</li>' +
+          '<li><strong>Offline</strong> - shareable plus rendered mermaid diagrams and chart snapshots embedded, with remote loaders removed for no-network review.</li>' +
+          '<li><strong>Not shareable</strong> - the file references external companion resources, or has comments that are not embedded yet, or has embedded comments you deleted this session that are still in the file until you re-export. Hover the bubble for the exact reason.</li>' +
         '</ul>' +
-          '<p>Use <em>Export as Portable</em> to produce a portable copy. Use <em>Export Offline</em> when rendered mermaid diagrams and charts must also work with no network.</p>') +
+          '<p>Use <em>Export as Shareable</em> to produce a shareable copy. Use <em>Export Offline</em> when rendered mermaid diagrams and charts must also work with no network.</p>') +
       T('Exporting and sharing',
         '<ul>' +
-          '<li><strong>Export as Portable</strong> downloads one self-contained HTML (named with a <code>-portable</code> suffix) with the comments, and any external assets, embedded so the review travels with the file.</li>' +
-          '<li><strong>Export Offline</strong> downloads a <code>-offline</code> HTML copy that first builds the portable file, then saves rendered mermaid diagrams as inline SVG and chart canvases as PNG images, with remote loaders removed.</li>' +
+          '<li><strong>Export as Shareable</strong> downloads one self-contained HTML (named with a <code>-shareable</code> suffix) with the comments, and any external assets, embedded so the review travels with the file.</li>' +
+          '<li><strong>Export Offline</strong> downloads a <code>-offline</code> HTML copy that first builds the shareable file, then saves rendered mermaid diagrams as inline SVG and chart canvases as PNG images, with remote loaders removed.</li>' +
           '<li><strong>Export to Plain HTML</strong> downloads a copy with the commenting layer removed but all of your content and styling intact.</li>' +
           '<li><strong>Export to Markdown</strong> downloads a <code>.md</code> file; each block maps to a fixed Markdown form and your comments are appended as a section.</li>' +
-          '<li>In <strong>NonPortable mode</strong> the layer loads from companion files; <em>Export as Portable</em> rebuilds a single combined file.</li>' +
+          '<li>In <strong>NonShareable mode</strong> the layer loads from companion files; <em>Export as Shareable</em> rebuilds a single combined file.</li>' +
           '</ul>') +
       T('Sending comments to an agent',
         '<ul>' +
@@ -6665,7 +6665,7 @@ function showHelp(restoreEl) {
         '</ul>') +
       T('Self-contained and privacy',
         '<p>Your comments are stored in this browser&#39;s <strong>localStorage</strong>, private to you: nothing is uploaded, there is no account, and no server ever sees them. They persist across reloads until you clear them, and they leave this browser only when you choose to - when you click <strong>Copy all</strong> or run an export.</p>' +
-        '<p>Whether the review layer itself travels inside the file depends on the mode shown in the panel bubble: a <strong>Portable</strong> file has the review layer and your comments embedded, so it is safe to send as-is; a <strong>Not portable</strong> file references small companion resources instead. Use <em>Export as Portable</em> to bundle everything into one file. Optional host features (mermaid, Chart.js) can load from a CDN; if they cannot, mermaid stays readable source text and charts stay a blank canvas. Use <em>Export Offline</em> after those features render to snapshot them into a zero-network file.</p>') +
+        '<p>Whether the review layer itself travels inside the file depends on the mode shown in the panel bubble: a <strong>Shareable</strong> file has the review layer and your comments embedded, so it is safe to send as-is; a <strong>Not shareable</strong> file references small companion resources instead. Use <em>Export as Shareable</em> to bundle everything into one file. Optional host features (mermaid, Chart.js) can load from a CDN; if they cannot, mermaid stays readable source text and charts stay a blank canvas. Use <em>Export Offline</em> after those features render to snapshot them into a zero-network file.</p>') +
       '<div class="cm-help-about"><h3>About</h3>' +
         '<p>' + CMH_ICON_SVG + ' Commentable HTML <strong>v' + CMH_VERSION + '</strong>, authored by Uri Kanonov.</p>' +
         '<ul>' +
@@ -7469,7 +7469,7 @@ if (prunedCount > 0) {
   showToast(`${prunedCount} previously-handled comment${prunedCount === 1 ? "" : "s"} cleared by the agent.`);
 }
 if (!comments.length) closeSidebar(); else openSidebar();
-// Signals the nonportable-mode bootstrap that the external runtime initialized, so
+// Signals the nonshareable-mode bootstrap that the external runtime initialized, so
 // the missing-companion-assets banner stays hidden.
 window.__commentableHtmlReady = true;
 window.__commentableHtmlVersion = CMH_VERSION;

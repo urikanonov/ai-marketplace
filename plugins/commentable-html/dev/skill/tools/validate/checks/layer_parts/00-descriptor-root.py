@@ -6,9 +6,17 @@ import re
 import json
 from collections import Counter
 from .parsing import CONTENT_BEGIN, CONTENT_END, DEMO_KEYS, DOC_EXAMPLE_COMMENT_KEY, FORBIDDEN_IDS, LAYER_DESCRIPTOR_ID, LAYER_JSON_IDS, REGIONS, REQUIRED_IDS, SAFE_ID_RE, _COMMENT_ROOT_ATTR_RE, _DATA_KEY_RE, _HTML_COMMENT_RE, _PRE_TAG_RE, _SCRIPT_STYLE_RE, _TITLE_RE, _TRANSIENT_BODY_CLASSES, _attrs_have_class, _find_tag_attrs, _is_executable_js, _is_json_attrs, _js_scan, _parser_script, _region_marker_matches, code_block_spans, content_marker_scan, layer_regions_text, parsed_attrs_have_class
-from .resources import CHARTJS_SRC_RE, CSS_NETWORK_URL_RE, META_REFRESH_NETWORK_RE, NONPORTABLE_REGIONS, OFFLINE_NAV_TO_NETWORK_RE, _check_nonportable, _is_adx_run_href, _is_nonportable, _link_loads, _offline_csp_errors, offline_script_navigates_to_network
+from .resources import CHARTJS_SRC_RE, CSS_NETWORK_URL_RE, META_REFRESH_NETWORK_RE, NONSHAREABLE_REGIONS, OFFLINE_NAV_TO_NETWORK_RE, _check_nonshareable, _is_adx_run_href, _is_nonshareable, _link_loads, _offline_csp_errors, offline_script_navigates_to_network
 from .kind import check_document_kind, check_favicon, check_mermaid_renders, check_section_reference_links, check_section_wrapping
 from .links import check_links
+
+
+# Layer-descriptor mode values. The SECOND entry of each tuple is the PRE-RENAME spelling
+# ("portable" / "nonportable"): it is baked into every document produced before the rename, so it
+# stays accepted with identical behavior and those documents keep validating with no error and no
+# warning. Do not drop it.
+SHAREABLE_MODES = ("shareable", "portable")
+NONSHAREABLE_MODES = ("nonshareable", "nonportable")
 
 
 def _layer_descriptor_data(parser):
@@ -22,7 +30,7 @@ def _layer_descriptor_data(parser):
     return data if isinstance(data, dict) else None
 
 
-def _check_layer_descriptor(parser, nonportable, active_regions):
+def _check_layer_descriptor(parser, nonshareable, active_regions):
     errors = []
     scripts = [s for s in parser.scripts if s["attrs"].get("id") == LAYER_DESCRIPTOR_ID]
     if not scripts:
@@ -44,12 +52,12 @@ def _check_layer_descriptor(parser, nonportable, active_regions):
     if not isinstance(version, str) or not version.strip():
         errors.append('%s.version must be a non-empty string' % LAYER_DESCRIPTOR_ID)
     mode = data.get("mode")
-    if nonportable:
-        if mode != "nonportable":
-            errors.append('%s.mode must be "nonportable" for this document' % LAYER_DESCRIPTOR_ID)
+    if nonshareable:
+        if mode not in NONSHAREABLE_MODES:
+            errors.append('%s.mode must be "nonshareable" for this document' % LAYER_DESCRIPTOR_ID)
     else:
-        if mode not in ("portable", "offline"):
-            errors.append('%s.mode must be "portable" or "offline" for this document' % LAYER_DESCRIPTOR_ID)
+        if mode not in SHAREABLE_MODES + ("offline",):
+            errors.append('%s.mode must be "shareable" or "offline" for this document' % LAYER_DESCRIPTOR_ID)
         if parser.has_offline_chart and mode != "offline":
             errors.append('%s.mode must be "offline" when offline chart snapshots are present' % LAYER_DESCRIPTOR_ID)
     if data.get("regions") != active_regions:
@@ -164,7 +172,7 @@ def _check_content_markers(html, parser):
     elif swallowed or (content_begin_count == 1 and content_end_count == 1 and not (
             parser.content_region_opened and parser.content_region_closed)):
         # The markers are in the TEXT, but the document does not PARSE with a well-formed region.
-        # That matters because the layer view (which decides NonPortable mode and its checks) is
+        # That matters because the layer view (which decides NonShareable mode and its checks) is
         # derived from the parse: if the region a browser sees does not open inside #commentRoot
         # and close again, the layer's own markup cannot be told apart from authored content, and
         # markup after the broken boundary would be silently misattributed. Refuse rather than
@@ -285,7 +293,7 @@ def _check_element_ids(parser, html):
     return errors, warnings
 
 
-def _check_theme_and_skip(html, parser, nonportable):
+def _check_theme_and_skip(html, parser, nonshareable):
     errors, warnings = [], []
     # 9/10) These ask about CSS, so they read real <style> BODIES rather than document text
     # (CMH-VAL-20). Text is not a stylesheet: scanning the raw document let authored prose, a
@@ -297,7 +305,7 @@ def _check_theme_and_skip(html, parser, nonportable):
     css = _layer_css(parser)
     if re.search(r"(?m)^[ \t]*\[hidden\]\s*\{\s*display:\s*none", css):
         warnings.append("found an unscoped '[hidden] { display: none }' rule - scope it to '.cm-skip[hidden], .cm-skip [hidden]' so it cannot hide host elements")
-    if not nonportable and ".cm-skip[hidden]" not in css:
+    if not nonshareable and ".cm-skip[hidden]" not in css:
         warnings.append("missing the scoped '.cm-skip[hidden]' rule (the layer's own hidden elements may not hide)")
 
     # 10) The --cp-* theme variables must be DEFINED.

@@ -22,7 +22,7 @@ EXPECTED = {
                   "fix_skip", "wrap_sections", "mark_handled", "mark_reviewed", "section_hash",
                   "upgrade", "retrofit", "doc_stamp", "recommend_kind", "normalize_typography",
                   "content_extract", "content_replace", "extract_comments", "vendored_libs",
-                  "to_portable"],
+                  "to_shareable", "to_portable"],
     "validate": ["validate"],
 }
 

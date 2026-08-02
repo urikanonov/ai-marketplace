@@ -115,7 +115,7 @@ class AssemblyIntegrityTests(unittest.TestCase):
 
     def test_build_all_reads_the_passed_assets_dir_not_the_default(self):
         # Sentinel: copy the real partial dirs into a temp assets tree, inject a unique marker into a
-        # CSS partial there, and confirm the built PORTABLE.html reflects the temp tree - proving the
+        # CSS partial there, and confirm the built SHAREABLE.html reflects the temp tree - proving the
         # build honors --assets-dir rather than vacuously reading the canonical default.
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
@@ -132,8 +132,8 @@ class AssemblyIntegrityTests(unittest.TestCase):
         with open(base_css, "a", encoding="utf-8") as fh:
             fh.write("\n" + marker + "\n")
         outputs, _v = build.build_all(assets, out_dir)
-        portable = outputs[os.path.join(out_dir, "dist", "PORTABLE.html")]
-        self.assertIn(marker, portable, "build_all did not read the passed --assets-dir")
+        shareable = outputs[os.path.join(out_dir, "dist", "SHAREABLE.html")]
+        self.assertIn(marker, shareable, "build_all did not read the passed --assets-dir")
 
     def test_the_monolith_sources_do_not_exist(self):
         # Cement "work in split mode": the old single-file sources must never return (a stale rebase

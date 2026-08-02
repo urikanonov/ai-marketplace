@@ -1,4 +1,4 @@
-/* ---------- Export as Portable (embed comments + download a copy) ---------- */
+/* ---------- Export as Shareable (embed comments + download a copy) ---------- */
 // Strategy: always download a fresh HTML copy with the current comments
 // embedded in the <script id="embeddedComments"> block. The user can keep
 // the copy as-is or replace the original with it. We deliberately do NOT
@@ -163,7 +163,7 @@ async function _getBaseHtml() {
   // Prefer the on-disk version (cleaner diff). Fall back to the snapshot
   // taken at IIFE start if fetch fails (file://, network unavailable, blocked).
   // Either base may carry transient body state (a stale/open-sidebar source), so
-  // normalize it here once for every export path (Save, Portable, Offline, Plain).
+  // normalize it here once for every export path (Save, Shareable, Offline, Plain).
   try {
     const r = await fetch(location.href, { cache: "no-store" });
     if (r.ok) {
@@ -286,10 +286,12 @@ function _suggestedFilename() {
   const m = name.match(/^(.*?)(\.html?)$/i);
   const stem = m[1];
   const ext = m[2];
-  // "Export as Portable" always produces a self-contained portable file, so tag it.
-  // Strip any prior -comments / -portable suffix first so it never stacks.
-  const clean = stem.replace(/-comments$/i, "").replace(/-portable$/i, "");
-  return clean + "-portable" + ext;
+  // "Export as Shareable" always produces a self-contained shareable file, so tag it.
+  // Strip any prior -comments / -shareable suffix first so it never stacks. The pre-rename
+  // -portable suffix is stripped too: every file the earlier releases exported carries it, and
+  // re-exporting one must not produce "<stem>-portable-shareable.html".
+  const clean = stem.replace(/-comments$/i, "").replace(/-(?:shareable|portable)$/i, "");
+  return clean + "-shareable" + ext;
 }
 function _suggestedOfflineFilename() {
   const path = location.pathname;
@@ -297,7 +299,7 @@ function _suggestedOfflineFilename() {
   try { name = decodeURIComponent(name); } catch (e) { /* keep raw */ }
   if (!name || !/\.html?$/i.test(name)) name = "commentable.html";
   const m = name.match(/^(.*?)(\.html?)$/i);
-  const clean = m[1].replace(/-comments$/i, "").replace(/-portable$/i, "").replace(/-offline$/i, "");
+  const clean = m[1].replace(/-comments$/i, "").replace(/-(?:shareable|portable)$/i, "").replace(/-offline$/i, "");
   return clean + "-offline" + m[2];
 }
 function _downloadHtml(text, filename) {

@@ -15,16 +15,16 @@ The content root is anchored off the unique CONTENT markers, never off the first
 `<main id="commentRoot">` in the file, so an earlier decoy root left in an HTML
 comment (an authoring example) is ignored and only the real, last root is edited.
 
-Output mode. Every new document is PORTABLE: one self-contained file with the layer
+Output mode. Every new document is SHAREABLE: one self-contained file with the layer
 CSS/JS inlined, ready to share the moment it is written. There is no mode to choose,
-so `--nonportable` is accepted and ignored and `--portable` merely names the default.
-A legacy NonPortable document (the layer referenced from the companion
+so `--nonshareable` is accepted and ignored and `--shareable` merely names the default.
+A legacy NonShareable document (the layer referenced from the companion
 commentable-html.{css,js,assets.js} files beside it) is still OPENED, VALIDATED and
 FINALIZED forever; only creating a new one has gone away. Build one deliberately -
-chiefly for the compatibility suite - with --template <dist>/NONPORTABLE.html, and
-migrate an existing one with tools/authoring/to_portable.py.
+chiefly for the compatibility suite - with --template <dist>/NONSHAREABLE.html, and
+migrate an existing one with tools/authoring/to_shareable.py.
 
-For that explicit NonPortable output the companion references default to absolute
+For that explicit NonShareable output the companion references default to absolute
 file:// URLs that point at this installed skill's dist/ folder. The generated HTML can
 move anywhere on the same machine and still find the shared companions. Use
 --assets-relative to opt back into a relative path from --out to the skill's dist/
@@ -34,9 +34,9 @@ by bare name.
 
 Usage (run from the skill root):
     python tools/new_document.py --content body.html --key auto --label "My Report" --kind report --out r.html
-    python tools/new_document.py --content body.html --key auto --label "My Report" --kind report --portable --out r.html
+    python tools/new_document.py --content body.html --key auto --label "My Report" --kind report --shareable --out r.html
     echo '<section><h2 id="a">Hi</h2></section>' | \
-        python tools/new_document.py --content - --key auto --label "My Report" --kind report --portable --out out.html
+        python tools/new_document.py --content - --key auto --label "My Report" --kind report --shareable --out out.html
 
 --kind declares the document type (report, plan, slides, board, or generic). report and
 plan require a top-level <h1> title (one is auto-added from --label when the fragment has
@@ -80,16 +80,29 @@ END_MARKER = "<!-- END: commentable-html - CONTENT -->"
 # this tool from ever producing a document validate rejects.
 REFUSED_KEYS = frozenset({
     "commentable-html-demo",
+    "commentable-html-nonshareable-demo",
     "commentable-html-nonportable-demo",
     "my-doc",
 })
 
-# A NonPortable document carries this exact bootstrap comment (the same anchor upgrade.py
+# A NonShareable document carries this exact bootstrap comment (the same anchor upgrade.py
 # uses). The mode is derived from the resolved TEMPLATE rather than a flag, so the two can
 # never disagree.
-NONPORTABLE_MARKER = "<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->"
+NONSHAREABLE_MARKER = "<!-- BEGIN: commentable-html - NONSHAREABLE BOOTSTRAP -->"
+# Documents built before the Portable -> Shareable rename carry the LEGACY spelling, so both
+# anchors are recognized.
+LEGACY_NONSHAREABLE_MARKER = "<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->"
+NONSHAREABLE_MARKERS = (NONSHAREABLE_MARKER, LEGACY_NONSHAREABLE_MARKER)
+# The pre-rename name of this constant; `test_new_document.py` and user scripts read it across the
+# module boundary, so it aliases the LEGACY string and keeps its exact former value.
+NONPORTABLE_MARKER = LEGACY_NONSHAREABLE_MARKER
 
-# The layer companion files a NonPortable document references. Ordered longest-suffix
+
+def has_nonshareable_marker(html):
+    """True when the document/template carries the companion bootstrap anchor, either spelling."""
+    return any(marker in (html or "") for marker in NONSHAREABLE_MARKERS)
+
+# The layer companion files a NonShareable document references. Ordered longest-suffix
 # first so a literal ref rewrite never clips commentable-html.js out of the .assets.js
 # name. Filenames are version-agnostic (each document stamps its own version meta).
 COMPANIONS = ("commentable-html.css", "commentable-html.assets.js", "commentable-html.js")
@@ -463,7 +476,7 @@ def _self_validate_result(html_out, base_dir=None):
     A "could not check" is deliberately NOT reported as an empty error list: returning
     (None, None) here used to read as "no errors, no warnings" in main() and write the
     document unvalidated on exactly the broken or partial install this check exists for.
-    base_dir is where NonPortable companion refs resolve for the existence check (the
+    base_dir is where NonShareable companion refs resolve for the existence check (the
     file's final directory), or None to check structure only and defer companion
     resolution to when the placed file is validated."""
     module, reason = _load_validator()
@@ -506,9 +519,9 @@ def _skill_root():
     return _toolpath.SKILL_ROOT
 
 
-def _default_template(nonportable=False):
-    name = "NONPORTABLE.html" if nonportable else "PORTABLE.html"
-    return os.path.join(_skill_root(), "dist", name)
+def _default_template(nonshareable=False):
+    name = _toolpath.NONSHAREABLE_TEMPLATE if nonshareable else _toolpath.SHAREABLE_TEMPLATE
+    return _toolpath.dist_template(name, root=_skill_root())
 
 
 def _join_ref(prefix, name):
@@ -516,7 +529,7 @@ def _join_ref(prefix, name):
 
 
 def _repoint_companions(html, prefix):
-    """Rewrite the NonPortable template's bare companion references to `prefix`/<name>.
+    """Rewrite the NonShareable template's bare companion references to `prefix`/<name>.
     A falsy prefix leaves the bare names untouched (companions expected alongside)."""
     if not prefix:
         return html
@@ -538,7 +551,7 @@ def _file_url_prefix(path):
 
 
 def _companion_prefix(out_path, assets_href, copy_assets, assets_relative=False):
-    """Resolve (prefix, validate_base) for a NonPortable document's companion
+    """Resolve (prefix, validate_base) for a NonShareable document's companion
     references.
 
     - --copy-assets  -> bare names ("") and the caller copies the files next to --out;
@@ -657,8 +670,8 @@ def main(argv):
     parser = argparse.ArgumentParser(
         prog="new_document.py",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="Create a self-contained Portable commentable-html document from a content "
-                    "fragment (Portable is the only mode generated).",
+        description="Create a self-contained Shareable commentable-html document from a content "
+                    "fragment (Shareable is the only mode generated).",
         epilog=(
             "Trust boundary: the --content fragment is treated as TRUSTED HTML and is copied into\n"
             "the document verbatim - new_document.py does NOT sanitize it. The runtime protects only\n"
@@ -683,26 +696,28 @@ def main(argv):
     parser.add_argument("--generated", default=None,
                         help="optional data-generated ISO-8601 timestamp for deterministic metadata")
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--nonportable", action="store_true",
-                      help="DEPRECATED and ignored: this skill no longer generates NonPortable "
+    mode.add_argument("--nonshareable", "--nonportable", action="store_true", dest="nonshareable",
+                      help="DEPRECATED and ignored: this skill no longer generates NonShareable "
                            "documents. Existing ones keep working forever - migrate one with "
-                           "tools/authoring/to_portable.py, or pass --template <dist>/"
-                           "NONPORTABLE.html to build a legacy document deliberately")
-    mode.add_argument("--portable", action="store_true",
+                           "tools/authoring/to_shareable.py, or pass --template <dist>/"
+                           "NONSHAREABLE.html to build a legacy document deliberately "
+                           "(--nonportable is the accepted legacy spelling)")
+    mode.add_argument("--shareable", "--portable", action="store_true", dest="shareable",
                       help="accepted for compatibility and now the default: a single "
-                           "self-contained Portable file (inlines the layer)")
+                           "self-contained Shareable file (inlines the layer). --portable is "
+                           "the accepted legacy spelling")
     parser.add_argument("--assets-href", default=None,
-                        help="NonPortable only: path prefix used to reference the companions "
+                        help="NonShareable only: path prefix used to reference the companions "
                              "(default: an absolute file:// URL to the skill's dist/)")
     parser.add_argument("--assets-relative", action="store_true",
-                        help="NonPortable only: reference companions by a relative path from "
+                        help="NonShareable only: reference companions by a relative path from "
                              "--out to the skill's dist/ (old movable-folder behavior)")
     parser.add_argument("--copy-assets", action="store_true",
-                        help="NonPortable only: copy the three companions next to --out and "
+                        help="NonShareable only: copy the three companions next to --out and "
                              "reference them by bare name (a movable self-contained folder)")
     parser.add_argument("--template", default=None,
-                        help="template to clone (default: the skill's dist/PORTABLE.html; pass "
-                             "dist/NONPORTABLE.html to build a legacy document deliberately)")
+                        help="template to clone (default: the skill's dist/SHAREABLE.html; pass "
+                             "dist/NONSHAREABLE.html to build a legacy document deliberately)")
     parser.add_argument("--out", default=None, help="output file (default: stdout)")
     parser.add_argument("--force", action="store_true",
                         help="overwrite --out if it exists instead of writing a suffixed sibling")
@@ -743,30 +758,30 @@ def main(argv):
     args = parser.parse_args(argv[1:])
     out_path = resolve_output_path(args.out, force=args.force)
 
-    # Portable is the ONLY mode this skill generates. The mode now follows the RESOLVED TEMPLATE
-    # rather than a flag: the default is dist/PORTABLE.html, and a caller that genuinely needs a
-    # legacy NonPortable document (the compatibility test suite, mostly) asks for it explicitly
-    # with --template dist/NONPORTABLE.html. Deriving the mode from the template it is actually
+    # Shareable is the ONLY mode this skill generates. The mode now follows the RESOLVED TEMPLATE
+    # rather than a flag: the default is dist/SHAREABLE.html, and a caller that genuinely needs a
+    # legacy NonShareable document (the compatibility test suite, mostly) asks for it explicitly
+    # with --template dist/NONSHAREABLE.html. Deriving the mode from the template it is actually
     # built from means the two can never disagree.
     #
-    # NonPortable documents are still OPENED, VALIDATED and FINALIZED forever, and the
-    # NonPortable runtime and its companions stay shipped for exactly that reason - only
-    # CREATING one by default goes away. `to_portable.py` migrates an existing one.
+    # NonShareable documents are still OPENED, VALIDATED and FINALIZED forever, and the
+    # NonShareable runtime and its companions stay shipped for exactly that reason - only
+    # CREATING one by default goes away. `to_shareable.py` migrates an existing one.
     if args.template:
-        template_path = args.template
+        template_path = _toolpath.resolve_template_path(args.template)
     else:
-        template_path = _default_template(nonportable=False)
+        template_path = _default_template(nonshareable=False)
     try:
         template_html = _read_file(template_path)
     except OSError as exc:
         sys.stderr.write("new_document: cannot read template: %s\n" % exc)
         return 1
-    nonportable = NONPORTABLE_MARKER in template_html
-    # --template is now the ONLY way to ask for a NonPortable document, so "a template was
+    nonshareable = has_nonshareable_marker(template_html)
+    # --template is now the ONLY way to ask for a NonShareable document, so "a template was
     # passed" no longer implies "a CUSTOM template the caller owns". Recognize the template by
     # what it CONTAINS: one carrying the bare companion references this tool knows how to
     # repoint is ours to handle (repointing plus the existence check), wherever it lives - a
-    # staged or vendored copy of NONPORTABLE.html is still NONPORTABLE.html. Only a template
+    # staged or vendored copy of NONSHAREABLE.html is still NONSHAREABLE.html. Only a template
     # whose references we do not recognize stays the caller's responsibility. Deciding this from
     # the PATH silently shipped bare refs with no companions beside the output, and exited 0.
     custom_template = bool(args.template) and not _has_bare_companion_refs(template_html)
@@ -791,7 +806,7 @@ def main(argv):
     prefix = ""
     copy_here = False
     validate_base = None
-    if nonportable:
+    if nonshareable:
         selected_asset_modes = sum(1 for x in (args.assets_href is not None, args.copy_assets, args.assets_relative) if x)
         if selected_asset_modes > 1:
             sys.stderr.write("new_document: choose only one of --assets-href, --copy-assets, or --assets-relative\n")
@@ -809,10 +824,10 @@ def main(argv):
             # so defer the companion existence check to when the placed file is validated.
             validate_base = None
     elif args.copy_assets or args.assets_href is not None or args.assets_relative:
-        sys.stderr.write("new_document: --copy-assets / --assets-href / --assets-relative are ignored with --portable "
-                         "(a Portable file inlines the layer and references no companions)\n")
+        sys.stderr.write("new_document: --copy-assets / --assets-href / --assets-relative are ignored with --shareable "
+                         "(a Shareable file inlines the layer and references no companions)\n")
 
-    if nonportable and not custom_template:
+    if nonshareable and not custom_template:
         # Repoint the TEMPLATE, before the caller's content is injected. Repointing the assembled
         # document rewrote the first `src="commentable-html.js"` it found, and the real runtime
         # reference sits AFTER the content region - so a document whose own content demonstrates

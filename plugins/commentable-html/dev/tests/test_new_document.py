@@ -23,7 +23,7 @@ sys.path.insert(0, TOOLS)
 import new_document  # noqa: E402
 
 NEW_DOC_PY = os.path.join(TOOLS, "authoring", "new_document.py")
-TEMPLATE = os.path.join(ROOT, "dist", "PORTABLE.html")
+TEMPLATE = os.path.join(ROOT, "dist", "SHAREABLE.html")
 
 CONTENT = '<section><h2 id="a">Hi</h2><p>x</p></section>'
 
@@ -104,7 +104,7 @@ class MakeDocumentTests(unittest.TestCase):
         for m in new_document._MAIN_ROOT_RE.finditer(out, 0, begin):
             last_root = m
         tag = out[last_root.start():new_document._tag_end(out, last_root.start()) + 1]
-        self.assertNotIn("data-doc-source", tag)  # template's dist/PORTABLE.html source is dropped
+        self.assertNotIn("data-doc-source", tag)  # template's dist/SHAREABLE.html source is dropped
 
     def test_html_special_chars_in_label_are_escaped(self):
         out = new_document.make_document(_template(), CONTENT, "my-report-v1", 'A & B "<x>"')
@@ -161,7 +161,7 @@ class MakeDocumentTests(unittest.TestCase):
         self.assertEqual(key, "explicit-v1")
 
     def test_refuses_demo_key(self):
-        for bad in ("commentable-html-demo", "my-doc", "commentable-html-nonportable-demo"):
+        for bad in ("commentable-html-demo", "my-doc", "commentable-html-nonshareable-demo"):
             with self.assertRaises(ValueError) as cm:
                 new_document.make_document(_template(), CONTENT, bad, "My Report")
             self.assertIn("demo", str(cm.exception).lower())
@@ -244,7 +244,7 @@ class NoTemplateDemoHeaderTests(unittest.TestCase):
                 "%s still carries the removed template header phrase %r" % (where, phrase))
 
     def test_shipped_dist_templates_carry_no_header(self):
-        for name in ("PORTABLE.html", "NONPORTABLE.html"):
+        for name in ("SHAREABLE.html", "NONSHAREABLE.html"):
             with open(os.path.join(ROOT, "dist", name), encoding="utf-8") as fh:
                 self._assert_no_header(fh.read(), "dist/" + name)
 
@@ -272,7 +272,7 @@ class MainCliTests(unittest.TestCase):
     def test_stdin_content_to_stdout(self):
         code, out, err = self._call_main(
             ["new_document.py", "--content", "-", "--key", "cli-v1", "--label", "CLI Doc",
-             "--portable"],
+             "--shareable"],
             stdin=CONTENT)
         self.assertEqual(code, 0, err)
         self.assertIn('data-comment-key="cli-v1"', out)
@@ -306,7 +306,7 @@ class MainCliTests(unittest.TestCase):
 
         code, _out, err = self._call_main(
             ["new_document.py", "--content", "-", "--key", "collision-v1",
-             "--label", "Collision Doc", "--portable", "--out", opath],
+             "--label", "Collision Doc", "--shareable", "--out", opath],
             stdin=CONTENT)
 
         self.assertEqual(code, 0, err)
@@ -328,7 +328,7 @@ class MainCliTests(unittest.TestCase):
 
         code, _out, err = self._call_main(
             ["new_document.py", "--content", "-", "--key", "force-v1",
-             "--label", "Force Doc", "--portable", "--force", "--out", opath],
+             "--label", "Force Doc", "--shareable", "--force", "--out", opath],
             stdin=CONTENT)
 
         self.assertEqual(code, 0, err)
@@ -346,7 +346,7 @@ class MainCliTests(unittest.TestCase):
         frag = ('<section><h2 id="a">Code</h2>'
                 '<pre><code class="language-python">def f(): return 1</code></pre></section>')
         code, out, err = self._call_main(
-            ["new_document.py", "--content", "-", "--key", "hl-v1", "--label", "HL", "--portable"],
+            ["new_document.py", "--content", "-", "--key", "hl-v1", "--label", "HL", "--shareable"],
             stdin=frag)
         self.assertEqual(code, 0, err)
         self.assertIn('<span class="cmh-code-kw">def</span>', out)
@@ -358,7 +358,7 @@ class MainCliTests(unittest.TestCase):
                 '<pre><code class="language-python">def f(): return 1</code></pre></section>')
         code, out, err = self._call_main(
             ["new_document.py", "--content", "-", "--key", "raw-v1", "--label", "Raw",
-             "--portable", "--no-highlight"],
+             "--shareable", "--no-highlight"],
             stdin=frag)
         self.assertEqual(code, 0, err)
         self.assertNotIn('<span class="cmh-code-kw">def</span>', out)
@@ -371,7 +371,7 @@ class MainCliTests(unittest.TestCase):
                 '<pre class="cm-skip"><code>plain code {}</code></pre></section>')
         code, out, err = self._call_main(
             ["new_document.py", "--content", "-", "--key", "warn-v1", "--label", "Warn",
-             "--portable"],
+             "--shareable"],
             stdin=frag)
         self.assertEqual(code, 0, err)
         self.assertIn("warning", err.lower())
@@ -389,7 +389,7 @@ class MainCliTests(unittest.TestCase):
         op = os.path.join(d, "auto-report.html")
         code, out, err = self._call_main(
             ["new_document.py", "--content", "-", "--key", "auto", "--label", "Auto Key Label",
-             "--portable", "--out", op],
+             "--shareable", "--out", op],
             stdin=CONTENT,
         )
         self.assertEqual(code, 0, err)
@@ -406,7 +406,7 @@ class MainCliTests(unittest.TestCase):
 
         code, _out, err = self._call_main(
             ["new_document.py", "--content", "-", "--key", "auto", "--label", "Auto Key Label",
-             "--portable", "--out", op],
+             "--shareable", "--out", op],
             stdin=CONTENT,
         )
 
@@ -438,7 +438,7 @@ class MainCliTests(unittest.TestCase):
                 "logical-id",
                 "--label",
                 "Ignored Label",
-                "--portable",
+                "--shareable",
             ],
             stdin=CONTENT,
         )
@@ -460,7 +460,7 @@ class MainCliTests(unittest.TestCase):
                 "generated.html",
                 "--generated",
                 "2026-07-09T20:30:00Z",
-                "--portable",
+                "--shareable",
             ],
             stdin=CONTENT,
         )
@@ -479,7 +479,7 @@ class MainCliTests(unittest.TestCase):
                 "logical-id",
                 "--label",
                 "Label",
-                "--portable",
+                "--shareable",
             ],
             stdin=CONTENT,
         )
@@ -496,7 +496,7 @@ class MainCliTests(unittest.TestCase):
 
     def test_missing_template_errors(self):
         d = self._tmpdir()
-        missing = os.path.join(d, "missing-portable-source.html")
+        missing = os.path.join(d, "missing-shareable-source.html")
         code, _out, err = self._call_main(
             ["new_document.py", "--content", "-", "--key", "x-v1", "--label", "X",
              "--template", missing], stdin=CONTENT)
@@ -535,7 +535,7 @@ class MainCliTests(unittest.TestCase):
     def test_cli_subprocess_stdout(self):
         r = subprocess.run(
             [sys.executable, NEW_DOC_PY, "--content", "-", "--key", "sub-v1", "--label", "Sub",
-             "--kind", "generic", "--portable"],
+             "--kind", "generic", "--shareable"],
             input=CONTENT, capture_output=True, text=True, cwd=ROOT)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn('data-comment-key="sub-v1"', r.stdout)
@@ -564,7 +564,7 @@ class ActiveRootAndReservedKeyTests(unittest.TestCase):
         self.assertIn('data-comment-key="commentable-html-demo"', out)
 
 
-class NonPortableCliTests(unittest.TestCase):
+class NonShareableCliTests(unittest.TestCase):
     _LINK_RE = re.compile(r'<link\b[^>]*href="[^"]*commentable-html\.css"')
 
     def _tmpdir(self):
@@ -575,11 +575,11 @@ class NonPortableCliTests(unittest.TestCase):
     def _run(self, argv, stdin=CONTENT):
         if "--kind" not in argv:
             argv = argv[:1] + ["--kind", "generic"] + argv[1:]
-        # NonPortable is no longer a DEFAULT this skill produces - the mode follows the resolved
-        # template. These tests are specifically about the retained NonPortable behaviour, so they
+        # NonShareable is no longer a DEFAULT this skill produces - the mode follows the resolved
+        # template. These tests are specifically about the retained NonShareable behaviour, so they
         # ask for that template explicitly, which is exactly how a caller reaches it now.
-        if "--template" not in argv and "--portable" not in argv:
-            argv = argv[:1] + ["--template", os.path.join(_paths.DIST, "NONPORTABLE.html")] + argv[1:]
+        if "--template" not in argv and "--shareable" not in argv:
+            argv = argv[:1] + ["--template", os.path.join(_paths.DIST, "NONSHAREABLE.html")] + argv[1:]
         out = io.StringIO()
         err = io.StringIO()
         with mock.patch.object(sys, "stdin", io.StringIO(stdin)), \
@@ -587,10 +587,10 @@ class NonPortableCliTests(unittest.TestCase):
             code = new_document.main(argv)
         return code, out.getvalue(), err.getvalue()
 
-    def test_the_default_mode_is_now_portable(self):
-        """CMH-PORT-03: Portable is the only mode this skill generates by default.
+    def test_the_default_mode_is_now_shareable(self):
+        """CMH-PORT-03: Shareable is the only mode this skill generates by default.
 
-        Deliberately does NOT go through self._run, which injects the NonPortable template.
+        Deliberately does NOT go through self._run, which injects the NonShareable template.
         """
         d = self._tmpdir()
         op = os.path.join(d, "p.html")
@@ -602,16 +602,16 @@ class NonPortableCliTests(unittest.TestCase):
             code = new_document.main(argv)
         self.assertEqual(code, 0, err.getvalue())
         html = open(op, encoding="utf-8").read()
-        # Assert the EXACT bootstrap marker, not the bare phrase: the Portable layer's own
+        # Assert the EXACT bootstrap marker, not the bare phrase: the Shareable layer's own
         # export JS mentions that phrase inside a regex literal, so a loose substring check
-        # fails on a perfectly good Portable document.
-        self.assertNotIn(new_document.NONPORTABLE_MARKER, html)
-        self.assertIn('"mode":"portable"', html.replace(" ", ""))
-        # A Portable document references no companions at all.
+        # fails on a perfectly good Shareable document.
+        self.assertNotIn(new_document.NONSHAREABLE_MARKER, html)
+        self.assertIn('"mode":"shareable"', html.replace(" ", ""))
+        # A Shareable document references no companions at all.
         self.assertNotIn('href="commentable-html.css"', html)
         self.assertNotIn('src="commentable-html.js"', html)
 
-    def test_an_explicit_nonportable_template_still_builds_one(self):
+    def test_an_explicit_nonshareable_template_still_builds_one(self):
         """CMH-PORT-03: the legacy mode remains reachable on purpose, just never by default."""
         d = self._tmpdir()
         op = os.path.join(d, "r.html")
@@ -619,10 +619,10 @@ class NonPortableCliTests(unittest.TestCase):
             ["new_document.py", "--content", "-", "--key", "auto", "--label", "NP", "--out", op])
         self.assertEqual(code, 0, err)
         html = open(op, encoding="utf-8").read()
-        self.assertIn(new_document.NONPORTABLE_MARKER, html)
-        self.assertIn('"mode":"nonportable"', html.replace(" ", ""))
+        self.assertIn(new_document.NONSHAREABLE_MARKER, html)
+        self.assertIn('"mode":"nonshareable"', html.replace(" ", ""))
 
-    def test_explicit_nonportable_refs_resolve_to_dist(self):
+    def test_explicit_nonshareable_refs_resolve_to_dist(self):
         d = self._tmpdir()
         op = os.path.join(d, "r.html")
         code, _o, err = self._run(
@@ -635,18 +635,18 @@ class NonPortableCliTests(unittest.TestCase):
         self.assertIn('href="%s"' % css_url, html)
         self.assertIn('src="%s"' % js_url, html)
 
-    def test_a_copy_of_the_nonportable_template_is_still_repointed(self):
+    def test_a_copy_of_the_nonshareable_template_is_still_repointed(self):
         """CMH-PORT-03: a template is recognized by what it CONTAINS, not by where it lives.
 
         --template is now the standard way to reach the legacy mode, and a caller may well pass a
-        copy of NONPORTABLE.html (a staged skill, a vendored tree). Deciding "this is a custom
+        copy of NONSHAREABLE.html (a staged skill, a vendored tree). Deciding "this is a custom
         template, leave its references alone" from the PATH silently produced a document with
         bare companion refs and no companions beside it - and exited 0, because the existence
         check was skipped too.
         """
         d = self._tmpdir()
-        copied = os.path.join(d, "copy-of-nonportable.html")
-        shutil.copyfile(os.path.join(_paths.DIST, "NONPORTABLE.html"), copied)
+        copied = os.path.join(d, "copy-of-nonshareable.html")
+        shutil.copyfile(os.path.join(_paths.DIST, "NONSHAREABLE.html"), copied)
         op = os.path.join(d, "r.html")
         code, _o, err = self._run(
             ["new_document.py", "--content", "-", "--key", "auto", "--label", "NP",
@@ -672,7 +672,7 @@ class NonPortableCliTests(unittest.TestCase):
                     '<script src="commentable-html.js"></script>\n')
         code, _o, err = self._run(
             ["new_document.py", "--content", "-", "--key", "auto", "--label", "NP",
-             "--template", os.path.join(_paths.DIST, "NONPORTABLE.html"), "--out", op],
+             "--template", os.path.join(_paths.DIST, "NONSHAREABLE.html"), "--out", op],
             stdin=fragment)
         self.assertEqual(code, 0, err)
         html = open(op, encoding="utf-8").read()
@@ -694,12 +694,12 @@ class NonPortableCliTests(unittest.TestCase):
         html = open(op, encoding="utf-8").read()
         self.assertRegex(html, r'<link\b[^>]*href="[^"]*/dist/commentable-html\.css"')
 
-    def test_portable_flag_inlines_layer(self):
+    def test_shareable_flag_inlines_layer(self):
         d = self._tmpdir()
         op = os.path.join(d, "r.html")
         code, _o, err = self._run(
             ["new_document.py", "--content", "-", "--key", "auto", "--label", "P",
-             "--portable", "--out", op])
+             "--shareable", "--out", op])
         self.assertEqual(code, 0, err)
         html = open(op, encoding="utf-8").read()
         self.assertIn("BEGIN: commentable-html - CSS", html)      # layer CSS inlined
@@ -734,7 +734,7 @@ class NonPortableCliTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("--copy-assets needs --out", err)
 
-    def test_nonportable_stdout_uses_absolute_file_urls(self):
+    def test_nonshareable_stdout_uses_absolute_file_urls(self):
         code, out, err = self._run(
             ["new_document.py", "--content", "-", "--key", "auto", "--label", "S", "--source", "s.html"])
         self.assertEqual(code, 0, err)
@@ -747,29 +747,29 @@ class NonPortableCliTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("--assets-relative needs --out", err)
 
-    def test_nonportable_stdout_ok_with_assets_href(self):
+    def test_nonshareable_stdout_ok_with_assets_href(self):
         code, out, err = self._run(
             ["new_document.py", "--content", "-", "--key", "auto", "--label", "S",
              "--source", "s.html", "--assets-href", "assets"])
         self.assertEqual(code, 0, err)
         self.assertIn('href="assets/commentable-html.css"', out)
 
-    def test_nonportable_stdout_ok_when_portable(self):
+    def test_nonshareable_stdout_ok_when_shareable(self):
         code, out, err = self._run(
             ["new_document.py", "--content", "-", "--key", "auto", "--label", "S",
-             "--source", "s.html", "--portable"])
+             "--source", "s.html", "--shareable"])
         self.assertEqual(code, 0, err)
         self.assertNotIn('<link rel="stylesheet" href="commentable-html.css"', out)
 
-    def test_portable_and_nonportable_are_mutually_exclusive(self):
+    def test_shareable_and_nonshareable_are_mutually_exclusive(self):
         with self.assertRaises(SystemExit):
             self._run(["new_document.py", "--content", "-", "--key", "auto", "--label", "X",
-                       "--portable", "--nonportable"])
+                       "--shareable", "--nonshareable"])
 
-    def test_default_template_nonportable_is_dist_nonportable(self):
+    def test_default_template_nonshareable_is_dist_nonshareable(self):
         self.assertEqual(
-            os.path.abspath(new_document._default_template(nonportable=True)),
-            os.path.abspath(os.path.join(_paths.DIST, "NONPORTABLE.html")))
+            os.path.abspath(new_document._default_template(nonshareable=True)),
+            os.path.abspath(os.path.join(_paths.DIST, "NONSHAREABLE.html")))
 
 
 class DocTitleTests(unittest.TestCase):
@@ -823,7 +823,7 @@ class DocTitleTests(unittest.TestCase):
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = new_document.main(
                 ["new_document.py", "--content", "-", "--key", "title-v1",
-                 "--label", "Titled Doc", "--kind", "generic", "--portable"])
+                 "--label", "Titled Doc", "--kind", "generic", "--shareable"])
         self.assertEqual(code, 0, err.getvalue())
         body = out.getvalue()
         self.assertIn("<h1>Titled Doc</h1>", body)
@@ -835,7 +835,7 @@ class DocTitleTests(unittest.TestCase):
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = new_document.main(
                 ["new_document.py", "--content", "-", "--key", "notitle-v1",
-                 "--label", "No Title Doc", "--kind", "generic", "--portable", "--no-title"])
+                 "--label", "No Title Doc", "--kind", "generic", "--shareable", "--no-title"])
         self.assertEqual(code, 0, err.getvalue())
         self.assertNotIn("<h1>No Title Doc</h1>", out.getvalue())
 
@@ -884,14 +884,14 @@ class KindTests(unittest.TestCase):
         with mock.patch.object(sys, "stdin", io.StringIO("<p>x</p>")), \
                 contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as cm:
             new_document.main(["new_document.py", "--content", "-", "--key", "k-v1",
-                               "--label", "L", "--portable"])
+                               "--label", "L", "--shareable"])
         self.assertEqual(cm.exception.code, 2)
         self.assertIn("kind", err.getvalue())
 
     def test_kind_stamps_meta(self):
         code, out, err = self._call(
             ["new_document.py", "--content", "-", "--key", "k-v1", "--label", "L",
-             "--kind", "slides", "--portable"],
+             "--kind", "slides", "--shareable"],
             stdin="<section>slide</section>")
         self.assertEqual(code, 0, err)
         self.assertIn('<meta name="commentable-html-kind" content="slides"', out)
@@ -899,7 +899,7 @@ class KindTests(unittest.TestCase):
     def test_slides_kind_does_not_add_title(self):
         code, out, err = self._call(
             ["new_document.py", "--content", "-", "--key", "k-v1", "--label", "Deck",
-             "--kind", "slides", "--portable"],
+             "--kind", "slides", "--shareable"],
             stdin="<section>slide</section>")
         self.assertEqual(code, 0, err)
         self.assertNotIn("<h1>Deck</h1>", out)
@@ -907,7 +907,7 @@ class KindTests(unittest.TestCase):
     def test_report_kind_adds_title_and_validates(self):
         code, out, err = self._call(
             ["new_document.py", "--content", "-", "--key", "k-v1", "--label", "Rep",
-             "--kind", "report", "--portable"],
+             "--kind", "report", "--shareable"],
             stdin="<p>body</p>")
         self.assertEqual(code, 0, err)
         self.assertIn("<h1>Rep</h1>", out)
@@ -920,7 +920,7 @@ class KindTests(unittest.TestCase):
     def test_kind_mismatch_warning_is_advisory(self):
         code, out, err = self._call(
             ["new_document.py", "--content", "-", "--key", "k-v1", "--label", "Deck",
-             "--kind", "report", "--portable"],
+             "--kind", "report", "--shareable"],
             stdin="<h1>One</h1><hr><h1>Two</h1><hr><h1>Three</h1>")
         self.assertEqual(code, 0, err)
         self.assertIn("recommend_kind: warning: --kind report differs from recommended --kind slides", err)
@@ -931,7 +931,7 @@ class KindTests(unittest.TestCase):
         # <section> cards at create time (so the document never renders flat).
         code, out, err = self._call(
             ["new_document.py", "--content", "-", "--key", "k-v1", "--label", "Rep",
-             "--kind", "report", "--portable"],
+             "--kind", "report", "--shareable"],
             stdin='<h2 id="a">One</h2><p>a</p><h2 id="b">Two</h2><p>b</p>')
         self.assertEqual(code, 0, err)
         self.assertIn('<section aria-labelledby="a">', out)
@@ -940,7 +940,7 @@ class KindTests(unittest.TestCase):
     def test_no_wrap_sections_flag_leaves_fragment_flat(self):
         code, out, err = self._call(
             ["new_document.py", "--content", "-", "--key", "k-v1", "--label", "Rep",
-             "--kind", "report", "--portable", "--no-wrap-sections"],
+             "--kind", "report", "--shareable", "--no-wrap-sections"],
             stdin='<h2 id="a">One</h2><p>a</p><h2 id="b">Two</h2><p>b</p>')
         self.assertEqual(code, 0, err)
         self.assertNotIn('aria-labelledby="a"', out)
@@ -950,7 +950,7 @@ class KindTests(unittest.TestCase):
         # CMH-STATS-01: a created report bakes the section/word/reading-time overview strip.
         code, out, err = self._call(
             ["new_document.py", "--content", "-", "--key", "k-v1", "--label", "Rep",
-             "--kind", "report", "--portable"],
+             "--kind", "report", "--shareable"],
             stdin='<h2 id="a">One</h2><p>a</p><h2 id="b">Two</h2><p>b</p>')
         self.assertEqual(code, 0, err)
         self.assertIn("data-cmh-doc-stats", out)
@@ -960,7 +960,7 @@ class KindTests(unittest.TestCase):
         # CMH-STATS-01: --no-stats keeps new_document from baking the overview strip.
         code, out, err = self._call(
             ["new_document.py", "--content", "-", "--key", "k-v1", "--label", "Rep",
-             "--kind", "report", "--portable", "--no-stats"],
+             "--kind", "report", "--shareable", "--no-stats"],
             stdin='<h2 id="a">One</h2><p>a</p><h2 id="b">Two</h2><p>b</p>')
         self.assertEqual(code, 0, err)
         self.assertNotIn("data-cmh-doc-stats", out)
@@ -977,7 +977,7 @@ class NewDocumentUnvalidatedOutputTests(unittest.TestCase):
     """
 
     ARGV = ["new_document.py", "--content", "-", "--key", "unval-v1", "--label", "Unval",
-            "--kind", "generic", "--portable"]
+            "--kind", "generic", "--shareable"]
 
     def _tmpdir(self):
         d = tempfile.mkdtemp()

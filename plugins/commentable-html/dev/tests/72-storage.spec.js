@@ -688,7 +688,7 @@ test("the empty/quota state offers Export and Clear shortcuts even when shared p
   // The empty/quota Export + Clear shortcuts must show despite the shared-preference globals row.
   const empty = page.locator(".cm-storage-empty");
   await expect(empty).toBeVisible();
-  await expect(empty.locator("button", { hasText: "Export as Portable" })).toBeVisible();
+  await expect(empty.locator("button", { hasText: "Export as Shareable" })).toBeVisible();
   await expect(empty.locator("button", { hasText: "Clear all comments" })).toBeVisible();
 });
 

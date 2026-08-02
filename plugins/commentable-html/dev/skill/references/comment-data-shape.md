@@ -67,7 +67,7 @@ When the user clicks the floating **Add Comment** button on a rendered mermaid n
 
 ### Diff-line comments (`anchorType: "diff"`)
 
-When the user hovers a line inside a rendered diff block and clicks the floating **Add Comment** button, the comment is anchored to the logical diff line - by `(diffIndex, lineKey)` - rather than to character offsets, so it survives the side-by-side / inline layout toggle, reload, copy, and Export as Portable:
+When the user hovers a line inside a rendered diff block and clicks the floating **Add Comment** button, the comment is anchored to the logical diff line - by `(diffIndex, lineKey)` - rather than to character offsets, so it survives the side-by-side / inline layout toggle, reload, copy, and Export as Shareable:
 
 ```json
 {

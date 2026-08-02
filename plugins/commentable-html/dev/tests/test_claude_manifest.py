@@ -1,6 +1,6 @@
 """CMH-CLAUDE-01: the shipped plugin carries a Claude Code manifest that mirrors the Copilot one.
 
-commentable-html is a portable HTML review surface that works with any agent; this proves the
+commentable-html is a shareable HTML review surface that works with any agent; this proves the
 plugin is installable in Claude Code by shipping `.claude-plugin/plugin.json` whose identity
 fields match the Copilot `plugin.json`, plus a resolvable skills directory. The live
 `claude plugin validate --strict` check lives in scripts/validate_claude_compat.py.

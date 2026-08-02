@@ -209,11 +209,11 @@ test("CMH-CHECK-12: keyboard cycles the control and ARIA announces the state", a
   expect(await stateOf(page, "rel")).toBe("cross");
 });
 
-test("CMH-CHECK-BADGE: an unsaved checklist change flips the badge to Not portable", async ({ page }) => {
+test("CMH-CHECK-BADGE: an unsaved checklist change flips the badge to Not shareable", async ({ page }) => {
   await open(page, LIST, "cmh-check-badge");
-  await expect(page.locator("#cmTypeBadge")).toHaveText("Portable");
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Shareable");
   await ctrl(page, "rel").click();
-  await expect(page.locator("#cmTypeBadge")).toHaveText("Not portable");
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Not shareable");
   const reason = await page.getAttribute("#cmTypeBadge", "title");
   expect(reason).toContain("checklist");
 });

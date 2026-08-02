@@ -1,13 +1,13 @@
 import { test, expect } from "@playwright/test";
 import fs from "fs";
 import {
-  ready, openToolbarMenu, startStaticServer, stageInline, stageNonPortable,
+  ready, openToolbarMenu, startStaticServer, stageInline, stageNonShareable,
 } from "./helpers.js";
 
 // CMH-TOOL-08: the runtime export path must refuse to write a file when a
 // commentable-html layer region has duplicated markers. _assertSingleLayerRegions
 // runs inside _buildPlainHtml (Export Plain, every mode) and inside
-// _inlineNonPortableAssets (Export Offline for a nonportable document). A duplicated
+// _inlineNonShareableAssets (Export Offline for a nonshareable document). A duplicated
 // BEGIN marker (F28) or a duplicated END marker (F37) in the EMBEDDED COMMENTS region
 // must abort the export with a toast and download nothing. The base HTML is fetched
 // over http here so the guard sees the raw on-disk duplicates (the file:// snapshot
@@ -67,22 +67,22 @@ test.describe("runtime region guard aborts export on duplicated layer markers (C
     }
   });
 
-  test("Export Offline aborts on a duplicated EMBEDDED COMMENTS BEGIN marker in a nonportable doc (F28)", async ({ page }) => {
-    const staged = stageNonPortable({ companions: true, mutate: duplicateBegin });
+  test("Export Offline aborts on a duplicated EMBEDDED COMMENTS BEGIN marker in a nonshareable doc (F28)", async ({ page }) => {
+    const staged = stageNonShareable({ companions: true, mutate: duplicateBegin });
     const server = await startStaticServer(staged.dir);
     try {
-      await expectExportAborts(page, server, "/NONPORTABLE.html", "btnExportOffline");
+      await expectExportAborts(page, server, "/NONSHAREABLE.html", "btnExportOffline");
     } finally {
       await server.close();
       fs.rmSync(staged.dir, { recursive: true, force: true });
     }
   });
 
-  test("Export Offline aborts on a duplicated EMBEDDED COMMENTS END marker in a nonportable doc (F37)", async ({ page }) => {
-    const staged = stageNonPortable({ companions: true, mutate: duplicateEnd });
+  test("Export Offline aborts on a duplicated EMBEDDED COMMENTS END marker in a nonshareable doc (F37)", async ({ page }) => {
+    const staged = stageNonShareable({ companions: true, mutate: duplicateEnd });
     const server = await startStaticServer(staged.dir);
     try {
-      await expectExportAborts(page, server, "/NONPORTABLE.html", "btnExportOffline");
+      await expectExportAborts(page, server, "/NONSHAREABLE.html", "btnExportOffline");
     } finally {
       await server.close();
       fs.rmSync(staged.dir, { recursive: true, force: true });

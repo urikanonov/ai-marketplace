@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { openInline, ready, openToolbarMenu, openSidebarExportMenu, openSidebarMoreMenu, addTextComment, fileUrl, INLINE, openKitchenSinkNonPortable } from "./helpers.js";
+import { openInline, ready, openToolbarMenu, openSidebarExportMenu, openSidebarMoreMenu, addTextComment, fileUrl, INLINE, openKitchenSinkNonShareable } from "./helpers.js";
 
 // UI batch 5: searchable/collapsible Help, custom tooltips, compact sidebar header,
 // bigger section caret, and icons on the TOC / scroll buttons.
@@ -69,7 +69,7 @@ test.describe("Help is grouped, collapsible, and searchable", () => {
     await expect(site).toHaveAttribute("rel", /noopener/);
   });
 
-  test("the Self-contained and privacy topic explains localStorage privacy and portable bundling (CMH-PRIVACY-01)", async ({ page }) => {
+  test("the Self-contained and privacy topic explains localStorage privacy and shareable bundling (CMH-PRIVACY-01)", async ({ page }) => {
     await openHelp(page);
     const topic = page.locator(".cm-help-topic", { hasText: "Self-contained and privacy" });
     await expect(topic).toHaveCount(1);
@@ -77,8 +77,8 @@ test.describe("Help is grouped, collapsible, and searchable", () => {
     const body = topic.locator(".cm-help-topic-body");
     await expect(body).toContainText("localStorage");
     await expect(body).toContainText(/private/i);
-    // The review layer is described as embedded only in Portable mode, not always bundled.
-    await expect(body).toContainText(/Portable/);
+    // The review layer is described as embedded only in Shareable mode, not always bundled.
+    await expect(body).toContainText(/Shareable/);
     await expect(body).not.toContainText("bundled into this file");
   });
 });
@@ -392,9 +392,9 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
     expect(await page.locator(".cm-help-topic[open]").count()).toBe(1);
   });
 
-  test("nonportable mode keeps the sidebar Export button's icon and menu contract", async ({ page }) => {
-    await openKitchenSinkNonPortable(page);
-    await expect(page.locator("body.cm-nonportable")).toHaveCount(1);
+  test("nonshareable mode keeps the sidebar Export button's icon and menu contract", async ({ page }) => {
+    await openKitchenSinkNonShareable(page);
+    await expect(page.locator("body.cm-nonshareable")).toHaveCount(1);
     expect(await page.locator("#btnSidebarExportMenu svg.cm-ui-ico").count()).toBe(1); // icon preserved
     expect((await page.locator("#btnSidebarExportMenu span").innerText()).trim()).toBe("Export");
     await expect(page.locator("#btnSidebarExportMenu")).toHaveAttribute("aria-controls", "sidebarExportMenu");
@@ -462,7 +462,7 @@ test.describe("Clear all comments from the toolbar overflow menu (CMH-UI-13)", (
     await openToolbarMenu(page);
     const pristineMode = (await page.locator("#cmhModeBadge").textContent()).trim();
     // Pin the premise so the round-trip below cannot degrade into asserting the same value twice.
-    expect(pristineMode).toBe("Portable");
+    expect(pristineMode).toBe("Shareable");
     await page.keyboard.press("Escape");
     await addTextComment(page, "#commentRoot p", "clear me from the collapsed toolbar");
     await expect(page.locator("#commentList .cm-card")).toHaveCount(1);
@@ -477,7 +477,7 @@ test.describe("Clear all comments from the toolbar overflow menu (CMH-UI-13)", (
       const tip = (await b.getAttribute("title")) || (await b.getAttribute("data-cmh-tip"));
       expect(tip, sel).toMatch(/Delete every comment/);
     }
-    await expect(page.locator("#cmhModeBadge")).toHaveText("Not portable");
+    await expect(page.locator("#cmhModeBadge")).toHaveText("Not shareable");
     await page.click("#btnClearAllTop");
     // The menu closes on the action and its trigger's expanded state follows.
     await expect(page.locator("#toolbarMenu")).toBeHidden();

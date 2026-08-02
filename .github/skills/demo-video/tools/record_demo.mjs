@@ -822,10 +822,10 @@ async function recordReport(args) {
       deviceScaleFactor: 1,
       recordVideo: { dir: videoDir, size: videoSize(width, height, args) },
     });
-    // Loaded from FILE, not from a local http server. A report the skill generates in "not portable"
+    // Loaded from FILE, not from a local http server. A report the skill generates in "not shareable"
     // mode links its runtime with absolute `file:///` URLs into the installed plugin, and an http
     // page is not allowed to load a file:// subresource - so the layer never booted, every beat
-    // found nothing, and the only clue was one "never signalled ready" line. A portable report works
+    // found nothing, and the only clue was one "never signalled ready" line. A shareable report works
     // either way, so file:// is simply the setting that films both.
     const url = pathToFileURL(example).href;
     // Playwright records PER PAGE, starting when the page is created. Warming the document in a

@@ -79,12 +79,12 @@ class ForwardCompatibleLayoutTests(unittest.TestCase):
         _assert_content_root(self, html)
 
     def test_dist_templates_publish_layer_descriptor_and_content_hook(self):
-        for name, mode in (("PORTABLE.html", "portable"), ("NONPORTABLE.html", "nonportable")):
+        for name, mode in (("SHAREABLE.html", "shareable"), ("NONSHAREABLE.html", "nonshareable")):
             with self.subTest(name=name):
                 self.assert_contract(_read(os.path.join(_paths.DIST, name)), mode)
 
     def test_new_document_preserves_descriptor_and_content_hook(self):
-        template = _read(os.path.join(_paths.DIST, "PORTABLE.html"))
+        template = _read(os.path.join(_paths.DIST, "SHAREABLE.html"))
         html = new_document.make_document(
             template,
             '<section><h2 id="summary">Summary</h2><p>Body.</p></section>',
@@ -92,10 +92,10 @@ class ForwardCompatibleLayoutTests(unittest.TestCase):
             "Forward Compat Doc",
             "source.md",
         )
-        self.assert_contract(html, "portable")
+        self.assert_contract(html, "shareable")
 
     def test_offline_descriptor_mode_is_valid_contract(self):
-        html = _read(os.path.join(_paths.DIST, "PORTABLE.html")).replace('"mode":"portable"', '"mode":"offline"', 1)
+        html = _read(os.path.join(_paths.DIST, "SHAREABLE.html")).replace('"mode":"shareable"', '"mode":"offline"', 1)
         self.assert_contract(html, "offline")
 
     def test_reference_notes_strict_validator_current_contract_scope(self):

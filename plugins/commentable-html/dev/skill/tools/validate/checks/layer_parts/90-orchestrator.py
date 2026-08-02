@@ -1,7 +1,7 @@
 def check_layer(html, parser, base_dir=None):
     errors, warnings = [], []
-    nonportable = _is_nonportable(parser)
-    active_regions = NONPORTABLE_REGIONS if nonportable else REGIONS
+    nonshareable = _is_nonshareable(parser)
+    active_regions = NONSHAREABLE_REGIONS if nonshareable else REGIONS
 
     # 1) Exactly one BEGIN and one END marker per (active) region, BEGIN before END.
     begin_idx, end_idx = {}, {}
@@ -26,7 +26,7 @@ def check_layer(html, parser, base_dir=None):
     if len(positions) >= 2 and positions != sorted(positions):
         errors.append("regions are out of order (expected order: %s)" % ", ".join(active_regions))
 
-    errors.extend(_check_layer_descriptor(parser, nonportable, active_regions))
+    errors.extend(_check_layer_descriptor(parser, nonshareable, active_regions))
 
     e, w = _check_content_markers(html, parser)
     errors += e
@@ -39,7 +39,7 @@ def check_layer(html, parser, base_dir=None):
     errors += e
     warnings += w
 
-    e, w = _check_state_json_blocks(html, parser, begin_idx, end_idx, nonportable)
+    e, w = _check_state_json_blocks(html, parser, begin_idx, end_idx, nonshareable)
     errors += e
     warnings += w
 
@@ -47,7 +47,7 @@ def check_layer(html, parser, base_dir=None):
     errors += e
     warnings += w
 
-    e, w = _check_theme_and_skip(html, parser, nonportable)
+    e, w = _check_theme_and_skip(html, parser, nonshareable)
     errors += e
     warnings += w
 
@@ -80,7 +80,7 @@ def check_layer(html, parser, base_dir=None):
     errors += e
     warnings += w
 
-    e, w = _check_self_contained(html, parser, nonportable)
+    e, w = _check_self_contained(html, parser, nonshareable)
     errors += e
     warnings += w
 
@@ -92,11 +92,11 @@ def check_layer(html, parser, base_dir=None):
     errors += e
     warnings += w
 
-    # 12) NonPortable-mode-only invariants (companion refs, version handshake, banner,
+    # 12) NonShareable-mode-only invariants (companion refs, version handshake, banner,
     #     referenced files exist).
-    if nonportable:
+    if nonshareable:
         id_counts = Counter(parser.layer_ids)
-        e, w = _check_nonportable(parser, base_dir, id_counts)
+        e, w = _check_nonshareable(parser, base_dir, id_counts)
         errors += e
         warnings += w
 

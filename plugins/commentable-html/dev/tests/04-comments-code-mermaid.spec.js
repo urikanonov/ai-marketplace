@@ -27,7 +27,7 @@ test.describe("mermaid node comments (local vendored mermaid)", () => {
     try {
       await routeMermaidLocal(page);
       await installClipboardCapture(page);
-      await page.goto(server.url + "/dist/PORTABLE.html?mermaid=1");
+      await page.goto(server.url + "/dist/SHAREABLE.html?mermaid=1");
       await ready(page);
 
       const node = page.locator("#commentRoot .mermaid svg g.node").first();
@@ -55,7 +55,7 @@ test.describe("mermaid node comments (local vendored mermaid)", () => {
     const server = await startStaticServer(SKILL);
     try {
       await routeMermaidLocal(page);
-      await page.goto(server.url + "/dist/PORTABLE.html?mermaid=1");
+      await page.goto(server.url + "/dist/SHAREABLE.html?mermaid=1");
       await ready(page);
       page.on("dialog", (d) => d.accept());
       const node = page.locator("#commentRoot .mermaid svg g.node").first();
@@ -138,7 +138,7 @@ test.describe("mermaid node comments (local vendored mermaid)", () => {
     try {
       await routeMermaidLocal(page);
       await installClipboardCapture(page);
-      await page.goto(server.url + "/dist/PORTABLE.html?mermaid=1");
+      await page.goto(server.url + "/dist/SHAREABLE.html?mermaid=1");
       await ready(page);
 
       const host = page.locator("#commentRoot .cm-mermaid-host").first();

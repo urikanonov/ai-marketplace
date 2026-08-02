@@ -3,7 +3,7 @@
    commentable. Each one is indexed in document order (imageIndex); hovering or
    keyboard-focusing it reveals a floating "+ comment" button, and the comment
    anchors by (imageIndex) with the src plus media metadata as a fallback key so
-   it survives reload, Copy all, and Export as Portable. This mirrors the
+   it survives reload, Copy all, and Export as Shareable. This mirrors the
    mermaid-node layer: images carry no text offsets, so image comments are
    excluded from backfillContext / restoreHighlights. */
 const imageEls = [];

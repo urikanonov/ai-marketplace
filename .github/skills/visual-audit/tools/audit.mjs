@@ -22,7 +22,7 @@
 //                                       transcript.json without a browser run)
 //
 // Screens land under <out-dir>/<example>/<viewport>/NN-state.png. The report is a
-// portable commentable-html document that embeds each screenshot as a figure; a
+// shareable commentable-html document that embeds each screenshot as a figure; a
 // plain Markdown sidecar (audit-report.md) is written alongside for text tools.
 
 import { pathToFileURL, fileURLToPath } from "url";
@@ -95,7 +95,7 @@ const REPORT = args["report"] ? path.resolve(String(args["report"])) : path.join
 const MD_REPORT = path.join(OUT_DIR, "audit-report.md");
 const ONLY = typeof args.only === "string" ? args.only : null;
 
-// The commentable-html authoring tool that wraps a content fragment into a portable
+// The commentable-html authoring tool that wraps a content fragment into a shareable
 // commentable document, and a Python interpreter to run it. Resolved best-effort;
 // if either is missing the report falls back to a plain (non-commentable) HTML file.
 const NEW_DOC = path.join(REPO, "plugins", "commentable-html", "dev", "skill", "tools", "authoring", "new_document.py");
@@ -607,7 +607,7 @@ function buildCmhFragment(transcript) {
 }
 
 // Write the commentable-html report by wrapping the fragment with the plugin's
-// new_document.py (a single portable, commentable file). Falls back to a plain
+// new_document.py (a single shareable, commentable file). Falls back to a plain
 // standalone HTML file if the tool or Python is unavailable.
 function writeCmhReport(transcript) {
   ensureDir(path.dirname(REPORT));
@@ -619,7 +619,7 @@ function writeCmhReport(transcript) {
     if (fs.existsSync(NEW_DOC)) {
       const r = spawnSync(PYTHON, [
         NEW_DOC, "--content", fragFile, "--key", "cmh-visual-audit", "--label", "Commentable-HTML examples - visual audit",
-        "--kind", "report", "--source", "visual-audit", "--portable", "--out", REPORT, "--force", "--no-session-id",
+        "--kind", "report", "--source", "visual-audit", "--shareable", "--out", REPORT, "--force", "--no-session-id",
       ], { encoding: "utf8" });
       if (r.status === 0 && fs.existsSync(REPORT)) return true;
       console.warn("new_document.py did not produce the report (status " + r.status + "): " + String(r.stderr || "").slice(0, 400));

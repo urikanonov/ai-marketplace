@@ -2,7 +2,7 @@
 // button, the "Help & About" buttons, the default-open review-workflow help topic, and
 // click-to-expand on a collapsed section title.
 import { test, expect } from "@playwright/test";
-import { openInline, openNonPortable } from "./helpers.js";
+import { openInline, openNonShareable } from "./helpers.js";
 
 test("code blocks show a language pill beside the Copy button (CMH-CODEPILL-01)", async ({ page }) => {
   await openInline(page);
@@ -56,21 +56,21 @@ test("clicking a collapsed section title expands it (CMH-SECEXPAND-01)", async (
   await expect(section).not.toHaveClass(/cmh-section-collapsed/);
 });
 
-test("a Portable doc-type badge is green (CMH-BADGE-COLOR-01)", async ({ page }) => {
+test("a Shareable doc-type badge is green (CMH-BADGE-COLOR-01)", async ({ page }) => {
   await openInline(page);
   const badge = page.locator("#cmTypeBadge");
-  await expect(badge).toHaveAttribute("data-doc-type", "Portable");
+  await expect(badge).toHaveAttribute("data-doc-type", "Shareable");
   const c = (await badge.evaluate((el) => getComputedStyle(el).color)).match(/\d+/g).map(Number);
   expect(c[1], "green channel dominates").toBeGreaterThan(c[0]);
   expect(c[1]).toBeGreaterThan(c[2]);
 });
 
-test("a Not-portable badge is orange and its tooltip says how to share (CMH-BADGE-COLOR-01)", async ({ page }) => {
-  await openNonPortable(page);
+test("a Not-shareable badge is orange and its tooltip says how to share (CMH-BADGE-COLOR-01)", async ({ page }) => {
+  await openNonShareable(page);
   const badge = page.locator("#cmTypeBadge");
-  await expect(badge).toHaveAttribute("data-doc-type", "Not portable");
+  await expect(badge).toHaveAttribute("data-doc-type", "Not shareable");
   const title = await badge.getAttribute("title");
-  expect(title).toMatch(/Export as Portable/);
+  expect(title).toMatch(/Export as Shareable/);
   expect(title).toMatch(/to share it/);
   const c = (await badge.evaluate((el) => getComputedStyle(el).color)).match(/\d+/g).map(Number);
   // Orange: red and green both well above blue, red at or above green.

@@ -9,7 +9,7 @@
 //   reviewed   - a marker exists and the hash matches
 // Markers live in a dedicated store (localStorage COMMENT_KEY::reviews + an embedded
 // reviewedSections JSON block), separate from comments, so they never enter the
-// Copy-all bundle yet still survive Portable/Offline export. It is runtime-only chrome:
+// Copy-all bundle yet still survive Shareable/Offline export. It is runtime-only chrome:
 // the badge/button are cm-skip and never enter a Plain/standalone snapshot or shift offsets.
 const REVIEW_KEY = COMMENT_KEY + "::reviews";
 const REVIEW_WS_RE = /[ \t\n\r\f\v\u00a0]+/g;
@@ -92,7 +92,7 @@ function _cmhHashForHeadingEl(el, scan) {
 // rearrangement is deliberately NOT: moving a card changes the board's meaning (the arrangement IS
 // the content), so it legitimately re-stamps/invalidates. It is also not a live-reload
 // false-positive - widget moves are not persisted to localStorage (they reset on reload), only
-// baked into an explicit Portable/Offline export, and re-validating that export re-stamps it.
+// baked into an explicit Shareable/Offline export, and re-validating that export re-stamps it.
 function cmhDocContentHash() {
   const canSort = typeof _tableSortState !== "undefined" && _tableSortState
     && Object.keys(_tableSortState).length > 0
@@ -262,7 +262,7 @@ function markSectionReviewed(heading) {
   // full/blocked), matching clearSectionReviewed()'s un-review warning and saveComments()'s alert.
   if (!savedOk && typeof showToast === "function") {
     showToast("Could not persist reviewing this section (browser storage full or blocked) - it "
-      + "may not stick on reload. Use Export as Portable to keep the change.",
+      + "may not stick on reload. Use Export as Shareable to keep the change.",
       { alert: true, duration: 8000, action: cmhStorageAction(REVIEW_KEY) });
   }
   refreshReviewUI();
@@ -284,7 +284,7 @@ function clearSectionReviewed(heading) {
   // reload; warn the reader (storage full/blocked), matching saveComments()'s persistence alert.
   if (wasBaked && (!tombOk || !savedOk) && typeof showToast === "function") {
     showToast("Could not persist un-reviewing this section (browser storage full or blocked) - it "
-      + "may come back on reload. Use Export as Portable to keep the change.",
+      + "may come back on reload. Use Export as Shareable to keep the change.",
       { alert: true, duration: 8000, action: cmhStorageAction(REVIEW_DELETED_KEY) || cmhStorageAction(REVIEW_KEY) });
   }
   refreshReviewUI();
@@ -388,17 +388,17 @@ if (typeof window !== "undefined") {
   };
 }
 
-// Bake the current markers into an exported file's reviewedSections block so a Portable/Offline
+// Bake the current markers into an exported file's reviewedSections block so a Shareable/Offline
 // copy carries the review state (Plain export strips the whole EMBEDDED COMMENTS region, dropping
 // this block with it). "<" is escaped as \u003c like the embedded-comments block. The document is
 // round-tripped through DOMParser (not a string regex) so the reviewedSections id is matched only
 // as a real DOM element, never as tag text that appears inside the inlined layer JS (a self-
-// contained Portable/Offline copy inlines this runtime, whose comments mention the block by name).
+// contained Shareable/Offline copy inlines this runtime, whose comments mention the block by name).
 function _applyReviewStateToHtml(html) {
   const src = String(html || "");
   const markers = _sanitizeMarkers(reviewMarkers);
   // Bake only markers whose heading still exists in the current document, so a stale marker for a
-  // deleted section cannot leak its old headingText/reviewedAt/hash into a shared Portable/Offline
+  // deleted section cannot leak its old headingText/reviewedAt/hash into a shared Shareable/Offline
   // copy. Orphan markers already cannot activate the UI (see _reviewActive); this keeps them out of
   // the exported artifact as well.
   const present = Object.create(null);

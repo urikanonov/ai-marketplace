@@ -4,7 +4,7 @@
 import { test, expect } from "@playwright/test";
 import {
   fileUrl, ready, installClipboardCapture, stageContent, stageInline,
-  openInline, openNonPortable, openComposerFor, addTextComment, selectText,
+  openInline, openNonShareable, openComposerFor, addTextComment, selectText,
   openToolbarMenu, readDownload, currentToast, storedComments,
   clickSidebarExport,
   clickClearAll,
@@ -54,7 +54,7 @@ test("export updates the real embeddedComments block, not a decoy data-id script
 
 // C4 - CMH-MODE-07
 test("standalone export aborts when the companion assets version mismatches the runtime (CMH-MODE-07)", async ({ page }) => {
-  await openNonPortable(page);
+  await openNonShareable(page);
   await page.evaluate(() => { window.__COMMENTABLE_ASSETS__.version = "9.9.9"; });
   await openToolbarMenu(page);
   let gotDownload = false;
@@ -185,14 +185,14 @@ test("updateDocTypeUi updates the managed tooltip in place without a native-titl
     el.setAttribute("aria-label", "STALE-ARIA-REASON");
     el.removeAttribute("title");
   });
-  await addTextComment(page, "#commentRoot p", "flips to not portable");
+  await addTextComment(page, "#commentRoot p", "flips to not shareable");
   const badge = page.locator("#cmhModeBadge");
   expect(await badge.getAttribute("title")).toBeNull();
-  expect(await badge.getAttribute("data-cmh-tip")).toContain("Not portable");
+  expect(await badge.getAttribute("data-cmh-tip")).toContain("Not shareable");
   // The pre-existing aria-label is rewritten to the new reason, not left stale.
   const aria = await badge.getAttribute("aria-label");
   expect(aria).not.toBe("STALE-ARIA-REASON");
-  expect(aria).toContain("Not portable");
+  expect(aria).toContain("Not shareable");
 });
 
 // U6 - CMH-TOC-07

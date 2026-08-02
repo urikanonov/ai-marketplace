@@ -4,24 +4,24 @@ import fs from "fs";
 import path from "path";
 import {
   PYTHON, SKILL, addTextComment, fileUrl, installClipboardCapture, lastCopied, ready,
-  stageNonPortable,
+  stageNonShareable,
 } from "./helpers.js";
 
 // CMH-PORT-04. Everything about the migration had been verified by reading the produced bytes.
 // The promise a user cares about is different: the migrated file OPENS and behaves like a
-// natively generated Portable one, and a document migrated with an untrusted `--dist` does not
+// natively generated Shareable one, and a document migrated with an untrusted `--dist` does not
 // execute what that dist smuggled in. Both are only observable in a browser.
 
 function migrate(htmlPath, extraArgs = []) {
-  execFileSync(PYTHON, ["tools/authoring/to_portable.py", ...extraArgs, htmlPath], { cwd: SKILL });
+  execFileSync(PYTHON, ["tools/authoring/to_shareable.py", ...extraArgs, htmlPath], { cwd: SKILL });
 }
 
-test.describe("to_portable migration", () => {
-  test("a migrated document opens, comments and copies like a native Portable one (CMH-PORT-04)", async ({ page }) => {
-    const { html, dir } = stageNonPortable();
+test.describe("to_shareable migration", () => {
+  test("a migrated document opens, comments and copies like a native Shareable one (CMH-PORT-04)", async ({ page }) => {
+    const { html, dir } = stageNonShareable();
     try {
       migrate(html);
-      // The companions are what a NonPortable document needs beside it; deleting them proves the
+      // The companions are what a NonShareable document needs beside it; deleting them proves the
       // migrated file is genuinely self-contained rather than quietly still loading them.
       for (const f of fs.readdirSync(dir)) {
         if (/^commentable-html\.(css|js|assets\.js)$/.test(f)) fs.rmSync(path.join(dir, f));
@@ -30,8 +30,8 @@ test.describe("to_portable migration", () => {
       await page.goto(fileUrl(html));
       await ready(page);
 
-      await expect(page.locator("#cmhModeBadge")).toHaveText("Portable");
-      expect(await page.evaluate(() => document.body.classList.contains("cm-nonportable"))).toBe(false);
+      await expect(page.locator("#cmhModeBadge")).toHaveText("Shareable");
+      expect(await page.evaluate(() => document.body.classList.contains("cm-nonshareable"))).toBe(false);
       await expect(page.locator("#cmhAssetBanner")).toBeHidden();
 
       await addTextComment(page, "#commentRoot section p", "note on a migrated document");
@@ -44,7 +44,7 @@ test.describe("to_portable migration", () => {
   });
 
   test("a hostile dist cannot execute script in a migrated document (CMH-PORT-04)", async ({ page }) => {
-    const { html, dir } = stageNonPortable();
+    const { html, dir } = stageNonShareable();
     const hostile = fs.mkdtempSync(path.join(dir, "dist-"));
     try {
       for (const f of ["commentable-html.css", "commentable-html.js", "commentable-html.assets.js"]) {

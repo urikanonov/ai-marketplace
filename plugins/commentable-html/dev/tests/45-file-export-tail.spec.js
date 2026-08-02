@@ -21,7 +21,7 @@ function stageWithChartTail() {
   let html = fs.readFileSync(INLINE, "utf8");
   const marker = "<!-- END: commentable-html - JS -->";
   const idx = html.lastIndexOf(marker);
-  if (idx < 0) throw new Error("no JS END marker in PORTABLE.html");
+  if (idx < 0) throw new Error("no JS END marker in SHAREABLE.html");
   const after = idx + marker.length;
   html = html.slice(0, after) + CHART_TAIL + html.slice(after);
   const p = path.join(dir, "doc-with-chart.html");
@@ -49,7 +49,7 @@ async function assertChartSurvives(browser, exportedHtml, { layer = true } = {})
 }
 
 test.describe("file:// export preserves host content after the layer", () => {
-  test("Export as Portable keeps a chart placed after the JS marker", async ({ page, browser }) => {
+  test("Export as Shareable keeps a chart placed after the JS marker", async ({ page, browser }) => {
     const staged = stageWithChartTail();
     try {
       await page.goto(fileUrl(staged.html));

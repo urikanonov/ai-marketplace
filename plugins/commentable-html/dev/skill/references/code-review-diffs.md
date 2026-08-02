@@ -31,7 +31,7 @@ Put a unified diff as the text content of a `pre` or `div` with `class="cmh-diff
 2. Each diff has a **Side-by-side view** / **Inline view** toggle. The choice persists per document in `localStorage` and defaults to side-by-side.
 3. If the language is known, each diff has a **Syntax: on/off** toggle. Runtime highlighting stays in-page, defaults on, persists per document, and falls back to in-memory state when `localStorage` is blocked. The tokenizer wraps tokens and gaps with escaped `.cmh-code-*` spans, so HTML cannot leak from diff text.
 4. Hovering a changed or context line shows **Add Comment**; clicking it or pressing <kbd>Enter</kbd> on a focused line comments the whole line. Selecting a region within one diff line comments just that substring.
-5. Saving anchors the comment to `(diffIndex, lineKey)` plus `(subStart, subEnd)` for region comments. Highlights survive layout toggles, reload, copy, and **Export as Portable**.
+5. Saving anchors the comment to `(diffIndex, lineKey)` plus `(subStart, subEnd)` for region comments. Highlights survive layout toggles, reload, copy, and **Export as Shareable**.
 6. **Copy all** emits each diff comment with `Anchor: diff <label>, <added|removed|context> line <n>` and the quote as a fenced diff block.
 
 ### When to use it

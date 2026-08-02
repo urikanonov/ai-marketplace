@@ -6,12 +6,12 @@ import {
   clickSidebarExport,
 } from "./helpers.js";
 
-// F2: the Export as Portable saved-HTML builder must NOT let a comment note that
+// F2: the Export as Shareable saved-HTML builder must NOT let a comment note that
 // contains a `$`-replacement pattern ($&, $1, $`, $', $$) be reinterpreted by
 // String.replace when the embedded-comments region is spliced in. Before the fix
 // the replacement string expanded those patterns and corrupted the stored JSON,
 // breaking reload. The builder now uses a function replacer.
-test("Export as Portable preserves a comment note containing $-replacement patterns (F2)", async ({ page }) => {
+test("Export as Shareable preserves a comment note containing $-replacement patterns (F2)", async ({ page }) => {
   await openInline(page);
   const note = "regex $& and $1 and $` and $' and $$ literally";
   await addTextComment(page, "#commentRoot section p", note);

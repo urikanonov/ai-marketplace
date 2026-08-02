@@ -18,7 +18,7 @@ export const PYTHON = (() => {
 })();
 
 // Marketplace pkg/dev split: this suite lives under dev/tests, but the runtime skill it
-// exercises (dist/PORTABLE.html, dist/, examples/, tools/) ships under pkg. Test-only assets
+// exercises (dist/SHAREABLE.html, dist/, examples/, tools/) ships under pkg. Test-only assets
 // (fixtures) and node_modules stay under dev. SKILL points at the shipped skill root; DEV
 // points at this dev tree.
 export const DEV = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -27,11 +27,11 @@ export const SKILL = path.resolve(DEV, "skill");
 export const PLUGIN = path.resolve(DEV, "..");
 export const EXAMPLES = path.join(PLUGIN, "examples");
 export const DIST = path.join(SKILL, "dist");
-export const INLINE = path.join(DIST, "PORTABLE.html");
-export const NONPORTABLE = path.join(DIST, "NONPORTABLE.html");
+export const INLINE = path.join(DIST, "SHAREABLE.html");
+export const NONSHAREABLE = path.join(DIST, "NONSHAREABLE.html");
 export const FIXTURES = path.join(DEV, "tests", "fixtures");
 export const KITCHEN_SINK = path.join(FIXTURES, "kitchen-sink.html");
-export const KITCHEN_SINK_NONPORTABLE = path.join(FIXTURES, "nonportable", "kitchen-sink.html");
+export const KITCHEN_SINK_NONSHAREABLE = path.join(FIXTURES, "nonshareable", "kitchen-sink.html");
 export const fileUrl = (p) => pathToFileURL(p).href;
 
 // The layer copies via navigator.clipboard.writeText; capture it deterministically
@@ -115,9 +115,9 @@ export async function openInline(page) {
   await ready(page);
 }
 
-export async function openNonPortable(page) {
+export async function openNonShareable(page) {
   await installClipboardCapture(page);
-  await page.goto(fileUrl(NONPORTABLE));
+  await page.goto(fileUrl(NONSHAREABLE));
   await ready(page);
 }
 
@@ -127,9 +127,9 @@ export async function openKitchenSink(page) {
   await ready(page);
 }
 
-export async function openKitchenSinkNonPortable(page) {
+export async function openKitchenSinkNonShareable(page) {
   await installClipboardCapture(page);
-  await page.goto(fileUrl(KITCHEN_SINK_NONPORTABLE));
+  await page.goto(fileUrl(KITCHEN_SINK_NONSHAREABLE));
   await ready(page);
 }
 
@@ -309,22 +309,22 @@ export function readDownload(download) {
   return download.path().then((p) => fs.readFileSync(p, "utf8"));
 }
 
-// Copy dist/NONPORTABLE.html (+ optionally its companions) into a fresh temp dir and
+// Copy dist/NONSHAREABLE.html (+ optionally its companions) into a fresh temp dir and
 // return the path to the copied HTML. `companions=false` simulates a broken share.
-export function stageNonPortable({ companions = true, mutate = null } = {}) {
+export function stageNonShareable({ companions = true, mutate = null } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cmh_e2e_"));
-  let html = fs.readFileSync(NONPORTABLE, "utf8");
+  let html = fs.readFileSync(NONSHAREABLE, "utf8");
   if (mutate) html = mutate(html);
-  fs.writeFileSync(path.join(dir, "NONPORTABLE.html"), html);
+  fs.writeFileSync(path.join(dir, "NONSHAREABLE.html"), html);
   if (companions) {
     for (const f of fs.readdirSync(DIST)) {
       if (/^commentable-html\.(css|js|assets\.js)$/.test(f)) fs.copyFileSync(path.join(DIST, f), path.join(dir, f));
     }
   }
-  return { dir, html: path.join(dir, "NONPORTABLE.html") };
+  return { dir, html: path.join(dir, "NONSHAREABLE.html") };
 }
 
-// Copy a self-contained inline document (dist/PORTABLE.html by default, or any other
+// Copy a self-contained inline document (dist/SHAREABLE.html by default, or any other
 // fixture) into a fresh temp dir so a test can mutate it (e.g. append a handled id)
 // without touching the committed file.
 export function stageInline({ mutate = null, source = INLINE } = {}) {
@@ -336,24 +336,24 @@ export function stageInline({ mutate = null, source = INLINE } = {}) {
   return { dir, html: p };
 }
 
-// Build a self-contained document from dist/PORTABLE.html with custom content injected
+// Build a self-contained document from dist/SHAREABLE.html with custom content injected
 // into the CONTENT region and a unique comment-key, for feature tests that need markup
 // the shared kitchen-sink fixture does not have (widgets, callouts, charts).
 export function stageContent(contentHtml, { key = "cmh-test-doc", source = "test-doc.html", label = null } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cmh_e2e_"));
   let html = fs.readFileSync(INLINE, "utf8");
   const CONTENT_RE = /(<!-- BEGIN: commentable-html - CONTENT[^>]*-->)[\s\S]*?(<!-- END: commentable-html - CONTENT -->)/;
-  if (!CONTENT_RE.test(html)) throw new Error("no CONTENT region in PORTABLE.html");
+  if (!CONTENT_RE.test(html)) throw new Error("no CONTENT region in SHAREABLE.html");
   html = html.replace(CONTENT_RE, (_m, a, b) => a + "\n" + contentHtml + "\n" + b);
   html = html.replace('data-comment-key="commentable-html-demo"', 'data-comment-key="' + key + '"');
-  html = html.replace('data-doc-source="PORTABLE.html"', 'data-doc-source="' + source + '"');
+  html = html.replace('data-doc-source="SHAREABLE.html"', 'data-doc-source="' + source + '"');
   if (label != null) html = html.replace(/data-doc-label="[^"]*"/, 'data-doc-label="' + label + '"');
   const p = path.join(dir, "test-doc.html");
   fs.writeFileSync(p, html);
   return { dir, html: p };
 }
 
-// Build a commentable-native DECK document (data-cmh-mode="deck") from dist/PORTABLE.html:
+// Build a commentable-native DECK document (data-cmh-mode="deck") from dist/SHAREABLE.html:
 // inject a fixed-stage .deck-viewport/.deck-stage with the given slide sections and mark the
 // content root as a deck, so a test can exercise the deck runtime profile.
 export function stageDeck(slidesHtml, { key = "cmh-deck-test" } = {}) {
@@ -367,7 +367,7 @@ export function stageDeck(slidesHtml, { key = "cmh-deck-test" } = {}) {
     + "@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;}}</style>";
   const content = style + '<div class="deck-viewport"><div class="deck-stage">' + slidesHtml + "</div></div>";
   const CONTENT_RE = /(<!-- BEGIN: commentable-html - CONTENT[^>]*-->)[\s\S]*?(<!-- END: commentable-html - CONTENT -->)/;
-  if (!CONTENT_RE.test(html)) throw new Error("no CONTENT region in PORTABLE.html");
+  if (!CONTENT_RE.test(html)) throw new Error("no CONTENT region in SHAREABLE.html");
   html = html.replace(CONTENT_RE, (_m, a, b) => a + "\n" + content + "\n" + b);
   html = html.replace('data-comment-key="commentable-html-demo"',
     'data-comment-key="' + key + '" data-cmh-mode="deck"');

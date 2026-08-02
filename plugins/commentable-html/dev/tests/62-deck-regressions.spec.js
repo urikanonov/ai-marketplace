@@ -137,7 +137,7 @@ test("CMH-DECK-08: showcase deck triage cards drag between columns", async ({ pa
     await dragCardToSlot(page, card, target);
 
     await expect(page.locator(target).locator(card)).toHaveCount(1);
-    await expect(page.locator("#cmTypeBadge")).toHaveText("Not portable");
+    await expect(page.locator("#cmTypeBadge")).toHaveText("Not shareable");
     const bundle = await copiedBundle(page);
     await page.evaluate(() => document.getElementById("btnCopyAll").click());
     expect(await copiedBundle(page)).not.toBe(bundle);
@@ -649,7 +649,7 @@ test("CMH-DECK-SHOWCASE-05: showcase deck front-loads the comparison and prompts
   }
 });
 
-test("CMH-DECK-SHOWCASE-06: Act 4 slides explain the deterministic build, portability, and test model", async ({ page }) => {
+test("CMH-DECK-SHOWCASE-06: Act 4 slides explain the deterministic build, shareability, and test model", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
     await showSlideWith(page, "text=Anatomy of a commentable file.");
@@ -661,17 +661,17 @@ test("CMH-DECK-SHOWCASE-06: Act 4 slides explain the deterministic build, portab
     await expect(anatomy).toContainText("That separation is why upgrades stay deterministic");
     await expect(anatomy).toContainText("The build swaps only the layer-owned regions and re-stamps the version");
 
-    await showSlideWith(page, "text=Three portability modes explain every handoff.");
-    const portability = page.locator(".slide.active");
-    await expect(portability).toContainText("Non-portable");
-    await expect(portability).toContainText("Portable");
-    await expect(portability).toContainText("Offline");
-    await expect(portability).toContainText("Styles + runtime");
-    await expect(portability).toContainText("skill folder");
-    await expect(portability).toContainText("CDN");
-    await expect(portability).toContainText("vendored runtimes");
-    await expect(portability).toContainText("browser storage");
-    await expect(portability).toContainText("seeded from HTML");
+    await showSlideWith(page, "text=Three shareability modes explain every handoff.");
+    const shareability = page.locator(".slide.active");
+    await expect(shareability).toContainText("Non-shareable");
+    await expect(shareability).toContainText("Shareable");
+    await expect(shareability).toContainText("Offline");
+    await expect(shareability).toContainText("Styles + runtime");
+    await expect(shareability).toContainText("skill folder");
+    await expect(shareability).toContainText("CDN");
+    await expect(shareability).toContainText("vendored runtimes");
+    await expect(shareability).toContainText("browser storage");
+    await expect(shareability).toContainText("seeded from HTML");
 
     await showSlideWith(page, "text=How the skill is built.");
     const build = page.locator(".slide.active");
@@ -1189,20 +1189,20 @@ test("CMH-DECK-SHOWCASE-19: link pills stay rounded on hover in comment mode, th
   }
 });
 
-test("CMH-DECK-SHOWCASE-17: the portability-modes slide tags parts with colorful source pills", async ({ page }) => {
+test("CMH-DECK-SHOWCASE-17: the shareability-modes slide tags parts with colorful source pills", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
     await showSlideWith(page, ".show-mode-table");
     const slide = page.locator(".slide.active");
     const pills = slide.locator("td .show-src");
-    // Exactly 11 source pills: 3 modes x 3 part-columns = 9 cells, and the Portable + Offline
+    // Exactly 11 source pills: 3 modes x 3 part-columns = 9 cells, and the Shareable + Offline
     // "Comments" cells each carry a 2-pill "seed + storage" pair (+2). Asserting the exact total
     // (not just >= 9) makes dropping a storage pill from those cells fail the test.
     await expect(pills.first()).toBeVisible();
     await expect(pills).toHaveCount(11);
-    // The Portable and Offline "Comments" cells each show BOTH the seed and the storage pill, so the
+    // The Shareable and Offline "Comments" cells each show BOTH the seed and the storage pill, so the
     // "seeded from HTML, then browser storage" handoff is not misrepresented as seed-only.
-    const dualCells = slide.locator("tbody tr").filter({ hasText: /Portable|Offline/ }).locator("td:last-child");
+    const dualCells = slide.locator("tbody tr").filter({ hasText: /Shareable|Offline/ }).locator("td:last-child");
     await expect(dualCells.nth(0).locator(".show-src")).toHaveCount(2);
     await expect(dualCells.nth(1).locator(".show-src")).toHaveCount(2);
     await expect(dualCells.nth(0)).toContainText("seeded from HTML");

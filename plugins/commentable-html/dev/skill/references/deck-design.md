@@ -46,7 +46,7 @@ If the entry request says "slide deck", "presentation", "pitch deck", "slides fo
    air-gapped, or emailed/handed off? Air-gapped or handoff means author for **Export Offline**
    (snapshotted diagrams/charts, zero network) and expect a static fallback to show.
 4. **Async peer review?** Will reviewers comment on it and send it back? If yes, emphasize the
-   **Export Portable** round-trip and stable-id story; the deck is itself the review surface.
+   **Export Shareable** round-trip and stable-id story; the deck is itself the review surface.
 5. **Theme / brand.** Which native deck theme preset (`tools/deck/themes/`, for example `terminal`),
    or a specific palette/brand? Commit to ONE content-informed theme; prefer a native preset, and use
    the vendored frontend-slides `STYLE_PRESETS.md` only for a bespoke look; avoid generic AI-slop defaults.

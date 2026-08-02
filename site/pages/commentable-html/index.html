@@ -252,7 +252,7 @@
     <section id="features">
       <div class="wrap">
         <h2 class="section-title">What you get</h2>
-        <p class="section-sub">A full code-review layer that travels with the document; export to one portable HTML file when you want to share.</p>
+        <p class="section-sub">A full code-review layer that travels with the document; export to one shareable HTML file when you want to share.</p>
         <figure class="feature-shot">
           <div class="feature-frame">
             <span class="feature-dots" aria-hidden="true"><span class="feature-dot"></span><span class="feature-dot"></span><span class="feature-dot"></span></span>
@@ -265,7 +265,7 @@
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><rect x="5" y="10" width="3" height="8" rx="0.5"/><rect x="10.5" y="5" width="3" height="13" rx="0.5"/><rect x="16" y="13" width="3" height="5" rx="0.5"/></svg></span><h3>Rich content, not just prose</h3><p>Author Chart.js charts, Mermaid diagrams, drag-and-drop triage boards, rendered code diffs (inline or side-by-side), and syntax-highlighted code and KQL snippets - all first-class, and every one of them individually commentable.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 7v10l8 4 8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg></span><h3>Self-contained when you share</h3><p>By default the layer loads from small companion files for cheap iteration. One click inlines the CSS, review UI, and every comment into a single HTML file you can email, archive, or reopen anywhere - no server and no build step.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.6-5.6L20 8"/><path d="M20 3v5h-5"/><path d="M20 12a8 8 0 0 1-13.6 5.6L4 16"/><path d="M4 21v-5h5"/></svg></span><h3>Round-trip to the agent</h3><p>One Copy all hands the agent every comment at once - a Markdown bundle plus a machine-readable id list - so it makes a single coordinated, coherent edit across all your notes instead of a one-at-a-time pass, then marks them handled.</p></div>
-          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/></svg></span><h3>Export as Portable or Offline</h3><p>Export as Portable inlines the review layer and comments so a review travels in one file. Export Offline goes further: it snapshots the mermaid diagrams and charts and strips every remote loader, so the file opens with no network at all.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/></svg></span><h3>Export as Shareable or Offline</h3><p>Export as Shareable inlines the review layer and comments so a review travels in one file. Export Offline goes further: it snapshots the mermaid diagrams and charts and strips every remote loader, so the file opens with no network at all.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg></span><h3>Handled comments stay gone</h3><p>Once the agent marks a comment handled, it is pruned on reload. The HTML file is the single source of truth, not the browser cache.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg></span><h3>Comments survive a restart</h3><p>While you iterate, every comment is saved to your browser's localStorage, so closing the tab, restarting the browser, or rebooting your machine never loses your work - reopen the file and your comments are still there.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></span><h3>Deterministic tools</h3><p>Ships stdlib-only Python tools and a strict validator so generated documents are correct by construction, not by luck.</p></div>
@@ -295,9 +295,9 @@
             <h3 class="loop-title">Peer review</h3>
             <div class="steps steps-vertical">
               <div class="step"><h4>Self review first</h4><p>Run the self-review loop to get the artifact in good shape.</p></div>
-              <div class="step"><h4>Export as Portable</h4><p>Download one self-contained copy and share it with a peer.</p></div>
-              <div class="step"><h4>Peer comments</h4><p>The peer opens it, adds inline comments, and Exports as Portable again - comments now embedded in the HTML.</p></div>
-              <div class="step"><h4>Back to the agent</h4><p>You open their Portable file and Copy all to feed their feedback to the agent.</p></div>
+              <div class="step"><h4>Export as Shareable</h4><p>Download one self-contained copy and share it with a peer.</p></div>
+              <div class="step"><h4>Peer comments</h4><p>The peer opens it, adds inline comments, and Exports as Shareable again - comments now embedded in the HTML.</p></div>
+              <div class="step"><h4>Back to the agent</h4><p>You open their Shareable file and Copy all to feed their feedback to the agent.</p></div>
             </div>
           </div>
           <div class="section-block loop-col">
@@ -306,7 +306,7 @@
               <div class="step"><h4>Receive a plan</h4><p>A colleague sends a plan or report as markdown or HTML.</p></div>
               <div class="step"><h4>Convert</h4><p>Ask the agent to turn it into a commentable HTML with this skill.</p></div>
               <div class="step"><h4>Review inline</h4><p>Add your comments in place, on exactly the parts you mean.</p></div>
-              <div class="step"><h4>Export and send back</h4><p>Export as Portable and return it with your comments embedded.</p></div>
+              <div class="step"><h4>Export and send back</h4><p>Export as Shareable and return it with your comments embedded.</p></div>
             </div>
           </div>
         </div>
@@ -364,22 +364,22 @@
 
     <section id="modes">
       <div class="wrap">
-        <h2 class="section-title">Three portability modes</h2>
+        <h2 class="section-title">Three shareability modes</h2>
         <p class="section-sub">Same document, three ways to assemble it - pick based on whether it stays local, travels, or must work with no network. The graph in each card shows where every part comes from.</p>
         <div class="grid">
           <div class="card feature mode-card">
-            <h3>Non-portable <span class="badge">legacy</span></h3>
-            <p>References shared companion assets instead of inlining them. New documents are no longer generated this way, but existing ones are opened, validated and edited exactly as before, permanently - the runtime and its companion files are kept for that reason. Migrate one to Portable whenever you like with <code>tools/authoring/to_portable.py</code>.</p>
-            <dl class="mode-sources" aria-label="Where each part comes from in Non-portable mode">
+            <h3>Non-shareable <span class="badge">legacy</span></h3>
+            <p>References shared companion assets instead of inlining them. New documents are no longer generated this way, but existing ones are opened, validated and edited exactly as before, permanently - the runtime and its companion files are kept for that reason. Migrate one to Shareable whenever you like with <code>tools/authoring/to_shareable.py</code>.</p>
+            <dl class="mode-sources" aria-label="Where each part comes from in Non-shareable mode">
               <div class="mode-source"><dt>Styles + runtime</dt><dd><span class="src src-folder">skill folder</span></dd></div>
               <div class="mode-source"><dt>Mermaid + charts</dt><dd><span class="src src-cdn">CDN</span></dd></div>
               <div class="mode-source"><dt>Comments</dt><dd><span class="src src-storage">browser storage</span></dd></div>
             </dl>
           </div>
           <div class="card feature mode-card">
-            <h3>Portable</h3>
-            <p>One self-contained file with the CSS, runtime, and comments inlined. Best when you want to share the document with a peer or keep it as a durable, long-term artifact - one click via Export as Portable.</p>
-            <dl class="mode-sources" aria-label="Where each part comes from in Portable mode">
+            <h3>Shareable</h3>
+            <p>One self-contained file with the CSS, runtime, and comments inlined. Best when you want to share the document with a peer or keep it as a durable, long-term artifact - one click via Export as Shareable.</p>
+            <dl class="mode-sources" aria-label="Where each part comes from in Shareable mode">
               <div class="mode-source"><dt>Styles + runtime</dt><dd><span class="src src-inline">inlined</span></dd></div>
               <div class="mode-source"><dt>Mermaid + charts</dt><dd><span class="src src-cdn">CDN</span></dd></div>
               <div class="mode-source"><dt>Comments</dt><dd><span class="src src-seed">seeded from HTML</span><span class="src src-storage">then browser storage</span></dd></div>
@@ -387,7 +387,7 @@
           </div>
           <div class="card feature mode-card">
             <h3>Offline</h3>
-            <p>Everything Portable does, plus the mermaid diagrams and charts are rendered and inlined as snapshots and every remote loader is stripped, so the file opens with zero network - archive it or read it on a plane. One click via Export Offline.</p>
+            <p>Everything Shareable does, plus the mermaid diagrams and charts are rendered and inlined as snapshots and every remote loader is stripped, so the file opens with zero network - archive it or read it on a plane. One click via Export Offline.</p>
             <dl class="mode-sources" aria-label="Where each part comes from in Offline mode">
               <div class="mode-source"><dt>Styles + runtime</dt><dd><span class="src src-inline">inlined</span></dd></div>
               <div class="mode-source"><dt>Mermaid + charts</dt><dd><span class="src src-inline">inlined snapshots</span></dd></div>
@@ -395,7 +395,7 @@
             </dl>
           </div>
         </div>
-        <p class="modes-note"><span class="src src-cdn">CDN</span> marks the parts that load over the network. A Non-portable or Portable report that uses mermaid diagrams or charts therefore needs an internet connection to render them - static images and the rest of the review layer still work with no network. Export Offline to inline those diagrams and charts as snapshots and drop the network dependency entirely.</p>
+        <p class="modes-note"><span class="src src-cdn">CDN</span> marks the parts that load over the network. A Non-shareable or Shareable report that uses mermaid diagrams or charts therefore needs an internet connection to render them - static images and the rest of the review layer still work with no network. Export Offline to inline those diagrams and charts as snapshots and drop the network dependency entirely.</p>
       </div>
     </section>
 

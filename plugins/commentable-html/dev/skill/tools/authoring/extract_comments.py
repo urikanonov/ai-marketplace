@@ -4,11 +4,11 @@
 This serves the PEER-REVIEW path only. In the self-review loop the reviewer clicks
 `Copy all` and pastes the bundle straight into the conversation, so the agent already has
 the comments for free and nothing needs to read the file. But when a peer returns a
-Portable file with comments baked in, nobody pastes anything - and finding them means
+Shareable file with comments baked in, nobody pastes anything - and finding them means
 grepping a multi-megabyte document. This prints just the comment state.
 
 What it returns is the EMBEDDED SNAPSHOT: the comments that were baked into the file by
-`Export as Portable` / `Export Offline`. It is NOT "all current comments". A reviewer's
+`Export as Shareable` / `Export Offline`. It is NOT "all current comments". A reviewer's
 newer edits can still be sitting in browser `localStorage`, which no command-line tool
 can read; only a fresh in-page export moves them into the file.
 
@@ -86,7 +86,7 @@ def render_text(comments):
     """Return a readable rendering with each reviewer note inside an untrusted fence."""
     if not comments:
         return ("No embedded comments. (A reviewer's unexported comments may still be in "
-                "their browser localStorage - ask for a fresh Export as Portable.)")
+                "their browser localStorage - ask for a fresh Export as Shareable.)")
     out = []
     for i, c in enumerate(comments, 1):
         if not isinstance(c, dict):

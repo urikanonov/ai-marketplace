@@ -75,7 +75,7 @@ feature touches fewer):
 - **Copy all** (`56-copy-clear.js`): a bundle section, a machine-readable JSON line, and the "has changes"
   gate (`_copyAllState`).
 - **Clear** (`62-sortable-tables.js`): whether the global Clear should reset the new state.
-- **Badge** (`70-mode-badge.js`): a Not-portable reason while the state is unsaved.
+- **Badge** (`70-mode-badge.js`): a Not-shareable reason while the state is unsaved.
 - **Exports** (`65/66/67/68`): a bake so the exported source carries the state.
 - **Startup** (`95-startup.js`): the init call (mind ORDERING - anything that adds `cm-skip` and removes
   its text from the offset system must run before offset restoration, like the diff and notes layers do)

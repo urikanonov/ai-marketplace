@@ -253,7 +253,7 @@ export const REPORT_BEATS = [
   },
   {
     id: "menu",
-    label: "Export the review: portable HTML, Markdown, offline copy",
+    label: "Export the review: shareable HTML, Markdown, offline copy",
     toast: "Exporting for sharing",
     abilities: ["toolbar-menu", "exports"],
     weight: 1,

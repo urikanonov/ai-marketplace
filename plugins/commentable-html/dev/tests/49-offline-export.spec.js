@@ -5,7 +5,7 @@ import path from "path";
 import zlib from "zlib";
 import {
   DEV, SKILL, PYTHON, fileUrl, ready, stageContent, startStaticServer,
-  installClipboardCapture, openToolbarMenu, openSidebarExportMenu, addTextComment, readDownload, stageNonPortable,
+  installClipboardCapture, openToolbarMenu, openSidebarExportMenu, addTextComment, readDownload, stageNonShareable,
   clickSidebarExport,
 } from "./helpers.js";
 
@@ -374,7 +374,7 @@ test("editing an already-offline document preserves offline mode and offline exp
 </figure>`;
   const staged = stageContent(offlineContent, { key: "cmh-offline-preserve", source: "offline-preserve.html" });
   const html = fs.readFileSync(staged.html, "utf8")
-    .replace('"mode":"portable"', '"mode":"offline"', 1);
+    .replace('"mode":"shareable"', '"mode":"offline"', 1);
   fs.writeFileSync(staged.html, html);
   try {
     await installClipboardCapture(page);
@@ -383,16 +383,16 @@ test("editing an already-offline document preserves offline mode and offline exp
     await expect(page.locator("#cmTypeBadge")).toHaveText("Offline");
     await addTextComment(page, "#offline-preserve-note", "preserve this offline note");
 
-    const [portableDownload] = await Promise.all([
+    const [shareableDownload] = await Promise.all([
       page.waitForEvent("download"),
       clickSidebarExport(page, "#btnSaveHtml"),
     ]);
-    const portableHtml = await readDownload(portableDownload);
-    expect(layerDescriptor(portableHtml).mode).toBe("offline");
-    expect(portableHtml).toContain("preserve this offline note");
-    expect(portableHtml).toContain('data-cm-offline-chart="true"');
-    expect(mediaLoadAttributes(portableHtml).length).toBeGreaterThan(0);
-    expect(networkLoadRefs(portableHtml)).toEqual([]);
+    const shareableHtml = await readDownload(shareableDownload);
+    expect(layerDescriptor(shareableHtml).mode).toBe("offline");
+    expect(shareableHtml).toContain("preserve this offline note");
+    expect(shareableHtml).toContain('data-cm-offline-chart="true"');
+    expect(mediaLoadAttributes(shareableHtml).length).toBeGreaterThan(0);
+    expect(networkLoadRefs(shareableHtml)).toEqual([]);
 
     const [offlineDownload] = await Promise.all([
       page.waitForEvent("download"),
@@ -753,8 +753,8 @@ test("a preserved inline script cannot beacon by navigating the offline file to 
   }
 });
 
-test("NonPortable export ignores region marker text in content (CMH-FWDCOMPAT-01)", async ({ page }) => {
-  const staged = stageNonPortable({
+test("NonShareable export ignores region marker text in content (CMH-FWDCOMPAT-01)", async ({ page }) => {
+  const staged = stageNonShareable({
     mutate: (html) => html.replace(
       /(<main\b[^>]*id="commentRoot"[\s\S]*?<!-- BEGIN: commentable-html - CONTENT[^>]*-->)[\s\S]*?(<!-- END: commentable-html - CONTENT -->)/,
       '$1\n<h1>Region marker prose</h1>\n<pre>\nBEGIN: commentable-html - CSS\n</pre>\n$2'
@@ -773,7 +773,7 @@ test("NonPortable export ignores region marker text in content (CMH-FWDCOMPAT-01
     expect(download.suggestedFilename()).toMatch(/\.html$/);
     const exportedHtml = await capturedDownloadText(page);
     expect(exportedHtml).toMatch(/<pre\b[\s\S]*BEGIN: commentable-html - CSS[\s\S]*<\/pre>/);
-    expectForwardCompatibleContract(exportedHtml, "portable");
+    expectForwardCompatibleContract(exportedHtml, "shareable");
   } finally {
     fs.rmSync(staged.dir, { recursive: true, force: true });
   }
@@ -1556,7 +1556,7 @@ test("CMH-OFFLINE-07: the vendored payload wins over a copy already in the docum
 });
 
 // The vendored payload is INFRASTRUCTURE, not content: `tools/authoring/vendored_libs.py` places it
-// immediately before `</body>`, i.e. AFTER the content root, while the PORTABLE template still
+// immediately before `</body>`, i.e. AFTER the content root, while the SHAREABLE template still
 // carries it in the head. Mirror the finalized placement so an authored decoy inside the content
 // region comes FIRST in document order - which is exactly what a document-order lookup would take.
 // Cut and re-insert by INDEX (not a replace() pattern): this is a fixture moving one known element,

@@ -54,7 +54,7 @@ def build_prompt(out_path):
     cmd = (
         "echo '<section><h1>Session E2E</h1><p>x</p></section>' | "
         + '"%s" "%s" --content - --key session-e2e --label "Session E2E" '
-          "--kind report --portable --out \"%s\" --force"
+          "--kind report --shareable --out \"%s\" --force"
           % (fwd(sys.executable), fwd(TOOL), fwd(out_path))
         + " && grep -E '<meta name=\"commentable-html-(session-id|agent)\"' \"%s\""
           % fwd(out_path)

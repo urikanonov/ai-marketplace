@@ -258,17 +258,17 @@ def _one_line(template, pattern, label):
     return m.group(0).rstrip() + "\n"
 
 
-def _nonportable_theme_style(template):
+def _nonshareable_theme_style(template):
     css_begins = upgrade._region_marker_matches(template, "BEGIN", "CSS")
     if len(css_begins) != 1:
-        raise RetrofitError("nonportable template CSS region is missing or duplicated")
+        raise RetrofitError("nonshareable template CSS region is missing or duplicated")
     css_begin = css_begins[0]
     style_start = template.rfind("<style>", 0, css_begin.start())
     if style_start < 0:
-        raise RetrofitError("nonportable template is missing its theme style")
+        raise RetrofitError("nonshareable template is missing its theme style")
     style_open_end = template.find(">", style_start)
     if style_open_end < 0:
-        raise RetrofitError("nonportable template has an unterminated theme style tag")
+        raise RetrofitError("nonshareable template has an unterminated theme style tag")
     style_open_end += 1
     css_line_start = template.rfind("\n", 0, css_begin.start()) + 1
     raw = template[style_open_end:css_line_start]
@@ -278,10 +278,27 @@ def _nonportable_theme_style(template):
     return '<style data-cmh-theme-vars>\n%s\n</style>\n' % raw.strip()
 
 
-def _template(portable):
-    path = new_document._default_template(nonportable=not portable)
+def _template(shareable):
+    path = new_document._default_template(nonshareable=not shareable)
     with open(path, "r", encoding="utf-8") as fh:
         return fh.read()
+
+
+# The bootstrap anchor pair, current spelling first. A template produced before the
+# Portable -> Shareable rename carries only the legacy pair, so both are tried.
+_BOOTSTRAP_ANCHORS = (
+    ("<!-- BEGIN: commentable-html - NONSHAREABLE BOOTSTRAP -->",
+     "<!-- END: commentable-html - NONSHAREABLE BOOTSTRAP -->"),
+    ("<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->",
+     "<!-- END: commentable-html - NONPORTABLE BOOTSTRAP -->"),
+)
+
+
+def _nonshareable_bootstrap_block(template):
+    for begin, end in _BOOTSTRAP_ANCHORS:
+        if begin in template and end in template:
+            return _block_between(template, begin, end)
+    raise RetrofitError("template is missing the NONSHAREABLE BOOTSTRAP block")
 
 
 def _kind_meta_tag(kind):
@@ -300,24 +317,23 @@ def _find_kind_meta(parser):
     return None
 
 
-def _layer_parts(portable, kind, include_kind=True):
-    template = _template(portable)
+def _layer_parts(shareable, kind, include_kind=True):
+    template = _template(shareable)
     head = ""
     head += _one_line(template, r'<meta\s+name="commentable-html-version"[^>]*>', "version meta")
     if include_kind:
         head += _kind_meta_tag(kind) + "\n"
     head += _one_line(template, r'<script\s+type="application/json"\s+id="commentableHtmlLayer"[^>]*>.*?</script>',
                       "layer descriptor")
-    if portable:
-        head += _nonportable_theme_style(_template(False))
+    if shareable:
+        head += _nonshareable_theme_style(_template(False))
         head += "<style>\n%s</style>\n" % _region_block(template, "CSS")
     else:
-        head += _nonportable_theme_style(template)
+        head += _nonshareable_theme_style(template)
         head += _region_block(template, "CSS")
     body_top = ""
-    if not portable:
-        body_top += _block_between(template, "<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->",
-                                   "<!-- END: commentable-html - NONPORTABLE BOOTSTRAP -->")
+    if not shareable:
+        body_top += _nonshareable_bootstrap_block(template)
     for name in ("HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI"):
         body_top += _region_block(template, name)
     body_bottom = _region_block(template, "JS")
@@ -558,9 +574,9 @@ def build_retrofit(html, args, out_path):
     body = parser.bodies[0]
     existing_kind_meta = _find_kind_meta(parser)
     head_insert, body_top, body_bottom = _layer_parts(
-        args.portable, args.kind, include_kind=existing_kind_meta is None)
+        args.shareable, args.kind, include_kind=existing_kind_meta is None)
     title_insert = _insert_title_if_missing(html, head, args.label)
-    favicon_insert = _insert_favicon_if_missing(html, head, _template(args.portable))
+    favicon_insert = _insert_favicon_if_missing(html, head, _template(args.shareable))
 
     edits = [
         (head.end_start, head.end_start, "\n" + title_insert + favicon_insert + head_insert),
@@ -602,7 +618,7 @@ def build_retrofit(html, args, out_path):
         edits.append((existing_kind_meta.start, existing_kind_meta.start_end, _kind_meta_tag(args.kind)))
 
     result = _edits_apply(html, edits)
-    if not args.portable:
+    if not args.shareable:
         result = new_document._repoint_companions(result, args.assets_prefix)
     return result, skip_warnings + _collision_warnings(html)
 
@@ -661,17 +677,19 @@ def main(argv):
     parser.add_argument("--root-selector", default=None, help='existing root to stamp, limited to a single "#id" selector')
     parser.add_argument("--skip-selectors", default="", help='comma-separated #id, .class, or tag selectors to mark class="cm-skip"')
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--portable", action="store_true",
+    mode.add_argument("--shareable", "--portable", action="store_true", dest="shareable",
                       help="accepted for compatibility and now the default: inline the layer "
-                           "into one self-contained Portable file")
-    mode.add_argument("--nonportable", action="store_true",
-                      help="produce a legacy NonPortable document that references the companion "
+                           "into one self-contained Shareable file (--portable is the accepted "
+                           "legacy spelling)")
+    mode.add_argument("--nonshareable", "--nonportable", action="store_true", dest="nonshareable",
+                      help="produce a legacy NonShareable document that references the companion "
                            "commentable-html.{css,js,assets.js} instead of inlining them. New "
                            "documents are no longer generated this way; existing ones stay "
-                           "supported, and tools/authoring/to_portable.py migrates one")
-    parser.add_argument("--assets-relative", action="store_true", help="NonPortable only: reference companions by a relative path to skill dist/")
-    parser.add_argument("--copy-assets", action="store_true", help="NonPortable only: copy companions next to the output")
-    parser.add_argument("--assets-href", default=None, help="NonPortable only: companion path prefix")
+                           "supported, and tools/authoring/to_shareable.py migrates one "
+                           "(--nonportable is the accepted legacy spelling)")
+    parser.add_argument("--assets-relative", action="store_true", help="NonShareable only: reference companions by a relative path to skill dist/")
+    parser.add_argument("--copy-assets", action="store_true", help="NonShareable only: copy companions next to the output")
+    parser.add_argument("--assets-href", default=None, help="NonShareable only: companion path prefix")
     parser.add_argument("--no-highlight", action="store_true",
                         help="do not bake syntax highlighting into raw language-labelled code "
                              "blocks (baking is ON by default so a retrofitted document is never raw)")
@@ -688,20 +706,20 @@ def main(argv):
         sys.stderr.write("retrofit: --label must be non-empty\n")
         return 2
     selected_asset_modes = sum(1 for item in (args.assets_relative, args.copy_assets, args.assets_href is not None) if item)
-    if args.portable and selected_asset_modes:
-        sys.stderr.write("retrofit: asset href options are NonPortable only\n")
+    if args.shareable and selected_asset_modes:
+        sys.stderr.write("retrofit: asset href options are NonShareable only\n")
         return 2
     if selected_asset_modes > 1:
         sys.stderr.write("retrofit: choose only one of --assets-relative, --copy-assets, or --assets-href\n")
         return 2
-    # Portable is the ONLY mode generated. A legacy NonPortable document is an EXPLICIT request:
-    # --nonportable, or one of the companion-href options, which only make sense in that mode.
-    # Deriving the mode from what the caller actually asked for means --portable (now the
+    # Shareable is the ONLY mode generated. A legacy NonShareable document is an EXPLICIT request:
+    # --nonshareable, or one of the companion-href options, which only make sense in that mode.
+    # Deriving the mode from what the caller actually asked for means --shareable (now the
     # default) can stay accepted without ever contradicting the file that gets written.
-    args.portable = not (args.nonportable or selected_asset_modes)
+    args.shareable = not (args.nonshareable or selected_asset_modes)
 
     try:
-        if args.portable:
+        if args.shareable:
             args.assets_prefix = ""
             validate_base = None
         else:
@@ -761,7 +779,7 @@ def main(argv):
         return 1
 
     try:
-        _write_atomic(out_path, result, copy_assets=(not args.portable and args.copy_assets), newline=newline)
+        _write_atomic(out_path, result, copy_assets=(not args.shareable and args.copy_assets), newline=newline)
     except OSError as exc:
         sys.stderr.write("retrofit: cannot write %s: %s\n" % (out_path, exc))
         return 1

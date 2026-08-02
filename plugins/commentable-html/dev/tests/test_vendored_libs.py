@@ -79,11 +79,11 @@ class StripAndRestoreTests(unittest.TestCase):
     """CMH-SIZE-01: the blob is removed when unusable and restored when it becomes usable."""
 
     def setUp(self):
-        with open(os.path.join(_paths.DIST, "PORTABLE.html"), "r", encoding="utf-8",
+        with open(os.path.join(_paths.DIST, "SHAREABLE.html"), "r", encoding="utf-8",
                   newline="") as fh:
-            self.portable = fh.read()
-        self.blob = vendored_libs.blob_script(self.portable)
-        self.assertTrue(self.blob, "the built PORTABLE template must carry the blob")
+            self.shareable = fh.read()
+        self.blob = vendored_libs.blob_script(self.shareable)
+        self.assertTrue(self.blob, "the built SHAREABLE template must carry the blob")
 
     def test_the_blob_is_removed_from_a_prose_only_document(self):
         html = _doc(PROSE)
@@ -475,7 +475,7 @@ class HtmlBlindnessTests(unittest.TestCase):
     def test_a_decoy_body_end_in_a_comment_does_not_receive_the_payload(self):
         # `rfind("</body>")` would pick the comment, hiding a restored 1.3 MB payload inside it
         # where neither the runtime nor find_blob can see it, while apply() reported success.
-        with open(os.path.join(_paths.DIST, "PORTABLE.html"), "r", encoding="utf-8",
+        with open(os.path.join(_paths.DIST, "SHAREABLE.html"), "r", encoding="utf-8",
                   newline="") as fh:
             blob = vendored_libs.blob_script(fh.read())
         stripped, _ = vendored_libs.apply(_doc(PROSE), blob)

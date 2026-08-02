@@ -19,7 +19,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 - Shared infrastructure used across modules: the rich-content selector vocabulary (`03-selectors.js`),
   `widgetStateChanges` (35-widgets), and the export
   primitives `SNAPSHOT_HTML` / `CMH_LAYER_SCRIPT` / `CMH_INJECTED_CHROME` / `_stripTransientBodyClasses`
-  / `_snapshotWithTail` (65-export-portable) are consumed by later export modules - move with care.
+  / `_snapshotWithTail` (65-export-shareable) are consumed by later export modules - move with care.
 
 | Module | SPEC areas | Purpose |
 | --- | --- | --- |
@@ -57,10 +57,10 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `60-export-markdown.js` | CMH-MD, CMH-CODE | Export to Markdown; per-code-block Copy button, language pill, and optional caption. |
 | `61-table-scroll.js` | CMH-RESP | Wraps each table in a `.cmh-table-scroll` box so a too-wide table scrolls instead of pushing the page sideways. |
 | `62-sortable-tables.js` | CMH-CONTENT, CMH-PERSIST | Sortable tables and durable embedded-delete persistence from Clear. |
-| `65-export-portable.js` | CMH-EXP, CMH-SEC | Export as Portable + shared export snapshot primitives. |
+| `65-export-shareable.js` | CMH-EXP, CMH-SEC | Export as Shareable + shared export snapshot primitives. |
 | `66-export-plain.js` | CMH-EXP | Save as plain HTML (strip the comment layer). |
-| `67-export-standalone.js` | CMH-MODE | Export standalone (nonportable -> single file). |
-| `68-export-offline.js` | CMH-OFFLINE | Export Offline (portable + rich-content snapshots). |
+| `67-export-standalone.js` | CMH-MODE | Export standalone (nonshareable -> single file). |
+| `68-export-offline.js` | CMH-OFFLINE | Export Offline (shareable + rich-content snapshots). |
 | `70-mode-badge.js` | CMH-MODE | Mode badge + asset-version handshake. |
 | `75-help.js` | CMH-HELP, CMH-A11Y | Help dialog. |
 | `80-sort-comments.js` | CMH-SIDE | Sort comments by time. |

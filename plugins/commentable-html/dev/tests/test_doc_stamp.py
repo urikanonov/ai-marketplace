@@ -159,7 +159,7 @@ class NewDocumentCreatedStampTests(unittest.TestCase):
     def test_new_document_stamps_created(self):
         code, html, err = _run_new_document(
             ["new_document.py", "--content", "-", "--key", "cs-v1", "--label", "L",
-             "--kind", "report", "--portable"])
+             "--kind", "report", "--shareable"])
         self.assertEqual(code, 0, err)
         created = doc_stamp.get_meta(html, doc_stamp.CREATED_META)
         self.assertIsNotNone(created, "new_document must stamp commentable-html-created")
@@ -168,7 +168,7 @@ class NewDocumentCreatedStampTests(unittest.TestCase):
     def test_new_document_does_not_claim_validation(self):
         code, html, err = _run_new_document(
             ["new_document.py", "--content", "-", "--key", "cs-v2", "--label", "L",
-             "--kind", "report", "--portable"])
+             "--kind", "report", "--shareable"])
         self.assertEqual(code, 0, err)
         self.assertIsNone(doc_stamp.get_meta(html, doc_stamp.VALIDATED_META),
                           "creation must not claim validation")
@@ -182,7 +182,7 @@ class NewDocumentSessionStampTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {}, clear=True):
             code, html, err = _run_new_document(
                 ["new_document.py", "--content", "-", "--key", "ss-v1", "--label", "L",
-                 "--kind", "report", "--portable", "--session-id", "flag-sess", "--agent", "claude"])
+                 "--kind", "report", "--shareable", "--session-id", "flag-sess", "--agent", "claude"])
         self.assertEqual(code, 0, err)
         self.assertEqual(doc_stamp.get_meta(html, doc_stamp.SESSION_META), "flag-sess")
         self.assertEqual(doc_stamp.get_meta(html, doc_stamp.AGENT_META), "claude")
@@ -191,7 +191,7 @@ class NewDocumentSessionStampTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"COPILOT_AGENT_SESSION_ID": "env-sess"}, clear=True):
             code, html, err = _run_new_document(
                 ["new_document.py", "--content", "-", "--key", "ss-v2", "--label", "L",
-                 "--kind", "report", "--portable"])
+                 "--kind", "report", "--shareable"])
         self.assertEqual(code, 0, err)
         self.assertEqual(doc_stamp.get_meta(html, doc_stamp.SESSION_META), "env-sess")
         self.assertEqual(doc_stamp.get_meta(html, doc_stamp.AGENT_META), "copilot")
@@ -200,7 +200,7 @@ class NewDocumentSessionStampTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"COPILOT_AGENT_SESSION_ID": "env-sess"}, clear=True):
             code, html, err = _run_new_document(
                 ["new_document.py", "--content", "-", "--key", "ss-v3", "--label", "L",
-                 "--kind", "report", "--portable", "--no-session-id"])
+                 "--kind", "report", "--shareable", "--no-session-id"])
         self.assertEqual(code, 0, err)
         self.assertIsNone(doc_stamp.get_meta(html, doc_stamp.SESSION_META))
 
@@ -208,7 +208,7 @@ class NewDocumentSessionStampTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {}, clear=True):
             code, html, err = _run_new_document(
                 ["new_document.py", "--content", "-", "--key", "ss-v4", "--label", "L",
-                 "--kind", "report", "--portable"])
+                 "--kind", "report", "--shareable"])
         self.assertEqual(code, 0, err)
         self.assertIsNone(doc_stamp.get_meta(html, doc_stamp.SESSION_META))
 
@@ -223,7 +223,7 @@ class ValidateStampTests(unittest.TestCase):
         p = os.path.join(self._tmp(), "doc.html")
         code, _out, err = _run_new_document(
             ["new_document.py", "--content", "-", "--key", "vs-v1", "--label", "L",
-             "--kind", "report", "--source", "doc.html", "--portable", "--out", p], stdin=content)
+             "--kind", "report", "--source", "doc.html", "--shareable", "--out", p], stdin=content)
         self.assertEqual(code, 0, err)
         return p
 

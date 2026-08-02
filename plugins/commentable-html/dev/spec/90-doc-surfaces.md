@@ -47,10 +47,10 @@ omitted here.
 | Threads, inline replies, and author names (THREAD, AUTHOR) | tutorial, help, deck |
 | Counting note and checklist changes in the badge (NOTE-04, CHECK-06) | tutorial, help, deck |
 | Copy all and sending comments to an agent (COPY, HANDLED) | tutorial, help, deck |
-| Exports: Portable, Offline, Plain HTML, Markdown, Save as PDF (EXP, OFFLINE, PRINT) | tutorial, site, help, deck |
+| Exports: Shareable, Offline, Plain HTML, Markdown, Save as PDF (EXP, OFFLINE, PRINT) | tutorial, site, help, deck |
 | Storage manager, pie-chart breakdown, and per-document browsing (STORE) | tutorial, help, deck |
 | Board and deck document kinds (BOARD, DECK, MODE) | tutorial (board), site (deck), help (board), deck |
-| Portability / offline badge and privacy (PKG-portability, PRIVACY) | tutorial, site, help, deck |
+| Shareability / offline badge and privacy (PKG-shareability, PRIVACY) | tutorial, site, help, deck |
 | Commentable widgets and SVG nodes (WIDGET) | help, deck |
 
 ### Doc-surface registry
@@ -149,3 +149,8 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-IMG-10 | opt-out: a write-side sanitization invariant for stored media metadata; a reader sees the same card and bundle, only guaranteed inert | opt-out: a security hardening invariant, not something a viewer needs shown on a slide |
 | CMH-DEMO-08 | opt-out: shipped demo content (an inline SVG figure in the visuals-matrix report) that exercises the documented inline-SVG anchor (CMH-IMG-08), not a separately documented capability | opt-out: demo-report content; the deck's evidence slide already shows commenting on a whole visual |
 | CMH-CORE-18 | opt-out: a viewport-fit robustness invariant for a dialog the tutorial and help already document; the reviewer sees the same dialog, only never cut off | opt-out: an internal layout invariant - a short-viewport clamp shows a deck viewer nothing new |
+| CMH-PORT-05 | tutorial, site, help | deck |
+| CMH-PORT-06 | opt-out: a compatibility guarantee - an existing document simply keeps validating, with nothing new for a reader to learn | opt-out: the viewer sees an old document continuing to work, which is not a slide |
+| CMH-PORT-07 | opt-out: an internal compatibility shim for already-shipped document markup; a reader sees no new capability | opt-out: a compatibility invariant with nothing to demonstrate on a slide |
+| CMH-PORT-08 | opt-out: build/authoring tooling detail (how a tool locates its template); not reader-facing | opt-out: a tooling detail with nothing to demonstrate on a slide |
+| CMH-PORT-09 | opt-out: a deprecated-alias guarantee for the agent-facing CLI; the reader-facing docs name only the current spelling | opt-out: a CLI alias with nothing to demonstrate on a slide |

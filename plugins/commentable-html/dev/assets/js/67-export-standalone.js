@@ -1,6 +1,6 @@
-/* ---------- Export standalone (nonportable -> single self-contained file) ---------- */
-// In nonportable mode the live page only references companion files via <link> and
-// <script src>. To produce ONE portable file we must inline those assets. We do
+/* ---------- Export standalone (nonshareable -> single self-contained file) ---------- */
+// In nonshareable mode the live page only references companion files via <link> and
+// <script src>. To produce ONE shareable file we must inline those assets. We do
 // NOT fetch() them (blocked from file://); instead we read the string payloads
 // from window.__COMMENTABLE_ASSETS__, which loaded as a classic <script src> and
 // therefore works even when the document is opened by double-click (file://).
@@ -96,7 +96,7 @@ function _insertBeforeLastTag(html, tag, insertion) {
   if (idx < 0) throw new Error("Could not find </" + tag + "> to inline into.");
   return html.slice(0, idx) + insertion + html.slice(idx);
 }
-function _inlineNonPortableAssets(baseHtml) {
+function _inlineNonShareableAssets(baseHtml) {
   if (!CMH_ASSETS || !CMH_ASSETS.css || !CMH_ASSETS.js) {
     throw new Error("Cannot export standalone: the commentable-html assets file "
       + "(__COMMENTABLE_ASSETS__) did not load. Keep the companion .assets.js next "
@@ -104,7 +104,7 @@ function _inlineNonPortableAssets(baseHtml) {
   }
   if (CMH_ASSETS.version && CMH_VERSION && CMH_ASSETS.version !== CMH_VERSION) {
     // Inlining a companion whose CSS/JS is a different version than the running layer
-    // would bake a mismatched runtime into the portable file. Abort with guidance
+    // would bake a mismatched runtime into the shareable file. Abort with guidance
     // rather than emit a document that silently disagrees with itself.
     throw new Error("Cannot export standalone: the companion assets file is version "
       + CMH_ASSETS.version + " but this document's runtime is " + CMH_VERSION
@@ -115,14 +115,17 @@ function _inlineNonPortableAssets(baseHtml) {
     throw new Error("Could not find the commentable-html stylesheet <link> to inline.");
   }
   _assertSingleLayerRegions(t);
-  // 1) Strip every piece of nonportable scaffolding BEFORE inlining the payloads, so
+  // 1) Strip every piece of nonshareable scaffolding BEFORE inlining the payloads, so
   //    the marker-like strings inside the runtime source can never be matched and
   //    no leftover companion reference survives. _getBaseHtml() may hand us a
   //    file:// DOM snapshot whose whitespace around trailing markers is collapsed,
   //    so we re-emit the CSS/JS regions from scratch with their own newlines
   //    rather than trusting the snapshot's line breaks.
-  t = _retargetLayerDescriptor(t, "portable");
-  t = t.replace(/[ \t]*<!--\s*BEGIN: commentable-html - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONPORTABLE BOOTSTRAP\s*-->[ \t]*/i, "");
+  t = _retargetLayerDescriptor(t, "shareable");
+  // Either spelling, but the SAME one at both ends (a backreference): a mixed pair would let the
+  // match run from the real bootstrap into an authored quotation of the other spelling and take
+  // the content in between with it.
+  t = t.replace(/[ \t]*<!--\s*BEGIN: commentable-html - NON(SHAREABLE|PORTABLE) BOOTSTRAP[\s\S]*?END: commentable-html - NON\1 BOOTSTRAP\s*-->[ \t]*/i, "");
   const cssRegion = /[ \t]*<!--\s*=*\s*BEGIN: commentable-html - CSS[\s\S]*?<!--\s*=*\s*END: commentable-html - CSS\s*=*\s*-->[ \t]*\n?/i;
   const jsRegion = /[ \t]*<!--\s*=*\s*BEGIN: commentable-html - JS[\s\S]*?<!--\s*=*\s*END: commentable-html - JS\s*=*\s*-->[ \t]*\n?/i;
   if (cssRegion.test(t)) {
@@ -166,14 +169,14 @@ function _inlineNonPortableAssets(baseHtml) {
   return t.replace(/\n{3,}/g, "\n\n");
 }
 function _buildStandaloneHtml(baseHtml, commentArr) {
-  return _inlineNonPortableAssets(_buildSavedHtml(baseHtml, commentArr));
+  return _inlineNonShareableAssets(_buildSavedHtml(baseHtml, commentArr));
 }
 async function saveStandalone() {
-  // "Export as Portable" always yields ONE combined file with the
+  // "Export as Shareable" always yields ONE combined file with the
   // comments embedded. An inline document is already self-contained, so the plain
-  // in-file embed (saveHtml) IS the combined file there; only nonportable documents
-  // need the CSS/JS inlined to become portable.
-  if (!NONPORTABLE_MODE) return saveHtml();
+  // in-file embed (saveHtml) IS the combined file there; only nonshareable documents
+  // need the CSS/JS inlined to become shareable.
+  if (!NONSHAREABLE_MODE) return saveHtml();
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
   catch (e) { showToast("Could not load base HTML."); return; }
@@ -188,5 +191,5 @@ async function saveStandalone() {
   const filename = _suggestedFilename();
   const n = exportComments.length;
   _downloadHtml(text, filename);
-  showToast(`Downloaded ${filename} - one portable file, ${n} comment${n === 1 ? "" : "s"} embedded, no companion files needed.`, { center: true });
+  showToast(`Downloaded ${filename} - one shareable file, ${n} comment${n === 1 ? "" : "s"} embedded, no companion files needed.`, { center: true });
 }

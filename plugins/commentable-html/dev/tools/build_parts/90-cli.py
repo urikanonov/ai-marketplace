@@ -1,15 +1,15 @@
 def _report(outputs, version, out_dir=None):
     out_dir = HERE if out_dir is None else out_dir
-    portable = outputs[os.path.join(out_dir, "dist", "PORTABLE.html")]
-    nonportable = outputs[os.path.join(out_dir, "dist", "NONPORTABLE.html")]
-    inline_b = len(portable.encode("utf-8"))
-    nonportable_b = len(nonportable.encode("utf-8"))
-    saved = inline_b - nonportable_b
+    shareable = outputs[os.path.join(out_dir, "dist", "SHAREABLE.html")]
+    nonshareable = outputs[os.path.join(out_dir, "dist", "NONSHAREABLE.html")]
+    inline_b = len(shareable.encode("utf-8"))
+    nonshareable_b = len(nonshareable.encode("utf-8"))
+    saved = inline_b - nonshareable_b
     pct = (saved / inline_b * 100) if inline_b else 0
     print("commentable-html build - version %s" % version)
-    print("  inline  dist/PORTABLE.html : %6d bytes" % inline_b)
-    print("  nonportable dist/NONPORTABLE.html  : %6d bytes" % nonportable_b)
-    print("  per-regeneration boilerplate avoided in nonportable mode: %d bytes (%.0f%% smaller)"
+    print("  inline  dist/SHAREABLE.html : %6d bytes" % inline_b)
+    print("  nonshareable dist/NONSHAREABLE.html  : %6d bytes" % nonshareable_b)
+    print("  per-regeneration boilerplate avoided in nonshareable mode: %d bytes (%.0f%% smaller)"
           % (saved, pct))
 
 
@@ -43,7 +43,7 @@ def main(argv):
     parser.add_argument("--assets-dir", default=None,
                         help="directory holding the canonical sources (default: <skill>/assets)")
     parser.add_argument("--out-dir", default=None,
-                        help="directory that receives dist/PORTABLE.html and dist/ (default: the skill root)")
+                        help="directory that receives dist/SHAREABLE.html and dist/ (default: the skill root)")
     parser.add_argument("--pkg-dir", default=None,
                         help="the shipped skill dir; when set, assemble skill-resources.zip and the "
                              "unzipped SKILL.md/LICENSE/THIRD_PARTY_NOTICES.md copies here and stamp the hook version there")

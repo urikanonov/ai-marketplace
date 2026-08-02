@@ -46,7 +46,7 @@ _DATA_GENERATED_RE = re.compile(r'\s+data-generated\s*=\s*(["\'])[^"\']*\1', re.
 # The mermaid loader bootstrap lives in <head>, OUTSIDE the swappable CSS/COMMENT UI/JS regions, so
 # a bare region swap never reaches it (CMH-MMD-09). upgrade.py re-emits it into already-generated
 # documents; regen_example re-emits it into every example so an example single-sources the canonical
-# loader from PORTABLE and can never ship a stale pre-CMH-MMD-07 loader (the old naive in-place
+# loader from SHAREABLE and can never ship a stale pre-CMH-MMD-07 loader (the old naive in-place
 # `mermaid.run()`) that renders a collapsed-at-load diagram as a degenerate ~16px SVG.
 # These helpers are a hand-maintained MIRROR of upgrade.py's `_mermaid_bootstrap_span` /
 # `_mermaid_loader_is_vendored`; the cross-implementation differential test
@@ -182,17 +182,17 @@ def _mermaid_loader_is_vendored(bootstrap):
     return False
 
 
-def _stamp_mermaid_loader(text, portable_html):
-    """Re-emit the canonical shell-baked mermaid loader from PORTABLE into an example, so examples
+def _stamp_mermaid_loader(text, shareable_html):
+    """Re-emit the canonical shell-baked mermaid loader from SHAREABLE into an example, so examples
     single-source the loader (like the layer regions). No-op when either side has no loader, it
     already matches, or the target is a hand-vendored offline loader (CMH-MMD-09)."""
-    tpl = _mermaid_loader_span(portable_html, "dist/PORTABLE.html")
+    tpl = _mermaid_loader_span(shareable_html, "dist/SHAREABLE.html")
     tgt = _mermaid_loader_span(text)
     if tpl is None or tgt is None:
         return text
     if _mermaid_loader_is_vendored(text[tgt[0]:tgt[1]]):
         return text
-    canonical = portable_html[tpl[0]:tpl[1]]
+    canonical = shareable_html[tpl[0]:tpl[1]]
     if text[tgt[0]:tgt[1]] == canonical:
         return text
     return text[:tgt[0]] + canonical + text[tgt[1]:]
@@ -221,14 +221,14 @@ def _stamp_layer_descriptor(text, version, mode):
     return new + tail
 
 
-def _vendored_rich_libs_script(portable_html):
-    m = _VENDORED_RICH_LIBS_RE.search(portable_html)
+def _vendored_rich_libs_script(shareable_html):
+    m = _VENDORED_RICH_LIBS_RE.search(shareable_html)
     if not m:
-        raise SystemExit("build: could not locate the vendored rich-content script in dist/PORTABLE.html")
+        raise SystemExit("build: could not locate the vendored rich-content script in dist/SHAREABLE.html")
     return m.group(0) if m.group(0).endswith("\n") else m.group(0) + "\n"
 
 
-def _stamp_vendored_rich_libs(text, portable_html):
+def _stamp_vendored_rich_libs(text, shareable_html):
     """Refresh the vendored payload, but only in an example whose CONTENT can use it.
 
     Delegates the decision to the SHIPPED tool (tools/authoring/vendored_libs.py) so the build
@@ -236,7 +236,7 @@ def _stamp_vendored_rich_libs(text, portable_html):
     old behaviour re-stamped it into the HEAD of every example unconditionally, which is what
     made a prose-only demo 1,363 KB larger than it needed to be.
     """
-    script = _vendored_rich_libs_script(portable_html)
+    script = _vendored_rich_libs_script(shareable_html)
     vendored_libs = _shipped_tool("vendored_libs")
     # Classify BEFORE touching anything: an unclassifiable document must come back untouched,
     # and stripping first would have returned it already stripped.
@@ -284,34 +284,34 @@ def _stamp_generated_date(text, generated_date):
     return text[:m.start()] + new_tag + text[m.end():]
 
 
-def regen_example(example_html, portable_html, version, mermaid_version, where="<example>",
+def regen_example(example_html, shareable_html, version, mermaid_version, where="<example>",
                   generated_date=None):
     """Return the example with its CSS/COMMENT UI/JS regions replaced by the current
-    layer from portable_html, its <meta> version re-stamped, its mermaid CDN pin
+    layer from shareable_html, its <meta> version re-stamped, its mermaid CDN pin
     rewritten to the single source, and (when generated_date is given) its content-root
     data-generated stamped to the release date. The report's content and embedded comments are
     preserved."""
     out = example_html
     for name in _LAYER_REGIONS:
-        _region_inner(portable_html, name, "dist/PORTABLE.html")
+        _region_inner(shareable_html, name, "dist/SHAREABLE.html")
         _region_inner(out, name, where)
     for name in _EXAMPLE_SWAP_REGIONS:
-        tb, te = _region_inner(portable_html, name, "dist/PORTABLE.html")
+        tb, te = _region_inner(shareable_html, name, "dist/SHAREABLE.html")
         db, de = _region_inner(out, name, where)
-        out = out[:db] + portable_html[tb:te] + out[de:]
+        out = out[:db] + shareable_html[tb:te] + out[de:]
     out, n = _META_VERSION_RE.subn(lambda m: m.group(1) + version + m.group(2), out, count=1)
     if n != 1:
         raise SystemExit("build: %s has no commentable-html-version <meta> to stamp" % where)
-    out = _stamp_vendored_rich_libs(out, portable_html)
-    out = _stamp_layer_descriptor(out, version, "portable")
+    out = _stamp_vendored_rich_libs(out, shareable_html)
+    out = _stamp_layer_descriptor(out, version, "shareable")
     out = _stamp_content_root_hook(out)
     out = _stamp_generated_date(out, generated_date)
-    out = _stamp_mermaid_loader(out, portable_html)
+    out = _stamp_mermaid_loader(out, shareable_html)
     out = _MERMAID_CDN_RE.sub(lambda m: m.group(1) + mermaid_version + m.group(2), out)
     return out
 
 
-def build_examples(portable_html, version, mermaid_version, examples_dir, generated_date=None):
+def build_examples(shareable_html, version, mermaid_version, examples_dir, generated_date=None):
     """Regenerate every report-*.html and deck-*.html under examples_dir from its INDEPENDENT
     content source in dev/examples/src/ (not from the shipped file itself). Returns {out_path: text}.
     An absent examples_dir (e.g. a temp-dir build) or an absent source dir yields no entries.
@@ -325,7 +325,7 @@ def build_examples(portable_html, version, mermaid_version, examples_dir, genera
             continue
         src_path = os.path.join(EXAMPLES_SRC, name)
         out_path = os.path.join(examples_dir, name)
-        result[out_path] = regen_example(read(src_path), portable_html, version, mermaid_version, name,
+        result[out_path] = regen_example(read(src_path), shareable_html, version, mermaid_version, name,
                                          generated_date=generated_date)
     return result
 
@@ -380,15 +380,15 @@ def build_all(assets_dir=None, out_dir=None, examples_dir=None):
             assets_name: {"sha256": sha256(assets_js), "bytes": len(assets_js.encode("utf-8"))},
         },
     }
-    portable = build_inline(css, js, shell, version, mermaid_version, vendored_rich_libs_json)
+    shareable = build_inline(css, js, shell, version, mermaid_version, vendored_rich_libs_json)
     outputs = {
-        os.path.join(dist_dir, "PORTABLE.html"): portable,
+        os.path.join(dist_dir, "SHAREABLE.html"): shareable,
         os.path.join(dist_dir, css_name): css_file,
         os.path.join(dist_dir, js_name): js_file,
         os.path.join(dist_dir, assets_name): assets_js,
         os.path.join(dist_dir, "manifest.json"): json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-        os.path.join(dist_dir, "NONPORTABLE.html"): build_nonportable(shell, version, mermaid_version, vendored_rich_libs_json),
+        os.path.join(dist_dir, "NONSHAREABLE.html"): build_nonshareable(shell, version, mermaid_version, vendored_rich_libs_json),
     }
-    outputs.update(build_examples(portable, version, mermaid_version, examples_dir, generated_date))
+    outputs.update(build_examples(shareable, version, mermaid_version, examples_dir, generated_date))
     outputs.update(build_prompt_examples(examples_dir))
     return outputs, version

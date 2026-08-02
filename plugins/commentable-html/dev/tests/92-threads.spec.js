@@ -538,14 +538,14 @@ test.describe("collaboration: author attribution and threads", () => {
     expect((await storedComments(page)).find((c) => c.id === "corphanx01")).toBeUndefined();
   });
 
-  test("a live thread survives a real Export as Portable round-trip (CMH-THREAD-04)", async ({ page }) => {
-    // Build a live thread through the UI, Export as Portable, then reopen the DOWNLOADED file in a
+  test("a live thread survives a real Export as Shareable round-trip (CMH-THREAD-04)", async ({ page }) => {
+    // Build a live thread through the UI, Export as Shareable, then reopen the DOWNLOADED file in a
     // fresh origin (empty localStorage) so the thread can only come from the embedded block.
     await openInline(page);
     await setReviewerName(page, "Alice");
-    await addTextComment(page, "#commentRoot p", "portable root", 0);
+    await addTextComment(page, "#commentRoot p", "shareable root", 0);
     await setReviewerName(page, "Bob");
-    await addReply(page, "portable reply");
+    await addReply(page, "shareable reply");
 
     const [download] = await Promise.all([
       page.waitForEvent("download"),
@@ -564,8 +564,8 @@ test.describe("collaboration: author attribution and threads", () => {
     await expect(page.locator(".cm-card[data-cid]")).toHaveCount(1);
     const card = page.locator(".cm-card[data-cid]").first();
     await expect(card.locator(".cm-reply")).toHaveCount(1);
-    await expect(card).toContainText("portable root");
-    await expect(card).toContainText("portable reply");
+    await expect(card).toContainText("shareable root");
+    await expect(card).toContainText("shareable reply");
     await expect(card.locator(".cm-entry-root .cm-author-pill")).toHaveText("Alice");
     await expect(card.locator(".cm-reply .cm-author-pill")).toHaveText("Bob");
     fs.rmSync(dir, { recursive: true, force: true });

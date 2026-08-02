@@ -20,7 +20,7 @@ CONTENT_BEGIN = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY betwee
 
 CONTENT_END = "<!-- END: commentable-html - CONTENT -->"
 
-# The token the NonPortable bootstrap watchdog sets/reads. The parser records whether it appears
+# The token the NonShareable bootstrap watchdog sets/reads. The parser records whether it appears
 # OUTSIDE the authored CONTENT region, so a document that merely MENTIONS it in prose does not
 # look like it carries a watchdog.
 READY_TOKEN = "__commentableHtmlReady"
@@ -82,10 +82,10 @@ def parsed_attrs_have_class(ad, class_name):
     return any(part.casefold() == wanted for part in (ad.get("class") or "").split())
 
 
-# dist/PORTABLE.html ships a working DEMO: its content root carries these placeholder
+# dist/SHAREABLE.html ships a working DEMO: its content root carries these placeholder
 # values. A finished consumer document must (a) give its content root a unique
 # data-comment-key - not the demo one - and (b) never leave real content commented
-# out. The two checks below are written so the pristine dist/PORTABLE.html (demo key
+# out. The two checks below are written so the pristine dist/SHAREABLE.html (demo key
 # + demo <title>) still passes with zero findings, while a botched retrofit (a script
 # that replaced the WRONG "<main id=commentRoot>" and buried the consumer's real
 # content in a comment, leaving the demo as the live root) is caught. A single
@@ -95,14 +95,20 @@ DEMO_TITLE = "Commentable HTML - Demo"
 
 DEMO_COMMENT_KEY = "commentable-html-demo"
 
-DEMO_NONPORTABLE_TITLE = "Commentable HTML - NonPortable Demo"
+DEMO_NONSHAREABLE_TITLE = "Commentable HTML - NonShareable Demo"
 
-DEMO_NONPORTABLE_COMMENT_KEY = "commentable-html-nonportable-demo"
+DEMO_NONSHAREABLE_COMMENT_KEY = "commentable-html-nonshareable-demo"
 
 # Each pristine demo content-root key maps to the <title> its generated template
 # keeps. A customized retrofit that leaves the demo root in place (changed title,
-# same demo key) is flagged for both the inline and the nonportable template.
-DEMO_KEYS = {DEMO_COMMENT_KEY: DEMO_TITLE, DEMO_NONPORTABLE_COMMENT_KEY: DEMO_NONPORTABLE_TITLE}
+# same demo key) is flagged for both the inline and the nonshareable template.
+DEMO_KEYS = {
+    DEMO_COMMENT_KEY: DEMO_TITLE,
+    DEMO_NONSHAREABLE_COMMENT_KEY: DEMO_NONSHAREABLE_TITLE,
+    # The pre-rename spellings the NONPORTABLE.html demo template used. They stay in the map so an
+    # already-shipped legacy demo is still recognized as a pristine demo root.
+    "commentable-html-nonportable-demo": "Commentable HTML - NonPortable Demo",
+}
 
 DOC_EXAMPLE_COMMENT_KEY = "my-doc"
 
@@ -608,7 +614,7 @@ class _DocParser(_BrowserBoundaries):
         self.all_ids = []        # every element id value, in document order
         # The LAYER's own markup: everything the parser sees OUTSIDE the authored CONTENT region
         # (`_in_commentable_content()`). A document about commentable-html can DEMONSTRATE the
-        # companion markup in its prose, so the mode determination and the NonPortable checks read
+        # companion markup in its prose, so the mode determination and the NonShareable checks read
         # these instead of the whole document. Tracking it in the parse (rather than by marker
         # offsets) means the region is exactly what a browser would agree it is: real HTML comment
         # markers, inside the live #commentRoot, outside an inert <template> and outside CDATA.
@@ -662,7 +668,7 @@ class _DocParser(_BrowserBoundaries):
         return self._in_content_region and self._in_comment_root()
 
     def _note_ready_token(self, text):
-        """Record the NonPortable bootstrap watchdog token, but ONLY from the body of an
+        """Record the NonShareable bootstrap watchdog token, but ONLY from the body of an
         executable <script> belonging to the LAYER - outside the authored CONTENT region (and, by
         construction of `_cur_script`, outside an inert <template>). The watchdog IS such a script,
         so authored prose, a reviewer note in the embedded-comments JSON, or a template that merely

@@ -172,7 +172,7 @@ function saveComments() {
     }
     // Blocked / private mode: keep the existing recovery-path warning.
     showToast("Comment NOT saved to this browser (storage full or blocked) - it will be lost on "
-      + "reload. Use Copy all or Export as Portable to keep it.", { alert: true, duration: 8000 });
+      + "reload. Use Copy all or Export as Shareable to keep it.", { alert: true, duration: 8000 });
     return false;
   }
 }
@@ -196,7 +196,7 @@ function _tombstoneEmbedded(ids) {
 }
 function _ensureTombstoneEmbedded(ids, firstWriteOk, commentsWriteOk) {
   if (commentsWriteOk && (firstWriteOk || _tombstoneEmbedded(ids))) return true;
-  showToast("Deleted embedded comment was removed in this session, but the browser could not persist its delete marker. It may reappear after reload; use Export as Portable after freeing storage.", { alert: true, duration: 10000 });
+  showToast("Deleted embedded comment was removed in this session, but the browser could not persist its delete marker. It may reappear after reload; use Export as Shareable after freeing storage.", { alert: true, duration: 10000 });
   return false;
 }
 function commentTimestamp(c) {

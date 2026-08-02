@@ -103,7 +103,7 @@ class ValidateHighlightingTests(ValidateAssertions, unittest.TestCase):
         1)
 
     def _doc_with_code_and_layer_prose(self, code_html):
-        """The Portable shape that hid the defect: the inlined layer CSS and JS both mention
+        """The Shareable shape that hid the defect: the inlined layer CSS and JS both mention
         <pre> and <code> in prose, on either side of the author's real code block."""
         main = (
             '<main id="commentRoot" data-cmh-content-root data-comment-key="k" '
@@ -115,10 +115,10 @@ class ValidateHighlightingTests(ValidateAssertions, unittest.TestCase):
                            self._JS_MENTIONING_PRE])
 
     def test_layer_css_and_js_prose_does_not_blind_the_check(self):
-        # CMH-VAL-11: a Portable document inlines the layer CSS and JS, whose prose mentions
+        # CMH-VAL-11: a Shareable document inlines the layer CSS and JS, whose prose mentions
         # <pre> and <code>. Scanning the RAW document let one of those mentions start a greedy
         # match that swallowed the real block, so the check reported nothing at all and every
-        # Portable document shipped its raw blocks unflagged.
+        # Shareable document shipped its raw blocks unflagged.
         doc = self._doc_with_code_and_layer_prose(
             '<pre><code class="language-python">def f(): return 1</code></pre>')
         self.assertWarn(doc, "is not syntax-highlighted")
@@ -142,7 +142,7 @@ class ValidateHighlightingTests(ValidateAssertions, unittest.TestCase):
     def test_a_script_named_inside_a_comment_does_not_mask_the_real_block(self):
         # The masking must run as ONE left-to-right pass. Masking <script>/<style> BEFORE
         # comments let a "<script" mentioned inside an authored comment open a mask that ran to
-        # the document's next real </script> - in a Portable document the layer JS always
+        # the document's next real </script> - in a Shareable document the layer JS always
         # supplies one - blanking the author's block and silencing the check all over again.
         doc = self._doc_with_code(
             '<!-- move the <script> tag later -->\n'

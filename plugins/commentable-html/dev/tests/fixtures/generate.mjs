@@ -5,7 +5,7 @@
 //   node tests/fixtures/generate.mjs           # (re)generate the fixtures
 //   node tests/fixtures/generate.mjs --check   # fail if committed fixtures are stale
 //
-// Fixtures are DERIVED from the current dist/PORTABLE.html + dist/ (which tools/build.py
+// Fixtures are DERIVED from the current dist/SHAREABLE.html + dist/ (which tools/build.py
 // generates), so after changing the layer run tools/build.py then this. The --check mode
 // is wired into the test suite so stale fixtures fail CI.
 import fs from "fs";
@@ -15,13 +15,13 @@ import { fileURLToPath } from "url";
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // dev/tests/fixtures
 const DEV = path.resolve(HERE, "..", "..");                // dev
 // Marketplace pkg/dev split: the fixtures are written here under dev, and they are DERIVED
-// from the STAGE skill tree (dist/PORTABLE.html + dist/) at dev/skill, which build.py assembles
+// from the STAGE skill tree (dist/SHAREABLE.html + dist/) at dev/skill, which build.py assembles
 // into the shipped skill-resources.zip.
 const SKILL = path.resolve(DEV, "skill");
 const DIST = path.join(SKILL, "dist");
-// Relative path from the nonportable fixture's own directory to the STAGE dist/, so its
+// Relative path from the nonshareable fixture's own directory to the STAGE dist/, so its
 // companion <link>/<script src> references resolve over file://.
-const DIST_REL = path.relative(path.join(HERE, "nonportable"), DIST).replace(/\\/g, "/") + "/";
+const DIST_REL = path.relative(path.join(HERE, "nonshareable"), DIST).replace(/\\/g, "/") + "/";
 const lf = (s) => s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 const read = (p) => lf(fs.readFileSync(p, "utf8"));
 
@@ -43,7 +43,7 @@ function inject(html, o) {
   return html;
 }
 
-// The nonportable fixture is a real nonportable document whose companion <link>/<script src>
+// The nonshareable fixture is a real nonshareable document whose companion <link>/<script src>
 // normally sit next to it. To avoid a THIRD copy of the css/js/assets.js in the repo
 // (they already live in the shipped dist/), point the fixture's companion refs at the
 // shipped dist/ via DIST_REL. Only the load attributes are rewritten, not the filenames
@@ -57,16 +57,16 @@ function referenceDistCompanions(html) {
 
 function buildOutputs() {
   const outputs = {};
-  outputs[path.join(HERE, "kitchen-sink.html")] = inject(read(path.join(DIST, "PORTABLE.html")), {
+  outputs[path.join(HERE, "kitchen-sink.html")] = inject(read(path.join(DIST, "SHAREABLE.html")), {
     oldKey: "commentable-html-demo", key: "kitchen-sink-inline-v1",
-    oldDocSource: "PORTABLE.html", docSource: "kitchen-sink.html",
+    oldDocSource: "SHAREABLE.html", docSource: "kitchen-sink.html",
     title: "Kitchen-sink sample (inline)",
   });
-  outputs[path.join(HERE, "nonportable", "kitchen-sink.html")] = referenceDistCompanions(
-    inject(read(path.join(DIST, "NONPORTABLE.html")), {
-      oldKey: "commentable-html-nonportable-demo", key: "kitchen-sink-nonportable-v1",
-      oldDocSource: "NONPORTABLE.html", docSource: "kitchen-sink.html",
-      title: "Kitchen-sink sample (nonportable)",
+  outputs[path.join(HERE, "nonshareable", "kitchen-sink.html")] = referenceDistCompanions(
+    inject(read(path.join(DIST, "NONSHAREABLE.html")), {
+      oldKey: "commentable-html-nonshareable-demo", key: "kitchen-sink-nonshareable-v1",
+      oldDocSource: "NONSHAREABLE.html", docSource: "kitchen-sink.html",
+      title: "Kitchen-sink sample (nonshareable)",
     }));
   return outputs;
 }

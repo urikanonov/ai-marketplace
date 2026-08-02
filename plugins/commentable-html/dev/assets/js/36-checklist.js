@@ -207,7 +207,7 @@ function _renderOneChecklistCard(cl, list) {
       <div class="section">checklist: <strong>${escapeHtml(cl.label)}</strong></div>
       <div class="cm-card-state-title">${list.length} item${list.length === 1 ? "" : "s"} changed</div>
       <ul class="cmh-cl-changes">${items}</ul>
-      <div class="note">Auto-tracked from the current checklist state. Included in Copy all so the agent can cement it into the source; the file stays Not portable until re-exported.</div>
+      <div class="note">Auto-tracked from the current checklist state. Included in Copy all so the agent can cement it into the source; the file stays Not shareable until re-exported.</div>
       <div class="meta">
         <span></span>
         <span class="acts">

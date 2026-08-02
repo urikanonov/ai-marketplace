@@ -1,7 +1,7 @@
 // Sidebar version indicator, document-type bubble, Help dialog, per-button tooltips,
 // and the wide-screen table-of-contents side menu (scroll-spy, collapse, back-to-top).
 import { test, expect } from "@playwright/test";
-import { openInline, openNonPortable, openToolbarMenu, addTextComment, ready, fileUrl, stageInline, readDownload, INLINE } from "./helpers.js";
+import { openInline, openNonShareable, openToolbarMenu, addTextComment, ready, fileUrl, stageInline, readDownload, INLINE } from "./helpers.js";
 import fs from "fs";
 
 test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
@@ -24,29 +24,29 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     await expect(page.locator("#cmVersion")).toHaveText(/^v\d+\.\d+\.\d+$/);
   });
 
-  test("the type bubble reads Portable for an inline document with no comments", async ({ page }) => {
+  test("the type bubble reads Shareable for an inline document with no comments", async ({ page }) => {
     await openInline(page);
-    await expect(page.locator("#cmTypeBadge")).toHaveText("Portable");
+    await expect(page.locator("#cmTypeBadge")).toHaveText("Shareable");
   });
 
-  test("adding a not-yet-embedded comment makes the type Not portable", async ({ page }) => {
+  test("adding a not-yet-embedded comment makes the type Not shareable", async ({ page }) => {
     await openInline(page);
     await addTextComment(page, "#commentRoot p", "a fresh comment lives only in storage");
-    await expect(page.locator("#cmTypeBadge")).toHaveText("Not portable");
-    // The bubble explains WHY it is not portable.
+    await expect(page.locator("#cmTypeBadge")).toHaveText("Not shareable");
+    // The bubble explains WHY it is not shareable.
     await expect(page.locator("#cmTypeBadge")).toHaveAttribute("title", /not embedded/i);
   });
 
-  test("the type bubble reads Not portable for an nonportable document", async ({ page }) => {
-    await openNonPortable(page);
-    await expect(page.locator("#cmTypeBadge")).toHaveText("Not portable");
+  test("the type bubble reads Not shareable for an nonshareable document", async ({ page }) => {
+    await openNonShareable(page);
+    await expect(page.locator("#cmTypeBadge")).toHaveText("Not shareable");
     await expect(page.locator("#cmTypeBadge")).toHaveAttribute("title", /external skill/i);
   });
 
-  test("nonportable relabels the export action to Export as Portable", async ({ page }) => {
-    await openNonPortable(page);
+  test("nonshareable relabels the export action to Export as Shareable", async ({ page }) => {
+    await openNonShareable(page);
     await openToolbarMenu(page);
-    await expect(page.locator("#btnSaveHtmlTop")).toHaveText("Export as Portable");
+    await expect(page.locator("#btnSaveHtmlTop")).toHaveText("Export as Shareable");
   });
 
   test("Help opens a dialog describing the features and closes with Escape", async ({ page }) => {
@@ -55,7 +55,7 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     await page.click("#btnHelpTop");
     const help = page.locator(".cm-help");
     await expect(help).toBeVisible();
-    await expect(help).toContainText("Not portable");
+    await expect(help).toContainText("Not shareable");
     await expect(help).toContainText("Navigation");
     await page.keyboard.press("Escape");
     await expect(page.locator(".cm-help")).toHaveCount(0);
@@ -106,7 +106,7 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     await expect(version).toHaveText(/^v\d+\.\d+\.\d+$/);
     // Same value as the sidebar version indicator (both sourced from CMH_VERSION).
     await expect(version).toHaveText((await page.locator("#cmVersion").textContent()).trim());
-    // Positioned between the portability badge (left) and the brand icon (right).
+    // Positioned between the shareability badge (left) and the brand icon (right).
     const order = await menu.locator(".cm-toolbar-menu-head").evaluate((head) => {
       const kids = Array.from(head.children);
       return {
@@ -138,12 +138,12 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     }
   });
 
-  test("the type bubble reads Portable once every comment is embedded", async ({ page }) => {
+  test("the type bubble reads Shareable once every comment is embedded", async ({ page }) => {
     const { html } = stageInline({ source: INLINE });
     await page.goto(fileUrl(html));
     await ready(page);
     await addTextComment(page, "#commentRoot p", "embed me");
-    await expect(page.locator("#cmTypeBadge")).toHaveText("Not portable"); // in storage, not yet embedded
+    await expect(page.locator("#cmTypeBadge")).toHaveText("Not shareable"); // in storage, not yet embedded
     const comment = await page.evaluate(() => {
       const root = document.getElementById("commentRoot");
       const raw = localStorage.getItem(root.dataset.commentKey + "::z") || localStorage.getItem(root.dataset.commentKey);
@@ -154,10 +154,10 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     fs.writeFileSync(html, fs.readFileSync(html, "utf8").replace(embRe, (_m, a, _b, c) => a + "\n" + JSON.stringify([comment]) + "\n" + c));
     await page.reload();
     await ready(page);
-    await expect(page.locator("#cmTypeBadge")).toHaveText("Portable");
+    await expect(page.locator("#cmTypeBadge")).toHaveText("Shareable");
   });
 
-  test("editing an embedded comment drops the type back to Not portable (content, not just id)", async ({ page }) => {
+  test("editing an embedded comment drops the type back to Not shareable (content, not just id)", async ({ page }) => {
     const { html } = stageInline({ source: INLINE });
     await page.goto(fileUrl(html));
     await ready(page);
@@ -171,14 +171,14 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     fs.writeFileSync(html, fs.readFileSync(html, "utf8").replace(embRe, (_m, a, _b, c) => a + "\n" + JSON.stringify([comment]) + "\n" + c));
     await page.reload();
     await ready(page);
-    await expect(page.locator("#cmTypeBadge")).toHaveText("Portable");
+    await expect(page.locator("#cmTypeBadge")).toHaveText("Shareable");
     // Edit the comment: its updatedAt changes, so the embedded copy is now stale.
     const card = page.locator("#commentList .cm-card").first();
     await card.locator('[data-act="edit"]').click();
     const editor = card.locator(".cm-entry-root .cm-reply-compose");
     await editor.locator("textarea").fill("edited text");
     await editor.locator(".cm-reply-save").click();
-    await expect(page.locator("#cmTypeBadge")).toHaveText("Not portable");
+    await expect(page.locator("#cmTypeBadge")).toHaveText("Not shareable");
   });
 
   test("Help returns focus to the trigger button when closed", async ({ page }) => {

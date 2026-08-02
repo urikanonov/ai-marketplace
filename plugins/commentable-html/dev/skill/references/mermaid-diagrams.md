@@ -43,7 +43,7 @@ structurally commentable.
 2. Readiness uses mermaid's processed flag plus rendered SVG markers. Pie slices can make the diagram ready even though they fall through to whole-diagram commenting.
 3. Hovering a node-like target shows **Add Comment** pinned to that target. Hovering empty diagram area shows **Comment on diagram** pinned to the diagram.
 4. Saving writes an `anchorType: "mermaid"` comment keyed by `(diagramIndex, nodeKey)`, applies `cm-mermaid-hl`, and adds a sidebar card.
-5. Highlights restore across reload after mermaid finishes rendering and round-trip through **Copy all**, **Export as Portable**, and handled-id pruning.
+5. Highlights restore across reload after mermaid finishes rendering and round-trip through **Copy all**, **Export as Shareable**, and handled-id pruning.
 
 ## Diagram width and dense layouts
 

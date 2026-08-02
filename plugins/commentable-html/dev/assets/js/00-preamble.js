@@ -1,7 +1,7 @@
 (() => {
 // Pristine snapshot of the document, captured before any DOM mutation
 // (mermaid render, restored highlights, dynamic composers, etc). Used as a
-// fallback by "Export as Portable" when fetch() of the page URL is unavailable
+// fallback by "Export as Shareable" when fetch() of the page URL is unavailable
 // (e.g., file://, blocked fetch, or CSP). The snapshot is taken on the very first line
 // of the IIFE so it predates every runtime change this script makes.
 const SNAPSHOT_HTML = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;

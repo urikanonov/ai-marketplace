@@ -1,7 +1,7 @@
 # Local skill-flow regression harness
 
 `tools/skill_flow_harness.py` drives the installed **`copilot`** executable, non-interactively,
-through the commentable-html skill's main routes - create, retrofit, deck, export (portable), and the
+through the commentable-html skill's main routes - create, retrofit, deck, export (shareable), and the
 validation handoff - and then re-validates each produced document with this repo's own tools. It
 answers one question that no hermetic unit test can: *does an agent, following the CURRENT shipped
 `SKILL.md` and tools, still produce a strict-valid document for each flow?*

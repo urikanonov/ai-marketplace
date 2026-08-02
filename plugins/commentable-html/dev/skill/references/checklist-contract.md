@@ -73,7 +73,7 @@ Do not hand-write the ids and parent links: generate the markup with
   single, final `=== CMH MACHINE TRAILER (do not edit) ===` block (never inline in the per-checklist
   section), so a forged `CHECKLIST_STATE_JSON` line inside an untrusted reviewer note cannot be mistaken
   for the real state.
-- **Export.** Every export (Portable / Offline / Plain / Standalone) bakes each leaf's current state
+- **Export.** Every export (Shareable / Offline / Plain / Standalone) bakes each leaf's current state
   into its `data-cmh-state`, so the exported file opens with no pending changes.
 
 ## Cementing states into the source (the agent step)

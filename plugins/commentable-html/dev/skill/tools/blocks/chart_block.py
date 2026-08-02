@@ -9,7 +9,7 @@ The output has two clearly separated fragments:
   1) a <figure class="chart"> block for #commentRoot content
   2) chart scripts for after "END: commentable-html - JS" and before </body>
 
-The tool self-validates the emitted fragments by injecting them into dist/PORTABLE.html
+The tool self-validates the emitted fragments by injecting them into dist/SHAREABLE.html
 and running tools/validate.py as an import.
 """
 import argparse
@@ -26,7 +26,7 @@ import _toolpath  # noqa: E402
 _toolpath.ensure()
 SKILL_ROOT = _toolpath.SKILL_ROOT
 _TOOLS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_TEMPLATE = os.path.join(SKILL_ROOT, "dist", "PORTABLE.html")
+DEFAULT_TEMPLATE = _toolpath.dist_template(_toolpath.SHAREABLE_TEMPLATE)
 
 BEGIN_MARKER = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->"
 END_MARKER = "<!-- END: commentable-html - CONTENT -->"
@@ -286,7 +286,7 @@ def _self_validate_result(figure, scripts, template_path=None):
         template_html = _read_text(template_path)
         candidate = _inject_for_validation(template_html, figure, scripts)
     except (OSError, ValueError) as exc:
-        # A missing or corrupt dist/PORTABLE.html is the same class of problem as a missing
+        # A missing or corrupt dist/SHAREABLE.html is the same class of problem as a missing
         # validator - the environment, not the fragments - so it takes the same gate.
         return None, "the validation template could not be prepared (%s)" % exc
     # The temp file location does not affect chart validation (it inspects the fragment,

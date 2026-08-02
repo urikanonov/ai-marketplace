@@ -1,6 +1,6 @@
-"""Shipped-doc checks for the portability-mode diagrams (CMH-MODE-08).
+"""Shipped-doc checks for the shareability-mode diagrams (CMH-MODE-08).
 
-The Output modes reference must carry two mermaid diagrams (one Portable, one NonPortable)
+The Output modes reference must carry two mermaid diagrams (one Shareable, one NonShareable)
 showing what is bundled in the file versus fetched from where, and SKILL.md must point at them.
 """
 import os
@@ -43,7 +43,7 @@ class MermaidLayoutGuidanceTests(unittest.TestCase):
             "must warn against long cross-subgraph edges that strand nodes")
 
 
-class PortabilityDiagramsTests(unittest.TestCase):
+class ShareabilityDiagramsTests(unittest.TestCase):
     def test_exports_has_two_mode_mermaid_diagrams(self):
         text = _read(EXPORTS_MD)
         heading = "## What is bundled in the file vs fetched from where"
@@ -51,7 +51,7 @@ class PortabilityDiagramsTests(unittest.TestCase):
         section = text.split(heading, 1)[1].split("\n## ", 1)[0]
         fences = re.findall(r"```mermaid\b", section)
         self.assertGreaterEqual(len(fences), 2, "expected two mermaid diagrams in the section")
-        # Portable inlines the layer CSS/JS; NonPortable loads the companions from dist/.
+        # Shareable inlines the layer CSS/JS; NonShareable loads the companions from dist/.
         self.assertIn("(inlined)", section)
         for companion in ("commentable-html.css", "commentable-html.js", "commentable-html.assets.js"):
             self.assertIn(companion, section)
@@ -199,7 +199,7 @@ class NewFeatureDocsTests(unittest.TestCase):
     def test_skill_documents_widget_drag_and_offline_modes(self):
         text = _read(SKILL_MD)
         for snippet in (
-            "Portable is the only mode generated",
+            "Shareable is the only mode generated",
             "Offline is for zero-network handoff",
             "data-cm-draggable",
             "Only direct `data-cm-part` children of a slot are movable",
@@ -221,9 +221,9 @@ class NewFeatureDocsTests(unittest.TestCase):
         # The doc-type badge documents its three exact states with their color cues; assert the
         # precise wording so a regression that drops a state or renames it turns this test red.
         for badge_phrase in (
-            "reads **Portable** (green)",
+            "reads **Shareable** (green)",
             "reads **Offline** when",
-            "reads **Not portable** (orange)",
+            "reads **Not shareable** (orange)",
             "reopens with the **Offline** badge",
         ):
             self.assertIn(badge_phrase, text)
@@ -246,7 +246,7 @@ class SkillTrimDocsTests(unittest.TestCase):
             "python tools/validate/validate.py --strict <file.html>",
             "python tools/authoring/mark_handled.py <file.html> --from-bundle -",
             "Trust boundary (MUST)",
-            "Portable != offline",
+            "Shareable != offline",
             "private class prefix",
             "reserved `cmh-*`",
         ):
@@ -263,7 +263,7 @@ class SkillTrimDocsTests(unittest.TestCase):
                 "oldest-first and newest-first",
                 "Clicking the active arrow again",
                 "records a tombstone",
-                "remains **Not portable** until **Export as Portable**",
+                "remains **Not shareable** until **Export as Shareable**",
             ),
             "interaction-model.md": (
                 "staggers by 28px",
@@ -271,8 +271,8 @@ class SkillTrimDocsTests(unittest.TestCase):
                 "Handled comments stay handled",
             ),
             "exports.md": (
-                "Producing a NonPortable document",
-                "Guardrails that make NonPortable safe",
+                "Producing a NonShareable document",
+                "Guardrails that make NonShareable safe",
                 "Network requirements and CDN caveats",
             ),
             "retrofitting.md": (
@@ -530,7 +530,7 @@ class ChartReferenceSplitDocsTests(unittest.TestCase):
         recipes = _read(os.path.join(REFERENCES, "charts-recipes.md"))
 
         for heading in (
-            "## Dependency and portability",
+            "## Dependency and shareability",
             "## Four rules for coexisting with the commenting layer",
             "## Minimal copy-paste recipe (light theme)",
             "## The tooltip options that matter",
@@ -564,7 +564,7 @@ class DescriptionConsistencyDocsTests(unittest.TestCase):
             "html": r"\bhtml\b",
             "comment": r"\bcomments?\b|\bcommentable\b",
             "review": r"\breview(?:s|er|ers|able|ing)?\b",
-            "portable": r"\bportable\b",
+            "shareable": r"\bshareable\b",
         }
         for label, desc in (("SKILL.md", skill_desc), ("plugin.json", plugin_desc)):
             with self.subTest(surface=label):
@@ -746,7 +746,7 @@ class SkillToolIndexRetentionTests(unittest.TestCase):
             "--agent",
             "--no-session-id",
             "--force",
-            "to_portable.py",
+            "to_shareable.py",
             "only recommends `report`, `plan`, or flat `slides`",
             "mismatch warning is advisory",
             "[--toc --fix-skip --inline-images --images-base DIR] --strict",
@@ -829,7 +829,7 @@ class SkillToolIndexRetentionTests(unittest.TestCase):
             "code-review ui",
             "retrofit an existing html",
             "markdown doc",
-            "portable, self-contained review file",
+            "shareable, self-contained review file",
             "cmh",
             "report",
             "plan",
@@ -855,8 +855,8 @@ class SkillToolIndexRetentionTests(unittest.TestCase):
             "author display names",
             "reply threads",
             "markdown/print exports",
-            "nonportable",
-            "portable",
+            "nonshareable",
+            "shareable",
             "offline",
         ):
             self.assertIn(phrase, text, f"trimmed skill must keep trigger phrase {phrase!r}")

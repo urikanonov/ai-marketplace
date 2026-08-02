@@ -100,7 +100,7 @@ class BrandProfileTests(unittest.TestCase):
 
         code, html, err = self._run_new_document([
             "new_document.py", "--content", "-", "--key", "brand-v1", "--label", "Brand Doc",
-            "--kind", "generic", "--portable", "--brand", brand,
+            "--kind", "generic", "--shareable", "--brand", brand,
         ])
 
         self.assertEqual(code, 0, err)
@@ -129,7 +129,7 @@ class BrandProfileTests(unittest.TestCase):
                 brand = self._write_json(d, name, profile)
                 code, out, err = self._run_new_document([
                     "new_document.py", "--content", "-", "--key", "brand-bad", "--label", "Bad",
-                    "--kind", "generic", "--portable", "--brand", brand,
+                    "--kind", "generic", "--shareable", "--brand", brand,
                 ])
                 self.assertEqual(code, 2)
                 self.assertIn(needle, err)

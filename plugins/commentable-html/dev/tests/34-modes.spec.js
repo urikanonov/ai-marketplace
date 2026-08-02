@@ -8,22 +8,22 @@ import {
 } from "./helpers.js";
 
 // Explicit end-to-end coverage of the three document modes a reviewer encounters:
-// Portable (clean), Not portable (live comments not embedded), and Portable-with-comments
+// Shareable (clean), Not shareable (live comments not embedded), and Shareable-with-comments
 // (a shared copy whose comments travel embedded in the file, independent of localStorage).
 
-test("MODE Portable: a fresh self-contained document reports Portable", async ({ page }) => {
-  await openInline(page); // dist/PORTABLE.html: assets embedded, no live comments
-  await expect(page.locator("#cmTypeBadge")).toHaveText("Portable");
+test("MODE Shareable: a fresh self-contained document reports Shareable", async ({ page }) => {
+  await openInline(page); // dist/SHAREABLE.html: assets embedded, no live comments
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Shareable");
 });
 
-test("MODE Not portable: a live comment that is not embedded flips the badge to Not portable", async ({ page }) => {
+test("MODE Not shareable: a live comment that is not embedded flips the badge to Not shareable", async ({ page }) => {
   await openInline(page);
-  await expect(page.locator("#cmTypeBadge")).toHaveText("Portable");
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Shareable");
   await addTextComment(page, "#commentRoot section p", "please review this");
-  await expect(page.locator("#cmTypeBadge")).toHaveText("Not portable"); // comment lives only in localStorage
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Not shareable"); // comment lives only in localStorage
 });
 
-test("MODE Portable-with-comments: Save embeds comments that travel to a fresh browser and stay Portable", async ({ page, browser }) => {
+test("MODE Shareable-with-comments: Save embeds comments that travel to a fresh browser and stay Shareable", async ({ page, browser }) => {
   await openInline(page);
   await addTextComment(page, "#commentRoot section p", "carry me into the file");
   expect((await storedComments(page)).length).toBe(1);
@@ -36,8 +36,8 @@ test("MODE Portable-with-comments: Save embeds comments that travel to a fresh b
   fs.writeFileSync(shared, await readDownload(download));
 
   // The live page has not reloaded: its own comment is still localStorage-only (not
-  // embedded in its DOM), so the live badge stays Not portable after the export.
-  await expect(page.locator("#cmTypeBadge")).toHaveText("Not portable");
+  // embedded in its DOM), so the live badge stays Not shareable after the export.
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Not shareable");
 
   const ctx = await browser.newContext();
   const fresh = await ctx.newPage();
@@ -45,7 +45,7 @@ test("MODE Portable-with-comments: Save embeds comments that travel to a fresh b
     await fresh.goto(fileUrl(shared));
     await fresh.waitForFunction(() => window.__commentableHtmlReady === true);
     await expect(fresh.locator("#commentList")).toContainText("carry me into the file");
-    await expect(fresh.locator("#cmTypeBadge")).toHaveText("Portable"); // embedded, not from localStorage
+    await expect(fresh.locator("#cmTypeBadge")).toHaveText("Shareable"); // embedded, not from localStorage
   } finally {
     await ctx.close();
     fs.unlinkSync(shared);

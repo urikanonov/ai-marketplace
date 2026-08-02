@@ -1,15 +1,15 @@
-def _check_self_contained(html, parser, nonportable):
+def _check_self_contained(html, parser, nonshareable):
     errors, warnings = [], []
     # 11e) Self-contained guarantee: the finished document must not pull resources over the
     #      network (the core promise is a single self-contained file). <a href> links
     #      are navigation, not resource loads, so they are exempt; Chart.js from a CDN
-    #      is a documented opt-in in portable mode (its SRI/version are checked in
+    #      is a documented opt-in in shareable mode (its SRI/version are checked in
     #      check_charts); mermaid CDN imports are handled by check_mermaid_renders.
     #      Offline mode is stricter: no network-loading resource is allowed.
     def _is_network(v):
         return bool(re.match(r"(?:https?:)?//", v or "", re.I))
     descriptor = _layer_descriptor_data(parser) or {}
-    offline_mode = (not nonportable and descriptor.get("mode") == "offline")
+    offline_mode = (not nonshareable and descriptor.get("mode") == "offline")
     def _network_values(value, srcset=False):
         if srcset:
             return [part.strip().split()[0] for part in (value or "").split(",") if part.strip()]
@@ -51,7 +51,7 @@ def _check_self_contained(html, parser, nonportable):
                     errors.append(e)
                 else:
                     errors.append('<img src="%s"> loads over the network - inline it with '
-                                  "tools/inline_images.py (external images break self-contained use and portability)"
+                                  "tools/inline_images.py (external images break self-contained use and shareability)"
                                   % src[:80])
             elif not re.match(r"[a-z][a-z0-9+.\-]*:", src, re.I):
                 warnings.append('<img src="%s"> is a local path - run tools/inline_images.py to embed '

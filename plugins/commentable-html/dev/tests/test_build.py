@@ -2,7 +2,7 @@
 """Regression tests for build.py (the commentable-html asset pipeline).
 
 Standard library only. Verifies the single-source-of-truth guarantees: the shell
-+ canonical assets deterministically regenerate dist/PORTABLE.html and the dist/ set,
++ canonical assets deterministically regenerate dist/SHAREABLE.html and the dist/ set,
 the on-disk generated files are in sync (--check), the manifest hashes are
 correct, the version is single-sourced, and the asset registry round-trips.
 
@@ -25,7 +25,7 @@ from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402  shared pkg/dev split path constants
-ROOT = _paths.PKG          # shipped outputs (dist/PORTABLE.html, dist/)
+ROOT = _paths.PKG          # shipped outputs (dist/SHAREABLE.html, dist/)
 TOOLS = _paths.TOOLS       # shipped runtime tools (for `import validate`)
 sys.path.insert(0, TOOLS)
 sys.path.insert(0, _paths.DEV_TOOLS)  # maintainer-only build tool (build.py lives in dev/)
@@ -130,7 +130,7 @@ class BuildTests(unittest.TestCase):
         css, js, shell, version = build.load_sources()
         js = build._stamp_const(js, version, "commentable-html.js")
         rebuilt = build.build_inline(css, js, shell, version, build.read_mermaid_version())
-        self.assertEqual(rebuilt, _read(os.path.join(ROOT, "dist", "PORTABLE.html")))
+        self.assertEqual(rebuilt, _read(os.path.join(ROOT, "dist", "SHAREABLE.html")))
 
     # -- versioning / manifest --------------------------------------------- #
     def test_version_is_single_sourced(self):
@@ -145,7 +145,7 @@ class BuildTests(unittest.TestCase):
         })
         companion_js = _read(os.path.join(DIST, "commentable-html.js"))
         self.assertIn('const CMH_VERSION = "%s";' % v, companion_js)
-        for name in ("PORTABLE.html", "NONPORTABLE.html"):
+        for name in ("SHAREABLE.html", "NONSHAREABLE.html"):
             html = _read(os.path.join(DIST, name))
             self.assertIn('<meta name="commentable-html-version" content="%s"' % v, html)
 
@@ -189,7 +189,7 @@ class BuildTests(unittest.TestCase):
         # be the single-sourced version; the dist templates must actually carry an import (so the
         # assertion is not vacuous). Examples that do not use mermaid are simply not required to.
         ref_re = re.compile(r"cdn\.jsdelivr\.net/npm/mermaid@([^/]+)/dist/")
-        shipped = [os.path.join(DIST, "PORTABLE.html"), os.path.join(DIST, "NONPORTABLE.html")]
+        shipped = [os.path.join(DIST, "SHAREABLE.html"), os.path.join(DIST, "NONSHAREABLE.html")]
         ex_dir = _paths.EXAMPLES
         if os.path.isdir(ex_dir):
             shipped += [os.path.join(ex_dir, n) for n in os.listdir(ex_dir) if n.endswith(".html")]
@@ -199,7 +199,7 @@ class BuildTests(unittest.TestCase):
                 seen += 1
                 self.assertEqual(found, mv, "%s pins mermaid@%s but package.json single-sources %s; run build.py"
                                  % (os.path.relpath(path, ROOT), found, mv))
-        self.assertGreaterEqual(seen, 2, "expected the dist PORTABLE/NONPORTABLE templates to carry mermaid imports")
+        self.assertGreaterEqual(seen, 2, "expected the dist SHAREABLE/NONSHAREABLE templates to carry mermaid imports")
 
     def test_example_stamps_repairs_mermaid_drift(self):
         mv = build.read_mermaid_version()
@@ -254,7 +254,7 @@ class BuildTests(unittest.TestCase):
         # re-pins the mermaid CDN to the single source, so a drifted report is repaired.
         mv = build.read_mermaid_version()
         version = _read(os.path.join(_paths.DEV, "VERSION")).strip()
-        portable = _read(os.path.join(DIST, "PORTABLE.html"))
+        shareable = _read(os.path.join(DIST, "SHAREABLE.html"))
         src = _read(os.path.join(_paths.EXAMPLES, "report-taxi.html"))
         drifted = src.replace("mermaid@%s/dist/" % mv, "mermaid@9.9.9/dist/")
         self.assertNotEqual(drifted, src, "fixture should contain a mermaid pin to drift")
@@ -263,7 +263,7 @@ class BuildTests(unittest.TestCase):
             p = os.path.join(d, "examples", "report-taxi.html")
             with open(p, "w", encoding="utf-8") as fh:
                 fh.write(drifted)
-            out = build.build_examples(portable, version, mv, os.path.join(d, "examples"))
+            out = build.build_examples(shareable, version, mv, os.path.join(d, "examples"))
             self.assertIn(p, out)
             self.assertIn("mermaid@%s/dist/" % mv, out[p])
             self.assertNotIn("mermaid@9.9.9/dist/", out[p])
@@ -294,14 +294,14 @@ class BuildTests(unittest.TestCase):
             build._region_inner(text, "JS", "<duplicate>")
 
     def test_regen_example_rejects_duplicate_state_region_end(self):
-        portable = _read(os.path.join(DIST, "PORTABLE.html"))
-        example = portable.replace(
+        shareable = _read(os.path.join(DIST, "SHAREABLE.html"))
+        example = shareable.replace(
             "<!-- END: commentable-html - EMBEDDED COMMENTS -->",
             "<!-- END: commentable-html - EMBEDDED COMMENTS -->\n"
             "<!-- END: commentable-html - EMBEDDED COMMENTS -->",
             1)
         with self.assertRaisesRegex(SystemExit, "duplicate region: EMBEDDED COMMENTS"):
-            build.regen_example(example, portable, build.read_version(), build.read_mermaid_version(), "<duplicate>")
+            build.regen_example(example, shareable, build.read_version(), build.read_mermaid_version(), "<duplicate>")
 
     def test_region_inner_rejects_trailing_authored_text(self):
         text = ("     BEGIN: commentable-html - CSS as documented in this authored note\n"
@@ -361,15 +361,15 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(obj["js"], js)
 
     # -- token win --------------------------------------------------------- #
-    def test_nonportable_is_much_smaller_than_inline(self):
-        inline = self.outputs[os.path.join(ROOT, "dist", "PORTABLE.html")]
-        eco = self.outputs[os.path.join(DIST, "NONPORTABLE.html")]
+    def test_nonshareable_is_much_smaller_than_inline(self):
+        inline = self.outputs[os.path.join(ROOT, "dist", "SHAREABLE.html")]
+        eco = self.outputs[os.path.join(DIST, "NONSHAREABLE.html")]
         self.assertLess(len(eco), len(inline) * 0.8,
-                        "nonportable template should stay materially smaller than inline even with offline rich-content support")
+                        "nonshareable template should stay materially smaller than inline even with offline rich-content support")
 
     # -- both generated templates validate --------------------------------- #
     def test_both_templates_validate_clean(self):
-        for rel in ("dist/PORTABLE.html", os.path.join("dist", "NONPORTABLE.html")):
+        for rel in ("dist/SHAREABLE.html", os.path.join("dist", "NONSHAREABLE.html")):
             errors, warnings = validate.validate(os.path.join(ROOT, rel))
             self.assertEqual(errors, [], "%s errors: %r" % (rel, errors))
             self.assertEqual(warnings, [], "%s warnings: %r" % (rel, warnings))
@@ -380,7 +380,7 @@ class BuildTests(unittest.TestCase):
         # document.body; baking it into a shipped <body> makes the document render full width with
         # an empty sidebar gutter (the body.sidebar-open .app rule) before the runtime re-derives
         # state on load.
-        for name in ("PORTABLE.html", "NONPORTABLE.html"):
+        for name in ("SHAREABLE.html", "NONSHAREABLE.html"):
             body = _body_open_tag(_read(os.path.join(DIST, name)))
             self.assertIsNotNone(body, "no <body> open tag in dist/%s" % name)
             self.assertNotIn("sidebar-open", body,
@@ -397,14 +397,14 @@ class BuildTests(unittest.TestCase):
 
     # -- diff / code-review layer ships in the generated artifacts --------- #
     def test_diff_layer_present_in_artifacts(self):
-        tpl = _read(os.path.join(ROOT, "dist", "PORTABLE.html"))
-        self.assertIn('class="cmh-diff"', tpl, "diff demo block missing from dist/PORTABLE.html")
-        self.assertIn("setupDiffLayer", tpl, "diff runtime missing from inline dist/PORTABLE.html")
-        self.assertIn("cmh-diff-view", tpl, "diff CSS missing from inline dist/PORTABLE.html")
+        tpl = _read(os.path.join(ROOT, "dist", "SHAREABLE.html"))
+        self.assertIn('class="cmh-diff"', tpl, "diff demo block missing from dist/SHAREABLE.html")
+        self.assertIn("setupDiffLayer", tpl, "diff runtime missing from inline dist/SHAREABLE.html")
+        self.assertIn("cmh-diff-view", tpl, "diff CSS missing from inline dist/SHAREABLE.html")
         eco_js = _read(os.path.join(DIST, "commentable-html.js"))
-        self.assertIn("setupDiffLayer", eco_js, "diff runtime missing from nonportable companion JS")
+        self.assertIn("setupDiffLayer", eco_js, "diff runtime missing from nonshareable companion JS")
         eco_css = _read(os.path.join(DIST, "commentable-html.css"))
-        self.assertIn("cmh-diff-view", eco_css, "diff CSS missing from nonportable companion CSS")
+        self.assertIn("cmh-diff-view", eco_css, "diff CSS missing from nonshareable companion CSS")
 
     # -- stale-artifact detection ------------------------------------------ #
     def test_stale_dist_files_are_detected(self):
@@ -454,7 +454,7 @@ class BuildTests(unittest.TestCase):
             build.build_assets_js("</script>", "js", "1.2.3")
         self.assertIn("raw </script>", str(cm.exception))
 
-    def test_build_nonportable_reports_malformed_shells(self):
+    def test_build_nonshareable_reports_malformed_shells(self):
         _css, _js, shell, version = build.load_sources()
         head_end = shell.index("</head>")
         body_pos = shell.index("<body", head_end)
@@ -469,15 +469,15 @@ class BuildTests(unittest.TestCase):
         for bad_shell, message in cases:
             with self.subTest(message=message):
                 with self.assertRaises(SystemExit) as cm:
-                    build.build_nonportable(bad_shell, version, "11.16.0")
+                    build.build_nonshareable(bad_shell, version, "11.16.0")
                 self.assertIn(message, str(cm.exception))
 
     def test_main_check_reports_missing_outdated_and_stale(self):
         with tempfile.TemporaryDirectory() as d:
             dist = os.path.join(d, "dist")
             os.makedirs(dist)
-            tpl = os.path.join(d, "dist", "PORTABLE.html")
-            missing = os.path.join(dist, "NONPORTABLE.html")
+            tpl = os.path.join(d, "dist", "SHAREABLE.html")
+            missing = os.path.join(dist, "NONSHAREABLE.html")
             stale = os.path.join(dist, "commentable-html.v0.0.1.css")
             with open(tpl, "w", encoding="utf-8") as fh:
                 fh.write("old")
@@ -491,16 +491,16 @@ class BuildTests(unittest.TestCase):
                     contextlib.redirect_stderr(err):
                 code = build.main(["build.py", "--check"])
             self.assertEqual(code, 1)
-            self.assertIn("dist%sPORTABLE.html (out of date)" % os.sep, err.getvalue())
-            self.assertIn("dist%sNONPORTABLE.html (missing)" % os.sep, err.getvalue())
+            self.assertIn("dist%sSHAREABLE.html (out of date)" % os.sep, err.getvalue())
+            self.assertIn("dist%sNONSHAREABLE.html (missing)" % os.sep, err.getvalue())
             self.assertIn("commentable-html.v0.0.1.css", err.getvalue())
 
     def test_main_check_ok_prints_version(self):
         with tempfile.TemporaryDirectory() as d:
             dist = os.path.join(d, "dist")
             os.makedirs(dist)
-            tpl = os.path.join(d, "dist", "PORTABLE.html")
-            eco = os.path.join(dist, "NONPORTABLE.html")
+            tpl = os.path.join(d, "dist", "SHAREABLE.html")
+            eco = os.path.join(dist, "NONSHAREABLE.html")
             outputs = {tpl: "tpl", eco: "eco"}
             for path, text in outputs.items():
                 with open(path, "w", encoding="utf-8") as fh:
@@ -518,9 +518,9 @@ class BuildTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             dist = os.path.join(d, "dist")
             os.makedirs(dist)
-            tpl = os.path.join(d, "dist", "PORTABLE.html")
+            tpl = os.path.join(d, "dist", "SHAREABLE.html")
             css = os.path.join(dist, "commentable-html.css")
-            eco = os.path.join(dist, "NONPORTABLE.html")
+            eco = os.path.join(dist, "NONSHAREABLE.html")
             stale = os.path.join(dist, "commentable-html.v0.0.1.css")
             with open(stale, "w", encoding="utf-8") as fh:
                 fh.write("stale")

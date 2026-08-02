@@ -8,11 +8,11 @@ This inventory lists the files that ship with the skill. Development sources, th
 | --- | --- |
 | `SKILL.md` | Public skill instructions, generation steps, validation, and review loop. |
 | `dist/README.md` | Terse pointer for generated dist artifacts. |
-| `dist/PORTABLE.html` | Standalone inline template and demo. |
-| `dist/NONPORTABLE.html` | NonPortable starting shell. |
+| `dist/SHAREABLE.html` | Standalone inline template and demo. |
+| `dist/NONSHAREABLE.html` | NonShareable starting shell. |
 | `dist/commentable-html.css` | Layer stylesheet companion. |
 | `dist/commentable-html.js` | Runtime companion. |
-| `dist/commentable-html.assets.js` | Asset registry used by Export as Portable. |
+| `dist/commentable-html.assets.js` | Asset registry used by Export as Shareable. |
 | `dist/manifest.json` | Version and SHA-256 metadata for companions. |
 | `tools/` | Runtime Python helpers that ship with the skill, grouped into per-topic buckets (`tools/deck`, `tools/kusto`, `tools/checklist`, `tools/notes`, `tools/blocks`, `tools/authoring`, `tools/validate`). |
 | `references/` | Detailed generated-report references. |
@@ -22,10 +22,10 @@ This inventory lists the files that ship with the skill. Development sources, th
 | `examples/prompt-taxi.md` | Prompt for the NYC taxi example. |
 | `examples/prompt-triage.md` | Prompt for the incident triage board example. |
 | `examples/prompt-metrics.md` | Prompt for the commentable visuals matrix example. |
-| `examples/report-community-garden.html` | Portable community garden example report. |
-| `examples/report-taxi.html` | Portable NYC taxi example report. |
-| `examples/report-triage.html` | Portable incident triage board example report. |
-| `examples/report-metrics.html` | Portable commentable visuals matrix example report. |
+| `examples/report-community-garden.html` | Shareable community garden example report. |
+| `examples/report-taxi.html` | Shareable NYC taxi example report. |
+| `examples/report-triage.html` | Shareable incident triage board example report. |
+| `examples/report-metrics.html` | Shareable commentable visuals matrix example report. |
 
 ## Runtime tools
 
@@ -35,11 +35,11 @@ subdirectories under `tools/` (for example `tools/validate/validate.py`, `tools/
 
 - `validate.py` - structural invariant checker for generated files. Use `--strict` before handoff.
 - `mark_handled.py` - appends handled comment ids from explicit ids or a copied bundle.
-- `new_document.py` - builds a fresh commentable document from a content fragment (always Portable, one self-contained file; `--template <dist>/NONPORTABLE.html` builds a legacy one deliberately). Fails
+- `new_document.py` - builds a fresh commentable document from a content fragment (always Shareable, one self-contained file; `--template <dist>/NONSHAREABLE.html` builds a legacy one deliberately). Fails
   closed (writes nothing) when it cannot self-validate; `--allow-unvalidated-output` opts out.
 - `recommend_kind.py` - recommends `report`, `plan`, or `slides` from filename and content signals before choosing `--kind`.
 - `retrofit.py` - injects the layer into an existing unlayered HTML file, validates before writing, and leaves the target unchanged on failure.
-- `upgrade.py` - upgrades the CSS, COMMENT UI, and JS regions and re-emits the shell-baked mermaid loader bootstrap from the current `dist/PORTABLE.html`.
+- `upgrade.py` - upgrades the CSS, COMMENT UI, and JS regions and re-emits the shell-baked mermaid loader bootstrap from the current `dist/SHAREABLE.html`.
 - `finalize.py` - runs safe assembly steps (including AI-typography normalization by default; `--no-normalize` to skip), then validates.
 - `normalize_typography.py` - rewrites AI smart-typography (em/en dashes, ellipsis, curly quotes, nbsp/zero-width spaces) to plain ASCII in a document's prose, leaving code/script/style/comments verbatim (`--check`/`--out`/in-place). Run automatically by `finalize.py` and `deck_scaffold.py`.
 - `diff_block.py` - emits escaped `pre.cmh-diff` review blocks.
@@ -66,7 +66,7 @@ subdirectories under `tools/` (for example `tools/validate/validate.py`, `tools/
 - `references/copy-payload.md` - `Copy all` Markdown and handled-id contract.
 - `references/design-decisions.md` - Intentional behaviors reviewers should not flag.
 - `references/document-layout.md` - Themes, TOC, sections, cards, and tables.
-- `references/exports.md` - Portable, Plain HTML, Markdown, and NonPortable export semantics.
+- `references/exports.md` - Shareable, Plain HTML, Markdown, and NonShareable export semantics.
 - `references/file-inventory.md` - This file.
 - `references/forward-compatible-layout.md` - Region layout and descriptor contract for current and future tools.
 - `references/images-commentable.md` - Image and chart canvas comments.

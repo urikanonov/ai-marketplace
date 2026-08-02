@@ -5,10 +5,10 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
-  openInline, openNonPortable, openKitchenSink, addTextComment, openComposerFor,
+  openInline, openNonShareable, openKitchenSink, addTextComment, openComposerFor,
   openToolbarMenu, markTextForCid, distinctCids, ready, fileUrl, selectText,
   startStaticServer, routeMermaidLocal, installClipboardCapture, readDownload,
-  stageNonPortable, SKILL,
+  stageNonShareable, SKILL,
   clickClearAll,
 } from "./helpers.js";
 
@@ -81,14 +81,14 @@ test.describe("targeted coverage gaps", () => {
   });
 
   test("mode badge reflects document type in both directions", async ({ page }) => {
-    // Inline documents are standalone; nonportable documents load assets from companions.
+    // Inline documents are standalone; nonshareable documents load assets from companions.
     await openInline(page);
     await openToolbarMenu(page);
-    await expect(page.locator("#cmhModeBadge")).toHaveText("Portable");
+    await expect(page.locator("#cmhModeBadge")).toHaveText("Shareable");
 
-    await openNonPortable(page);
+    await openNonShareable(page);
     await openToolbarMenu(page);
-    await expect(page.locator("#cmhModeBadge")).toHaveText("Not portable");
+    await expect(page.locator("#cmhModeBadge")).toHaveText("Not shareable");
   });
 
   test("a mermaid comment left unhandled restores its ring on the same node on reload", async ({ page }) => {
@@ -96,7 +96,7 @@ test.describe("targeted coverage gaps", () => {
     try {
       await routeMermaidLocal(page);
       await installClipboardCapture(page);
-      await page.goto(server.url + "/dist/PORTABLE.html?mermaid=1");
+      await page.goto(server.url + "/dist/SHAREABLE.html?mermaid=1");
       await ready(page);
 
       // Deliberately comment a NON-first node so "always rings the first node" cannot pass.
@@ -165,11 +165,11 @@ test.describe("targeted coverage gaps", () => {
     await expect(page.locator("#toolbarCount")).toHaveText("0");
   });
 
-  test("Export with embedded comments produces a standalone file when the nonportable doc is served over HTTP", async ({ page, context }) => {
+  test("Export with embedded comments produces a standalone file when the nonshareable doc is served over HTTP", async ({ page, context }) => {
     test.slow(); // static server + http fetch in _getBaseHtml + python validate under parallel load
     let server, dir;
     try {
-      const staged = stageNonPortable();
+      const staged = stageNonShareable();
       dir = staged.dir;
       server = await startStaticServer(dir);
       await installClipboardCapture(page);
@@ -193,7 +193,7 @@ test.describe("targeted coverage gaps", () => {
         page2 = await context.newPage();
         await page2.goto(fileUrl(tmp));
         await ready(page2);
-        expect(await page2.evaluate(() => document.body.classList.contains("cm-nonportable"))).toBe(false);
+        expect(await page2.evaluate(() => document.body.classList.contains("cm-nonshareable"))).toBe(false);
       } finally {
         if (page2) await page2.close();
         fs.rmSync(tmp, { force: true });

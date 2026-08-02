@@ -154,7 +154,7 @@ test.describe("content-bound validation stamp (CMH-STAMP-05)", () => {
     const docPath = path.join(dir, "doc.html");
     execFileSync(PYTHON, ["tools/authoring/new_document.py", "--content", "-", "--key",
       "cmh-cbind-e2e", "--label", "Content bound", "--kind", "report", "--source", "doc.html",
-      "--portable", "--out", docPath], { cwd: SKILL, input: DOC });
+      "--shareable", "--out", docPath], { cwd: SKILL, input: DOC });
     execFileSync(PYTHON, ["tools/validate/validate.py", docPath], { cwd: SKILL });
     // The real <meta> stamp (matched as a tag, not the meta NAME which also appears in the inlined
     // runtime JS that reads it).
@@ -203,7 +203,7 @@ test.describe("content-bound validation stamp (CMH-STAMP-05)", () => {
       + "<tr><td>Charlie</td><td>3</td></tr></tbody></table>";
     execFileSync(PYTHON, ["tools/authoring/new_document.py", "--content", "-", "--key",
       "cmh-sort-e2e", "--label", "Sortable", "--kind", "report", "--source", "doc.html",
-      "--portable", "--out", docPath], { cwd: SKILL, input: tableDoc });
+      "--shareable", "--out", docPath], { cwd: SKILL, input: tableDoc });
     execFileSync(PYTHON, ["tools/validate/validate.py", docPath], { cwd: SKILL });
     await page.goto(fileUrl(docPath));
     await ready(page);

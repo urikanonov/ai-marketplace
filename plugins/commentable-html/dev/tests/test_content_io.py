@@ -25,7 +25,7 @@ import content_replace  # noqa: E402
 import extract_comments  # noqa: E402
 import new_document  # noqa: E402
 
-PORTABLE = _paths.TEMPLATE
+SHAREABLE = _paths.TEMPLATE
 
 FRAGMENT = """<h1>Content IO Test</h1>
 <section>
@@ -59,7 +59,7 @@ class _DocCase(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.doc = os.path.join(self.tmp, "doc.html")
         html = new_document.make_document(
-            _read(PORTABLE), FRAGMENT, key="content-io-test",
+            _read(SHAREABLE), FRAGMENT, key="content-io-test",
             label="Content IO Test", source="doc.html", kind="report")
         _write(self.doc, html)
         # Bake highlighting/section cards so the stored CONTENT is finalized output,

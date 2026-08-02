@@ -2,7 +2,7 @@
 """Bake section-review markers into a commentable-html document's reviewedSections block.
 
 The runtime writes review markers when the reader marks a section reviewed in the browser and bakes
-them on Export as Portable. This helper does the same deterministically from the CLI so an agent can
+them on Export as Shareable. This helper does the same deterministically from the CLI so an agent can
 mark sections reviewed (or clear them) without a browser, mirroring mark_handled.py. Each marker is
 computed with the SAME section content hash the runtime uses (tools/authoring/section_hash.py), so a
 freshly-marked section loads as "reviewed", not "changed".

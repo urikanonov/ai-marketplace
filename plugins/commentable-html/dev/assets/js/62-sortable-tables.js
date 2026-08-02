@@ -159,7 +159,7 @@ function recomputeTextOffsets(persist) {
 // (pre-sort) snapshot; without this a comment on a sorted table cell would mis-anchor for
 // a recipient who has no sort state. Restores original order, recomputes, snapshots, then
 // re-applies the sorted view - leaving the live state untouched. Widget moves are not
-// reverted here because Portable and Offline exports save the moved widget DOM.
+// reverted here because Shareable and Offline exports save the moved widget DOM.
 function _canonicalCommentsForExport() {
   if (!_tableSortState || Object.keys(_tableSortState).length === 0) {
     recomputeTextOffsets(false);

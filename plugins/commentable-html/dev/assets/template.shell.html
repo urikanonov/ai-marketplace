@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="commentable-html-version" content="{{CMH_VERSION}}" />
 <meta name="commentable-html-kind" content="generic" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"{{CMH_VERSION}}","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"{{CMH_VERSION}}","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <script type="application/json" id="cmhVendoredRichLibs">{{CMH_VENDORED_RICH_LIBS}}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML - Demo</title>
@@ -198,7 +198,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
      The agent appends every processed comment id to this JSON
      array. On the next page load the IDs are removed from
      localStorage, dropped from the live list, and filtered out
-     of any Copy or Export as Portable so handled comments cannot
+     of any Copy or Export as Shareable so handled comments cannot
      come back through a stale clipboard or blob.
 
      Append-only. Duplicates tolerated. Order does not matter.
@@ -214,9 +214,9 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
      BEGIN: commentable-html - EMBEDDED COMMENTS
      ============================================================
      Optional in-HTML snapshot of the comments array, so the file
-     is self-contained for sharing. The "Export as Portable" button in
+     is self-contained for sharing. The "Export as Shareable" button in
      the toolbar writes the current comments here and downloads a
-     fresh copy of the file (named <stem>-portable.html); replace
+     fresh copy of the file (named <stem>-shareable.html); replace
      the original with it to make the comments stick.
 
      On load, the layer merges this list with the localStorage
@@ -225,13 +225,13 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
      is then written back to localStorage so reloads converge.
 
      Hand-edit only if you know what you are doing. Normal flow:
-     click "Export as Portable" in the toolbar.
+     click "Export as Shareable" in the toolbar.
 -->
 <script type="application/json" id="embeddedComments">
 []
 </script>
 <!-- Section-review markers (a dedicated store, kept out of the comments array and the
-     Copy-all bundle). Portable/Offline export bakes the reviewed sections here so the
+     Copy-all bundle). Shareable/Offline export bakes the reviewed sections here so the
      markers travel; Plain export strips this whole region. On load the layer merges this
      with the localStorage copy and recomputes each section's state from its content hash. -->
 <script type="application/json" id="reviewedSections">
@@ -251,9 +251,9 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
       <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="19" cy="12" r="2" fill="currentColor"/></svg>
     </button>
     <div id="toolbarMenu" class="cm-toolbar-menu" hidden>
-      <span id="cmhModeBadge" class="cm-mode-badge" aria-live="polite" title="Portability of this file"></span>
+      <span id="cmhModeBadge" class="cm-mode-badge" aria-live="polite" title="Shareability of this file"></span>
       <button id="btnShowTop" type="button" title="Show the comments panel"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg><span>Comments</span></button>
-      <button id="btnSaveHtmlTop" type="button" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Export as Portable</span></button>
+      <button id="btnSaveHtmlTop" type="button" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Export as Shareable</span></button>
       <button id="btnExportOfflineTop" type="button" title="Download an offline HTML copy with current comments embedded, remote loaders removed, and vendored mermaid or Chart.js inlined only when this document needs them"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v7 M9 7l3 3 3-3 M5 14h14v5H5z M8 16.5h.01 M12 16.5h4"/></svg><span>Export Offline</span></button>
       <button id="btnSavePlainTop" type="button" title="Download a plain copy of this HTML with the comment layer removed (keeps all of your content and styling)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4"/></svg><span>Export to Plain HTML</span></button>
       <button id="btnExportMdTop" type="button" title="Download a .md file (a deterministic block-by-block conversion; comments are appended as a section)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4 M8.5 17v-4l2 2 2-2v4"/></svg><span>Export to Markdown</span></button>
@@ -270,7 +270,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
     <div class="head-top">
       <h3>Comments <span class="pill-count" id="sidebarCount" title="Number of open comments">0</span></h3>
       <span class="head-chrome head-meta">
-        <span class="cm-type-badge" id="cmTypeBadge" aria-live="polite" title="Whether this file is portable. Portable means self-contained and safe to share (assets embedded and every comment embedded). Not portable means it references external skill/companion resources and/or has comments not embedded yet - hover shows which."></span>
+        <span class="cm-type-badge" id="cmTypeBadge" aria-live="polite" title="Whether this file is shareable. Shareable means self-contained and safe to share (assets embedded and every comment embedded). Not shareable means it references external skill/companion resources and/or has comments not embedded yet - hover shows which."></span>
         <span class="cm-version" id="cmVersion" title="commentable-html version that generated this file"></span>
       </span>
     </div>
@@ -293,7 +293,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
       <div class="cm-sidebar-export">
         <button type="button" id="btnSidebarExportMenu" class="cm-sidebar-export-toggle" title="Export or download this document" aria-controls="sidebarExportMenu" aria-expanded="false"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Export</span></button>
         <div id="sidebarExportMenu" class="cm-sidebar-export-menu" hidden>
-          <button type="button" id="btnSaveHtml" aria-label="Export as Portable" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Portable</span></button>
+          <button type="button" id="btnSaveHtml" aria-label="Export as Shareable" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Shareable</span></button>
           <button type="button" id="btnExportOffline" aria-label="Export Offline" title="Download an offline HTML copy with current comments embedded, remote loaders removed, and vendored mermaid or Chart.js inlined only when this document needs them"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v7 M9 7l3 3 3-3 M5 14h14v5H5z M8 16.5h.01 M12 16.5h4"/></svg><span>Offline</span></button>
           <button type="button" id="btnExportMd" aria-label="Export to Markdown" title="Download a .md file (a deterministic block-by-block conversion; comments are appended as a section)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4 M8.5 17v-4l2 2 2-2v4"/></svg><span>Markdown</span></button>
           <button type="button" id="btnSavePlain" aria-label="Export to Plain HTML" title="Download a plain copy of this HTML with the comment layer removed (keeps all of your content and styling)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4"/></svg><span>Plain HTML</span></button>
@@ -325,7 +325,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
   <div class="list" id="commentList">
     <div class="cm-empty">
       <p><strong>No comments yet.</strong></p>
-      <p>Select any text in the document. The "Add Comment" popup appears automatically (right-click also works). Comments stay here until the agent processes them. Use <kbd>Copy all</kbd> to send them to the agent, or <kbd>Export as Portable</kbd> (in the <kbd>Export</kbd> menu) to embed them into the file so they travel with it.</p>
+      <p>Select any text in the document. The "Add Comment" popup appears automatically (right-click also works). Comments stay here until the agent processes them. Use <kbd>Copy all</kbd> to send them to the agent, or <kbd>Export as Shareable</kbd> (in the <kbd>Export</kbd> menu) to embed them into the file so they travel with it.</p>
     </div>
   </div>
   <div id="sidebarResizeHandle" class="cm-sidebar-resize cm-skip" role="separator" aria-orientation="vertical" aria-label="Resize comments sidebar" tabindex="0" title="Drag or use Left and Right arrow keys to resize the comments sidebar"></div>
@@ -368,7 +368,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
       data-cmh-content-root
       data-comment-key="commentable-html-demo"
       data-doc-label="Commentable HTML demo"
-      data-doc-source="PORTABLE.html">
+      data-doc-source="SHAREABLE.html">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
   <header class="cmh-lede">
@@ -457,7 +457,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
 
   <section>
     <h2 id="mermaid">Mermaid diagrams</h2>
-    <p>If your document contains <code>&lt;pre class="mermaid"&gt;</code> blocks, the layer also lets you comment on individual diagram nodes. Hover any node, click <em>Add Comment</em>, and the comment is anchored to that node by its mermaid id rather than character offsets. The highlight is a coloured ring around the node and survives reload, copy, and Export as Portable.</p>
+    <p>If your document contains <code>&lt;pre class="mermaid"&gt;</code> blocks, the layer also lets you comment on individual diagram nodes. Hover any node, click <em>Add Comment</em>, and the comment is anchored to that node by its mermaid id rather than character offsets. The highlight is a coloured ring around the node and survives reload, copy, and Export as Shareable.</p>
     <p>Keep <code>cm-skip</code> on the <code>&lt;pre class="mermaid"&gt;</code> element. It tells the text-selection layer to ignore the source code; the mermaid layer attaches independently via the <code>mermaid</code> class.</p>
     <pre class="mermaid cm-skip">
 flowchart LR
@@ -482,7 +482,7 @@ gantt
 
   <section>
     <h2 id="diffs">Code review diffs (side-by-side or inline)</h2>
-    <p>Drop a unified diff into a <code>&lt;pre class="cmh-diff"&gt;</code> block and the layer renders a colored code-review view. Use the <strong>Side-by-side view</strong> / <strong>Inline view</strong> button in the diff header to switch layouts; the preference is remembered for this document (all diffs in a document share one layout default). Hover any changed or context line and click <em>Add Comment</em> to attach a review comment. Diff comments are anchored to the diff line structurally (not by character offset), so they survive the layout toggle, reload, copy, and Export as Portable. Add <code>data-diff-label</code> to name the file.</p>
+    <p>Drop a unified diff into a <code>&lt;pre class="cmh-diff"&gt;</code> block and the layer renders a colored code-review view. Use the <strong>Side-by-side view</strong> / <strong>Inline view</strong> button in the diff header to switch layouts; the preference is remembered for this document (all diffs in a document share one layout default). Hover any changed or context line and click <em>Add Comment</em> to attach a review comment. Diff comments are anchored to the diff line structurally (not by character offset), so they survive the layout toggle, reload, copy, and Export as Shareable. Add <code>data-diff-label</code> to name the file.</p>
     <pre class="cmh-diff" data-diff-label="src/reducer.py">@@ -1,5 +1,6 @@
  def reduce(items, fn, acc=None):
 -    for x in items:
@@ -497,7 +497,7 @@ gantt
 
   <section>
     <h2 id="images">Images (commentable)</h2>
-    <p>Any <code>&lt;img&gt;</code> inside the content is commentable. Hover an image (or focus it with the keyboard and press <kbd>Enter</kbd>) and click <em>Add Comment</em> to attach a note anchored to that image by its position and <code>src</code>. The highlight is a colored ring that survives reload, <strong>Copy all</strong>, and <strong>Export as Portable</strong>. An authored inline <code>&lt;svg&gt;</code> figure is commentable the same way, anchored by its position and its <code>aria-labelledby</code>, <code>aria-label</code> or direct-child <code>&lt;title&gt;</code>.</p>
+    <p>Any <code>&lt;img&gt;</code> inside the content is commentable. Hover an image (or focus it with the keyboard and press <kbd>Enter</kbd>) and click <em>Add Comment</em> to attach a note anchored to that image by its position and <code>src</code>. The highlight is a colored ring that survives reload, <strong>Copy all</strong>, and <strong>Export as Shareable</strong>. An authored inline <code>&lt;svg&gt;</code> figure is commentable the same way, anchored by its position and its <code>aria-labelledby</code>, <code>aria-label</code> or direct-child <code>&lt;title&gt;</code>.</p>
     <img alt="Sample rollout readiness chart" width="240" height="120" src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='240'%20height='120'%3E%3Crect%20width='240'%20height='120'%20fill='%23dde7f0'/%3E%3Crect%20x='16'%20y='60'%20width='30'%20height='44'%20fill='%234a7fb5'/%3E%3Crect%20x='60'%20y='40'%20width='30'%20height='64'%20fill='%234a7fb5'/%3E%3Crect%20x='104'%20y='24'%20width='30'%20height='80'%20fill='%234a7fb5'/%3E%3Ctext%20x='120'%20y='18'%20font-family='sans-serif'%20font-size='13'%20fill='%23244'%20text-anchor='middle'%3ESample%20image%3C/text%3E%3C/svg%3E" />
   </section>
   <section>

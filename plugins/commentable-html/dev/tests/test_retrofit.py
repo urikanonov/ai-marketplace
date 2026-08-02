@@ -84,9 +84,9 @@ class RetrofitCliTests(unittest.TestCase):
                       '<h1>Doc</h1><pre><code class="language-python">def f(): return 1</code></pre>'
                       '</body></html>')
 
-    def test_the_default_retrofit_is_portable(self):
-        # CMH-PORT-03: Portable is the only mode generated. Retrofit used to produce a
-        # NonPortable document unless --portable was passed, so the skill kept creating files
+    def test_the_default_retrofit_is_shareable(self):
+        # CMH-PORT-03: Shareable is the only mode generated. Retrofit used to produce a
+        # NonShareable document unless --shareable was passed, so the skill kept creating files
         # that only work while their companions sit beside them.
         d = self._tmpdir()
         src = self._write(d, "host.html", HOST_HTML)
@@ -94,13 +94,13 @@ class RetrofitCliTests(unittest.TestCase):
         code, _stdout, stderr = self._run(["retrofit.py", src, "--label", "Host", "--out", out])
         self.assertEqual(code, 0, stderr)
         html = _read_text(out)
-        self.assertIn('"mode":"portable"', html)
+        self.assertIn('"mode":"shareable"', html)
         self.assertNotIn('href="commentable-html.css"', html)
         self.assertNotIn('src="commentable-html.js"', html)
         self._strict_clean(out)
 
-    def test_portable_is_accepted_as_a_deprecated_no_op(self):
-        # CMH-PORT-03: --portable is what callers and docs used to pass; it must keep working
+    def test_shareable_is_accepted_as_a_deprecated_no_op(self):
+        # CMH-PORT-03: --shareable is what callers and docs used to pass; it must keep working
         # rather than error, now that it names the default.
         d = self._tmpdir()
         src = self._write(d, "host.html", HOST_HTML)
@@ -111,22 +111,22 @@ class RetrofitCliTests(unittest.TestCase):
              "--out", default_out])
         self.assertEqual(code, 0, stderr)
         code, _stdout, stderr = self._run(
-            ["retrofit.py", src, "--label", "Host", "--key", "cmh-mode-check", "--portable",
+            ["retrofit.py", src, "--label", "Host", "--key", "cmh-mode-check", "--shareable",
              "--out", flagged_out])
         self.assertEqual(code, 0, stderr)
         self.assertEqual(_read_text(default_out), _read_text(flagged_out))
 
-    def test_an_explicit_nonportable_retrofit_still_builds_one(self):
+    def test_an_explicit_nonshareable_retrofit_still_builds_one(self):
         # CMH-PORT-02: creating a legacy document by default goes away, but a deliberate request
         # (chiefly the compatibility suite) still produces exactly what it produced before.
         d = self._tmpdir()
         src = self._write(d, "host.html", HOST_HTML)
         out = os.path.join(d, "legacy.html")
         code, _stdout, stderr = self._run(
-            ["retrofit.py", src, "--label", "Host", "--nonportable", "--out", out])
+            ["retrofit.py", src, "--label", "Host", "--nonshareable", "--out", out])
         self.assertEqual(code, 0, stderr)
         html = _read_text(out)
-        self.assertIn('"mode":"nonportable"', html)
+        self.assertIn('"mode":"nonshareable"', html)
         self.assertIn("commentable-html.css", html)
         self.assertIn("commentable-html.js", html)
 
@@ -142,11 +142,11 @@ class RetrofitCliTests(unittest.TestCase):
     def test_no_highlight_with_raw_code_is_blocked_by_validation(self):
         # CMH-HL-04: with --no-highlight the raw block stays raw, and retrofit fails closed on the
         # resulting "not syntax-highlighted" warning, so it never writes a raw document. Asserted
-        # in BOTH layer modes: the guardrail used to be BLIND in a Portable document, because the
+        # in BOTH layer modes: the guardrail used to be BLIND in a Shareable document, because the
         # greedy <pre> scan matched inside the inlined layer CSS/JS (issue #754), so this test was
-        # pinned to --nonportable. Portable is now the default mode AND is covered here.
-        for extra in ([], ["--nonportable"]):
-            with self.subTest(mode=("nonportable" if extra else "portable (default)")):
+        # pinned to --nonshareable. Shareable is now the default mode AND is covered here.
+        for extra in ([], ["--nonshareable"]):
+            with self.subTest(mode=("nonshareable" if extra else "shareable (default)")):
                 d = self._tmpdir()
                 src = self._write(d, "host.html", self._RAW_CODE_HOST)
                 out = os.path.join(d, "out.html")
@@ -417,8 +417,8 @@ class RetrofitCliTests(unittest.TestCase):
         d = self._tmpdir()
         src = self._write(d, "host.html", HOST_HTML)
         cases = {
-            "nonportable.html": ["--nonportable"],
-            "portable.html": ["--portable"],
+            "nonshareable.html": ["--nonshareable"],
+            "shareable.html": ["--shareable"],
         }
         for name, extra_args in cases.items():
             with self.subTest(name=name):
@@ -431,15 +431,15 @@ class RetrofitCliTests(unittest.TestCase):
                 for leaked in ("<meta", "HANDLED IDS", "<!DOCTYPE"):
                     self.assertNotIn(leaked, theme)
 
-    def test_portable_inlines_layer_and_strict_validates(self):
+    def test_shareable_inlines_layer_and_strict_validates(self):
         d = self._tmpdir()
         src = self._write(d, "host.html", HOST_HTML)
-        out = os.path.join(d, "portable.html")
+        out = os.path.join(d, "shareable.html")
         code, _stdout, stderr = self._run([
-            "retrofit.py", src, "--label", "Portable Host", "--portable", "--out", out])
+            "retrofit.py", src, "--label", "Shareable Host", "--shareable", "--out", out])
         self.assertEqual(code, 0, stderr)
         html = _read_text(out)
-        self.assertIn('"mode":"portable"', html)
+        self.assertIn('"mode":"shareable"', html)
         self.assertNotIn('href="commentable-html.css"', html)
         self._strict_clean(out)
 
@@ -451,7 +451,7 @@ class RetrofitCliTests(unittest.TestCase):
         src = self._write(d, "host.html", HOST_HTML)
         out = os.path.join(d, "fav.html")
         code, _stdout, stderr = self._run([
-            "retrofit.py", src, "--label", "Fav Host", "--portable", "--out", out])
+            "retrofit.py", src, "--label", "Fav Host", "--shareable", "--out", out])
         self.assertEqual(code, 0, stderr)
         html = _read_text(out)
         self.assertEqual(len(re.findall(r'<link\b[^>]*\brel="icon"', html)), 1,
@@ -466,7 +466,7 @@ class RetrofitCliTests(unittest.TestCase):
         src = self._write(d, "host.html", host)
         out = os.path.join(d, "fav.html")
         code, _stdout, stderr = self._run([
-            "retrofit.py", src, "--label", "Fav Host", "--portable", "--out", out])
+            "retrofit.py", src, "--label", "Fav Host", "--shareable", "--out", out])
         self.assertEqual(code, 0, stderr)
         html = _read_text(out)
         self.assertIn('href="/host.ico"', html)
@@ -484,14 +484,14 @@ class RetrofitCliTests(unittest.TestCase):
         src = self._write(d, "host.html", host)
         out = os.path.join(d, "fav.html")
         code, _stdout, stderr = self._run([
-            "retrofit.py", src, "--label", "Fav Host", "--portable", "--out", out])
+            "retrofit.py", src, "--label", "Fav Host", "--shareable", "--out", out])
         self.assertEqual(code, 0, stderr)
         html = _read_text(out)
         self.assertIn('rel="apple-touch-icon"', html)
         self.assertIn('rel="icon"', html)
         self._strict_clean(out)
 
-    def test_nonportable_asset_options_match_new_document(self):
+    def test_nonshareable_asset_options_match_new_document(self):
         d = self._tmpdir()
         src = self._write(d, "host.html", HOST_HTML)
 

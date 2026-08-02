@@ -269,7 +269,7 @@ test.describe("section review tracking", () => {
     await expect(count("all")).toHaveText("(4)");
   });
 
-  test("Export as Portable bakes reviewedSections and Plain strips it (CMH-REVIEW-06)", async ({ page }) => {
+  test("Export as Shareable bakes reviewedSections and Plain strips it (CMH-REVIEW-06)", async ({ page }) => {
     await openReviewDoc(page);
     await page.locator("#rv-alpha").hover();
     await page.locator("#rv-alpha .cmh-review-badge").click();
@@ -455,10 +455,10 @@ test.describe("section review tracking", () => {
     expect(await page.locator('nav.cm-side-toc .cmh-toc-mark-changed').first().getAttribute("aria-label")).toBe("Changed");
   });
 
-  test("the reviewed state persists through Portable/Offline export and reopening activates the review UI (CMH-REVIEW-12)", async ({ browser }) => {
+  test("the reviewed state persists through Shareable/Offline export and reopening activates the review UI (CMH-REVIEW-12)", async ({ browser }) => {
     const tmpDir = path.join(DEV, "..", "..", "..", "tmp", "review-export-spec");
     fs.mkdirSync(tmpDir, { recursive: true });
-    for (const [btn, name] of [["#btnSaveHtmlTop", "portable"], ["#btnExportOfflineTop", "offline"]]) {
+    for (const [btn, name] of [["#btnSaveHtmlTop", "shareable"], ["#btnExportOfflineTop", "offline"]]) {
       const authorCtx = await browser.newContext();
       const authorPage = await authorCtx.newPage();
       await openReviewDoc(authorPage);

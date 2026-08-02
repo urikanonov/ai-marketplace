@@ -10,7 +10,7 @@ dev/
   tools/                  maintainer-only build and screenshot tools
   skill/                  STAGE: the full editable + built skill (source of truth for tests)
     SKILL.md              shipped skill instructions
-    dist/                 generated PORTABLE.html, NONPORTABLE.html, companions, manifest.json
+    dist/                 generated SHAREABLE.html, NONSHAREABLE.html, companions, manifest.json
     tools/                runtime Python tools
     references/           reference docs the agent consults
     vendor/               deck vendor templates
@@ -37,7 +37,7 @@ Edit `dev/assets/` only when changing the review layer:
 
 The version lives in `dev/VERSION` (plain-text semver) and is the only hand-edited version. `build.py` reads it and stamps the runtime `CMH_VERSION` const, `../pkg/plugin.json`, the marketplace entry, and each generated document's `<meta name="commentable-html-version">`. Companion filenames are version-agnostic, so a version bump never renames dist files.
 
-Everything under `dev/skill/dist/` is generated (and packed into `skill-resources.zip`) so installs do not run a build step. Do not hand-edit `dist/PORTABLE.html`, `dist/NONPORTABLE.html`, the companions, or `manifest.json`.
+Everything under `dev/skill/dist/` is generated (and packed into `skill-resources.zip`) so installs do not run a build step. Do not hand-edit `dist/SHAREABLE.html`, `dist/NONSHAREABLE.html`, the companions, or `manifest.json`.
 
 ## Build pipeline
 
@@ -57,7 +57,7 @@ Add `--check` to any of these for the CI drift guard (write nothing, fail on dri
 
 To bump the version, edit `VERSION` then run `build.py`; it restamps every version spot (the layer `CMH_VERSION` const, `../pkg/plugin.json`, the marketplace entry, and each document's `<meta name="commentable-html-version">`). Companion filenames are version-agnostic, so the bump does not rename any dist files. `build.py --check` fails if any stamped spot drifts from `VERSION`.
 
-To bump mermaid (usually a Dependabot PR against `package.json`): the mermaid CDN version is single-sourced from the `mermaid` dependency in `package.json`, so after the version changes just run `npm install` (updates `node_modules` + `package-lock.json`) then `python tools/build.py` and `node tests/fixtures/generate.mjs`. The build stamps the new `mermaid@<version>` into `template.shell.html` -> `dist/PORTABLE.html`/`NONPORTABLE.html` and into the `examples/*.html` reports; the fixtures derive from `dist/`, so they follow automatically. `build.py --check` (the `dist-in-sync` gate) fails clearly if any shipped mermaid pin drifts from `package.json`, and `tests/helpers.js` `routeMermaidLocal` only needs the served template's major to match the vendored `node_modules/mermaid` major. Do not hand-edit the `mermaid@<version>` string in any generated file.
+To bump mermaid (usually a Dependabot PR against `package.json`): the mermaid CDN version is single-sourced from the `mermaid` dependency in `package.json`, so after the version changes just run `npm install` (updates `node_modules` + `package-lock.json`) then `python tools/build.py` and `node tests/fixtures/generate.mjs`. The build stamps the new `mermaid@<version>` into `template.shell.html` -> `dist/SHAREABLE.html`/`NONSHAREABLE.html` and into the `examples/*.html` reports; the fixtures derive from `dist/`, so they follow automatically. `build.py --check` (the `dist-in-sync` gate) fails clearly if any shipped mermaid pin drifts from `package.json`, and `tests/helpers.js` `routeMermaidLocal` only needs the served template's major to match the vendored `node_modules/mermaid` major. Do not hand-edit the `mermaid@<version>` string in any generated file.
 
 ## Python suite
 
@@ -69,7 +69,7 @@ python -m unittest discover -s tests -p "test_*.py"
 
 | Suite | Coverage |
 | --- | --- |
-| `tests/test_validate_*.py` | Split validator regressions covering layer structure, validator flags and exit codes, encoding and newline edge cases, NonPortable detection, companion references, version handshake, banner behavior, missing files, and a real `dist/NONPORTABLE.html` positive control. |
+| `tests/test_validate_*.py` | Split validator regressions covering layer structure, validator flags and exit codes, encoding and newline edge cases, NonShareable detection, companion references, version handshake, banner behavior, missing files, and a real `dist/NONSHAREABLE.html` positive control. |
 | `tests/test_validate_charts.py` | Chart.js embedding checks, including loader safety, chart data JSON, init ordering, accessibility, `cm-skip`, and network-failure guards. |
 | `tests/test_build.py` | Build drift, generated file parity, idempotence, inline round trips, version single-sourcing, manifest hashes, registry round trips, template validation, stale dist detection, and duplicate-version rejection. |
 | `tests/test_mark_handled.py` | Handled-id append, dedupe, order, unsafe ids, missing or duplicate blocks, surgical edits, newline preservation, bundle parsing, and CLI behavior. |
@@ -103,7 +103,7 @@ npx playwright test -g "Export standalone"
 npx playwright show-report
 ```
 
-The browser suite covers load/init, light and dark themes, standalone and NonPortable modes, toolbar and sidebar controls, text selection and composer behavior, comment edit/delete/clear flows, copy bundle fallbacks, handled-id pruning, embedded comments, portable/plain/nonportable exports, Mermaid comments, image and chart comments, code block copy, diff rendering and anchors, KQL blocks, TOC behavior, network-deny flows, stale-anchor degradation, overlapping selection guards, fixture freshness, and randomized anchoring/state-machine checks. Mermaid is served from the locally vendored `node_modules/mermaid` in tests, so the suite does not require a live CDN.
+The browser suite covers load/init, light and dark themes, standalone and NonShareable modes, toolbar and sidebar controls, text selection and composer behavior, comment edit/delete/clear flows, copy bundle fallbacks, handled-id pruning, embedded comments, shareable/plain/nonshareable exports, Mermaid comments, image and chart comments, code block copy, diff rendering and anchors, KQL blocks, TOC behavior, network-deny flows, stale-anchor degradation, overlapping selection guards, fixture freshness, and randomized anchoring/state-machine checks. Mermaid is served from the locally vendored `node_modules/mermaid` in tests, so the suite does not require a live CDN.
 
 ## Validate the shipped skill
 
@@ -111,7 +111,7 @@ Run the shipped validator against generated outputs and examples from `dev/`:
 
 ```powershell
 python skill\tools\validate\validate.py --strict `
-  skill\dist\PORTABLE.html `
+  skill\dist\SHAREABLE.html `
   ..\examples\report-community-garden.html `
   ..\examples\report-taxi.html
 ```
@@ -119,7 +119,7 @@ python skill\tools\validate\validate.py --strict `
 From `dev\skill`, the same check is:
 
 ```powershell
-python tools\validate\validate.py --strict dist\PORTABLE.html ..\..\examples\report-community-garden.html ..\..\examples\report-taxi.html
+python tools\validate\validate.py --strict dist\SHAREABLE.html ..\..\examples\report-community-garden.html ..\..\examples\report-taxi.html
 ```
 
 ## Rebuilding the example images
@@ -195,7 +195,7 @@ drift gate. The determinism is covered by `tests/54-tutorial-shots.spec.js`.
 
 ## Fixtures workflow
 
-Interaction and fuzz tests use generated fixtures under `tests/fixtures/`, including the inline `kitchen-sink.html` and the NonPortable `nonportable/kitchen-sink.html`. They are derived from the current shipped `dist/PORTABLE.html`, `dist/`, and `tests/fixtures/sample-content.html`.
+Interaction and fuzz tests use generated fixtures under `tests/fixtures/`, including the inline `kitchen-sink.html` and the NonShareable `nonshareable/kitchen-sink.html`. They are derived from the current shipped `dist/SHAREABLE.html`, `dist/`, and `tests/fixtures/sample-content.html`.
 
 After changing the layer or fixture sample content, rebuild and refresh fixtures:
 

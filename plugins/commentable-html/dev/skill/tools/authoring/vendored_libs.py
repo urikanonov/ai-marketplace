@@ -335,8 +335,8 @@ def main(argv):
     parser.add_argument("--check", action="store_true",
                         help="report the decision and exit without writing")
     parser.add_argument("--template", default=None,
-                        help="a built PORTABLE.html to take the payload from when it must be "
-                             "restored (default: the skill's own dist/PORTABLE.html)")
+                        help="a built SHAREABLE.html to take the payload from when it must be "
+                             "restored (default: the skill's own dist/SHAREABLE.html)")
     args = parser.parse_args(argv[1:])
 
     try:
@@ -353,9 +353,8 @@ def main(argv):
         return 0
 
     source_blob = None
-    template = args.template or os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "dist", "PORTABLE.html")
+    template = (_toolpath.resolve_template_path(args.template) if args.template
+                else _toolpath.dist_template(_toolpath.SHAREABLE_TEMPLATE))
     try:
         with open(template, "r", encoding="utf-8", newline="") as fh:
             source_blob = blob_script(fh.read())

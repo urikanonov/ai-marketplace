@@ -1,4 +1,4 @@
-/* ---------- Export Offline (portable + zero-network rich-content embedding) ---------- */
+/* ---------- Export Offline (shareable + zero-network rich-content embedding) ---------- */
 // Whether a document uses Chart.js is decided on a deliberately LOOSE signal: any mention of the
 // `Chart` global. The two failure directions are not symmetric - a false positive inlines a library
 // the document did not need (bytes), a false negative ships a chart that never renders - so this
@@ -786,8 +786,8 @@ async function _offlineInlineRichLibs(doc, referencesChartLib, inlinedLibs, payl
   }
   _offlineRemoveVendoredBundleScript(payload);
 }
-async function _buildOfflineHtml(portableHtml) {
-  const doc = _offlineDocFromHtml(portableHtml);
+async function _buildOfflineHtml(shareableHtml) {
+  const doc = _offlineDocFromHtml(shareableHtml);
   // Read the "does this document use Chart.js" evidence BEFORE anything is stripped, so a script the
   // loader strip removes cannot take the only sign of the library with it.
   const referencesChartLib = _offlineDocReferencesChartLib(doc);
@@ -819,14 +819,14 @@ async function saveOffline() {
   baseHtml = _applyNoteStateToHtml(baseHtml);
   baseHtml = _applyReviewStateToHtml(baseHtml);
   const exportComments = _exportableComments();
-  let portable;
+  let shareable;
   try {
-    portable = NONPORTABLE_MODE
+    shareable = NONSHAREABLE_MODE
       ? _buildStandaloneHtml(baseHtml, exportComments)
       : _buildSavedHtml(baseHtml, exportComments);
   } catch (e) { showToast(e.message, _OFFLINE_EXPORT_ERROR_TOAST); return; }
   let built;
-  try { built = await _buildOfflineHtml(portable); }
+  try { built = await _buildOfflineHtml(shareable); }
   catch (e) { showToast(e.message, _OFFLINE_EXPORT_ERROR_TOAST); return; }
   const filename = _suggestedOfflineFilename();
   _downloadHtml(built.html, filename);

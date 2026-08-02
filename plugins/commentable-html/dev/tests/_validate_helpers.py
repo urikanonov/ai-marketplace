@@ -8,7 +8,7 @@ Run from the skill root:
 
 Most tests build a MINIMAL valid commentable document in-memory and mutate one
 thing to assert a specific error/warning. One test validates the real
-dist/PORTABLE.html as a positive control (it must pass with zero errors and zero
+dist/SHAREABLE.html as a positive control (it must pass with zero errors and zero
 warnings). Several tests drive the CLI as a subprocess to cover exit codes,
 CRLF, non-UTF-8 input, and batch behaviour. Coverage is mutation-checked: for
 each validator branch there is a test that fails if the branch is deleted.
@@ -33,7 +33,7 @@ TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
 import validate  # noqa: E402
 
-TEMPLATE = os.path.join(ROOT, "dist", "PORTABLE.html")
+TEMPLATE = os.path.join(ROOT, "dist", "SHAREABLE.html")
 VALIDATE_PY = os.path.join(TOOLS, "validate", "validate.py")
 
 # Frozen, test-owned copy of the required-id contract. The fixture is built from
@@ -199,7 +199,7 @@ def build(css=None, body=None, kind="generic"):
         + kind_meta
         + FAVICON_LINK + "\n"
         + '<script type="application/json" id="commentableHtmlLayer">'
-        + '{"version":"1.0.0","mode":"portable","regions":'
+        + '{"version":"1.0.0","mode":"shareable","regions":'
         + json.dumps(EXPECTED_REGIONS, separators=(",", ":"))
         + '}</script>\n'
         '<style>\n'
@@ -218,7 +218,7 @@ OFFLINE_CSP = (
 
 
 def with_offline_mode(doc, csp=True):
-    doc = doc.replace('"mode":"portable"', '"mode":"offline"', 1)
+    doc = doc.replace('"mode":"shareable"', '"mode":"offline"', 1)
     if csp:
         meta = '<meta http-equiv="Content-Security-Policy" content="%s">\n' % OFFLINE_CSP
         doc = doc.replace("<head>\n", "<head>\n" + meta, 1)
@@ -252,10 +252,10 @@ class ValidateAssertions:
                         "expected a warning containing %r, got: %r" % (needle, warnings))
 
 
-NONPORTABLE_VERSION = "1.0.0"
+NONSHAREABLE_VERSION = "1.0.0"
 
 
-def layer_descriptor(version=NONPORTABLE_VERSION, mode="portable", regions=None):
+def layer_descriptor(version=NONSHAREABLE_VERSION, mode="shareable", regions=None):
     data = {
         "version": version,
         "mode": mode,
@@ -264,19 +264,19 @@ def layer_descriptor(version=NONPORTABLE_VERSION, mode="portable", regions=None)
     return '<script type="application/json" id="commentableHtmlLayer">%s</script>' % json.dumps(data, separators=(",", ":"))
 
 
-def nonportable_bootstrap(banner=True, watchdog=True):
+def nonshareable_bootstrap(banner=True, watchdog=True):
     inner = ""
     if banner:
         inner += '<div id="cmhAssetBanner" class="cm-skip" role="alert" hidden>missing</div>\n'
     if watchdog:
         inner += ("<script>window.setTimeout(function () { "
                   "if (!window.__commentableHtmlReady) {} }, 3000);</script>\n")
-    return ("<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->\n"
+    return ("<!-- BEGIN: commentable-html - NONSHAREABLE BOOTSTRAP -->\n"
             + inner
-            + "<!-- END: commentable-html - NONPORTABLE BOOTSTRAP -->")
+            + "<!-- END: commentable-html - NONSHAREABLE BOOTSTRAP -->")
 
 
-def nonportable_scripts(version=NONPORTABLE_VERSION, runtime=True, assets=True):
+def nonshareable_scripts(version=NONSHAREABLE_VERSION, runtime=True, assets=True):
     out = ["<!--\nBEGIN: commentable-html - JS\n-->"]
     if assets:
         out.append('<script src="commentable-html.assets.js"></script>')
@@ -286,12 +286,12 @@ def nonportable_scripts(version=NONPORTABLE_VERSION, runtime=True, assets=True):
     return "\n".join(out)
 
 
-def build_nonportable(version=NONPORTABLE_VERSION, link=True, runtime=True, assets=True, meta=True,
+def build_nonshareable(version=NONSHAREABLE_VERSION, link=True, runtime=True, assets=True, meta=True,
                   banner=True, watchdog=True, link_version=None):
-    """A minimal, valid nonportable document (theme vars inline, layer externalized)."""
+    """A minimal, valid nonshareable document (theme vars inline, layer externalized)."""
     head = [
         '<script type="application/json" id="commentableHtmlLayer">%s</script>'
-        % json.dumps({"version": version, "mode": "nonportable", "regions": EXPECTED_REGIONS},
+        % json.dumps({"version": version, "mode": "nonshareable", "regions": EXPECTED_REGIONS},
                      separators=(",", ":")),
         FAVICON_LINK,
         "<style>\n:root { --cp-bg: #fff; --cp-text: #000; }\n</style>",
@@ -303,8 +303,8 @@ def build_nonportable(version=NONPORTABLE_VERSION, link=True, runtime=True, asse
     if meta:
         head.append('<meta name="commentable-html-version" content="%s">' % version)
     head.append('<meta name="commentable-html-kind" content="generic">')
-    body = [nonportable_bootstrap(banner, watchdog), HANDLED_REGION, EMBEDDED_REGION,
-            comment_ui(), MAIN, nonportable_scripts(version, runtime, assets)]
+    body = [nonshareable_bootstrap(banner, watchdog), HANDLED_REGION, EMBEDDED_REGION,
+            comment_ui(), MAIN, nonshareable_scripts(version, runtime, assets)]
     return ('<!DOCTYPE html>\n<html lang="en">\n<head>\n'
             + "\n".join(head)
             + "\n</head>\n<body>\n"
