@@ -6,10 +6,17 @@ import {
   openKitchenSink, addTextComment, storedComments, machineTrailerBody, expectNoteFenced,
   installClipboardCapture, ready, fileUrl, stageInline, lastCopied, openInline,
   clickSidebarExport, readDownload,
-  clickClearAll,
+  clickClearAll, stageContent,
 } from "./helpers.js";
 
 const IMG = "#commentRoot img.cm-img-commentable";
+
+// A document that pairs commentable prose with an editable note, so a test can re-render the
+// sidebar from a control OUTSIDE it (the note-typing debounce in 37-notes.js).
+const NOTE_DOC = `
+  <h1>Draft focus</h1>
+  <p id="draftProse">Prose to comment on while a note is edited.</p>
+  <div class="cmh-note" data-cmh-note="risk" data-cmh-note-label="Reviewer risk summary">No blocking risks yet.</div>`;
 
 async function openSidebarPanel(page) {
   if (!(await page.evaluate(() => document.body.classList.contains("sidebar-open")))) {
@@ -49,6 +56,24 @@ async function openInlineWithEmbedded(page, arr) {
   await installClipboardCapture(page);
   await page.goto(fileUrl(html));
   await ready(page);
+}
+
+// Let the page's macrotask queue drain, so a deferred focus that WOULD have fired has fired before
+// a "focus did not move" assertion reads document.activeElement.
+async function settleFocus(page) {
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => setTimeout(() => setTimeout(resolve, 0), 0));
+  }));
+}
+
+// Drive the note-typing debounce (37-notes.js) WITHOUT moving focus, the way a re-render reaches
+// the sidebar from a control the reviewer is not currently in. `input` is the event typing fires.
+async function bumpNote(page, value) {
+  await page.evaluate((v) => {
+    const el = document.querySelector('[data-cmh-note="risk"] .cmh-note-input');
+    el.value = v;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }, value);
 }
 
 test.describe("collaboration: author attribution and threads", () => {
@@ -304,6 +329,85 @@ test.describe("collaboration: author attribution and threads", () => {
     // The rehydrated editor still saves normally.
     await card.locator(".cm-reply-compose .cm-reply-save").click();
     await expect(card.locator(".cm-reply")).toContainText("make bold now");
+  });
+
+  test("a re-render triggered from elsewhere leaves focus where the reviewer put it (CMH-THREAD-09)", async ({ page }) => {
+    const { html } = stageContent(NOTE_DOC, { key: "cmh-draft-focus" });
+    await installClipboardCapture(page);
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await addTextComment(page, "#draftProse", "root for the focus draft", 0);
+    await openSidebarPanel(page);
+    const card = page.locator(".cm-card[data-cid]").first();
+    await card.locator(".cm-reply-btn").click();
+    const ta = card.locator(".cm-reply-compose textarea");
+    await ta.fill("draft while elsewhere");
+    await ta.evaluate((el) => el.setSelectionRange(6, 11, "backward"));
+
+    // The reviewer moves to a note field in the document and types: the note-typing debounce
+    // re-renders the sidebar from somewhere they are NOT looking. Re-focusing the re-opened draft
+    // would yank the caret out of the note mid-sentence.
+    const note = page.locator('[data-cmh-note="risk"] .cmh-note-input');
+    await note.click();
+    await note.fill("a blocker appeared");
+    // The note change card proves the debounced re-render actually ran.
+    await expect(page.locator(".cm-card-note")).toHaveCount(1);
+    // The re-opened editor focuses on a deferred timer, so let the macrotask queue drain before
+    // asserting that focus did not move (a bare check could pass simply by being early). Two nested
+    // timeouts behind a frame strictly dominate the runtime's `setTimeout(..., 0)` focus scheduler,
+    // so this stays a real assertion even if that scheduling changes.
+    await settleFocus(page);
+    expect(await page.evaluate(() => {
+      const a = document.activeElement;
+      return a ? a.className : "none";
+    })).toContain("cmh-note-input");
+    // The draft and its selection are restored either way.
+    await expect(ta).toHaveValue("draft while elsewhere");
+    expect(await ta.evaluate((el) => [
+      el.selectionStart, el.selectionEnd, el.selectionDirection,
+    ].join(":"))).toBe("6:11:backward");
+
+    // Sorting is a second, unrelated trigger: the Sort button itself takes focus when clicked, so
+    // the re-render must leave it there rather than reaching into the sidebar draft. The Sort
+    // control's own state is stamped by renderComments, so waiting on it proves the re-render ran
+    // before focus is asserted.
+    await page.click("#btnSort");
+    await expect(page.locator("#btnSort")).toHaveAttribute("data-sort", "time-desc");
+    await settleFocus(page);
+    expect(await page.evaluate(() => document.activeElement && document.activeElement.id)).toBe("btnSort");
+    await expect(ta).toHaveValue("draft while elsewhere");
+
+    // When the reviewer IS in the draft, the re-render still hands focus back with the selection.
+    await ta.click();
+    await ta.evaluate((el) => el.setSelectionRange(0, 5));
+    await bumpNote(page, "a second blocker appeared");
+    await expect(page.locator(".cm-card-note .cmh-note-diff")).toContainText("a second blocker");
+    await expect.poll(async () => page.evaluate(() => {
+      const a = document.activeElement;
+      if (!a || !a.classList.contains("cm-reply-input")) return "not-in-draft";
+      return [a.selectionStart, a.selectionEnd].join(":");
+    })).toBe("0:5");
+
+    // A reviewer parked on one of the editor's OWN controls (keyboard navigation) owns focus too,
+    // but the re-render destroys that control: they are handed back to the rebuilt equivalent, not
+    // dumped into the textarea - which would be the same jump, one control over. Every branch of
+    // the hand-back is covered: a formatting-toolbar button, Cancel, and Save.
+    const parked = ['button[data-fmt="bold"]', ".cm-reply-cancel", ".cm-reply-save"];
+    for (let i = 0; i < parked.length; i++) {
+      const sel = parked[i];
+      await card.locator(".cm-reply-compose " + sel).evaluate((el) => el.focus());
+      await bumpNote(page, "blocker " + i + " appeared");
+      await expect(page.locator(".cm-card-note .cmh-note-diff")).toContainText("blocker " + i);
+      // Same rule as the negative phases: drain the macrotask queue so the editor's own deferred
+      // focus would have landed, then assert once - a poll could pass before it fired.
+      await settleFocus(page);
+      expect(await page.evaluate((s) => {
+        const a = document.activeElement;
+        if (!a || !a.matches) return "none";
+        return a.matches(".cm-reply-compose " + s) ? "on-control" : (a.className || a.tagName);
+      }, sel)).toBe("on-control");
+      await expect(ta).toHaveValue("draft while elsewhere");
+    }
   });
 
   test("editing a reply edits IN the sidebar, prefilled with that reply's own text (CMH-THREAD-07)", async ({ page }) => {

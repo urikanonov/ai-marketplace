@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.364.0] - 2026-08-02
+
+### Fixed
+
+- A sidebar re-render no longer pulls focus into a re-opened inline reply/edit draft when the
+  reviewer was working somewhere else. The draft snapshot now records whether the editor held
+  focus; the re-opened editor restores its text and selection either way, but is only re-focused
+  when it owned focus before the re-render. Previously any re-render triggered from elsewhere - a
+  note-typing debounce, a checklist change, a composer save that returns focus itself - yanked the
+  caret out of the control the reviewer was actually using and into the sidebar textarea, a
+  disorienting jump for keyboard and screen-reader users. When the control that owned focus was one
+  of the editor's own (a formatting-toolbar button, Save, Cancel), focus is handed back to the
+  rebuilt equivalent rather than dropped into the textarea.
+
 ## [1.363.0] - 2026-08-02
 
 ### Changed
