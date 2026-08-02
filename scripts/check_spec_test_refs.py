@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import ast
+import contextlib
+import functools
 import re
 import sys
 from dataclasses import dataclass
@@ -58,8 +60,99 @@ def _display(path: Path) -> str:
         return path.as_posix()
 
 
+def _scoped(fn):
+    """Run fn inside a cache_scope, so a top-level check never re-uses another run's cache."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with cache_scope():
+            return fn(*args, **kwargs)
+    return wrapper
+
+
+def _fingerprint(path: Path) -> tuple[int, int] | None:
+    """(mtime_ns, size) for path, or None when it cannot be stat'd.
+
+    Part of every cache key, so a file that CHANGES on disk is re-read and re-parsed automatically.
+    Keying on the path alone would be faster by one stat() per lookup, but it would hand a caller a
+    stale parse of a file it had just rewritten - a silent wrong answer that no caller could see.
+    A stat is negligible next to the read+parse it guards.
+    """
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
 def _read(path: Path) -> str:
+    return _read_fingerprinted(path, _fingerprint(path))
+
+
+@functools.lru_cache(maxsize=None)
+def _read_fingerprinted(path: Path, fingerprint: tuple[int, int] | None) -> str:
     return path.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _python_ast(path: Path) -> ast.Module | None:
+    """Parsed module for path, or None when it does not parse.
+
+    Cached because several checks (name lookup, exact-test classification) each used to re-read and
+    re-parse the same file for every spec row that referenced it - the bulk of this checker's cost.
+    Callers only ever ast.walk() the result, so sharing one tree is safe.
+    """
+    return _python_ast_fingerprinted(path, _fingerprint(path))
+
+
+@functools.lru_cache(maxsize=None)
+def _python_ast_fingerprinted(path: Path, fingerprint: tuple[int, int] | None) -> ast.Module | None:
+    try:
+        return ast.parse(_read(path), filename=str(path))
+    except SyntaxError:
+        return None
+
+
+def clear_caches() -> None:
+    """Drop every memoized read/parse."""
+    _read_fingerprinted.cache_clear()
+    _python_ast_fingerprinted.cache_clear()
+    _python_symbols_fingerprinted.cache_clear()
+    _js_test_titles.cache_clear()
+
+
+_cache_depth = 0
+
+
+@contextlib.contextmanager
+def cache_scope():
+    """Confine the memo caches to ONE top-level check, then drop them.
+
+    This, not the fingerprint, is what makes the caching sound. A (mtime_ns, size) key is a
+    heuristic: a same-SIZE rewrite that lands in the same mtime tick (or has its mtime restored)
+    is indistinguishable from no change, and for this checker a stale hit means a spec row whose
+    test was renamed still PASSES - a false green on a required gate.
+
+    Within a single check the tree is static: the pass is synchronous and reads files it never
+    writes, so nothing can change under it and caching is exact. Scoping to that window keeps the
+    whole speedup (the win is re-use WITHIN one pass, where a file is referenced by many rows) and
+    leaves nothing cached afterwards to go stale. Nested scopes share one window, so check_all
+    still re-uses reads across its specs.
+
+    SINGLE-THREADED BY CONTRACT: `_cache_depth` is a plain counter, so two threads entering these
+    entry points concurrently could strand it above zero, which would pin the caches warm for the
+    rest of the process and reinstate exactly the stale-hit false pass described above. Every
+    caller today is sequential (the CLI, the pre-push hook, the validate job, and the unittest
+    suite); add a lock here before that changes.
+    """
+    global _cache_depth
+    if _cache_depth == 0:
+        clear_caches()
+    _cache_depth += 1
+    try:
+        yield
+    finally:
+        _cache_depth -= 1
+        if _cache_depth == 0:
+            clear_caches()
 
 
 def _row_cells(line: str) -> list[str] | None:
@@ -76,43 +169,63 @@ def _row_cells(line: str) -> list[str] | None:
     return cells
 
 
-def _python_has_name(path: Path, name: str) -> bool:
-    text = _read(path)
-    try:
-        tree = ast.parse(text, filename=str(path))
-    except SyntaxError:
-        return False
+def _python_symbols(path: Path):
+    """(classes, functions, all_methods, test_classes) for a module, walked ONCE per file.
 
-    classes: dict[str, set[str]] = {}
+    The AST is already cached, but every name lookup used to re-walk that whole tree: 1511 lookups
+    produced ~6M ast.walk steps and dominated the run once the parse itself was cached. The walk is
+    a pure function of the module, so it is hoisted here and shared by both name checks.
+    """
+    return _python_symbols_fingerprinted(path, _fingerprint(path))
+
+
+@functools.lru_cache(maxsize=None)
+def _python_symbols_fingerprinted(path: Path, fingerprint: tuple[int, int] | None):
+    tree = _python_ast(path)
+    if tree is None:
+        return None
+    classes: dict[str, frozenset[str]] = {}
     functions: set[str] = set()
     all_methods: set[str] = set()
+    test_classes: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
-            class_methods = {
+            class_methods = frozenset(
                 child.name
                 for child in node.body
                 if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
-            }
+            )
             classes[node.name] = class_methods
             all_methods.update(class_methods)
+            if _TEST_CLASS_NAME_RE.search(node.name) or _has_testcase_base(node):
+                test_classes.add(node.name)
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             functions.add(node.name)
+    return classes, frozenset(functions), frozenset(all_methods), frozenset(test_classes)
+
+
+def _python_has_name(path: Path, name: str) -> bool:
+    symbols = _python_symbols(path)
+    if symbols is None:
+        return False
+    classes, functions, all_methods, _test_classes = symbols
 
     if "." in name:
         class_name, method_name = name.split(".", 1)
-        return method_name in classes.get(class_name, set())
+        return method_name in classes.get(class_name, frozenset())
     return name in classes or name in functions or name in all_methods
 
 
 def _file_has_name(path: Path, name: str) -> bool:
     text = _read(path)
     if _FEATURE_ID_RE.fullmatch(name.strip()):
-        haystack = "\n".join(_js_test_titles(text)) if path.suffix in {".js", ".mjs"} else text
+        haystack = ("\n".join(_js_test_titles(text, _JS_TITLE_RE))
+                    if path.suffix in {".js", ".mjs"} else text)
         return name in set(_FEATURE_ID_RE.findall(haystack))
     if path.suffix == ".py":
         return _python_has_name(path, name)
     if path.suffix in {".js", ".mjs"}:
-        return name in _js_test_titles(text)
+        return name in _js_test_titles(text, _JS_TITLE_RE)
     return False
 
 
@@ -120,25 +233,14 @@ def _python_is_exact_test(path: Path, name: str) -> bool:
     """True when name is a test method (`test_*`, bare or `Class.method`) or a test-case CLASS in
     path. A non-test helper/function (e.g. `main`, `setUp`) or a non-test helper class does NOT
     qualify; a class counts only when it subclasses `TestCase` or is named `*Tests`/`*Case`."""
-    text = _read(path)
-    try:
-        tree = ast.parse(text, filename=str(path))
-    except SyntaxError:
+    symbols = _python_symbols(path)
+    if symbols is None:
         return False
-    classes: dict[str, set[str]] = {}
-    test_classes: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef):
-            classes[node.name] = {
-                child.name
-                for child in node.body
-                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
-            }
-            if _TEST_CLASS_NAME_RE.search(node.name) or _has_testcase_base(node):
-                test_classes.add(node.name)
+    classes, _functions, _all_methods, test_classes = symbols
     if "." in name:
         class_name, method_name = name.split(".", 1)
-        return method_name.startswith("test") and method_name in classes.get(class_name, set())
+        return method_name.startswith("test") and method_name in classes.get(
+            class_name, frozenset())
     if name in test_classes:
         return True  # a TestCase class names a group of tests
     return name.startswith("test") and any(name in methods for methods in classes.values())
@@ -181,7 +283,19 @@ def _clause_cites_exact_test_name(segment: str, test_path: Path) -> bool:
     return False
 
 
-def _js_test_titles(text: str, pattern: re.Pattern = _JS_TITLE_RE) -> set[str]:
+@functools.lru_cache(maxsize=None)
+def _js_test_titles(text: str, pattern: re.Pattern) -> frozenset[str]:
+    """Test titles declared in a JS/MJS source.
+
+    Cached on the source text (which `_read` returns as one shared, hash-cached string per file),
+    because this hand-rolled scanner walks the file character by character and used to run once per
+    spec row that referenced the file. Returns a frozenset so a cached result cannot be mutated by
+    a caller; `in`, `sorted()`, and `join()` all behave as before.
+
+    `pattern` is REQUIRED rather than defaulted: lru_cache keys on the arguments as PASSED, so a
+    defaulted call and an explicit one that resolve to the same pattern would occupy two entries
+    and scan the same file twice.
+    """
     titles: set[str] = set()
     i = 0
     quote = ""
@@ -237,7 +351,7 @@ def _js_test_titles(text: str, pattern: re.Pattern = _JS_TITLE_RE) -> set[str]:
                 continue
         line_start = False
         i += 1
-    return titles
+    return frozenset(titles)
 
 
 def _skip_regex_literal(text: str, pos: int) -> int:
@@ -343,6 +457,7 @@ def _clause_end(text: str, start: int, default_end: int) -> int:
     return default_end
 
 
+@_scoped
 def check_spec(spec_path: Path, base_dir: Path) -> list[SpecIssue]:
     issues: list[SpecIssue] = []
     text = _read(spec_path)
@@ -406,6 +521,7 @@ def check_spec(spec_path: Path, base_dir: Path) -> list[SpecIssue]:
     return issues
 
 
+@_scoped
 def check_test_id_mappings(
     spec_path: Path,
     base_dir: Path,
@@ -425,7 +541,7 @@ def check_test_id_mappings(
             if test_path.resolve().is_relative_to(base_dir.resolve())
             else test_path.resolve().relative_to(REPO_ROOT).as_posix()
         )
-        for title in sorted(_js_test_titles(text)):
+        for title in sorted(_js_test_titles(text, _JS_TITLE_RE)):
             line_no = text[:text.find(title)].count("\n") + 1
             for feature_id in _FEATURE_ID_RE.findall(title):
                 matching_rows = rows.get(feature_id)
@@ -449,6 +565,7 @@ def check_test_id_mappings(
     return issues
 
 
+@_scoped
 def check_all(targets: tuple[tuple[Path, Path], ...] = SPEC_TARGETS) -> list[SpecIssue]:
     issues: list[SpecIssue] = []
     for spec_path, base_dir in targets:
