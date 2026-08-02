@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Regression tests for new_document.py (the template-clone document builder)."""
+import builtins
 import contextlib
 import hashlib
 import io
@@ -10,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -57,7 +59,9 @@ class MakeDocumentTests(unittest.TestCase):
 
     def test_output_validates_clean(self):
         out = new_document.make_document(_template(), CONTENT, "my-report-v1", "My Report", "src.md")
-        errors, warnings = new_document._self_validate(out)
+        result = new_document._self_validate(out)
+        self.assertIsNotNone(result, "the document could not be checked at all")
+        errors, _warnings = result
         self.assertEqual(errors, [], "expected no validation errors, got: %r" % errors)
 
     def test_generated_document_does_not_bake_sidebar_open_body_class(self):
@@ -211,9 +215,14 @@ class MakeDocumentTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             new_document._tag_end("<main id=commentRoot", 0)
 
-    def test_self_validate_degrades_when_validator_missing(self):
+    def test_self_validate_reports_the_cause_when_the_validator_is_missing(self):
+        # CMH-TOOL-07: an unusable validator is a REASON ("could not check"), never a
+        # (None, None) that main() would read as "no errors, no warnings" and write anyway.
         with mock.patch.dict(sys.modules, {"validate": None}):
-            self.assertEqual(new_document._self_validate("<html></html>"), (None, None))
+            result, reason = new_document._self_validate_result("<html></html>")
+            self.assertIsNone(result)
+            self.assertIn("validate", reason)
+            self.assertIsNone(new_document._self_validate("<html></html>"))
 
 
 class NoTemplateDemoHeaderTests(unittest.TestCase):
@@ -511,7 +520,8 @@ class MainCliTests(unittest.TestCase):
         d = self._tmpdir()
         out_html = new_document.make_document(_template(), CONTENT, "x-v1", "X")
         with mock.patch.object(new_document, "make_document", return_value=out_html), \
-                mock.patch.object(new_document, "_self_validate", return_value=(["boom"], [])):
+                mock.patch.object(new_document, "_self_validate_result",
+                                  return_value=((["boom"], []), None)):
             code, _out, err = self._call_main(
                 ["new_document.py", "--content", "-", "--key", "x-v1", "--label", "X"],
                 stdin=CONTENT)
@@ -954,6 +964,195 @@ class KindTests(unittest.TestCase):
             stdin='<h2 id="a">One</h2><p>a</p><h2 id="b">Two</h2><p>b</p>')
         self.assertEqual(code, 0, err)
         self.assertNotIn("data-cmh-doc-stats", out)
+
+
+class NewDocumentUnvalidatedOutputTests(unittest.TestCase):
+    """CMH-TOOL-07: a document this tool could not CHECK is not written.
+
+    `_self_validate` used to return `(None, None)` when the sibling `validate` module was
+    unimportable; main() unpacked that into errors/warnings, `if errors:` was falsy, and the
+    document was written UNVALIDATED - the one self-check disappearing exactly on the broken
+    or partial install it exists for. The default is now to fail closed, with an explicit
+    `--allow-unvalidated-output` opt-out (the same treatment chart_block.py got).
+    """
+
+    ARGV = ["new_document.py", "--content", "-", "--key", "unval-v1", "--label", "Unval",
+            "--kind", "generic", "--portable"]
+
+    def _tmpdir(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(lambda: _rmtree(d))
+        return d
+
+    @contextlib.contextmanager
+    def _import_of_validate_raising(self, exc):
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "validate":
+                raise exc
+            return real_import(name, *args, **kwargs)
+
+        with mock.patch.dict(sys.modules), mock.patch.object(sys, "path", list(sys.path)), \
+                mock.patch.object(builtins, "__import__", fake_import):
+            sys.modules.pop("validate", None)
+            yield
+
+    def _run(self, extra_argv=(), stdin=CONTENT):
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(sys, "stdin", io.StringIO(stdin)), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = new_document.main(list(self.ARGV) + list(extra_argv))
+        return code, out.getvalue(), err.getvalue()
+
+    def test_an_unimportable_validator_writes_nothing_instead_of_an_unchecked_document(self):
+        with self._import_of_validate_raising(
+                ModuleNotFoundError("No module named 'validate'", name="validate")):
+            code, out, err = self._run()
+        self.assertNotEqual(code, 0)
+        self.assertEqual(out, "", "a document that could not be validated must not be emitted")
+        self.assertIn("could not be self-validated", err)
+        self.assertIn("'validate' tool could not be imported", err)
+        self.assertIn("No module named 'validate'", err)
+        self.assertIn("--allow-unvalidated-output", err)
+
+    def test_no_file_is_written_when_the_document_could_not_be_checked(self):
+        d = self._tmpdir()
+        opath = os.path.join(d, "out.html")
+        with self._import_of_validate_raising(
+                ModuleNotFoundError("No module named 'validate'", name="validate")):
+            code, _out, err = self._run(["--out", opath])
+        self.assertNotEqual(code, 0, err)
+        self.assertFalse(os.path.exists(opath),
+                         "an unvalidatable document must not reach the filesystem")
+
+    def test_a_partial_install_whose_validator_lacks_its_own_deps_also_fails_closed(self):
+        # The likelier partial install: validate.py is present but one of ITS imports is
+        # missing. That must take the same gate, not surface as a traceback.
+        with self._import_of_validate_raising(
+                ModuleNotFoundError("No module named 'checks.links'", name="checks.links")):
+            code, out, err = self._run()
+        self.assertNotEqual(code, 0)
+        self.assertEqual(out, "")
+        self.assertIn("checks.links", err, "the error must name what is actually missing")
+
+    def test_a_corrupt_validator_source_fails_closed_rather_than_raising(self):
+        with self._import_of_validate_raising(
+                SyntaxError("unterminated triple-quoted string literal")):
+            code, out, err = self._run()
+        self.assertNotEqual(code, 0)
+        self.assertEqual(out, "")
+        self.assertIn("SyntaxError", err)
+
+    def test_a_foreign_validate_module_is_not_accepted_as_the_checker(self):
+        # An unrelated `validate` earlier on sys.path must not be able to hand back a clean
+        # verdict it never computed.
+        foreign = types.ModuleType("validate")
+        foreign.__file__ = os.path.join(tempfile.gettempdir(), "validate.py")
+        foreign.validate = lambda path, base_dir=None: ([], [])
+        with mock.patch.dict(sys.modules, {"validate": foreign}):
+            module, reason = new_document._load_validator()
+        self.assertIsNone(module)
+        self.assertIn("not this skill's", reason)
+
+    def test_the_real_validator_is_accepted_through_a_resolved_path(self):
+        # The containment guard must not false-alarm on the genuine validator, including the
+        # alternate spellings a real install produces (a differently-cased path, or one that
+        # walks through `..`), which is what the two-form comparison exists for.
+        module, reason = new_document._load_validator()
+        self.assertIsNone(reason)
+        self.assertIsNotNone(module)
+        real = os.path.join(TOOLS, "validate", "validate.py")
+        self.assertTrue(new_document._contained(real))
+        self.assertTrue(new_document._contained(
+            os.path.join(TOOLS, "authoring", "..", "validate", "validate.py")))
+        if os.path.normcase("A") == os.path.normcase("a"):
+            self.assertTrue(new_document._contained(real.upper()))
+
+    def test_a_non_string_module_file_is_refused_rather_than_raising(self):
+        # Every cause must come back as a REASON; a module whose __file__ is not a path must
+        # not escape as a traceback (which would also make the opt-out unreachable).
+        odd = types.ModuleType("validate")
+        odd.__file__ = object()
+        with mock.patch.dict(sys.modules, {"validate": odd}):
+            module, reason = new_document._load_validator()
+        self.assertIsNone(module)
+        self.assertIn("not this skill's", reason)
+
+    def test_a_foreign_validate_on_sys_path_is_refused_before_its_body_runs(self):
+        # The origin is checked BEFORE the import, so an unrelated `validate` earlier on
+        # sys.path must be refused without executing its module body at all.
+        import importlib
+
+        d = self._tmpdir()
+        sentinel = os.path.join(d, "ran.txt")
+        with open(os.path.join(d, "validate.py"), "w", encoding="utf-8") as fh:
+            fh.write("import pathlib\n"
+                     "pathlib.Path(%r).write_text('ran', encoding='utf-8')\n"
+                     "def validate(path, base_dir=None):\n"
+                     "    return ([], [])\n" % sentinel)
+        with mock.patch.dict(sys.modules), mock.patch.object(sys, "path", [d] + list(sys.path)):
+            sys.modules.pop("validate", None)
+            importlib.invalidate_caches()
+            module, reason = new_document._load_validator()
+        self.assertIsNone(module)
+        self.assertIn("not this skill's", reason)
+        self.assertFalse(os.path.exists(sentinel),
+                         "the foreign module's body must never be executed")
+
+    def test_a_cached_validate_without_a_file_is_refused(self):
+        anonymous = types.ModuleType("validate")
+        anonymous.validate = lambda path, base_dir=None: ([], [])
+        with mock.patch.dict(sys.modules, {"validate": anonymous}):
+            module, reason = new_document._load_validator()
+        self.assertIsNone(module)
+        self.assertIn("an unknown location", reason)
+
+    def test_a_crashing_validator_fails_closed_rather_than_raising(self):
+        boom = types.SimpleNamespace(validate=mock.Mock(side_effect=RuntimeError("kaboom")))
+        with mock.patch.object(new_document, "_load_validator", return_value=(boom, None)):
+            code, out, err = self._run()
+        self.assertNotEqual(code, 0)
+        self.assertEqual(out, "")
+        self.assertIn("validator could not run", err)
+        self.assertIn("kaboom", err)
+
+    def test_a_validator_answering_in_an_unexpected_shape_is_not_treated_as_clean(self):
+        # `(None, None)` is the exact old fail-open shape: it satisfies a bare 2-tuple test and
+        # then reads as "no errors, no warnings". It must count as "could not check".
+        for outcome in (None, ([], [], []), (None, None), ([], None), ("", "")):
+            with self.subTest(outcome=outcome):
+                broken = types.SimpleNamespace(validate=mock.Mock(return_value=outcome))
+                with mock.patch.object(new_document, "_load_validator", return_value=(broken, None)):
+                    code, out, err = self._run()
+                self.assertNotEqual(code, 0)
+                self.assertEqual(out, "")
+                self.assertIn("unexpected result", err)
+
+    def test_the_explicit_opt_out_still_writes_with_a_warning(self):
+        with self._import_of_validate_raising(
+                ModuleNotFoundError("No module named 'validate'", name="validate")):
+            code, out, err = self._run(["--allow-unvalidated-output"])
+        self.assertEqual(code, 0, err)
+        self.assertIn('data-comment-key="unval-v1"', out)
+        self.assertIn("not self-validated", err)
+
+    def test_the_opt_out_does_not_suppress_a_real_validation_failure(self):
+        # The flag means "I accept a document that could not be CHECKED", never "skip the
+        # check". Widening it into the latter must fail this test.
+        with mock.patch.object(new_document, "_self_validate_result",
+                               return_value=((["boom"], []), None)):
+            code, out, err = self._run(["--allow-unvalidated-output"])
+        self.assertNotEqual(code, 0)
+        self.assertEqual(out, "")
+        self.assertIn("does not validate", err)
+        self.assertIn("boom", err)
+
+    def test_a_working_validator_with_the_flag_still_validates_and_succeeds(self):
+        code, out, err = self._run(["--allow-unvalidated-output"])
+        self.assertEqual(code, 0, err)
+        self.assertIn('data-comment-key="unval-v1"', out)
+        self.assertNotIn("not self-validated", err)
 
 
 if __name__ == "__main__":

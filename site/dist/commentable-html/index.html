@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.285.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.291.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.291.0] - 2026-08-02</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li><code>tools/authoring/new_document.py</code> no longer writes a document it could not self-validate. Its <code>_self_validate</code> returned <code>(None, None)</code> when the sibling <code>validate</code> module was unimportable; <code>main()</code> unpacked that into errors/warnings, <code>if errors:</code> was falsy, and the new document was written UNVALIDATED - so the one self-check the generator has disappeared exactly on the broken or partial install it exists for. It now fails CLOSED by default: nothing reaches <code>--out</code> or stdout and it exits non-zero naming the actual cause. The seam is hardened the same way <code>chart_block.py</code> was: a <code>validate</code> module resolved from outside this skill&#x27;s own tools dir is refused BEFORE its module body runs (compared canonically, so a junction or a differently-cased path does not false-alarm), and a crashing validator or an unexpected return shape (notably <code>(None, None)</code>, which would otherwise read as &quot;no errors, no warnings&quot;) counts as &quot;could not check&quot; rather than escaping as a traceback. A caller who knowingly accepts unchecked output passes the new <code>--allow-unvalidated-output</code>, which writes it with a warning; that flag never suppresses a real validation failure.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.285.0] - 2026-08-02</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>The in-document comment dialog (the one you get by clicking a highlight) now offers the same rich-text editing as the floating composer and the side panel. Its Edit form carries the shared formatting toolbar (bold, italic, underline, strikethrough, inline code, link, bullet list) above the textarea, and Ctrl/Cmd+B/I/U/K apply the matching formatting - from the textarea and from a focused toolbar, Cancel, or Save button, since the keys are bound to the editor and action containers rather than the textarea. Ctrl/Cmd+Enter still saves and Escape still cancels back to the rendered note with the dialog left open; a blank save still marks the field invalid, and formatting (not just typing) now clears that state. Mid-IME-composition the toolbar, save, and cancel are all inert, so a candidate window can never splice markers into provisional text or discard the draft. The toolbar is tightened to fit the fixed-width dialog on one row, and keeps a &gt;=44px touch target on phones (wrapping rather than overflowing).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.282.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -511,8 +520,6 @@
               <li>The same shared boundary layer closes several smaller cross-version and tree-construction gaps: <code>&lt;plaintext&gt;</code> swallows the rest of the document exactly as a browser does (even past a <code>&lt;/plaintext&gt;</code> that looks like a closer), a tag name folds ASCII-case-insensitively only (so <code>&lt;/\u017fcript&gt;</code> does not end a <code>&lt;script&gt;</code>), the host&#x27;s RCDATA character-reference decoding is no longer inherited (3.13 decoded inside <code>&lt;title&gt;</code>/<code>&lt;textarea&gt;</code>, 3.12 did not), a self-closed foreign element such as <code>&lt;svg&gt;&lt;rect id=&quot;x&quot;/&gt;</code> is recorded as the element it is and never left open, a self-closed void tag such as <code>&lt;hr/&gt;</code> closes an open <code>&lt;p&gt;</code> in both parsers, the implicit <code>&lt;/p&gt;</code> / <code>&lt;/li&gt;</code> close respects HTML5 scope across an <code>&lt;svg&gt;&lt;foreignObject&gt;</code> (while an HTML element merely NAMED <code>&lt;desc&gt;</code> still stops nothing), and the marker scan blanks every raw-text body, so a region marker quoted in a <code>&lt;textarea&gt;</code> or the print <code>&lt;noscript&gt;</code> is not a boundary.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.280.0] - 2026-08-01</h3></div>
             <div class="group-label">Fixed</div>
@@ -550,15 +557,7 @@
               <li>The two author-time scans that locate code blocks - the syntax-highlighting guardrail (CMH-VAL-11) and the runnable-KQL rule (CMH-KQL-08) - now read PARSED elements instead of matching text over a masked copy of the document. The mask closed the two real defects it was built for, but a text scan still drew the block boundary in four places a browser does not, and each one could hide a real raw block from a guardrail that exists to catch it: - every HTML raw-text / RCDATA element holds text, not markup, yet only <code>&lt;script&gt;</code> and <code>&lt;style&gt;</code> were treated that way. A <code>&lt;pre&gt;</code>/<code>&lt;code&gt;</code> written inside a <code>&lt;textarea&gt;</code>, <code>&lt;title&gt;</code>, <code>&lt;xmp&gt;</code>, <code>&lt;iframe&gt;</code>, <code>&lt;noembed&gt;</code>, <code>&lt;noframes&gt;</code> or <code>&lt;noscript&gt;</code> was read as authored markup, and its unpaired opener could swallow the author&#x27;s real block that followed; - a <code>&lt;![CDATA[ ... ]]&gt;</code> section in foreign content (<code>&lt;svg&gt;</code>/<code>&lt;math&gt;</code>) is a declaration whose content is character data, so a block quoted there was both flagged on its own and able to hide a later real one; - the legacy comment close <code>--!&gt;</code> was not recognized, so a comment ending that way stayed &quot;open&quot; to the document&#x27;s next <code>--&gt;</code> - which the layer always supplies - blanking every authored block in between; - matching attributes up to the first <code>&gt;</code> ended a tag inside a QUOTED attribute value, so <code>&lt;code title=&quot;a &gt; b&quot; class=&quot;language-python&quot;&gt;</code> lost its language label entirely and a <code>data-cmh-kql-no-cluster</code> marker written after such a value was invisible.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.275.0] - 2026-07-29</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The Offline export&#x27;s two script strips now treat every executable JavaScript MIME type as runnable, not only the modern three. <code>_stripOfflineRichRenderers</code> and <code>_stripOfflineNetworkLoads</code> returned early for any <code>type</code> outside empty / <code>module</code> / <code>text/javascript</code> / <code>application/javascript</code>, but a browser also executes <code>text/ecmascript</code>, <code>application/ecmascript</code>, <code>application/x-javascript</code>, <code>text/x-javascript</code>, <code>text/jscript</code>, <code>text/livescript</code>, and <code>text/javascript1.0</code> through <code>1.5</code> - so a script carrying one of those types kept its remote dynamic import, and a stale mermaid or Chart.js loader shim survived the renderer strip. Both strips now share the one runnable-script-type predicate the evidence scan already used. The strict validator carried the same narrow set in its own independent Python copy, so such a file also passed <code>validate.py --strict</code> as offline-clean; it now mirrors the runtime predicate, and a parity test pins the two implementations together in both directions. The zero-network CSP blocked the fetch either way, so this is defense in depth; the strip is the primary guarantee and no longer leans on the CSP.</li>
-              <li>Re-running <code>Export Offline</code> on an already-offline document that contains a mermaid diagram (or a chart the built-in renderer does not draw) now produces a working download instead of an &quot;Offline export is missing the vendored mermaid bundle&quot; error toast. An Offline export consumes the vendored payload and removes it, so the file it produces carries the libraries inline and no payload at all; the exporter now reads those already-inlined copies and their MIT notices before the strip removes them and re-emits them, so a re-export reuses what is already local. Because re-emitting a captured script grants it execution and the document being exported is untrusted, the <code>data-cmh-offline-lib</code> marker alone is not taken as proof this exporter wrote it: a captured copy must sit in the head, carry exactly the attribute shape the exporter emits (which rules out <code>src</code>, any <code>type</code> - so inert data and a non-executing MIME-parameter type are never promoted to code - and <code>nomodule</code>, whose body never ran), pass the same network-import check the loader strip applies to every other surviving script, and carry no byte sequence that would open a script-data escape. An adjacent MIT notice naming the same library is required as a licensing condition, so the library and its notice always travel together. A document that has neither a payload nor a qualifying inlined copy still fails loudly.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">231 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">232 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
