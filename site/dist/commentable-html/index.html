@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.280.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.282.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,15 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.282.0] - 2026-08-02</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The validator&#x27;s two tolerant parsers now share ONE set of element boundaries, so a document reads the same whichever check is asking and whichever Python is running. The <code>&lt;pre&gt;</code>/<code>&lt;code&gt;</code> tokenizer already drew the boundary a browser draws; the DOCUMENT parser - the view the chart, link, id, heading, meta, anchor, <code>&lt;style&gt;</code>/<code>&lt;script&gt;</code> and content-region checks all read - still inherited whatever tables the host <code>html.parser</code> shipped, so the same file could be two different documents. Both now derive from a shared <code>_BrowserBoundaries</code> base: every HTML raw-text / RCDATA element (<code>script</code>, <code>style</code>, <code>textarea</code>, <code>title</code>, <code>xmp</code>, <code>iframe</code>, <code>noembed</code>, <code>noframes</code>, <code>noscript</code>) holds TEXT, a raw-text element closes on <code>&lt;/name</code> followed by whitespace, <code>/</code> or <code>&gt;</code> (<code>&lt;/script data-x&gt;</code>, <code>&lt;/script/&gt;</code>), a comment closes at <code>--&gt;</code>, <code>--!&gt;</code> and the abrupt <code>&lt;!--&gt;</code> / <code>&lt;!---&gt;</code> but never at <code>-- &gt;</code>, an unterminated comment consumes the rest of the document, and <code>&lt;![CDATA[ ... ]]&gt;</code> is a section only inside <code>svg</code>/<code>math</code> content (elsewhere it is a bogus comment ending at the first <code>&gt;</code>, so the markup after it is live).</li>
+              <li>Concretely: a <code>&lt;canvas&gt;</code>, an <code>&lt;a href target&gt;</code>, an <code>id</code> or a heading quoted inside a <code>&lt;textarea&gt;</code>, a <code>&lt;title&gt;</code> or a <code>&lt;noscript&gt;</code> is prose a reader SEES, so it no longer raises chart errors (&quot;no renderer was found&quot;, &quot;not inside a cm-skip wrapper&quot;) or a same-tab link warning on a clean document; markup a browser keeps LIVE after a <code>--!&gt;</code> close, after a <code>&lt;/script data-x&gt;</code> closer or after a <code>&lt;![CDATA[</code> opener is no longer silently skipped; and markup a browser hides (behind <code>-- &gt;</code>, inside an unterminated comment, inside a real CDATA section in foreign content) is no longer resurrected. Python 3.12 and 3.13+ now agree.</li>
+              <li>The same shared boundary layer closes several smaller cross-version and tree-construction gaps: <code>&lt;plaintext&gt;</code> swallows the rest of the document exactly as a browser does (even past a <code>&lt;/plaintext&gt;</code> that looks like a closer), a tag name folds ASCII-case-insensitively only (so <code>&lt;/\u017fcript&gt;</code> does not end a <code>&lt;script&gt;</code>), the host&#x27;s RCDATA character-reference decoding is no longer inherited (3.13 decoded inside <code>&lt;title&gt;</code>/<code>&lt;textarea&gt;</code>, 3.12 did not), a self-closed foreign element such as <code>&lt;svg&gt;&lt;rect id=&quot;x&quot;/&gt;</code> is recorded as the element it is and never left open, a self-closed void tag such as <code>&lt;hr/&gt;</code> closes an open <code>&lt;p&gt;</code> in both parsers, the implicit <code>&lt;/p&gt;</code> / <code>&lt;/li&gt;</code> close respects HTML5 scope across an <code>&lt;svg&gt;&lt;foreignObject&gt;</code> (while an HTML element merely NAMED <code>&lt;desc&gt;</code> still stops nothing), and the marker scan blanks every raw-text body, so a region marker quoted in a <code>&lt;textarea&gt;</code> or the print <code>&lt;noscript&gt;</code> is not a boundary.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.280.0] - 2026-08-01</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -503,6 +512,8 @@
               <li><code>measureCss()</code> no longer re-types the diagram vocabulary: it DERIVES its mermaid hosts from the shared <code>CMH_MERMAID_SEL</code> definition. The print stylesheet is plain CSS and cannot reference a constant, so it still spells the hosts out, but it is now PINNED two-directionally to that same definition - so neither PRINT surface can drift back to covering half the hosts.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.279.0] - 2026-07-30</h3></div>
             <div class="group-label">Fixed</div>
@@ -512,8 +523,6 @@
               <li>The CONTENT and region markers are now counted and located in one shared view whose <code>&lt;script&gt;</code>/<code>&lt;style&gt;</code> bodies are blanked and whose comments survive (the markers ARE comments), so the marker check and the layer checks can never disagree about what a marker is: a marker quoted in script data neither forges a duplicate-marker error nor defines a boundary. That scan takes its raw-text boundaries from the same tokenizer the code-block checks use, so a <code>&lt;script</code> named inside a comment never opens a region that swallows a marker.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.278.0] - 2026-07-30</h3></div>
             <div class="group-label">Added</div>
@@ -553,14 +562,7 @@
               <li>The chart and diagram selectors are declared ONCE, in a new <code>assets/js/03-selectors.js</code> module, and the renderer, the image comment layer, the mermaid layer, the Offline exporter, and the author-time rich-libraries payload detector all derive from it, so the lists can no longer drift. The detector&#x27;s former deliberate superset (any <code>data-cmh-chart*</code> attribute) is now exact parity with the runtime.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.271.0] - 2026-07-29</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The validator no longer classifies a document as NonPortable because its own authored CONTENT demonstrates the companion markup. It decided the mode by looking for a <code>&lt;link href=&quot;commentable-html.css&quot;&gt;</code> / <code>&lt;script src=&quot;commentable-html.js&quot;&gt;</code> ANYWHERE in the file, so a genuinely self-contained Portable document about commentable-html - one that quotes the legacy loading markup in prose, which <code>to_portable.py</code> now deliberately preserves when it migrates such a file - failed validation with <code>commentableHtmlLayer.mode must be &quot;nonportable&quot;</code>, no runtime script found, a missing <code>#cmhAssetBanner</code>, and a companion file that does not exist. The mode determination and every check that follows from it now read the LAYER&#x27;s own markup: the authored region is excluded, because the layer&#x27;s references always sit outside it (the stylesheet in <code>&lt;head&gt;</code> before it, the runtime scripts at the end of <code>&lt;body&gt;</code> after it). The region comes from the PARSE, not from marker offsets in the text, so it is exactly the region a browser would agree on - real comment markers, inside the live <code>#commentRoot</code>, outside an inert <code>&lt;template&gt;</code>, never inside CDATA - and a misplaced marker or a <code>&lt;style&gt;</code> straddling one cannot steer the validator into ignoring the real layer instead. It holds in the other direction too: an authored demonstration can never STAND IN for a real reference, so a NonPortable document whose bootstrap banner, watchdog, version meta, or companion reference exists only inside its prose still reports the same error it always did, and a real NonPortable document is classified and checked exactly as before. Because the layer view is only as trustworthy as the region it is derived from, the validator also errors when the CONTENT markers are present in the text exactly once each and in order but the document does not parse with a well-formed region - a marker swallowed by a <code>&lt;script&gt;</code>/<code>&lt;style&gt;</code> body or an inert <code>&lt;template&gt;</code>, a marker outside <code>#commentRoot</code>, or unbalanced markup closing <code>#commentRoot</code> mid-region - instead of guessing which side of the broken boundary the markup after it belongs to.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">229 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">230 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

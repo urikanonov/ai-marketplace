@@ -4,6 +4,40 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.282.0] - 2026-08-02
+
+### Fixed
+
+- The validator's two tolerant parsers now share ONE set of element boundaries, so a document
+  reads the same whichever check is asking and whichever Python is running. The `<pre>`/`<code>`
+  tokenizer already drew the boundary a browser draws; the DOCUMENT parser - the view the chart,
+  link, id, heading, meta, anchor, `<style>`/`<script>` and content-region checks all read - still
+  inherited whatever tables the host `html.parser` shipped, so the same file could be two
+  different documents. Both now derive from a shared `_BrowserBoundaries` base: every HTML
+  raw-text / RCDATA element (`script`, `style`, `textarea`, `title`, `xmp`, `iframe`, `noembed`,
+  `noframes`, `noscript`) holds TEXT, a raw-text element closes on `</name` followed by
+  whitespace, `/` or `>` (`</script data-x>`, `</script/>`), a comment closes at `-->`, `--!>`
+  and the abrupt `<!-->` / `<!--->` but never at `-- >`, an unterminated comment consumes the
+  rest of the document, and `<![CDATA[ ... ]]>` is a section only inside `svg`/`math` content
+  (elsewhere it is a bogus comment ending at the first `>`, so the markup after it is live).
+- Concretely: a `<canvas>`, an `<a href target>`, an `id` or a heading quoted inside a
+  `<textarea>`, a `<title>` or a `<noscript>` is prose a reader SEES, so it no longer raises
+  chart errors ("no renderer was found", "not inside a cm-skip wrapper") or a same-tab link
+  warning on a clean document; markup a browser keeps LIVE after a `--!>` close, after a
+  `</script data-x>` closer or after a `<![CDATA[` opener is no longer silently skipped; and
+  markup a browser hides (behind `-- >`, inside an unterminated comment, inside a real CDATA
+  section in foreign content) is no longer resurrected. Python 3.12 and 3.13+ now agree.
+- The same shared boundary layer closes several smaller cross-version and tree-construction gaps:
+  `<plaintext>` swallows the rest of the document exactly as a browser does (even past a
+  `</plaintext>` that looks like a closer), a tag name folds ASCII-case-insensitively only (so
+  `</\u017fcript>` does not end a `<script>`), the host's RCDATA character-reference decoding is
+  no longer inherited (3.13 decoded inside `<title>`/`<textarea>`, 3.12 did not), a self-closed
+  foreign element such as `<svg><rect id="x"/>` is recorded as the element it is and never left
+  open, a self-closed void tag such as `<hr/>` closes an open `<p>` in both parsers, the implicit
+  `</p>` / `</li>` close respects HTML5 scope across an `<svg><foreignObject>` (while an HTML
+  element merely NAMED `<desc>` still stops nothing), and the marker scan blanks every raw-text
+  body, so a region marker quoted in a `<textarea>` or the print `<noscript>` is not a boundary.
+
 ## [1.280.0] - 2026-08-01
 
 ### Fixed
