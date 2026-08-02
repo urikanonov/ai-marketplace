@@ -9,25 +9,28 @@ Three directions are checked:
   corpus; for the rest it covers only what `_is_reverse_mapped` accepts - the `*.test.*` suites
   and the `*regressions*.spec.*` files. A target graduates to the full corpus once every feature
   id its tests carry is owned and cited by its spec, which is a spec cleanup rather than a code
-  change: the site target is there today, commentable-html is not (a few dozen of its test titles
-  have no owning row, or a row that does not cite them, and several would need brand-new feature
-  ids, which also demands a doc-surface registry entry). Issue #853 tracks that cleanup and
-  carries the measured breakdown. Until it lands, a commentable-html `*.spec.*` file is covered by
-  the forward direction and by the cross-file duplicate check below, but not by the reverse
-  mapping.
+  change. EVERY shipped target is there now: the site and demo-video targets graduated in #800,
+  and commentable-html followed in #853 (its 32 remaining violations were vestigial labels - each
+  test title carried an id no row owned while an existing row already described that behavior AND
+  cited that very test - so the cleanup normalized the titles onto the owning id rather than
+  minting parallel ids). The set stays as the mechanism, not as a standing exemption: a NEW target
+  added later can start restricted and graduate, but no shipped target is restricted today.
 - DUPLICATE (`check_duplicate_feature_ids`): a feature id carried by test titles in MORE THAN ONE
   file must have every one of those titles cited by a spec row that owns the id, so a new test
   cannot quietly borrow an id another file already owns. It reads the WHOLE test corpus, not just
   the reverse-mapped part. Three rules bound it:
-  - While an id lives in ONE file, extra titles there need no citation: a single behavior
-    asserted from several angles in its own spec file is the repo's existing convention (114
-    instances). The moment the id also appears in another file, traceability matters more than
-    that convenience, so EVERY carrier of it - including the same-file ones - must be cited.
+  - While an id lives in ONE file, this direction demands no citation. That relaxation used to be
+    load-bearing (the `*.spec.*` corpus was not reverse-mapped, so nothing else asked for those
+    citations). Now that every shipped target is fully reverse-mapped it is not: the reverse
+    direction already demands a citation for EVERY test title that carries an id, same-file ones
+    included, and dropping the relaxation was measured to find nothing the reverse direction does
+    not already report. It is kept so a same-file miss is reported ONCE, by the direction that
+    explains it best, instead of twice - and so `check_duplicate_feature_ids`, which is also
+    callable on its own with an ad-hoc `--target`, keeps its narrow cross-file meaning.
   - An id whose AREA (the segment before the first `-`) no spec row anywhere owns is skipped. An
     `HTTP-404` in a title matches the feature-id shape, and must not red CI on its own. A NEW id
     in a known area - `CMH-DECK-99`, say - is still checked even before it has a row, because
-    that is exactly the borrow this gate exists to catch and most of the `*.spec.*` corpus is not
-    reverse-mapped yet.
+    that is exactly the borrow this gate exists to catch.
   - A `describe(...)` wrapper counts toward "how many files carry this id", since hiding a borrow
     in a suite title is the obvious evasion, but only a `test(...)`/`it(...)` title is REPORTED -
     a suite title cannot be cited by a row (issue #629), so demanding it be cited would be a
@@ -59,8 +62,10 @@ SPEC_TARGETS = (
 )
 # Specs whose ENTIRE test corpus is reverse-mapped, not just the `*.test.*` / regressions subset.
 # A spec joins this set once every feature id its tests carry is owned and cited by it; see the
-# module docstring and issue #853.
+# module docstring. Every SPEC_TARGETS entry is listed - the set remains the graduation mechanism
+# for a target added later, not a standing exemption for any shipped one.
 FULLY_REVERSE_MAPPED_SPECS = frozenset({
+    (REPO_ROOT / "plugins" / "commentable-html" / "dev" / "SPEC.md").resolve(),
     (REPO_ROOT / "site" / "tests" / "SPEC.md").resolve(),
     (REPO_ROOT / ".github" / "skills" / "demo-video" / "SPEC.md").resolve(),
 })
@@ -731,6 +736,8 @@ def check_duplicate_feature_ids(
     for feature_id, entries in sorted(uses.items()):
         # Identity is the RESOLVED path: two targets can each hold a `tests/x.spec.js`, and
         # collapsing them by their spec-relative spelling would hide a genuine cross-file reuse.
+        # A single-file id is left to the REVERSE direction, which now demands a citation for
+        # every test title in every shipped target's corpus (see the module docstring).
         if len({test_path.resolve() for test_path, *_rest in entries}) < 2:
             continue
         if feature_id.split("-", 1)[0] not in known_areas:

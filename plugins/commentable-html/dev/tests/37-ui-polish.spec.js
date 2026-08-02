@@ -4,7 +4,7 @@
 import { test, expect } from "@playwright/test";
 import { openInline, openNonShareable } from "./helpers.js";
 
-test("code blocks show a language pill beside the Copy button (CMH-CODEPILL-01)", async ({ page }) => {
+test("code blocks show a language pill beside the Copy button (CMH-CONTENT-12)", async ({ page }) => {
   await openInline(page);
   // The demo ships a python code block and a kusto (KQL) block; each pill reads its language.
   await expect(page.locator(".cm-code-lang", { hasText: "Python" })).toHaveCount(1);
@@ -15,7 +15,7 @@ test("code blocks show a language pill beside the Copy button (CMH-CODEPILL-01)"
   await expect(tools.locator(".cm-code-copy")).toHaveCount(1);
 });
 
-test("the diff toggle button label names the action it performs (CMH-DIFF-LABEL-01)", async ({ page }) => {
+test("the diff toggle button label names the action it performs (CMH-DIFF-02)", async ({ page }) => {
   await openInline(page);
   // Diffs default to side-by-side, so the toggle offers to switch TO inline.
   const toggle = page.locator(".cmh-diff-toggle").first();
@@ -24,7 +24,7 @@ test("the diff toggle button label names the action it performs (CMH-DIFF-LABEL-
   await expect(toggle).toHaveText("To side-by-side view");
 });
 
-test("the help buttons are clearly labelled (CMH-HELP-LABEL-01)", async ({ page }) => {
+test("the help buttons are clearly labelled (CMH-HELP-01)", async ({ page }) => {
   await openInline(page);
   const sideTxt = await page.locator("#btnHelp").evaluate((el) => el.textContent.trim());
   expect(sideTxt, "btnHelp label").toBe("Help");
@@ -32,7 +32,7 @@ test("the help buttons are clearly labelled (CMH-HELP-LABEL-01)", async ({ page 
   expect(topTxt, "btnHelpTop label").toBe("Help & About");
 });
 
-test("help opens with the 4-step review workflow in the Getting started topic (CMH-WF-HELP-01)", async ({ page }) => {
+test("help opens with the 4-step review workflow in the Getting started topic (CMH-HELP-01)", async ({ page }) => {
   await openInline(page);
   await page.locator("#btnHelp").evaluate((el) => el.click());
   const help = page.locator(".cm-help");
@@ -47,7 +47,7 @@ test("help opens with the 4-step review workflow in the Getting started topic (C
   await expect(first.locator(".cm-loop-figure svg")).toHaveCount(1);
 });
 
-test("clicking a collapsed section title expands it (CMH-SECEXPAND-01)", async ({ page }) => {
+test("clicking a collapsed section title expands it (CMH-TOC-04)", async ({ page }) => {
   await openInline(page);
   const section = page.locator("section:has(> h2#callouts)");
   await section.locator(".cmh-sec-caret").first().click(); // collapse
@@ -56,7 +56,7 @@ test("clicking a collapsed section title expands it (CMH-SECEXPAND-01)", async (
   await expect(section).not.toHaveClass(/cmh-section-collapsed/);
 });
 
-test("a Shareable doc-type badge is green (CMH-BADGE-COLOR-01)", async ({ page }) => {
+test("a Shareable doc-type badge is green (CMH-MODE-06)", async ({ page }) => {
   await openInline(page);
   const badge = page.locator("#cmTypeBadge");
   await expect(badge).toHaveAttribute("data-doc-type", "Shareable");
@@ -65,7 +65,7 @@ test("a Shareable doc-type badge is green (CMH-BADGE-COLOR-01)", async ({ page }
   expect(c[1]).toBeGreaterThan(c[2]);
 });
 
-test("a Not-shareable badge is orange and its tooltip says how to share (CMH-BADGE-COLOR-01)", async ({ page }) => {
+test("a Not-shareable badge is orange and its tooltip says how to share (CMH-MODE-06)", async ({ page }) => {
   await openNonShareable(page);
   const badge = page.locator("#cmTypeBadge");
   await expect(badge).toHaveAttribute("data-doc-type", "Not shareable");

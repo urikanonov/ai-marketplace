@@ -1018,6 +1018,56 @@ class SpecTestReferenceTests(unittest.TestCase):
             refs.FULLY_REVERSE_MAPPED_SPECS,
         )
 
+    def test_every_spec_target_is_fully_reverse_mapped(self):
+        # No shipped target is still restricted to the `*.test.*` / regressions subset: the set is
+        # the graduation mechanism for a target added later, not a standing exemption (issue #853).
+        self.assertEqual(
+            [],
+            [refs._display(spec) for spec, _base in refs.SPEC_TARGETS
+             if spec.resolve() not in refs.FULLY_REVERSE_MAPPED_SPECS],
+        )
+
+    def test_the_commentable_html_corpus_reverse_maps_its_plain_spec_files(self):
+        # The widening is only real if the corpus check_all actually reverse-maps for the
+        # commentable-html target now holds its ORDINARY `*.spec.js` files, not just the
+        # `*.test.*` / `*regressions*.spec.*` subset it was limited to.
+        spec = (self.root / "plugins" / "commentable-html" / "dev" / "SPEC.md").resolve()
+        base = spec.parent
+        reverse_only = spec not in refs.FULLY_REVERSE_MAPPED_SPECS
+        corpus = refs._test_corpus(spec, base, reverse_only=reverse_only)
+        plain = [path.name for path in corpus if not refs._is_reverse_mapped(path.name)]
+
+        self.assertTrue(plain, "no plain .spec.js file is reverse-mapped for commentable-html")
+
+    def test_a_fully_mapped_spec_reports_a_same_file_uncited_carrier_once(self):
+        # The duplicate direction still relaxes the same-file case. That is not a hole now that
+        # every target is fully reverse-mapped: the REVERSE direction demands the citation, and
+        # the relaxation keeps the miss from being reported twice.
+        base = self.sandbox / "solo-base"
+        (base / "tests").mkdir(parents=True)
+        (base / "tests" / "solo.spec.js").write_text(
+            "test('one angle (DEMO-01)', async () => {});\n"
+            "test('another angle (DEMO-01)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self.sandbox / "SOLO_SPEC.md"
+        spec.write_text(
+            "# Spec\n\n"
+            "| Feature id | Behavior | Covering tests |\n"
+            "| --- | --- | --- |\n"
+            "| DEMO-01 | Demo behavior. | `tests/solo.spec.js` - `one angle (DEMO-01)` |\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+
+        self.assertEqual([], refs.check_duplicate_feature_ids(((spec, base),)))
+        self.assertEqual(
+            ["test title `another angle (DEMO-01)` is not cited by its `DEMO-01` spec row"],
+            [issue.message
+             for issue in refs.check_all(((spec, base),), frozenset({spec.resolve()}))],
+        )
+
     def test_real_specs_have_current_test_references(self):
         issues = refs.check_all()
         self.assertEqual([], [issue.format() for issue in issues])

@@ -124,7 +124,7 @@ test.describe("showcase example: NYC taxi 2014 report exercises the feature set"
     await expect(page.locator("#taxiMonthlyChart")).toHaveClass(/cm-img-commentable/, { timeout: 20000 });
   });
 
-  test("the added pie and line charts render as their intended kinds (CMH-TAXI-CHARTS-01)", async ({ page }) => {
+  test("the added pie and line charts render as their intended kinds (CMH-CHART-07)", async ({ page }) => {
     await openExample(page);
     for (const id of ["taxiPaymentChart", "taxiFareChart", "taxiHourlyChart"]) {
       await page.waitForFunction(
@@ -185,7 +185,7 @@ test.describe("showcase example: NYC taxi 2014 report exercises the feature set"
     expect(metrics.overflowBottom).toBeLessThanOrEqual(1);
   });
 
-  test("commenting a chart canvas rings it with a visible highlight (CMH-CHART-HL-01)", async ({ page }) => {
+  test("commenting a chart canvas rings it with a visible highlight (CMH-CHART-06)", async ({ page }) => {
     await openExample(page);
     await page.waitForFunction(
       () => !!(window.Chart && window.Chart.getChart && window.Chart.getChart("taxiPaymentChart")),
@@ -234,7 +234,7 @@ test.describe("showcase example: NYC taxi 2014 report exercises the feature set"
     }
   });
 
-  test("the enriched subgraph flowchart and the sequence diagram both render (CMH-TAXI-MERMAID-01)", async ({ page }) => {
+  test("the enriched subgraph flowchart and the sequence diagram both render (CMH-CHART-07)", async ({ page }) => {
     test.setTimeout(60000);
     const server = await startStaticServer(path.join(SKILL, "..", ".."));
     try {
