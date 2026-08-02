@@ -312,6 +312,38 @@ class ChartBlockUnvalidatedOutputTests(unittest.TestCase):
         self.assertIsNone(module)
         self.assertIn("not this skill's", reason)
 
+    def test_a_non_string_module_file_is_refused_rather_than_raising(self):
+        # Every cause must come back as a REASON; a cached module whose __file__ is not a
+        # path must not escape as a traceback (which would also make the opt-out
+        # unreachable, since _load_validator runs outside the caller's try block).
+        odd = types.ModuleType("validate")
+        odd.__file__ = object()
+        odd.validate = lambda path: ([], [])
+        with mock.patch.dict(sys.modules, {"validate": odd}):
+            module, reason = chart_block._load_validator()
+            self.assertIsNone(module)
+            self.assertIn("not this skill's", reason)
+            out, err = io.StringIO(), io.StringIO()
+            with mock.patch.object(sys, "stdin", _TextStdin(json.dumps(SPEC))), \
+                    contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = chart_block.main(list(self.ARGV))
+            self.assertNotEqual(code, 0)
+            self.assertEqual(out.getvalue(), "")
+            self.assertIn("could not be self-validated", err.getvalue())
+            self.assertIn("--allow-unvalidated-output", err.getvalue())
+            # The named reason means the opt-out is reachable rather than pre-empted.
+            out, err = io.StringIO(), io.StringIO()
+            with mock.patch.object(sys, "stdin", _TextStdin(json.dumps(SPEC))), \
+                    contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = chart_block.main(list(self.ARGV) + ["--allow-unvalidated-output"])
+        self.assertEqual(code, 0, err.getvalue())
+        self.assertIn('id="chartA-data"', out.getvalue())
+
+    def test_contained_refuses_a_non_path_value_without_raising(self):
+        for value in (object(), 3, b"tools/validate/validate.py", None, ""):
+            with self.subTest(value=value):
+                self.assertFalse(chart_block._contained(value))
+
     def _run_with_template(self, template_path, extra_argv=()):
         out, err = io.StringIO(), io.StringIO()
         with mock.patch.object(chart_block, "DEFAULT_TEMPLATE", template_path), \

@@ -4,6 +4,17 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.321.0] - 2026-08-02
+
+### Fixed
+
+- `tools/blocks/chart_block.py` no longer raises `TypeError` when a cached `sys.modules["validate"]`
+  carries a `__file__` that is not a string or `os.PathLike`. Its containment guard now refuses such a
+  value up front, so that install shape comes back as the named "could not check" reason the
+  fail-closed path exists for - and the `--allow-unvalidated-output` opt-out stays reachable - instead
+  of escaping as a traceback from outside the caller's try block. This restores parity with the same
+  guard in `tools/authoring/new_document.py`.
+
 ## [1.317.0] - 2026-08-02
 
 ### Added
@@ -49,7 +60,6 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 - Media metadata is made inert where it is WRITTEN: an alt/label is now stripped of bidi controls
   and every line separator (including U+0085) before it is stored, so no consumer can reintroduce
   a bundle-line or direction-override injection by forgetting to re-sanitize it.
-
 ## [1.316.0] - 2026-08-02
 
 ### Changed

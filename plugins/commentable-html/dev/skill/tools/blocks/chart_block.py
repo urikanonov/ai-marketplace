@@ -176,7 +176,7 @@ def _contained(path):
     junction, a differently-cased path, OR a per-file symlink of validate.py to a shared
     location all still count as the real validator rather than tripping the guard.
     """
-    if not path:
+    if not isinstance(path, (str, os.PathLike)) or not path:
         return False
     expected = os.path.join(_TOOLS_DIR, "validate")
     candidates = {_canonical(path), os.path.normcase(os.path.abspath(path))}
