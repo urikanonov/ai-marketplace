@@ -62,14 +62,21 @@ CLIP_DIR = os.path.join("site", "dist", "assets")
 STRIP = "crop=iw-66:22:46:1"
 # The traffic lights. A frame is JUDGED only when they are fully drawn here, which is precisely when
 # the strip beside them is the title bar: settled, on screen, and not faded under an overlay.
-LIGHTS = "crop=30:8:12:11"
+LIGHTS = "crop=30:6:12:11"
+# A patch from the MIDDLE of the frame. It no longer decides which frames to JUDGE - the lights do -
+# but it still answers one question they cannot: is there a terminal in this clip at all? Judging on
+# the lights means a clip whose chrome sits somewhere else entirely (rendered at a much SMALLER
+# scale, so the lights fall outside the crop) would otherwise read as "no chrome here" and pass
+# unchecked, with its title equally far from the strip. A dark middle says a terminal IS on screen,
+# so failing to find the chrome is a geometry problem rather than a browser-only clip.
+KIND = "crop=400:200:200:200"
+TERMINAL_MAX_MEAN = 38.0
 # Saturation at which the lights are fully drawn. Measured: 83-93 unoccluded, and any cross-fade or
 # overlay drops it well below. On the loop clip, admitting frames at 60 let the report panel's white
 # edge into the strip (spread 86); at this value the same clip's worst judged frame measures 12.
 LIGHTS_PRESENT = 80.0
-# Below this ANYWHERE in a clip there is no window chrome at all, so having judged nothing is the
-# honest answer rather than a blind spot: the browser-only clip peaks at 2. A clip whose lights DO
-# appear but never reach LIGHTS_PRESENT is a geometry problem, not a pass - see scan_clip.
+# Below this ANYWHERE in a clip the window chrome was never found, which is only a legitimate pass
+# when no terminal appears either (the browser-only clip peaks at 2). See scan_clip.
 LIGHTS_ABSENT = 20.0
 # Luminance spread above which the strip is carrying something drawn rather than a flat fill.
 # Measured end to end at the publish scale, rendering the SAME cast both ways: a real leaked title
@@ -140,32 +147,37 @@ def _measure(ffmpeg, clip, crop, keys):
 
 
 def scan_clip(ffmpeg, clip):
-    """Return the list of (t, spread) for frames whose terminal title strip is not flat."""
+    """Return `(bad, judged)` - frames whose title strip is not flat, and how many were judged."""
     strip = _measure(ffmpeg, clip, STRIP, ("YMIN", "YMAX", "SATMAX"))
     lights = _measure(ffmpeg, clip, LIGHTS, ("SATMAX",))
+    kind = _measure(ffmpeg, clip, KIND, ("YAVG",))
 
     if not strip:
         raise SystemExit("no frames decoded from %s" % clip)
-    if len(strip) != len(lights):
-        raise SystemExit("frame count mismatch reading %s (%d vs %d)"
-                         % (clip, len(strip), len(lights)))
+    if not len(strip) == len(lights) == len(kind):
+        raise SystemExit("frame count mismatch reading %s (%d, %d, %d)"
+                         % (clip, len(strip), len(lights), len(kind)))
 
     drawn = [row["SATMAX"] >= LIGHTS_PRESENT for row in lights]
     brightest = max(row["SATMAX"] for row in lights)
-    if brightest < LIGHTS_ABSENT:
-        # No window chrome anywhere: a browser-only clip has no title bar to leak from. Judging
-        # nothing is the honest answer here, and only here.
-        return []
+    terminal_frames = sum(1 for row in kind if row["YAVG"] <= TERMINAL_MAX_MEAN)
     if not any(drawn):
-        # The chrome IS in this clip but never lands where these offsets expect it, so every
-        # measurement above was taken somewhere meaningless. Passing would be a gate that checked
-        # nothing while reporting OK - the exact failure this script replaced.
+        # The chrome was never found where these offsets expect it. That is only innocent when there
+        # is no terminal in the clip at all - the browser-only demo, whose lights region peaks at 2.
+        # Otherwise every measurement above was taken somewhere meaningless, and passing would be a
+        # gate that checked nothing while reporting OK. Note this catches a clip rendered SMALLER
+        # than the publish scale, where the lights fall outside the crop entirely and the leaked
+        # title falls left of the strip - the mirror of the over-scaled case below.
+        if terminal_frames == 0 and brightest < LIGHTS_ABSENT:
+            return [], 0
         raise ScaleMismatch(
-            "%s shows window chrome (lights peak at %.0f) but never at the position these offsets "
-            "describe, so no frame could be judged: it was not rendered at the publish scale. "
-            "Re-render it with --scale %s (see the demo-video SKILL.md)." % (clip, brightest, PUBLISH_SCALE))
+            "%s shows a terminal on %d frame(s) but its window chrome never appears where these "
+            "offsets expect it (lights peak at %.0f), so no frame could be judged: it was not "
+            "rendered at the publish scale. Re-render it with --scale %s (see the demo-video "
+            "SKILL.md)." % (clip, terminal_frames, brightest, PUBLISH_SCALE))
 
     bad = []
+    judged = 0
     for i, row in enumerate(strip):
         # EVERY frame showing settled chrome is judged, with no positional window. A cross-fade
         # frame is excluded because its lights are not fully drawn, not because of where it sits -
@@ -173,6 +185,7 @@ def scan_clip(ffmpeg, clip):
         # ran out and the command was published.
         if not drawn[i]:
             continue
+        judged += 1
         # These offsets hold at the publish scale only. Rendered larger, the traffic lights land
         # inside the strip and every terminal frame "leaks" - a phantom that reads exactly like the
         # real thing and sends the operator hunting for text that is not there. Say so instead.
@@ -183,7 +196,7 @@ def scan_clip(ffmpeg, clip):
                 "--scale %s (see the demo-video SKILL.md) and scan again." % (clip, row["t"], PUBLISH_SCALE))
         if row["YMAX"] - row["YMIN"] > FLAT_TOLERANCE:
             bad.append((row["t"], row["YMAX"] - row["YMIN"]))
-    return bad
+    return bad, judged
 
 
 def main(argv):
@@ -219,7 +232,7 @@ def main(argv):
     for clip in clips:
         name = os.path.relpath(clip, REPO_ROOT)
         try:
-            bad = scan_clip(ffmpeg, clip)
+            bad, judged = scan_clip(ffmpeg, clip)
         except ScaleMismatch as problem:
             # Keep going: every clip gets its own verdict in one run, so a second problem elsewhere
             # is not hidden behind the first.
@@ -229,13 +242,17 @@ def main(argv):
             continue
         if bad:
             failed = True
-            print("FAIL %s: %d frame(s) show text in the terminal title bar" % (name, len(bad)))
+            print("FAIL %s: %d of %d judged frame(s) show text in the terminal title bar"
+                  % (name, len(bad), judged))
             for t, spread in bad[:8]:
                 print("       t=%.2fs (luminance spread %.0f)" % (t, spread))
             if len(bad) > 8:
                 print("       ... and %d more" % (len(bad) - 8))
         else:
-            print("OK   %s" % name)
+            # Say what was inspected. A gate that will not report its own coverage cannot be
+            # audited, and "judged 3" and "judged 1040" both used to print the same word.
+            print("OK   %s (judged %d frame(s))" % (name, judged)
+                  if judged else "OK   %s (no window chrome to check)" % name)
     if failed:
         if not mis_scaled:
             print("\nA published clip is showing its launch command. Re-mask the WHOLE terminal "

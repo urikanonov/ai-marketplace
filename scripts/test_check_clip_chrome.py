@@ -18,7 +18,7 @@ import check_clip_chrome as ccc
 
 
 def _frames(kinds, spreads):
-    """Build the two parallel measurement lists the scanner consumes.
+    """Build the three parallel measurement lists the scanner consumes.
 
     `kinds` is a string of 't' (settled chrome on screen), 'f' (mid cross-fade, so the lights are
     part-faded or shifted) and 'b' (no chrome at all - a browser page); `spreads` is the luminance
@@ -29,17 +29,19 @@ def _frames(kinds, spreads):
     # any fade, and read ~2 on a page that has no window chrome.
     saturation = {"t": 88.0, "f": 55.0, "b": 2.0}
     lights = [{"SATMAX": saturation[k]} for k in kinds]
-    return strip, lights
+    # A terminal is on screen for anything but a browser frame.
+    means = {"t": 30.0, "f": 30.0, "b": 200.0}
+    kind = [{"YAVG": means[k]} for k in kinds]
+    return strip, lights, kind
 
 
 class ScanDecisionTests(unittest.TestCase):
     def _scan(self, kinds, spreads):
-        strip, lights = _frames(kinds, spreads)
-        calls = iter([strip, lights])
+        calls = iter(_frames(kinds, spreads))
         original = ccc._measure
         ccc._measure = lambda *a, **k: next(calls)
         try:
-            return ccc.scan_clip("ffmpeg", "clip.webm")
+            return ccc.scan_clip("ffmpeg", "clip.webm")[0]
         finally:
             ccc._measure = original
 
@@ -86,9 +88,44 @@ class ScanDecisionTests(unittest.TestCase):
             self._scan("f" * 20, [200.0] * 20)
         self.assertIn("--scale", str(caught.exception))
 
+    def test_a_terminal_clip_whose_lights_are_nowhere_is_refused(self):
+        # An UNDER-scaled clip puts the lights outside the crop entirely, so they read as absent -
+        # and its title falls left of the strip too, so nothing would be measured. Without the
+        # terminal check that reads exactly like the browser-only clip and passes unchecked.
+        strip, lights, kind = _frames("t" * 20, [200.0] * 20)
+        for row in lights:
+            row["SATMAX"] = 1.0
+        calls = iter([strip, lights, kind])
+        original = ccc._measure
+        ccc._measure = lambda *a, **k: next(calls)
+        try:
+            with self.assertRaises(ccc.ScaleMismatch) as caught:
+                ccc.scan_clip("ffmpeg", "clip.webm")
+        finally:
+            ccc._measure = original
+        self.assertIn("terminal", str(caught.exception))
+
     def test_a_clip_with_no_window_chrome_at_all_is_a_legitimate_pass(self):
-        # The browser-only demo carries no title bar to leak from; its lights region peaks at 2.
-        self.assertEqual(self._scan("b" * 20, [200.0] * 20), [])
+        # The browser-only demo carries no title bar to leak from; its lights region peaks at 2 and
+        # no frame shows a terminal, so judging nothing is the honest answer.
+        strip, lights, kind = _frames("b" * 20, [200.0] * 20)
+        calls = iter([strip, lights, kind])
+        original = ccc._measure
+        ccc._measure = lambda *a, **k: next(calls)
+        try:
+            self.assertEqual(ccc.scan_clip("ffmpeg", "clip.webm"), ([], 0))
+        finally:
+            ccc._measure = original
+
+    def test_the_judged_count_is_reported_so_coverage_can_be_audited(self):
+        strip, lights, kind = _frames("t" * 12 + "b" * 8, [0.0] * 20)
+        calls = iter([strip, lights, kind])
+        original = ccc._measure
+        ccc._measure = lambda *a, **k: next(calls)
+        try:
+            self.assertEqual(ccc.scan_clip("ffmpeg", "clip.webm"), ([], 12))
+        finally:
+            ccc._measure = original
 
 
 class UntrustworthyInputTests(unittest.TestCase):
@@ -99,9 +136,9 @@ class UntrustworthyInputTests(unittest.TestCase):
         return lambda *a, **k: next(calls)
 
     def test_the_scan_refuses_a_frame_count_mismatch(self):
-        strip, kind = _frames("t" * 10, [0.0] * 10)
+        strip, lights, kind = _frames("t" * 10, [0.0] * 10)
         original = ccc._measure
-        ccc._measure = self._measure_returning(strip, kind[:-1])
+        ccc._measure = self._measure_returning(strip, lights, kind[:-1])
         try:
             with self.assertRaises(SystemExit):
                 ccc.scan_clip("ffmpeg", "clip.webm")
@@ -110,7 +147,7 @@ class UntrustworthyInputTests(unittest.TestCase):
 
     def test_an_empty_decode_is_an_error_not_a_pass(self):
         original = ccc._measure
-        ccc._measure = self._measure_returning([], [])
+        ccc._measure = self._measure_returning([], [], [])
         try:
             with self.assertRaises(SystemExit):
                 ccc.scan_clip("ffmpeg", "clip.webm")
@@ -163,29 +200,41 @@ RECORDER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 
 
 def chrome_css():
-    """`{prop: px}` for the chrome rules the strip geometry is derived from."""
+    """`{prop: px}` for the chrome rules the strip geometry is derived from.
+
+    BOTH page builders are parsed and required to agree. `re.search` finds only the FIRST block, so
+    an earlier cut of this validated `terminalPage` and let `stagePage` - which renders the loop
+    clip, the one with the transitions - drift away unchecked.
+    """
     with open(RECORDER, encoding="utf-8") as handle:
         text = handle.read()
 
-    def rule(selector, prop, index=0):
-        block = re.search(r"%s\s*\{([^}]*)\}" % re.escape(selector), text)
-        if not block:
+    def rules(selector, prop, index=0):
+        blocks = re.findall(r"%s\s*\{([^}]*)\}" % re.escape(selector), text)
+        if not blocks:
             raise AssertionError("no %s rule in the recorder" % selector)
-        found = re.search(r"(?:^|[;\s])%s:\s*([^;}]+)" % prop, block.group(1))
-        if not found:
-            raise AssertionError("%s has no %s" % (selector, prop))
-        lengths = re.findall(r"(-?[\d.]+)px", found.group(1))
-        if len(lengths) <= index:
-            raise AssertionError("%s %s has no length #%d" % (selector, prop, index))
-        return float(lengths[index])
+        seen = []
+        for block in blocks:
+            found = re.search(r"(?:^|[;\s])%s:\s*([^;}]+)" % prop, block)
+            if not found:
+                raise AssertionError("a %s rule has no %s" % (selector, prop))
+            lengths = re.findall(r"(-?[\d.]+)px", found.group(1))
+            if len(lengths) <= index:
+                raise AssertionError("%s %s has no length #%d" % (selector, prop, index))
+            seen.append(float(lengths[index]))
+        if len(set(seen)) != 1:
+            raise AssertionError("the page builders disagree on %s %s: %s" % (selector, prop, seen))
+        return seen[0]
 
     return {
-        "pad_top": rule(".wrap", "padding", 0),
-        "pad_side": rule(".wrap", "padding", 1),
-        "dot": rule(".dot", "height"),
-        "gap": rule(".chrome", "gap"),
-        "chrome_pad_bottom": rule(".chrome", "padding-bottom"),
-        "title_margin": rule(".title", "margin-left"),
+        "pad_top": rules(".wrap", "padding", 0),
+        "pad_side": rules(".wrap", "padding", 1),
+        "dot": rules(".dot", "height"),
+        "dot_width": rules(".dot", "width"),
+        "gap": rules(".chrome", "gap"),
+        "chrome_pad_bottom": rules(".chrome", "padding-bottom"),
+        "title_margin": rules(".title", "margin-left"),
+        "title_font": rules(".title", "font-size"),
     }
 
 
@@ -224,12 +273,54 @@ class CropGeometryTests(unittest.TestCase):
     def test_the_strip_covers_the_whole_row_a_title_is_drawn_on(self):
         css = chrome_css()
         _, top, bottom, _ = strip_box()
-        # The title is a 12px font on the lights' row; its line box is taller than the 11px dots, so
-        # the dots alone are not the bound - a strip that cleared them could still clip the glyphs.
+        # The title is a 12px font in the inherited 1.4 line box, which is TALLER than the 11px
+        # dots - so the dots alone are not the bound, and a strip that cleared them could still clip
+        # the glyphs' descenders. Take whichever reaches lower.
         row_top = css["pad_top"]
-        row_bottom = css["pad_top"] + css["dot"]
+        row_bottom = css["pad_top"] + max(css["dot"], css["title_font"] * 1.4)
         self.assertLessEqual(top, row_top * ccc.PUBLISH_SCALE)
         self.assertGreaterEqual(bottom, row_bottom * ccc.PUBLISH_SCALE)
+
+    def test_the_lights_probe_actually_lands_on_the_traffic_lights(self):
+        # The lights decide which frames are judged at all, so if this crop drifts off them nothing
+        # is judged - and "judged nothing" is the one branch that can still pass. It was the only
+        # piece of geometry not bound to the recorder's live CSS.
+        css = chrome_css()
+        found = re.match(r"crop=(\d+):(\d+):(\d+):(\d+)$", ccc.LIGHTS)
+        self.assertTrue(found, "LIGHTS is not the expected crop shape: %r" % ccc.LIGHTS)
+        width, height, x, y = (int(g) for g in found.groups())
+        lights_left = css["pad_side"] * ccc.PUBLISH_SCALE
+        lights_right = (css["pad_side"] + 3 * css["dot_width"] + 2 * css["gap"]) * ccc.PUBLISH_SCALE
+        lights_top = css["pad_top"] * ccc.PUBLISH_SCALE
+        lights_bottom = (css["pad_top"] + css["dot"]) * ccc.PUBLISH_SCALE
+        self.assertGreaterEqual(x, lights_left - 1)
+        self.assertLessEqual(x + width, lights_right + 1)
+        self.assertGreaterEqual(y, lights_top - 1)
+        self.assertLessEqual(y + height, lights_bottom + 1)
+
+    def test_every_traffic_light_is_saturated_enough_to_be_found(self):
+        # LIGHTS_PRESENT is measured against the dots' own colours. Restyling them to something
+        # softer would stop every frame being judged while every test stayed green, so derive the
+        # bound from the palette the recorder actually paints.
+        with open(RECORDER, encoding="utf-8") as handle:
+            text = handle.read()
+        colours = set(re.findall(r'class="dot"[^>]*background:\s*(#[0-9a-fA-F]{6})', text))
+        self.assertEqual(len(colours), 3, "expected three distinct traffic lights, got %s" % colours)
+        for colour in colours:
+            r, g, b = (int(colour[i:i + 2], 16) for i in (1, 3, 5))
+            # ffmpeg signalstats SAT, in the same BT.601 chroma space it measures.
+            cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b
+            cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b
+            saturation = ((cb - 128) ** 2 + (cr - 128) ** 2) ** 0.5
+            self.assertGreaterEqual(saturation, ccc.LIGHTS_PRESENT,
+                                    "%s reads SAT %.1f, under LIGHTS_PRESENT" % (colour, saturation))
+
+    def test_the_present_threshold_sits_between_a_faded_and_a_drawn_light(self):
+        # Measured: admitting frames at 60 let the report panel's white edge into the strip on the
+        # loop clip (spread 86); the dots themselves read 83-93.
+        self.assertGreater(ccc.LIGHTS_PRESENT, ccc.LIGHTS_ABSENT)
+        self.assertGreater(ccc.LIGHTS_PRESENT, 60.0)
+        self.assertLessEqual(ccc.LIGHTS_PRESENT, 83.0)
 
     def test_the_strip_clears_the_terminal_with_room_to_spare(self):
         # THE finding from the round-1 panel. Run to the bottom of the chrome block the strip
@@ -251,11 +342,12 @@ class ScaleGuardTests(unittest.TestCase):
     def _scan(self, satmax):
         strip = [{"t": 0.4, "YMIN": 0.0, "YMAX": 1.0, "SATMAX": satmax}]
         lights = [{"SATMAX": 88.0}]
-        calls = iter([strip, lights])
+        kind = [{"YAVG": 30.0}]
+        calls = iter([strip, lights, kind])
         original = ccc._measure
         ccc._measure = lambda *a, **k: next(calls)
         try:
-            return ccc.scan_clip("ffmpeg", "clip.webm")
+            return ccc.scan_clip("ffmpeg", "clip.webm")[0]
         finally:
             ccc._measure = original
 
@@ -295,7 +387,7 @@ class ScaleGuardTests(unittest.TestCase):
             seen.append(clip)
             if clip == "bad.webm":
                 raise ccc.ScaleMismatch("bad.webm was not rendered at the publish scale")
-            return []
+            return [], 5
 
         original_scan, original_find = ccc.scan_clip, ccc.find_ffmpeg
         ccc.scan_clip, ccc.find_ffmpeg = fake, lambda: "ffmpeg"

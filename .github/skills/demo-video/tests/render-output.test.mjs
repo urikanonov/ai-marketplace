@@ -8,6 +8,7 @@ import {
   joinCommand,
   askFromCast,
   castText,
+  publishedText,
   terminalPage,
   stagePage,
 } from "../tools/record_demo.mjs";
@@ -356,8 +357,11 @@ test("the phase caption never overlaps the window chrome (DEMO-SAFE-39)", () => 
   const [, offsetY, blur] = lengths.map((v) => Number(v.replace("px", "")));
   const reach = blur - offsetY;
   const top = cssPx(css, "#phase", "top");
-  assert.ok(top - reach >= chromeBottom,
-    `the phase caption reaches ${top - reach}px, inside the chrome that ends at ${chromeBottom}px`);
+  // A margin, not a touch. Clearing by a single pixel meant any one-pixel change to the chrome's
+  // padding or dot size would push the loop clip's flatness back toward the noise ceiling with this
+  // test still green - the same zero-slack trap the tolerance itself was in.
+  assert.ok(top - reach >= chromeBottom + 4,
+    `the phase caption reaches ${top - reach}px, too close to the chrome that ends at ${chromeBottom}px`);
 });
 
 test("the window chrome carries no text unless the operator opts in (DEMO-SAFE-38)", () => {
@@ -413,4 +417,15 @@ test("the credential scan reads the text the title card will publish (DEMO-SAFE-
   // And what the card actually renders is that same text, so the two cannot drift apart.
   assert.ok(askFromCast(cast, {}).includes("disable-mcp-server"),
     "the title card no longer renders the ask mark; re-point this test at whatever it renders");
+});
+
+// `--ask` never touches the cast, so scanning the cast alone left the operator-supplied string -
+// painted at up to 30px, the largest type in the clip - completely unchecked. It is the documented
+// render recipe, and it matters more now the chrome draws nothing and the card leads the clip.
+test("the render gate scans an operator-supplied --ask too (DEMO-SAFE-41)", () => {
+  const clean = { cols: 80, rows: 24, command: "copilot", argv: ["copilot"], events: [], marks: [] };
+  assert.ok(!publishedText(clean, {}).includes("disable-mcp-server"),
+    "a clean cast should not read dirty");
+  assert.ok(publishedText(clean, { ask: `please review ${LEAKY}` }).includes("disable-mcp-server"),
+    "--ask reaches the title card unscanned");
 });

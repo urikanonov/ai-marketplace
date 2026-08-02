@@ -1228,7 +1228,15 @@ export function castText(cast) {
   return `${cast.command || ""}\n${argv}\n${marks}\n${cast.events.map((e) => e.data).join("")}`;
 }
 
-// The tail of a real capture is dead air: the session records on until the script's quit step
+// Everything that will be RENDERED, which is what a render-time gate has to see: the cast plus the
+// ask as it actually resolves. `--ask` is operator-supplied and never touches the cast, so it
+// reached the title card - the largest type in the clip - completely unscanned, and it is the
+// documented render recipe. Same argument as the marks: scan what will be on screen, not just what
+// was captured.
+export function publishedText(cast, args = {}) {
+  return `${castText(cast)}\n${askFromCast(cast, args)}`;
+}
+
 // fires, so without this the clip spends its ending on an empty prompt and the exit screen. Says
 // what it dropped, because silently shortening someone's session is its own kind of surprise.
 function trimForRender(cast, args) {
@@ -1523,7 +1531,7 @@ export function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, r
   #report.on { opacity: 1; pointer-events: auto; }
   /* A caption for each phase, so a viewer knows they are watching one loop rather than three
      unrelated clips spliced together. */
-  #phase { position: fixed; left: 50%; top: 76px; transform: translateX(-50%); z-index: 7;
+  #phase { position: fixed; left: 50%; top: 80px; transform: translateX(-50%); z-index: 7;
     padding: 14px 30px; border-radius: 999px; background: #0d1117; color: #e6edf3;
     border: 2px solid rgba(240,246,252,0.34); font-size: 24px; font-weight: 700; letter-spacing: .3px;
     box-shadow: 0 14px 40px rgba(0,0,0,.5); opacity: 0; transition: opacity 300ms ease;
@@ -1645,7 +1653,7 @@ function reviewPreamble() {
 async function recordLoop(args) {
   const { cast, capturedHere } = readCast(args);
   const rules = rulesForThisMachine();
-  const findings = scanText(castText(cast), rules);
+  const findings = scanText(publishedText(cast, args), rules);
   if (findings.length && !args["allow-findings"]) {
     throw new Error(
       `this cast still scans dirty (${findings.length} finding(s)); run 'scan --cast <file>' to see them. `
@@ -1877,7 +1885,7 @@ async function renderTerminal(args) {
   const rules = rulesForThisMachine();
   // Scanned BEFORE any trim, deliberately. The gate exists to stop a secret reaching a published
   // clip, and scanning only the kept span would let a trim decide what the gate gets to see.
-  const findings = scanText(castText(fullCast), rules);
+  const findings = scanText(publishedText(fullCast, args), rules);
   if (findings.length && !args["allow-findings"]) {
     throw new Error(
       `this cast still scans dirty (${findings.length} finding(s)); run 'scan --cast <file>' to see them. `
