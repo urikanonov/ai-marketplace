@@ -11,9 +11,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 - `tools/blocks/chart_block.py` no longer raises `TypeError` when a cached `sys.modules["validate"]`
   carries a `__file__` that is not a usable path. Its containment guard now normalizes the value
   through `os.fspath` and refuses anything that is not a non-empty string - a plain object, an int,
-  bytes, or a `PathLike` whose `__fspath__` returns bytes or raises - and the refusal message no
-  longer raises while formatting an odd value (a tuple, or one whose `__str__` raises). A path that
-  cannot be canonicalized at all (an embedded NUL byte, an over-long path) is refused the same way.
+  bytes, a `PathLike` whose `__fspath__` returns bytes or raises, or a `str` subclass with a hostile
+  `__bool__` - and the refusal message no longer raises while rendering an odd value (a tuple, or one
+  whose `__str__` raises). A path that cannot be canonicalized at all (an embedded NUL byte, an
+  over-long path) is refused the same way, as is a cached module whose `__file__` ACCESS raises (a
+  lazy loader or an import proxy), and the "unexpected result" reason now renders a misbehaving
+  validator's own value without letting its `__repr__` raise.
   So that install shape comes back as the named "could not check" reason the fail-closed path exists
   for - and the `--allow-unvalidated-output` opt-out stays reachable - instead of escaping as a
   traceback from outside the caller's try block. `tools/authoring/new_document.py` carried the same

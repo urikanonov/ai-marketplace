@@ -1113,6 +1113,39 @@ class NewDocumentUnvalidatedOutputTests(unittest.TestCase):
                 self.assertIsNone(module)
                 self.assertIn("not this skill's", reason)
 
+    def test_contained_refuses_a_non_path_value_without_raising(self):
+        # The same input sweep the chart_block seam pins, so the two stay provably
+        # behavior-identical rather than drifting apart.
+        class HostileStr(str):
+            def __bool__(self):
+                raise RuntimeError("nope")
+
+        for value in (object(), 3, b"tools/validate/validate.py", None, "",
+                      HostileStr("tools/validate/validate.py")):
+            with self.subTest(value=type(value).__name__):
+                self.assertFalse(new_document._contained(value))
+
+    def test_a_path_that_cannot_be_canonicalized_is_refused_rather_than_raising(self):
+        real = os.path.join(TOOLS, "validate", "validate.py")
+        for error in (OSError("bad path"), ValueError("embedded null byte")):
+            with self.subTest(error=type(error).__name__):
+                with mock.patch.object(new_document.os.path, "abspath", side_effect=error):
+                    self.assertFalse(new_document._contained(real))
+
+    def test_a_module_whose_file_attribute_raises_is_refused_rather_than_raising(self):
+        class LazyModule:
+            @property
+            def __file__(self):
+                raise RuntimeError("still loading")
+
+            def validate(self, path, base_dir=None):
+                return ([], [])
+
+        with mock.patch.dict(sys.modules, {"validate": LazyModule()}):
+            module, reason = new_document._load_validator()
+        self.assertIsNone(module)
+        self.assertIn("not this skill's", reason)
+
     def test_a_foreign_validate_on_sys_path_is_refused_before_its_body_runs(self):
         # The origin is checked BEFORE the import, so an unrelated `validate` earlier on
         # sys.path must be refused without executing its module body at all.

@@ -372,7 +372,7 @@ def _contained(path):
         path = os.fspath(path)
     except Exception:  # noqa: BLE001  a non-path value, or a hostile/broken __fspath__
         return False
-    if not isinstance(path, str) or not path:
+    if type(path) is not str or not path:
         return False
     expected = os.path.join(_TOOLS_DIR, "validate")
     try:
@@ -394,6 +394,34 @@ def _describe(value):
         return "an unrepresentable location"
 
 
+def _safe_repr(value):
+    """repr() that cannot itself raise, for values a misbehaving validator produced."""
+    try:
+        return repr(value)
+    except Exception:  # noqa: BLE001  a hostile __repr__
+        return "an unrepresentable value"
+
+
+def _safe_text(value):
+    """str() that cannot itself raise, for an exception rendered into a reason."""
+    try:
+        return str(value)
+    except Exception:  # noqa: BLE001  a hostile __str__
+        return "an unrepresentable value"
+
+
+def _origin_of(obj, name):
+    """Read a module/spec origin attribute without letting the ACCESS raise.
+
+    `sys.modules` can hold a lazy loader or a proxy whose attribute access executes
+    arbitrary code, and this runs outside the caller's try block.
+    """
+    try:
+        return getattr(obj, name, "")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _load_validator():
     """Return (module, None), or (None, reason) when it cannot be used.
 
@@ -408,10 +436,10 @@ def _load_validator():
             spec = importlib.util.find_spec("validate")
         except Exception as exc:  # noqa: BLE001  a broken parent package, a bad sys.path entry
             return None, "the sibling 'validate' tool could not be located (%s: %s)" % (
-                type(exc).__name__, exc)
+                type(exc).__name__, _safe_text(exc))
         if spec is None:
             return None, "the sibling 'validate' tool is not importable (no module named 'validate')"
-        origin = getattr(spec, "origin", "")
+        origin = _origin_of(spec, "origin")
         if not _contained(origin):
             return None, ("the 'validate' module on sys.path is %s, not this skill's "
                           "tools/validate/validate.py" % (_describe(origin),))
@@ -420,8 +448,8 @@ def _load_validator():
         except Exception as exc:  # noqa: BLE001
             _toolpath.warn_missing_tool("validate", "self-validation of the new document")
             return None, "the sibling 'validate' tool could not be imported (%s: %s)" % (
-                type(exc).__name__, exc)
-    origin = getattr(module, "__file__", "")
+                type(exc).__name__, _safe_text(exc))
+    origin = _origin_of(module, "__file__")
     if not _contained(origin):
         return None, ("the imported 'validate' module is %s, not this skill's "
                       "tools/validate/validate.py" % (_describe(origin),))
@@ -453,7 +481,8 @@ def _self_validate_result(html_out, base_dir=None):
     except Exception as exc:  # noqa: BLE001
         # A validator that crashes, or a temp dir that cannot be written, means the check did
         # not happen - the same "could not be checked" signal, so it takes the same gate.
-        return None, "the validator could not run (%s: %s)" % (type(exc).__name__, exc)
+        return None, "the validator could not run (%s: %s)" % (
+            type(exc).__name__, _safe_text(exc))
     finally:
         if tmp is not None:
             try:
@@ -464,7 +493,7 @@ def _self_validate_result(html_out, base_dir=None):
             and all(isinstance(part, list) for part in outcome)):
         # Checking the MEMBERS matters as much as the arity: a `(None, None)` would satisfy a
         # bare 2-tuple test and then read as "no errors, no warnings", i.e. fail-open again.
-        return None, "the validator returned an unexpected result (%r)" % (outcome,)
+        return None, "the validator returned an unexpected result (%s)" % (_safe_repr(outcome),)
     return outcome, None
 
 

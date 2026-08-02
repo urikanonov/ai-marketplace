@@ -341,9 +341,56 @@ class ChartBlockUnvalidatedOutputTests(unittest.TestCase):
         self.assertIn('id="chartA-data"', out.getvalue())
 
     def test_contained_refuses_a_non_path_value_without_raising(self):
-        for value in (object(), 3, b"tools/validate/validate.py", None, ""):
-            with self.subTest(value=value):
+        class HostileStr(str):
+            def __bool__(self):
+                raise RuntimeError("nope")
+
+        for value in (object(), 3, b"tools/validate/validate.py", None, "",
+                      HostileStr("tools/validate/validate.py")):
+            with self.subTest(value=type(value).__name__):
                 self.assertFalse(chart_block._contained(value))
+
+    def test_a_path_that_cannot_be_canonicalized_is_refused_rather_than_raising(self):
+        # A NUL byte or an over-long path makes realpath/abspath raise on some platforms;
+        # that is still "cannot establish this is ours", not a traceback.
+        real = os.path.join(TOOLS, "validate", "validate.py")
+        for error in (OSError("bad path"), ValueError("embedded null byte")):
+            with self.subTest(error=type(error).__name__):
+                with mock.patch.object(chart_block.os.path, "abspath", side_effect=error):
+                    self.assertFalse(chart_block._contained(real))
+
+    def test_a_module_whose_file_attribute_raises_is_refused_rather_than_raising(self):
+        # sys.modules can hold a lazy loader or a proxy whose ATTRIBUTE ACCESS runs code;
+        # that must not escape _load_validator either.
+        class LazyModule:
+            @property
+            def __file__(self):
+                raise RuntimeError("still loading")
+
+            def validate(self, path):
+                return ([], [])
+
+        with mock.patch.dict(sys.modules, {"validate": LazyModule()}):
+            module, reason = chart_block._load_validator()
+        self.assertIsNone(module)
+        self.assertIn("not this skill's", reason)
+
+    def test_a_result_that_cannot_be_repred_still_fails_closed_with_a_reason(self):
+        # The "unexpected result" reason renders the validator's own value, so a hostile
+        # __repr__ must not turn that named reason back into a traceback.
+        class Hostile:
+            def __repr__(self):
+                raise RuntimeError("nope")
+
+        broken = types.SimpleNamespace(validate=mock.Mock(return_value=Hostile()))
+        with mock.patch.object(chart_block, "_load_validator", return_value=(broken, None)):
+            out, err = io.StringIO(), io.StringIO()
+            with mock.patch.object(sys, "stdin", _TextStdin(json.dumps(SPEC))), \
+                    contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = chart_block.main(list(self.ARGV))
+        self.assertNotEqual(code, 0)
+        self.assertEqual(out.getvalue(), "")
+        self.assertIn("unexpected result", err.getvalue())
 
     def test_a_misbehaving_pathlike_file_is_refused_rather_than_raising(self):
         # os.PathLike is accepted by the guard, but a PathLike is only a promise of
