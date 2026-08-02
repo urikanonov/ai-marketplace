@@ -1082,8 +1082,8 @@ class SpecTestReferenceTests(unittest.TestCase):
         )
 
     def test_the_commentable_html_corpus_reverse_maps_its_plain_spec_files(self):
-        # The widening is only real if the corpus check_all actually reverse-maps for the
-        # commentable-html target now holds its ORDINARY `*.spec.js` files, not just the
+        # The widening is only real if the corpus `check_all` reverse-maps for the
+        # commentable-html target now includes its ORDINARY `*.spec.js` files, not just the
         # `*.test.*` / `*regressions*.spec.*` subset it was limited to.
         spec = (self.root / "plugins" / "commentable-html" / "dev" / "SPEC.md").resolve()
         base = spec.parent

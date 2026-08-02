@@ -38,10 +38,15 @@ spec-and-test rules in [../AGENTS.md](../AGENTS.md); where they overlap, AGENTS.
   genuine extra coverage the row must name. That is the gate the `DEMO-TRIM-06`/`DEMO-TRIM-07` reuse
   slipped past (#800). Hiding the reuse in a `describe(...)` wrapper does not help: a suite title
   still counts toward "how many files carry this id". The same checker also verifies the reverse
-  direction - every test in a `*regressions*.spec.*` or `*.test.*` suite that carries an id is owned
-  by that id's row. Write a covering-tests cell file-first - `` `tests/x.spec.js` - `a title`,
+  direction - every JS `test`/`it` title that carries an id is owned by that id's row, across the
+  WHOLE `*.spec.*` / `*.test.*` corpus of every shipped target (an ordinary `tests/45-foo.spec.js`
+  is checked exactly like a `*regressions*.spec.*` one), and that row must CITE the title. A
+  `describe(...)` suite title is checked for ownership only, since a row cannot cite one. Write a
+  covering-tests cell file-first - `` `tests/x.spec.js` - `a title`,
   `another title` `` - because a title only counts as cited when it appears AFTER its file
-  reference and before the next one (or the next `;`).
+  reference and before the next one (or the next `;`). Keep prose semicolons OUT of a coverage
+  cell for that reason: a `;` outside a code span ENDS the clause, so every citation after it is
+  unreachable (that is how the `CMH-OFFLINE-04` row lost its newest citation to both directions).
 - **Assert observable behavior, not tautologies.** Prove the real outcome (an element is visible, a
   block scrolls, a value navigates), not a metric that is true by construction. A prior mobile
   scroll test was rewritten because it asserted scroll numbers that could not fail; test what a user

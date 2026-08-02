@@ -10,11 +10,12 @@ Three directions are checked:
   and the `*regressions*.spec.*` files. A target graduates to the full corpus once every feature
   id its tests carry is owned and cited by its spec, which is a spec cleanup rather than a code
   change. EVERY shipped target is there now: the site and demo-video targets graduated in #800,
-  and commentable-html followed in #853 (its 32 remaining violations were vestigial labels - each
-  test title carried an id no row owned while an existing row already described that behavior AND
-  cited that very test - so the cleanup normalized the titles onto the owning id rather than
-  minting parallel ids). The set stays as the mechanism, not as a standing exemption: a NEW target
-  that must start restricted is registered in `INTENTIONALLY_RESTRICTED_SPECS`, a reviewed
+  and commentable-html followed in #853. That cleanup was 32 violations: 23 uses of 14 VESTIGIAL
+  labels (a test title carried an id no row owned while an existing row already described that
+  behavior AND cited that very test, so the titles were normalized onto the owning id rather than
+  minting parallel ids), plus 9 titles whose id DID have a row that simply did not cite them,
+  which gained the citation. The set stays as the mechanism, not as a standing exemption: a NEW
+  target that must start restricted is registered in `INTENTIONALLY_RESTRICTED_SPECS`, a reviewed
   one-line edit rather than a silent omission.
   A `describe(...)` suite title is checked for OWNERSHIP only (its id must have a row); a row
   cannot CITE a suite title (issue #629), so demanding a citation for one would be unsatisfiable.
