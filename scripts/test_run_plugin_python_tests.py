@@ -381,32 +381,23 @@ class HookWiringTests(unittest.TestCase):
             source, r'if\s+\[\s+"\$\{PREPUSH_TESTS:-0\}"\s+=\s+"1"\s+\]',
             "the slow suites are inline in pre-push again (no PREPUSH_TESTS guard)")
 
-    def test_windows_only_plugin_tests_still_have_pre_merge_coverage(self):
-        """Making the local suites opt-in removed the only place Windows-only tests ran.
+    def test_windows_only_plugin_tests_actually_exist(self):
+        """Pins the coverage gap that PREPUSH_TESTS opened, so it cannot be forgotten.
 
         Several plugin suites are skipUnless(os.name == "nt") - directory-junction containment
-        and the PowerShell launcher - so they SKIP on Linux. Before PREPUSH_TESTS they were
-        covered incidentally by a maintainer's local (Windows) pre-push run. CI must therefore
-        carry a Windows runner, or those tests regress with every required check green.
+        and the PowerShell launcher - so they SKIP on the Linux-only plugin Python CI matrix.
+        Before the suites became opt-in they were covered incidentally by a maintainer's local
+        (Windows) pre-push run. Issue #837 tracks adding windows-latest to that matrix, which
+        was verified to work for these suites but also surfaces three unrelated pre-existing
+        Windows failures. This test fails if those Windows-only tests ever disappear, so the
+        gap is closed deliberately rather than by accident.
         """
-        import yaml
-        wf = rp.REPO_ROOT / ".github" / "workflows" / "plugin-tests.yml"
-        matrix = yaml.safe_load(wf.read_text(encoding="utf-8"))["jobs"]["python"]["strategy"]["matrix"]
-        self.assertIn("os", matrix, "the plugin Python job has no OS matrix")
-        self.assertTrue(
-            any(str(o).startswith("windows") for o in matrix["os"]),
-            "no Windows runner in the plugin Python matrix, so skipUnless(os.name=='nt') "
-            "suites have no pre-merge coverage: %r" % (matrix["os"],))
-
-    def test_windows_only_plugin_tests_actually_exist(self):
-        # The guard above is only meaningful while such tests exist; if they all go away, this
-        # fails and the Windows matrix can be reconsidered deliberately rather than by accident.
         hits = []
         for f in rp.discover_test_files(rp.REPO_ROOT):
             text = f.read_text(encoding="utf-8", errors="replace")
             if 'skipUnless(os.name == "nt"' in text or "skipUnless(os.name == 'nt'" in text:
                 hits.append(f.name)
-        self.assertTrue(hits, "no Windows-only plugin tests found; revisit the Windows CI matrix")
+        self.assertTrue(hits, "no Windows-only plugin tests found; close out issue #837")
 
 
 class ParallelSpawnSmokeTests(unittest.TestCase):
@@ -431,6 +422,86 @@ class ParallelSpawnSmokeTests(unittest.TestCase):
         self.assertIn("worker 2/2", text)
         # The children really ran and reported their own (empty) selection.
         self.assertIn("nothing to run", text)
+
+
+class WindowsOnlySelectionTests(unittest.TestCase):
+    """--windows-only feeds the dedicated Windows CI job; the selection must stay honest."""
+
+    def test_selects_modules_with_the_nt_marker(self):
+        with tempfile.TemporaryDirectory() as d:
+            nt = Path(d) / "test_nt.py"
+            nt.write_text('import os, unittest\n'
+                          '@unittest.skipUnless(os.name == "nt", "junctions")\n'
+                          'def f(): pass\n', encoding="utf-8")
+            plain = Path(d) / "test_plain.py"
+            plain.write_text("import unittest\n", encoding="utf-8")
+            self.assertEqual(rp.filter_windows_only([nt, plain]), [nt])
+
+    def test_accepts_the_single_quoted_spelling(self):
+        with tempfile.TemporaryDirectory() as d:
+            nt = Path(d) / "test_nt2.py"
+            nt.write_text("import os, unittest\n"
+                          "@unittest.skipUnless(os.name == 'nt', 'launcher')\n", encoding="utf-8")
+            self.assertEqual(rp.filter_windows_only([nt]), [nt])
+
+    def test_real_repo_selection_is_nonempty_and_all_marked(self):
+        sel = rp.filter_windows_only(rp.discover_test_files(rp.REPO_ROOT))
+        self.assertTrue(sel, "no Windows-only modules found; the python-windows CI job is now "
+                             "pointless and should be removed together with them")
+        for f in sel:
+            self.assertTrue(rp.has_windows_only_tests(f))
+
+    def test_selection_is_a_strict_subset(self):
+        allf = rp.discover_test_files(rp.REPO_ROOT)
+        sel = rp.filter_windows_only(allf)
+        self.assertTrue(set(sel).issubset(set(allf)))
+        self.assertLess(len(sel), len(allf), "every module looks Windows-only; marker too broad")
+
+    def test_empty_selection_is_a_loud_failure_not_a_silent_pass(self):
+        # A no-op Windows job that reports green would be worse than no job at all.
+        with mock.patch.object(rp, "filter_windows_only", return_value=[]):
+            self.assertEqual(rp.main(["--windows-only"]), 1)
+
+    def test_flag_is_forwarded_to_parallel_workers(self):
+        calls = []
+
+        def run(cmd, **kwargs):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with mock.patch.object(rp.subprocess, "run", side_effect=run):
+            rp.main(["--jobs", "2", "--windows-only"])
+        for c in calls:
+            self.assertIn("--windows-only", c)
+
+
+class WindowsCoverageWiringTests(unittest.TestCase):
+    """The Windows-only suites SKIP on the Linux matrix, so a Windows job must exist and gate.
+
+    Before the pre-push suites became opt-in these ran only incidentally, on a maintainer's local
+    Windows push. If the job below is dropped, the junction-containment and PowerShell-launcher
+    tests go back to having no pre-merge coverage at all - silently, because they SKIP rather
+    than fail on Linux.
+    """
+
+    def _workflow(self):
+        import yaml
+        wf = rp.REPO_ROOT / ".github" / "workflows" / "plugin-tests.yml"
+        return yaml.safe_load(wf.read_text(encoding="utf-8"))
+
+    def test_a_windows_job_runs_the_windows_only_suites(self):
+        job = self._workflow()["jobs"].get("python-windows")
+        self.assertIsNotNone(job, "no python-windows job; Windows-only suites are uncovered")
+        self.assertTrue(str(job["runs-on"]).startswith("windows"), job["runs-on"])
+        run = " ".join(str(s.get("run", "")) for s in job["steps"])
+        self.assertIn("--windows-only", run)
+
+    def test_the_gate_requires_the_windows_job(self):
+        jobs = self._workflow()["jobs"]
+        self.assertIn("python-windows", jobs["plugin-tests"]["needs"])
+        gate = " ".join(str(s.get("run", "")) for s in jobs["plugin-tests"]["steps"])
+        self.assertIn("PYTHON_WINDOWS_RESULT", gate,
+                      "the aggregate gate ignores the Windows job's result")
 
 
 class ShardMatrixContiguityTests(unittest.TestCase):

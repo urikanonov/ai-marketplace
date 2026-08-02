@@ -100,6 +100,27 @@ def select_shard(files: list[Path], index: int, total: int) -> list[Path]:
     return files[index - 1 :: total]
 
 
+#: Marker for a test module that carries Windows-only cases. Such a module's tests SKIP on Linux,
+#: so the Linux-only CI matrix cannot cover them; --windows-only selects exactly these files for a
+#: dedicated Windows job. Derived from the source rather than hard-coded so a new Windows-only
+#: suite is picked up automatically instead of silently going uncovered.
+_NT_ONLY_MARKERS = ('skipUnless(os.name == "nt"', "skipUnless(os.name == 'nt'")
+
+
+def has_windows_only_tests(path: Path) -> bool:
+    """True when the test module contains at least one Windows-only (nt) case."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return any(marker in text for marker in _NT_ONLY_MARKERS)
+
+
+def filter_windows_only(files: list[Path]) -> list[Path]:
+    """Keep only the modules that carry Windows-only cases."""
+    return [f for f in files if has_windows_only_tests(f)]
+
+
 def compose_shard(index: int, total: int, job_index: int, jobs: int) -> tuple[int, int]:
     """Return the single shard that selects job `job_index` of `jobs` WITHIN shard index/total.
 
@@ -146,6 +167,8 @@ def build_child_argv(index: int, total: int, job_index: int, jobs: int,
     cmd = [sys.executable, str(Path(__file__).resolve()), "--shard", f"{idx}/{tot}"]
     if args.changed_only:
         cmd += ["--changed-only", "--base-ref", args.base_ref]
+    if args.windows_only:
+        cmd.append("--windows-only")
     if args.require_discovered:
         cmd.append("--require-discovered")
     # argparse counts -v on top of the default, so replicate the delta, not the total.
@@ -173,7 +196,12 @@ def run_parallel(index: int, total: int, jobs: int, args: argparse.Namespace) ->
     print(f"Running shard {index}/{total} across {jobs} parallel worker(s).")
 
     def run_one(cmd: list[str]) -> subprocess.CompletedProcess:
-        return subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True)
+        # Pin the decode: without it Windows falls back to the ANSI code page (cp1252), so a
+        # worker that printed any non-cp1252 byte would raise UnicodeDecodeError in the PARENT
+        # and mask the real test failure. errors="replace" makes an odd byte a mojibake
+        # character instead of losing the whole worker's output.
+        return subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
 
     results: list[subprocess.CompletedProcess | BaseException] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
@@ -294,6 +322,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="Only run suites of plugins changed vs --base-ref.")
     ap.add_argument("--base-ref", default="origin/main",
                     help="Base ref for --changed-only (default origin/main).")
+    ap.add_argument("--windows-only", action="store_true",
+                    help="Run only the modules that carry Windows-only (os.name == 'nt') tests, "
+                         "which SKIP on the Linux matrix and so need a Windows runner.")
     ap.add_argument("--require-discovered", action="store_true",
                     help="Fail if no plugin test files exist at all (CI safety net).")
     ap.add_argument("-v", "--verbose", action="count", default=1)
@@ -330,6 +361,12 @@ def main(argv: list[str] | None = None) -> int:
     check_no_stem_collisions(discover_importable_modules(REPO_ROOT))
 
     files = all_files
+    if args.windows_only:
+        files = filter_windows_only(files)
+        if not files:
+            print("error: --windows-only matched no test modules; if the Windows-only suites "
+                  "were removed, drop the dedicated Windows job too", file=sys.stderr)
+            return 1
     if args.changed_only:
         changed = _git_changed_paths(args.base_ref, REPO_ROOT)
         if changed is None:

@@ -1,18 +1,25 @@
-# ripgrep-only ignore rules (does NOT affect git; see .gitignore for that).
+# ripgrep/fd-style ignore rules (does NOT affect git; see .gitignore for that).
 #
-# Why this file exists: `.gitignore` already lists `.worktrees/`, but ripgrep still
-# descends into it, because each `.worktrees/<name>` is its own git worktree and so
-# counts as a separate repository root whose parent's ignore rules no longer apply.
-# The result was that an unscoped search spent ~90% of its time walking stale
-# worktree copies of the same files and returned no extra matches. Measured on this
-# repo: `rg -l commentMode` took 12.7s by default and 1.2s with `.worktrees`
-# excluded, with an identical 28 hits. At ~13s an agent's search budget is easily
-# exceeded, and the resulting partial results cause retry loops.
+# Named `.ignore` rather than the ripgrep-only `.rgignore` so every tool built on the same
+# ignore stack (ripgrep, fd, and friends) honours one list.
 #
-# Keep this list to things that are NEVER a useful search target. Generated files
-# that a human or agent may legitimately want to read (site/dist, the built example
-# reports) are deliberately NOT listed. To search anything below anyway, pass
-# `rg --no-ignore` (or `--no-ignore-vcs` plus an explicit path).
+# What this actually buys, measured on this repo with warm cache: an unscoped
+# `rg -l commentMode` took 5.8s WITHOUT this file and 1.1s WITH it, returning an identical
+# 28-file result set. Nearly all of that is the multi-MB SINGLE-LINE minified bundles
+# (dev/assets/vendor/mermaid.min.js is 3.4 MB on one line), which are pathological for a
+# line-oriented regex scan.
+#
+# Two things this file does NOT fix, so do not attribute them to it:
+#   * `.worktrees/` is already skipped via .gitignore, so listing it here changes nothing
+#     for ripgrep today. It is kept as belt-and-braces for tools that read .ignore but not
+#     .gitignore, and because each worktree is its own git root.
+#   * A COLD first search is much slower than a warm one (12s vs ~1s was measured) because
+#     Windows Defender scans each file on first read. Only a Defender exclusion for the
+#     repository directory fixes that; an ignore file cannot.
+#
+# Keep this list to things that are NEVER a useful search target. Generated files that a human
+# or agent may legitimately want to read (site/dist, the built example reports) are deliberately
+# NOT listed. To search anything below anyway, pass `rg --no-ignore`.
 
 # Parallel worktrees: duplicate copies of the whole tree (see AGENTS.md).
 .worktrees/

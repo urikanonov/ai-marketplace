@@ -769,12 +769,12 @@ exposure is compute/runner abuse.
 A repo-root `.ignore` file keeps search tools out of content that is never a useful match. It is
 read by ripgrep, `fd`, and other tools built on the same ignore stack (this is why it is `.ignore`
 and not the ripgrep-only `.rgignore`), and it does NOT affect git - `.gitignore` remains the git
-rule. It lists the parallel `.worktrees/` checkouts, dependency and cache trees, minified/vendored
-bundles, packaged archives, and test scratch output. Skipping the multi-MB single-line minified
-bundles is the measurable part: an unscoped `rg` over this repo went from 5.8s to 1.1s with an
-identical result set. Generated files a human may legitimately want to read (`site/dist`, the built
-example reports) are deliberately NOT ignored; pass `rg --no-ignore` to search anything in the list
-anyway.
+rule. The measurable part is skipping the multi-MB SINGLE-LINE minified bundles, which are
+pathological for a line-oriented scan: an unscoped `rg` over this repo went from 5.8s to 1.1s with
+an identical result set. (`.worktrees/` is listed too, but git already hides it from ripgrep, so
+that entry is belt-and-braces rather than the win.) Generated files a human may legitimately want
+to read (`site/dist`, the built example reports) are deliberately NOT ignored; pass
+`rg --no-ignore` to search anything in the list anyway.
 
 Two habits matter more than the ignore file:
 

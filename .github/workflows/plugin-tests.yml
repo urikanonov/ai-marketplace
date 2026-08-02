@@ -293,7 +293,7 @@ jobs:
   python:
     needs: changes
     if: ${{ needs.changes.outputs.run_plugin == 'true' }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -302,13 +302,11 @@ jobs:
       # shared-state parallelism is introduced; different files just run on different runners.
       # The shard is a single "index/total" string (one source of truth for the count).
       #
-      # Windows is in the matrix because several suites are `skipUnless(os.name == "nt")` -
-      # directory-junction containment in the build and resource extractor, and the PowerShell
-      # launcher in the session hooks. Those SKIP on Linux, so before this they were only ever
-      # exercised by a maintainer's local pre-push run; once that became opt-in they would have
-      # had no pre-merge coverage at all.
+      # NOTE: Linux only, which leaves the skipUnless(os.name == "nt") suites (directory-junction
+      # containment, the PowerShell launcher) without CI coverage - see issue #837. Adding
+      # windows-latest was tried here and WORKS for those suites, but it also surfaces three
+      # unrelated pre-existing Windows failures, so it ships as its own change.
       matrix:
-        os: [ubuntu-latest, windows-latest]
         shard: ["1/5", "2/5", "3/5", "4/5", "5/5"]
     env:
       SHARD: ${{ matrix.shard }}
@@ -321,14 +319,37 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
-      # bash on both runners so the one `${SHARD}` expansion means the same thing (PowerShell
-      # would read ${SHARD} as a shell variable, not the environment one, and pass it empty).
       - name: Run plugin Python test suites (shard)
         shell: bash
         run: python scripts/run_plugin_python_tests.py "--shard=${SHARD}" --require-discovered
 
+  # The Linux matrix above cannot cover the skipUnless(os.name == "nt") suites - directory-junction
+  # containment in the build and the resource extractor, and the PowerShell launcher - because they
+  # SKIP there. Until the pre-push suites became opt-in they were covered only incidentally, by a
+  # maintainer's local Windows run, so this job is what keeps them gated pre-merge. It runs ONLY the
+  # modules that carry Windows-only cases (selected from the source, so a new one is picked up
+  # automatically); widening it to the whole suite is issue #837, which is blocked on three
+  # unrelated failures that reproduce ONLY on the windows-latest runner, not on a Windows dev box.
+  python-windows:
+    needs: changes
+    if: ${{ needs.changes.outputs.run_plugin == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Run the Windows-only plugin Python suites
+        shell: bash
+        run: python scripts/run_plugin_python_tests.py --windows-only --require-discovered
+
   plugin-tests:
-    needs: [changes, discover, playwright, playwright-heavy, python]
+    needs: [changes, discover, playwright, playwright-heavy, python, python-windows]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -341,9 +362,10 @@ jobs:
           PLAYWRIGHT_RESULT: ${{ needs.playwright.result }}
           PLAYWRIGHT_HEAVY_RESULT: ${{ needs.playwright-heavy.result }}
           PYTHON_RESULT: ${{ needs.python.result }}
+          PYTHON_WINDOWS_RESULT: ${{ needs.python-windows.result }}
           DISCOVERED: ${{ needs.discover.outputs.plugins }}
         run: |
-          echo "changes=$CHANGES_RESULT run_plugin=$RUN_PLUGIN discover=$DISCOVER_RESULT playwright=$PLAYWRIGHT_RESULT playwright-heavy=$PLAYWRIGHT_HEAVY_RESULT python=$PYTHON_RESULT plugins=$DISCOVERED"
+          echo "changes=$CHANGES_RESULT run_plugin=$RUN_PLUGIN discover=$DISCOVER_RESULT playwright=$PLAYWRIGHT_RESULT playwright-heavy=$PLAYWRIGHT_HEAVY_RESULT python=$PYTHON_RESULT python-windows=$PYTHON_WINDOWS_RESULT plugins=$DISCOVERED"
           # The discovery guard runs regardless, so an accidentally removed suite still fails
           # the gate even on a PR that skips the heavy suites.
           if [ "$DISCOVER_RESULT" != "success" ]; then
@@ -395,5 +417,11 @@ jobs:
           esac
           if [ "$PYTHON_RESULT" != "success" ]; then
             echo "::error::plugin Python tests did not pass (result: $PYTHON_RESULT)"
+            exit 1
+          fi
+          # Fail CLOSED: the Windows job is the ONLY pre-merge coverage for the
+          # skipUnless(os.name == "nt") suites, so a skip or cancellation is not acceptable here.
+          if [ "$PYTHON_WINDOWS_RESULT" != "success" ]; then
+            echo "::error::Windows-only plugin Python tests did not pass (result: $PYTHON_WINDOWS_RESULT)"
             exit 1
           fi
