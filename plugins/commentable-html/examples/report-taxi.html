@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.364.0" />
+<meta name="commentable-html-version" content="1.370.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.364.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.370.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>NYC Taxi 2014 Report</title>
 
@@ -4385,7 +4385,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.364.0";
+const CMH_VERSION = "1.370.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -12650,10 +12650,10 @@ function setupSidebarResize() {
    Clicking the hover bubble opens a small on-screen dialog next to the highlight showing the
    comment note and an Edit button. Edit turns the dialog itself into an editor IN PLACE, so the
    reviewer edits exactly where they clicked instead of being sent to a floating composer. A click
-   anywhere else closes the dialog; a pointer click there is also swallowed so it performs no other
-   action (for example it does not follow a link the highlight sits on), while a keyboard-activated
-   click, and a click on a control of an editor the layer itself has open (the side pane's inline
-   editor or the floating composer), still reach their target.
+   anywhere else closes the dialog; a pointer click in the ANNOTATED DOCUMENT is also swallowed so
+   it performs no other action (for example it does not follow a link the highlight sits on), while
+   a keyboard-activated click, and a click on the layer's own surfaces (its chrome, and the editors
+   it has open), still reach their target.
    While the dialog is being edited it stays open (an outside click
    or the anchor scrolling away would discard the draft). The sidebar jump still runs alongside this
    from 52-hover-bubble.js. */
@@ -12764,25 +12764,66 @@ function _cmhClickElement(target) {
   return target.nodeType === 1 ? target : (target.parentElement || null);
 }
 
+// The propagation path an event took, fixed at DISPATCH time. Every membership test below prefers
+// it over the live tree: a node another capture-phase listener detached in the same tick is still
+// classified by where it was clicked, and the path sees through a shadow root. Null where the
+// engine does not implement `composedPath`, and each caller then falls back to live containment.
+function _cmhEventPath(e) {
+  const path = e && typeof e.composedPath === "function" ? e.composedPath() : null;
+  return path && path.length ? path : null;
+}
+
 // True when the click landed inside the LIVE dialog. Identity, never a class match: the annotated
 // document is author content, and an element there carrying `cm-comment-popover` would otherwise be
 // mistaken for the dialog - leaving the real one open AND letting the click act.
-function _cmhClickIsInPopover(target) {
+function _cmhClickIsInPopover(target, path) {
+  if (!commentPopover) return false;
+  if (path) return path.indexOf(commentPopover) !== -1;
   const el = _cmhClickElement(target);
-  return !!(commentPopover && el && commentPopover.contains(el));
+  return !!(el && commentPopover.contains(el));
 }
 
 // The editors the dialog must never steal a click from: the side pane's inline reply/edit editor
 // and the floating composer. Both are resolved by IDENTITY against the layer's own state - the one
 // active inline editor, and the set of composers the layer opened - never by a bare class match,
-// which document content could spoof to defeat the outside-click swallow below.
-function _cmhClickIsInLayerEditor(target) {
+// which document content could spoof to defeat the outside-click swallow below. They are still
+// resolved separately from the containment test below because they can live INSIDE `root` (and do,
+// wholesale, in the CMH-CORE-15 `<body>` fallback), which is also the only mode where this decides
+// anything.
+function _cmhClickIsInLayerEditor(target, path) {
+  const pane = _activeInlineEditor && _activeInlineEditor.el;
+  if (path) {
+    for (let i = 0; i < path.length; i++) {
+      const node = path[i];
+      if (pane && node === pane) return true;
+      if (openComposers.has(node)) return true;
+    }
+    return false;
+  }
   const el = _cmhClickElement(target);
   if (!el) return false;
-  const pane = _activeInlineEditor && _activeInlineEditor.el;
   if (pane && pane.contains(el)) return true;
   const composer = el.closest ? el.closest(".cm-composer") : null;
   return !!(composer && openComposers.has(composer));
+}
+
+// True when the click landed in the ANNOTATED DOCUMENT, which is the only thing the swallow exists
+// to stop acting. Stating it that way rather than enumerating carve-outs means layer chrome OUTSIDE
+// that root - the hover bubble, an overlay or toast the dialog's own Save raised, and any chrome
+// added outside it later - keeps its first click for free.
+function _cmhClickIsInAnnotatedDocument(e, path) {
+  // Where `#commentRoot` is absent the layer anchors to `<body>` (CMH-CORE-15) and the whole page IS
+  // the annotated document - chrome included, since containment cannot separate the two there. Answer
+  // true for EVERY click in that mode (`<html>` and a non-element target too, which a containment
+  // test would let through) so its swallow stays exactly what it was before this rule was inverted;
+  // the identity-resolved editor carve-out above is what keeps that mode's editors working, as before.
+  if (root === document.body) return true;
+  if (path) return path.indexOf(root) !== -1;
+  const el = _cmhClickElement(e.target);
+  // Without a path, a target that resolves to no element - or to one already detached, which
+  // containment would call "outside" - cannot be classified, so keep this guard's fail-CLOSED
+  // default and swallow it, exactly as the rule did before it was inverted.
+  return el && el.isConnected ? root.contains(el) : true;
 }
 
 // True when the open dialog will swallow this click (capture-phase preventDefault +
@@ -12793,8 +12834,10 @@ function _cmhClickIsInLayerEditor(target) {
 function cmhPopoverWouldSwallowClick(e) {
   if (!commentPopover || !_popoverArmed || !e || !(e.detail > 0)) return false;
   if (_popoverEditing) return false;
-  if (_cmhClickIsInPopover(e.target)) return false;
-  return !_cmhClickIsInLayerEditor(e.target);
+  const path = _cmhEventPath(e);
+  if (_cmhClickIsInPopover(e.target, path)) return false;
+  if (!_cmhClickIsInAnnotatedDocument(e, path)) return false;
+  return !_cmhClickIsInLayerEditor(e.target, path);
 }
 
 function closeCommentPopover() {
@@ -13057,9 +13100,9 @@ function openCommentPopover(id, mark) {
     } catch (e) { _popoverResizeObs = null; }
   }
 
-  // A click outside the dialog closes it. A pointer click (detail > 0) is also swallowed
-  // (capture-phase preventDefault + stopPropagation) so it performs no other action - for
-  // example it does not follow a link the highlight sits on. A keyboard-activated click
+  // A click outside the dialog closes it. A pointer click (detail > 0) in the annotated document is
+  // also swallowed (capture-phase preventDefault + stopPropagation) so it performs no other action -
+  // for example it does not follow a link the highlight sits on. A keyboard-activated click
   // (Enter/Space, detail 0) closes the dialog but is allowed to proceed, so a keyboard user
   // is never blocked from activating an outside control. Clicks inside pass through.
   _popoverDismiss = (e) => {
@@ -13068,10 +13111,11 @@ function openCommentPopover(id, mark) {
     // Mid-edit the dialog stays open (closing it would silently discard the draft) and the click
     // is left alone, so the rest of the page keeps working while the editor is up.
     if (_popoverEditing) return;
-    // A click inside one of the layer's own editors - the side pane's inline reply/edit editor or
-    // the floating composer - belongs to that editor. Swallowing it would make the reviewer's first
-    // click on a formatting or Save/Cancel control do nothing, so the dialog closes but the click
-    // proceeds to its control. `cmhPopoverWouldSwallowClick` resolves those editors through the
+    // A click that did not land in the annotated document belongs to whatever it hit - the layer's
+    // own chrome (another highlight's hover bubble, an overlay or toast this dialog's own Save
+    // raised), one of the layer's editors, or the browser. Swallowing it would make the reviewer's
+    // FIRST click there do nothing but close the dialog, so the dialog closes and the click
+    // proceeds. `cmhPopoverWouldSwallowClick` resolves the dialog and those editors through the
     // layer's own state, so document content cannot spoof its way out of the swallow.
     if (cmhPopoverWouldSwallowClick(e)) { e.preventDefault(); e.stopPropagation(); }
     closeCommentPopover();
