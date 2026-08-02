@@ -9,13 +9,25 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 ### Fixed
 
 - Export as Shareable (and every path built on it - Save, Standalone, Offline) now locates the
-  embedded-comments block structurally instead of scanning the document text. The layer's own
-  source is part of every document and necessarily spells `<script id="embeddedComments">`, so
-  the text scan was answered by the runtime itself: the "make sure the EMBEDDED COMMENTS region
-  is present" error could never fire, and a document that had genuinely lost that region
-  exported a copy whose runtime source had been overwritten mid-function with the comments JSON.
-  Such a document now fails loudly and downloads nothing, and a re-fetched on-disk copy is
-  accepted as the export base only when a real block resolves in it.
+  embedded-comments block and the layer descriptor structurally instead of scanning the document
+  text. The layer's own source is part of every document and necessarily spells
+  `<script id="embeddedComments">`, so the text scan was answered by the runtime itself: the
+  "make sure the EMBEDDED COMMENTS region is present" error could never fire, and a document that
+  had genuinely lost that region exported a copy whose runtime source had been overwritten
+  mid-function with the comments JSON. The same defect in the descriptor path overwrote a quarter
+  of a megabyte of runtime on every Offline export of such a document. Both now fail loudly and
+  download nothing, and a re-fetched on-disk copy is accepted as the export base only when a real
+  block resolves in it.
+- The resolver follows the HTML tokenizer rather than approximating it, so text a browser parses
+  as CONTENT can no longer masquerade as the block: an end tag must match the element name
+  exactly, `<!-- -->` (including the empty `<!-->` form and a `--!>` terminator), DOCTYPEs, bogus
+  declarations and processing instructions are consumed, `<iframe>`/`<noscript>`/`<xmp>` content
+  is text, `<template>` content is the inert fragment `getElementById` cannot see (nesting
+  included), the `<!--<script>` double-escape idiom is honored, and tag names and attributes are
+  tokenized on ASCII whitespace only. Every result is cross-checked against the browser's own
+  parse before anything is spliced, so a shape the two cannot agree on fails loudly instead of
+  being rewritten on a guess. An unquoted attribute value containing an apostrophe, and a legal
+  empty comment, no longer swallow the rest of the document.
 
 ## [1.371.0] - 2026-08-03
 
