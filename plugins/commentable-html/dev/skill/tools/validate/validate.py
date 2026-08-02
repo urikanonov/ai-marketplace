@@ -260,11 +260,12 @@ def _read(path):
 
 def _parse(html):
     """Feed `html` to a fresh _DocParser. Returns (parser, ok); ok is False if
-    HTMLParser raised on markup too malformed to tokenize."""
+    HTMLParser raised on markup too malformed to tokenize. The document is handed over
+    WHOLE (`parse_document`), which is what lets an unterminated comment run to the end
+    of the document the way a browser runs it."""
     parser = _DocParser(html)
     try:
-        parser.feed(html)
-        parser.close()
+        parser.parse_document(html)
         return parser, True
     except Exception:
         return parser, False
