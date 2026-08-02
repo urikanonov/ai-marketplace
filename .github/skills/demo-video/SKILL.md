@@ -137,6 +137,11 @@ Capturing is only half the job - the three clips are then RENDERED from what tho
 and each takes different flags:
 
 ```powershell
+# demo-commentable-html.webm - the browser montage on its own, at publish length and scale
+node "$skill\tools\record_demo.mjs" report --example "C:\demo\report.html" `
+  --seconds 30 --scale 0.6 `
+  --out "$repo\tmp\rerecord-review\demo-commentable-html.webm"
+
 # demo-commentable-html-loop.webm - the round trip. --example is the report AS REVIEWED and
 # --example-after the one the agent then fixed.
 node "$skill\tools\record_demo.mjs" loop --cast "$repo\tmp\demo-video\loop.cast.json" `
@@ -265,12 +270,16 @@ these are NOT covered, and only your own eyes will catch them:
   the scrubber reads the byte stream, while the viewer reads the rendered grid.
 
 **Everything visible in the terminal chrome is published too, not just the output.** The window
-title bar is part of the frame, and it holds the launch command. On a real machine that command is
-an inventory of internal tooling - which MCP servers you disable, which hosts you point at - and
-none of it is a secret by any rule, so redaction cannot catch it. The clip therefore shows the
-PROGRAM NAME only (`copilot`), with the path, any leading `NAME=value` environment assignment, and
-every flag dropped; anything that is not a plausible bare program name degrades to `session`. Pass
-`--show-command` when the invocation genuinely is the story.
+title bar is part of the frame, and it used to hold the launch command. On a real machine that
+command is an inventory of internal tooling - which MCP servers you disable, which hosts you point
+at - and none of it is a secret by any rule, so redaction cannot catch it. The chrome therefore
+draws NOTHING at all now: a safe label is still text, and `scripts/check_clip_chrome.py` fails a
+published clip whose title strip is not flat, so a clip with any title had to be masked by hand
+before it could ship. Rendered empty, a clip is born publishable. The safe reduction is still
+computed - the PROGRAM NAME only (`copilot`), with the path, any leading `NAME=value` environment
+assignment, and every flag dropped, degrading to `session` for anything that is not a plausible bare
+program name - and it is what the title card falls back to. Pass `--show-command` when the
+invocation genuinely is the story, and expect to mask that clip by hand.
 
 **The title card is the loudest surface of all** - it is the largest type in the clip. It states the
 prompt that was actually typed, and it is bounded: a `-p` prompt ends at its closing quote (or at the

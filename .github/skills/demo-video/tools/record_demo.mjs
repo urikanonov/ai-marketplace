@@ -2106,7 +2106,7 @@ const USAGE = `demo-video recorder
   node record_demo.mjs scan    --cast <file.cast.json>
   node record_demo.mjs frames  --clip <file.webm> [--count 12]
 
-The window chrome shows the PROGRAM NAME only; --show-command publishes the whole launch command.
+The window chrome draws no title, so a clip is born flat; --show-command publishes the whole launch command.
 
 Everything is written under tmp/demo-video (gitignored). Nothing is committed.`;
 
