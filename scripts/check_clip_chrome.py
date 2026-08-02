@@ -11,8 +11,9 @@ Reviewing that by eye does not work. It survived two review rounds and a frame-b
 first time, because the eye reads a title bar as chrome rather than as content. So this checks every
 frame mechanically instead:
 
-  * a frame is JUDGED when the traffic lights are drawn, unfaded, at their canonical position -
-    which is exactly the condition under which the strip beside them IS the title bar;
+  * a frame is JUDGED when the traffic lights are drawn, unfaded, at their canonical position AND
+    the chrome's empty gutter - the padding row between the title and the terminal - is flat, which
+    together mean the strip beside the lights IS the title bar and nothing is painted over it;
   * on such a frame the title strip must be FLAT - a solid masked box, or empty chrome. Rendered
     text is high-contrast against that background, so any real spread in luminance means text.
 
@@ -23,8 +24,9 @@ Judging on the lights replaced a mid-frame luminance probe that stood in for "is
 That proxy both dropped ~10% of plainly-terminal frames on the busiest clip (dense output raised the
 mid-frame mean past its cut-off, and those are precisely the frames whose strip is most crowded) and
 admitted cross-fade frames where the report slides OVER the chrome. The lights answer the real
-question directly: they are only fully saturated at that spot when the chrome is on screen, settled,
-and unoccluded.
+question directly: they are only fully saturated at that spot when the chrome is on screen and
+settled. What they cannot see is the END of a fade, where they are back to full saturation while the
+report is still faintly painted on top - so the gutter answers that half separately (see GUTTER).
 """
 
 import argparse
@@ -63,6 +65,24 @@ STRIP = "crop=iw-66:22:46:1"
 # The traffic lights. A frame is JUDGED only when they are fully drawn here, which is precisely when
 # the strip beside them is the title bar: settled, on screen, and not faded under an overlay.
 LIGHTS = "crop=30:6:12:11"
+# The chrome's EMPTY GUTTER: the full-width band of its bottom padding, between the row a title is
+# drawn on and the terminal's first row. Nothing is ever drawn there on a settled frame, whatever
+# the terminal is printing - so content there means something is painted OVER the window.
+#
+# That is the one thing the lights cannot see. They reach full saturation at the END of a cross-fade
+# while the report panel is still faintly painted on top, so the strip beside them carries a ghost
+# of report content and was judged anyway: on the published loop clip the worst judged frame read a
+# spread of 33 against a tolerance of 40, at exactly the browser-to-terminal fade, while the
+# non-cross-fade frames read a median of 7. The margin the tolerance was widened to 40 to buy was
+# being spent on frames that are not the title bar at all. Excluding them is the fix; widening the
+# tolerance further is the direction this gate exists to refuse.
+GUTTER = "crop=iw:3:0:24"
+# Luminance spread above which the gutter is carrying something painted over the window. Measured
+# over the loop clip's 598 judged frames: at most 19 on a settled frame, 24-44 while the report is
+# still on top, and nothing in between. Unlike the strip's tolerance this one can afford to be
+# tight - dropping a settled frame costs one frame of coverage out of hundreds, while calling a
+# clean frame a leak sends the operator hunting for text that is not there.
+GUTTER_TOLERANCE = 22.0
 # A patch from the MIDDLE of the frame. It no longer decides which frames to JUDGE - the lights do -
 # but it still answers one question they cannot: is there a terminal in this clip at all? Judging on
 # the lights means a clip whose chrome sits somewhere else entirely (rendered at a much SMALLER
@@ -94,13 +114,20 @@ LIGHTS_SATURATION = 60.0
 PUBLISH_SCALE = 0.6
 
 
-class ScaleMismatch(Exception):
-    """A clip whose geometry these offsets do not describe, so its measurements mean nothing.
+class Unscannable(Exception):
+    """A clip no frame of which could be judged, so its verdict would mean nothing.
 
     Not a SystemExit: `main` scans a LIST, and aborting the whole run on the first bad clip hides
     every later clip's independent leak until the first is fixed and the gate rerun.
     """
 
+
+class ScaleMismatch(Unscannable):
+    """A clip whose geometry these offsets do not describe, so its measurements mean nothing."""
+
+
+class NeverUnoccluded(Unscannable):
+    """A clip whose chrome is painted over on every frame that shows it."""
 
 
 def display_name(clip):
@@ -161,16 +188,18 @@ def _measure(ffmpeg, clip, crop, keys):
 
 
 def scan_clip(ffmpeg, clip):
-    """Return `(bad, judged)` - frames whose title strip is not flat, and how many were judged."""
+    """Return `(bad, judged, occluded)` - frames whose title strip is not flat, how many frames were
+    judged, and how many showed the chrome with something painted over it."""
     strip = _measure(ffmpeg, clip, STRIP, ("YMIN", "YMAX", "SATMAX"))
     lights = _measure(ffmpeg, clip, LIGHTS, ("SATMAX",))
+    gutter = _measure(ffmpeg, clip, GUTTER, ("YMIN", "YMAX"))
     kind = _measure(ffmpeg, clip, KIND, ("YAVG",))
 
     if not strip:
         raise SystemExit("no frames decoded from %s" % clip)
-    if not len(strip) == len(lights) == len(kind):
-        raise SystemExit("frame count mismatch reading %s (%d, %d, %d)"
-                         % (clip, len(strip), len(lights), len(kind)))
+    if not len(strip) == len(lights) == len(gutter) == len(kind):
+        raise SystemExit("frame count mismatch reading %s (%d, %d, %d, %d)"
+                         % (clip, len(strip), len(lights), len(gutter), len(kind)))
 
     drawn = [row["SATMAX"] >= LIGHTS_PRESENT for row in lights]
     brightest = max(row["SATMAX"] for row in lights)
@@ -183,7 +212,7 @@ def scan_clip(ffmpeg, clip):
         # than the publish scale, where the lights fall outside the crop entirely and the leaked
         # title falls left of the strip - the mirror of the over-scaled case below.
         if terminal_frames == 0 and brightest < LIGHTS_ABSENT:
-            return [], 0
+            return [], 0, 0
         raise ScaleMismatch(
             "%s shows a terminal on %d frame(s) but its window chrome never appears where these "
             "offsets expect it (lights peak at %.0f), so no frame could be judged: it was not "
@@ -192,25 +221,42 @@ def scan_clip(ffmpeg, clip):
 
     bad = []
     judged = 0
+    occluded = 0
     for i, row in enumerate(strip):
-        # EVERY frame showing settled chrome is judged, with no positional window. A cross-fade
-        # frame is excluded because its lights are not fully drawn, not because of where it sits -
-        # so the last frames of a segment are still checked, and that is precisely where the mask
-        # ran out and the command was published.
+        # EVERY frame showing settled, unoccluded chrome is judged, with no positional window. A
+        # cross-fade frame is excluded because its chrome is faded or painted over, not because of
+        # where it sits - so the last frames of a segment are still checked, and that is precisely
+        # where the mask ran out and the command was published.
         if not drawn[i]:
             continue
-        judged += 1
         # These offsets hold at the publish scale only. Rendered larger, the traffic lights land
         # inside the strip and every terminal frame "leaks" - a phantom that reads exactly like the
         # real thing and sends the operator hunting for text that is not there. Say so instead.
+        # This runs BEFORE the occlusion gate: at another scale the gutter lands on the title row,
+        # so every frame would read as occluded and the run would report the wrong problem.
         if row["SATMAX"] > LIGHTS_SATURATION:
             raise ScaleMismatch(
                 "%s has colour in its title strip at t=%.2fs, which means the traffic lights are "
                 "inside it: this clip was not rendered at the publish scale. Re-render it with "
                 "--scale %s (see the demo-video SKILL.md) and scan again." % (clip, row["t"], PUBLISH_SCALE))
+        # The lights are fully saturated again at the END of a cross-fade while the report is still
+        # painted faintly over the window, so the strip is not the title bar on such a frame - what
+        # it carries is a ghost of report content, and judging it spends the flatness margin on
+        # something that is not chrome at all.
+        if gutter[i]["YMAX"] - gutter[i]["YMIN"] > GUTTER_TOLERANCE:
+            occluded += 1
+            continue
+        judged += 1
         if row["YMAX"] - row["YMIN"] > FLAT_TOLERANCE:
             bad.append((row["t"], row["YMAX"] - row["YMIN"]))
-    return bad, judged
+    if not judged:
+        # Every skipped frame is a frame not checked, so a clip where that is ALL of them must fail
+        # rather than print a bare OK - the same rule the lights already follow above.
+        raise NeverUnoccluded(
+            "%s shows its window chrome on %d frame(s) but something is painted over it on every "
+            "one of them, so no frame could be judged. Re-record the clip, or check that its "
+            "transitions settle." % (clip, occluded))
+    return bad, judged, occluded
 
 
 def main(argv):
@@ -242,16 +288,16 @@ def main(argv):
         return 0
 
     failed = False
-    mis_scaled = False
+    unscannable = False
     for clip in clips:
         name = display_name(clip)
         try:
-            bad, judged = scan_clip(ffmpeg, clip)
-        except ScaleMismatch as problem:
+            bad, judged, occluded = scan_clip(ffmpeg, clip)
+        except Unscannable as problem:
             # Keep going: every clip gets its own verdict in one run, so a second problem elsewhere
             # is not hidden behind the first.
             failed = True
-            mis_scaled = True
+            unscannable = True
             print("FAIL %s: %s" % (name, problem))
             continue
         if bad:
@@ -264,11 +310,18 @@ def main(argv):
                 print("       ... and %d more" % (len(bad) - 8))
         else:
             # Say what was inspected. A gate that will not report its own coverage cannot be
-            # audited, and "judged 3" and "judged 1040" both used to print the same word.
-            print("OK   %s (judged %d frame(s))" % (name, judged)
-                  if judged else "OK   %s (no window chrome to check)" % name)
+            # audited, and "judged 3" and "judged 1040" both used to print the same word. The
+            # frames skipped as occluded are named too: they are frames NOT checked, and a count
+            # that grows out of proportion to a clip's transitions is worth looking at.
+            if not judged:
+                print("OK   %s (no window chrome to check)" % name)
+            elif occluded:
+                print("OK   %s (judged %d frame(s), skipped %d with the chrome painted over)"
+                      % (name, judged, occluded))
+            else:
+                print("OK   %s (judged %d frame(s))" % (name, judged))
     if failed:
-        if not mis_scaled:
+        if not unscannable:
             print("\nA published clip is showing its launch command. Re-mask the WHOLE terminal "
                   "segment (measure the boundaries, do not guess them), or re-record with the "
                   "current recorder.")

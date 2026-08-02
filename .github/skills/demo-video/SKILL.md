@@ -178,8 +178,11 @@ python "$repo\scripts\check_clip_chrome.py" --require-ffmpeg <new clips...>
 
 That needs a full ffmpeg build; Playwright's bundled one is VP8-only and cannot decode these VP9
 clips. Point `DEMO_CLIP_FFMPEG` at a real build if `ffmpeg` is not on PATH. The scan reports how
-many frames it judged, so read that number: a clip that judged far fewer than its length suggests
-its chrome was occluded, and one that judged none says so outright.
+many frames it judged, so read that number. It judges only the frames whose chrome is drawn AND
+unoccluded, so a clip with transitions legitimately judges fewer frames than it has - the loop clip
+skips the handful where the report is still painted over the window - but a count far below the
+clip's terminal footage suggests its chrome was occluded throughout, and a clip where that is EVERY
+frame is refused outright rather than passed.
 
 **The posters are a published surface too, and no gate scans them.** `site/src/poster-*.jpg` is the
 first thing a reader sees, it carries the window chrome, and the launch command shipped in one once
