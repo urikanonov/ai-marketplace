@@ -4,6 +4,8 @@ and the constants (regions, ids, regexes) every check builds on."""
 
 import functools
 import re
+from html import unescape
+from html.entities import html5 as _HTML5_ENTITIES
 from html.parser import HTMLParser
 from types import MappingProxyType
 
@@ -312,6 +314,117 @@ _FOREIGN_BREAKOUT_TAGS = frozenset((
 ))
 _FONT_BREAKOUT_ATTRS = ("color", "face", "size")
 
+# An ATTRIBUTE VALUE's character references, decoded the way a BROWSER decodes them: a NUMERIC
+# reference always resolves, a NAMED one only when it is an exact match that is not followed by
+# `=` - so `id="&notit;"` keeps the literal `&notit;`. Python 3.13 applies that rule; 3.12
+# unescapes the whole value with `html.unescape()`, which resolves the `&not` inside `&notit;`
+# and yields `\u00acit;`. Left to the host, one document would carry different `id`, `class`,
+# `href`, `src`, `content` and `data-*` values per interpreter - a different duplicate-id,
+# link, meta-handshake or companion-resource verdict for the same bytes. So the rule and the
+# start-tag attribute tokenizer it runs over are vendored here and applied to the RAW start
+# tag, and the host's own decoding is never read (CMH-VAL-21).
+#
+# The three regexes and `_replace_attr_charref` are a copy of CPython 3.13's
+# `Lib/html/parser.py` (`attr_charref`, `tagfind_tolerant`, `attrfind_tolerant`,
+# `_replace_attr_charref`), which is the browser-correct version; keep them in step with that
+# file, not with whatever the running interpreter happens to ship.
+_ATTR_CHARREF_RE = re.compile(r"&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*)[;=]?")
+
+# Frozen at import so the membership test cannot follow a mutation of the host's table. (The
+# expansion below still calls `html.unescape`, which reads the live table, so this is a
+# lookup-side snapshot, not a full freeze of the entity data.)
+_HTML5_ENTITY_NAMES = frozenset(_HTML5_ENTITIES)
+
+_TAG_NAME_RE = re.compile(r"([a-zA-Z][^\t\n\r\f />]*)(?:[\t\n\r\f ]|/(?!>))*")
+
+_ATTR_RE = re.compile(r"""
+  ((?<=['"\t\n\r\f /])[^\t\n\r\f />][^\t\n\r\f /=>]*)   # attribute name
+  ([\t\n\r\f ]*=[\t\n\r\f ]*                            # value indicator
+    ('[^']*'                                            # single-quoted value
+    |"[^"]*"                                            # double-quoted value
+    |(?!['"])[^>\t\n\r\f ]*                             # bare value
+    )
+   )?
+  (?:[\t\n\r\f ]|/(?!>))*                               # trailing whitespace
+""", re.VERBOSE)
+
+
+def _replace_attr_charref(m):
+    ref = m.group(0)
+    if ref.startswith("&#"):
+        # A reference with more digits than Python's integer-conversion limit makes
+        # `unescape` raise; a browser just resolves it to U+FFFD. Leaving it literal keeps
+        # this decode total, because every parse entry point swallows an exception into a
+        # TRUNCATED parse - which would hide every finding after that tag.
+        try:
+            return unescape(ref)
+        except ValueError:
+            return ref
+    if not ref.endswith("=") and ref[1:] in _HTML5_ENTITY_NAMES:
+        return unescape(ref)
+    return ref
+
+
+def _unescape_attr_value(value):
+    return _ATTR_CHARREF_RE.sub(_replace_attr_charref, value)
+
+
+def _browser_attrs(parser, tag, attrs):
+    """The start tag's `(name, value)` attributes, re-derived from the RAW start tag `parser`
+    just accepted and decoded by the browser rule above, so they are the same on every
+    interpreter.
+
+    The re-tokenization is NOT skipped for a tag whose raw text carries no `&`. That looks
+    safe but is not: the pre-3.13 host splits attributes with `\\s` and `=+` where the browser
+    (and the tokenizer above) use HTML whitespace and a single `=`, so `<div id==x>` is
+    `id="x"` there and `id="=x"` here, and `<div id=a\\xa0b>` is two attributes there and one
+    here - both without a single character reference. Only the DECODE is short-circuited
+    below, per value, which is the part a missing `&` really does make a no-op.
+
+    Falls back to the host's own list only when the raw start tag cannot be trusted to be THIS
+    tag's: `html.parser` clears it in `parse_starttag()` alone, so a caller outside a start-tag
+    handler would otherwise silently read the PREVIOUS element's attributes. The pre-3.13 host
+    TRUNCATES a tag name at a NUL where a browser (and the vendored tokenizer) do not, so a
+    name that matches up to a NUL is still THIS tag and is accepted - falling back there would
+    hand the host's drifting values straight back."""
+    raw = parser.get_starttag_text()
+    if not raw:
+        return attrs
+    m = _TAG_NAME_RE.match(raw, 1)
+    if m is None:
+        return attrs
+    name = m.group(1).lower()
+    if name != tag and name.split("\x00", 1)[0] != tag:
+        return attrs
+    out = []
+    k, end = m.end(), len(raw)
+    while k < end:
+        m = _ATTR_RE.match(raw, k)
+        if m is None:
+            break
+        name, has_value, value = m.group(1, 2, 3)
+        if not has_value:
+            value = None
+        elif value[:1] == "'" == value[-1:] or value[:1] == '"' == value[-1:]:
+            value = value[1:-1]
+        if value and "&" in value:
+            value = _unescape_attr_value(value)
+        out.append((name.lower(), value))
+        k = m.end()
+    return out
+
+
+def _browser_attrs_dict(parser, tag, attrs):
+    """The start tag's attribute dict, with browser-decoded values. HTML5 (and browsers) keep
+    the FIRST occurrence of a duplicated attribute, so `<main id="a" id="b">` is id="a"; a dict
+    comprehension would keep the last, so set-if-absent is what matches the browser."""
+    d = {}
+    for k, v in _browser_attrs(parser, tag, attrs):
+        kl = (k or "").lower()
+        if kl not in d:
+            d[kl] = v if v is not None else ""
+    return d
+
 
 def _raw_text_close_re(elem):
     rx = _RAW_TEXT_CLOSE_RES.get(elem)
@@ -371,17 +484,10 @@ class _BrowserBoundaries(HTMLParser):
     def _start_tag_end(self):
         return self._off() + len(self.get_starttag_text() or "")
 
-    @staticmethod
-    def _attrs_dict(attrs):
-        # HTML5 (and browsers) keep the FIRST occurrence of a duplicated attribute,
-        # so `<main id="a" id="b">` is id="a". A dict comprehension would keep the
-        # last; iterate and set-if-absent to match the browser.
-        d = {}
-        for k, v in attrs:
-            kl = (k or "").lower()
-            if kl not in d:
-                d[kl] = v if v is not None else ""
-        return d
+    def _attrs_dict(self, tag, attrs):
+        # The VALUES come from `_browser_attrs_dict`, not from the host, whose attribute-value
+        # character-reference decoding differs across interpreters (see _ATTR_CHARREF_RE).
+        return _browser_attrs_dict(self, tag, attrs)
 
     # -- cross-version comment, raw-text and CDATA boundaries --------------- #
 
@@ -772,7 +878,7 @@ class _DocParser(_BrowserBoundaries):
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
-        ad = self._attrs_dict(attrs)
+        ad = self._attrs_dict(tag, attrs)
         ns = self._child_namespace(tag, ad)
         if ns == "html":
             self._implicit_close(tag)
@@ -827,7 +933,7 @@ class _DocParser(_BrowserBoundaries):
         # element with an id, and a bare `<svg/>` must not be left open (a stale foreign current
         # node would make a following `<![CDATA[` hide live markup).
         tag = tag.lower()
-        ad = self._attrs_dict(attrs)
+        ad = self._attrs_dict(tag, attrs)
         ns = self._child_namespace(tag, ad)
         if self._foreign_self_closes(ns):
             if tag == "svg" and self._mermaid_stack:
@@ -977,7 +1083,7 @@ class _CodeSpanParser(_BrowserBoundaries):
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
-        ad = self._attrs_dict(attrs)
+        ad = self._attrs_dict(tag, attrs)
         ns = self._child_namespace(tag, ad)
         if ns == "html":
             self._implicit_close(tag)
@@ -1011,7 +1117,7 @@ class _CodeSpanParser(_BrowserBoundaries):
         # In FOREIGN content the slash really does close the element, so `<svg><rect/>` - and a
         # bare `<svg/>` - leave nothing open.
         tag = tag.lower()
-        ad = self._attrs_dict(attrs)
+        ad = self._attrs_dict(tag, attrs)
         if self._foreign_self_closes(self._child_namespace(tag, ad)):
             return  # a self-closed foreign element: opened and closed at once
         self.handle_starttag(tag, attrs)
@@ -1457,12 +1563,9 @@ class _TagAttrParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if tag.lower() != self._want:
             return
-        d = {}
-        for k, v in attrs:
-            kl = (k or "").lower()
-            if kl not in d:
-                d[kl] = v if v is not None else ""
-        self.found.append(d)
+        # Same browser attribute decoding the shared boundary layer applies, so this lookup
+        # cannot disagree with the parsed document about an attribute's value.
+        self.found.append(_browser_attrs_dict(self, tag.lower(), attrs))
 
 
 def _find_tag_attrs(html, tag):

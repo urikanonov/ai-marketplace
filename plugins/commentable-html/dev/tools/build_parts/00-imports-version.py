@@ -294,9 +294,25 @@ def read_chartjs_version(package_json=None):
 
 
 _NOTICES_BANNER = ("<!-- GENERATED FILE - DO NOT EDIT. Built from the vendored license files under "
-                   "assets/vendor/ (mermaid.LICENSE, chart.umd.LICENSE) plus the inline lz-string "
-                   "notice, by plugins/commentable-html/dev/tools/build.py; run: "
+                   "assets/vendor/ (mermaid.LICENSE, chart.umd.LICENSE, cpython.LICENSE) plus the "
+                   "inline lz-string notice, by plugins/commentable-html/dev/tools/build.py; run: "
                    "python plugins/commentable-html/dev/tools/build.py -->")
+
+# The validator's tolerant HTML parser vendors a few pieces of CPython 3.13's `Lib/html/parser.py`
+# (see tools/validate/checks/parsing.py) so a document is tokenized the way a BROWSER tokenizes it
+# on every interpreter, not the way the host happens to. That is a derivative work of Python, so the
+# PSF License and its copyright notice ship here, with the summary of changes clause 3 asks for.
+_CPYTHON_LICENSE_FILE = "cpython.LICENSE"
+_CPYTHON_LABEL = "CPython (Lib/html/parser.py) 3.13"
+_CPYTHON_CHANGES = (
+    "Changes made to Python: `tools/validate/checks/parsing.py` adapts the start-tag attribute\n"
+    "tokenizer (`tagfind_tolerant`, `attrfind_tolerant`) and the attribute-value character-reference\n"
+    "rule (`attr_charref`, `_replace_attr_charref`) from CPython 3.13's `Lib/html/parser.py`. They\n"
+    "are renamed (`_TAG_NAME_RE`, `_ATTR_RE`, `_ATTR_CHARREF_RE`, `_replace_attr_charref`), run over\n"
+    "the raw start tag rather than inside `HTMLParser.parse_starttag`, resolve named references\n"
+    "against a frozen copy of `html.entities.html5`, and return an oversized numeric reference\n"
+    "unchanged instead of raising. No other part of Python is redistributed."
+)
 
 # lz-string (trimmed to compressToUTF16/decompressFromUTF16) is baked directly into the runtime JS
 # bundle (assets/js/02-lzstring.js) rather than gzip-vendored like the rich libraries, so its MIT
@@ -343,7 +359,9 @@ def build_third_party_notices(assets_dir):
         "here under the MIT License: mermaid and Chart.js render diagrams and charts (vendored into",
         "the built templates and inlined into zero-network Offline exports), and lz-string compresses",
         "the stored comment data. Their upstream license texts are reproduced in full below, as the",
-        "MIT License requires.",
+        "MIT License requires. The skill's validator also adapts a small amount of code from CPython's",
+        "standard library, so the PSF License, its copyright notice and a summary of the changes are",
+        "reproduced below too, as that license requires.",
         "",
     ]
     for label, license_name in VENDORED_LICENSE_FILES:
@@ -357,6 +375,14 @@ def build_third_party_notices(assets_dir):
     parts.append("")
     parts.append("```text")
     parts.append(_LZSTRING_LICENSE)
+    parts.append("```")
+    parts.append("")
+    parts.append("## %s" % _CPYTHON_LABEL)
+    parts.append("")
+    parts.append(_CPYTHON_CHANGES)
+    parts.append("")
+    parts.append("```text")
+    parts.append(read_vendored_license(vendor_dir, _CPYTHON_LICENSE_FILE))
     parts.append("```")
     parts.append("")
     return "\n".join(parts).rstrip() + "\n"

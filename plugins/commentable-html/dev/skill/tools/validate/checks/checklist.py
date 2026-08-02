@@ -2,6 +2,8 @@
 
 from html.parser import HTMLParser
 
+from .parsing import _browser_attrs_dict
+
 _CHECK_STATES = ("blank", "check", "cross", "question")
 
 _CL_VOID = frozenset(
@@ -19,13 +21,11 @@ class _ChecklistParser(HTMLParser):
         self._containers = []       # stack of open instance dicts
         self.instances = []         # ordered {id, items: [{state, item_id, parent}]}
 
-    def _attrs(self, attrs):
-        d = {}
-        for k, v in attrs:
-            kl = (k or "").lower()
-            if kl not in d:
-                d[kl] = v if v is not None else ""
-        return d
+    def _attrs(self, tag, attrs):
+        # Browser attribute-value decoding, shared with the document parser, so a
+        # `data-cmh-item` id reads the same on every interpreter (CMH-VAL-21). Trusting the
+        # host's values instead hid a real duplicate id on Python 3.12.
+        return _browser_attrs_dict(self, tag.lower(), attrs)
 
     def _record_item(self, d):
         if self._containers and ("data-cmh-state" in d or "data-cmh-item" in d):
@@ -36,7 +36,7 @@ class _ChecklistParser(HTMLParser):
             })
 
     def handle_starttag(self, tag, attrs):
-        d = self._attrs(attrs)
+        d = self._attrs(tag, attrs)
         self._record_item(d)
         opened = None
         if "data-cmh-checklist" in d:
@@ -47,7 +47,7 @@ class _ChecklistParser(HTMLParser):
             self._stack.append((tag.lower(), opened))
 
     def handle_startendtag(self, tag, attrs):
-        self._record_item(self._attrs(attrs))
+        self._record_item(self._attrs(tag, attrs))
 
     def handle_endtag(self, tag):
         tag = tag.lower()
