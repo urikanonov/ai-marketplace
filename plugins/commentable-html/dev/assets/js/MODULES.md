@@ -23,7 +23,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `00-preamble.js` | CMH-CORE, CMH-EXP | IIFE opener; captures `SNAPSHOT_HTML` and `document.currentScript` before any DOM access. |
 | `01-config.js` | CMH-CORE, CMH-FWDCOMPAT, CMH-DENSITY, CMH-SEC | Auto-discovered config; declares `CMH_VERSION` (build.py stamps it). |
 | `02-lzstring.js` | CMH-STORE | Vendored lz-string (trimmed `compressToUTF16`/`decompressFromUTF16`, bounded decode) used to pack the comment store. |
-| `03-selectors.js` | CMH-CHART, CMH-MMD, CMH-OFFLINE | The one shared rich-content selector vocabulary (`CMH_MERMAID_SEL`, `CMH_CHART_DATA_SEL`, `CMH_CHART_CANVAS_SEL`, `CMH_RICH_CONTENT_SEL`) the chart renderer, the image layer, the Offline exporter, and the author-time payload detector all derive from. |
+| `03-selectors.js` | CMH-CHART, CMH-MMD, CMH-OFFLINE, CMH-PRINT | The one shared rich-content selector vocabulary (`CMH_MERMAID_SEL`, `CMH_CHART_DATA_SEL`, `CMH_CHART_CANVAS_SEL`, `CMH_RICH_CONTENT_SEL`) the chart renderer, the image layer, the Offline exporter, the print/measure cap in `83-print.js`, and the author-time payload detector all derive from. |
 | `05-persistence.js` | CMH-PERSIST, CMH-STORE, CMH-EXP | localStorage load/merge/save of the comments array; sync compression codec + quota-aware write helpers. |
 | `10-offsets.js` | CMH-CORE, CMH-TEXT | Text-offset anchoring helpers. |
 | `15-context.js` | CMH-CORE, CMH-COPY | Section + surrounding-text context capture. |
@@ -63,7 +63,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `75-help.js` | CMH-HELP, CMH-A11Y | Help dialog. |
 | `80-sort-comments.js` | CMH-SIDE | Sort comments by time. |
 | `82-toc.js` | CMH-TOC, CMH-REVIEW, CMH-A11Y | Table-of-contents side menu; also hosts the section-review TOC filter + per-entry state dots. |
-| `83-print.js` | CMH-PRINT, CMH-RICH | Print/PDF comment appendix materializer for flat documents, the single continuous no-break page sizer, the deck slide display-pin, and the "Save as PDF" buttons that call native `window.print()`; renders each note rich. |
+| `83-print.js` | CMH-PRINT, CMH-RICH | Print/PDF comment appendix materializer for flat documents, the single continuous no-break page sizer, the deck slide display-pin, and the "Save as PDF" buttons that call native `window.print()`; renders each note rich. Derives its tall-media diagram cap from `03-selectors.js`'s `CMH_MERMAID_SEL`, so it must stay ordered after that partial. |
 | `84-section-review.js` | CMH-REVIEW | Section review tracking: content hashing, marker store, four-state badges, and TOC-filter helpers. |
 | `90-toast.js` | CMH-A11Y | Toast notifications. |
 | `95-startup.js` | CMH-HANDLED, CMH-EXP, CMH-FOOT | Handled-id pruning; startup; runtime footer (incl. session-id copy); closes the IIFE. |

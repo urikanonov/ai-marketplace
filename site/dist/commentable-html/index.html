@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.279.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.280.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.280.0] - 2026-08-01</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A <code>div.mermaid</code> diagram is now constrained when printing or saving to PDF, exactly like a <code>pre.mermaid</code> one. The printable-height cap (8.4in, so a tall diagram scales to fit one page instead of overflowing or splitting across a break) was scoped to <code>pre.mermaid svg</code>, while the runtime renders diagrams into BOTH <code>pre.mermaid</code> and <code>div.mermaid</code>. A document that authored its diagrams as <code>div.mermaid</code> therefore printed an unconstrained SVG that could run off the page. The cap lives in two surfaces that must agree - the <code>@media print</code> stylesheet and the <code>measureCss()</code> string used to measure single-page height - and BOTH omitted the host.</li>
+              <li><code>measureCss()</code> no longer re-types the diagram vocabulary: it DERIVES its mermaid hosts from the shared <code>CMH_MERMAID_SEL</code> definition. The print stylesheet is plain CSS and cannot reference a constant, so it still spells the hosts out, but it is now PINNED two-directionally to that same definition - so neither PRINT surface can drift back to covering half the hosts.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.279.0] - 2026-07-30</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -504,6 +512,8 @@
               <li>The CONTENT and region markers are now counted and located in one shared view whose <code>&lt;script&gt;</code>/<code>&lt;style&gt;</code> bodies are blanked and whose comments survive (the markers ARE comments), so the marker check and the layer checks can never disagree about what a marker is: a marker quoted in script data neither forges a duplicate-marker error nor defines a boundary. That scan takes its raw-text boundaries from the same tokenizer the code-block checks use, so a <code>&lt;script</code> named inside a comment never opens a region that swallows a marker.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.278.0] - 2026-07-30</h3></div>
             <div class="group-label">Added</div>
@@ -517,8 +527,6 @@
               <li>A formatting-toolbar click during an IME composition is ignored on both surfaces, so markers can no longer be spliced into provisional (for example CJK candidate) text. The same tracked composition state also guards each editor&#x27;s save and cancel keys, so Ctrl/Cmd+Enter and Esc stay inert mid-composition even on an engine that reports the keydown with <code>isComposing</code> already false.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.276.0] - 2026-07-29</h3></div>
             <div class="group-label">Fixed</div>
@@ -552,14 +560,7 @@
               <li>The validator no longer classifies a document as NonPortable because its own authored CONTENT demonstrates the companion markup. It decided the mode by looking for a <code>&lt;link href=&quot;commentable-html.css&quot;&gt;</code> / <code>&lt;script src=&quot;commentable-html.js&quot;&gt;</code> ANYWHERE in the file, so a genuinely self-contained Portable document about commentable-html - one that quotes the legacy loading markup in prose, which <code>to_portable.py</code> now deliberately preserves when it migrates such a file - failed validation with <code>commentableHtmlLayer.mode must be &quot;nonportable&quot;</code>, no runtime script found, a missing <code>#cmhAssetBanner</code>, and a companion file that does not exist. The mode determination and every check that follows from it now read the LAYER&#x27;s own markup: the authored region is excluded, because the layer&#x27;s references always sit outside it (the stylesheet in <code>&lt;head&gt;</code> before it, the runtime scripts at the end of <code>&lt;body&gt;</code> after it). The region comes from the PARSE, not from marker offsets in the text, so it is exactly the region a browser would agree on - real comment markers, inside the live <code>#commentRoot</code>, outside an inert <code>&lt;template&gt;</code>, never inside CDATA - and a misplaced marker or a <code>&lt;style&gt;</code> straddling one cannot steer the validator into ignoring the real layer instead. It holds in the other direction too: an authored demonstration can never STAND IN for a real reference, so a NonPortable document whose bootstrap banner, watchdog, version meta, or companion reference exists only inside its prose still reports the same error it always did, and a real NonPortable document is classified and checked exactly as before. Because the layer view is only as trustworthy as the region it is derived from, the validator also errors when the CONTENT markers are present in the text exactly once each and in order but the document does not parse with a well-formed region - a marker swallowed by a <code>&lt;script&gt;</code>/<code>&lt;style&gt;</code> body or an inert <code>&lt;template&gt;</code>, a marker outside <code>#commentRoot</code>, or unbalanced markup closing <code>#commentRoot</code> mid-region - instead of guessing which side of the broken boundary the markup after it belongs to.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.270.0] - 2026-07-29</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li><code>tools/blocks/chart_block.py</code> no longer prints chart fragments it could not check. The tool&#x27;s one promise is that what it emits validates, and it self-validates before printing - but when the sibling <code>validate</code> module could not be imported (a broken or partial install) the self-check returned &quot;unknown&quot;, which the CLI read as success and printed the fragments anyway. So the single protection disappeared exactly on the installs where something was already wrong. It now fails closed for every &quot;could not check&quot; shape - an unimportable validator, a partial install where <code>validate.py</code> is present but one of its own dependencies is not, a truncated <code>validate.py</code> that raises on import, a <code>validate</code> module resolved from outside the skill&#x27;s own tools directory (refused before its module body runs), a missing or corrupt validation template, a validator that crashes, and a validator that answers in an unexpected shape - writing nothing and naming the actual cause. A caller who knowingly wants unchecked output passes the new <code>--allow-unvalidated-output</code>, which emits the fragments with a warning on stderr; it never suppresses a real validation failure, and the CMH-VAL-18 advisory split still applies.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">228 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">229 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

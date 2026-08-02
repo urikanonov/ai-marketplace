@@ -5,6 +5,7 @@ import {
   DEV,
   INLINE,
   addTextComment,
+  denyExternalNetwork,
   fileUrl,
   installClipboardCapture,
   openComposerFor,
@@ -236,4 +237,95 @@ test("CMH-PRINT-02: the Save as PDF action fires native window.print() from both
     });
   });
   expect(prevented).toEqual([false, false]);
+});
+
+
+test("CMH-PRINT-07: print caps a div.mermaid diagram exactly like a pre.mermaid one", async ({ page }) => {
+  // The runtime treats BOTH pre.mermaid and div.mermaid as diagram hosts (the mermaid layer scans
+  // "pre.mermaid, div.mermaid"), so a document that authors its diagrams as div.mermaid must get the
+  // same printable-height cap. Capping only pre.mermaid leaves the div.mermaid SVG unconstrained, so
+  // a tall diagram overflows the printed page or splits across a break.
+  const svg = '<svg viewBox="0 0 400 4000" width="400" height="4000" role="img" aria-label="tall diagram">'
+    + '<rect width="400" height="4000" fill="#cccccc"></rect></svg>';
+  const content = `
+    <section>
+      <h2>Diagrams</h2>
+      <pre class="mermaid" id="preHost" data-processed="true">${svg}</pre>
+      <div class="mermaid" id="divHost" data-processed="true">${svg}</div>
+    </section>`;
+  const staged = stagePrintContent(content, { key: "cmh-print-mermaid", source: "print-mermaid.html" });
+
+  await denyExternalNetwork(page);
+  await page.goto(fileUrl(staged.html));
+  await ready(page);
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+
+  const caps = await page.evaluate(() => {
+    const read = (sel) => {
+      const el = document.querySelector(sel + " svg");
+      if (!el) return null;
+      const cs = getComputedStyle(el);
+      return { maxHeight: cs.maxHeight, maxWidth: cs.maxWidth };
+    };
+    return { pre: read("#preHost"), div: read("#divHost") };
+  });
+  // Guard the fixture itself: both hosts must have been found, or the comparison below is vacuous.
+  expect(caps.pre).not.toBeNull();
+  expect(caps.div).not.toBeNull();
+  // The pre.mermaid cap is the established behavior; it must be a real cap, not "none".
+  expect(caps.pre.maxHeight).not.toBe("none");
+  expect(caps.div, "a div.mermaid diagram is constrained in print exactly like a pre.mermaid one")
+    .toEqual(caps.pre);
+});
+
+
+test("CMH-PRINT-07: the measure CSS caps both mermaid hosts, so the measured page matches the print", async ({ page }) => {
+  // The tall-media cap exists TWICE - in 92-print.css (@media print, what is printed) and in the
+  // measureCss() string 83-print.js applies under SCREEN media to measure single-page height. They
+  // must agree on what a diagram host is: capping a host in one but not the other either prints an
+  // oversized diagram or measures a height the print never produces. That divergence is what let
+  // div.mermaid fall out of the print cap while pre.mermaid kept it.
+  //
+  // Exercise measureCss() for real rather than reading the source for selector text: a substring
+  // check would pass on a selector sitting in a comment or a dead rule. Measure the SAME tall
+  // diagram authored both ways and require the injected @page to come out the same height.
+  const svg = '<svg viewBox="0 0 400 4000" width="400" height="4000" role="img" aria-label="tall diagram">'
+    + '<rect width="400" height="4000" fill="#cccccc"></rect></svg>';
+  const pageHeightFor = async (hostHtml, key) => {
+    const staged = stagePrintContent(`<section><h2>Diagram</h2>${hostHtml}</section>`, {
+      key,
+      source: key + ".html",
+    });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+    return page.evaluate(() => {
+      const el = document.getElementById("cmhPrintSinglePage");
+      const m = el && /@page\{size:([\d.]+)px ([\d.]+)px/.exec(el.textContent || "");
+      return m ? Math.round(parseFloat(m[2])) : null;
+    });
+  };
+
+  // Installed once for the page, not per navigation: registering the same route twice would stack
+  // duplicate handlers for no benefit.
+  await denyExternalNetwork(page);
+
+  const preHeight = await pageHeightFor(`<pre class="mermaid" data-processed="true">${svg}</pre>`, "cmh-measure-pre");
+  const divHeight = await pageHeightFor(`<div class="mermaid" data-processed="true">${svg}</div>`, "cmh-measure-div");
+  // Both documents must actually be on the single-page path, or the comparison is vacuous.
+  expect(preHeight, "the pre.mermaid document measured a single page").not.toBeNull();
+  expect(divHeight, "the div.mermaid document measured a single page").not.toBeNull();
+  // The cap must actually be APPLIED, not merely applied equally: if measureCss stopped capping
+  // BOTH hosts the two heights would still match, so bound each one absolutely. The 4000px-tall
+  // SVG is capped to 8.4in (806px), so a capped page is ~1000px; an uncapped one measured ~5800px.
+  expect(preHeight, "the pre.mermaid diagram is capped during measurement").toBeLessThan(2500);
+  expect(divHeight, "the div.mermaid diagram is capped during measurement").toBeLessThan(2500);
+  // A `pre` carries a default 1em block margin that a `div` does not, so the two documents differ
+  // by a small constant (~16px) even when both diagrams are capped identically. What matters is
+  // that the difference is nowhere near the ~4800px an UNCAPPED 4000px-tall SVG adds - which is
+  // exactly what an uncapped div.mermaid measured before this fix.
+  expect(Math.abs(divHeight - preHeight),
+    "a div.mermaid document measures essentially the same page height as the identical pre.mermaid one")
+    .toBeLessThan(200);
 });

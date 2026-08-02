@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.280.0] - 2026-08-01
+
+### Fixed
+
+- A `div.mermaid` diagram is now constrained when printing or saving to PDF, exactly like a
+  `pre.mermaid` one. The printable-height cap (8.4in, so a tall diagram scales to fit one page
+  instead of overflowing or splitting across a break) was scoped to `pre.mermaid svg`, while the
+  runtime renders diagrams into BOTH `pre.mermaid` and `div.mermaid`. A document that authored its
+  diagrams as `div.mermaid` therefore printed an unconstrained SVG that could run off the page.
+  The cap lives in two surfaces that must agree - the `@media print` stylesheet and the
+  `measureCss()` string used to measure single-page height - and BOTH omitted the host.
+- `measureCss()` no longer re-types the diagram vocabulary: it DERIVES its mermaid hosts from the
+  shared `CMH_MERMAID_SEL` definition. The print stylesheet is plain CSS and cannot reference a
+  constant, so it still spells the hosts out, but it is now PINNED two-directionally to that same
+  definition - so neither PRINT surface can drift back to covering half the hosts.
+
 ## [1.279.0] - 2026-07-30
 
 ### Fixed

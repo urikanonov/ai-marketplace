@@ -504,13 +504,14 @@ class HtmlBlindnessTests(unittest.TestCase):
 
 
 class RuntimeParityTests(unittest.TestCase):
-    """CMH-SIZE-01 / CMH-CHART-12: one shared selector definition, pinned in three directions.
+    """CMH-SIZE-01 / CMH-CHART-12 / CMH-PRINT-07: one shared selector definition, pinned.
 
     The runtime declares its rich-content selectors ONCE, in `assets/js/03-selectors.js`, and the
-    exporter, the live chart renderer, and this module's `RUNTIME_SELECTORS` all derive from it.
-    These tests pin that: the constants resolve to exactly `RUNTIME_SELECTORS`, the exporter's
-    usage functions query the constants rather than re-typing a literal list, and the renderer's
-    set is a SUBSET of the exporter's so anything drawn live is provisioned for on export.
+    exporter, the live chart renderer, the PRINT surfaces, and this module's `RUNTIME_SELECTORS`
+    all derive from it. These tests pin that: the constants resolve to exactly `RUNTIME_SELECTORS`,
+    the exporter's usage functions query the constants rather than re-typing a literal list, the
+    renderer's set is a SUBSET of the exporter's so anything drawn live is provisioned for on
+    export, and the two print surfaces cap exactly the shared mermaid host set.
     """
 
     _CONST_RE = re.compile(r"^const (CMH_[A-Z0-9_]+)\s*=\s*(.+?);\s*$", re.M | re.S)
@@ -519,6 +520,134 @@ class RuntimeParityTests(unittest.TestCase):
         path = os.path.join(_paths.DEV, "assets", "js", *parts)
         with open(path, "r", encoding="utf-8", newline="") as fh:
             return fh.read()
+
+    def _read_css(self, *parts):
+        path = os.path.join(_paths.DEV, "assets", "css", *parts)
+        with open(path, "r", encoding="utf-8", newline="") as fh:
+            return fh.read()
+
+    def _scan_js(self, source):
+        """Split JavaScript source into (string-literal contents, code-with-literals-blanked).
+
+        One scan serves both print checks. Literals matter because a re-typed selector can only
+        reach the browser through one; the blanked copy matters because `measureCss()`'s CSS
+        strings are full of `{`/`}` that would wreck a naive brace match, and because a comment
+        that merely NAMES an identifier must not be able to stand in for the code that used it.
+        Walking the source keeps quotes and comments straight, where a regex stripper would either
+        miss a trailing `//` (false red) or eat a `/*` inside a string (false green).
+
+        REGEX LITERALS ARE NOT MODELLED - they also open with `/`, and one containing a quote
+        would flip this scanner into a bogus string and silently swallow real code, which is the
+        false-GREEN direction. That is why the scan self-checks below rather than trusting itself:
+        a guard against silent drift must not drift silently. `68-export-offline.js`, two sibling
+        tests away, already contains such literals, so this is a live maintenance trap and not a
+        theoretical one.
+        """
+        literals, code, i, n = [], [], 0, len(source)
+        while i < n:
+            ch = source[i]
+            if ch == "/" and i + 1 < n and source[i + 1] == "/":
+                end = source.find("\n", i)
+                end = n if end == -1 else end
+                code.append(" " * (end - i))
+                i = end
+            elif ch == "/" and i + 1 < n and source[i + 1] == "*":
+                end = source.find("*/", i + 2)
+                self.assertNotEqual(end, -1, "unterminated block comment; the JS scanner cannot "
+                                             "read this file, so nothing below can be trusted")
+                end += 2
+                code.append(" " * (end - i))
+                i = end
+            elif ch in "\"'`":
+                quote, start, i, buf = ch, i, i + 1, []
+                while i < n and source[i] != quote:
+                    if source[i] == "\\":
+                        i += 1
+                    if i < n:
+                        buf.append(source[i])
+                    i += 1
+                self.assertLess(i, n, "unterminated string literal; the JS scanner cannot read "
+                                      "this file (a regex literal it mistook for a quote?), so "
+                                      "nothing below can be trusted")
+                i += 1
+                literal = "".join(buf)
+                if quote != "`":
+                    # JS forbids a raw newline in a '' or "" literal, so one here means the scan
+                    # desynchronized and is swallowing real code - exactly how a smuggled host
+                    # would go unseen. Fail loudly instead of reporting nothing.
+                    self.assertNotIn("\n", literal,
+                                     "the JS scanner produced a multi-line %s literal, so it has "
+                                     "lost track of this file (a regex literal?); teach it the "
+                                     "construct rather than trusting these checks" % quote)
+                literals.append(literal)
+                code.append(" " * (i - start))
+            else:
+                code.append(ch)
+                i += 1
+        code = "".join(code)
+        # Blanking is length-preserving by construction on every branch; `_function_body` slices
+        # by these indices, so assert it rather than assume it.
+        self.assertEqual(len(code), len(source), "the JS scanner changed the source length")
+        self.assertEqual(code.count("{"), code.count("}"),
+                         "braces do not balance after blanking; the JS scanner cannot read this "
+                         "file, so any function body it extracts is the wrong span")
+        return literals, code
+
+    def _function_body(self, code, name):
+        """Return the brace-balanced body of `function <name>(...)` from BLANKED code.
+
+        `code` must be the strings-and-comments-blanked copy from `_scan_js`, for two reasons.
+        Braces inside `measureCss()`'s CSS strings would wreck a naive brace match; and an
+        assertion about what a function DOES must not be satisfiable by a comment that merely
+        NAMES the identifier - commenting out the live read and the live call while leaving both
+        words visible in prose is exactly the false green this returns blanked text to prevent.
+        """
+        start = code.find("function " + name + "(")
+        self.assertNotEqual(start, -1,
+                            "the runtime no longer defines %s(); this check is stale and must be "
+                            "re-pointed at whatever replaced it" % name)
+        open_brace = code.find("{", start)
+        self.assertNotEqual(open_brace, -1, "%s() has no body" % name)
+        depth = 0
+        for i in range(open_brace, len(code)):
+            if code[i] == "{":
+                depth += 1
+            elif code[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    return code[open_brace + 1:i]
+        self.fail("%s() body is not brace-balanced" % name)
+
+    @staticmethod
+    def _strip_css_comments(css):
+        """CSS has only `/* */`. The prose above a rule explains which hosts it caps, so leaving
+        comments in would let a comment SATISFY a check about the selector - the false green that
+        makes a drift guard worthless."""
+        return re.sub(r"/\*.*?\*/", " ", css, flags=re.S)
+
+    def _mermaid_hosts(self):
+        hosts = self._selector_constants().get("CMH_MERMAID_SEL")
+        self.assertTrue(hosts,
+                        "the runtime no longer declares CMH_MERMAID_SEL (or declares it empty); "
+                        "the print parity checks are stale and must be re-pointed at whatever "
+                        "replaced it")
+        # `_printMermaidCapSel()` in 83-print.js derives the print cap by splitting this constant
+        # on "," and wrapping each part, and this file's CSS pin matches one `<element>.<class>`
+        # token per host. A host carrying a nested comma (`:is(pre,div).mermaid`, an attribute
+        # selector) or no element prefix would break one or both silently, and a single invalid
+        # selector makes a browser drop the ENTIRE tall-media rule - which also caps figures and
+        # images. Fail loudly here instead, so the vocabulary cannot outgrow its consumers
+        # without anyone noticing.
+        for host in hosts:
+            self.assertRegex(
+                host, r"^[A-Za-z][\w-]*\.[\w-]+$",
+                "CMH_MERMAID_SEL host %r is no longer a flat `<element>.<class>` selector. Two "
+                "things depend on that shape: the comma-splitting derivation in "
+                "_printMermaidCapSel() (assets/js/83-print.js), and the CSS pin in this file, "
+                "which scans 92-print.css for one such token per host. Teach whichever of them "
+                "the new shape rather than leaving the runtime to emit an invalid selector that "
+                "drops the whole cap." % host)
+        return hosts
 
     def _selector_constants(self):
         """Resolve `03-selectors.js` into {constant name: [selector, ...]}.
@@ -651,6 +780,97 @@ class RuntimeParityTests(unittest.TestCase):
                     normalized, declared,
                     "%s re-types the selector list %r that 03-selectors.js already declares; "
                     "query the shared constant instead" % (name, used))
+
+    def test_the_print_measure_css_derives_its_mermaid_hosts_from_the_shared_constant(self):
+        """CMH-PRINT-07: the measure CSS must DERIVE its diagram hosts, not re-type them.
+
+        `83-print.js` builds a CSS string it applies under screen media to measure single-page
+        height (CMH-PRINT-06). Its tall-media cap has to name the mermaid hosts, and re-typing
+        them there is exactly how `div.mermaid` fell out of the cap while `pre.mermaid` kept it:
+        the list was written once from memory as `pre.mermaid` alone and then never revisited when
+        the runtime learned the second host. Deriving from `CMH_MERMAID_SEL` makes that class of
+        drift impossible rather than merely fixed once.
+
+        Three things are asserted, because any one alone is false-greenable: the helper really
+        reads the shared constant, `measureCss()` really CONCATENATES the helper's result (a call
+        whose value is discarded would leave the cap gone), and no string literal in the file
+        re-types a host behind the helper's back. All of it runs on comment-blanked code, so a
+        comment naming an identifier cannot stand in for the code that used to use it.
+        """
+        source = self._read("83-print.js")
+        literals, code = self._scan_js(source)
+        # `_scan_js` deliberately models strings and comments but NOT regex literals, which also
+        # open with "/" and would leave stray braces and quotes in the code stream - silently
+        # pointing every check below at the wrong text. Nothing in this partial uses a regex
+        # literal (or a division) today, so assert that stays true rather than assuming it.
+        self.assertNotIn(
+            "/", code,
+            "83-print.js now has a '/' outside a string or comment (a regex literal or a "
+            "division). _scan_js models neither, so it can no longer be trusted to blank strings "
+            "or match braces here; teach it the new construct before relying on this guard.")
+        helper = self._function_body(code, "_printMermaidCapSel")
+        self.assertIn("CMH_MERMAID_SEL", helper,
+                      "_printMermaidCapSel() must build the cap selector from the shared "
+                      "CMH_MERMAID_SEL constant declared in 03-selectors.js")
+        measure = self._function_body(code, "measureCss")
+        self.assertIn("+ _printMermaidCapSel()", measure,
+                      "measureCss() must CONCATENATE _printMermaidCapSel() into its selector "
+                      "list; a bare call whose result is dropped, or a helper nothing calls at "
+                      "all, leaves the measured page uncapped for diagrams")
+        for host in self._mermaid_hosts():
+            for literal in literals:
+                self.assertNotIn(
+                    host, literal,
+                    "83-print.js re-types the mermaid host %r that 03-selectors.js already "
+                    "declares (in the string literal %r); derive it from CMH_MERMAID_SEL instead, "
+                    "or the two can drift again" % (host, literal))
+            # Splitting a host across two concatenated literals ("#commentRoot pre" + ".mermaid
+            # svg,") re-types it just as effectively while defeating a per-literal scan, so check
+            # the run of literals as one string too.
+            self.assertNotIn(
+                host, "".join(literals),
+                "83-print.js re-types the mermaid host %r that 03-selectors.js already declares, "
+                "split across concatenated string literals; derive it from CMH_MERMAID_SEL "
+                "instead" % host)
+
+    def test_the_print_stylesheet_caps_exactly_the_shared_mermaid_hosts(self):
+        """CMH-PRINT-07: pin the one surface that CANNOT import the constant.
+
+        `92-print.css` is a plain stylesheet: it has no way to reference a JS constant, so it is
+        the one place the mermaid vocabulary is unavoidably spelled out. Pin it two-directionally
+        instead, exactly as `vendored_libs.RUNTIME_SELECTORS` is pinned for the Python detector -
+        every declared host must be capped, and no OTHER `.mermaid` host may be. Then the printed
+        cap (this stylesheet) and the measured cap (`measureCss()`, derived above) can never again
+        disagree about what a diagram host is: capping a host in one but not the other either
+        prints an oversized diagram or measures a height the print never produces.
+
+        Comments are stripped FIRST. The prose above the rule explains which hosts it caps, so a
+        comment could otherwise satisfy this check on its own - delete `div.mermaid svg` from the
+        selector, mention it in the comment, and an unstripped scan still passes while the cap is
+        gone. That is precisely the silent half-vocabulary regression this test exists to catch.
+        """
+        css = self._strip_css_comments(self._read_css("92-print.css"))
+        blocks = [m for m in re.finditer(r"([^{}]*)\{([^{}]*max-height:\s*8\.4in[^{}]*)\}", css)]
+        self.assertEqual(len(blocks), 1,
+                         "expected exactly one 8.4in tall-media cap rule in 92-print.css; found "
+                         "%d. Re-point this check at whatever replaced it." % len(blocks))
+        selector = blocks[0].group(1)
+        # An attribute-selector VALUE is not a capped host: `[data-x="div.mermaid svg"]` would
+        # otherwise satisfy every check below while the real cap was deleted - the same
+        # "text near the rule stands in for the rule" hole the comment stripping above closes.
+        selector = re.sub(r"\[[^\]]*\]", "[]", selector)
+        # Collect every `<element>.<class> svg` arm the rule caps, WITHOUT hard-coding ".mermaid":
+        # a future vocabulary with a different class name must still be checked, not silently
+        # skipped. The trailing boundary matters too - `pre.mermaid svgx` is not a cap on the
+        # rendered SVG, and a plain substring test would accept it.
+        capped = set(re.findall(r"([A-Za-z][\w-]*\.[\w-]+)\s+svg(?![\w-])", selector))
+        self.assertEqual(
+            capped, set(self._mermaid_hosts()),
+            "the print stylesheet's tall-media cap and the shared CMH_MERMAID_SEL vocabulary have "
+            "diverged (capped `<host> svg`: %s; declared: %s). A declared host that is NOT capped "
+            "prints an unconstrained diagram that overflows the page; a capped host that is no "
+            "longer declared is dead CSS. Note the cap must target the rendered `svg` INSIDE the "
+            "host, not the host box." % (sorted(capped), sorted(self._mermaid_hosts())))
 
     def test_every_runtime_selector_is_recognised_by_the_author_time_detector(self):
         markup = {
