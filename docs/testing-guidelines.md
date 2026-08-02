@@ -381,6 +381,10 @@ sharded job's matrix a complete `1..N` cover so an entry can never be silently d
   test left a file behind or changed the repository tree, which is the guard that keeps scratch
   fixtures out of the repo root. If you are editing files while the (slow) suite runs, the tree diff
   will flag YOUR edits; pass `--no-worktree-check` for that case - the sandbox check still applies.
+  A SIBLING worktree is not your problem though: the snapshot compares only the refs this worktree
+  owns (the branch HEAD is on, plus the per-worktree `refs/bisect/*`, `refs/rewritten/*` and
+  `refs/worktree/*`), so another agent committing in `.worktrees/<other>`, or any concurrent
+  `git fetch`, no longer trips the guard (#830) and there is nothing to opt out of.
 - The `pre-push` hook and CI run the validators, the changelog/version gates, and the `--check` drift
   guards on every push. The TEST SUITES are opt-in in the hook (`PREPUSH_TESTS=1 git push`, which adds
   the Python script unit tests and the changed plugins' suites, run in parallel), because running them

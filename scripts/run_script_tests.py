@@ -42,17 +42,21 @@ HINT = ("write scratch files under tempfile.TemporaryDirectory() (or another abs
 #: What "the repository is unchanged" means. `git status --porcelain` alone would miss a suite that
 #: COMMITTED its fixtures (status comes back clean), moved a ref, or rewrote the CONTENT of a file
 #: that was already dirty before the run - so HEAD, the CHECKED-OUT REF (a suite that detached HEAD
-#: or switched to another branch at the same commit leaves every other probe identical), the refs,
-#: and the full diff are all part of the snapshot. Untracked files are hashed separately, since
-#: status only names them. A detached HEAD records the ref probe as unavailable, which is stable and
-#: therefore still comparable.
+#: or switched to another branch at the same commit leaves every other probe identical), the refs
+#: THIS worktree owns (see `owned_refs`), and the full diff are all part of the snapshot. Untracked
+#: files are hashed separately, since status only names them. A detached HEAD records the ref probe
+#: as unavailable, which is stable and therefore still comparable.
 _PROBES = (
     ("status", ["status", "--porcelain"]),
     ("head", ["rev-parse", "HEAD"]),
     ("branch", ["symbolic-ref", "-q", "HEAD"]),
-    ("refs", ["for-each-ref", "--format=%(refname) %(objectname)"]),
     ("diff", ["diff", "HEAD"]),
 )
+
+#: The per-worktree ref namespaces. Unlike `refs/heads/*` and `refs/remotes/*`, git resolves these
+#: against the worktree's own git dir, so a sibling can never move them - and a suite that left a
+#: bisect or a rebase running in the repository is a leak no other probe here notices.
+_OWNED_REF_PATTERNS = ("refs/bisect/*", "refs/rewritten/*", "refs/worktree/*")
 
 
 def discover_argv(tests_dir, pattern="test_*.py", python=None):
@@ -104,6 +108,41 @@ def untracked_digest(repo_root, env=None):
     return "".join(lines)
 
 
+def owned_refs(repo_root, env=None):
+    """`refname objectname` for the refs THIS worktree owns, or None when they cannot be listed.
+
+    Every worktree shares one `.git` refs store, so snapshotting ALL refs made the guard fail for
+    work this checkout never did: a sibling worktree committing on its own branch, or any concurrent
+    `git fetch` refreshing `refs/remotes/*`, moved a ref and the run was blamed for it (#830). In a
+    repo whose whole workflow is parallel worktrees that fires routinely, and a guard that has to be
+    waved through by habit stops catching the real leak it exists for.
+
+    So only the refs a leak in THIS run could move are compared: the branch HEAD has checked out
+    (a suite that commits its fixtures moves it) and the per-worktree namespaces in
+    `_OWNED_REF_PATTERNS`. A detached HEAD owns no branch, which is recorded as such rather than
+    dropped, so the snapshot stays comparable.
+    """
+    if not repo_root:
+        return None
+    env = clean_git_env() if env is None else env
+    patterns = list(_OWNED_REF_PATTERNS)
+    try:
+        head = subprocess.run(["git", "-C", str(repo_root), "symbolic-ref", "-q", "HEAD"],
+                              capture_output=True, text=True, env=env)
+        branch = head.stdout.strip() if head.returncode == 0 else ""
+        if branch:
+            patterns.append(branch)
+        proc = subprocess.run(["git", "-C", str(repo_root), "for-each-ref",
+                               "--format=%(refname) %(objectname)"] + sorted(patterns),
+                              capture_output=True, text=True, env=env)
+    except OSError:
+        return None
+    if proc.returncode != 0:
+        return None
+    text = proc.stdout if branch else "<detached>\n" + proc.stdout
+    return text if text.endswith("\n") else text + "\n"
+
+
 def worktree_state(repo_root, env=None):
     """A snapshot of the repository the suite must not disturb, or None when it cannot be read.
 
@@ -137,12 +176,17 @@ def worktree_state(repo_root, env=None):
             text = "<unavailable>"
             unavailable += 1
         parts.append("[%s]\n%s" % (name, text if text.endswith("\n") else text + "\n"))
+    refs = owned_refs(repo_root, env)
+    if refs is None:
+        unavailable += 1
+        refs = "<unavailable>\n"
+    parts.append("[refs]\n%s" % refs)
     digest = untracked_digest(repo_root, env)
     if digest is None:
         unavailable += 1
         digest = "<unavailable>\n"
     parts.append("[untracked]\n%s" % digest)
-    if unavailable == len(_PROBES) + 1:
+    if unavailable == len(_PROBES) + 2:
         return None
     return "".join(parts)
 
