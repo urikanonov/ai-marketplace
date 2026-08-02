@@ -4,6 +4,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.326.0] - 2026-08-02
+
+### Fixed
+
+- A floating control (the hover bubble, the **Add Comment** buttons, the whole-diagram button) is
+  now bounded by the intersection of EVERY clipping container around its target, not just the
+  nearest one. A diagram host inside a scrolling table wrapper, inside a `figure.chart`, or inside
+  a raw diff block is itself clipped by that outer box, so a target the outer box has scrolled out
+  of view now hides the control instead of leaving it floating over unrelated content, and a target
+  that is only partly visible clamps the control to the visible intersection. Previously the
+  resolver honoured only the first matching ancestor, so the inner box shadowed the outer scroller.
+  Only a container that genuinely clips takes part, so a recognised box an author left
+  `overflow: visible` (or a `display: contents` one, which generates no box at all) no longer bounds
+  a control anchored to content that plainly spills out of it.
+
 ## [1.325.0] - 2026-08-02
 
 ### Added

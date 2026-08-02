@@ -96,7 +96,7 @@ test("the highlight bubble hides and clamps to a horizontal-overflow clip contai
     await page.goto(fileUrl(staged.html));
     await ready(page);
 
-    // Each clip-container selector recognized by _clipContainerFor. .cmh-diff-raw is the inert raw
+    // Each clip-container selector recognized by _clipContainersFor. .cmh-diff-raw is the inert raw
     // diff block (no per-line commenting), so it is exercised via the highlight bubble like the rest.
     // BOTH mermaid host shapes are covered: the runtime treats `pre.mermaid` and `div.mermaid` alike
     // everywhere else, so a document that authors its diagrams as `div.mermaid` must clip the same
@@ -222,7 +222,7 @@ test("the chart Add button clamps inside a narrow chart container on horizontal 
   }
 });
 
-// Issue #769: `_clipContainerFor` recognized a standalone `pre.mermaid` host but not a standalone
+// Issue #769: the clip-container resolver recognized a standalone `pre.mermaid` host but not a standalone
 // `div.mermaid` one, even though the runtime treats both as diagram hosts everywhere else - so in a
 // document that authors its diagrams as `div.mermaid` the floating whole-diagram control escaped the
 // host's clipping/scrolling box. Both shapes are staged with IDENTICAL markup, so this is a parity
@@ -293,6 +293,180 @@ test("the whole-diagram button clamps inside a standalone div.mermaid host exact
       expect(m.bRight, `${sel}: button right stays inside the host`).toBeLessThanOrEqual(m.hRight + 2);
       expect(m.bTop, `${sel}: button top stays inside the host`).toBeGreaterThanOrEqual(m.hTop - 2);
       expect(m.bBottom, `${sel}: button bottom stays inside the host`).toBeLessThanOrEqual(m.hBottom + 2);
+    }
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+// Issue #823: a clip container nested INSIDE another clip container used to shadow it. The resolver
+// took the FIRST `closest()` match and intersected that one rect, so a diagram host inside a
+// scrolling table wrapper (CMH-RESP-11) or inside a `figure.chart` bounded the floating control to
+// the INNER box alone: once the OUTER box scrolled the target out of view the control stayed
+// visible over unrelated content, and while the target was only partly visible the control was
+// clamped to a box that reaches past the outer one. Every case asserts that the target is still
+// fully inside the INNER host, so the nearest container alone explains none of the behaviour - the
+// outer box is the only thing that can - which is exactly what made these red before the fix.
+const NEST_OUTER_STYLE = "display:block;box-sizing:border-box;width:160px;margin:0 0 0 140px;"
+  + "padding:0;border:0;overflow-x:auto;white-space:nowrap;";
+const NEST_INNER_STYLE = "display:inline-block;overflow:hidden;margin:0;padding:0;vertical-align:top;"
+  // The layer caps a diagram host at `max-width:100%` (70-kql.css), which inside the narrow outer
+  // box would shrink the inner host to the outer one and collapse the nesting under test.
+  + "max-width:none;";
+// The runtime wraps every author table in a `.cmh-table-scroll` box and leaves an existing wrapper
+// alone (61-table-scroll.js), so authoring the wrapper here produces exactly the shipped shape while
+// keeping the geometry of the test under control.
+function nestedClipMarkup(outer, inner) {
+  if (outer === "table") {
+    return `<div class="cmh-table-scroll cmh-nest-outer" style="${NEST_OUTER_STYLE}">`
+      + '<table style="margin:0;border:0;border-collapse:collapse;width:auto;"><tbody><tr>'
+      + `<td style="padding:0;border:0;white-space:nowrap;">${inner}</td>`
+      + "</tr></tbody></table></div>";
+  }
+  return `<figure class="chart cmh-nest-outer" style="${NEST_OUTER_STYLE}">${inner}</figure>`;
+}
+const NEST_HIDE_INNER = `<div class="mermaid cmh-nest-inner" style="${NEST_INNER_STYLE}width:150px;">`
+  + '<span style="display:inline-block;width:110px;"></span>'
+  + '<mark class="cm-hl" data-cid="nest-hide" style="display:inline-block;width:30px;">HL</mark>'
+  + "</div><span style=\"display:inline-block;width:800px;\"></span>";
+const NEST_CLAMP_INNER = `<div class="mermaid cmh-nest-inner" style="${NEST_INNER_STYLE}width:320px;">`
+  + '<span style="display:inline-block;width:120px;"></span>'
+  + '<mark class="cm-hl" data-cid="nest-clamp" style="display:inline-block;width:90px;">HL</mark>'
+  + "</div><span style=\"display:inline-block;width:800px;\"></span>";
+
+test("a floating control honours the WHOLE chain of nested clip containers, not just the nearest (CMH-RESP-12)", async ({ page }) => {
+  const staged = stageContent("<h1>Nested clip containers</h1><p id=\"anchor\">Anchor paragraph.</p>",
+    { key: "cmh-nested-clip", source: "nested-clip.html" });
+  try {
+    await denyExternalNetwork(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+
+    for (const outer of ["table", "figure.chart"]) {
+      const hide = await page.evaluate((markup) => {
+        const root = document.getElementById("commentRoot");
+        root.querySelectorAll(".cmh-nest-outer").forEach((n) => n.remove());
+        root.insertAdjacentHTML("beforeend", markup);
+        const box = root.querySelector(".cmh-nest-outer");
+        const host = box.querySelector(".cmh-nest-inner");
+        const mark = box.querySelector("mark.cm-hl");
+        mark.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+        const bubble = document.getElementById("hlBubble");
+        const shown = !bubble.hidden;
+        // Scroll the OUTER box until the mark sits just left of it, still on screen and still
+        // wholly inside the inner diagram host.
+        const m0 = mark.getBoundingClientRect();
+        box.scrollLeft = (m0.right - box.getBoundingClientRect().left) + 12;
+        window.dispatchEvent(new Event("scroll"));
+        const m1 = mark.getBoundingClientRect();
+        const b1 = box.getBoundingClientRect();
+        const h1 = host.getBoundingClientRect();
+        const res = {
+          shown,
+          markInViewport: m1.right > 4 && m1.left < window.innerWidth - 4,
+          markInsideInnerHost: m1.left >= h1.left - 1 && m1.right <= h1.right + 1,
+          markLeftOfOuter: m1.right <= b1.left,
+          hiddenAfterScroll: bubble.hidden,
+        };
+        box.remove();
+        return res;
+      }, nestedClipMarkup(outer, NEST_HIDE_INNER));
+      expect(hide.shown, `${outer}: bubble shows while the mark is visible`).toBe(true);
+      expect(hide.markInViewport, `${outer}: the scrolled mark stays inside the viewport`).toBe(true);
+      expect(hide.markInsideInnerHost, `${outer}: the mark is still wholly inside the INNER diagram host`).toBe(true);
+      expect(hide.markLeftOfOuter, `${outer}: the mark is scrolled out of the OUTER container box`).toBe(true);
+      expect(hide.hiddenAfterScroll, `${outer}: bubble hides once the OUTER container clips the mark away`).toBe(true);
+
+      const clamp = await page.evaluate((markup) => {
+        const root = document.getElementById("commentRoot");
+        root.querySelectorAll(".cmh-nest-outer").forEach((n) => n.remove());
+        root.insertAdjacentHTML("beforeend", markup);
+        const box = root.querySelector(".cmh-nest-outer");
+        const host = box.querySelector(".cmh-nest-inner");
+        const mark = box.querySelector("mark.cm-hl");
+        mark.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+        const bubble = document.getElementById("hlBubble");
+        const bRect = bubble.getBoundingClientRect();
+        const mRect = mark.getBoundingClientRect();
+        const boxRect = box.getBoundingClientRect();
+        const hRect = host.getBoundingClientRect();
+        const res = {
+          hidden: bubble.hidden,
+          straddles: mRect.left < boxRect.right && mRect.right > boxRect.right,
+          markInsideInnerHost: mRect.left >= hRect.left - 1 && mRect.right <= hRect.right + 1,
+          innerEscapesOuter: hRect.right > boxRect.right + 1,
+          fitsBubble: boxRect.width > bRect.width,
+          bubbleLeft: bRect.left,
+          bubbleRight: bRect.right,
+          outerLeft: boxRect.left,
+          outerRight: boxRect.right,
+        };
+        box.remove();
+        return res;
+      }, nestedClipMarkup(outer, NEST_CLAMP_INNER));
+      expect(clamp.hidden, `${outer}: bubble stays visible while the mark is partly in view`).toBe(false);
+      expect(clamp.straddles, `${outer}: the mark straddles the OUTER container's right edge`).toBe(true);
+      expect(clamp.markInsideInnerHost, `${outer}: the mark is wholly inside the INNER diagram host`).toBe(true);
+      expect(clamp.innerEscapesOuter, `${outer}: the inner host really does reach past the outer box`).toBe(true);
+      expect(clamp.fitsBubble, `${outer}: the outer box is wide enough to hold the bubble`).toBe(true);
+      expect(clamp.bubbleLeft, `${outer}: bubble left stays inside the OUTER container`).toBeGreaterThanOrEqual(clamp.outerLeft - 1);
+      expect(clamp.bubbleRight, `${outer}: bubble right stays inside the OUTER container`).toBeLessThanOrEqual(clamp.outerRight + 1);
+    }
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+// Honouring the whole chain only helps if every box in it really clips. A gallery card's inner
+// `pre.mermaid` ships `overflow:visible` and grows to the diagram it holds, and an author can set
+// `overflow:visible` on any recognised container - bounding a control by a box its content plainly
+// spills out of would be a NEW defect introduced by counting more boxes. `display:contents`
+// generates no box at all, so its empty rect would hide every control inside it.
+test("a recognised container that does not clip does not bound the control (CMH-RESP-12)", async ({ page }) => {
+  const staged = stageContent("<h1>Non-clipping ancestors</h1><p id=\"anchor\">Anchor paragraph.</p>",
+    { key: "cmh-nonclip-chain", source: "nonclip-chain.html" });
+  try {
+    await denyExternalNetwork(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+
+    for (const outerOverflow of ["visible", "contents"]) {
+      const style = outerOverflow === "contents"
+        ? "display:contents;"
+        : "display:block;box-sizing:border-box;width:160px;margin:0 0 0 140px;padding:0;border:0;overflow:visible;white-space:nowrap;";
+      const markup = `<figure class="chart cmh-nest-outer" style="${style}">${NEST_CLAMP_INNER}</figure>`;
+      const m = await page.evaluate((html) => {
+        const root = document.getElementById("commentRoot");
+        root.querySelectorAll(".cmh-nest-outer").forEach((n) => n.remove());
+        root.insertAdjacentHTML("beforeend", html);
+        const box = root.querySelector(".cmh-nest-outer");
+        const host = box.querySelector(".cmh-nest-inner");
+        const mark = box.querySelector("mark.cm-hl");
+        mark.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+        const bubble = document.getElementById("hlBubble");
+        const bRect = bubble.getBoundingClientRect();
+        const boxRect = box.getBoundingClientRect();
+        const hRect = host.getBoundingClientRect();
+        const mRect = mark.getBoundingClientRect();
+        const res = {
+          hidden: bubble.hidden,
+          markEscapesOuter: mRect.right > boxRect.right + 1,
+          bubbleEscapesOuter: bRect.right > boxRect.right + 1,
+          bubbleLeft: bRect.left,
+          bubbleRight: bRect.right,
+          hostLeft: hRect.left,
+          hostRight: hRect.right,
+        };
+        box.remove();
+        return res;
+      }, markup);
+      expect(m.hidden, `outer overflow ${outerOverflow}: the bubble stays visible for a plainly visible mark`).toBe(false);
+      if (outerOverflow === "visible") {
+        expect(m.markEscapesOuter, `outer overflow ${outerOverflow}: the mark really does spill out of the outer box`).toBe(true);
+        expect(m.bubbleEscapesOuter, `outer overflow ${outerOverflow}: the bubble is NOT clamped to a box that does not clip`).toBe(true);
+      }
+      expect(m.bubbleLeft, `outer overflow ${outerOverflow}: bubble left stays inside the box that DOES clip`).toBeGreaterThanOrEqual(m.hostLeft - 1);
+      expect(m.bubbleRight, `outer overflow ${outerOverflow}: bubble right stays inside the box that DOES clip`).toBeLessThanOrEqual(m.hostRight + 1);
     }
   } finally {
     fs.rmSync(staged.dir, { recursive: true, force: true });
