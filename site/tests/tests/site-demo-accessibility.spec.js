@@ -213,15 +213,23 @@ test("copy button restores its original label after a rapid double click", async
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const btn = page.locator("#install .copy-btn").first();
   const label = (await btn.textContent()).trim();
-  // Record the labels from before the first click. The revert timer only starts once the clipboard
-  // write resolves, so a live assertion gives the write and the 1500ms revert one deadline; the
-  // recorded transition is asserted whole and survives a runner too loaded to sample it in time.
   const feedback = await recordCopyFeedback(btn);
   await btn.click();
   await btn.click();
-  await expect
-    .poll(() => feedback.labels(), { timeout: 20000 })
-    .toEqual([label, "copied", label]);
+  // Assert the recorded transition, not a live sample: the revert timer only starts once the
+  // clipboard write resolves, so a live assertion gives the write and the 1500ms revert one
+  // deadline. The COUNT of feedback cycles is not fixed - each click's write starts its own revert,
+  // so a slow runner can legitimately show "copied" twice - but the button must only ever show
+  // those two labels and must come to rest on the original one.
+  const shown = async () => {
+    const labels = await feedback.labels();
+    return { distinct: [...new Set(labels)].sort(), first: labels[0], last: labels[labels.length - 1] };
+  };
+  await expect.poll(shown, { timeout: 20000 }).toEqual({
+    distinct: [label, "copied"].sort(),
+    first: label,
+    last: label,
+  });
 });
 
 
