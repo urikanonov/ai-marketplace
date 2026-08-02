@@ -1530,11 +1530,13 @@ export function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, r
     opacity: 0; pointer-events: none; transition: opacity 380ms ease; z-index: 4; }
   #report.on { opacity: 1; pointer-events: auto; }
   /* A caption for each phase, so a viewer knows they are watching one loop rather than three
-     unrelated clips spliced together. */
+     unrelated clips spliced together. The shadow is kept TIGHT on purpose: a blur radius is a
+     Gaussian parameter, so the renderer paints out to roughly 1.5 radii beyond the box, and at
+     40px that reached over the window chrome the flatness gate inspects. */
   #phase { position: fixed; left: 50%; top: 80px; transform: translateX(-50%); z-index: 7;
     padding: 14px 30px; border-radius: 999px; background: #0d1117; color: #e6edf3;
     border: 2px solid rgba(240,246,252,0.34); font-size: 24px; font-weight: 700; letter-spacing: .3px;
-    box-shadow: 0 14px 40px rgba(0,0,0,.5); opacity: 0; transition: opacity 300ms ease;
+    box-shadow: 0 14px 20px rgba(0,0,0,.5); opacity: 0; transition: opacity 300ms ease;
     white-space: nowrap; }
   #phase.on { opacity: 1; }
   #intro { position: fixed; inset: 0; background: #0b0f16; display: flex; flex-direction: column;

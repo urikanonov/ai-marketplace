@@ -339,9 +339,13 @@ test("the phase caption never overlaps the window chrome (DEMO-SAFE-39)", () => 
   const chromeBottom = cssPx(css, "\\.wrap", "padding")
     + cssPx(css, "\\.dot", "height")
     + cssPx(css, "\\.chrome", "padding-bottom");
-  // The SHADOW counts, not just the box: a blur reaches above the pill by (blur - offset), and a
-  // soft gradient over the strip is still a strip that is not flat. The first cut of this fix
-  // cleared the border but left the shadow bleeding in, and the gate still failed.
+  // The SHADOW counts, not just the box, and its reach is the RENDERER's, not the CSS length. A
+  // blur radius is a Gaussian parameter, not a hard painted edge: Chromium maps it to a sigma of
+  // half the radius and Skia allocates the mask out to about three sigma, so the shadow can put ink
+  // roughly 1.5 blur radii beyond its own box. The naive `blur - offset` reading of the same
+  // declaration claimed 26px where the renderer can reach 46px, and it happened to pass by ONE
+  // pixel - a wrong model with no slack, which is how the first cut of this fix cleared the border
+  // and left the shadow bleeding into the strip with the gate still failing.
   // Parsed strictly: a `spread` 4th length, or a second comma-separated layer, would each add reach
   // the naive two-capture form silently ignored, so an unexpected shape fails here rather than in a
   // published clip.
@@ -355,7 +359,7 @@ test("the phase caption never overlaps the window chrome (DEMO-SAFE-39)", () => 
   assert.equal(lengths.length, 3,
     `#phase box-shadow has ${lengths.length} lengths, expected offset-x, offset-y and blur`);
   const [, offsetY, blur] = lengths.map((v) => Number(v.replace("px", "")));
-  const reach = blur - offsetY;
+  const reach = (blur * 1.5) - offsetY;
   const top = cssPx(css, "#phase", "top");
   // A margin, not a touch. Clearing by a single pixel meant any one-pixel change to the chrome's
   // padding or dot size would push the loop clip's flatness back toward the noise ceiling with this
