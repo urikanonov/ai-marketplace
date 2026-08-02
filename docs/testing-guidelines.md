@@ -383,7 +383,7 @@ sharded job's matrix a complete `1..N` cover so an entry can never be silently d
   fixtures out of the repo root. `--jobs` keeps that guard: the PARENT creates and inspects each
   worker's sandbox (so a test cannot exit the process to skip the check) and takes the repository
   snapshot once around the whole run, while each worker runs a deterministic stride of the
-  discovered tests (987.0s serial -> 159.7s across 16 workers here; the same suite is only ~20s on a
+  discovered tests (987.0s serial -> 98.5s across 16 workers here; the same suite is only ~20s on a
   4-CPU CI runner, so the CI win is much smaller). The workers must all discover the same number of
   tests and, between them, run every one exactly once, or the run reds - a green run in which tests
   silently never executed is the failure mode that check exists for.
@@ -392,7 +392,8 @@ sharded job's matrix a complete `1..N` cover so an entry can never be silently d
   worker (the speedup is sublinear), and a test that depends on another test in its class
   having run first will only fail under `--jobs` - fix the dependency, do not go back to serial.
   Build fixtures with `tempfile.mkdtemp()`/`TemporaryDirectory()`, never in the repository's own
-  `tmp/`: that path is gitignored, so neither leak guard can see it, and workers race on it
+  `tmp/` (or `.plans/`, `.worktrees/`, `plugins/tmp/`): those paths are gitignored, so neither leak
+  guard can see them, and workers race on them
   (`test_suite_hermeticity.py` now fails the suite for it).
   If you are editing files while the suite runs, the tree diff
   will flag YOUR edits; pass `--no-worktree-check` for that case - the sandbox check still applies.

@@ -439,33 +439,61 @@ class DuplicateTests(unittest.TestCase):
 class CoverageCrossCheck(unittest.TestCase):
     """Each worker discovers independently, so the parent must confirm they saw the same suite."""
 
-    def _report(self, index, total, discovered, running):
-        return "noise\n" + (rst.COVERAGE % (index, total, discovered, running)) + "\nmore\n"
+    def _report(self, index, total, digest, ran, discovered):
+        return "noise\n" + (rst.COVERAGE % (index, total, digest, ran, discovered)) + "\nmore\n"
 
     def test_a_complete_partition_is_accepted(self):
-        outputs = [self._report(1, 2, 10, 5), self._report(2, 2, 10, 5)]
+        outputs = [self._report(1, 2, "abc123", 5, 10), self._report(2, 2, "abc123", 5, 10)]
         self.assertEqual(rst.check_coverage(outputs), [])
 
     def test_a_worker_that_discovered_a_different_suite_reds_the_run(self):
         # An import error collapses a module into one _FailedTest, so that worker strides a
-        # DIFFERENT population and the union of shards is no longer the suite.
-        outputs = [self._report(1, 2, 10, 5), self._report(2, 2, 7, 4)]
+        # DIFFERENT population and the union of shards is no longer the suite. A digest, not a
+        # count: two workers can see the same NUMBER of tests and still not the same tests.
+        outputs = [self._report(1, 2, "abc123", 5, 10), self._report(2, 2, "def456", 5, 10)]
         problems = rst.check_coverage(outputs)
         self.assertEqual(len(problems), 1)
-        self.assertIn("disagree", problems[0])
+        self.assertIn("did not all discover the same suite", problems[0])
 
     def test_shards_that_do_not_add_up_red_the_run(self):
-        outputs = [self._report(1, 2, 10, 5), self._report(2, 2, 10, 4)]
+        outputs = [self._report(1, 2, "abc123", 5, 10), self._report(2, 2, "abc123", 4, 10)]
         problems = rst.check_coverage(outputs)
         self.assertEqual(len(problems), 1)
         self.assertIn("9", problems[0])
 
     def test_a_silent_worker_reds_the_run(self):
-        problems = rst.check_coverage([self._report(1, 2, 10, 5), "nothing to see"])
+        problems = rst.check_coverage([self._report(1, 2, "abc123", 5, 10), "nothing to see"])
         self.assertTrue(problems)
+
+    def test_a_worker_that_reports_twice_reds_the_run(self):
+        # A test whose own output echoes the marker (or a worker that somehow ran twice) must not
+        # let the parent pick whichever line it likes.
+        doubled = self._report(1, 2, "abc123", 5, 10) + self._report(1, 2, "abc123", 5, 10)
+        self.assertTrue(rst.check_coverage([doubled, self._report(2, 2, "abc123", 5, 10)]))
+
+    def test_the_parents_own_shard_is_what_must_be_covered(self):
+        # With --shard I/N AND --jobs, the workers cover only the parent's slice of the population,
+        # so comparing their sum against the WHOLE population would fail every such run.
+        outputs = [self._report(1, 6, "abc123", 2, 9), self._report(4, 6, "abc123", 1, 9)]
+        self.assertEqual(rst.check_coverage(outputs, index=1, total=3), [])
+        self.assertTrue(rst.check_coverage(outputs, index=1, total=1))
 
     def test_no_output_at_all_reds_the_run(self):
         self.assertTrue(rst.check_coverage([]))
+
+    def test_the_digest_follows_the_tests_and_their_order(self):
+        class Sample(unittest.TestCase):
+            def test_a(self):
+                pass
+
+            def test_b(self):
+                pass
+
+        tests = list(rst.iter_tests(unittest.TestLoader().loadTestsFromTestCase(Sample)))
+        self.assertEqual(rst.population_digest(tests), rst.population_digest(list(tests)))
+        self.assertNotEqual(rst.population_digest(tests),
+                            rst.population_digest(list(reversed(tests))))
+        self.assertNotEqual(rst.population_digest(tests), rst.population_digest(tests[:1]))
 
 
 class ParallelAggregation(unittest.TestCase):
@@ -740,6 +768,34 @@ class ParallelRunnerEndToEnd(unittest.TestCase):
                                 proc.stdout[-3000:] + proc.stderr[-3000:])
             self.assertIn("a.md", proc.stderr)
 
+    def test_a_class_that_skips_itself_does_not_look_like_missing_coverage(self):
+        # `raise SkipTest` in setUpClass makes unittest report ONE skip and never start the class's
+        # tests, so counting executed tests would red a run that legitimately passed.
+        with tempfile.TemporaryDirectory() as tmp:
+            _fake_suite(tmp, "test_clean.py", CLEAN_TEST)
+            _fake_suite(tmp, "test_skipped.py",
+                        "import unittest\n\n\n"
+                        "class Skips(unittest.TestCase):\n"
+                        "    @classmethod\n"
+                        "    def setUpClass(cls):\n"
+                        "        raise unittest.SkipTest('nothing to test here')\n\n"
+                        "    def test_one(self):\n        pass\n\n"
+                        "    def test_two(self):\n        pass\n")
+            proc = self._run(tmp, jobs="2")
+            self.assertEqual(proc.returncode, 0, proc.stdout[-3000:] + proc.stderr[-3000:])
+
+    def test_a_shard_of_the_suite_can_itself_be_fanned_out(self):
+        # --shard I/N composed with --jobs must stay a partition of the PARENT's shard.
+        with tempfile.TemporaryDirectory() as tmp:
+            tests, marker = Path(tmp) / "suite", Path(tmp) / "marks"
+            tests.mkdir()
+            marker.mkdir()
+            self._marked_suite(tests, marker, modules=3, per_module=2)
+            proc = self._run(tests, jobs="2", extra=["--shard", "1/3"])
+            self.assertEqual(proc.returncode, 0, proc.stdout[-3000:] + proc.stderr[-3000:])
+            self.assertEqual(len(list(marker.iterdir())), 2,
+                             "shard 1/3 of 6 tests should have run 2 of them")
+
     def test_a_worker_runs_with_the_git_environment_scrubbed(self):
         # In-process shards must see the same scrubbed environment the serial subprocess gets, or
         # a git-spawning test under a hook targets the REAL repository (#283).
@@ -758,6 +814,33 @@ class ParallelRunnerEndToEnd(unittest.TestCase):
                  "--tests-dir", tmp, "--repo-root", "", "--shard", "1/2"],
                 capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
             self.assertEqual(proc.returncode, 0, proc.stdout[-3000:] + proc.stderr[-3000:])
+
+    def test_the_coverage_check_is_actually_wired_into_the_run(self):
+        # CoverageCrossCheck proves the function; this proves the parent CALLS it, so deleting the
+        # call site cannot leave the suite green.
+        with tempfile.TemporaryDirectory() as tmp:
+            _fake_suite(tmp, "test_clean.py", CLEAN_TEST)
+            argv = ["--tests-dir", tmp, "--repo-root", "", "--jobs", "2"]
+            self.assertEqual(rst.main(argv), 0)
+            with mock.patch.object(rst, "check_coverage", return_value=["fabricated problem"]):
+                self.assertNotEqual(rst.main(argv), 0)
+
+    def test_a_sandbox_outside_a_fan_out_is_refused(self):
+        # The internal --sandbox flag has one legal shape; anywhere else it would point the suite
+        # at a directory nobody inspects afterwards.
+        with tempfile.TemporaryDirectory() as tmp:
+            _fake_suite(tmp, "test_clean.py", CLEAN_TEST)
+            box = Path(tmp) / "box"
+            box.mkdir()
+            for extra in (["--sandbox", str(box)],
+                          ["--sandbox", str(box), "--shard", "1/2", "--jobs", "2"],
+                          ["--sandbox", str(box / "missing"), "--shard", "1/2"]):
+                proc = subprocess.run(
+                    [sys.executable, str(SCRIPTS / "run_script_tests.py"),
+                     "--tests-dir", tmp, "--repo-root", ""] + extra,
+                    capture_output=True, text=True, encoding="utf-8", errors="replace",
+                    env=clean_git_env())
+                self.assertEqual(proc.returncode, 2, "%r was accepted: %s" % (extra, proc.stderr))
 
 
 if __name__ == "__main__":

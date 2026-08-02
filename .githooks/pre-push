@@ -83,7 +83,7 @@ fi
 # out of the repo root (issue #791 - `a.md` and `old.md` reached `main` that way).
 # NOTE: measured at 639.8s serially (987.0s as the suite stands now), so this whole block -
 # INCLUDING that sandbox/leak guard - is opt-in behind PREPUSH_TESTS. When it does run it fans out
-# with --jobs auto (159.7s here across 16 workers), each worker in its own sandbox. Locally the
+# with --jobs auto (98.5s here across 16 workers), each worker in its own sandbox. Locally the
 # guard therefore runs only when you ask for it; the required `validate` job always runs it, so a
 # leak still cannot reach `main`.
 # A long run while you keep editing would trip the repository diff on YOUR edits rather than on a

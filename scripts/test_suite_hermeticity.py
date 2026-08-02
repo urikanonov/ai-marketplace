@@ -154,78 +154,196 @@ def _test_modules():
     return sorted(p for p in SCRIPTS.glob("test_*.py") if p.name != SELF)
 
 
-#: The repository's own scratch directories. They are GITIGNORED, which is exactly what makes a
-#: fixture built there invisible: an absolute path defeats the sandbox cwd, and
-#: `git ls-files --others --exclude-standard` drops ignored files from the untracked digest, so
-#: neither leak guard sees it. Under `--jobs` two workers then race on the same fixed directory
-#: (issue #832 - `test_check_spec_test_refs.py` deleted a tree another worker was still using).
-_REPO_SCRATCH_DIRS = ("tmp", ".plans", ".worktrees")
+#: The repository's own scratch directories - the gitignored ones a fixture is tempted to use. They
+#: are IGNORED, which is exactly what makes a fixture there invisible: an absolute path defeats the
+#: sandbox cwd, and `git ls-files --others --exclude-standard` drops ignored files from the
+#: untracked digest, so neither leak guard sees it. Under `--jobs` two workers then race on the same
+#: fixed directory (issue #832 - `test_check_spec_test_refs.py` deleted a tree another worker was
+#: still using). Deliberately just the SCRATCH roots: other ignored directories (`node_modules`,
+#: `test-results`) are names a legitimate temp fixture builds too, so listing them would cost more
+#: false positives than the hazard is worth.
+_REPO_SCRATCH_DIRS = ("tmp", ".plans", ".worktrees", "plugins/tmp")
 #: What "this path starts at the repository" looks like in a test module.
-_REPO_ROOT_MARKERS = ("__file__", "REPO_ROOT", "REPO", "SCRIPTS", "ROOT",
-                      "self.root", "self.repo_root")
+_REPO_ROOT_MARKERS = ("__file__", "REPO_ROOT", "REPO", "SCRIPTS", "ROOT", "root", "repo_root")
+#: ...and what says a name is a TEMP root despite its spelling. `self.root = mkdtemp()` is a common
+#: idiom, and `root / "tmp" / x` under it is perfectly hermetic.
+_TEMP_MARKERS = ("tempfile", "mkdtemp", "TemporaryDirectory", "gettempdir", "mkstemp")
 
 
-def _is_repo_expr(source, names):
-    """True when this expression source starts at the repository (directly or via a bound name)."""
-    if any(re.search(r"\b%s\b" % re.escape(marker), source) for marker in _REPO_ROOT_MARKERS):
+def _referenced_names(node):
+    """Every identifier the expression mentions: bare names and the tail of an attribute."""
+    names = set()
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name):
+            names.add(child.id)
+        elif isinstance(child, ast.Attribute):
+            names.add(child.attr)
+            names.add(ast.unparse(child))
+    return names
+
+
+def _bindings(tree):
+    """(value, targets) for every binding shape a root is written with: plain assignment, an
+    annotated one (`root: Path = ...`), and the walrus."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            yield node.value, node.targets
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            yield node.value, [node.target]
+        elif isinstance(node, ast.NamedExpr):
+            yield node.value, [node.target]
+
+
+def _temp_names(tree):
+    """Names ever bound to a temporary directory, whatever they are called.
+
+    Both bindings count: `d = tempfile.mkdtemp()` and `with TemporaryDirectory() as d:`.
+    """
+    names = set()
+
+    def bind(target):
+        names.add(ast.unparse(target))
+        if isinstance(target, ast.Attribute):
+            names.add(target.attr)
+        elif isinstance(target, ast.Name):
+            names.add(target.id)
+
+    for value, targets in _bindings(tree):
+        if _referenced_names(value) & set(_TEMP_MARKERS):
+            for target in targets:
+                bind(target)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.With, ast.AsyncWith)):
+            for item in node.items:
+                if item.optional_vars is None:
+                    continue
+                if _referenced_names(item.context_expr) & set(_TEMP_MARKERS):
+                    bind(item.optional_vars)
+    # A name derived from a temp name is temporary too (`root = Path(d)`).
+    changed = True
+    while changed:
+        changed = False
+        for value, targets in _bindings(tree):
+            if not (_referenced_names(value) & names):
+                continue
+            for target in targets:
+                before = len(names)
+                bind(target)
+                changed = changed or len(names) != before
+    return names
+
+
+def _is_repo_expr(node, bound, temps=()):
+    """True when this expression starts at the repository (directly or via a bound name).
+
+    Matching is on NAME NODES, never on the unparsed source, so a string literal that happens to
+    contain the word ROOT cannot taint an unrelated variable, and a name the module ever binds to a
+    temporary directory is never treated as the repository.
+    """
+    referenced = _referenced_names(node)
+    if referenced & set(temps):
+        return False
+    if "__file__" in referenced:
         return True
-    return any(re.search(r"\b%s\b" % re.escape(name), source) for name in names)
+    return bool(referenced & (set(_REPO_ROOT_MARKERS) | bound))
 
 
-def _repo_root_names(tree):
+def _repo_root_names(tree, temps=()):
     """Names bound to a repository-derived path (`root = Path(__file__).resolve().parent`), so a
     fixture built off the variable rather than the literal expression is still recognized."""
     names = set()
     changed = True
     while changed:
         changed = False
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Assign):
+        for value, targets in _bindings(tree):
+            if not _is_repo_expr(value, names, temps):
                 continue
-            if not _is_repo_expr(ast.unparse(node.value), names):
-                continue
-            for target in node.targets:
+            for target in targets:
                 name = ast.unparse(target)
-                if name not in names:
+                if name not in names and name not in temps:
                     names.add(name)
                     changed = True
     return names
 
 
-def _path_base(node):
-    """The leftmost operand of a `a / b / c` chain, or the first argument of an `...join(a, b)`."""
+def _path_segments(node):
+    """The literal segments to the RIGHT of the base, in order.
+
+    Only the FIRST of them decides: `root / "tmp" / "x"` is the repository's scratch directory,
+    while `root / "site" / "tmp"` is an ordinary tracked path that happens to be called tmp.
+    """
     if isinstance(node, ast.Call):
+        args = node.args[1:] if len(node.args) > 1 else []
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "joinpath":
+            args = node.args
+        return [a.value if isinstance(a, ast.Constant) else None for a in args]
+    segments = []
+    while isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        right = node.right
+        segments.append(right.value if isinstance(right, ast.Constant) else None)
+        node = node.left
+    return list(reversed(segments))
+
+
+def _path_base(node):
+    """The leftmost operand of a `a / b / c` chain, or the receiver/first argument of a call."""
+    if isinstance(node, ast.Call):
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "joinpath":
+            return node.func.value
         return node.args[0] if node.args else None
     while isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
         node = node.left
     return node
 
 
+def _is_path_expr(node):
+    """True for the shapes a fixture path is built with: `a / b`, `os.path.join(a, b)`,
+    `Path(a, b)`, and `a.joinpath(b)`."""
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        return True
+    if not isinstance(node, ast.Call):
+        return False
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr in ("join", "joinpath")
+    return isinstance(node.func, ast.Name) and node.func.id == "Path" and len(node.args) > 1
+
+
 def repo_scratch_paths(source, filename="<test>"):
     """Descriptions of every fixed path this module builds under a repo scratch directory.
 
-    Matches both spellings a fixture is written with: `<repo-ish> / "tmp" / "name"` and
-    `os.path.join(<repo-ish>, "tmp", "name")`. Reading such a path is as suspect as writing one
-    here, because the fixture pattern always writes; a test that genuinely needs the repository
-    reads a TRACKED path, which no scratch directory is.
+    Matches the shapes a fixture is written with - `<repo-ish> / "tmp" / "name"`,
+    `os.path.join(<repo-ish>, "tmp", ...)`, `Path(<repo-ish>, "tmp", ...)`, and
+    `<repo-ish>.joinpath("tmp", ...)`. Reading such a path is as suspect as writing one here,
+    because the fixture pattern always writes; a test that genuinely needs the repository reads a
+    TRACKED path, which no scratch directory is.
     """
-    found = []
     tree = ast.parse(source, filename=filename)
-    names = _repo_root_names(tree)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
-            pass
-        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
-                and node.func.attr == "join":
-            pass
-        else:
+    temps = _temp_names(tree)
+    names = _repo_root_names(tree, temps)
+    candidates = [node for node in ast.walk(tree) if _is_path_expr(node)]
+    # `a / "tmp" / "x"` CONTAINS `a / "tmp"`, so report only the outermost expression: collect the
+    # immediate sub-expression of each candidate (not the chain's base, which is never a candidate).
+    inner = set()
+    for node in candidates:
+        if isinstance(node, ast.BinOp):
+            inner.add(id(node.left))
+        elif isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Attribute):
+                inner.add(id(node.func.value))
+            elif node.args:
+                inner.add(id(node.args[0]))
+    found = []
+    for node in candidates:
+        if id(node) in inner:
             continue
         base = _path_base(node)
-        if base is None or not _is_repo_expr(ast.unparse(base), names):
+        if base is None or not _is_repo_expr(base, names, temps):
             continue
-        literals = [c.value for c in ast.walk(node)
-                    if isinstance(c, ast.Constant) and isinstance(c.value, str)]
-        if any(part in _REPO_SCRATCH_DIRS for part in literals):
+        segments = _path_segments(node)
+        prefixes = {segments[0]} if segments else set()
+        if len(segments) > 1 and None not in segments[:2]:
+            prefixes.add("/".join(segments[:2]))
+        if prefixes & set(_REPO_SCRATCH_DIRS):
             found.append("%s:%d %s" % (filename, node.lineno, ast.unparse(node)))
     return found
 
@@ -250,7 +368,7 @@ class TestsMustNotBuildFixturesInsideTheRepository(unittest.TestCase):
 
     def test_the_rule_catches_the_pattern_it_exists_for(self):
         # The exact shape that raced under --jobs (scripts/test_check_spec_test_refs.py, pre-fix),
-        # plus the os.path.join spelling of the same thing.
+        # plus the other spellings of the same thing.
         for source in (
             'from pathlib import Path\n'
             'root = Path(__file__).resolve().parent.parent\n'
@@ -258,15 +376,40 @@ class TestsMustNotBuildFixturesInsideTheRepository(unittest.TestCase):
             'import os\n'
             'sandbox = os.path.join(REPO_ROOT, "tmp", "fixtures")\n',
             'self.sandbox = self.root / "tmp" / "x"\n',
+            'sandbox = Path(REPO_ROOT, "tmp", "fixtures")\n',
+            'sandbox = REPO_ROOT.joinpath("tmp", "fixtures")\n',
+            'sandbox = SCRIPTS.parent / ".plans" / "scratch"\n',
+            # An annotated binding and a walrus bind a root just as well as a plain assignment.
+            'from pathlib import Path\n'
+            'root: Path = Path(__file__).resolve().parent.parent\n'
+            'sandbox = root / "tmp" / "case"\n',
+            'from pathlib import Path\n'
+            'if (root := Path(__file__).resolve().parent) is not None:\n'
+            '    sandbox = root / "tmp" / "case"\n',
+            # A nested scratch tree is the same hole one level down.
+            'sandbox = REPO_ROOT / "plugins" / "tmp" / "case"\n',
         ):
             self.assertTrue(repo_scratch_paths(source),
                             "the rule missed a repo-scratch fixture path: %r" % source)
+
+    def test_a_nested_path_is_reported_once(self):
+        source = ('from pathlib import Path\n'
+                  'root = Path(__file__).resolve().parent.parent\n'
+                  'sandbox = root / "tmp" / "case" / "deep"\n')
+        self.assertEqual(len(repo_scratch_paths(source)), 1)
 
     def test_the_rule_leaves_legitimate_paths_alone(self):
         for source in (
             'import tempfile\nsandbox = tempfile.mkdtemp(prefix="x-")\n',
             'spec = self.root / "site" / "tests" / "SPEC.md"\n',
             'out = Path(tmp) / "tmp" / "nested"\n',
+            # A tracked directory that merely happens to be called tmp is not the repo's scratch.
+            'fixture = REPO_ROOT / "site" / "tmp" / "keep.md"\n',
+            # `root` naming a TEMP root is a common idiom; the binding wins over the spelling.
+            'import tempfile\nfrom pathlib import Path\n'
+            'self.root = Path(tempfile.mkdtemp())\nfixture = self.root / "tmp" / "case"\n',
+            'import os, tempfile\nd = tempfile.mkdtemp()\n'
+            'os.makedirs(os.path.join(d, "tmp", "node_modules"))\n',
         ):
             self.assertEqual(repo_scratch_paths(source), [],
                              "the rule flagged a legitimate path: %r" % source)
@@ -412,16 +555,19 @@ class EverySuiteLaunchGoesThroughTheLeakGuard(unittest.TestCase):
     def test_no_workflow_disables_the_repository_check(self):
         # `--no-worktree-check` exists for a local run on a tree the author is still editing.
         # In CI nothing else touches the tree, so passing it there would only blind the one check
-        # that catches a test writing an ABSOLUTE path into the repository.
+        # that catches a test writing an ABSOLUTE path into the repository. `--sandbox` is the
+        # same class of hole: it points a shard at a directory the caller owns, and only the
+        # runner's own fan-out ever inspects one.
         if not WORKFLOWS.is_dir():
             self.skipTest("no workflows directory")
         offenders = []
         for path in self._workflows():
             offenders += ["%s: %s" % (path.name, line.strip())
                           for line in path.read_text(encoding="utf-8").splitlines()
-                          if RUNNER in line and "--no-worktree-check" in line]
+                          if RUNNER in line
+                          and ("--no-worktree-check" in line or "--sandbox" in line)]
         self.assertEqual(offenders, [],
-                         "these CI steps disable the runner's repository check: %r" % (offenders,))
+                         "these CI steps disable the runner's leak checks: %r" % (offenders,))
 
     def test_every_job_that_runs_the_suite_still_runs_it(self):
         # The denylist cannot tell "guarded" from "deleted", so pin that both `validate.yml` jobs

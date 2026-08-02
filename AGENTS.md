@@ -540,7 +540,7 @@ measured ~30 minutes here (script unit tests 639.8s, the plugin Python suites up
 result was that 52% of observed pushes used `--no-verify` - so the hook protected nothing half the
 time. A fast hook that always runs beats a thorough hook that is routinely bypassed. When the
 suites do run they fan out across the CPUs (`--jobs auto`: the plugin suites ~2.8x here, the script
-suite ~6x - 987.0s serial to 159.7s across 16 workers).
+suite ~6-10x - 987.0s serial to 98.5s across 16 workers, 159.7s on a busier run).
 
 ```bash
 git push                        # fast gates only (seconds)
@@ -563,13 +563,14 @@ a test's scratch fixture out of the repo root - a bare relative filename used to
 `b.md`, `new.md`, and `old.md` beside `AGENTS.md` on every push, two of which were then swept into
 `main` (#791). The hook, both `validate.yml` jobs, and any launcher added later are held to it by
 `scripts/test_suite_hermeticity.py`, which also forbids a `scripts/` test from building fixtures in
-the repository's own gitignored scratch directories (`tmp/`, `.plans/`) - a path neither leak guard
+the repository's own gitignored scratch directories (`tmp/`, `.plans/`, `.worktrees/`,
+`plugins/tmp/`) - a path neither leak guard
 can see, and one that two workers race. It also takes `--jobs N` (or `--jobs auto`, which the hook
 passes; the two `validate.yml` jobs pass a FIXED `--jobs 4` so the shard a test lands in does not
 depend on the runner's CPU count): the parent snapshots the repository ONCE, then fans the suite out
 across worker processes, each running a deterministic stride of the discovered TESTS from a sandbox
 the PARENT owns and inspects, so the leak guard is per worker and one slow module cannot pin the
-wall time (987.0s -> 159.7s across 16 workers here; on a 4-CPU CI runner the whole suite is ~20s
+wall time (987.0s -> 98.5s across 16 workers here; on a 4-CPU CI runner the whole suite is ~20s
 serial, so the CI win is smaller). Aggregation fails CLOSED - a worker that fails, crashes, cannot
 be launched, discovers no tests, or discovers a DIFFERENT number of tests than its peers reds the
 run. Because a worker runs a slice of a class rather than a whole file, class and module fixtures
