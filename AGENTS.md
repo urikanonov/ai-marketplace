@@ -536,10 +536,11 @@ artifact, a missing version bump or changelog entry) before a CI round-trip.
 The TEST SUITES are opt-in (`PREPUSH_TESTS=1 git push`), and so are the browser suites
 (`RUN_E2E=1`). This is deliberate: CI is the AUTHORITATIVE gate (`main` is protected and every
 required check runs there, sharded across runners), and running the suites locally on every push
-measured ~30 minutes here (script unit tests 640s, the plugin Python suites up to 1082s). The
+measured ~30 minutes here (script unit tests 639.8s, the plugin Python suites up to 1082s). The
 result was that 52% of observed pushes used `--no-verify` - so the hook protected nothing half the
 time. A fast hook that always runs beats a thorough hook that is routinely bypassed. When the
-suites do run they fan out across the CPUs (`--jobs auto`, ~2.8x here).
+suites do run they fan out across the CPUs (`--jobs auto`: the plugin suites ~2.8x here, the script
+suite ~6-13x - 987.0s serial to 74.6s across 16 workers, 159.7s on a busier one).
 
 ```bash
 git push                        # fast gates only (seconds)
@@ -561,7 +562,20 @@ suite left anything in it, or if the repository working tree changed while it ra
 a test's scratch fixture out of the repo root - a bare relative filename used to land `a.md`,
 `b.md`, `new.md`, and `old.md` beside `AGENTS.md` on every push, two of which were then swept into
 `main` (#791). The hook, both `validate.yml` jobs, and any launcher added later are held to it by
-`scripts/test_suite_hermeticity.py`.
+`scripts/test_suite_hermeticity.py`, which also forbids a `scripts/` test from building fixtures in
+the repository's own gitignored scratch directories (`tmp/`, `.plans/`, `.worktrees/`,
+`plugins/tmp/`) - a path neither leak guard
+can see, and one that two workers race. It also takes `--jobs N` (or `--jobs auto`, which the hook
+passes; the two `validate.yml` jobs pass a FIXED `--jobs 4` so the shard a test lands in does not
+depend on the runner's CPU count): the parent snapshots the repository ONCE, then fans the suite out
+across worker processes, each running a deterministic stride of the discovered TESTS from a sandbox
+the PARENT owns and inspects, so the leak guard is per worker and one slow module cannot pin the
+wall time (987.0s -> 74.6s across 16 workers here; on a 4-CPU CI runner the whole suite is ~20s
+serial, so the CI win is smaller). Aggregation fails CLOSED - a worker that fails, crashes, cannot
+be launched, discovers no tests, or discovers a DIFFERENT number of tests than its peers reds the
+run. Because a worker runs a slice of a class rather than a whole file, class and module fixtures
+are re-paid per worker (so the speedup is sublinear) and a test that depends on a sibling having run
+first fails only under `--jobs`; fix the dependency rather than going back to serial.
 
 The `pre-push` hook is FAST by default (seconds) because the test suites are opt-in; with
 `PREPUSH_TESTS=1` it is SLOW - it runs the script unit tests plus the changed plugins' Python

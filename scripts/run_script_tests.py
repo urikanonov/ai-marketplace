@@ -17,17 +17,29 @@ makes the mistake impossible to miss instead:
 It costs no extra time: the suite runs exactly once, just somewhere harmless. The git location
 variables are scrubbed too (see `_git_test_env`), so the runner is safe to call from a git hook.
 
+A serial run measured 639.8s, which is why `--jobs` exists: it fans the suite out across worker
+PROCESSES, each with its OWN throwaway sandbox, while the repository snapshot is taken once around
+the whole run. Splitting is by individual TEST (a deterministic stride over the discovered order),
+so one very slow module cannot pin the wall time.
+
     python scripts/run_script_tests.py
+    python scripts/run_script_tests.py --jobs auto            # fan out across the CPUs
     python scripts/run_script_tests.py --no-worktree-check   # while editing the tree concurrently
 """
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
+import contextlib
 import hashlib
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
+import unittest
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -71,6 +83,324 @@ def sandbox_leftovers(sandbox):
     """Every path the suite left in its working directory, relative and slash-separated."""
     root = Path(sandbox)
     return sorted(p.relative_to(root).as_posix() for p in root.rglob("*"))
+
+
+def select_shard(items, index, total):
+    """Round-robin slice: shard `index` (1-based) of `total`.
+
+    A plain stride, so the shards are an exact partition (nothing dropped, nothing run twice) and
+    neighbouring items - which tend to cost the same - land on different workers.
+    """
+    if total < 1:
+        raise ValueError("shard total must be >= 1")
+    if not (1 <= index <= total):
+        raise ValueError("shard index %d out of range 1..%d" % (index, total))
+    return list(items)[index - 1::total]
+
+
+def compose_shard(index, total, job_index, jobs):
+    """The single shard that selects job `job_index` of `jobs` WITHIN shard `index`/`total`.
+
+    Workers are re-invocations of this script rather than handed an explicit test list, so the two
+    levels of stride collapse into one "i/N" pair. Because select_shard is a plain stride the
+    composition is exact:
+
+        items[index-1::total][job-1::jobs] == items[(index-1)+(job-1)*total :: total*jobs]
+    """
+    if total < 1:
+        raise ValueError("shard total must be >= 1")
+    if not (1 <= index <= total):
+        raise ValueError("shard index %d out of range 1..%d" % (index, total))
+    if jobs < 1:
+        raise ValueError("jobs must be >= 1")
+    if not (1 <= job_index <= jobs):
+        raise ValueError("job index %d out of range 1..%d" % (job_index, jobs))
+    return ((index - 1) + (job_index - 1) * total + 1, total * jobs)
+
+
+def resolve_jobs(spec):
+    """Resolve --jobs: a positive integer, or "auto" for the CPU count (1 if unknown)."""
+    if spec == "auto":
+        return os.cpu_count() or 1
+    try:
+        n = int(spec)
+    except (TypeError, ValueError):
+        raise ValueError("--jobs must be a positive integer or 'auto', got %r" % (spec,)) from None
+    if n < 1:
+        raise ValueError("--jobs must be >= 1, got %d" % n)
+    return n
+
+
+def iter_tests(suite):
+    """Flatten a suite into its individual tests, preserving discovery order."""
+    for item in suite:
+        if isinstance(item, unittest.TestSuite):
+            yield from iter_tests(item)
+        else:
+            yield item
+
+
+def _test_key(test):
+    """A test's stable identity, or a stable placeholder when it cannot report one."""
+    try:
+        return test.id()
+    except Exception:  # noqa: BLE001 - an unidentifiable test must not crash the worker
+        return "<unidentifiable %s>" % type(test).__qualname__
+
+
+def dedupe_tests(tests):
+    """The discovered tests with exact duplicates removed, first occurrence kept.
+
+    A compatibility module that re-exports another module's cases (`test_build_site_data.py` does
+    `from test_build_site_data_drift import *`) makes discovery yield the SAME test twice, since a
+    test's id is its defining module plus class plus method. Serially that only wasted time; across
+    workers the two copies could run CONCURRENTLY, which no test is written to survive.
+
+    A duplicate id is not enough on its own: a parameterized suite can legitimately yield several
+    instances of one class and method carrying different state, so a later test is dropped only when
+    it is INDISTINGUISHABLE from the one already kept.
+    """
+    seen = {}
+    unique = []
+    for test in tests:
+        key = _test_key(test)
+        prior = seen.get(key)
+        if prior is not None and _same_test(prior, test):
+            continue
+        seen.setdefault(key, test)
+        unique.append(test)
+    return unique
+
+
+def _same_test(a, b):
+    if type(a) is not type(b):
+        return False
+    try:
+        return a.__dict__ == b.__dict__
+    except Exception:  # noqa: BLE001 - an uncomparable fixture is treated as distinct
+        return False
+
+
+def population_digest(tests):
+    """A digest of the ordered test ids, so two workers can prove they saw the same suite."""
+    joined = "\n".join(_test_key(test) for test in tests)
+    return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:16]
+
+
+def _sandbox():
+    """A throwaway working directory context that never raises on cleanup.
+
+    A leaked open handle on Windows must not mask the real verdict, and must not crash the parent
+    before it has reported which worker failed.
+    """
+    path = tempfile.mkdtemp(prefix="script-tests-")
+    return _cleanup_after(path)
+
+
+@contextlib.contextmanager
+def _cleanup_after(path):
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
+
+
+def build_child_argv(index, total, job_index, jobs, args, sandbox=None, token="", python=None):
+    """Argv for one worker: its composed shard plus the suite selection.
+
+    Deliberately omits --jobs (a worker can never recurse into another fan-out) and passes
+    --no-worktree-check, because the PARENT snapshots the repository once around the whole run;
+    letting every worker snapshot it too would only race their `git update-index` calls. The
+    parent also OWNS each worker's sandbox and passes it in, so the leftover check is made by a
+    process the tests cannot terminate.
+    """
+    idx, tot = compose_shard(index, total, job_index, jobs)
+    argv = [python or sys.executable, str(Path(__file__).resolve()),
+            "--tests-dir", str(args.tests_dir), "--pattern", str(args.pattern),
+            "--repo-root", str(args.repo_root), "--no-worktree-check",
+            "--shard", "%d/%d" % (idx, tot)]
+    if sandbox is not None:
+        argv += ["--sandbox", str(sandbox)]
+    if token:
+        argv += ["--coverage-token", token]
+    return argv
+
+
+def aggregate_results(results):
+    """(returncode, error messages) for a finished fan-out. Fails CLOSED.
+
+    Anything that is not an exit-0 worker - a failed suite, a crash, a worker that could not be
+    launched at all, or an empty result set - reds the whole run.
+    """
+    errors = []
+    if not results:
+        return 1, ["no workers ran, so nothing was tested"]
+    for job, res in enumerate(results, start=1):
+        if isinstance(res, BaseException):
+            errors.append("worker %d/%d could not run: %s: %s"
+                          % (job, len(results), type(res).__name__, res))
+        elif res.returncode != 0:
+            errors.append("worker %d/%d failed (exit %d)" % (job, len(results), res.returncode))
+    return (1 if errors else 0), errors
+
+
+#: How a worker reports what it saw, and the parent's parse of it. Each worker discovers the suite
+#: independently, so the stride is a partition of the SUITE only if they all saw the same ORDERED
+#: population - hence the digest, and hence the cross-check rather than trusting each worker's own
+#: arithmetic. The line is printed AFTER the run, so a worker that ends early cannot have announced
+#: work it never did. The count is what the shard was ASKED to run: unittest's `testsRun` undercounts
+#: a class whose `setUpClass` raises SkipTest, which is a legitimate pass, not a gap. The TOKEN is a
+#: fresh id per fan-out, because this runner's own tests run the runner: without it a worker that
+#: replays a nested run's output would report several markers and fail its own coverage check.
+COVERAGE = "run_script_tests: shard %d/%d token %s population %s ran %d of %d"
+
+
+def coverage_re(token):
+    return re.compile(r"^run_script_tests: shard \d+/\d+ token %s population ([0-9a-f]+) "
+                      r"ran (\d+) of (\d+)$" % re.escape(token), re.M)
+
+
+def check_coverage(outputs, index=1, total=1, token=""):
+    """Error messages when the workers did not, between them, run the parent's shard exactly once.
+
+    `outputs` is each worker's captured output, in job order; `index`/`total` is the shard the
+    PARENT was itself asked for (`1/1` for a plain `--jobs` run), since the workers cover only that
+    slice of the discovered population; `token` identifies THIS fan-out's markers. Fails CLOSED: a
+    worker that reported nothing (or more than once), a worker that discovered a different suite
+    than its peers, or a set of shards whose counts do not add up is an error - all of which mean
+    tests may have run zero times while every worker still exited 0.
+    """
+    errors = []
+    seen = []
+    pattern = coverage_re(token)
+    for job, text in enumerate(outputs, start=1):
+        matches = pattern.findall(text or "")
+        if len(matches) != 1:
+            errors.append("worker %d/%d reported what it ran %d time(s), not once, so the suite "
+                          "cannot be confirmed covered" % (job, len(outputs), len(matches)))
+            continue
+        digest, ran, discovered = matches[0]
+        seen.append((job, digest, int(ran), int(discovered)))
+    if errors or not seen:
+        return errors or ["no worker reported what it discovered"]
+    digests = {digest for _, digest, _, _ in seen}
+    if len(digests) > 1:
+        return ["the workers did not all discover the same suite (%s), so the shards are not a "
+                "partition of it" % ", ".join(
+                    "worker %d saw %s (%d test(s))" % (job, digest, discovered)
+                    for job, digest, _, discovered in seen)]
+    discovered = seen[0][3]
+    expected = len(range(index - 1, discovered, total))
+    ran = sum(count for _, _, count, _ in seen)
+    if ran != expected:
+        errors.append("the workers ran %d test(s) of the %d in shard %d/%d (%d discovered)"
+                      % (ran, expected, index, total, discovered))
+    return errors
+
+
+
+def run_parallel(index, total, jobs, args, env):
+    """Fan the selected shard out across `jobs` worker processes; replay output in job order.
+
+    Workers are separate PROCESSES. The PARENT creates each worker's throwaway sandbox and checks
+    it afterwards, so the #791 leak guard belongs to a process the tests cannot exit early from
+    (and an abandoned sandbox is still cleaned up when a worker is killed).
+
+    Returns (returncode, leftovers) where `leftovers` names anything found in a worker sandbox.
+    """
+    # Workers write UTF-8 whatever the console code page says (set on the shared env in main), so
+    # the parent's UTF-8 decode below cannot mojibake a non-ASCII traceback.
+    print("Running the scripts suite across %d parallel worker(s)." % jobs)
+
+    def run_one(cmd):
+        # Merge the streams so a worker's output stays in chronological order, and pin the decode:
+        # errors="replace" turns an odd byte into mojibake rather than losing the whole worker's
+        # output to a UnicodeDecodeError in the PARENT.
+        return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              text=True, encoding="utf-8", errors="replace", env=env)
+
+    with contextlib.ExitStack() as stack:
+        # A fresh id per fan-out: this runner's own tests run the runner, so a worker replaying a
+        # nested run's output would otherwise look like a worker reporting several times.
+        token = uuid.uuid4().hex
+        sandboxes = [stack.enter_context(_sandbox()) for _ in range(jobs)]
+        commands = [build_child_argv(index, total, j, jobs, args, sandbox=sandboxes[j - 1],
+                                     token=token)
+                    for j in range(1, jobs + 1)]
+        results = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+            futures = [pool.submit(run_one, c) for c in commands]
+            for f in futures:
+                try:
+                    results.append(f.result())
+                except Exception as exc:  # noqa: BLE001 - a launch failure must red the run
+                    results.append(exc)
+
+        for job, res in enumerate(results, start=1):
+            print("\n===== worker %d/%d =====" % (job, jobs))
+            if isinstance(res, BaseException):
+                print("(worker could not run; see the error below)")
+                continue
+            if res.stdout:
+                print(res.stdout, end="")
+
+        leftovers = []
+        for job, cwd in enumerate(sandboxes, start=1):
+            stray = sandbox_leftovers(cwd)
+            if stray:
+                print("run_script_tests: worker %d/%d sandbox: %s" % (job, jobs, cwd),
+                      file=sys.stderr)
+            leftovers += stray
+
+    rc, errors = aggregate_results(results)
+    if rc == 0:
+        # Only meaningful when every worker passed: a failed worker already reds the run, and its
+        # output is the thing to read. This is the check that catches a GREEN run in which some
+        # tests never executed.
+        errors += check_coverage([res.stdout for res in results], index, total, token)
+        rc = 1 if errors else 0
+    for message in errors:
+        print("run_script_tests: %s" % message, file=sys.stderr)
+    return rc, leftovers
+
+
+def run_shard(tests_dir, pattern, index, total, cwd, token=""):
+    """Run shard `index`/`total` of the discovered suite in THIS process, from `cwd`.
+
+    Discovery happens after the chdir, so even a module that writes at import time lands in the
+    sandbox. Returns the process exit code.
+    """
+    previous = os.getcwd()
+    os.chdir(cwd)
+    try:
+        suite = unittest.TestLoader().discover(tests_dir, pattern=pattern,
+                                               top_level_dir=tests_dir)
+        tests = dedupe_tests(iter_tests(suite))
+        if not tests:
+            # Serially an empty discovery is a visible "Ran 0 tests"; N silent workers are not, so
+            # a fan-out that found nothing to run must fail rather than look clean.
+            print("run_script_tests: discovered no tests in %s (pattern %s)"
+                  % (tests_dir, pattern), file=sys.stderr)
+            return 1
+        mine = select_shard(tests, index, total)
+        digest = population_digest(tests)
+        rc = 0
+        if mine:
+            result = unittest.TextTestRunner(verbosity=1).run(unittest.TestSuite(mine))
+            rc = 0 if result.wasSuccessful() else 1
+        # AFTER the run: the parent cross-checks these across the workers (see check_coverage), and
+        # a worker that ended early must not be able to have announced work it never did. Written
+        # as one flushed line of its own, since the runner's own output shares this pipe and is
+        # block-buffered against it - a marker appended to a half-written progress line would not
+        # parse.
+        sys.stderr.flush()
+        sys.stdout.write("\n" + (COVERAGE % (index, total, token, digest, len(mine), len(tests)))
+                         + "\n")
+        sys.stdout.flush()
+        return rc
+    finally:
+        os.chdir(previous)
+
 
 
 #: A stale index stat-cache makes git report line-ending noise - a CRLF working tree against an
@@ -235,9 +565,53 @@ def main(argv=None):
     parser.add_argument("--no-worktree-check", action="store_true",
                         help="skip the repository diff (use when the tree is being edited "
                              "concurrently; the sandbox check still runs)")
+    parser.add_argument("-j", "--jobs", default="1",
+                        help="run the suite across N worker processes, or 'auto' for the CPU "
+                             "count (default 1 = one serial run, unchanged behavior)")
+    parser.add_argument("--shard", default="1/1",
+                        help="run only shard I of N of the discovered tests, formatted I/N "
+                             "(used internally by --jobs; each shard gets its own sandbox)")
+    parser.add_argument("--sandbox", default=None,
+                        help="run a --shard from this existing directory instead of a fresh one "
+                             "(used internally by --jobs, so the PARENT owns the leftover check)")
+    parser.add_argument("--coverage-token", default="",
+                        help="tag this shard's coverage report with the parent's run id "
+                             "(used internally by --jobs)")
     args = parser.parse_args(argv)
 
+    try:
+        index_s, total_s = args.shard.split("/", 1)
+        index, total = int(index_s), int(total_s)
+    except ValueError:
+        print("run_script_tests: --shard must look like I/N, got %r" % args.shard, file=sys.stderr)
+        return 2
+    try:
+        jobs = resolve_jobs(args.jobs)
+        compose_shard(index, total, 1, jobs)
+    except ValueError as exc:
+        print("run_script_tests: %s" % exc, file=sys.stderr)
+        return 2
+    if args.sandbox is not None:
+        # Internal flag with one legal shape: a single worker of a fan-out. Anywhere else it would
+        # silently hand the suite a directory nobody inspects afterwards.
+        if total < 2 or jobs > 1:
+            print("run_script_tests: --sandbox is only valid for a worker (--shard I/N with N>1 "
+                  "and no --jobs)", file=sys.stderr)
+            return 2
+        if not Path(args.sandbox).is_dir():
+            print("run_script_tests: --sandbox %r is not a directory" % args.sandbox,
+                  file=sys.stderr)
+            return 2
+
+    args.tests_dir = str(Path(args.tests_dir).resolve())
+    # Absolute, because a shard chdirs into its sandbox before importing anything: a relative root
+    # would then resolve against the wrong directory on sys.path and PYTHONPATH.
+    args.repo_root = str(Path(args.repo_root).resolve()) if args.repo_root else ""
     env = clean_git_env()
+    # The suite's output is piped and decoded as UTF-8 (serially and per worker), so pin what it
+    # encodes: on Windows a piped child otherwise uses the ANSI code page, and a non-ASCII
+    # traceback then dies with UnicodeEncodeError or reaches the parent as mojibake.
+    env["PYTHONIOENCODING"] = "utf-8"
     repo_root = args.repo_root or None
     if repo_root:
         # The suite used to run WITH the repository root as its cwd, so the root was importable.
@@ -246,15 +620,44 @@ def main(argv=None):
         inherited = env.get("PYTHONPATH")
         env["PYTHONPATH"] = str(repo_root) + (os.pathsep + inherited if inherited else "")
     watched = None if args.no_worktree_check else repo_root
-    # `ignore_cleanup_errors` keeps a leaked open handle on Windows from masking the real verdict.
-    try:
-        sandbox = tempfile.TemporaryDirectory(prefix="script-tests-", ignore_cleanup_errors=True)
-    except TypeError:  # Python < 3.10
-        sandbox = tempfile.TemporaryDirectory(prefix="script-tests-")
-    with sandbox as cwd:
+
+    if jobs > 1:
         before = worktree_state(watched, env)
-        proc = subprocess.run(discover_argv(args.tests_dir, args.pattern), cwd=cwd, env=env)
+        rc, leftovers = run_parallel(index, total, jobs, args, env)
         after = worktree_state(watched, env)
+        problems = describe_leak(leftovers, before, after)
+        for problem in problems:
+            print("run_script_tests: %s" % problem, file=sys.stderr)
+        if problems:
+            print("run_script_tests: %s" % HINT, file=sys.stderr)
+            return rc or 1
+        return rc
+
+    with contextlib.ExitStack() as stack:
+        # A worker of a fan-out runs from the sandbox the PARENT owns and inspects, so a test that
+        # ends the process early (os._exit) cannot skip the leftover check. Any other invocation
+        # builds and checks its own.
+        parent_owned = args.sandbox is not None
+        cwd = args.sandbox if parent_owned else stack.enter_context(_sandbox())
+        before = worktree_state(watched, env)
+        if total > 1:
+            # A worker: discover and run in THIS process, from the sandbox. The suite must see the
+            # SAME environment the serial path hands its subprocess - git location variables
+            # scrubbed (#283), a hermetic git identity, and the repository on PYTHONPATH - which
+            # for an in-process run means replacing os.environ, not just passing env along.
+            os.environ.clear()
+            os.environ.update(env)
+            if repo_root and str(repo_root) not in sys.path:
+                sys.path.insert(0, str(repo_root))
+            returncode = run_shard(args.tests_dir, args.pattern, index, total, cwd,
+                                   args.coverage_token)
+        else:
+            returncode = subprocess.run(discover_argv(args.tests_dir, args.pattern),
+                                        cwd=cwd, env=env).returncode
+        after = worktree_state(watched, env)
+        # Belt and braces: the parent inspects a worker's sandbox too (that is what catches a
+        # worker which ended early), but a shard still checks its own, so no invocation of this
+        # script can run the suite from a directory nobody looks at.
         leftovers = sandbox_leftovers(cwd)
         problems = describe_leak(leftovers, before, after)
         if problems:
@@ -264,8 +667,8 @@ def main(argv=None):
         print("run_script_tests: %s" % problem, file=sys.stderr)
     if problems:
         print("run_script_tests: %s" % HINT, file=sys.stderr)
-        return proc.returncode or 1
-    return proc.returncode
+        return returncode or 1
+    return returncode
 
 
 if __name__ == "__main__":
