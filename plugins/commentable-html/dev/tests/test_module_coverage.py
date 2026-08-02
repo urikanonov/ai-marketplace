@@ -25,7 +25,9 @@ ASSETS = _paths.ASSETS
 SPEC = os.path.join(DEV, "SPEC.md")
 
 _PART_RE = {"js": re.compile(r"^\d{2}-[a-z0-9-]+\.js$"), "css": re.compile(r"^\d{2}-[a-z0-9-]+\.css$")}
-_ROW_RE = re.compile(r"^\|\s*`([^`]+)`\s*\|\s*([^|]+?)\s*\|")
+# The backticks are optional so a row that forgets them still reaches the guards below instead of
+# being silently skipped (a malformed duplicate would otherwise stay invisible).
+_ROW_RE = re.compile(r"^\|\s*`?([^`|]+?)`?\s*\|\s*([^|]+?)\s*\|")
 
 
 def _read(path):
@@ -47,7 +49,7 @@ def _modules_rows(ext):
         m = _ROW_RE.match(line)
         if not m:
             continue
-        name, areas = m.group(1), m.group(2)
+        name, areas = m.group(1).strip(), m.group(2)
         if not _PART_RE[ext].match(name):
             continue  # skip a code-span in prose that is not a partial filename
         rows.append((name, [a.strip() for a in areas.split(",") if a.strip()]))
@@ -92,6 +94,15 @@ class ModuleCoverageTests(unittest.TestCase):
             "duplicate row silently wins and its SPEC areas can conflict - keep exactly one row "
             "per partial." % (ext, ", ".join("%s (%d rows)" % (n, len(seen[n])) for n in dupes)))
 
+    def _check_row_order(self, ext):
+        listed = [name for name, _areas in _modules_rows(ext)]
+        self.assertEqual(
+            _dir_partials(ext), listed,
+            "%s MODULES.md rows are not in the on-disk directory-sort order that build.py "
+            "concatenates the partials in. A row parked out of order is how a partial ends up "
+            "documented twice: the next author scans the table in numeric order, does not see it, "
+            "and appends a second row (GH #782)." % ext)
+
     def test_js_modules_map_to_real_tested_spec_areas(self):
         self._check_ext("js")
 
@@ -103,6 +114,12 @@ class ModuleCoverageTests(unittest.TestCase):
 
     def test_css_modules_map_has_no_duplicate_rows(self):
         self._check_no_duplicate_rows("css")
+
+    def test_js_modules_rows_follow_the_on_disk_order(self):
+        self._check_row_order("js")
+
+    def test_css_modules_rows_follow_the_on_disk_order(self):
+        self._check_row_order("css")
 
 
 if __name__ == "__main__":

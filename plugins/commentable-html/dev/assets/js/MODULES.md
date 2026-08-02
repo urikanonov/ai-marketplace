@@ -38,7 +38,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `38-validation-banner.js` | CMH-STAMP | Unvalidated-document fallback banner: shown when a document carries a created stamp but no current validated stamp. |
 | `39-callout.js` | CMH-CALLOUT | Callout accessibility: role="note" + variant aria-label (suppressed when an authored leading strong label exists); pairs with the per-variant ::before glyph in 50-content.css. |
 | `40-doc-comments.js` | CMH-DOCCMT | Document-wide comments. |
-| `41-selection.js` | CMH-SEL, CMH-CORE, CMH-RICH | Selection handling and the add-comment popup; keeps the add-comment menu above open composers. |
+| `41-selection.js` | CMH-SEL, CMH-CORE, CMH-RICH, CMH-A11Y, CMH-DECK, CMH-DOCCMT | Selection handling and the add-comment popup (desktop `mouseup` and the coarse-pointer `selectionchange` path); keeps the add-comment menu above open composers; owns the `#contextMenu` ARIA menu (roving focus, Escape focus restore) and the shared `__cmhRegisterEscapePopup` stack; routes the deck slide-scoped and document/deck-wide comment entries and honors the deck comments-off state. |
 | `43-identity.js` | CMH-AUTHOR | Reviewer identity: per-browser author name (localStorage, seedable via `data-cm-author`), the author pill, and the sidebar identity control (editable, future-comments only). |
 | `43-rich-text.js` | CMH-RICH | Rich-text note renderer (`renderRichNote` tokenizer) and the shared formatting toolbar/shortcut helpers (`applyNoteFormat`, `noteFormatBarHtml`, `wireNoteFormatBar`, `handleNoteFormatShortcut`). |
 | `44-threads.js` | CMH-THREAD | Single-level comment threads: reply grouping (`threadRoots`/`repliesOf`), `threadIds`, and orphan-reply pruning. |
