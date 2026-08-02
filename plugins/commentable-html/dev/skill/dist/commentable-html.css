@@ -709,22 +709,6 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   cursor: pointer;
 }
 .cm-sidebar .cm-sidebar-export-menu button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
-/* The provenance toggle is a setting, not an action: align it to the same left edge as the menu
-   items, mute it, and separate it from the export buttons below with a hairline so the menu reads
-   as "one setting, then the export actions". */
-.cm-sidebar-export-menu > label {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--cp-chrome-gap);
-  padding: var(--cp-chrome-menu-item-y) var(--cp-chrome-action-x);
-  margin-bottom: 0.15rem;
-  border-bottom: 1px solid var(--cp-border);
-  color: var(--cp-text-soft);
-  font-size: var(--cp-chrome-tiny-font);
-  line-height: 1.35;
-  cursor: pointer;
-}
-.cm-sidebar-export-menu > label input { flex: none; margin: 0.1rem 0 0; }
 /* The More menu reuses the export-menu shell; mark Clear as destructive. */
 .cm-sidebar-more-menu .cm-menu-group { padding: 0.3rem 0.45rem 0.15rem; font-size: var(--cp-chrome-tiny-font); letter-spacing: 0.08em; text-transform: uppercase; color: var(--cp-text-soft); font-weight: 700; }
 .cm-sidebar-more-menu button.danger { color: var(--cp-danger); }

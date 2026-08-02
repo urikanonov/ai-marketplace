@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.315.0";
+const CMH_VERSION = "1.316.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -10953,50 +10953,6 @@ function _normalizeDocSourceInHtml(html) {
   if (!changed) return raw;
   return raw.slice(0, rootTag.start) + nextTag + raw.slice(rootTag.end);
 }
-function _retainSessionProvenance() {
-  return Array.prototype.some.call(
-    document.querySelectorAll("[data-cmh-retain-session-provenance]"),
-    function (option) { return option.checked; });
-}
-function _stripSessionProvenanceFromHtml(html) {
-  const raw = String(html == null ? "" : html);
-  const lower = raw.toLowerCase();
-  let out = "";
-  let cursor = 0;
-  let search = 0;
-  for (;;) {
-    const start = lower.indexOf("<meta", search);
-    if (start < 0) return out + raw.slice(cursor);
-    if (!/[\s/>]/.test(raw[start + 5] || "")) {
-      search = start + 5;
-      continue;
-    }
-    const end = _cmhTagEnd(raw, start);
-    if (end < 0) return out + raw.slice(cursor);
-    const tag = raw.slice(start, end + 1);
-    const name = _cmhTagAttributes(tag).find(function (attr) {
-      return attr.name === "name" && attr.valueStart != null;
-    });
-    const value = name
-      ? _cmhDecodeAttribute(tag.slice(name.valueStart, name.valueEnd)).toLowerCase() : "";
-    out += raw.slice(cursor, start);
-    if (value !== "commentable-html-session-id" && value !== "commentable-html-agent") out += tag;
-    cursor = end + 1;
-    search = cursor;
-  }
-}
-function _prepareExportHtml(html) {
-  return _retainSessionProvenance() ? html : _stripSessionProvenanceFromHtml(html);
-}
-function _initSessionProvenanceOptions() {
-  const options = Array.prototype.slice.call(document.querySelectorAll("[data-cmh-retain-session-provenance]"));
-  options.forEach(function (option) {
-    option.addEventListener("change", function () {
-      options.forEach(function (other) { other.checked = option.checked; });
-    });
-  });
-}
-_initSessionProvenanceOptions();
 async function _getBaseHtml() {
   // Prefer the on-disk version (cleaner diff). Fall back to the snapshot
   // taken at IIFE start if fetch fails (file://, network unavailable, blocked).
@@ -11166,7 +11122,6 @@ async function saveHtml() {
   baseHtml = _applyChecklistStateToHtml(baseHtml);
   baseHtml = _applyNoteStateToHtml(baseHtml);
   baseHtml = _applyReviewStateToHtml(baseHtml);
-  baseHtml = _prepareExportHtml(baseHtml);
   const exportComments = _exportableComments();
   let text;
   try { text = _buildSavedHtml(baseHtml, exportComments); }
@@ -11239,7 +11194,6 @@ async function saveAsPlain() {
   catch (e) { showToast("Could not load base HTML."); return; }
   baseHtml = _applyChecklistStateToHtml(baseHtml);
   baseHtml = _applyNoteStateToHtml(baseHtml);
-  baseHtml = _prepareExportHtml(baseHtml);
   let text;
   try { text = _buildPlainHtml(baseHtml); }
   catch (e) { showToast(e.message); return; }
@@ -11441,7 +11395,6 @@ async function saveStandalone() {
   baseHtml = _applyChecklistStateToHtml(baseHtml);
   baseHtml = _applyNoteStateToHtml(baseHtml);
   baseHtml = _applyReviewStateToHtml(baseHtml);
-  baseHtml = _prepareExportHtml(baseHtml);
   const exportComments = _exportableComments();
   let text;
   try { text = _buildStandaloneHtml(baseHtml, exportComments); }
@@ -12117,7 +12070,6 @@ async function saveOffline() {
   baseHtml = _applyChecklistStateToHtml(baseHtml);
   baseHtml = _applyNoteStateToHtml(baseHtml);
   baseHtml = _applyReviewStateToHtml(baseHtml);
-  baseHtml = _prepareExportHtml(baseHtml);
   const exportComments = _exportableComments();
   let portable;
   try {
