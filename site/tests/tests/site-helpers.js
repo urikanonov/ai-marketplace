@@ -3,7 +3,10 @@
 // download and the mount - on a cold runner the download eats it and the content assertion is
 // what reports the failure. Scroll the frame in (what a reader reaching the section does), wait
 // for the expected document to finish loading, and only then hand the caller a frame locator.
-async function demoFrameReady(page, selector, expectedFile, timeout = 60000) {
+// The 30s default is deliberately well under the 90s a caller's test.slow() grants, so this wait
+// plus the caller's own mount budget (15-20s) still fits inside the test timeout and a genuinely
+// stuck frame reports the message below rather than a bare "test timeout exceeded".
+async function demoFrameReady(page, selector, expectedFile, timeout = 30000) {
   await page.locator(selector).scrollIntoViewIfNeeded();
   try {
     await page.waitForFunction(
@@ -17,6 +20,9 @@ async function demoFrameReady(page, selector, expectedFile, timeout = 60000) {
       { timeout },
     );
   } catch (error) {
+    // A test-level timeout aborts the wait from outside; reporting it as a frame-load failure
+    // would name the wrong cause (and the wrong duration), so let it through untouched.
+    if (/Test (?:timeout|ended)/i.test(String(error && error.message))) throw error;
     throw new Error(
       `the demo document ${expectedFile || ""} never finished loading in ${selector} within `
         + `${timeout}ms - the frame load failed, not the content assertion that follows`,
