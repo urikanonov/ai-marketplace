@@ -1,14 +1,125 @@
 #!/usr/bin/env python3
 """Tests for scripts/check_spec_test_refs.py."""
 
+import collections
 import os
 import shutil
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_spec_test_refs as refs  # noqa: E402
+
+
+class ReadCachingTests(unittest.TestCase):
+    """Pin that a file's contents are pulled off disk (and parsed) once per run.
+
+    check_spec resolves every reference independently, so before caching a spec with N rows
+    naming the same test file re-read AND re-parsed that file N times. On the real repo that was
+    5490 `_read` calls for ~850 files - roughly six reads each - and it made this checker 58.9s,
+    about 70% of the always-on pre-push time and part of the required `validate` job (issue #833).
+
+    Caching is safe here because the checker is a short-lived process over a static tree, so there
+    is nothing to invalidate. These tests fail on the uncached implementation.
+    """
+
+    def setUp(self):
+        self.sandbox = Path(tempfile.mkdtemp(prefix="spec-refs-cache-"))
+        self.addCleanup(shutil.rmtree, self.sandbox, ignore_errors=True)
+        self.base = self.sandbox / "base"
+        (self.base / "tests").mkdir(parents=True)
+        (self.base / "tests" / "demo.spec.js").write_text(
+            "".join("test('browser title (DEMO-%02d)', async () => {});\n" % i
+                    for i in range(1, 9)),
+            encoding="utf-8", newline="\n",
+        )
+        (self.base / "tests" / "test_demo.py").write_text(
+            "import unittest\n\n"
+            "class DemoTests(unittest.TestCase):\n"
+            + "".join("    def test_case_%02d(self):\n        pass\n\n" % i
+                      for i in range(1, 9)),
+            encoding="utf-8", newline="\n",
+        )
+        rows = "".join(
+            "| DEMO-%02d | Behavior %d. | `tests/demo.spec.js` - `browser title (DEMO-%02d)`; "
+            "`tests/test_demo.py` - `DemoTests.test_case_%02d` |\n" % (i, i, i, i)
+            for i in range(1, 9)
+        )
+        self.spec = self.sandbox / "SPEC.md"
+        self.spec.write_text(
+            "# Spec\n\n| Feature id | Behavior | Covering tests |\n| --- | --- | --- |\n" + rows,
+            encoding="utf-8", newline="\n",
+        )
+
+    def _run_counting_reads(self):
+        """Run check_spec, returning a Counter of how often each path was read FROM DISK."""
+        counts = collections.Counter()
+        original = Path.read_text
+
+        def counting_read_text(self, *args, **kwargs):
+            counts[str(self)] += 1
+            return original(self, *args, **kwargs)
+
+        refs.clear_caches()
+        with mock.patch.object(Path, "read_text", counting_read_text):
+            issues = refs.check_spec(self.spec, self.base)
+        self.assertEqual(issues, [], "fixture should be clean: %r" % (issues,))
+        return counts
+
+    def test_no_file_is_read_from_disk_more_than_once(self):
+        counts = self._run_counting_reads()
+        repeats = {p: n for p, n in counts.items() if n > 1}
+        self.assertEqual(
+            repeats, {},
+            "these files were re-read from disk; the per-path cache is not in effect: %r"
+            % (repeats,))
+
+    def test_the_referenced_test_files_are_read_exactly_once(self):
+        counts = self._run_counting_reads()
+        for name in ("demo.spec.js", "test_demo.py"):
+            hits = [n for p, n in counts.items() if p.endswith(name)]
+            self.assertEqual(hits, [1], "%s was not read exactly once: %r" % (name, hits))
+
+    def test_a_changed_file_is_picked_up_without_any_cache_clearing(self):
+        # Correctness must not depend on a caller remembering to clear: the cache keys on the
+        # file's (mtime, size), so rewriting it invalidates the entry on its own. Before this was
+        # fingerprinted, the tests below in this module all failed - each rewrites the same fixture
+        # paths and was served the previous test's contents.
+        spec = self.sandbox / "SPEC2.md"
+        spec.write_text(
+            "# Spec\n\n| Feature id | Behavior | Covering tests |\n| --- | --- | --- |\n"
+            "| DEMO-01 | B. | `tests/test_demo.py` - `DemoTests.test_case_01` |\n",
+            encoding="utf-8", newline="\n",
+        )
+        self.assertEqual(refs.check_spec(spec, self.base), [])
+
+        (self.base / "tests" / "test_demo.py").write_text(
+            "import unittest\n\nclass DemoTests(unittest.TestCase):\n"
+            "    def test_renamed(self):\n        pass\n",
+            encoding="utf-8", newline="\n",
+        )
+        issues = refs.check_spec(spec, self.base)
+        self.assertTrue(
+            issues, "the rewritten file was served from cache; the fingerprint is not in the key")
+
+    def test_clear_caches_forces_a_cold_read(self):
+        refs.check_spec(self.spec, self.base)
+        counts = self._run_counting_reads()  # clears first, so every file is read once
+        self.assertTrue(counts, "clear_caches did not force any file to be re-read")
+
+
+class RealRepoResultsAreUnchangedTests(unittest.TestCase):
+    """Caching must not change the verdict on the real tree - the whole point is same-in, same-out."""
+
+    def test_repo_check_is_clean_and_repeatable(self):
+        refs.clear_caches()
+        first = refs.check_all()
+        second = refs.check_all()  # served entirely from cache
+        self.assertEqual(first, [], "the repository's spec references should be clean")
+        self.assertEqual(first, second, "a cached second run disagreed with the first")
 
 
 class SpecTestReferenceTests(unittest.TestCase):
