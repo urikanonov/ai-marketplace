@@ -5,7 +5,7 @@ Three directions are checked:
 
 - FORWARD (`check_spec`): every test file and exact test name a spec row cites exists.
 - REVERSE (`check_test_id_mappings`): every test that CARRIES a feature id is owned by that id's
-  spec row. For a target listed in `FULLY_REVERSE_MAPPED_SPECS` this covers its WHOLE test
+  spec row. For a target listed in `FULLY_REVERSE_MAPPED_SPECS` this covers its WHOLE JS test
   corpus; for the rest it covers only what `_is_reverse_mapped` accepts - the `*.test.*` suites
   and the `*regressions*.spec.*` files. A target graduates to the full corpus once every feature
   id its tests carry is owned and cited by its spec, which is a spec cleanup rather than a code
@@ -14,31 +14,38 @@ Three directions are checked:
   test title carried an id no row owned while an existing row already described that behavior AND
   cited that very test - so the cleanup normalized the titles onto the owning id rather than
   minting parallel ids). The set stays as the mechanism, not as a standing exemption: a NEW target
-  added later can start restricted and graduate, but no shipped target is restricted today.
+  that must start restricted is registered in `INTENTIONALLY_RESTRICTED_SPECS`, a reviewed
+  one-line edit rather than a silent omission.
+  A `describe(...)` suite title is checked for OWNERSHIP only (its id must have a row); a row
+  cannot CITE a suite title (issue #629), so demanding a citation for one would be unsatisfiable.
 - DUPLICATE (`check_duplicate_feature_ids`): a feature id carried by test titles in MORE THAN ONE
   file must have every one of those titles cited by a spec row that owns the id, so a new test
   cannot quietly borrow an id another file already owns. It reads the WHOLE test corpus, not just
   the reverse-mapped part. Three rules bound it:
-  - While an id lives in ONE file, this direction demands no citation. That relaxation used to be
-    load-bearing (the `*.spec.*` corpus was not reverse-mapped, so nothing else asked for those
-    citations). Now that every shipped target is fully reverse-mapped it is not: the reverse
-    direction already demands a citation for EVERY test title that carries an id, same-file ones
-    included, and dropping the relaxation was measured to find nothing the reverse direction does
-    not already report. It is kept so a same-file miss is reported ONCE, by the direction that
-    explains it best, instead of twice - and so `check_duplicate_feature_ids`, which is also
-    callable on its own with an ad-hoc `--target`, keeps its narrow cross-file meaning.
+  - While an id lives in ONE file, and every file carrying it belongs to a FULLY reverse-mapped
+    target, this direction demands no citation. That relaxation used to be load-bearing (the
+    `*.spec.*` corpus was not reverse-mapped, so nothing else asked for those citations). Now it
+    is not: the reverse direction already demands a citation for EVERY test title that carries an
+    id, same-file ones included, and dropping the relaxation was measured to find nothing the
+    reverse direction does not already report. It is kept so a same-file miss is reported ONCE, by
+    the direction that explains it best, instead of twice. It is deliberately CONDITIONAL: for a
+    target the reverse direction does not fully read, a plain `*.spec.*` file is invisible to it,
+    so relaxing here too would drop a single-file id through both gates.
   - An id whose AREA (the segment before the first `-`) no spec row anywhere owns is skipped. An
     `HTTP-404` in a title matches the feature-id shape, and must not red CI on its own. A NEW id
     in a known area - `CMH-DECK-99`, say - is still checked even before it has a row, because
     that is exactly the borrow this gate exists to catch.
   - A `describe(...)` wrapper counts toward "how many files carry this id", since hiding a borrow
-    in a suite title is the obvious evasion, but only a `test(...)`/`it(...)` title is REPORTED -
-    a suite title cannot be cited by a row (issue #629), so demanding it be cited would be a
-    demand no author could satisfy.
+    in a suite title is the obvious evasion, but only a `test(...)`/`it(...)` title is REPORTED
+    here - a suite title cannot be cited by a row (issue #629), so demanding it be cited would be
+    a demand no author could satisfy. The reverse direction still checks a suite title's id for
+    OWNERSHIP, which is satisfiable, so a suite-title borrow is not invisible.
 
-Only `test(...)` / `it(...)` titles are read by the REVERSE direction. A `describe(...)` suite
-title groups tests rather than being one, and the forward direction refuses a suite title as
-coverage (issue #629), so a row could not cite one even if asked to.
+The REVERSE direction reads only literal `test(...)` / `it(...)` / `describe(...)` calls that
+BEGIN a line (`_js_test_titles`), so `page.test(...)` is correctly ignored - but so is a
+declaration buried mid-line (`if (cond) test("x (AREA-99)", ...)`) or a title assembled by
+concatenation. There are none in the corpus today; that is the residual escape hatch, and it is a
+grammar limit rather than an exemption.
 """
 
 from __future__ import annotations
@@ -69,6 +76,11 @@ FULLY_REVERSE_MAPPED_SPECS = frozenset({
     (REPO_ROOT / "site" / "tests" / "SPEC.md").resolve(),
     (REPO_ROOT / ".github" / "skills" / "demo-video" / "SPEC.md").resolve(),
 })
+# The targets deliberately left OUT of the set above, i.e. still restricted to the `*.test.*` /
+# regressions subset. Empty today. A new target that genuinely needs to start restricted and
+# graduate later is registered HERE, which is a reviewed one-line edit rather than a silent
+# omission - `test_every_spec_target_is_fully_reverse_mapped` compares the two.
+INTENTIONALLY_RESTRICTED_SPECS: frozenset[Path] = frozenset()
 
 # One grammar for "a JS/TS test file" everywhere. Playwright's default testMatch is
 # `**/*.@(spec|test).?(c|m)[jt]s`, so the corpus the reverse and duplicate directions read must
@@ -89,15 +101,15 @@ _QUOTED_RE = re.compile(r"`([^`]+)`")
 _FEATURE_ID_RE = re.compile(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)*-\d+[a-z]?\b")
 _PY_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?")
 _JS_TITLE_RE = re.compile(
-    r'(?:test\.describe(?:\.(?:only|skip|fixme|serial|parallel))*|'
-    r'(?:test|it|describe)(?:\.(?:only|skip|fixme|serial|parallel))*)\s*\(\s*'
+    r'(?:test\.describe(?:\.(?:only|skip|fixme|fail|serial|parallel))*|'
+    r'(?:test|it|describe)(?:\.(?:only|skip|fixme|fail|serial|parallel))*)\s*\(\s*'
     r'(?:"((?:\\.|[^"\\])*)"|\'((?:\\.|[^\'\\])*)\'|`((?:\\.|[^`\\])*)`)',
     re.DOTALL,
 )
 # Test-only titles: `test(...)` / `it(...)` (with modifiers) but NOT `describe(...)` suite names,
 # so the strict "cite an exact TEST" gate is not satisfied by a suite/group title.
 _JS_TEST_ONLY_RE = re.compile(
-    r'(?:test|it)(?:\.(?:only|skip|fixme|serial|parallel))*\s*\(\s*'
+    r'(?:test|it)(?:\.(?:only|skip|fixme|fail|serial|parallel))*\s*\(\s*'
     r'(?:"((?:\\.|[^"\\])*)"|\'((?:\\.|[^\'\\])*)\'|`((?:\\.|[^`\\])*)`)',
     re.DOTALL,
 )
@@ -677,14 +689,22 @@ def check_test_id_mappings(
     spec_path: Path,
     base_dir: Path,
     test_paths: tuple[Path, ...],
+    ownership_only: bool = False,
 ) -> list[SpecIssue]:
+    """Report tests whose feature id has no owning spec row, or whose row does not cite them.
+
+    With *ownership_only* the citation half is skipped: only "this id has no spec row" is
+    reported. That is the half a RESTRICTED target still gets over its plain `*.spec.*` files, so
+    an id no row owns can never hide there even before the target graduates.
+    """
     rows = _spec_rows(spec_path)
 
     issues: list[SpecIssue] = []
     for test_path in test_paths:
         text = _read(test_path)
         rel = _coverage_rel(base_dir, test_path)
-        for title in sorted(_js_test_titles(text, _JS_TEST_ONLY_RE)):
+        test_titles = _js_test_titles(text, _JS_TEST_ONLY_RE)
+        for title in sorted(test_titles):
             line_no = _title_line(text, title)
             for feature_id in sorted(set(_FEATURE_ID_RE.findall(title))):
                 matching_rows = rows.get(feature_id)
@@ -695,12 +715,30 @@ def check_test_id_mappings(
                         "feature id `%s` has no spec row" % feature_id,
                     ))
                     continue
+                if ownership_only:
+                    continue
                 if not _row_cites(matching_rows, rel, title):
                     issues.append(SpecIssue(
                         test_path,
                         line_no,
                         "test title `%s` is not cited by its `%s` spec row"
                         % (title, feature_id),
+                    ))
+        # A `describe(...)` suite title is checked for OWNERSHIP only. A row cannot cite a suite
+        # title (issue #629), so demanding one would be unsatisfiable - but an id no row owns,
+        # parked in a suite title, IS satisfiable (drop the id, or add the row) and was otherwise
+        # the last carrier both directions missed: REVERSE read only `test`/`it`, and DUPLICATE
+        # skips a single-file id.
+        for title in sorted(_js_test_titles(text, _JS_TITLE_RE) - test_titles):
+            line_no = _title_line(text, title)
+            for feature_id in sorted(set(_FEATURE_ID_RE.findall(title))):
+                if feature_id not in rows:
+                    issues.append(SpecIssue(
+                        test_path,
+                        line_no,
+                        "feature id `%s` has no spec row (carried by the suite title `%s`; a "
+                        "suite title cannot be cited, so drop the id or add its row)"
+                        % (feature_id, title),
                     ))
     return issues
 
@@ -710,7 +748,7 @@ def check_duplicate_feature_ids(
     targets: tuple[tuple[Path, Path], ...] = SPEC_TARGETS,
 ) -> list[SpecIssue]:
     """Fail when one feature id is carried by test titles in more than one FILE and no spec row
-    that owns the id cites every one of them (see the module docstring for the two bounding
+    that owns the id cites every one of them (see the module docstring for the three bounding
     rules)."""
     rows_by_spec: dict[Path, dict[str, list[str]]] = {}
     for spec_path, _base_dir in targets:
@@ -736,8 +774,9 @@ def check_duplicate_feature_ids(
     for feature_id, entries in sorted(uses.items()):
         # Identity is the RESOLVED path: two targets can each hold a `tests/x.spec.js`, and
         # collapsing them by their spec-relative spelling would hide a genuine cross-file reuse.
-        # A single-file id is left to the REVERSE direction, which now demands a citation for
-        # every test title in every shipped target's corpus (see the module docstring).
+        # A single-file id is left to the REVERSE direction (see the module docstring), which now
+        # reads every target's whole corpus for OWNERSHIP and, for a fully mapped target,
+        # citations too.
         if len({test_path.resolve() for test_path, *_rest in entries}) < 2:
             continue
         if feature_id.split("-", 1)[0] not in known_areas:
@@ -781,10 +820,21 @@ def check_all(
     issues: list[SpecIssue] = []
     for spec_path, base_dir in targets:
         issues.extend(check_spec(spec_path, base_dir))
-        reverse_only = spec_path.resolve() not in fully_reverse_mapped
-        reverse_mapped = _test_corpus(spec_path, base_dir, reverse_only=reverse_only)
-        if reverse_mapped:
-            issues.extend(check_test_id_mappings(spec_path, base_dir, reverse_mapped))
+        fully_mapped = spec_path.resolve() in fully_reverse_mapped
+        corpus = _test_corpus(spec_path, base_dir)
+        if fully_mapped:
+            if corpus:
+                issues.extend(check_test_id_mappings(spec_path, base_dir, corpus))
+        else:
+            mapped = tuple(path for path in corpus if _is_reverse_mapped(path.name))
+            if mapped:
+                issues.extend(check_test_id_mappings(spec_path, base_dir, mapped))
+            # The rest of a restricted target's corpus still gets the OWNERSHIP half, so an id no
+            # row owns cannot hide in a plain `*.spec.*` file while the target waits to graduate.
+            rest = tuple(path for path in corpus if not _is_reverse_mapped(path.name))
+            if rest:
+                issues.extend(check_test_id_mappings(
+                    spec_path, base_dir, rest, ownership_only=True))
     issues.extend(check_duplicate_feature_ids(targets))
     return issues
 
