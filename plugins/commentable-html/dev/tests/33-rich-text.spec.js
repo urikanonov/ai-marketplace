@@ -652,7 +652,19 @@ test.describe("rich-text comment notes (CMH-RICH)", () => {
     await expect(ta).toHaveValue("mid composition");
     await ta.press("Escape");
     await expect(ta).toHaveValue("mid composition");
+    // ... and so are the Save and Cancel BUTTONS, whose pointer press would otherwise end the
+    // composition before the click arrived and let it through.
+    await pop.locator('[data-act="edit-save"]').click();
+    await expect(ta).toHaveValue("mid composition");
+    expect((await storedComments(page))[0].note).toBe("root note");
+    await pop.locator('[data-act="edit-cancel"]').click();
+    await expect(ta).toHaveValue("mid composition");
     await ta.evaluate((el) => el.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true })));
+    // Once the composition commits, Cancel works again.
+    await pop.locator('[data-act="edit-cancel"]').click();
+    await expect(pop.locator(".cm-comment-popover-note.cmh-rich")).toHaveText("root note");
+    await pop.locator('[data-act="edit"]').click();
+    await expect(ta).toBeVisible();
 
     // Escape still cancels the edit back to the note view, leaving the dialog open (unchanged).
     await ta.press("Escape");

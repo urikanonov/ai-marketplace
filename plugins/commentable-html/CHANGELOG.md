@@ -19,7 +19,6 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   the toolbar, save, and cancel are all inert, so a candidate window can never splice markers into
   provisional text or discard the draft. The toolbar is tightened to fit the fixed-width dialog on one
   row, and keeps a >=44px touch target on phones (wrapping rather than overflowing).
-
 ## [1.282.0] - 2026-08-02
 
 ### Fixed

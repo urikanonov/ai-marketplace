@@ -12032,12 +12032,32 @@ function _renderCommentPopoverEdit(c) {
     _focusPopoverEditButton();
     if (typeof _afterInlineSaveQuota === "function") _afterInlineSaveQuota(ok, "edit");
   }
+  const acts = el.querySelector(".cm-comment-popover-acts");
+  // A pointer press on Save/Cancel ends an IME composition before the click arrives, so the click
+  // alone cannot tell it began mid-composition. Latch the state at press time (and swallow that
+  // press so it does not end the composition), so an accidental activation during a candidate
+  // window neither commits nor discards the draft. A keyboard activation has no press, so the live
+  // composition state answers for it.
+  let _pressedComposing = false;
+  const actsDown = (e) => {
+    _pressedComposing = isNoteComposing(ta);
+    if (_pressedComposing) { e.preventDefault(); e.stopPropagation(); }
+  };
+  acts.addEventListener("pointerdown", actsDown);
+  acts.addEventListener("mousedown", actsDown);
+  function actsComposing() {
+    const was = _pressedComposing || isNoteComposing(ta);
+    _pressedComposing = false;
+    return was;
+  }
   el.querySelector('[data-act="edit-save"]').addEventListener("click", (e) => {
     e.preventDefault(); e.stopPropagation();
+    if (actsComposing()) return;
     doSave();
   });
   el.querySelector('[data-act="edit-cancel"]').addEventListener("click", (e) => {
     e.preventDefault(); e.stopPropagation();
+    if (actsComposing()) return;
     _cancelCommentPopoverEdit();
   });
   // Clear the blank-note invalid state as soon as the reviewer types or formats, matching the
@@ -12053,7 +12073,7 @@ function _renderCommentPopoverEdit(c) {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); doSave(); }
   };
   wrap.addEventListener("keydown", onEditorKeydown);
-  el.querySelector(".cm-comment-popover-acts").addEventListener("keydown", onEditorKeydown);
+  acts.addEventListener("keydown", onEditorKeydown);
   _positionCommentPopover(_popoverAnchorMark);
   setTimeout(() => { try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {} }, 0);
 }
