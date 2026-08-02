@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.295.0";
+const CMH_VERSION = "1.297.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -1196,6 +1196,26 @@ function _rectInViewport(r) {
     r.bottom > 4 && r.top < window.innerHeight - 4 &&
     r.right > 4 && r.left < window.innerWidth - 4;
 }
+// The diagram-host shapes, normalized ONCE from the shared vocabulary (CMH_MERMAID_SEL,
+// 03-selectors.js) rather than re-typed, so the clip layer cannot drift from the vocabulary the rest
+// of the runtime indexes by. Empty tokens are dropped and a non-string vocabulary degrades to an
+// empty list, matching `_printMermaidCapSel()`'s contract in 83-print.js: these tokens are spliced
+// into selector LISTS, and one invalid selector makes a browser drop the whole list - here that
+// means `closest()` THROWS and every floating control in the document dies at once. The comma split
+// assumes CMH_MERMAID_SEL stays a list of simple compound selectors, which it is (a future entry
+// with a comma inside `:is(...)` would need a real parser).
+var MERMAID_HOST_TOKENS = (typeof CMH_MERMAID_SEL === "string" ? CMH_MERMAID_SEL : "")
+  .split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+// The `.cmh-diagram-gallery` CARD shapes: a direct-child diagram host, or a direct-child <figure>
+// wrapper.
+var GALLERY_CARD_SEL = MERMAID_HOST_TOKENS.map(function (s) {
+  return ".cmh-diagram-gallery > " + s;
+}).concat([".cmh-diagram-gallery > figure"]).join(", ");
+// The generic clip/scroll containers a floating control is clamped to, outside a gallery card. Built
+// from the same normalized tokens: a literal `pre.mermaid` here left a standalone `div.mermaid` host
+// unrecognised, and its Add button escaped the host's box (issue #769).
+var CLIP_CONTAINER_SEL = MERMAID_HOST_TOKENS
+  .concat([CMH_CHART_FIGURE_SEL, "table", ".cmh-diff-raw"]).join(", ");
 function _clipContainerFor(node) {
   const el = node && (node.nodeType === 1 ? node : node.parentElement);
   if (!el || !el.closest) return null;
@@ -1210,9 +1230,9 @@ function _clipContainerFor(node) {
   // clipped, instead of being clamped to the full (over-wide) table rect. `closest` (not the
   // immediate parent) because an INNER table of a nested pair sits in a `td`, several levels below
   // the wrapper that actually clips it.
-  const gallery = el.closest(".cmh-diagram-gallery > pre.mermaid, .cmh-diagram-gallery > div.mermaid, .cmh-diagram-gallery > figure");
+  const gallery = el.closest(GALLERY_CARD_SEL);
   if (gallery) return gallery;
-  const generic = el.closest("pre.mermaid, figure.chart, table, .cmh-diff-raw");
+  const generic = el.closest(CLIP_CONTAINER_SEL);
   if (generic && generic.tagName === "TABLE") return generic.closest(".cmh-table-scroll") || generic;
   return generic;
 }
@@ -1364,7 +1384,6 @@ function updateMermaidWidthClass(host) {
 // attributes there and on a desktop->mobile resize, leaving the comment tab stop intact. `host` is a
 // mermaid host; the actual gallery CARD is resolved with closest over the exact card selectors.
 var GALLERY_SCROLL_LABEL = "Scrollable diagram - use the arrow keys to scroll";
-var GALLERY_CARD_SEL = ".cmh-diagram-gallery > pre.mermaid, .cmh-diagram-gallery > div.mermaid, .cmh-diagram-gallery > figure";
 function markGalleryCardScrollable(host) {
   const card = host && host.closest && host.closest(GALLERY_CARD_SEL);
   if (!card) return;

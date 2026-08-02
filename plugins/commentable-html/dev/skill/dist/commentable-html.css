@@ -1676,9 +1676,17 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: 
   margin: 0; padding-top: 0.85rem;
   border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0;
 }
-#commentRoot pre.mermaid { background: none; border: 0; border-radius: 0; padding: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
-#commentRoot pre.mermaid svg { max-width: none; }
-#commentRoot pre.mermaid.cmh-diagram-scroll-fade {
+/* Both diagram host shapes carry the same box (see CMH_MERMAID_SEL in assets/js/03-selectors.js): a
+   wide diagram scrolls inside its own block instead of overflowing the column, and that block is the
+   clipping box the floating diagram controls clamp to (CMH-RESP-02). Only the resets are pre-only -
+   they undo the code-block chrome a <pre> inherits, which a <div> never had. */
+#commentRoot pre.mermaid { background: none; border: 0; border-radius: 0; padding: 0; }
+#commentRoot pre.mermaid,
+#commentRoot div.mermaid { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+#commentRoot pre.mermaid svg,
+#commentRoot div.mermaid svg { max-width: none; }
+#commentRoot pre.mermaid.cmh-diagram-scroll-fade,
+#commentRoot div.mermaid.cmh-diagram-scroll-fade {
   -webkit-mask-image: linear-gradient(to right, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
   mask-image: linear-gradient(to right, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
 }
@@ -1702,7 +1710,8 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: 
 @media (max-width: 480px) {
   /* Keep only genuinely wide mermaid diagrams legible (they scroll inside their box).
      Small diagrams and responsive Chart.js canvases fit the viewport on their own. */
-  #commentRoot pre.mermaid.cmh-diagram-wide svg { min-width: 560px; }
+  #commentRoot pre.mermaid.cmh-diagram-wide svg,
+  #commentRoot div.mermaid.cmh-diagram-wide svg { min-width: 560px; }
 }
 /* KQL syntax token colors (primer-style; light defaults + dark overrides). Plain
    identifiers/columns inherit --cp-text; only these categories are tinted. */

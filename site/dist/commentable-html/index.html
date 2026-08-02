@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.295.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.297.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.297.0] - 2026-08-02</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A floating diagram control now stays clipped to a standalone <code>div.mermaid</code> host exactly as it does to a <code>pre.mermaid</code> one. The clip/scroll container fallback that positions the floating <code>Add Comment</code> / <code>Comment on diagram</code> buttons and the highlight bubble re-typed its container list and named only <code>pre.mermaid</code>, so in a document that authors its diagrams as <code>div.mermaid</code> - a shape the runtime indexes as a diagram host everywhere else - the button escaped the host&#x27;s clipping box and floated over unrelated content. The recognised containers (both the <code>.cmh-diagram-gallery</code> card shapes and the generic fallback) are now DERIVED from the shared <code>CMH_MERMAID_SEL</code> / <code>CMH_CHART_FIGURE_SEL</code> vocabulary through one normalized token list, and a guard pins that derivation, so the clip layer can no longer drift from the vocabulary the rest of the runtime uses.</li>
+              <li>An unstyled <code>div.mermaid</code> host is now the same scrolling box as a <code>pre.mermaid</code> one. The layer&#x27;s stylesheet gave only <code>pre.mermaid</code> the <code>overflow-x: auto</code> box, the <code>svg { max-width: none }</code> reset, the scroll-fade edge cue, and the mobile wide-diagram min-width - even though the runtime indexes both host shapes and toggles those very classes on both. A document that authors its diagrams as <code>div.mermaid</code> therefore had no scroll box for a wide diagram, and no clipping box for the floating controls above to clamp to.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.295.0] - 2026-08-02</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -505,6 +513,8 @@
               <li>The Help panel&#x27;s &quot;Formatting your comment&quot; topic documents the toolbar&#x27;s single tab stop and its arrow-key navigation.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.293.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -512,8 +522,6 @@
               <li>A side-pane reply or edit draft that survives a sidebar re-render (sorting, a note-typing debounce, a checklist change) now keeps its SELECTION, not just its text. The panel&#x27;s inline editor carries the formatting toolbar, so a re-render that landed between selecting a word and clicking Bold used to collapse the caret to the end of the draft and append bare <code>****</code> instead of wrapping the word. The draft snapshot now records <code>selectionStart</code>/<code>selectionEnd</code> (and the selection direction) and the re-opened editor restores that range. Re-clicking the edit action on an editor that is already open now only re-focuses it, keeping the live selection and its anchor direction instead of collapsing to the end.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.292.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -544,15 +552,7 @@
               <li>The same shared boundary layer closes several smaller cross-version and tree-construction gaps: <code>&lt;plaintext&gt;</code> swallows the rest of the document exactly as a browser does (even past a <code>&lt;/plaintext&gt;</code> that looks like a closer), a tag name folds ASCII-case-insensitively only (so <code>&lt;/\u017fcript&gt;</code> does not end a <code>&lt;script&gt;</code>), the host&#x27;s RCDATA character-reference decoding is no longer inherited (3.13 decoded inside <code>&lt;title&gt;</code>/<code>&lt;textarea&gt;</code>, 3.12 did not), a self-closed foreign element such as <code>&lt;svg&gt;&lt;rect id=&quot;x&quot;/&gt;</code> is recorded as the element it is and never left open, a self-closed void tag such as <code>&lt;hr/&gt;</code> closes an open <code>&lt;p&gt;</code> in both parsers, the implicit <code>&lt;/p&gt;</code> / <code>&lt;/li&gt;</code> close respects HTML5 scope across an <code>&lt;svg&gt;&lt;foreignObject&gt;</code> (while an HTML element merely NAMED <code>&lt;desc&gt;</code> still stops nothing), and the marker scan blanks every raw-text body, so a region marker quoted in a <code>&lt;textarea&gt;</code> or the print <code>&lt;noscript&gt;</code> is not a boundary.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.280.0] - 2026-08-01</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A <code>div.mermaid</code> diagram is now constrained when printing or saving to PDF, exactly like a <code>pre.mermaid</code> one. The printable-height cap (8.4in, so a tall diagram scales to fit one page instead of overflowing or splitting across a break) was scoped to <code>pre.mermaid svg</code>, while the runtime renders diagrams into BOTH <code>pre.mermaid</code> and <code>div.mermaid</code>. A document that authored its diagrams as <code>div.mermaid</code> therefore printed an unconstrained SVG that could run off the page. The cap lives in two surfaces that must agree - the <code>@media print</code> stylesheet and the <code>measureCss()</code> string used to measure single-page height - and BOTH omitted the host.</li>
-              <li><code>measureCss()</code> no longer re-types the diagram vocabulary: it DERIVES its mermaid hosts from the shared <code>CMH_MERMAID_SEL</code> definition. The print stylesheet is plain CSS and cannot reference a constant, so it still spells the hosts out, but it is now PINNED two-directionally to that same definition - so neither PRINT surface can drift back to covering half the hosts.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">235 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">236 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

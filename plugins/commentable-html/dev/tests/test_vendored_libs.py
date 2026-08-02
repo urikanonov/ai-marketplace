@@ -833,6 +833,60 @@ class RuntimeParityTests(unittest.TestCase):
                 "split across concatenated string literals; derive it from CMH_MERMAID_SEL "
                 "instead" % host)
 
+    def test_the_clip_layer_derives_its_containers_from_the_shared_constant(self):
+        """CMH-RESP-02: the clip-container selectors must DERIVE their hosts, not re-type them.
+
+        `_clipContainerFor()` in `20-mermaid.js` resolves the box a floating diagram control is
+        clamped to. Its container lists have to name the mermaid hosts, and re-typing them there is
+        exactly how a standalone `div.mermaid` fell out of the clip layer while `pre.mermaid` kept
+        it (issue #769): the list was written once as `pre.mermaid` alone and never revisited when
+        the runtime learned the second host. The sibling backstop
+        (`test_no_other_partial_re_types_a_declared_selector_list_verbatim`) cannot catch this - it
+        only matches a WHOLESALE copy of a declared list, and the historical bug was a VARIANT
+        (`pre.mermaid, figure.chart, table, .cmh-diff-raw`), which normalizes to a string that is
+        not in `declared` and so passes. This pins the derivation itself, mirroring
+        `test_the_print_measure_css_derives_its_mermaid_hosts_from_the_shared_constant` for the
+        print surface.
+
+        Three things are asserted, because any one alone is false-greenable: the token list really
+        reads the shared constant, both selectors really BUILD from those tokens (a list that
+        merely sits beside them is not wired up), and no string literal in the file re-types a
+        host behind their back. All of it runs on comment-blanked code, so a comment naming an
+        identifier cannot stand in for the code that used to use it.
+        """
+        source = self._read("20-mermaid.js")
+        literals, code = self._scan_js(source)
+        self.assertIn(
+            "CMH_MERMAID_SEL", code,
+            "20-mermaid.js no longer reads the shared CMH_MERMAID_SEL constant; the clip-container "
+            "selectors must derive their diagram hosts from 03-selectors.js, not re-type them")
+        # The normalized token list is the single seam both selectors build from. Pin that BOTH are
+        # built from it: a derived gallery list beside a hand-typed clip list is exactly the
+        # half-migrated state issue #769 fixed.
+        self.assertRegex(
+            code, r"var MERMAID_HOST_TOKENS\s*=[^;]*CMH_MERMAID_SEL",
+            "MERMAID_HOST_TOKENS must be built from CMH_MERMAID_SEL, so every clip-container "
+            "selector in this partial shares one normalization of the shared vocabulary")
+        for name in ("GALLERY_CARD_SEL", "CLIP_CONTAINER_SEL"):
+            self.assertRegex(
+                code, r"var %s\s*=[^;]*MERMAID_HOST_TOKENS" % name,
+                "%s must be BUILT from MERMAID_HOST_TOKENS; a list that re-types the hosts (or is "
+                "assembled some other way) can drift from the vocabulary again" % name)
+        # And the resolver has to actually USE them - a derived constant nothing queries leaves the
+        # clip layer on whatever literal replaced it.
+        resolver = self._function_body(code, "_clipContainerFor")
+        for name in ("GALLERY_CARD_SEL", "CLIP_CONTAINER_SEL"):
+            self.assertIn(
+                name, resolver,
+                "_clipContainerFor() must query %s; a derived selector the resolver never uses "
+                "does not clip anything" % name)
+        for host in self._mermaid_hosts():
+            self.assertNotIn(
+                host, "".join(literals),
+                "20-mermaid.js re-types the mermaid host %r that 03-selectors.js already declares "
+                "(including split across concatenated string literals); derive it from "
+                "CMH_MERMAID_SEL instead, or the two can drift again" % host)
+
     def test_the_print_stylesheet_caps_exactly_the_shared_mermaid_hosts(self):
         """CMH-PRINT-07: pin the one surface that CANNOT import the constant.
 
