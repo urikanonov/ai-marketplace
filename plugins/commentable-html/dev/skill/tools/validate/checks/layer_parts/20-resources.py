@@ -103,6 +103,12 @@ def _check_self_contained(html, parser, nonportable):
                     (re.search(r"\bimport\s*\(", body) and re.search(r"['\"](?:https?:)?//[^'\"]*['\"]", body, re.I)) or \
                     re.search(r"\b(?:import|from)\s+['\"](?:https?:)?//", body, re.I):
                 errors.append("offline mode: inline script imports a network module - inline or remove it")
+            if offline_script_navigates_to_network(body):
+                errors.append("offline mode: inline script source matches a direct top-level "
+                              "navigation to a network URL - such a navigation beacons the whole "
+                              "document (reviewer comments included) and no CSP directive in a "
+                              "<meta> can stop it; remove the navigation, or reword the comment or "
+                              "string literal that matches it")
     return errors, warnings
 
 

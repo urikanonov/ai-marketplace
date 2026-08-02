@@ -4,6 +4,39 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.310.0] - 2026-08-02
+
+### Security
+
+- The Offline export no longer leaves top-level navigation as an open exfiltration channel, and
+  states exactly what it can and cannot promise. The zero-network CSP blocks every subresource
+  path, but no policy delivered in a `<meta>` can restrict where a script NAVIGATES the document
+  (`navigate-to` was dropped from CSP Level 3 and ships in no browser; `sandbox` is ignored in a
+  meta-delivered policy), so an inline script the export deliberately preserves could beacon the
+  whole document - every reviewer comment with it - by assigning `location.href`. The loader strip
+  now removes a runnable inline script that carries a direct scripted navigation to a network URL
+  literal (a `location.href` assignment, a `location.assign` or `.replace` call, an assignment to a
+  prefixed or statement-position `location`, or a prefixed `open(` call, reached through a
+  repeatable chain of the global prefixes `window`, `self`, `top`, `parent`, `globalThis`,
+  `document` and `frames`), exactly as it already
+  removed one carrying a remote dynamic module load, and the strict validator applies the identical
+  pattern so a hand-authored offline file with that shape is no longer certified offline-clean.
+  When the export drops a script, it now says so in the download toast instead of removing it
+  silently.
+- Offline exports now carry `<meta name="referrer" content="no-referrer">` (replacing any authored
+  referrer meta, since the last one declared wins) and drop per-element `referrerpolicy`
+  attributes, so a navigation that still happens - a reader clicking an authored link - leaks no
+  referrer.
+- The residual is documented rather than implied away, in BOTH directions. The strip reads raw
+  source for a literal shape, so it misses an aliased sink (`var l = location; l.href = ...`),
+  computed access, a URL assembled at runtime, a bare unprefixed `open(...)`, a bare `location =`
+  that does not follow a statement delimiter, anything inside a script carrying one of the four
+  reserved ids the strip skips, and any other navigation sink (a synthesized anchor click, a
+  script-injected refresh meta). In the other direction it removes any preserved script that
+  navigates to a network URL literal at all - an intentional SSO redirect or help popup included -
+  and over-matches a script whose comment or string merely spells one of those shapes. See the
+  CMH-OFFLINE-05 spec row, which also records why per-script hashes were rejected as a fix.
+
 ## [1.297.0] - 2026-08-02
 
 ### Fixed

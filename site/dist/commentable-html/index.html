@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.297.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.310.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,15 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.310.0] - 2026-08-02</h3></div>
+            <div class="group-label">Security</div>
+            <ul>
+              <li>The Offline export no longer leaves top-level navigation as an open exfiltration channel, and states exactly what it can and cannot promise. The zero-network CSP blocks every subresource path, but no policy delivered in a <code>&lt;meta&gt;</code> can restrict where a script NAVIGATES the document (<code>navigate-to</code> was dropped from CSP Level 3 and ships in no browser; <code>sandbox</code> is ignored in a meta-delivered policy), so an inline script the export deliberately preserves could beacon the whole document - every reviewer comment with it - by assigning <code>location.href</code>. The loader strip now removes a runnable inline script that carries a direct scripted navigation to a network URL literal (a <code>location.href</code> assignment, a <code>location.assign</code> or <code>.replace</code> call, an assignment to a prefixed or statement-position <code>location</code>, or a prefixed <code>open(</code> call, reached through a repeatable chain of the global prefixes <code>window</code>, <code>self</code>, <code>top</code>, <code>parent</code>, <code>globalThis</code>, <code>document</code> and <code>frames</code>), exactly as it already removed one carrying a remote dynamic module load, and the strict validator applies the identical pattern so a hand-authored offline file with that shape is no longer certified offline-clean. When the export drops a script, it now says so in the download toast instead of removing it silently.</li>
+              <li>Offline exports now carry <code>&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;</code> (replacing any authored referrer meta, since the last one declared wins) and drop per-element <code>referrerpolicy</code> attributes, so a navigation that still happens - a reader clicking an authored link - leaks no referrer.</li>
+              <li>The residual is documented rather than implied away, in BOTH directions. The strip reads raw source for a literal shape, so it misses an aliased sink (<code>var l = location; l.href = ...</code>), computed access, a URL assembled at runtime, a bare unprefixed <code>open(...)</code>, a bare <code>location =</code> that does not follow a statement delimiter, anything inside a script carrying one of the four reserved ids the strip skips, and any other navigation sink (a synthesized anchor click, a script-injected refresh meta). In the other direction it removes any preserved script that navigates to a network URL literal at all - an intentional SSO redirect or help popup included - and over-matches a script whose comment or string merely spells one of those shapes. See the CMH-OFFLINE-05 spec row, which also records why per-script hashes were rejected as a fix.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.297.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -503,6 +512,8 @@
               <li>An unstyled <code>div.mermaid</code> host is now the same scrolling box as a <code>pre.mermaid</code> one. The layer&#x27;s stylesheet gave only <code>pre.mermaid</code> the <code>overflow-x: auto</code> box, the <code>svg { max-width: none }</code> reset, the scroll-fade edge cue, and the mobile wide-diagram min-width - even though the runtime indexes both host shapes and toggles those very classes on both. A document that authors its diagrams as <code>div.mermaid</code> therefore had no scroll box for a wide diagram, and no clipping box for the floating controls above to clamp to.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.295.0] - 2026-08-02</h3></div>
             <div class="group-label">Changed</div>
@@ -513,8 +524,6 @@
               <li>The Help panel&#x27;s &quot;Formatting your comment&quot; topic documents the toolbar&#x27;s single tab stop and its arrow-key navigation.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.293.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -543,16 +552,7 @@
               <li>The in-document comment dialog (the one you get by clicking a highlight) now offers the same rich-text editing as the floating composer and the side panel. Its Edit form carries the shared formatting toolbar (bold, italic, underline, strikethrough, inline code, link, bullet list) above the textarea, and Ctrl/Cmd+B/I/U/K apply the matching formatting - from the textarea and from a focused toolbar, Cancel, or Save button, since the keys are bound to the editor and action containers rather than the textarea. Ctrl/Cmd+Enter still saves and Escape still cancels back to the rendered note with the dialog left open; a blank save still marks the field invalid, and formatting (not just typing) now clears that state. Mid-IME-composition the toolbar, save, and cancel are all inert, so a candidate window can never splice markers into provisional text or discard the draft. The toolbar is tightened to fit the fixed-width dialog on one row, and keeps a &gt;=44px touch target on phones (wrapping rather than overflowing).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.282.0] - 2026-08-02</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The validator&#x27;s two tolerant parsers now share ONE set of element boundaries, so a document reads the same whichever check is asking and whichever Python is running. The <code>&lt;pre&gt;</code>/<code>&lt;code&gt;</code> tokenizer already drew the boundary a browser draws; the DOCUMENT parser - the view the chart, link, id, heading, meta, anchor, <code>&lt;style&gt;</code>/<code>&lt;script&gt;</code> and content-region checks all read - still inherited whatever tables the host <code>html.parser</code> shipped, so the same file could be two different documents. Both now derive from a shared <code>_BrowserBoundaries</code> base: every HTML raw-text / RCDATA element (<code>script</code>, <code>style</code>, <code>textarea</code>, <code>title</code>, <code>xmp</code>, <code>iframe</code>, <code>noembed</code>, <code>noframes</code>, <code>noscript</code>) holds TEXT, a raw-text element closes on <code>&lt;/name</code> followed by whitespace, <code>/</code> or <code>&gt;</code> (<code>&lt;/script data-x&gt;</code>, <code>&lt;/script/&gt;</code>), a comment closes at <code>--&gt;</code>, <code>--!&gt;</code> and the abrupt <code>&lt;!--&gt;</code> / <code>&lt;!---&gt;</code> but never at <code>-- &gt;</code>, an unterminated comment consumes the rest of the document, and <code>&lt;![CDATA[ ... ]]&gt;</code> is a section only inside <code>svg</code>/<code>math</code> content (elsewhere it is a bogus comment ending at the first <code>&gt;</code>, so the markup after it is live).</li>
-              <li>Concretely: a <code>&lt;canvas&gt;</code>, an <code>&lt;a href target&gt;</code>, an <code>id</code> or a heading quoted inside a <code>&lt;textarea&gt;</code>, a <code>&lt;title&gt;</code> or a <code>&lt;noscript&gt;</code> is prose a reader SEES, so it no longer raises chart errors (&quot;no renderer was found&quot;, &quot;not inside a cm-skip wrapper&quot;) or a same-tab link warning on a clean document; markup a browser keeps LIVE after a <code>--!&gt;</code> close, after a <code>&lt;/script data-x&gt;</code> closer or after a <code>&lt;![CDATA[</code> opener is no longer silently skipped; and markup a browser hides (behind <code>-- &gt;</code>, inside an unterminated comment, inside a real CDATA section in foreign content) is no longer resurrected. Python 3.12 and 3.13+ now agree.</li>
-              <li>The same shared boundary layer closes several smaller cross-version and tree-construction gaps: <code>&lt;plaintext&gt;</code> swallows the rest of the document exactly as a browser does (even past a <code>&lt;/plaintext&gt;</code> that looks like a closer), a tag name folds ASCII-case-insensitively only (so <code>&lt;/\u017fcript&gt;</code> does not end a <code>&lt;script&gt;</code>), the host&#x27;s RCDATA character-reference decoding is no longer inherited (3.13 decoded inside <code>&lt;title&gt;</code>/<code>&lt;textarea&gt;</code>, 3.12 did not), a self-closed foreign element such as <code>&lt;svg&gt;&lt;rect id=&quot;x&quot;/&gt;</code> is recorded as the element it is and never left open, a self-closed void tag such as <code>&lt;hr/&gt;</code> closes an open <code>&lt;p&gt;</code> in both parsers, the implicit <code>&lt;/p&gt;</code> / <code>&lt;/li&gt;</code> close respects HTML5 scope across an <code>&lt;svg&gt;&lt;foreignObject&gt;</code> (while an HTML element merely NAMED <code>&lt;desc&gt;</code> still stops nothing), and the marker scan blanks every raw-text body, so a region marker quoted in a <code>&lt;textarea&gt;</code> or the print <code>&lt;noscript&gt;</code> is not a boundary.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">236 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">237 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

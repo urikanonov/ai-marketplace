@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.297.0" />
+<meta name="commentable-html-version" content="1.310.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.297.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.310.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable Visuals Matrix</title>
 
@@ -4236,7 +4236,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.297.0";
+const CMH_VERSION = "1.310.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -15650,6 +15650,26 @@ function _ensureOfflineCsp(doc) {
   meta.setAttribute("http-equiv", "Content-Security-Policy");
   meta.setAttribute("content", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
   head.insertBefore(meta, head.firstChild);
+  // No CSP directive delivered in a <meta> can restrict TOP-LEVEL NAVIGATION (`navigate-to` was
+  // dropped from CSP Level 3 and ships in no browser; `sandbox` is ignored in a meta-delivered
+  // policy), so a navigation that does happen - a reader clicking an authored link, or a preserved
+  // script the strip's literal-URL test cannot see through - is not blockable here. It can at
+  // least carry no provenance: an authored referrer policy is replaced rather than merged, because
+  // the LAST referrer meta a document declares wins and a permissive one (`unsafe-url`) would
+  // otherwise leak the local file path of the reviewed document to whatever it navigates to.
+  doc.querySelectorAll("meta[name]").forEach(function (m) {
+    if ((m.getAttribute("name") || "").toLowerCase() === "referrer") m.remove();
+  });
+  // The pragma spelling is not in the HTML spec's pragma-directive list, so a conformant browser
+  // ignores it - but it appears in the wild, this whole strip is precautionary anyway, and leaving
+  // an authored `unsafe-url` in the file would be a confusing contradiction of the meta beside it.
+  doc.querySelectorAll("meta[http-equiv]").forEach(function (m) {
+    if ((m.getAttribute("http-equiv") || "").toLowerCase() === "referrer-policy") m.remove();
+  });
+  const referrer = doc.createElement("meta");
+  referrer.setAttribute("name", "referrer");
+  referrer.setAttribute("content", "no-referrer");
+  head.insertBefore(referrer, meta.nextSibling);
 }
 function _offlineScriptHasNetworkImport(body) {
   const src = String(body || "");
@@ -15658,19 +15678,76 @@ function _offlineScriptHasNetworkImport(body) {
     /\bfrom\s+["'](?:https?:)?\/\//i.test(src) ||
     /\bimport\s+["'](?:https?:)?\/\//i.test(src);
 }
+// A DIRECT scripted top-level navigation to a network URL. This is the one egress channel the
+// zero-network CSP cannot close (see `_ensureOfflineCsp`), and it is the WHOLE document that leaks
+// - every reviewer comment with it - so a script carrying one is dropped exactly like one carrying
+// a remote dynamic module load. Four shapes are recognized: an assignment to a `location` property
+// (`href`, or an `assign`/`replace` call), an assignment to `location` itself through a global
+// prefix chain, a bare assignment to `location` in statement position, and a prefixed `open` call.
+// The prefix chain is repeatable and tolerates optional chaining, so `window.top.location...` and
+// `window?.location...` are covered, not just a single prefix.
+// Every metacharacter whose meaning DIFFERS between JavaScript and Python is spelled out instead:
+// `\w` is ASCII-only in JS but Unicode-aware in Python, and JS whitespace includes U+FEFF while
+// Python's does not, so a shared `\s`/`\w` made the two copies disagree on real inputs (the
+// validator would then certify a file the exporter strips, and vice versa). The literal classes
+// below make the pattern mean the same thing in both engines.
+// Deliberately literal, matching the import test next to it - and therefore NOT a boundary. It sees
+// only these sinks, written out directly: an alias (`var l = location; l.href = ...`), computed
+// access (`location["href"]`), a comment between the sink and the URL, a URL assembled at runtime,
+// or an entirely different sink (a synthesized anchor click, a script-injected refresh meta) all
+// pass through. A BARE unprefixed `open(<url>)` is deliberately not matched either: in raw source
+// it cannot be told apart from a local `open` helper, and deleting the wrong script is the costlier
+// error. A bare `location = <url>` is matched only after a delimiter that cannot begin a
+// declaration (`;`, `}`, `)`, `>`, or a line break), so a purely local binding - a `var`/`let`/
+// `const` declaration, a parameter default, a destructuring default - is left alone; the cost is
+// that a same-line `{ location = <url> }` is missed. It also over-matches: the URL literal is found
+// in raw source, so a script whose COMMENT or STRING merely spells one of these shapes is stripped
+// too. Both directions are stated in CMH-OFFLINE-05 rather than papered over.
+// Each optional `?` is bound inside its own group rather than sitting between two unbounded
+// whitespace runs: the earlier `WS*\??WS*\.` let one input run split every way, which took ~2.7s in
+// Python and ~10s in node on a 20k-space input - a denial of service on exactly the hostile
+// document this defends against. `test_the_navigation_pattern_cannot_be_made_to_backtrack` pins it.
+// This comment must not spell out a navigation sink followed by a network URL literal: the layer's
+// own script is stripped by the same pass, so writing the pattern out here deletes the runtime from
+// every offline export (it did, once - the whole suite went red at "JS region has no closing
+// script tag"). `test_the_layer_script_survives_its_own_offline_strips` guards it.
+const _OFFLINE_NAV_TO_NETWORK_RE = /(?:(?:^|[^.A-Za-z0-9_$])(?:(?:window|self|top|parent|globalThis|document|frames)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)*location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:href[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)|(?:assign|replace)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\()|(?:^|[^.A-Za-z0-9_$])(?:(?:window|self|top|parent|globalThis|document|frames)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)+(?:location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)|open[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\()|(?:^|[;})>\n\r\u2028\u2029])[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=))[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*["'`](?:https?:)?\/\//i;
+const _OFFLINE_NAV_PREFIXED_RE = /(?:(?:^|[^.A-Za-z0-9_$])(?:(?:window|self|top|parent|globalThis|document|frames)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)+location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:href[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)|(?:assign|replace)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\()|(?:^|[^.A-Za-z0-9_$])(?:(?:window|self|top|parent|globalThis|document|frames)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)+(?:location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)|open[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\())[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*["'`](?:https?:)?\/\//i;
+const _OFFLINE_LOCAL_LOCATION_RE = /(?:^|[^.A-Za-z0-9_$])(?:(?:var|let|const|function|class)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+location(?![A-Za-z0-9_$])|(?:var|let|const)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*[{\[][^}\]]{0,400}location(?![A-Za-z0-9_$])|function[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*[A-Za-z0-9_$]{0,100}[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\([^)]{0,400}location(?![A-Za-z0-9_$])|catch[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\([ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*location(?![A-Za-z0-9_$]))/i;
+function _offlineScriptNavigatesToNetwork(body) {
+  const src = String(body || "");
+  if (!_OFFLINE_NAV_TO_NETWORK_RE.test(src)) return false;
+  // A script that declares its OWN `location` binding is talking about that object, not the
+  // document's - `const location = { href: "" }; location.href = <url>` navigates nothing, and
+  // deleting the whole script over it is the content loss this strip must not cause. So when a
+  // local binding is present, only the PREFIXED sinks still count: `window.location` names the real
+  // one no matter what a local `location` shadows. This costs nothing an attacker did not already
+  // have - aliasing (`var l = location; l.href = <url>`) is a cheaper bypass that has always
+  // worked, and both are listed in the CMH-OFFLINE-05 residual.
+  if (_OFFLINE_LOCAL_LOCATION_RE.test(src)) return _OFFLINE_NAV_PREFIXED_RE.test(src);
+  return true;
+}
+function _offlineScriptHasNetworkEgress(body) {
+  return _offlineScriptHasNetworkImport(body) || _offlineScriptNavigatesToNetwork(body);
+}
 function _stripOfflineNetworkLoads(doc) {
+  let dropped = 0;
   doc.querySelectorAll("script[src]").forEach(function (s) {
-    if (_offlineIsNetworkUrl(s.getAttribute("src"))) s.remove();
+    if (_offlineIsNetworkUrl(s.getAttribute("src"))) { s.remove(); dropped += 1; }
   });
   doc.querySelectorAll("script").forEach(function (s) {
     const id = s.getAttribute("id") || "";
     if (/^(?:embeddedComments|handledCommentIds|commentableHtmlLayer|cmhVendoredRichLibs)$/.test(id)) return;
     if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return;
     const body = s.textContent || "";
-    if (_offlineScriptHasNetworkImport(body)) {
+    if (_offlineScriptHasNetworkEgress(body)) {
       s.remove();
+      dropped += 1;
     }
   });
+  // A per-element `referrerpolicy` overrides the document policy for that request, so a permissive
+  // one would defeat the no-referrer meta on exactly the anchor an attacker planted.
+  doc.querySelectorAll("[referrerpolicy]").forEach(function (el) { el.removeAttribute("referrerpolicy"); });
   doc.querySelectorAll("link[href]").forEach(function (link) {
     if (!_offlineIsNetworkUrl(link.getAttribute("href"))) return;
     const rel = (link.getAttribute("rel") || "").toLowerCase().split(/\s+/);
@@ -15712,6 +15789,7 @@ function _stripOfflineNetworkLoads(doc) {
     if (next) el.setAttribute("style", next);
     else el.removeAttribute("style");
   });
+  return dropped;
 }
 function _stripOfflineRichRenderers(doc) {
   // On a re-export of an already-offline document, remove any previously inlined library notice
@@ -15928,12 +16006,13 @@ function _offlineRemoveVendoredBundleScript(doc) {
 //      marker means the type was runnable), and - the reason a denylist would have failed -
 //      `nomodule`, which every module-supporting browser SKIPS, so its body never ran, yet
 //      re-emission drops the attribute and would run it;
-//   3. it passes the same network-import check `_stripOfflineNetworkLoads` applies to every other
+//   3. it passes the same network-egress check `_stripOfflineNetworkLoads` applies to every other
 //      surviving script - capture happens BEFORE the strips and re-emission AFTER, so without this
-//      a smuggled remote import would ride straight past a strip that had already run. This is a
-//      strip-parity gate, NOT an egress proof: like the strip it only recognizes literal-URL import
-//      forms, and the zero-network CSP is what actually enforces no egress. Both vendored bundles
-//      are clean under it, so the legitimate path pays nothing;
+//      a smuggled remote module load, or a scripted navigation to a remote URL, would ride straight
+//      past a strip that had already run. This is a strip-parity gate, NOT an egress proof: like
+//      the strip it only recognizes literal-URL import and navigation forms, and the zero-network
+//      CSP is what actually enforces no SUBRESOURCE egress. Both vendored bundles are clean under
+//      it, so the legitimate path pays nothing;
 //   4. its bytes cannot open a script-data escape. A body containing a script start tag (or a
 //      script/style end tag) re-serializes into an element the parser does not close where the
 //      exporter thinks it does: an HTML comment opener followed by a script start tag puts the
@@ -15961,7 +16040,9 @@ function _offlineRemoveVendoredBundleScript(doc) {
 // would need a build-pinned digest, and `crypto.subtle` is unavailable in a `file://` document -
 // exactly where these exports are opened - so it would also reject every file produced by a
 // different exporter version, reintroducing the false-rejection bug this fixes. The zero-network
-// CSP remains the backstop for what any preserved script can do.
+// CSP is the backstop for what any preserved script can LOAD; it cannot restrict where a script
+// NAVIGATES the top-level document (CMH-OFFLINE-05), which is why the strips also drop a direct
+// scripted navigation to a network URL.
 const _OFFLINE_SCRIPT_DATA_ESCAPE_RE = /<\/?script|<\/style/i;
 function _offlineAdjacentLibNotice(script, lib) {
   let n = script.previousSibling;
@@ -15989,7 +16070,7 @@ function _offlineCaptureInlinedRichLibs(doc) {
     // the user after a licence when the real problem was a tampered bundle.
     if (s.attributes.length !== 1) { found[lib + "Rejected"] = true; return; }
     const code = s.textContent || "";
-    if (!code.trim() || _offlineScriptHasNetworkImport(code)) { found[lib + "Rejected"] = true; return; }
+    if (!code.trim() || _offlineScriptHasNetworkEgress(code)) { found[lib + "Rejected"] = true; return; }
     if (_OFFLINE_SCRIPT_DATA_ESCAPE_RE.test(code)) { found[lib + "Rejected"] = true; return; }
     const license = _offlineAdjacentLibNotice(s, lib);
     // A blank notice would make `_offlineAppendLibNotice` a no-op, redistributing the library with
@@ -16116,12 +16197,13 @@ async function _buildOfflineHtml(portableHtml) {
   const referencesChartLib = _offlineDocReferencesChartLib(doc);
   const inlinedRichLibs = _offlineCaptureInlinedRichLibs(doc);
   _stripOfflineRichRenderers(doc);
-  _stripOfflineNetworkLoads(doc);
+  const droppedScripts = _stripOfflineNetworkLoads(doc);
   _stripOfflineEventHandlers(doc);
   _offlineHoistChartScripts(doc);
   await _offlineInlineRichLibs(doc, referencesChartLib, inlinedRichLibs);
   _ensureOfflineCsp(doc);
-  return _retargetLayerDescriptor(_serializeOfflineDoc(doc), "offline").replace(/\n{3,}/g, "\n\n");
+  const html = _retargetLayerDescriptor(_serializeOfflineDoc(doc), "offline").replace(/\n{3,}/g, "\n\n");
+  return { html: html, droppedScripts: droppedScripts };
 }
 // An export that FAILED is the one toast a user must actually finish reading: it names the cause
 // and the action to take, and some of those messages are long. The 3s default is a confirmation
@@ -16143,12 +16225,19 @@ async function saveOffline() {
       ? _buildStandaloneHtml(baseHtml, exportComments)
       : _buildSavedHtml(baseHtml, exportComments);
   } catch (e) { showToast(e.message, _OFFLINE_EXPORT_ERROR_TOAST); return; }
-  let text;
-  try { text = await _buildOfflineHtml(portable); }
+  let built;
+  try { built = await _buildOfflineHtml(portable); }
   catch (e) { showToast(e.message, _OFFLINE_EXPORT_ERROR_TOAST); return; }
   const filename = _suggestedOfflineFilename();
-  _downloadHtml(text, filename);
-  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded.", { center: true });
+  _downloadHtml(built.html, filename);
+  // Say when a script was dropped. The strip is deliberately literal, so it can remove a script
+  // whose comment or string merely spells an egress shape; removing content silently would leave
+  // the author guessing why their document behaves differently offline.
+  const n = built.droppedScripts;
+  const note = n > 0
+    ? " " + n + " script" + (n === 1 ? " that loads or navigates to the network was" : "s that load or navigate to the network were") + " removed."
+    : "";
+  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note, { center: true });
 }
 ["btnExportOffline", "btnExportOfflineTop"].forEach(function (id) {
   const b = document.getElementById(id);
