@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.293.0] - 2026-08-02
+
+### Fixed
+
+- A side-pane reply or edit draft that survives a sidebar re-render (sorting, a note-typing
+  debounce, a checklist change) now keeps its SELECTION, not just its text. The panel's inline
+  editor carries the formatting toolbar, so a re-render that landed between selecting a word and
+  clicking Bold used to collapse the caret to the end of the draft and append bare `****` instead
+  of wrapping the word. The draft snapshot now records `selectionStart`/`selectionEnd` (and the
+  selection direction) and the re-opened editor restores that range. Re-clicking the edit action on
+  an editor that is already open now only re-focuses it, keeping the live selection and its anchor
+  direction instead of collapsing to the end.
+
 ## [1.292.0] - 2026-08-02
 
 ### Fixed
