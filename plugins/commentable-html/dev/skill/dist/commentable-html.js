@@ -3590,7 +3590,7 @@ function _imageOneLine(value) {
   // so stored media metadata can never carry a line break or a direction override into a bundle
   // line, a card, or an export, whatever a downstream consumer forgets to re-sanitize.
   return String(value || "")
-    .replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/g, "")
+    .replace(/[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, "")
     .replace(/[\r\n\t\u0085\u2028\u2029]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();

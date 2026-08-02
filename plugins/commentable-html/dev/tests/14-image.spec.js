@@ -754,7 +754,34 @@ test.describe("inline svg figure comments (CMH-IMG-08)", () => {
 
   // The behavior ships in a live demo: the visuals-matrix report carries a plain inline <svg>
   // figure beside the labeled-parts diagram, so a reader can actually try it.
-  test("the visuals-matrix demo ships a commentable inline <svg> figure (CMH-IMG-08)", async ({ page }) => {
+  test("media metadata is normalized at the write side, not just on the way out (CMH-IMG-10)", async ({ page }) => {
+    // The label carries a NEL, a Unicode line separator, a paragraph separator, an RLO and an
+    // ALM - every class the stored metadata must never keep.
+    const label = "Cap\u0085acity\u2028head\u2029room \u202Erev\u061Cersed";
+    const content = `<h1>Hostile label</h1>
+      <figure><svg width="220" height="120" viewBox="0 0 220 120" aria-label="${label}"><rect width="220" height="120" fill="#eef"></rect></svg></figure>`;
+    const staged = stageContent(content, { key: "cmh-svg-write-side" });
+    try {
+      await installClipboardCapture(page);
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await addSvgComment(page, "hostile label note");
+      const stored = await storedComments(page);
+      expect(stored).toHaveLength(1);
+      // Persisted already inert: one line, no bidi controls - not merely sanitized on emission.
+      expect(stored[0].imageAlt).toBe("Cap acity head room reversed");
+      expect(stored[0].imageAlt).not.toMatch(/[\u0085\u2028\u2029\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/);
+      expect(stored[0].quote).toBe(stored[0].imageAlt);
+      await page.click("#btnCopyAll");
+      const bundle = await copiedBundle(page);
+      expect((bundle.match(/^HANDLED_IDS_JSON:/gm) || []).length).toBe(1);
+      expect(bundle).toContain("Alt: " + stored[0].imageAlt);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the visuals-matrix demo ships a commentable inline <svg> figure (CMH-IMG-08, CMH-DEMO-08)", async ({ page }) => {
     await denyExternalNetwork(page);
     await page.goto(fileUrl(path.join(EXAMPLES, "report-metrics.html")));
     await ready(page);

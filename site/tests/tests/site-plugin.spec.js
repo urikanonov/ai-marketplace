@@ -127,6 +127,14 @@ test("the portability section shows three modes including Offline with a source 
 });
 
 
+test("the Comment on anything card lists inline SVG figures (SITE-PLUGIN-28)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const card = page.locator(".card.feature", { hasText: "Comment on anything" });
+  await expect(card).toHaveCount(1);
+  await expect(card).toContainText("inline SVG figures");
+});
+
+
 test("the Non-portable mode card is marked legacy and points at the migration tool (SITE-PLUGIN-27)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const nonPortable = page.locator(".mode-card", { hasText: "Non-portable" });
