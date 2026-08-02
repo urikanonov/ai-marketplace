@@ -261,6 +261,118 @@ test.describe("comment interactions", () => {
     expect((await storedComments(page))[0].note).toBe("edited in the dialog");
   });
 
+  test("CMH-CORE-18: the dialog fits a short viewport and keeps Save and Cancel reachable", async ({ page }) => {
+    await openKitchenSink(page);
+    // A note long enough that the note view must scroll internally rather than grow the dialog.
+    const longNote = Array.from({ length: 12 }, (_, i) => `note line ${i + 1} with enough text to wrap`).join(" ");
+    await addTextComment(page, "#commentRoot section:nth-of-type(2) p", longNote);
+    const cid = (await allCids(page))[0];
+    // The cap must not depend on the HOST document's box-sizing reset: with a content box it would
+    // exclude the dialog's own padding and border and overflow the viewport again.
+    await page.addStyleTag({ content: "* { box-sizing: content-box; }" });
+    // A phone-width, very short viewport (the reproduction in issue #825). The comments pane is a
+    // full-width sheet at that width, so close it before reaching for the highlight.
+    await page.setViewportSize({ width: 390, height: 200 });
+    if (await page.evaluate(() => document.body.classList.contains("sidebar-open"))) {
+      await page.locator("#btnCloseSidebar").click();
+      await expect(page.locator("body")).not.toHaveClass(/sidebar-open/);
+    }
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await expect(pop).toBeVisible();
+
+    const boxOf = (loc) => loc.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, vh: window.innerHeight, hidden: el.scrollHeight - el.clientHeight };
+    });
+    const fitsViewport = (b) => {
+      expect(b.top).toBeGreaterThanOrEqual(-0.5);
+      expect(b.bottom).toBeLessThanOrEqual(b.vh + 0.5);
+    };
+
+    // The note view is capped inside the viewport, and the cap is the RUNTIME's measured-viewport
+    // px value (which tracks a dynamic mobile browser toolbar), not only the static `vh` fallback.
+    fitsViewport(await boxOf(pop));
+    expect(await pop.evaluate((el) => el.style.maxHeight)).toBe(`${(await page.evaluate(() => window.innerHeight)) - 16}px`);
+    // The overflowing note scrolls INSIDE its own region, and the actions row stays on screen with
+    // the note scrolled to the bottom.
+    const note = pop.locator(".cm-comment-popover-note");
+    expect((await boxOf(note)).hidden).toBeGreaterThan(1);
+    await note.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    expect(await note.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    fitsViewport(await boxOf(pop));
+    fitsViewport(await boxOf(pop.locator('[data-act="edit"]')));
+
+    // So is the edit form, whose toolbar + textarea + actions row are what used to overflow.
+    await pop.locator('[data-act="edit"]').click();
+    await expect(pop.locator("textarea.cm-comment-popover-input")).toBeVisible();
+    fitsViewport(await boxOf(pop));
+    // The dialog itself never grows past the cap - the content that does not fit scrolls inside it.
+    const dialog = await boxOf(pop);
+    expect(dialog.hidden).toBeLessThanOrEqual(1);
+
+    // Cancel and Save are both on screen, by pointer and by keyboard, and Save still works.
+    fitsViewport(await boxOf(pop.locator('[data-act="edit-cancel"]')));
+    fitsViewport(await boxOf(pop.locator('[data-act="edit-save"]')));
+    for (const act of ["edit-cancel", "edit-save"]) {
+      const btn = pop.locator(`[data-act="${act}"]`);
+      await btn.focus();
+      await expect(btn).toBeFocused();
+      fitsViewport(await boxOf(btn));
+    }
+
+    // Growing the textarea (it is user-resizable) scrolls the edit region INSIDE the dialog rather
+    // than pushing the actions row off the bottom edge.
+    await pop.locator("textarea.cm-comment-popover-input").evaluate((el) => { el.style.height = "400px"; });
+    const wrap = await boxOf(pop.locator(".cm-comment-popover-edit"));
+    expect(wrap.hidden).toBeGreaterThan(1);
+    fitsViewport(await boxOf(pop));
+    fitsViewport(await boxOf(pop.locator('[data-act="edit-save"]')));
+
+    await pop.locator("textarea.cm-comment-popover-input").fill("saved from a short viewport");
+    await pop.locator('[data-act="edit-save"]').click();
+    await expect(pop.locator(".cm-comment-popover-note")).toContainText("saved from a short viewport");
+    expect((await storedComments(page))[0].note).toBe("saved from a short viewport");
+  });
+
+  test("CMH-CORE-18: a mid-edit viewport shrink re-fits the dialog even with its anchor scrolled away", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "resize me mid-edit");
+    const cid = (await allCids(page))[0];
+    await page.setViewportSize({ width: 390, height: 700 });
+    if (await page.evaluate(() => document.body.classList.contains("sidebar-open"))) {
+      await page.locator("#btnCloseSidebar").click();
+      await expect(page.locator("body")).not.toHaveClass(/sidebar-open/);
+    }
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await expect(pop).toBeVisible();
+    await pop.locator('[data-act="edit"]').click();
+    await expect(pop.locator("textarea.cm-comment-popover-input")).toBeVisible();
+
+    // An in-progress edit deliberately survives its anchor scrolling out of view, so the dialog is
+    // then re-fitted on its own rather than left with a stale cap and position.
+    await page.evaluate(() => window.scrollBy(0, 2000));
+    await expect(pop).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 200 });
+    await expect(pop).toBeVisible();
+
+    const boxOf = (loc) => loc.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, vh: window.innerHeight };
+    });
+    for (const b of [await boxOf(pop), await boxOf(pop.locator('[data-act="edit-cancel"]')), await boxOf(pop.locator('[data-act="edit-save"]'))]) {
+      expect(b.top).toBeGreaterThanOrEqual(-0.5);
+      expect(b.bottom).toBeLessThanOrEqual(b.vh + 0.5);
+    }
+    // The draft is intact and still savable from the shrunken viewport.
+    await pop.locator("textarea.cm-comment-popover-input").fill("saved after the shrink");
+    await pop.locator('[data-act="edit-save"]').click();
+    expect((await storedComments(page))[0].note).toBe("saved after the shrink");
+  });
+
   test("CMH-CORE-16: a dirty in-place edit is not swallowed, switched away, or duplicated (CMH-THREAD-10)", async ({ page }) => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section p", "first note", 0);

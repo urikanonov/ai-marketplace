@@ -33,16 +33,48 @@ function _releasePopoverFormatBar() {
   try { off(); } catch (e) {}
 }
 
+// The margin the dialog keeps from every viewport edge, and the height cap derived from it.
+const _POPOVER_MARGIN = 8;
+
+// Nothing else constrains the dialog's height, so on a short viewport the edit form's Save/Cancel
+// row could sit past the bottom edge with no way to scroll to it (issue #825). Cap it to the
+// MEASURED viewport - which follows a dynamic mobile browser toolbar, unlike a `vh` unit - and let
+// the content scroll inside. No floor: a cap that exceeded the viewport would reintroduce the very
+// overflow this prevents.
+function _capCommentPopoverToViewport() {
+  if (!commentPopover) return;
+  commentPopover.style.maxHeight = Math.max(0, window.innerHeight - _POPOVER_MARGIN * 2) + "px";
+}
+
+// Re-fit the dialog to the viewport WITHOUT re-anchoring it. An in-progress edit deliberately
+// survives its anchor scrolling out of view, and on that path there is no anchor to position
+// against - but a viewport shrink must still not strand Save/Cancel off screen.
+function _clampCommentPopoverIntoViewport() {
+  if (!commentPopover) return;
+  _capCommentPopoverToViewport();
+  const margin = _POPOVER_MARGIN;
+  const w = commentPopover.offsetWidth || 320;
+  const h = commentPopover.offsetHeight || 160;
+  const cur = commentPopover.getBoundingClientRect();
+  const left = Math.min(Math.max(margin, cur.left), Math.max(margin, window.innerWidth - w - margin));
+  const top = Math.min(Math.max(margin, cur.top), Math.max(margin, window.innerHeight - h - margin));
+  commentPopover.style.left = left + "px";
+  commentPopover.style.top = top + "px";
+}
+
 function _positionCommentPopover(mark) {
   if (!commentPopover || !mark) return false;
+  // Cap BEFORE anything can return early, so the height cap is never skipped on a path that leaves
+  // the dialog open, and before measuring, so the clamp below sees the capped height.
+  _capCommentPopoverToViewport();
   const rect = mark.getClientRects()[0] || mark.getBoundingClientRect();
   // Close instead of clamping when the anchor is scrolled/clipped out of view, matching the
   // hover bubble and the other floating affordances (they all use _clipAwareRect).
   const visible = (typeof _clipAwareRect === "function") ? _clipAwareRect(mark, rect) : rect;
   if (!visible) return false;
+  const margin = _POPOVER_MARGIN;
   const w = commentPopover.offsetWidth || 320;
   const h = commentPopover.offsetHeight || 160;
-  const margin = 8;
   let left = visible.left;
   let top = visible.bottom + margin;
   if (top + h > window.innerHeight) top = Math.max(margin, visible.top - h - margin);
@@ -390,7 +422,11 @@ function openCommentPopover(id, mark) {
 function _syncCommentPopoverToAnchor() {
   if (!commentPopover) return;
   const pinned = _popoverAnchorMark && root.contains(_popoverAnchorMark) && _positionCommentPopover(_popoverAnchorMark);
-  if (!pinned && !_popoverEditing) closeCommentPopover();
+  if (!pinned && !_popoverEditing) { closeCommentPopover(); return; }
+  // An edit outlives its anchor scrolling away, so re-fit it to the viewport on its own: without
+  // this, a viewport shrink mid-edit would keep the stale cap and position and put Save/Cancel back
+  // out of reach (issue #825).
+  if (!pinned) _clampCommentPopoverIntoViewport();
 }
 window.addEventListener("scroll", _syncCommentPopoverToAnchor, true);
 window.addEventListener("resize", _syncCommentPopoverToAnchor);
