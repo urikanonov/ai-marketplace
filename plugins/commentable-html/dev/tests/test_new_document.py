@@ -1079,6 +1079,73 @@ class NewDocumentUnvalidatedOutputTests(unittest.TestCase):
         self.assertIsNone(module)
         self.assertIn("not this skill's", reason)
 
+    def test_a_misbehaving_pathlike_file_is_refused_rather_than_raising(self):
+        # A PathLike is only a promise of __fspath__: one that hands back bytes, or raises,
+        # must be refused rather than reaching realpath/startswith and escaping as a
+        # traceback. A well-behaved PathLike naming the real validator is still accepted.
+        class BytesPath:
+            def __fspath__(self):
+                return b"tools/validate/validate.py"
+
+        class BrokenPath:
+            def __fspath__(self):
+                raise RuntimeError("no path here")
+
+        for value in (BytesPath(), BrokenPath()):
+            with self.subTest(value=type(value).__name__):
+                self.assertFalse(new_document._contained(value))
+        self.assertTrue(new_document._contained(Path(TOOLS) / "validate" / "validate.py"))
+
+    def test_an_unformattable_module_file_still_comes_back_as_a_reason(self):
+        # The refusal MESSAGE interpolates __file__, so a value that cannot be formatted
+        # (a tuple, or one whose __str__ raises) must not turn the named reason back into
+        # the traceback this seam exists to replace.
+        class Hostile:
+            def __str__(self):
+                raise RuntimeError("nope")
+
+        for value in ((1, 2), Hostile()):
+            with self.subTest(value=type(value).__name__):
+                odd = types.ModuleType("validate")
+                odd.__file__ = value
+                with mock.patch.dict(sys.modules, {"validate": odd}):
+                    module, reason = new_document._load_validator()
+                self.assertIsNone(module)
+                self.assertIn("not this skill's", reason)
+
+    def test_contained_refuses_a_non_path_value_without_raising(self):
+        # The same input sweep the chart_block seam pins, so the two stay provably
+        # behavior-identical rather than drifting apart.
+        class HostileStr(str):
+            def __bool__(self):
+                raise RuntimeError("nope")
+
+        for value in (object(), 3, b"tools/validate/validate.py", None, "",
+                      HostileStr("tools/validate/validate.py")):
+            with self.subTest(value=type(value).__name__):
+                self.assertFalse(new_document._contained(value))
+
+    def test_a_path_that_cannot_be_canonicalized_is_refused_rather_than_raising(self):
+        real = os.path.join(TOOLS, "validate", "validate.py")
+        for error in (OSError("bad path"), ValueError("embedded null byte")):
+            with self.subTest(error=type(error).__name__):
+                with mock.patch.object(new_document.os.path, "abspath", side_effect=error):
+                    self.assertFalse(new_document._contained(real))
+
+    def test_a_module_whose_file_attribute_raises_is_refused_rather_than_raising(self):
+        class LazyModule:
+            @property
+            def __file__(self):
+                raise RuntimeError("still loading")
+
+            def validate(self, path, base_dir=None):
+                return ([], [])
+
+        with mock.patch.dict(sys.modules, {"validate": LazyModule()}):
+            module, reason = new_document._load_validator()
+        self.assertIsNone(module)
+        self.assertIn("not this skill's", reason)
+
     def test_a_foreign_validate_on_sys_path_is_refused_before_its_body_runs(self):
         # The origin is checked BEFORE the import, so an unrelated `validate` earlier on
         # sys.path must be refused without executing its module body at all.

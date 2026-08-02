@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.317.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.321.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.321.0] - 2026-08-02</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li><code>tools/blocks/chart_block.py</code> no longer raises <code>TypeError</code> when a cached <code>sys.modules[&quot;validate&quot;]</code> carries a <code>__file__</code> that is not a usable path. Its containment guard now normalizes the value through <code>os.fspath</code> and refuses anything that is not a non-empty string - a plain object, an int, bytes, a <code>PathLike</code> whose <code>__fspath__</code> returns bytes or raises, or a <code>str</code> subclass with a hostile <code>__bool__</code> - and the refusal message no longer raises while rendering an odd value (a tuple, or one whose <code>__str__</code> raises). A path that cannot be canonicalized at all (an embedded NUL byte, an over-long path) is refused the same way, as is a cached module whose <code>__file__</code> ACCESS raises (a lazy loader or an import proxy), and the &quot;unexpected result&quot; reason now renders a misbehaving validator&#x27;s own value without letting its <code>__repr__</code> raise. So that install shape comes back as the named &quot;could not check&quot; reason the fail-closed path exists for - and the <code>--allow-unvalidated-output</code> opt-out stays reachable - instead of escaping as a traceback from outside the caller&#x27;s try block. <code>tools/authoring/new_document.py</code> carried the same seam and gets the identical hardening, so the two stay in parity.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.317.0] - 2026-08-02</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -514,6 +521,8 @@
               <li>Media metadata is made inert where it is WRITTEN: an alt/label is now stripped of bidi controls and every line separator (including U+0085) before it is stored, so no consumer can reintroduce a bundle-line or direction-override injection by forgetting to re-sanitize it.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.316.0] - 2026-08-02</h3></div>
             <div class="group-label">Changed</div>
@@ -521,8 +530,6 @@
               <li>Exported HTML now always keeps the authoring session provenance, and the <code>Keep AI session id in exports</code> checkbox is gone from both the toolbar overflow menu and the sidebar Export menu. The <code>commentable-html-session-id</code> and <code>commentable-html-agent</code> meta tags survive every Portable, Offline, and Plain HTML export unconditionally. The session id is an opaque agent session identifier the authoring tools already stamp by default and the footer already offers to copy, not a secret, so stripping it by default bought almost nothing while it cost a row in the most space-constrained menu and silently dropped authoring provenance from the copy a reviewer actually receives - the copy where knowing which agent session produced the document is most useful. The now-dead strip path in the export runtime is removed with it.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.315.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -559,14 +566,7 @@
               <li>The Help panel&#x27;s &quot;Formatting your comment&quot; topic documents the toolbar&#x27;s single tab stop and its arrow-key navigation.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.293.0] - 2026-08-02</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A side-pane reply or edit draft that survives a sidebar re-render (sorting, a note-typing debounce, a checklist change) now keeps its SELECTION, not just its text. The panel&#x27;s inline editor carries the formatting toolbar, so a re-render that landed between selecting a word and clicking Bold used to collapse the caret to the end of the draft and append bare <code>****</code> instead of wrapping the word. The draft snapshot now records <code>selectionStart</code>/<code>selectionEnd</code> (and the selection direction) and the re-opened editor restores that range. Re-clicking the edit action on an editor that is already open now only re-focuses it, keeping the live selection and its anchor direction instead of collapsing to the end.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">240 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">241 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -175,13 +175,63 @@ def _contained(path):
     Both sides are compared in two forms - fully resolved, and merely absolute - so a
     junction, a differently-cased path, OR a per-file symlink of validate.py to a shared
     location all still count as the real validator rather than tripping the guard.
+
+    Anything that is not a usable path string is REFUSED rather than allowed to raise:
+    `os.PathLike` is only a promise of `__fspath__`, and the caller runs outside its own
+    try block, so a value that cannot be normalized has to come back as "not ours".
     """
-    if not path:
+    try:
+        path = os.fspath(path)
+    except Exception:  # noqa: BLE001  a non-path value, or a hostile/broken __fspath__
+        return False
+    if type(path) is not str or not path:
         return False
     expected = os.path.join(_TOOLS_DIR, "validate")
-    candidates = {_canonical(path), os.path.normcase(os.path.abspath(path))}
-    bases = {_canonical(expected), os.path.normcase(os.path.abspath(expected))}
-    return any(c.startswith(b + os.sep) for c in candidates if c for b in bases if b)
+    try:
+        candidates = {_canonical(path), os.path.normcase(os.path.abspath(path))}
+        bases = {_canonical(expected), os.path.normcase(os.path.abspath(expected))}
+        return any(c.startswith(b + os.sep) for c in candidates if c for b in bases if b)
+    except (OSError, ValueError):
+        # A NUL byte or an over-long path cannot name the real validator either.
+        return False
+
+
+def _describe(value):
+    """Render a module origin for a message without letting an odd value raise."""
+    try:
+        if not value:
+            return "an unknown location"
+        return str(value) or "an unknown location"
+    except Exception:  # noqa: BLE001  a hostile __bool__ or __str__
+        return "an unrepresentable location"
+
+
+def _safe_repr(value):
+    """repr() that cannot itself raise, for values a misbehaving validator produced."""
+    try:
+        return repr(value)
+    except Exception:  # noqa: BLE001  a hostile __repr__
+        return "an unrepresentable value"
+
+
+def _safe_text(value):
+    """str() that cannot itself raise, for an exception rendered into a reason."""
+    try:
+        return str(value)
+    except Exception:  # noqa: BLE001  a hostile __str__
+        return "an unrepresentable value"
+
+
+def _origin_of(obj, name):
+    """Read a module/spec origin attribute without letting the ACCESS raise.
+
+    `sys.modules` can hold a lazy loader or a proxy whose attribute access executes
+    arbitrary code, and this runs outside the caller's try block.
+    """
+    try:
+        return getattr(obj, name, "")
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _load_validator():
@@ -204,12 +254,13 @@ def _load_validator():
             spec = importlib.util.find_spec("validate")
         except Exception as exc:  # noqa: BLE001  a broken parent package, a bad sys.path entry
             return None, "the sibling 'validate' tool could not be located (%s: %s)" % (
-                type(exc).__name__, exc)
+                type(exc).__name__, _safe_text(exc))
         if spec is None:
             return None, "the sibling 'validate' tool is not importable (no module named 'validate')"
-        if not _contained(getattr(spec, "origin", "") or ""):
+        origin = _origin_of(spec, "origin")
+        if not _contained(origin):
             return None, ("the 'validate' module on sys.path is %s, not this skill's "
-                          "tools/validate/validate.py" % (spec.origin or "an unknown location"))
+                          "tools/validate/validate.py" % (_describe(origin),))
         try:
             import validate as module  # noqa: F401
         except Exception as exc:  # noqa: BLE001
@@ -217,11 +268,11 @@ def _load_validator():
             # the caller decide what to do with the reason.
             _toolpath.warn_missing_tool("validate", "chart self-validation")
             return None, "the sibling 'validate' tool could not be imported (%s: %s)" % (
-                type(exc).__name__, exc)
-    if not _contained(getattr(module, "__file__", "") or ""):
+                type(exc).__name__, _safe_text(exc))
+    origin = _origin_of(module, "__file__")
+    if not _contained(origin):
         return None, ("the imported 'validate' module is %s, not this skill's "
-                      "tools/validate/validate.py" % (getattr(module, "__file__", "")
-                                                      or "an unknown location"))
+                      "tools/validate/validate.py" % (_describe(origin),))
     return module, None
 
 
@@ -251,7 +302,8 @@ def _self_validate_result(figure, scripts, template_path=None):
         # A validator that crashes, or a temp dir that cannot be written, means the check did
         # not happen - the same "could not be checked" signal, so it takes the same gate and
         # the opt-out applies, instead of escaping as a traceback.
-        return None, "the validator could not run (%s: %s)" % (type(exc).__name__, exc)
+        return None, "the validator could not run (%s: %s)" % (
+            type(exc).__name__, _safe_text(exc))
     finally:
         if tmp is not None:
             try:
@@ -263,7 +315,7 @@ def _self_validate_result(figure, scripts, template_path=None):
         # A validator that answers in an unexpected shape has not given a verdict. Checking the
         # MEMBERS matters as much as the arity: a `(None, None)` would satisfy a bare 2-tuple
         # test and then read as "no errors, no warnings", i.e. the fail-open path again.
-        return None, "the validator returned an unexpected result (%r)" % (outcome,)
+        return None, "the validator returned an unexpected result (%s)" % (_safe_repr(outcome),)
     return outcome, None
 
 

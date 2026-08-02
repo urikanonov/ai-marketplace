@@ -5,6 +5,7 @@ import contextlib
 import io
 import json
 import os
+import pathlib
 import re
 import subprocess
 import sys
@@ -311,6 +312,123 @@ class ChartBlockUnvalidatedOutputTests(unittest.TestCase):
             module, reason = chart_block._load_validator()
         self.assertIsNone(module)
         self.assertIn("not this skill's", reason)
+
+    def test_a_non_string_module_file_is_refused_rather_than_raising(self):
+        # Every cause must come back as a REASON; a cached module whose __file__ is not a
+        # path must not escape as a traceback (which would also make the opt-out
+        # unreachable, since _load_validator runs outside the caller's try block).
+        odd = types.ModuleType("validate")
+        odd.__file__ = object()
+        odd.validate = lambda path: ([], [])
+        with mock.patch.dict(sys.modules, {"validate": odd}):
+            module, reason = chart_block._load_validator()
+            self.assertIsNone(module)
+            self.assertIn("not this skill's", reason)
+            out, err = io.StringIO(), io.StringIO()
+            with mock.patch.object(sys, "stdin", _TextStdin(json.dumps(SPEC))), \
+                    contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = chart_block.main(list(self.ARGV))
+            self.assertNotEqual(code, 0)
+            self.assertEqual(out.getvalue(), "")
+            self.assertIn("could not be self-validated", err.getvalue())
+            self.assertIn("--allow-unvalidated-output", err.getvalue())
+            # The named reason means the opt-out is reachable rather than pre-empted.
+            out, err = io.StringIO(), io.StringIO()
+            with mock.patch.object(sys, "stdin", _TextStdin(json.dumps(SPEC))), \
+                    contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = chart_block.main(list(self.ARGV) + ["--allow-unvalidated-output"])
+        self.assertEqual(code, 0, err.getvalue())
+        self.assertIn('id="chartA-data"', out.getvalue())
+
+    def test_contained_refuses_a_non_path_value_without_raising(self):
+        class HostileStr(str):
+            def __bool__(self):
+                raise RuntimeError("nope")
+
+        for value in (object(), 3, b"tools/validate/validate.py", None, "",
+                      HostileStr("tools/validate/validate.py")):
+            with self.subTest(value=type(value).__name__):
+                self.assertFalse(chart_block._contained(value))
+
+    def test_a_path_that_cannot_be_canonicalized_is_refused_rather_than_raising(self):
+        # A NUL byte or an over-long path makes realpath/abspath raise on some platforms;
+        # that is still "cannot establish this is ours", not a traceback.
+        real = os.path.join(TOOLS, "validate", "validate.py")
+        for error in (OSError("bad path"), ValueError("embedded null byte")):
+            with self.subTest(error=type(error).__name__):
+                with mock.patch.object(chart_block.os.path, "abspath", side_effect=error):
+                    self.assertFalse(chart_block._contained(real))
+
+    def test_a_module_whose_file_attribute_raises_is_refused_rather_than_raising(self):
+        # sys.modules can hold a lazy loader or a proxy whose ATTRIBUTE ACCESS runs code;
+        # that must not escape _load_validator either.
+        class LazyModule:
+            @property
+            def __file__(self):
+                raise RuntimeError("still loading")
+
+            def validate(self, path):
+                return ([], [])
+
+        with mock.patch.dict(sys.modules, {"validate": LazyModule()}):
+            module, reason = chart_block._load_validator()
+        self.assertIsNone(module)
+        self.assertIn("not this skill's", reason)
+
+    def test_a_result_that_cannot_be_repred_still_fails_closed_with_a_reason(self):
+        # The "unexpected result" reason renders the validator's own value, so a hostile
+        # __repr__ must not turn that named reason back into a traceback.
+        class Hostile:
+            def __repr__(self):
+                raise RuntimeError("nope")
+
+        broken = types.SimpleNamespace(validate=mock.Mock(return_value=Hostile()))
+        with mock.patch.object(chart_block, "_load_validator", return_value=(broken, None)):
+            out, err = io.StringIO(), io.StringIO()
+            with mock.patch.object(sys, "stdin", _TextStdin(json.dumps(SPEC))), \
+                    contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = chart_block.main(list(self.ARGV))
+        self.assertNotEqual(code, 0)
+        self.assertEqual(out.getvalue(), "")
+        self.assertIn("unexpected result", err.getvalue())
+
+    def test_a_misbehaving_pathlike_file_is_refused_rather_than_raising(self):
+        # os.PathLike is accepted by the guard, but a PathLike is only a promise of
+        # __fspath__ - one that hands back bytes, or raises, must still be refused rather
+        # than reaching realpath/startswith and escaping as a traceback.
+        class BytesPath:
+            def __fspath__(self):
+                return b"tools/validate/validate.py"
+
+        class BrokenPath:
+            def __fspath__(self):
+                raise RuntimeError("no path here")
+
+        for value in (BytesPath(), BrokenPath()):
+            with self.subTest(value=type(value).__name__):
+                self.assertFalse(chart_block._contained(value))
+        # ...and a well-behaved PathLike naming the real validator is still accepted, so
+        # the refusal above is a guard, not a blanket rejection of every PathLike.
+        real = pathlib.Path(TOOLS) / "validate" / "validate.py"
+        self.assertTrue(chart_block._contained(real))
+
+    def test_an_unformattable_module_file_still_comes_back_as_a_reason(self):
+        # The refusal MESSAGE interpolates __file__, so a value that cannot be formatted
+        # (a tuple, or one whose __str__ raises) must not turn the named reason back into
+        # the traceback this seam exists to replace.
+        class Hostile:
+            def __str__(self):
+                raise RuntimeError("nope")
+
+        for value in ((1, 2), Hostile()):
+            with self.subTest(value=type(value).__name__):
+                odd = types.ModuleType("validate")
+                odd.__file__ = value
+                odd.validate = lambda path: ([], [])
+                with mock.patch.dict(sys.modules, {"validate": odd}):
+                    module, reason = chart_block._load_validator()
+                self.assertIsNone(module)
+                self.assertIn("not this skill's", reason)
 
     def _run_with_template(self, template_path, extra_argv=()):
         out, err = io.StringIO(), io.StringIO()
