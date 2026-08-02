@@ -179,6 +179,7 @@ suite (see `.github/workflows/pages.yml`).
 | SITE-DEMO-11 | The Demo slider exposes a Notes tab that uses the ARIA tab contract expected by the slider and, when activated, makes the demo iframe fetch `report-notes.html` (the editable-notes-fields example), updating the full-screen target and the "Notes" title. | `site/tests/tests/site-plugin.spec.js` - `demo slider exposes and loads the Notes report (SITE-DEMO-11)` |
 | SITE-DEMO-12 | Every commentable-html example (each HTML file under `plugins/commentable-html/examples/`) is present on the site as a live demo: it has a matching slider tab that loads it in the demo iframe, and the file is served under `commentable-html/demo/`. | `site/tests/tests/site-plugin.spec.js` - `every example is present on the site as a live demo tab (SITE-DEMO-12)` |
 | SITE-DEMO-13 | The commentable-html plugin page labels its demo section "Demo": the in-page nav link (to `#demo`), the section heading, and every call-to-action button that jumps to `#demo` read "Demo" (the older "Try it" / "Try the live demo" wording is gone), while the `#demo` anchor itself is preserved so existing deep links keep working. The tutorial page's nav link back to the demo is likewise renamed to "Demo" (href `../#demo`). | `site/tests/tests/site-plugin.spec.js` - `the demo section and its links are labelled 'Demo', not 'Try it' (SITE-DEMO-13)` |
+| SITE-DEMO-14 | Suite invariant: an assertion on a demo document never races its load. Each demo report is a self-contained 1-2.5 MB file and the demo iframe is `loading="lazy"`, so a spec reads the framed demo only through the shared `demoFrameReady` helper (which scrolls the frame in and waits for THAT document to reach `readyState === "complete"`) instead of a bare `frameLocator`/`contentFrame`, and every spec that loads a demo document declares `test.slow()`. The two guard different failures: without the helper the download is absorbed by whichever content assertion runs first and is reported as a content failure; without `test.slow()` the default 30s test timeout is shorter than the explicit load wait plus the mount budget, so a cold runner expires mid-wait. | `site/tests/tests/site-suite-hygiene.spec.js` - `demo-document assertions wait for the load instead of racing it (SITE-DEMO-14)` |
 
 ## Demo videos
 
@@ -277,3 +278,12 @@ render the real stylesheet) but do not have per-breakpoint pixel assertions; com
 its own responsive suite under `plugins/commentable-html/dev/tests/`. Add a spec row and a covering
 test in the same pull request whenever the site grows a new behavior (see AGENTS.md, "Spec-and-test
 discipline").
+
+One residual timing gap is known and deliberately not automated. Several specs assert on state that
+a page produces after a timer or a user-gesture round trip (the copy buttons' "copied" label and its
+revert, for example) within a fixed assertion timeout. On a heavily loaded or cold runner those
+budgets can be missed even though the behavior is correct, which shows up as a rare full-suite flake
+rather than a regression; CI runs with `retries: 1` for exactly this. SITE-DEMO-14 closes the
+largest instance of the class (the multi-megabyte demo documents), and the remaining copy-button
+timing sensitivity is tracked as its own issue rather than papered over with a longer timeout here
+(issue 859).

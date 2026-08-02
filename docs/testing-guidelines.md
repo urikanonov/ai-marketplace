@@ -61,6 +61,26 @@ spec-and-test rules in [../AGENTS.md](../AGENTS.md); where they overlap, AGENTS.
 
 ## Playwright specifics
 
+- **Do not trust the `[N/M]` progress line when reading a failure (`--reporter=line` only).** The
+  suite's configured reporter is `list`, which attributes correctly: every row and every failure
+  header carries the index and title of the test it belongs to. The `[N/M] <file:line> <title>`
+  form comes only from an ad-hoc `--reporter=line` run, and there it names the test that started
+  LAST, not the one that failed: it is written from `onTestBegin` and redrawn in place with cursor
+  escapes (`ESC[1A ESC[2K`). Under `fullyParallel`, one worker's failure block is emitted next to
+  another worker's progress line, and in a captured (non-TTY) log - where nothing replays the
+  cursor moves - the two end up adjacent, so the failure reads as if it belonged to the named test.
+  That is how #814 came to be filed against SITE-VIDEO-15 for a `toHaveCount` assertion that test
+  does not contain; the real failure was a demo-iframe assertion in another spec. Take the failing
+  test's name from the `N) file:line > title` failure header or the final `N failed` summary list,
+  and prefer the configured `list` reporter when running the suite by hand. If the named test's
+  source does not contain the failing matcher, the attribution is the artifact, not a mystery in
+  that test.
+- **Never let an assertion absorb a heavy load.** A locator assertion with a fixed timeout in front
+  of a multi-megabyte (or lazily loaded) document makes ONE budget cover the download AND the
+  behavior, so a cold runner fails in the content assertion and blames the content. Wait for the
+  load explicitly first - the site suite's `demoFrameReady` helper scrolls the lazy demo iframe in
+  and waits for that document to reach `readyState === "complete"` - and give the test a real budget
+  with `test.slow()`. `SITE-DEMO-14` is the guard that keeps both in place.
 - **Block every non-local host.** The site suite aborts all requests except `127.0.0.1`/`localhost`
   and `data:` in a `beforeEach`, so a flaky GitHub API, the star-widget CDN, or the mermaid CDN can
   never fail the deploy gate. Validate the built static output only; do not reach the network.
@@ -382,3 +402,6 @@ sharded job's matrix a complete `1..N` cover so an entry can never be silently d
 - Did you add or refine the spec row (`AREA-NN`) and keep the test title in sync with it?
 - Is a workflow's `on:` trigger list valid? One invalid event makes the whole workflow startup-fail and
   silently skip a required check; `actionlint` does not catch every such case.
+- Reading a parallel-run failure: did you take the test name from the `N) ...` failure header rather
+  than a `[N/M]` progress line above it? Under `--reporter=line` that progress line names the last
+  test to START, not the one that failed.
