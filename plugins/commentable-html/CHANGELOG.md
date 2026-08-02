@@ -4,6 +4,36 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.360.0] - 2026-08-02
+
+### Fixed
+
+- Offline export: a decoy runnable script can no longer bypass both offline strips by borrowing one
+  of the layer's reserved DATA ids. The strips exempted `embeddedComments`, `handledCommentIds` and
+  `commentableHtmlLayer` by ID ALONE, tested BEFORE they checked whether the script was runnable, so
+  a script that merely carried one of those ids executed in the exported file untouched by the
+  remote-dynamic-import strip and the top-level-navigation strip alike - no aliasing and no
+  obfuscation needed. The exemption is now earned rather than claimed: a reserved-id script whose
+  type would RUN is retyped to `type="application/json"` before anything reads the document, so the
+  strips exempt it on the ordinary runnable-type test, exactly as the strict validator's own egress
+  check already did (it never had an id skip, which is how the exporter could preserve a script
+  `validate.py --strict` then rejected).
+- The repair keeps the bytes rather than deleting them, because these blocks hold review state and a
+  reviewer legitimately quoting an egress shape must never lose their comment. A legacy or
+  hand-authored document whose data block carries no `type` is therefore repaired into inert data
+  instead of being executed or stripped - which also repairs the block's TYPE for the strict
+  validator (a duplicated reserved id, or a body that is not valid JSON, stays the source document's
+  own pre-existing invalidity) and shields it from the renderer strip, which never had an id skip.
+  The download toast now names how many scripts were kept as inert data beside how many were
+  removed, counted after the strips so one script can never be reported as both (a reserved-id block
+  carrying a network `src` is still removed, because a remote load is what the strip exists to take
+  away).
+- Two boundaries that go with it: `reviewedSections` was not in the old skip list, so a runnable one
+  carrying egress used to be removed and is now kept as inert data instead; and the vendored payload
+  id is deliberately NOT neutralized, because it is infrastructure resolved by position, so a script
+  that merely borrows that id stays authored content and must clear the same egress scan as any
+  other script.
+
 ## [1.351.0] - 2026-08-02
 
 ### Fixed

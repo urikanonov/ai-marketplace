@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.351.0" />
+<meta name="commentable-html-version" content="1.360.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.351.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.360.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable Visuals Matrix</title>
 
@@ -4256,7 +4256,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.351.0";
+const CMH_VERSION = "1.360.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -16076,19 +16076,50 @@ function _offlineScriptNavigatesToNetwork(body) {
 function _offlineScriptHasNetworkEgress(body) {
   return _offlineScriptHasNetworkImport(body) || _offlineScriptNavigatesToNetwork(body);
 }
+// The ids the review layer owns as DATA. Every one is emitted as `type="application/json"` (the
+// strict validator requires exactly that for all four), and their text is written by REVIEWERS, so a
+// comment that legitimately quotes an egress shape must not be read as code. That exemption used to
+// be claimed by ID ALONE and tested BEFORE the runnable-type test, so a decoy that merely BORROWED
+// one of the ids sailed past both offline strips with no aliasing and no obfuscation - and past
+// nothing else, since the strict validator's own egress check never had such a skip and would then
+// REJECT the very file the exporter had preserved it in. The vendored payload id is deliberately NOT
+// in this set: it is infrastructure resolved by position (see `_offlineResolveVendoredPayload`), and
+// a script that merely borrows the id is authored CONTENT that must clear the same scan as any other.
+const _OFFLINE_RESERVED_DATA_ID_RE = /^(?:embeddedComments|handledCommentIds|commentableHtmlLayer|reviewedSections)$/;
+// So the exemption is EARNED rather than claimed: a reserved-id script whose type would RUN is
+// retyped to inert data before anything else reads the document, and the strips then exempt it on
+// the ordinary type test - the same rule the validator applies. Retyping rather than DELETING is the
+// point: these blocks hold the review state, and a legacy or hand-authored document may spell one
+// without a type, so the safe move is to keep the bytes verbatim and take away only the ability to
+// run them. It also repairs such a block's TYPE for the strict validator, and protects it from the
+// renderer strip, which never had an id skip at all.
+function _neutralizeOfflineReservedDataScripts(doc) {
+  const neutralized = [];
+  doc.querySelectorAll("script[id]").forEach(function (s) {
+    if (!_OFFLINE_RESERVED_DATA_ID_RE.test(s.getAttribute("id") || "")) return;
+    if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return;
+    s.setAttribute("type", "application/json");
+    neutralized.push(s);
+  });
+  return neutralized;
+}
+// How many neutralized blocks the exported file actually KEEPS. Counting at neutralization time
+// would over-report: a later pass legitimately removes some of the same elements (a network `src`
+// script), and the toast would then claim one script was both removed and kept.
+function _offlineCountKeptNeutralized(doc, neutralized) {
+  return neutralized.filter(function (s) { return doc.contains(s); }).length;
+}
 function _stripOfflineNetworkLoads(doc) {
   let dropped = 0;
   doc.querySelectorAll("script[src]").forEach(function (s) {
     if (_offlineIsNetworkUrl(s.getAttribute("src"))) { s.remove(); dropped += 1; }
   });
   doc.querySelectorAll("script").forEach(function (s) {
-    const id = s.getAttribute("id") || "";
-    // The layer's own data blocks carry reviewer text and must not be read as code. The vendored
-    // payload is deliberately NOT exempt: it is inert `application/json` (so the type check below
-    // already skips it) and it is stripped later anyway, while an AUTHORED script that merely
-    // borrows the payload id is preserved as content by the strip - so exempting the id would hand
-    // that script a free pass past the network-import scan every other script has to clear.
-    if (/^(?:embeddedComments|handledCommentIds|commentableHtmlLayer)$/.test(id)) return;
+    // No id is exempt here any more. The layer's own data blocks are exempt because they are inert
+    // DATA by the time this runs (`_neutralizeOfflineReservedDataScripts` made sure of it), which is
+    // exactly the rule the strict validator applies; and an AUTHORED script that merely borrows a
+    // reserved id - the vendored payload id included - is preserved as content by the strip only if
+    // it clears the network-egress scan every other script has to clear.
     if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return;
     const body = s.textContent || "";
     if (_offlineScriptHasNetworkEgress(body)) {
@@ -16379,8 +16410,10 @@ function _offlineDocReferencesChartLib(doc) {
     // that list: it is inert `application/json` (the runnable-type check below already skips it),
     // while an AUTHORED runnable script that borrows the payload id is now preserved into the
     // export, so ignoring its evidence would ship a document whose chart script survives with no
-    // library to call.
-    if (/^(?:embeddedComments|handledCommentIds|commentableHtmlLayer|reviewedSections)$/.test(s.getAttribute("id") || "")) return false;
+    // library to call. The id list is shared with the neutralize pass, so the two can never drift;
+    // it is redundant here now that such a block is inert data before this runs, and kept so the
+    // evidence scan does not depend on that ordering to stay data-safe.
+    if (_OFFLINE_RESERVED_DATA_ID_RE.test(s.getAttribute("id") || "")) return false;
     // A library THIS exporter inlined on an earlier pass is not the author's evidence; counting it
     // would make every re-export re-inline it forever.
     if (_offlineIsInlinedLibScript(s)) return false;
@@ -16687,6 +16720,10 @@ async function _offlineInlineRichLibs(doc, referencesChartLib, inlinedLibs, payl
 }
 async function _buildOfflineHtml(shareableHtml) {
   const doc = _offlineDocFromHtml(shareableHtml);
+  // Make the layer's reserved-id data blocks inert BEFORE anything else reads or strips the
+  // document, so every later pass exempts them on the ordinary runnable-type test and a decoy that
+  // borrowed one of those ids cannot buy itself an exemption from either strip.
+  const neutralizedScripts = _neutralizeOfflineReservedDataScripts(doc);
   // Read the "does this document use Chart.js" evidence BEFORE anything is stripped, so a script the
   // loader strip removes cannot take the only sign of the library with it.
   const referencesChartLib = _offlineDocReferencesChartLib(doc);
@@ -16703,7 +16740,11 @@ async function _buildOfflineHtml(shareableHtml) {
   await _offlineInlineRichLibs(doc, referencesChartLib, inlinedRichLibs, vendoredPayload);
   _ensureOfflineCsp(doc);
   const html = _retargetLayerDescriptor(_serializeOfflineDoc(doc), "offline").replace(/\n{3,}/g, "\n\n");
-  return { html: html, droppedScripts: droppedScripts };
+  return {
+    html: html,
+    droppedScripts: droppedScripts,
+    neutralizedScripts: _offlineCountKeptNeutralized(doc, neutralizedScripts),
+  };
 }
 // An export that FAILED is the one toast a user must actually finish reading: it names the cause
 // and the action to take, and some of those messages are long. The 3s default is a confirmation
@@ -16736,7 +16777,13 @@ async function saveOffline() {
   const note = n > 0
     ? " " + n + " script" + (n === 1 ? " that loads or navigates to the network was" : "s that load or navigate to the network were") + " removed."
     : "";
-  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note, { center: true });
+  // A script that keeps its bytes but loses the ability to run is a quieter change than a removal,
+  // and just as surprising to an author who used a reserved id, so it is named too.
+  const m = built.neutralizedScripts;
+  const inertNote = m > 0
+    ? " " + m + " script" + (m === 1 ? " carrying a reserved commentable-html data id was" : "s carrying a reserved commentable-html data id were") + " kept as inert data."
+    : "";
+  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote, { center: true });
 }
 ["btnExportOffline", "btnExportOfflineTop"].forEach(function (id) {
   const b = document.getElementById(id);
