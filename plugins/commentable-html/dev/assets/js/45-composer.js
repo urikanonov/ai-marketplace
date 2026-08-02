@@ -183,11 +183,22 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   cleanups.push(addListener(saveBtn, "click", () => saveComposerElement(el)));
   const formatBar = el.querySelector(".cm-format-bar");
   cleanups.push(wireNoteFormatBar(formatBar, ta));
-  cleanups.push(addListener(ta, "keydown", (e) => {
+  // The toolbar buttons are a real focus target (the bar is one roving tab stop), so bind the keys
+  // on the composer ELEMENT, not the textarea: Ctrl/Cmd+B/I/U/K, Ctrl/Cmd+Enter and Escape must work
+  // from a focused toolbar button too, exactly as they do in the side-pane editor. The keys are
+  // consumed here so Escape closes THIS composer only, never another open composer behind it.
+  cleanups.push(addListener(el, "keydown", (e) => {
     if (e.isComposing || isNoteComposing(ta)) return;
     if (handleNoteFormatShortcut(e, ta)) return;
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveComposerElement(el); }
-    else if (e.key === "Escape") { e.preventDefault(); closeComposerElement(el); }
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); saveComposerElement(el); }
+    else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      // An open toolbar/sidebar popup outranks the composer (the same priority the document-level
+      // handler applies), so Escape dismisses it first rather than discarding the draft behind it.
+      if (typeof cmhClosePriorityPopup === "function" && cmhClosePriorityPopup()) return;
+      closeComposerElement(el);
+    }
   }));
   cleanups.push(addListener(el, "focusin", () => { lastFocusedComposer = el; bringToFront(el); }));
   cleanups.push(addListener(el, "mousedown", () => { lastFocusedComposer = el; bringToFront(el); }));

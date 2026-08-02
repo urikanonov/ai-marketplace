@@ -206,10 +206,11 @@ var NOTE_FORMAT_BUTTONS = [
 ];
 
 function noteFormatBarHtml() {
-  var out = '<div class="cm-format-bar" role="group" aria-label="Comment formatting">';
+  var out = '<div class="cm-format-bar" role="toolbar" aria-orientation="horizontal" aria-label="Comment formatting">';
   for (var i = 0; i < NOTE_FORMAT_BUTTONS.length; i++) {
     var b = NOTE_FORMAT_BUTTONS[i];
-    out += '<button type="button" data-fmt="' + escapeHtml(b.fmt) + '" title="' + escapeHtml(b.title)
+    out += '<button type="button" tabindex="' + (i === 0 ? "0" : "-1") + '" data-fmt="' + escapeHtml(b.fmt)
+      + '" title="' + escapeHtml(b.title)
       + '" aria-label="' + escapeHtml(b.label) + '">' + b.html + "</button>";
   }
   return out + "</div>";
@@ -219,6 +220,16 @@ function noteFormatBarElement() {
   var host = document.createElement("div");
   host.innerHTML = noteFormatBarHtml();
   return host.firstElementChild;
+}
+
+// Move the toolbar's single tab stop (the ARIA roving-tabindex pattern) to `index`, wrapping at both
+// ends, and optionally focus it.
+function rovingNoteFormatBar(bar, index, focusIt) {
+  var btns = bar.querySelectorAll("button[data-fmt]");
+  if (!btns.length) return;
+  var i = ((index % btns.length) + btns.length) % btns.length;
+  for (var k = 0; k < btns.length; k++) btns[k].tabIndex = k === i ? 0 : -1;
+  if (focusIt) { try { btns[i].focus(); } catch (e) {} }
 }
 
 // Wire a `.cm-format-bar`'s buttons to `ta`; returns a remover for every listener it added.
@@ -236,6 +247,38 @@ function wireNoteFormatBar(bar, ta) {
     offs.push(function () {
       ta.removeEventListener("compositionstart", onCompStart);
       ta.removeEventListener("compositionend", onCompEnd);
+    });
+    // Toolbar keyboard navigation: the seven buttons are ONE tab stop, so opening a composer or a
+    // side-pane editor never inserts seven stops in front of the textarea; the arrow keys (plus
+    // Home/End) move focus within the bar and carry the tab stop with them. The keys are stopped
+    // here so an arrow never reaches a document-level handler (deck slide navigation, for example).
+    var onKeyNav = function (e) {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      var btns = Array.prototype.slice.call(bar.querySelectorAll("button[data-fmt]"));
+      var cur = btns.indexOf(document.activeElement);
+      if (cur < 0) return;
+      var next;
+      if (e.key === "ArrowRight") next = cur + 1;
+      else if (e.key === "ArrowLeft") next = cur - 1;
+      else if (e.key === "Home") next = 0;
+      else if (e.key === "End") next = btns.length - 1;
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+      rovingNoteFormatBar(bar, next, true);
+    };
+    // Focus reaching a button any other way (Shift+Tab back into the bar, a script focus) also owns
+    // the tab stop, so the bar and the browser never disagree about which button is tabbable.
+    var onFocusIn = function (e) {
+      var btns = Array.prototype.slice.call(bar.querySelectorAll("button[data-fmt]"));
+      var idx = btns.indexOf(e.target);
+      if (idx >= 0) rovingNoteFormatBar(bar, idx, false);
+    };
+    bar.addEventListener("keydown", onKeyNav);
+    bar.addEventListener("focusin", onFocusIn);
+    offs.push(function () {
+      bar.removeEventListener("keydown", onKeyNav);
+      bar.removeEventListener("focusin", onFocusIn);
     });
     bar.querySelectorAll("button[data-fmt]").forEach(function (btn) {
       // preventDefault on pointer/mouse down keeps the textarea's selection from collapsing when the

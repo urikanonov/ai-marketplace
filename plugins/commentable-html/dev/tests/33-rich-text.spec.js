@@ -180,8 +180,9 @@ test.describe("rich-text comment notes (CMH-RICH)", () => {
     await openInline(page);
     const composer = await openComposer(page, SEL);
     const ta = composer.locator("textarea");
-    // The toolbar is a labelled group, and every button carries type="button" and an accessible name.
-    await expect(composer.locator('.cm-format-bar[role="group"]')).toHaveAttribute("aria-label", /formatting/i);
+    // The toolbar is a labelled ARIA toolbar (one tab stop), and every button carries type="button"
+    // and an accessible name.
+    await expect(composer.locator('.cm-format-bar[role="toolbar"]')).toHaveAttribute("aria-label", /formatting/i);
     for (const fmt of ["bold", "italic", "underline", "strike", "code", "link", "list"]) {
       const btn = composer.locator(`.cm-format-bar button[data-fmt="${fmt}"]`);
       await expect(btn).toHaveAttribute("type", "button");
@@ -372,7 +373,7 @@ test.describe("rich-text comment notes (CMH-RICH)", () => {
 
     await page.locator(".cm-card .cm-reply-btn").first().click();
     const reply = page.locator(".cm-card .cm-reply-compose").last();
-    const bar = reply.locator('.cm-format-bar[role="group"]');
+    const bar = reply.locator('.cm-format-bar[role="toolbar"]');
     await expect(bar).toHaveAttribute("aria-label", /formatting/i);
     for (const fmt of ["bold", "italic", "underline", "strike", "code", "link", "list"]) {
       const btn = bar.locator(`button[data-fmt="${fmt}"]`);
@@ -464,6 +465,168 @@ test.describe("rich-text comment notes (CMH-RICH)", () => {
     }
   });
 
+  test("the formatting toolbar is one tab stop with roving-tabindex arrow navigation on every surface (CMH-RICH-21)", async ({ page }) => {
+    await openInline(page);
+    const composer = await openComposer(page, SEL);
+    const bar = composer.locator(".cm-format-bar");
+    await expect(bar).toHaveAttribute("role", "toolbar");
+    await expect(bar).toHaveAttribute("aria-orientation", "horizontal");
+    const fmtOf = (l) => l.evaluate((e) => e.getAttribute("data-fmt"));
+    const tabindexes = () => bar.locator("button[data-fmt]").evaluateAll((els) => els.map((e) => e.getAttribute("tabindex")));
+    // Exactly ONE button is in the tab order; the other six are reachable only by arrow key.
+    expect(await tabindexes()).toEqual(["0", "-1", "-1", "-1", "-1", "-1", "-1"]);
+
+    const focused = () => page.evaluate(() => document.activeElement && document.activeElement.getAttribute("data-fmt"));
+    await bar.locator('[data-fmt="bold"]').focus();
+    await page.keyboard.press("ArrowRight");
+    expect(await focused()).toBe("italic");
+    // The tab stop moves WITH focus, so returning by Shift+Tab lands on the last-used button.
+    expect(await tabindexes()).toEqual(["-1", "0", "-1", "-1", "-1", "-1", "-1"]);
+    await page.keyboard.press("End");
+    expect(await focused()).toBe("list");
+    // Both ends wrap, so the bar is a closed loop.
+    await page.keyboard.press("ArrowRight");
+    expect(await focused()).toBe("bold");
+    await page.keyboard.press("ArrowLeft");
+    expect(await focused()).toBe("list");
+    await page.keyboard.press("Home");
+    expect(await focused()).toBe("bold");
+
+    // Tab from a toolbar button leaves the bar entirely (it is ONE stop, not seven), and Shift+Tab
+    // comes back to the button that holds the roving tab stop.
+    await page.keyboard.press("ArrowRight");
+    const ta = composer.locator("textarea");
+    await page.keyboard.press("Tab");
+    await expect(ta).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    expect(await focused()).toBe("italic");
+
+    // Arrow keys inside the TEXTAREA still move the caret - the navigation is bound to the bar only.
+    await ta.fill("hello");
+    await ta.evaluate((el) => { el.focus(); el.setSelectionRange(0, 0); });
+    await ta.press("ArrowRight");
+    expect(await ta.evaluate((el) => el.selectionStart)).toBe(1);
+
+    // Clicking a button still formats and still leaves focus (and the selection) in the textarea.
+    await ta.evaluate((el) => el.setSelectionRange(0, 5));
+    await bar.locator('[data-fmt="bold"]').click();
+    await expect(ta).toHaveValue("**hello**");
+    await expect(ta).toBeFocused();
+
+    // The composer's own keys work from a focused toolbar button too (they are bound to the
+    // composer, not the textarea), and Escape closes THIS composer only - a second open composer
+    // keeps its draft.
+    await ta.fill("pick me");
+    await ta.evaluate((el) => el.setSelectionRange(0, 4));
+    await bar.locator('[data-fmt="bold"]').focus();
+    await bar.locator('[data-fmt="bold"]').press("Control+i");
+    await expect(ta).toHaveValue("*pick* me");
+    const otherComposer = await openComposer(page, SEL, 1);
+    await otherComposer.locator("textarea").fill("unrelated draft");
+    await expect(page.locator(".cm-composer")).toHaveCount(2);
+    const firstBtn = page.locator(".cm-composer").nth(0).locator('[data-fmt="bold"]');
+    await firstBtn.focus();
+    await firstBtn.press("Escape");
+    await expect(page.locator(".cm-composer")).toHaveCount(1);
+    await expect(page.locator(".cm-composer textarea")).toHaveValue("unrelated draft");
+    // Ctrl+Enter from a focused toolbar button still saves.
+    const remainingBtn = page.locator(".cm-composer").nth(0).locator('[data-fmt="bold"]');
+    await remainingBtn.focus();
+    await remainingBtn.press("Control+Enter");
+    await expect(page.locator(".cm-composer")).toHaveCount(0);
+    expect((await storedComments(page))[0].note).toBe("unrelated draft");
+
+    // The side pane gets the same toolbar semantics from the shared helper.
+    await addTextComment(page, SEL, "root note");
+    await page.locator(".cm-card .cm-reply-btn").first().click();
+    const paneBar = page.locator(".cm-reply-compose .cm-format-bar").last();
+    await expect(paneBar).toHaveAttribute("role", "toolbar");
+    expect(await paneBar.locator("button[data-fmt]").evaluateAll((els) => els.map((e) => e.getAttribute("tabindex"))))
+      .toEqual(["0", "-1", "-1", "-1", "-1", "-1", "-1"]);
+    await paneBar.locator('[data-fmt="bold"]').focus();
+    await page.keyboard.press("ArrowRight");
+    expect(await focused()).toBe("italic");
+    expect(await fmtOf(paneBar.locator("button[tabindex='0']"))).toBe("italic");
+    await page.keyboard.press("Tab");
+    await expect(page.locator(".cm-reply-compose textarea").last()).toBeFocused();
+  });
+
+  test("the in-document dialog's toolbar is one tab stop too (CMH-RICH-21)", async ({ page }) => {
+    const pop = await openPopoverEditor(page, "root note");
+    const bar = pop.locator(".cm-format-bar");
+    await expect(bar).toHaveAttribute("role", "toolbar");
+    expect(await bar.locator("button[data-fmt]").evaluateAll((els) => els.map((e) => e.getAttribute("tabindex"))))
+      .toEqual(["0", "-1", "-1", "-1", "-1", "-1", "-1"]);
+    const focused = () => page.evaluate(() => document.activeElement && document.activeElement.getAttribute("data-fmt"));
+    await bar.locator('[data-fmt="bold"]').focus();
+    await page.keyboard.press("ArrowRight");
+    expect(await focused()).toBe("italic");
+    await page.keyboard.press("End");
+    expect(await focused()).toBe("list");
+    await page.keyboard.press("Tab");
+    await expect(pop.locator("textarea.cm-comment-popover-input")).toBeFocused();
+    // The dialog's own keys still work from a focused toolbar button.
+    const ta = pop.locator("textarea.cm-comment-popover-input");
+    await ta.fill("pick me");
+    await ta.evaluate((el) => el.setSelectionRange(0, 4));
+    await bar.locator('[data-fmt="bold"]').focus();
+    await bar.locator('[data-fmt="bold"]').press("Control+i");
+    await expect(ta).toHaveValue("*pick* me");
+  });
+
+  test("an open toolbar menu still outranks the composer's Escape, so a draft survives (CMH-RICH-21)", async ({ page }) => {
+    await openInline(page);
+    const composer = await openComposer(page, SEL);
+    await composer.locator("textarea").fill("keep this draft");
+    await openToolbarMenu(page);
+    // Escape from a focused toolbar BUTTON dismisses the higher-priority menu first, exactly as the
+    // document-level handler does when focus is outside the composer; the draft is untouched.
+    await composer.locator('[data-fmt="bold"]').focus();
+    await composer.locator('[data-fmt="bold"]').press("Escape");
+    await expect(page.locator("#toolbarMenu")).toBeHidden();
+    await expect(composer).toHaveCount(1);
+    await expect(composer.locator("textarea")).toHaveValue("keep this draft");
+    // The next Escape then closes the composer itself.
+    await composer.locator('[data-fmt="bold"]').press("Escape");
+    await expect(page.locator(".cm-composer")).toHaveCount(0);
+    expect(await storedComments(page)).toEqual([]);
+  });
+
+  test("the floating composer toolbar keeps >=44px touch targets on a phone (CMH-RICH-22)", async ({ page }) => {
+    await openInline(page);
+    // A narrow phone (320px): the seven 44px buttons cannot fit one row, so the bar MUST wrap
+    // inside the composer rather than shrink the buttons or spill off-screen.
+    await page.setViewportSize({ width: 320, height: 720 });
+    const composer = await openComposer(page, SEL);
+    const buttons = composer.locator(".cm-format-bar button[data-fmt]");
+    await expect(buttons).toHaveCount(7);
+    const boxes = await buttons.evaluateAll((els) => els.map((e) => {
+      const r = e.getBoundingClientRect();
+      return { w: r.width, h: r.height, left: r.left, right: r.right, top: Math.round(r.top) };
+    }));
+    const box = await composer.evaluate((e) => {
+      const r = e.getBoundingClientRect();
+      return { left: r.left, right: r.right };
+    });
+    const vw = await page.evaluate(() => window.innerWidth);
+    for (const b of boxes) {
+      expect(b.h).toBeGreaterThanOrEqual(44);
+      expect(b.w).toBeGreaterThanOrEqual(44);
+      // The bar wraps rather than spilling out of the composer, or off the screen.
+      expect(b.left).toBeGreaterThanOrEqual(box.left - 0.5);
+      expect(b.right).toBeLessThanOrEqual(box.right + 0.5);
+      expect(b.left).toBeGreaterThanOrEqual(-0.5);
+      expect(b.right).toBeLessThanOrEqual(vw + 0.5);
+    }
+    expect(new Set(boxes.map((b) => b.top)).size).toBeGreaterThanOrEqual(2);
+    // The buttons still format at that size.
+    const ta = composer.locator("textarea");
+    await ta.fill("hello world");
+    await ta.evaluate((el) => el.setSelectionRange(0, 5));
+    await composer.locator('[data-fmt="bold"]').click();
+    await expect(ta).toHaveValue("**hello** world");
+  });
+
   test("Ctrl/Cmd+B/I/U/K work in the side-pane reply editor and Ctrl+Enter still saves (CMH-RICH-16)", async ({ page }) => {
     await openInline(page);
     await addTextComment(page, SEL, "root note");
@@ -549,7 +712,7 @@ test.describe("rich-text comment notes (CMH-RICH)", () => {
 
   test("the in-document popover editor offers the same formatting toolbar (CMH-RICH-18)", async ({ page }) => {
     const pop = await openPopoverEditor(page, "root note");
-    const bar = pop.locator('.cm-format-bar[role="group"]');
+    const bar = pop.locator('.cm-format-bar[role="toolbar"]');
     await expect(bar).toHaveAttribute("aria-label", /formatting/i);
     const fmts = await bar.locator("button[data-fmt]").evaluateAll((els) => els.map((e) => e.getAttribute("data-fmt")));
     expect(fmts).toEqual(["bold", "italic", "underline", "strike", "code", "link", "list"]);
