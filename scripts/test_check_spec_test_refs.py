@@ -993,6 +993,31 @@ class SpecTestReferenceTests(unittest.TestCase):
             len([issue for issue in issues if "is also used by test" in issue.message]),
         )
 
+    def test_check_all_reverse_maps_the_whole_corpus_of_a_fully_mapped_spec(self):
+        # A spec that has finished the cleanup gets its ORDINARY `*.spec.js` files reverse-mapped
+        # too, not just its `*.test.*` / regressions subset (the site target, today).
+        (self.base / "tests" / "plain.spec.js").write_text(
+            "test('an unmapped behavior (ORPHAN-66)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
+
+        restricted = refs.check_all(((spec, self.base),), frozenset())
+        full = refs.check_all(((spec, self.base),), frozenset({spec.resolve()}))
+
+        self.assertEqual([], [i for i in restricted if "ORPHAN-66" in i.message])
+        self.assertEqual(
+            ["feature id `ORPHAN-66` has no spec row"],
+            [issue.message for issue in full if "ORPHAN-66" in issue.message],
+        )
+
+    def test_the_site_spec_is_fully_reverse_mapped(self):
+        self.assertIn(
+            (self.root / "site" / "tests" / "SPEC.md").resolve(),
+            refs.FULLY_REVERSE_MAPPED_SPECS,
+        )
+
     def test_real_specs_have_current_test_references(self):
         issues = refs.check_all()
         self.assertEqual([], [issue.format() for issue in issues])

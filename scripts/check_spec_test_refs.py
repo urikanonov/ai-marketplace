@@ -5,13 +5,16 @@ Three directions are checked:
 
 - FORWARD (`check_spec`): every test file and exact test name a spec row cites exists.
 - REVERSE (`check_test_id_mappings`): every test that CARRIES a feature id is owned by that id's
-  spec row. This one is restricted to the corpus `_is_reverse_mapped` accepts - the `*.test.*`
-  suites and the `*regressions*.spec.*` files. Widening it to the whole `*.spec.*` corpus is not
-  a code change but a spec cleanup: 26 test titles over 15 feature ids are not cited by their row
-  today, and several of those ids have no row at all (adding one also demands a doc-surface
-  registry entry). That cleanup is tracked in issue #853; until it lands, a `*.spec.*` file
-  outside the glob is covered by the forward direction and by the cross-file duplicate check
-  below, but not by the reverse mapping.
+  spec row. For a target listed in `FULLY_REVERSE_MAPPED_SPECS` this covers its WHOLE test
+  corpus; for the rest it covers only what `_is_reverse_mapped` accepts - the `*.test.*` suites
+  and the `*regressions*.spec.*` files. A target graduates to the full corpus once every feature
+  id its tests carry is owned and cited by its spec, which is a spec cleanup rather than a code
+  change: the site target is there today, commentable-html is not (a few dozen of its test titles
+  have no owning row, or a row that does not cite them, and several would need brand-new feature
+  ids, which also demands a doc-surface registry entry). Issue #853 tracks that cleanup and
+  carries the measured breakdown. Until it lands, a commentable-html `*.spec.*` file is covered by
+  the forward direction and by the cross-file duplicate check below, but not by the reverse
+  mapping.
 - DUPLICATE (`check_duplicate_feature_ids`): a feature id carried by test titles in MORE THAN ONE
   file must have every one of those titles cited by a spec row that owns the id, so a new test
   cannot quietly borrow an id another file already owns. It reads the WHOLE test corpus, not just
@@ -54,6 +57,13 @@ SPEC_TARGETS = (
     (REPO_ROOT / ".github" / "skills" / "demo-video" / "SPEC.md",
      REPO_ROOT / ".github" / "skills" / "demo-video"),
 )
+# Specs whose ENTIRE test corpus is reverse-mapped, not just the `*.test.*` / regressions subset.
+# A spec joins this set once every feature id its tests carry is owned and cited by it; see the
+# module docstring and issue #853.
+FULLY_REVERSE_MAPPED_SPECS = frozenset({
+    (REPO_ROOT / "site" / "tests" / "SPEC.md").resolve(),
+    (REPO_ROOT / ".github" / "skills" / "demo-video" / "SPEC.md").resolve(),
+})
 
 # One grammar for "a JS/TS test file" everywhere. Playwright's default testMatch is
 # `**/*.@(spec|test).?(c|m)[jt]s`, so the corpus the reverse and duplicate directions read must
@@ -757,11 +767,15 @@ def check_duplicate_feature_ids(
 
 
 @_scoped
-def check_all(targets: tuple[tuple[Path, Path], ...] = SPEC_TARGETS) -> list[SpecIssue]:
+def check_all(
+    targets: tuple[tuple[Path, Path], ...] = SPEC_TARGETS,
+    fully_reverse_mapped: frozenset[Path] = FULLY_REVERSE_MAPPED_SPECS,
+) -> list[SpecIssue]:
     issues: list[SpecIssue] = []
     for spec_path, base_dir in targets:
         issues.extend(check_spec(spec_path, base_dir))
-        reverse_mapped = _test_corpus(spec_path, base_dir, reverse_only=True)
+        reverse_only = spec_path.resolve() not in fully_reverse_mapped
+        reverse_mapped = _test_corpus(spec_path, base_dir, reverse_only=reverse_only)
         if reverse_mapped:
             issues.extend(check_test_id_mappings(spec_path, base_dir, reverse_mapped))
     issues.extend(check_duplicate_feature_ids(targets))
