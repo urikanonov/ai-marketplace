@@ -370,6 +370,10 @@ function _cmhDeleteCommentFromCurrent(id) {
   const tombstoneOk = _tombstoneEmbedded(dropIds);
   const drop = new Set(dropIds);
   dropIds.forEach(function (tid) { const oc = openEditComposers.get(tid); if (oc) closeComposerElement(oc); });
+  // Same invariant the sidebar delete and Clear all uphold: the in-document dialog must not linger
+  // over a comment that no longer exists (in edit mode it survives the outside click that opened
+  // this manager, so it would otherwise stay editable until its Save discovered the loss).
+  if (typeof cmhClosePopoverForIds === "function") cmhClosePopoverForIds(dropIds);
   const dropped = comments.filter(function (c) { return drop.has(c.id); });
   comments = comments.filter(function (c) { return !drop.has(c.id); });
   dropped.forEach(function (c) { try { removeHighlight(c); } catch (e) { /* anchor may already be gone */ } });

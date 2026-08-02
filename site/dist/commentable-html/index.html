@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.332.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.333.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.333.0] - 2026-08-02</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Deleting a comment from the <strong>Manage storage</strong> dialog&#x27;s per-comment list now closes the in-document comment dialog when it is showing one of the deleted comments, matching the sidebar delete and Clear all paths. Previously the live delete path closed any open floating edit composer but never the in-document dialog, so a reviewer who left that dialog open - especially in edit mode, where an outside click does not dismiss it - kept typing into an editor for a comment that no longer existed until Save discovered the loss. A dialog showing a comment that was NOT deleted stays open.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.332.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The in-document comment dialog no longer overflows a short viewport, which could put its Cancel and Save buttons out of reach. The dialog now caps its height to the measured viewport (minus the same 8px margin its position clamp uses, so a dynamic mobile browser toolbar counts) with a <code>calc(100vh - 16px)</code> CSS fallback and its own <code>box-sizing: border-box</code>, and scrolls internally instead: the rendered note in the note view and the toolbar-plus-textarea block in the edit form, with the actions row pinned and on screen. An in-progress edit, which deliberately outlives its anchor scrolling out of view, is re-fitted to the viewport on its own, so a mid-edit viewport shrink no longer strands Save and Cancel off screen either, and content that grows after the dialog was placed - dragging the textarea&#x27;s resize handle - re-fits it through a <code>ResizeObserver</code> rather than pushing the actions row past the bottom edge. (<code>CMH-CORE-18</code>)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.326.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -509,8 +518,6 @@
               <li>A floating control (the hover bubble, the <strong>Add Comment</strong> buttons, the whole-diagram button) is now bounded by the intersection of EVERY clipping container around its target, not just the nearest one. A diagram host inside a scrolling table wrapper, inside a <code>figure.chart</code>, or inside a raw diff block is itself clipped by that outer box, so a target the outer box has scrolled out of view now hides the control instead of leaving it floating over unrelated content, and a target that is only partly visible clamps the control to the visible intersection. Previously the resolver honoured only the first matching ancestor, so the inner box shadowed the outer scroller. Only a container that genuinely clips takes part, so a recognised box an author left <code>overflow: visible</code> (or a <code>display: contents</code> one, which generates no box at all) no longer bounds a control anchored to content that plainly spills out of it.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.325.0] - 2026-08-02</h3></div>
             <div class="group-label">Added</div>
@@ -557,14 +564,7 @@
               <li>Media metadata is made inert where it is WRITTEN: an alt/label is now stripped of bidi controls and every line separator (including U+0085) before it is stored, so no consumer can reintroduce a bundle-line or direction-override injection by forgetting to re-sanitize it.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.316.0] - 2026-08-02</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Exported HTML now always keeps the authoring session provenance, and the <code>Keep AI session id in exports</code> checkbox is gone from both the toolbar overflow menu and the sidebar Export menu. The <code>commentable-html-session-id</code> and <code>commentable-html-agent</code> meta tags survive every Portable, Offline, and Plain HTML export unconditionally. The session id is an opaque agent session identifier the authoring tools already stamp by default and the footer already offers to copy, not a secret, so stripping it by default bought almost nothing while it cost a row in the most space-constrained menu and silently dropped authoring provenance from the copy a reviewer actually receives - the copy where knowing which agent session produced the document is most useful. The now-dead strip path in the export runtime is removed with it.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">245 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">246 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
