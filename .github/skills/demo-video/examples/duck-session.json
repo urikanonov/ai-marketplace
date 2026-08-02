@@ -12,7 +12,7 @@
       "mark": "ask",
       "idleMs": 4000,
       "submitMs": 1500,
-      "send": "Write slugify.mjs with a slugify(text) function and a few tests, then run 2 rounds of multi-duck over it with 4 fast ducks at low reasoning effort, and finish with a PANEL SUMMARY table of the consolidated findings."
+      "send": "Write slugify.mjs with a slugify(text) function and a few tests, then run 2 rounds of multi-duck over it with 4 fast ducks, and finish with a PANEL SUMMARY table of the findings."
     },
     {
       "mark": "quit",
