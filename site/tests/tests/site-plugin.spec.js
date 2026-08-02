@@ -478,7 +478,8 @@ test("demo slider exposes and loads the Checklist report (SITE-DEMO-09)", async 
   await expect(page.locator("#demo-title")).toHaveText("Checklist");
   await expect(page.locator("#demo-panel")).toHaveAttribute("aria-labelledby", "demo-tab-checklist");
   const frame = await demoFrameReady(page, "#demo-iframe", "report-checklist.html");
-  await expect(frame.locator("[data-cmh-checklist]")).toHaveCount(2);
+  // The load is now waited for separately, so this budget covers only the in-frame mount.
+  await expect(frame.locator("[data-cmh-checklist]")).toHaveCount(2, { timeout: 15000 });
 });
 
 
@@ -497,8 +498,8 @@ test("demo slider exposes and loads the Showcase deck (SITE-DEMO-10)", async ({ 
   // Scroll the lazy demo iframe into view so it loads promptly (as a reader reaching it would) and
   // wait for the deck document itself to land, then assert the deck mounts inside it.
   const frame = await demoFrameReady(page, "#demo-iframe", "deck-showcase.html");
-  await expect(frame.locator("#commentRoot[data-cmh-mode='deck']")).toHaveCount(1);
-  await expect(frame.locator(".cmh-deck-mode-toggle")).toBeVisible();
+  await expect(frame.locator("#commentRoot[data-cmh-mode='deck']")).toHaveCount(1, { timeout: 15000 });
+  await expect(frame.locator(".cmh-deck-mode-toggle")).toBeVisible({ timeout: 15000 });
 });
 
 

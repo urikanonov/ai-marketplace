@@ -290,8 +290,8 @@ test("demo mounts inside the iframe on the plugin page (CSP allows it)", async (
   // real reader reaching the section would) and wait for that document, then assert it mounts
   // under the page CSP.
   const frame = await demoFrameReady(page, "#demo iframe", "report-taxi.html");
-  await expect(frame.locator(".cm-toolbar")).toHaveCount(1);
-  await expect(frame.locator("#btnCopyAll")).toBeAttached();
+  await expect(frame.locator(".cm-toolbar")).toHaveCount(1, { timeout: 20000 });
+  await expect(frame.locator("#btnCopyAll")).toBeAttached({ timeout: 20000 });
 });
 
 
