@@ -371,7 +371,7 @@ class NotesExampleTests(unittest.TestCase):
 
 
 # The mermaid loader lives in <head>, OUTSIDE the swappable CSS/COMMENT UI/JS regions, so a bare
-# region swap never reaches it. build.py re-emits it into every example from the canonical PORTABLE
+# region swap never reaches it. build.py re-emits it into every example from the canonical SHAREABLE
 # loader (mirroring the upgrade.py re-emit, CMH-MMD-09), so an example can never ship a stale
 # pre-CMH-MMD-07 loader that renders a collapsed-section diagram as a degenerate ~16px SVG.
 _MODULE_SCRIPT_RE = re.compile(
@@ -392,13 +392,13 @@ def _mermaid_loader_body(html):
 
 class ExampleMermaidLoaderTests(unittest.TestCase):
     """CMH-MMD-09 (examples): build.py re-emits the canonical shell-baked mermaid loader into every
-    example, so each example single-sources the loader from PORTABLE and honors CMH-MMD-07 (a
+    example, so each example single-sources the loader from SHAREABLE and honors CMH-MMD-07 (a
     collapsed-at-load diagram is rendered off-screen, never as a degenerate ~16px in-place SVG)."""
 
     def test_examples_single_source_the_canonical_mermaid_loader(self):
-        portable = _read(os.path.join(_paths.DIST, "PORTABLE.html"))
-        canonical = _mermaid_loader_body(portable)
-        self.assertIsNotNone(canonical, "no mermaid loader in PORTABLE.html")
+        shareable = _read(os.path.join(_paths.DIST, "SHAREABLE.html"))
+        canonical = _mermaid_loader_body(shareable)
+        self.assertIsNotNone(canonical, "no mermaid loader in SHAREABLE.html")
         # The canonical loader is the CMH-MMD-07 off-screen partition, not the old naive m.run().
         self.assertIn("renderHidden", canonical)
         self.assertIn("isHidden", canonical)
@@ -464,8 +464,8 @@ class ExampleMermaidLoaderMatcherTests(unittest.TestCase):
     (`_mermaid_loader_span` / `_mermaid_loader_is_vendored` / `_stamp_mermaid_loader`), mirroring the
     `tools/authoring/upgrade.py` CMH-MMD-09 suite in `tests/test_upgrade.py`."""
 
-    def _portable(self):
-        return _read(os.path.join(_paths.DIST, "PORTABLE.html"))
+    def _shareable(self):
+        return _read(os.path.join(_paths.DIST, "SHAREABLE.html"))
 
     def test_span_ignores_head_module_without_mermaid_import_cmh_mmd_09(self):
         # A second head module <script> that only mentions mermaid in a comment (its import is a
@@ -620,31 +620,31 @@ class ExampleMermaidLoaderMatcherTests(unittest.TestCase):
         # A hand-vendored offline loader (mermaid imported by a relative path) is NOT clobbered back
         # to the CDN by the re-emit - that would silently reintroduce a network fetch.
         html = _doc(_VENDORED_LOADER)
-        out = build._stamp_mermaid_loader(html, self._portable())
+        out = build._stamp_mermaid_loader(html, self._shareable())
         self.assertEqual(out, html)                                  # left unchanged
         self.assertIn('import("./mermaid.esm.min.mjs")', out)        # relative import preserved
         self.assertNotIn("cdn.jsdelivr.net/npm/mermaid", out)
 
     def test_stamp_reemits_canonical_over_build_owned_placeholder_cmh_mmd_09(self):
         # The build-owned src placeholder is matchable and non-vendored, and regen re-emits the
-        # canonical PORTABLE loader over it - so an example single-sources the loader and the src
+        # canonical SHAREABLE loader over it - so an example single-sources the loader and the src
         # block is genuinely build-owned (an edit there has no effect on the built example).
-        portable = self._portable()
+        shareable = self._shareable()
         self.assertFalse(build._mermaid_loader_is_vendored(BUILD_OWNED_SRC_LOADER))
         html = _doc(BUILD_OWNED_SRC_LOADER)
-        pb, pe = build._mermaid_loader_span(portable, "portable")
-        canonical = portable[pb:pe]
+        pb, pe = build._mermaid_loader_span(shareable, "shareable")
+        canonical = shareable[pb:pe]
         self.assertNotIn("renderHidden", html)  # the placeholder is NOT the canonical loader
-        out = build._stamp_mermaid_loader(html, portable)
+        out = build._stamp_mermaid_loader(html, shareable)
         ob, oe = build._mermaid_loader_span(out, "out")
-        self.assertEqual(out[ob:oe], canonical)  # re-emitted verbatim from PORTABLE
+        self.assertEqual(out[ob:oe], canonical)  # re-emitted verbatim from SHAREABLE
         self.assertIn("renderHidden", out[ob:oe])
 
     def test_stamp_reemits_over_loader_with_decoy_local_import_cmh_mmd_09(self):
         # A CDN loader that also carries a decoy relative NON-mermaid import must still be recognized
         # as a CDN loader and re-emitted (not wrongly preserved as vendored) - end-to-end through
         # _stamp_mermaid_loader, mirroring test_upgrade's decoy-local-import case.
-        portable = self._portable()
+        shareable = self._shareable()
         loader = "<!-- Mermaid loader -->\n" + _module(
             "  const _helper = await import(\"./helper.mjs\");\n"
             "  const m = (await import(\"%s\")).default;\n  await m.run();" % _CDN)
@@ -652,10 +652,10 @@ class ExampleMermaidLoaderMatcherTests(unittest.TestCase):
         sb, se = build._mermaid_loader_span(html, "decoy-local")
         self.assertIn('import("./helper.mjs")', html[sb:se])
         self.assertFalse(build._mermaid_loader_is_vendored(html[sb:se]))  # CDN loader, not vendored
-        out = build._stamp_mermaid_loader(html, portable)
+        out = build._stamp_mermaid_loader(html, shareable)
         ob, oe = build._mermaid_loader_span(out, "out")
-        pb, pe = build._mermaid_loader_span(portable, "portable")
-        self.assertEqual(out[ob:oe], portable[pb:pe])          # re-emitted to the canonical loader
+        pb, pe = build._mermaid_loader_span(shareable, "shareable")
+        self.assertEqual(out[ob:oe], shareable[pb:pe])          # re-emitted to the canonical loader
         self.assertNotIn('import("./helper.mjs")', out[ob:oe])  # decoy import gone
 
     def test_src_example_loaders_are_build_owned_cmh_mmd_09(self):
@@ -688,7 +688,7 @@ class MermaidLoaderMirrorTests(unittest.TestCase):
     ambiguous case asserts both REJECT it, each with its own type.)"""
 
     def _corpus(self):
-        portable = _read(os.path.join(_paths.DIST, "PORTABLE.html"))
+        shareable = _read(os.path.join(_paths.DIST, "SHAREABLE.html"))
         bare = _module("  const a = (await import(\"%s\")).default;" % _CDN)
         # A pre-head comment containing a `<header>` (a `<head`-prefixed string) and a module script:
         # a naive find("<head") head-slice would mis-scope to it, so this pins the `<head\b` head match.
@@ -706,7 +706,7 @@ class MermaidLoaderMirrorTests(unittest.TestCase):
                                     'await import("https://cdn.example/decoy-mermaid.mjs")</script></head> -->\n'
                                     '<html><head>\n' + _LOADER + '\n</head><body>x</body></html>\n')
         return {
-            "portable": portable,                                   # the real canonical loader
+            "shareable": shareable,                                   # the real canonical loader
             "legacy": _doc(_LOADER_NO_GUARD_NO_COMMENT),            # loader with no diagram guard
             "vendored": _doc(_VENDORED_LOADER),                     # hand-vendored offline loader
             "decoy_plus_real": _doc(_DECOY_MODULE + "\n" + _LOADER),

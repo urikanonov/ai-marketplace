@@ -215,7 +215,7 @@ test("a moved draggable board grows a Reset moves button that restores it (CMH-B
   await expect(page.locator('#now [data-cm-part="a"]')).toHaveCount(1);
   await expect(page.locator(".cm-widget-reset")).toHaveCount(0);
   await expect(page.locator(".cm-card-state")).toHaveCount(0);
-  await expect(page.locator("#cmTypeBadge")).toHaveText("Portable");
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Shareable");
 });
 
 test("the Reset moves button is only for draggable boards, not static widgets (CMH-BOARD-01)", async ({ page }) => {
@@ -276,7 +276,7 @@ test("Clear restores draggable board moves to the authored baseline (CMH-BOARD-0
   await waitForWidgetMutationFrame(page);
   await expect(page.locator('#now [data-cm-part="a"]')).toHaveCount(1);
   await expect(page.locator(".cm-card-state")).toHaveCount(0);
-  await expect(page.locator("#cmTypeBadge")).toHaveText("Portable");
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Shareable");
 });
 
 test("Clear restores slot-level draggable boards in exact order without touching clean boards (CMH-BOARD-05)", async ({ page }) => {
@@ -300,5 +300,5 @@ test("Clear restores slot-level draggable boards in exact order without touching
   await expect.poll(() => childElementOrder(page, "#slotDone")).toBe(initialDone);
   await expect.poll(() => childElementOrder(page, "#untouchedTodo")).toBe(untouchedInitial);
   await expect(page.locator(".cm-card-state")).toHaveCount(0);
-  await expect(page.locator("#cmTypeBadge")).toHaveText("Portable");
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Shareable");
 });

@@ -142,11 +142,11 @@ test("CMH-NOTE-06: Clear all reverts a note-only change even with no comment pre
   expect(await storedNotes(page)).toBeNull();
 });
 
-test("CMH-NOTE-07: an unsaved note edit flips the badge to Not portable, naming the note", async ({ page }) => {
+test("CMH-NOTE-07: an unsaved note edit flips the badge to Not shareable, naming the note", async ({ page }) => {
   await open(page, DOC, "cmh-note-07");
-  await expect(page.locator("#cmTypeBadge")).toHaveText("Portable");
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Shareable");
   await field(page).fill(HOSTILE);
-  await expect(page.locator("#cmTypeBadge")).toHaveText("Not portable");
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Not shareable");
   const reason = await page.getAttribute("#cmTypeBadge", "title");
   expect(reason).toContain("note");
 });
@@ -231,7 +231,7 @@ test("CMH-NOTE-E2E: reviewer edit -> Copy all -> notes_apply.py -> reopen shows 
   await ready(page);
   await expect(field(page)).toHaveValue(HOSTILE_NORM);
   await expect(page.locator(".cm-card-note")).toHaveCount(0);
-  await expect(page.locator("#cmTypeBadge")).toHaveText("Portable");
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Shareable");
   expect(await storedNotes(page)).toBeNull();
 });
 
@@ -355,6 +355,6 @@ test("CMH-NOTE-17: a Copy all during the debounce window reflects the latest tex
     document.getElementById("btnCopyAll").click();
     return { badge, bundle: (window.__copied && window.__copied[window.__copied.length - 1]) || null };
   });
-  expect(badge).toBe("Not portable");
+  expect(badge).toBe("Not shareable");
   expect(bundle).toContain('NOTES_STATE_JSON: {"risk":"typed but not yet rendered"}');
 });

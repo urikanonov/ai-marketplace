@@ -7,7 +7,7 @@ import {
   clickSidebarExport,
 } from "./helpers.js";
 
-test.describe("UI batch 3: collapsible sections, portable-stale, KQL title copy, chart box", () => {
+test.describe("UI batch 3: collapsible sections, shareable-stale, KQL title copy, chart box", () => {
   test("sections are collapsible; Expand All / Collapse All toggle every section", async ({ page }) => {
     await page.setViewportSize({ width: 1500, height: 900 });
     await openInline(page);
@@ -67,16 +67,16 @@ test.describe("UI batch 3: collapsible sections, portable-stale, KQL title copy,
     expect(off[0]).toBeGreaterThan(off[1]); // red > green when off
   });
 
-  test("a Portable file becomes Not portable after deleting an embedded comment", async ({ page, context }) => {
+  test("a Shareable file becomes Not shareable after deleting an embedded comment", async ({ page, context }) => {
     await openInline(page);
     await addTextComment(page, "#commentRoot section p", "embed me into the file");
-    await expect(page.locator("#cmTypeBadge")).toHaveText("Not portable"); // unembedded yet
+    await expect(page.locator("#cmTypeBadge")).toHaveText("Not shareable"); // unembedded yet
     const [dl] = await Promise.all([
       page.waitForEvent("download"),
       clickSidebarExport(page, "#btnSaveHtml"),
     ]);
     const html = await readDownload(dl);
-    const tmp = path.join(os.tmpdir(), "cmh_portable_" + Date.now() + ".html");
+    const tmp = path.join(os.tmpdir(), "cmh_shareable_" + Date.now() + ".html");
     fs.writeFileSync(tmp, html);
     let p2;
     try {
@@ -85,10 +85,10 @@ test.describe("UI batch 3: collapsible sections, portable-stale, KQL title copy,
       await installClipboardCapture(p2);
       await p2.goto(fileUrl(tmp));
       await ready(p2);
-      await expect(p2.locator("#cmTypeBadge")).toHaveText("Portable");
-      // Deleting the comment leaves it embedded in the file on disk -> Not portable.
+      await expect(p2.locator("#cmTypeBadge")).toHaveText("Shareable");
+      // Deleting the comment leaves it embedded in the file on disk -> Not shareable.
       await p2.locator(".cm-card [data-act='del']").first().click();
-      await expect(p2.locator("#cmTypeBadge")).toHaveText("Not portable");
+      await expect(p2.locator("#cmTypeBadge")).toHaveText("Not shareable");
     } finally {
       if (p2) await p2.close();
       fs.rmSync(tmp, { force: true });

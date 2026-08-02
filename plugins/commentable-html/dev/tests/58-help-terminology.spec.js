@@ -55,7 +55,7 @@ test.describe("Help terminology matches the current button labels", () => {
   test("the help panel uses the exact current export and toolbar labels", async ({ page }) => {
     await openHelp(page);
     const body = page.locator(".cm-help-body");
-    for (const label of ["Copy all", "Export as Portable", "Export Offline", "Export to Plain HTML", "Export to Markdown", "Save as PDF", "Help & About", "Comment on document"]) {
+    for (const label of ["Copy all", "Export as Shareable", "Export Offline", "Export to Plain HTML", "Export to Markdown", "Save as PDF", "Help & About", "Comment on document"]) {
       await expect(body).toContainText(label);
     }
   });

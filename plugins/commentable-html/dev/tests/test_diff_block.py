@@ -22,7 +22,7 @@ import diff_block as D  # noqa: E402
 import validate  # noqa: E402
 
 DIFF_BLOCK_PY = os.path.join(TOOLS, "blocks", "diff_block.py")
-TEMPLATE = os.path.join(ROOT, "dist", "PORTABLE.html")
+TEMPLATE = os.path.join(ROOT, "dist", "SHAREABLE.html")
 _CONTENT_START = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->"
 _CONTENT_END = "<!-- END: commentable-html - CONTENT -->"
 

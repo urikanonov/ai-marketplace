@@ -116,7 +116,7 @@ new Chart(el, { type: "bar", data: {...}, options: {...}, plugins: [valueLabelPl
  the canvas as text, not HTML, so those are not an XSS surface; the raw JSON embedding is. If you
  build a custom `external` HTML tooltip, sanitize its content yourself.
 - **The data travels with the file.** The JSON payload is plaintext inside the HTML, and the
- commentable **Export as Portable** button lets the file (data included) be shared. Treat chart data like
+ commentable **Export as Shareable** button lets the file (data included) be shared. Treat chart data like
  any other content in the report: redact, aggregate, or anonymize sensitive/internal metrics before
  sharing, and use synthetic data in public examples.
 

@@ -25,7 +25,7 @@ sys.path.insert(0, _paths.DEV_TOOLS)
 import skill_flow_harness as harness  # noqa: E402
 import skill_flow_prompts as prompts  # noqa: E402
 
-KNOWN_VALIDATORS = {"validate", "deck_validate", "portable", "stamp"}
+KNOWN_VALIDATORS = {"validate", "deck_validate", "shareable", "stamp"}
 
 
 class CiGuardTests(unittest.TestCase):
@@ -132,7 +132,7 @@ class CommandTests(unittest.TestCase):
         dc = harness.validator_command("deck_validate", "/d.html", python_exe="py")
         self.assertTrue(dc[1].replace("\\", "/").endswith("deck/deck_validate.py"))
         self.assertEqual(dc[-2:], ["--strict", "/d.html"])
-        self.assertIsNone(harness.validator_command("portable", "/x.html"))
+        self.assertIsNone(harness.validator_command("shareable", "/x.html"))
         self.assertIsNone(harness.validator_command("stamp", "/x.html"))
         with self.assertRaises(ValueError):
             harness.validator_command("bogus", "/x.html")
@@ -141,36 +141,36 @@ class CommandTests(unittest.TestCase):
 class ContentCheckTests(unittest.TestCase):
     _LAYER = '<div data-comment-key="doc-x">body</div>'
 
-    def test_portable_rejects_companion_reference(self):
+    def test_shareable_rejects_companion_reference(self):
         bad = self._LAYER + '<link rel="stylesheet" href="commentable-html.css">'
-        ok, _ = harness._content_check("portable", bad)
+        ok, _ = harness._content_check("shareable", bad)
         self.assertFalse(ok)
         bad_js = self._LAYER + '<script src="./commentable-html.assets.js"></script>'
-        ok2, _ = harness._content_check("portable", bad_js)
+        ok2, _ = harness._content_check("shareable", bad_js)
         self.assertFalse(ok2)
 
-    def test_portable_accepts_self_contained_with_layer(self):
-        ok, _ = harness._content_check("portable", "<html><body>%s</body></html>" % self._LAYER)
+    def test_shareable_accepts_self_contained_with_layer(self):
+        ok, _ = harness._content_check("shareable", "<html><body>%s</body></html>" % self._LAYER)
         self.assertTrue(ok)
 
-    def test_portable_rejects_bare_html_without_layer(self):
+    def test_shareable_rejects_bare_html_without_layer(self):
         # A plain page with no companion ref must still fail - it carries no review layer.
-        ok, _ = harness._content_check("portable", "<html><body>just prose</body></html>")
+        ok, _ = harness._content_check("shareable", "<html><body>just prose</body></html>")
         self.assertFalse(ok)
 
-    def test_portable_rejects_any_local_sidecar_but_allows_embedded_and_remote(self):
-        # A portable file must need NO companion file - an arbitrary local sidecar (not just a
+    def test_shareable_rejects_any_local_sidecar_but_allows_embedded_and_remote(self):
+        # A shareable file must need NO companion file - an arbitrary local sidecar (not just a
         # commentable-html.* one) fails; embedded data URIs and remote URLs are fine.
         local = self._LAYER + '<script src="sidecar.js"></script>'
-        self.assertFalse(harness._content_check("portable", local)[0])
+        self.assertFalse(harness._content_check("shareable", local)[0])
         local_css = self._LAYER + '<link rel="stylesheet" href="./theme.css">'
-        self.assertFalse(harness._content_check("portable", local_css)[0])
+        self.assertFalse(harness._content_check("shareable", local_css)[0])
         remote = self._LAYER + '<script src="https://cdn.example.com/x.js"></script>'
-        self.assertTrue(harness._content_check("portable", remote)[0])
+        self.assertTrue(harness._content_check("shareable", remote)[0])
         data_uri = self._LAYER + '<img src="data:image/png;base64,AAAA">'
-        self.assertTrue(harness._content_check("portable", data_uri)[0])
+        self.assertTrue(harness._content_check("shareable", data_uri)[0])
 
-    def test_portable_rejects_non_src_href_companion_vectors(self):
+    def test_shareable_rejects_non_src_href_companion_vectors(self):
         # Copilot review: companion files can also sneak in via srcset/poster/object data/svg image/
         # use href and CSS url(). Each local form must FAIL; the self-contained forms must PASS.
         for markup in (
@@ -182,19 +182,19 @@ class ContentCheckTests(unittest.TestCase):
             '<style>.hero{background:url(bg.png)}</style>',
             '<div style="background:url(\'panel.png\')"></div>',
         ):
-            self.assertFalse(harness._content_check("portable", self._LAYER + markup)[0], markup)
+            self.assertFalse(harness._content_check("shareable", self._LAYER + markup)[0], markup)
         for markup in (
             '<img srcset="data:image/png;base64,AAAA 1x">',
             '<video poster="https://cdn.example.com/t.jpg"></video>',
             '<use xlink:href="#icon"></use>',
             '<style>.hero{background:url(data:image/png;base64,AAAA)}</style>',
         ):
-            self.assertTrue(harness._content_check("portable", self._LAYER + markup)[0], markup)
+            self.assertTrue(harness._content_check("shareable", self._LAYER + markup)[0], markup)
 
-    def test_portable_ignores_src_assignment_in_inline_script(self):
+    def test_shareable_ignores_src_assignment_in_inline_script(self):
         # The runtime's inline JS assigns element.src; that must NOT be read as a companion ref.
         js = self._LAYER + '<script>var img=new Image(); img.src="whatever.png";</script>'
-        self.assertTrue(harness._content_check("portable", js)[0])
+        self.assertTrue(harness._content_check("shareable", js)[0])
 
     def test_stamp_requires_real_meta_tag(self):
         ok, _ = harness._content_check(
@@ -262,7 +262,7 @@ class CorpusTests(unittest.TestCase):
     def test_flow_specific_validators(self):
         by_name = prompts.flows_by_name()
         self.assertIn("deck_validate", by_name["deck"]["validators"])
-        self.assertIn("portable", by_name["export"]["validators"])
+        self.assertIn("shareable", by_name["export"]["validators"])
         # Every flow re-checks the AGENT left the validated stamp - the harness never writes it
         # (--no-stamp), so this proves the agent actually ran the mandatory finalize/validate handoff.
         for name in prompts.REQUIRED_FLOWS:

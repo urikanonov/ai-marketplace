@@ -10,7 +10,7 @@ import { startStaticServer } from "./helpers.js";
 // keep-alive (and speculative preconnect) sockets open after loading a document and its companion
 // assets. A bare server.close() waits for such an idle socket to drain and can hang indefinitely,
 // stalling a spec's `finally { await server.close() }` teardown until the whole test times out
-// (issue #677, the Export Offline nonportable region-guard spec). The helper must destroy open
+// (issue #677, the Export Offline nonshareable region-guard spec). The helper must destroy open
 // connections so close() always resolves promptly. This test pins that: it opens a raw TCP socket
 // that connects but sends no request (the case that hangs a bare close), then asserts close()
 // resolves quickly rather than waiting on that socket.

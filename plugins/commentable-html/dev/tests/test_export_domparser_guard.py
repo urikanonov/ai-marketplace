@@ -97,7 +97,7 @@ class DomParserRoundTripGuardTests(unittest.TestCase):
         expected = frozenset({
             "36-checklist.js",
             "37-notes.js",
-            "65-export-portable.js",
+            "65-export-shareable.js",
             "68-export-offline.js",
             "84-section-review.js",
         })

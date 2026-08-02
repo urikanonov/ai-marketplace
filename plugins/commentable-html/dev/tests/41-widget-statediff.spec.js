@@ -1,5 +1,5 @@
 // Widget layout state-change tracking: a drag/drop move vs the load-time baseline is
-// surfaced as a synthetic record in the sidebar and Copy-all, and flips portability.
+// surfaced as a synthetic record in the sidebar and Copy-all, and flips shareability.
 import { test, expect } from "@playwright/test";
 import { fileUrl, ready, installClipboardCapture, stageContent, copiedBundle } from "./helpers.js";
 
@@ -40,13 +40,13 @@ async function moveCard(page, part, targetSlotId) {
   await waitForWidgetMutationFrame(page);
 }
 
-test("no state card and Portable when nothing moved", async ({ page }) => {
+test("no state card and Shareable when nothing moved", async ({ page }) => {
   await open(page);
   await expect(page.locator(".cm-card-state")).toHaveCount(0);
-  await expect(page.locator("#cmTypeBadge")).toHaveText("Portable");
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Shareable");
 });
 
-test("moving a card surfaces a layout-change card and flips to Not portable", async ({ page }) => {
+test("moving a card surfaces a layout-change card and flips to Not shareable", async ({ page }) => {
   await open(page);
   await moveCard(page, "a", "later");
   const stateCard = page.locator(".cm-card-state");
@@ -54,7 +54,7 @@ test("moving a card surfaces a layout-change card and flips to Not portable", as
   await expect(stateCard).toContainText("Card A");
   await expect(stateCard).toContainText("Now");
   await expect(stateCard).toContainText("Later");
-  await expect(page.locator("#cmTypeBadge")).toHaveText("Not portable");
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Not shareable");
   const reason = await page.getAttribute("#cmTypeBadge", "title");
   expect(reason).toContain("layout was changed");
 });
@@ -68,13 +68,13 @@ test("Copy all includes a Widget layout changes section", async ({ page }) => {
   expect(bundle).toContain('"Card A" moved from Now to Later');
 });
 
-test("moving the card back clears the change and restores Portable", async ({ page }) => {
+test("moving the card back clears the change and restores Shareable", async ({ page }) => {
   await open(page);
   await moveCard(page, "a", "later");
   await expect(page.locator(".cm-card-state")).toHaveCount(1);
   await moveCard(page, "a", "now");
   await expect(page.locator(".cm-card-state")).toHaveCount(0);
-  await expect(page.locator("#cmTypeBadge")).toHaveText("Portable");
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Shareable");
 });
 
 test("a layout change alone (no comments) is still copyable", async ({ page }) => {

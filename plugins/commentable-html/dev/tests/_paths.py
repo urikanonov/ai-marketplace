@@ -21,7 +21,7 @@ PLUGIN_ROOT = os.path.dirname(DEV)                             # plugins/comment
 TOOLS = os.path.join(PKG, "tools")                             # runtime tools (topic-bucketed)
 DECK = os.path.join(TOOLS, "deck")                             # deck tools bucket (tools/deck/)
 DIST = os.path.join(PKG, "dist")
-TEMPLATE = os.path.join(PKG, "dist", "PORTABLE.html")
+TEMPLATE = os.path.join(PKG, "dist", "SHAREABLE.html")
 # The tutorial and worked examples are NOT shipped (not in the skill-resources.zip); they live at
 # the plugin top level next to pkg/ and dev/.
 EXAMPLES = os.path.join(PLUGIN_ROOT, "examples")

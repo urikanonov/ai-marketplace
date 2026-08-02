@@ -108,8 +108,7 @@ def _apply_vendored_libs(html):
     """
     source_blob = None
     try:
-        template = os.path.join(os.path.dirname(os.path.dirname(
-            os.path.dirname(os.path.abspath(__file__)))), "dist", "PORTABLE.html")
+        template = _toolpath.dist_template(_toolpath.SHAREABLE_TEMPLATE)
         with open(template, "r", encoding="utf-8", newline="") as fh:
             source_blob = vendored_libs.blob_script(fh.read())
     except (OSError, UnicodeDecodeError):

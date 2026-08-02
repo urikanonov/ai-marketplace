@@ -72,7 +72,7 @@ class MinimalPackageTests(unittest.TestCase):
         self.assertEqual(tops, {"tools", "references", "vendor", "dist"},
                          "the zip must carry exactly the runtime dirs, not docs/ or examples/")
         # A couple of load-bearing members are present.
-        self.assertTrue(any(n == "dist/PORTABLE.html" for n in names))
+        self.assertTrue(any(n == "dist/SHAREABLE.html" for n in names))
         self.assertTrue(any(n.startswith("tools/") and n.endswith(".py") for n in names))
         # No machine-specific junk leaked in.
         self.assertFalse(any("__pycache__" in n or n.endswith(".pyc") for n in names))
@@ -86,7 +86,7 @@ class MinimalPackageTests(unittest.TestCase):
         rc = extractor.run(dest, _version(), zip_path=ZIP)
         self.assertEqual(rc, 0)
         self.assertTrue(os.path.isfile(os.path.join(dest, "tools", "validate", "validate.py")))
-        self.assertTrue(os.path.isfile(os.path.join(dest, "dist", "PORTABLE.html")))
+        self.assertTrue(os.path.isfile(os.path.join(dest, "dist", "SHAREABLE.html")))
         self.assertTrue(os.path.isfile(
             os.path.join(dest, ".skill-resources-" + _version() + ".ok")))
 

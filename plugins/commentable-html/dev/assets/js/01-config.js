@@ -52,7 +52,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.333.0";
+const CMH_VERSION = "1.350.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -75,7 +75,7 @@ function cmBrandLink(inner) {
 // Small monochrome line-icons (stroke = currentColor) for chrome controls. Kept as
 // path data so a single helper renders them at any size without external assets.
 // Icons consumed by _cmIco() for runtime chrome (TOC, scroll, Help search). The three
-// sidebar action-button icons (Portable/Plain/Clear) are authored inline in
+// sidebar action-button icons (Shareable/Plain/Clear) are authored inline in
 // template.shell.html and are intentionally not duplicated here.
 const _CM_ICONS = {
   expand:   "M8 9l4-4 4 4 M8 15l4 4 4-4",
@@ -93,15 +93,15 @@ function _cmIco(name, size) {
     + '" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2"'
     + ' stroke-linecap="round" stroke-linejoin="round"><path d="' + d + '"/></svg>';
 }
-// In nonportable mode the page loads an external commentable-html.assets.js
+// In nonshareable mode the page loads an external commentable-html.assets.js
 // that defines window.__COMMENTABLE_ASSETS__ = { version, css, js } - the string
 // payloads used to rebuild a fully self-contained file for "Export standalone".
 // A separate assets file (never the runtime embedding its own source) avoids any
 // self-referential embedding loop. It is absent in inline/standalone documents.
 const CMH_ASSETS = (typeof window !== "undefined" && window.__COMMENTABLE_ASSETS__) || null;
-// NonPortable = the layer's CSS/JS live in companion files next to this HTML. Detected
+// NonShareable = the layer's CSS/JS live in companion files next to this HTML. Detected
 // by the presence of the assets registry OR an external commentable-html script.
-const NONPORTABLE_MODE = !!CMH_ASSETS
+const NONSHAREABLE_MODE = !!CMH_ASSETS
   || !!document.querySelector('script[src*="commentable-html"], link[href*="commentable-html"]');
 function declaredAssetVersion() {
   const meta = document.querySelector('meta[name="commentable-html-version"]');

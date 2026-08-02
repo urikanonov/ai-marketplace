@@ -114,8 +114,8 @@ from checks.parsing import (  # noqa: F401,E402
     CONTENT_END,
     DEMO_COMMENT_KEY,
     DEMO_KEYS,
-    DEMO_NONPORTABLE_COMMENT_KEY,
-    DEMO_NONPORTABLE_TITLE,
+    DEMO_NONSHAREABLE_COMMENT_KEY,
+    DEMO_NONSHAREABLE_TITLE,
     DEMO_TITLE,
     DOC_EXAMPLE_COMMENT_KEY,
     FORBIDDEN_IDS,
@@ -162,19 +162,19 @@ from checks.resources import (  # noqa: F401,E402
     CSS_NETWORK_URL_RE,
     FETCHING_LINK_RELS,
     META_REFRESH_NETWORK_RE,
-    NONPORTABLE_REGIONS,
+    NONSHAREABLE_REGIONS,
     OFFLINE_CSP_REQUIRED,
     _ADX_RUN_HOST,
-    _check_nonportable,
+    _check_nonshareable,
     _csp_directives,
     _file_url_to_path,
     _is_adx_run_href,
-    _is_nonportable,
+    _is_nonshareable,
     _layer_tags,
     _link_loads,
-    _nonportable_css_refs,
-    _nonportable_js_refs,
-    _nonportable_meta_versions,
+    _nonshareable_css_refs,
+    _nonshareable_js_refs,
+    _nonshareable_meta_versions,
     _offline_csp_errors,
     _ref_path,
 )
@@ -239,6 +239,19 @@ from checks.layer import (  # noqa: F401,E402
 # --strict; retrofit's own long-standing carve-out for it is composed in retrofit.py.
 ADVISORY_PREFIXES = (HIGHLIGHT_ADVISORY_PREFIX,)
 
+# Pre-rename aliases for the symbols this module re-exports. `validate` is an IMPORT surface (the
+# authoring tools import it by bare name), so the same compatibility promise the CLI flags and the
+# to_portable.py shim make is kept here: an existing caller that reads a `*nonportable*` symbol
+# keeps working. Each alias is the SAME object as its current-name counterpart.
+NONPORTABLE_REGIONS = NONSHAREABLE_REGIONS
+DEMO_NONPORTABLE_COMMENT_KEY = DEMO_NONSHAREABLE_COMMENT_KEY
+DEMO_NONPORTABLE_TITLE = DEMO_NONSHAREABLE_TITLE
+_is_nonportable = _is_nonshareable
+_check_nonportable = _check_nonshareable
+_nonportable_css_refs = _nonshareable_css_refs
+_nonportable_js_refs = _nonshareable_js_refs
+_nonportable_meta_versions = _nonshareable_meta_versions
+
 
 def is_advisory(warning):
     """True when `warning` is an advisory (see ADVISORY_PREFIXES)."""
@@ -285,7 +298,7 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET, html=None)
     only to resolve companion references. This is what lets finalize validate without a second
     read of a multi-megabyte file (CMH-BUILD-20).
 
-    base_dir controls how NonPortable companion references are resolved for the
+    base_dir controls how NonShareable companion references are resolved for the
     existence/remote/absolute checks: by default it is the document's own directory.
     Pass an explicit directory to resolve refs against the file's FINAL location (used
     when validating before the file is written there), or None to skip the companion

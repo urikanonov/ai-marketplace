@@ -11,7 +11,7 @@ def _region_bounds(begin_idx, end_idx, name):
     return None, None
 
 
-def _check_state_json_blocks(html, parser, begin_idx, end_idx, nonportable):
+def _check_state_json_blocks(html, parser, begin_idx, end_idx, nonshareable):
     errors, warnings = [], []
     # 4) handledCommentIds is a JSON array of safe ids.
     hlo, hhi = _region_bounds(begin_idx, end_idx, "HANDLED IDS")
@@ -88,7 +88,7 @@ def _check_state_json_blocks(html, parser, begin_idx, end_idx, nonportable):
             errors.append(f"reviewedSections is not valid JSON: {exc}")
 
     # 6) The JS region must contain exactly one real </script>.
-    if not nonportable and "JS" in begin_idx and "JS" in end_idx:
+    if not nonshareable and "JS" in begin_idx and "JS" in end_idx:
         lo, hi = sorted((begin_idx["JS"], end_idx["JS"]))
         js_slice = html[lo:hi]
         n_close = len(re.findall(r"</script\s*>", js_slice, re.IGNORECASE))

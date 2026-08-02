@@ -20,8 +20,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402  shared pkg/dev split path constants
 
 PACKAGE_JSON = os.path.join(_paths.DEV, "package.json")
-BUILT_PORTABLE = _paths.TEMPLATE  # dev/skill/dist/PORTABLE.html (the stamped, built stage)
-BUILT_NONPORTABLE = os.path.join(_paths.DIST, "NONPORTABLE.html")
+BUILT_SHAREABLE = _paths.TEMPLATE  # dev/skill/dist/SHAREABLE.html (the stamped, built stage)
+BUILT_NONSHAREABLE = os.path.join(_paths.DIST, "NONSHAREABLE.html")
 SHELL_SOURCE = os.path.join(_paths.ASSETS, "template.shell.html")
 SECURITY_SPEC = os.path.join(_paths.DEV, "spec", "50-security.md")
 VENDOR_UPSTREAM = os.path.join(_paths.ASSETS, "vendor", "UPSTREAM.md")
@@ -51,7 +51,7 @@ class CdnByDesignTests(unittest.TestCase):
         # template is exactly the pinned jsDelivr URL - not merely that the pinned URL appears
         # somewhere. A presence-only check would stay green if the active import moved to unpkg, a
         # bare host, or mermaid@latest while the expected string lingered in a comment or dead code.
-        for path in (BUILT_PORTABLE, BUILT_NONPORTABLE):
+        for path in (BUILT_SHAREABLE, BUILT_NONSHAREABLE):
             built = _read(path)
             mermaid_urls = [u for u in url_re.findall(built) if "mermaid" in u.lower()]
             self.assertTrue(mermaid_urls, "no remote mermaid import found in %s" % path)

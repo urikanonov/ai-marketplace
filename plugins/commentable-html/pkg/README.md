@@ -1,6 +1,6 @@
 # Commentable HTML plugin
 
-`commentable-html` turns standalone HTML reports into inline-comment review surfaces. A reviewer can select text, code, diff lines, Mermaid nodes, images, or charts, leave comments in the page, copy a compact Markdown bundle back to an agent, and export a portable file with comments embedded. It drastically shortens the AI planning and iteration loop: you review the artifact in place and hand the agent structured notes instead of narrating changes in chat.
+`commentable-html` turns standalone HTML reports into inline-comment review surfaces. A reviewer can select text, code, diff lines, Mermaid nodes, images, or charts, leave comments in the page, copy a compact Markdown bundle back to an agent, and export a shareable file with comments embedded. It drastically shortens the AI planning and iteration loop: you review the artifact in place and hand the agent structured notes instead of narrating changes in chat.
 
 ## Install
 
@@ -16,18 +16,18 @@ claude plugin marketplace add https://github.com/urikanonov/ai-marketplace
 claude plugin install commentable-html@urikan-ai-marketplace
 ```
 
-The output is a portable HTML file that works with any agent.
+The output is a shareable HTML file that works with any agent.
 
 ## Privacy and compliance
 
 Your content stays with you. Commentable HTML runs entirely in your browser as a static file - there is no server, no account, no sign-in, and no telemetry. The document you review and every comment you leave live in one of two places only:
 
 - **In your browser's `localStorage`**, scoped to that file, while you iterate - so your comments survive a browser restart or a machine reboot and are still there when you reopen the file; or
-- **Embedded inside the HTML file itself** once you Export as Portable (or Offline).
+- **Embedded inside the HTML file itself** once you Export as Shareable (or Offline).
 
 Your document text and your comments are never uploaded, transmitted, or sent to any external service - not to us, and not to anyone else. They travel only when you choose to share the exported file or paste the `Copy all` bundle yourself. The HTML file is the single source of truth; keep it, archive it, or delete it and the data is gone.
 
-The only optional network activity is loading the Mermaid and Chart.js rendering libraries from a public CDN in the Non-portable and Portable modes (library code only - no document data is sent). **Export Offline** strips every remote loader and inlines vendored Mermaid and Chart.js only when the document uses them, so the file opens with zero network while live diagrams and chart tooltips still work - suitable for air-gapped, sensitive, or regulated material.
+The only optional network activity is loading the Mermaid and Chart.js rendering libraries from a public CDN in the Non-shareable and Shareable modes (library code only - no document data is sent). **Export Offline** strips every remote loader and inlines vendored Mermaid and Chart.js only when the document uses them, so the file opens with zero network while live diagrams and chart tooltips still work - suitable for air-gapped, sensitive, or regulated material.
 
 ## Why not just plan in chat, Markdown, or plain HTML?
 
@@ -54,9 +54,9 @@ Your agent can draft a plan in seconds; the real bottleneck is everything after 
 - Sidebar and floating toolbar for adding, editing, deleting, jumping to, and copying comments.
 - Comments persist in `localStorage` under a per-document key, so they survive a browser restart or reboot and restore when you reopen the file - no server or account needed - until you Export them into the HTML.
 - `Copy all` returns every comment at once with pinpoint metadata and a machine-readable `HANDLED_IDS_JSON` line, so the agent makes one coordinated, coherent edit across all your notes instead of a fragile one-at-a-time pass.
-- `Export as Portable` for a single shareable file with current comments embedded.
+- `Export as Shareable` for a single shareable file with current comments embedded.
 - `Export to Plain HTML` for a clean report without the review layer.
-- Standalone and NonPortable output modes, both built from the same runtime.
+- Standalone and NonShareable output modes, both built from the same runtime.
 - Runtime helpers for validation, handled-id updates, document creation, upgrades, diffs, charts, KQL, code highlighting, TOCs, Mermaid skip fixes, and image inlining.
 
 ## Review workflow
@@ -66,14 +66,14 @@ Commentable HTML turns any report into a review you can hand straight back to an
 ![The self-review loop: an AI agent generates a commentable HTML report, you review it and leave inline comments, you Copy all the comments back to the agent, then reload and repeat until every comment is resolved.](https://raw.githubusercontent.com/urikanonov/ai-marketplace/main/plugins/commentable-html/docs/assets/review-loop.svg)
 
 - **Self review** - generate the report, comment on it, `Copy all` back to the agent, and reload; repeat until the panel is empty.
-- **Peer review** - `Export as Portable` and share the single file; the peer comments in place and sends it back with the comments embedded, then you feed those back to the agent.
-- **Reviewing someone's plan** - convert an incoming Markdown or HTML plan into commentable HTML, comment inline, and `Export as Portable` to send it back.
+- **Peer review** - `Export as Shareable` and share the single file; the peer comments in place and sends it back with the comments embedded, then you feed those back to the agent.
+- **Reviewing someone's plan** - convert an incoming Markdown or HTML plan into commentable HTML, comment inline, and `Export as Shareable` to send it back.
 
 See the [tutorial](https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/docs/TUTORIAL.md) for a full walkthrough, or the live demo and review-loop diagram on the [project website](https://urikanonov.github.io/ai-marketplace/commentable-html/).
 
 ## Using the skill
 
-The authoritative per-generation instructions are in [`skills/commentable-html/SKILL.md`](skills/commentable-html/SKILL.md). In short: start from `skills/commentable-html/dist/PORTABLE.html` for a standalone file, or `skills/commentable-html/dist/NONPORTABLE.html` plus its companions for a local iterative file, then run the validator when Python is available:
+The authoritative per-generation instructions are in [`skills/commentable-html/SKILL.md`](skills/commentable-html/SKILL.md). In short: start from `skills/commentable-html/dist/SHAREABLE.html` for a standalone file, or `skills/commentable-html/dist/NONSHAREABLE.html` plus its companions for a local iterative file, then run the validator when Python is available:
 
 ```powershell
 python skills\commentable-html\tools\validate\validate.py --strict <file.html>
@@ -88,7 +88,7 @@ The review loop is also documented in `skills/commentable-html/SKILL.md`: the us
 ```powershell
 python skills\commentable-html\tools\authoring\new_document.py `
   --content report-body.html `
-  --portable `
+  --shareable `
   --label "Q3 Cost Review" `
   --key auto `
   --source report-body.html `
@@ -96,7 +96,7 @@ python skills\commentable-html\tools\authoring\new_document.py `
 python skills\commentable-html\tools\validate\validate.py --strict q3-cost-review.html
 ```
 
-`--key auto` derives a stable, collision-free `data-comment-key` from the output/source path (not from `--label`), so two same-titled reports keep separate comment stores. Drop `--portable` for a NonPortable file that references the companion assets, and pass `--content -` to read the fragment from stdin. The fragment is trusted HTML and is not sanitized; sanitize any untrusted host HTML before wrapping it.
+`--key auto` derives a stable, collision-free `data-comment-key` from the output/source path (not from `--label`), so two same-titled reports keep separate comment stores. Drop `--shareable` for a NonShareable file that references the companion assets, and pass `--content -` to read the fragment from stdin. The fragment is trusted HTML and is not sanitized; sanitize any untrusted host HTML before wrapping it.
 
 Contributors: see the [contributing guide](https://github.com/urikanonov/ai-marketplace/blob/main/CONTRIBUTING.md). Use the issue tracker to [report a bug](https://github.com/urikanonov/ai-marketplace/issues/new?template=plugin-issue.yml), [request a feature](https://github.com/urikanonov/ai-marketplace/issues/new?template=feature-request.yml) for an existing plugin, or [suggest a new plugin or skill](https://github.com/urikanonov/ai-marketplace/issues/new?template=plugin-request.yml). Packaged installs do not include the development harness.
 
@@ -105,7 +105,7 @@ Contributors: see the [contributing guide](https://github.com/urikanonov/ai-mark
 | Path | What ships |
 | --- | --- |
 | `skills/commentable-html/SKILL.md` | Public skill instructions and review loop. |
-| `skills/commentable-html/dist/` | Generated bundle: `PORTABLE.html`, `NONPORTABLE.html`, CSS/JS/assets companions, and `manifest.json`. |
+| `skills/commentable-html/dist/` | Generated bundle: `SHAREABLE.html`, `NONSHAREABLE.html`, CSS/JS/assets companions, and `manifest.json`. |
 | `skills/commentable-html/tools/` | Runtime Python tools used while generating, validating, upgrading, and processing reports. |
 | `skills/commentable-html/references/` | Detailed reference docs for anchors, layout, charts, validation, exports, and helper tools. |
 

@@ -15,7 +15,7 @@ import zipfile
 PACKAGE_ZIP_NAME = "skill-resources.zip"
 # The bulky content that is zipped and extracted on first run (STAGE-relative dir names). Only what
 # the skill needs to OPERATE is shipped: the tools, the reference docs the agent consults, the
-# runtime dist/ (NonPortable docs load it over file://), and the deck vendor templates. The tutorial
+# runtime dist/ (NonShareable docs load it over file://), and the deck vendor templates. The tutorial
 # (docs/) and example reports (examples/) are large (inlined screenshots/images) and are NOT needed
 # to run the skill - they live on the site - so they stay in the repo staging tree but ship with
 # neither the zip nor the installed package.

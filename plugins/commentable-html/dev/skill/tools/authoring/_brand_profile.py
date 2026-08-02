@@ -79,7 +79,8 @@ def _read_json(path):
 def _known_tokens(seed_html=""):
     text = seed_html or ""
     root = Path(_toolpath.SKILL_ROOT)
-    for rel in ("dist/PORTABLE.html", "dist/NONPORTABLE.html", "dist/commentable-html.css"):
+    for rel in ("dist/SHAREABLE.html", "dist/NONSHAREABLE.html", "dist/PORTABLE.html",
+                "dist/NONPORTABLE.html", "dist/commentable-html.css"):
         try:
             text += "\n" + (root / rel).read_text(encoding="utf-8")
         except OSError:

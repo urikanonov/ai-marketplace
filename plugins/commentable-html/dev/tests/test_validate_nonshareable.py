@@ -1,10 +1,10 @@
 from _validate_helpers import *
 
 
-class NonPortableTests(unittest.TestCase):
-    """Dual-mode validation: the nonportable branch and its guardrails."""
+class NonShareableTests(unittest.TestCase):
+    """Dual-mode validation: the nonshareable branch and its guardrails."""
 
-    def _validate(self, content, companions=("css", "js", "assets"), version=NONPORTABLE_VERSION):
+    def _validate(self, content, companions=("css", "js", "assets"), version=NONSHAREABLE_VERSION):
         exts = {"css": ".css", "js": ".js", "assets": ".assets.js"}
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "doc.html")
@@ -16,39 +16,39 @@ class NonPortableTests(unittest.TestCase):
                     fh.write("/* stub */")
             return validate.validate(p)
 
-    def assertNonPortableError(self, content, needle, **kw):
+    def assertNonShareableError(self, content, needle, **kw):
         errors, _ = self._validate(content, **kw)
         self.assertTrue(any(needle in e for e in errors),
                         "expected an error containing %r, got: %r" % (needle, errors))
 
-    def assertNonPortableWarn(self, content, needle, **kw):
+    def assertNonShareableWarn(self, content, needle, **kw):
         errors, warnings = self._validate(content, **kw)
         self.assertEqual(errors, [], "expected no errors, got: %r" % errors)
         self.assertTrue(any(needle in w for w in warnings),
                         "expected a warning containing %r, got: %r" % (needle, warnings))
 
     # -- positive controls -------------------------------------------------- #
-    def test_minimal_nonportable_is_clean(self):
-        errors, warnings = self._validate(build_nonportable())
-        self.assertEqual(errors, [], "nonportable errors: %r" % errors)
-        self.assertEqual(warnings, [], "nonportable warnings: %r" % warnings)
+    def test_minimal_nonshareable_is_clean(self):
+        errors, warnings = self._validate(build_nonshareable())
+        self.assertEqual(errors, [], "nonshareable errors: %r" % errors)
+        self.assertEqual(warnings, [], "nonshareable warnings: %r" % warnings)
 
-    def test_nonportable_document_rejects_offline_mode(self):
-        html = build_nonportable().replace('"mode":"nonportable"', '"mode":"offline"', 1)
-        self.assertNonPortableError(html, 'commentableHtmlLayer.mode must be "nonportable"')
+    def test_nonshareable_document_rejects_offline_mode(self):
+        html = build_nonshareable().replace('"mode":"nonshareable"', '"mode":"offline"', 1)
+        self.assertNonShareableError(html, 'commentableHtmlLayer.mode must be "nonshareable"')
 
-    def test_real_nonportable_template_is_clean(self):
-        eco = os.path.join(ROOT, "dist", "NONPORTABLE.html")
-        self.assertTrue(os.path.exists(eco), "dist/NONPORTABLE.html not found - run python tools/build.py")
+    def test_real_nonshareable_template_is_clean(self):
+        eco = os.path.join(ROOT, "dist", "NONSHAREABLE.html")
+        self.assertTrue(os.path.exists(eco), "dist/NONSHAREABLE.html not found - run python tools/build.py")
         errors, warnings = validate.validate(eco)
-        self.assertEqual(errors, [], "dist/NONPORTABLE.html errors: %r" % errors)
-        self.assertEqual(warnings, [], "dist/NONPORTABLE.html warnings: %r" % warnings)
+        self.assertEqual(errors, [], "dist/NONSHAREABLE.html errors: %r" % errors)
+        self.assertEqual(warnings, [], "dist/NONSHAREABLE.html warnings: %r" % warnings)
 
-    def test_is_nonportable_detection(self):
-        self.assertTrue(validate._is_nonportable(build_nonportable()))
-        self.assertFalse(validate._is_nonportable(build()))
+    def test_is_nonshareable_detection(self):
+        self.assertTrue(validate._is_nonshareable(build_nonshareable()))
+        self.assertFalse(validate._is_nonshareable(build()))
 
-    def test_nonportable_detection_ignores_attribute_substrings(self):
+    def test_nonshareable_detection_ignores_attribute_substrings(self):
         # A decoy tag whose attribute NAME merely contains "href"/"src" as a
         # substring (data-href / data-src) must NOT be treated as a real
         # companion reference - the browser would never load it.
@@ -59,12 +59,12 @@ class NonPortableTests(unittest.TestCase):
             '</head><body>\n'
             + "\n".join([HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN])
             + '\n</body></html>\n')
-        self.assertFalse(validate._is_nonportable(decoy))
+        self.assertFalse(validate._is_nonshareable(decoy))
 
-    def test_nonportable_detection_accepts_unquoted_and_reordered_attrs(self):
+    def test_nonshareable_detection_accepts_unquoted_and_reordered_attrs(self):
         # Unquoted href/src and a reordered <meta content=.. name=..> are valid
-        # HTML that the browser loads, so nonportable detection must recognize them.
-        v = NONPORTABLE_VERSION
+        # HTML that the browser loads, so nonshareable detection must recognize them.
+        v = NONSHAREABLE_VERSION
         unquoted = (
             "<!DOCTYPE html>\n<html><head>\n"
             "<link rel=stylesheet href=commentable-html.css>\n"
@@ -72,16 +72,16 @@ class NonPortableTests(unittest.TestCase):
             "</head><body>\n"
             + "\n".join([HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN])
             + "\n</body></html>\n")
-        self.assertTrue(validate._is_nonportable(unquoted))
-        self.assertEqual(validate._nonportable_css_refs(unquoted), ["commentable-html.css"])
+        self.assertTrue(validate._is_nonshareable(unquoted))
+        self.assertEqual(validate._nonshareable_css_refs(unquoted), ["commentable-html.css"])
         # Reordered meta (content before name) is still read for the version.
         reordered = '<meta content="%s" name="commentable-html-version">' % v
-        self.assertEqual(validate._nonportable_meta_versions(reordered), [v])
+        self.assertEqual(validate._nonshareable_meta_versions(reordered), [v])
 
-    def test_nonportable_detection_is_case_insensitive(self):
+    def test_nonshareable_detection_is_case_insensitive(self):
         # The "commentable-html" substring and the extension are matched
         # case-insensitively, so a mixed-case companion reference is still detected.
-        v = NONPORTABLE_VERSION
+        v = NONSHAREABLE_VERSION
         mixed = (
             "<!DOCTYPE html>\n<html><head>\n"
             '<link rel="stylesheet" href="Commentable-HTML.CSS">\n'
@@ -89,35 +89,35 @@ class NonPortableTests(unittest.TestCase):
             "</head><body>\n"
             + "\n".join([HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN])
             + "\n</body></html>\n")
-        self.assertTrue(validate._is_nonportable(mixed))
-        self.assertEqual(validate._nonportable_css_refs(mixed), ["Commentable-HTML.CSS"])
-        self.assertEqual(validate._nonportable_js_refs(mixed), ["Commentable-HTML.JS"])
+        self.assertTrue(validate._is_nonshareable(mixed))
+        self.assertEqual(validate._nonshareable_css_refs(mixed), ["Commentable-HTML.CSS"])
+        self.assertEqual(validate._nonshareable_js_refs(mixed), ["Commentable-HTML.JS"])
 
-    def test_nonportable_detection_ignores_gt_in_value_and_decoys(self):
+    def test_nonshareable_detection_ignores_gt_in_value_and_decoys(self):
         # The HTMLParser-based scan must (a) not be fooled by a '>' inside a quoted
         # attribute value, and (b) ignore link/script tags that only appear inside an
         # HTML comment or a <script>/<style> body (CDATA), which a naive regex matched.
-        v = NONPORTABLE_VERSION
+        v = NONSHAREABLE_VERSION
         gt_in_value = '<link rel="stylesheet" title="a>b" href="commentable-html.css">'
-        self.assertEqual(validate._nonportable_css_refs(gt_in_value), ["commentable-html.css"])
+        self.assertEqual(validate._nonshareable_css_refs(gt_in_value), ["commentable-html.css"])
         commented = '<!-- <link rel="stylesheet" href="commentable-html.css"> -->'
-        self.assertEqual(validate._nonportable_css_refs(commented), [])
+        self.assertEqual(validate._nonshareable_css_refs(commented), [])
         in_script = '<script>var s = "<link href=\'commentable-html.css\'>";</script>'
-        self.assertEqual(validate._nonportable_css_refs(in_script), [])
+        self.assertEqual(validate._nonshareable_css_refs(in_script), [])
 
-    def test_nonportable_detection_accepts_cache_busted_refs(self):
+    def test_nonshareable_detection_accepts_cache_busted_refs(self):
         # A ?query / #fragment cache-buster is stripped by the browser before it
         # fetches the file, so detection and the on-disk check must ignore it too.
         busted = (
             '<link rel="stylesheet" href="commentable-html.css?v=1.7.0">'
             '<script src="commentable-html.js#build9"></script>'
             '<script src="commentable-html.assets.js?v=1.7.0"></script>')
-        self.assertEqual(validate._nonportable_css_refs(busted), ["commentable-html.css"])
-        self.assertEqual(validate._nonportable_js_refs(busted),
+        self.assertEqual(validate._nonshareable_css_refs(busted), ["commentable-html.css"])
+        self.assertEqual(validate._nonshareable_js_refs(busted),
                          ["commentable-html.js", "commentable-html.assets.js"])
 
     def test_cache_busted_companion_refs_validate_clean(self):
-        doc = (build_nonportable()
+        doc = (build_nonshareable()
                .replace('href="commentable-html.css"', 'href="commentable-html.css?v=1.7.0"')
                .replace('src="commentable-html.assets.js"', 'src="commentable-html.assets.js?v=1.7.0"')
                .replace('src="commentable-html.js"', 'src="commentable-html.js?v=1.7.0"'))
@@ -137,74 +137,74 @@ class NonPortableTests(unittest.TestCase):
         self.assertNotEqual(out, doc, "fixture premise: the CONTENT region was substituted")
         return out
 
-    def test_companion_markup_in_authored_content_does_not_make_a_document_nonportable(self):
+    def test_companion_markup_in_authored_content_does_not_make_a_document_nonshareable(self):
         # A document ABOUT commentable-html legitimately demonstrates the companion markup in
         # its content. The real references always sit OUTSIDE the CONTENT region (the CSS link
         # in <head>, the scripts at the end of <body>), so an occurrence inside the region is
-        # authored prose and must not flip the document into NonPortable mode.
+        # authored prose and must not flip the document into NonShareable mode.
         doc = self._in_content(build(), self._DEMO_MARKUP)
-        self.assertFalse(validate._is_nonportable(doc))
-        self.assertEqual(validate._nonportable_css_refs(doc), [])
-        self.assertEqual(validate._nonportable_js_refs(doc), [])
+        self.assertFalse(validate._is_nonshareable(doc))
+        self.assertEqual(validate._nonshareable_css_refs(doc), [])
+        self.assertEqual(validate._nonshareable_js_refs(doc), [])
         errors, warnings = _validate_text(doc)
         self.assertEqual(errors, [], "authored demonstration should validate clean: %r" % errors)
         self.assertEqual(warnings, [], "authored demonstration should not warn: %r" % warnings)
 
-    def test_a_real_nonportable_document_that_also_demonstrates_the_markup_is_clean(self):
-        doc = self._in_content(build_nonportable(), self._DEMO_MARKUP)
-        self.assertTrue(validate._is_nonportable(doc))
-        self.assertEqual(validate._nonportable_css_refs(doc), ["commentable-html.css"])
-        self.assertEqual(validate._nonportable_js_refs(doc),
+    def test_a_real_nonshareable_document_that_also_demonstrates_the_markup_is_clean(self):
+        doc = self._in_content(build_nonshareable(), self._DEMO_MARKUP)
+        self.assertTrue(validate._is_nonshareable(doc))
+        self.assertEqual(validate._nonshareable_css_refs(doc), ["commentable-html.css"])
+        self.assertEqual(validate._nonshareable_js_refs(doc),
                          ["commentable-html.assets.js", "commentable-html.js"])
         errors, warnings = self._validate(doc)
-        self.assertEqual(errors, [], "nonportable errors: %r" % errors)
-        self.assertEqual(warnings, [], "nonportable warnings: %r" % warnings)
+        self.assertEqual(errors, [], "nonshareable errors: %r" % errors)
+        self.assertEqual(warnings, [], "nonshareable warnings: %r" % warnings)
 
     def test_companion_markup_in_authored_content_does_not_stand_in_for_a_real_reference(self):
-        # Still NonPortable (the assets companion is referenced for real), but the authored
+        # Still NonShareable (the assets companion is referenced for real), but the authored
         # quote must not satisfy the stylesheet / runtime requirements.
-        doc = self._in_content(build_nonportable(link=False, runtime=False), self._DEMO_MARKUP)
-        self.assertTrue(validate._is_nonportable(doc))
-        self.assertNonPortableError(doc, "no commentable-html stylesheet")
-        self.assertNonPortableError(doc, "no commentable-html runtime")
+        doc = self._in_content(build_nonshareable(link=False, runtime=False), self._DEMO_MARKUP)
+        self.assertTrue(validate._is_nonshareable(doc))
+        self.assertNonShareableError(doc, "no commentable-html stylesheet")
+        self.assertNonShareableError(doc, "no commentable-html runtime")
 
     def test_an_asset_banner_in_authored_content_does_not_satisfy_the_bootstrap(self):
         doc = self._in_content(
-            build_nonportable(banner=False),
+            build_nonshareable(banner=False),
             '  <div id="cmhAssetBanner" class="cm-skip" role="alert" hidden>missing</div>\n')
-        self.assertNonPortableError(doc, "missing the #cmhAssetBanner element")
+        self.assertNonShareableError(doc, "missing the #cmhAssetBanner element")
 
     def test_a_watchdog_mention_in_authored_content_does_not_satisfy_the_bootstrap(self):
-        doc = self._in_content(build_nonportable(watchdog=False),
+        doc = self._in_content(build_nonshareable(watchdog=False),
                                "  <p>The bootstrap sets __commentableHtmlReady.</p>\n")
-        self.assertNonPortableWarn(doc, "bootstrap watchdog")
+        self.assertNonShareableWarn(doc, "bootstrap watchdog")
 
     def test_a_version_meta_in_authored_content_does_not_satisfy_the_handshake(self):
         doc = self._in_content(
-            build_nonportable(meta=False),
-            '  <meta name="commentable-html-version" content="%s">\n' % NONPORTABLE_VERSION)
-        self.assertNonPortableWarn(doc, 'missing <meta name="commentable-html-version"')
+            build_nonshareable(meta=False),
+            '  <meta name="commentable-html-version" content="%s">\n' % NONSHAREABLE_VERSION)
+        self.assertNonShareableWarn(doc, 'missing <meta name="commentable-html-version"')
 
     # -- the CONTENT region is the one the PARSE agrees on ------------------ #
     def test_a_content_begin_marker_outside_commentroot_does_not_hide_the_layer(self):
         # MOVING the BEGIN marker into <head>, ahead of the real stylesheet link, keeps exactly
         # one marker of each kind, so the marker-count check stays silent. A text-offset view of
-        # the region would blank the real <link> and report this document as Portable; the parse
+        # the region would blank the real <link> and report this document as Shareable; the parse
         # opens the region only inside #commentRoot, so the layer stays visible.
-        doc = build_nonportable().replace(CONTENT_BEGIN + "\n", "", 1)
+        doc = build_nonshareable().replace(CONTENT_BEGIN + "\n", "", 1)
         doc = doc.replace("<head>\n", "<head>\n" + CONTENT_BEGIN + "\n", 1)
         self.assertEqual(doc.count(CONTENT_BEGIN), 1, "fixture premise: the marker was moved")
-        self.assertTrue(validate._is_nonportable(doc))
-        self.assertEqual(validate._nonportable_css_refs(doc), ["commentable-html.css"])
+        self.assertTrue(validate._is_nonshareable(doc))
+        self.assertEqual(validate._nonshareable_css_refs(doc), ["commentable-html.css"])
 
     def test_a_content_end_marker_after_commentroot_does_not_hide_the_layer(self):
         # Likewise for the END marker moved to the end of <body>, past the runtime scripts.
         # #commentRoot closing ends the region regardless, so the scripts stay visible.
-        doc = build_nonportable().replace(CONTENT_END + "\n", "", 1)
+        doc = build_nonshareable().replace(CONTENT_END + "\n", "", 1)
         doc = doc.replace("\n</body>", "\n" + CONTENT_END + "\n</body>", 1)
         self.assertEqual(doc.count(CONTENT_END), 1, "fixture premise: the marker was moved")
-        self.assertTrue(validate._is_nonportable(doc))
-        self.assertEqual(validate._nonportable_js_refs(doc),
+        self.assertTrue(validate._is_nonshareable(doc))
+        self.assertEqual(validate._nonshareable_js_refs(doc),
                          ["commentable-html.assets.js", "commentable-html.js"])
 
     def test_a_style_straddling_the_content_markers_does_not_hide_the_layer(self):
@@ -212,99 +212,99 @@ class NonPortableTests(unittest.TestCase):
         # itself in CDATA, so a browser never sees a CONTENT region here at all. Blanking the
         # marker-to-marker text would have deleted the closing </style> with it and left the
         # whole rest of the document parsing as CDATA - hiding the real companion scripts.
-        doc = build_nonportable().replace(CONTENT_BEGIN + "\n", "<style>\n" + CONTENT_BEGIN + "\n", 1)
+        doc = build_nonshareable().replace(CONTENT_BEGIN + "\n", "<style>\n" + CONTENT_BEGIN + "\n", 1)
         doc = doc.replace(CONTENT_END, "</style>\n" + CONTENT_END, 1)
-        self.assertTrue(validate._is_nonportable(doc))
-        self.assertEqual(validate._nonportable_js_refs(doc),
+        self.assertTrue(validate._is_nonshareable(doc))
+        self.assertEqual(validate._nonshareable_js_refs(doc),
                          ["commentable-html.assets.js", "commentable-html.js"])
 
     def test_an_unterminated_script_in_authored_content_still_hides_the_runtime(self):
         # The reverse direction: an unterminated <script> in the authored content makes a browser
         # read everything after it - the runtime <script src> included - as script TEXT, so the
         # layer never loads. The validator must agree and still report the missing runtime.
-        doc = self._in_content(build_nonportable(), "  <script>var broken = 1;\n")
-        self.assertEqual(validate._nonportable_js_refs(doc), [])
-        self.assertNonPortableError(doc, "no commentable-html runtime")
+        doc = self._in_content(build_nonshareable(), "  <script>var broken = 1;\n")
+        self.assertEqual(validate._nonshareable_js_refs(doc), [])
+        self.assertNonShareableError(doc, "no commentable-html runtime")
 
     def test_companion_markup_inside_a_template_is_inert(self):
         # <template> contents are an inert DocumentFragment: the scripts never run and the
-        # stylesheet never loads, so they must not make a document NonPortable. The head case is
+        # stylesheet never loads, so they must not make a document NonShareable. The head case is
         # the one that uniquely pins the template guard - a template INSIDE the CONTENT region is
         # already excluded by the region itself.
         in_head = build().replace(
             "<head>\n", "<head>\n<template>\n" + self._DEMO_MARKUP + "</template>\n", 1)
-        self.assertFalse(validate._is_nonportable(in_head))
-        self.assertEqual(validate._nonportable_css_refs(in_head), [])
+        self.assertFalse(validate._is_nonshareable(in_head))
+        self.assertEqual(validate._nonshareable_css_refs(in_head), [])
         in_content = build().replace(
             "  <p>content</p>\n",
             "  <template>\n" + self._DEMO_MARKUP + "  </template>\n", 1)
-        self.assertFalse(validate._is_nonportable(in_content))
+        self.assertFalse(validate._is_nonshareable(in_content))
 
     # -- a region that does not PARSE where it reads is refused ------------- #
     def test_a_content_end_marker_swallowed_by_a_style_body_errors(self):
         # The layer view is derived from the parse, so a region that does not open and close where
         # the text says it does must be refused rather than guessed: markup after the broken
         # boundary would otherwise be silently misattributed to the author or to the layer.
-        doc = build_nonportable().replace(CONTENT_END, "<style>\n" + CONTENT_END + "\n</style>", 1)
+        doc = build_nonshareable().replace(CONTENT_END, "<style>\n" + CONTENT_END + "\n</style>", 1)
         self.assertEqual(doc.count(CONTENT_END), 1, "fixture premise: still exactly one marker")
-        self.assertNonPortableError(doc, "does not parse with a well-formed region")
+        self.assertNonShareableError(doc, "does not parse with a well-formed region")
 
     def test_an_unclosed_template_hiding_the_content_end_marker_errors(self):
-        doc = self._in_content(build_nonportable(), "  <template>\n")
+        doc = self._in_content(build_nonshareable(), "  <template>\n")
         self.assertEqual(doc.count(CONTENT_END), 1, "fixture premise: still exactly one marker")
-        self.assertNonPortableError(doc, "does not parse with a well-formed region")
+        self.assertNonShareableError(doc, "does not parse with a well-formed region")
 
     def test_an_unbalanced_root_close_in_authored_content_errors(self):
         # An extra </main> ends #commentRoot mid-region, so everything after it would be read as
         # the layer's own markup.
-        doc = self._in_content(build_nonportable(), "  <p>content</p>\n</main>\n")
-        self.assertNonPortableError(doc, "does not parse with a well-formed region")
+        doc = self._in_content(build_nonshareable(), "  <p>content</p>\n</main>\n")
+        self.assertNonShareableError(doc, "does not parse with a well-formed region")
 
     def test_a_watchdog_token_outside_an_executable_script_does_not_count(self):
         # The watchdog IS an inline script. A reviewer note in the embedded-comments JSON, or an
         # inert <template>, that merely contains the token must not satisfy the check.
-        doc = build_nonportable(watchdog=False).replace(
+        doc = build_nonshareable(watchdog=False).replace(
             '<script type="application/json" id="embeddedComments">[]</script>',
             '<script type="application/json" id="embeddedComments">'
             '[{"id":"cab12345","quote":"q","note":"__commentableHtmlReady","created":"2026-01-01"}]'
             '</script>', 1)
-        self.assertNonPortableWarn(doc, "bootstrap watchdog")
+        self.assertNonShareableWarn(doc, "bootstrap watchdog")
 
     def test_missing_stylesheet_link_errors(self):
-        self.assertNonPortableError(build_nonportable(link=False), "no commentable-html stylesheet")
+        self.assertNonShareableError(build_nonshareable(link=False), "no commentable-html stylesheet")
 
     def test_missing_runtime_script_errors(self):
-        self.assertNonPortableError(build_nonportable(runtime=False), "no commentable-html runtime")
+        self.assertNonShareableError(build_nonshareable(runtime=False), "no commentable-html runtime")
 
     def test_missing_assets_js_warns(self):
-        self.assertNonPortableWarn(build_nonportable(assets=False), "Export with embedded comments", companions=("css", "js"))
+        self.assertNonShareableWarn(build_nonshareable(assets=False), "Export with embedded comments", companions=("css", "js"))
 
     def test_missing_version_meta_warns(self):
-        self.assertNonPortableWarn(build_nonportable(meta=False), 'missing <meta name="commentable-html-version"')
+        self.assertNonShareableWarn(build_nonshareable(meta=False), 'missing <meta name="commentable-html-version"')
 
     def test_version_meta_does_not_compare_to_versionless_filenames(self):
-        html = build_nonportable(version="9.9.9")
+        html = build_nonshareable(version="9.9.9")
         errors, warnings = self._validate(html)
         self.assertEqual(errors, [])
         self.assertFalse(any("must match" in w for w in warnings), warnings)
 
     def test_missing_banner_errors(self):
-        self.assertNonPortableError(build_nonportable(banner=False), "#cmhAssetBanner")
+        self.assertNonShareableError(build_nonshareable(banner=False), "#cmhAssetBanner")
 
     def test_missing_watchdog_warns(self):
-        self.assertNonPortableWarn(build_nonportable(watchdog=False), "bootstrap watchdog")
+        self.assertNonShareableWarn(build_nonshareable(watchdog=False), "bootstrap watchdog")
 
     def test_missing_companion_file_errors(self):
         # HTML references the runtime but the .js file is absent on disk.
-        self.assertNonPortableError(build_nonportable(), "companion file not found", companions=("css", "assets"))
+        self.assertNonShareableError(build_nonshareable(), "companion file not found", companions=("css", "assets"))
 
-    def test_nonportable_state_regions_still_validated(self):
-        # Dropping the inline HANDLED IDS region must still fail in nonportable mode.
-        html = build_nonportable().replace(HANDLED_REGION, "")
-        self.assertNonPortableError(html, "handledCommentIds")
+    def test_nonshareable_state_regions_still_validated(self):
+        # Dropping the inline HANDLED IDS region must still fail in nonshareable mode.
+        html = build_nonshareable().replace(HANDLED_REGION, "")
+        self.assertNonShareableError(html, "handledCommentIds")
 
-    def test_nonportable_uses_marker_wrapped_companion_regions(self):
-        html = build_nonportable()
+    def test_nonshareable_uses_marker_wrapped_companion_regions(self):
+        html = build_nonshareable()
         self.assertIn("BEGIN: commentable-html - CSS", html)
         self.assertIn("BEGIN: commentable-html - JS", html)
 
@@ -315,7 +315,7 @@ class NonPortableTests(unittest.TestCase):
             for c, ext in (("css", ".css"), ("js", ".js"), ("assets", ".assets.js")):
                 with open(os.path.join(d, "commentable-html%s" % ext), "w") as fh:
                     fh.write("/* stub */")
-            html = build_nonportable().replace(
+            html = build_nonshareable().replace(
                 'href="commentable-html.css"',
                 'href="%s"' % css.replace("\\", "/"))
             p = os.path.join(d, "doc.html")
@@ -336,7 +336,7 @@ class NonPortableTests(unittest.TestCase):
                 with open(p, "w", encoding="utf-8") as fh:
                     fh.write("/* stub */")
                 urls[ext] = Path(p).resolve().as_uri()
-            html = (build_nonportable()
+            html = (build_nonshareable()
                     .replace('href="commentable-html.css"', 'href="%s"' % urls[".css"])
                     .replace('src="commentable-html.js"', 'src="%s"' % urls[".js"])
                     .replace('src="commentable-html.assets.js"', 'src="%s"' % urls[".assets.js"]))
@@ -357,7 +357,7 @@ class NonPortableTests(unittest.TestCase):
                 with open(p, "w", encoding="utf-8") as fh:
                     fh.write("/* stub */")
                 paths[ext] = p.replace("\\", "/")
-            html = (build_nonportable()
+            html = (build_nonshareable()
                     .replace('href="commentable-html.css"', 'href="%s"' % paths[".css"])
                     .replace('src="commentable-html.js"', 'src="%s"' % paths[".js"])
                     .replace('src="commentable-html.assets.js"', 'src="%s"' % paths[".assets.js"]))
@@ -373,7 +373,7 @@ class NonPortableTests(unittest.TestCase):
         # (the "/tmp/" segment is NOT at the filesystem root) must never be treated as an OS
         # temp dir. Anchoring the fragment match to the root is what prevents this.
         durable = "file:///home/user/tmp/my_project/commentable-html.css"
-        html = build_nonportable().replace('href="commentable-html.css"', 'href="%s"' % durable)
+        html = build_nonshareable().replace('href="commentable-html.css"', 'href="%s"' % durable)
         with tempfile.TemporaryDirectory() as docdir:
             doc = os.path.join(docdir, "doc.html")
             with open(doc, "w", encoding="utf-8", newline="") as fh:
@@ -387,7 +387,7 @@ class NonPortableTests(unittest.TestCase):
         # path (/private/var/folders/...) is flagged even on a non-mac validating machine (where
         # it never matches _temp_roots), because the anchored path fragment recognizes it.
         mac = "file:///private/var/folders/ab/cd/T/cmh-x/dist/commentable-html.css"
-        html = build_nonportable().replace('href="commentable-html.css"', 'href="%s"' % mac)
+        html = build_nonshareable().replace('href="commentable-html.css"', 'href="%s"' % mac)
         with tempfile.TemporaryDirectory() as docdir:
             doc = os.path.join(docdir, "doc.html")
             with open(doc, "w", encoding="utf-8", newline="") as fh:
@@ -404,7 +404,7 @@ class NonPortableTests(unittest.TestCase):
             with open(p, "w", encoding="utf-8") as fh:
                 fh.write("/* stub */")
             url = Path(p).resolve().as_uri()
-        html = build_nonportable().replace('href="commentable-html.css"', 'href="%s"' % url)
+        html = build_nonshareable().replace('href="commentable-html.css"', 'href="%s"' % url)
         with tempfile.TemporaryDirectory() as docdir:
             doc = os.path.join(docdir, "doc.html")
             with open(doc, "w", encoding="utf-8", newline="") as fh:
@@ -433,7 +433,7 @@ class NonPortableTests(unittest.TestCase):
         # CMH-VAL-16 carve-out: a RELATIVE companion ref bakes no absolute location, so even
         # when the document itself is validated from a temp directory it is never temp-flagged
         # (the default hermetic test harness lives under the OS temp dir).
-        errors, warnings = self._validate(build_nonportable())
+        errors, warnings = self._validate(build_nonshareable())
         self.assertFalse(any("temporary directory" in e for e in errors),
                          "relative refs must never be temp-flagged: %r" % errors)
         self.assertEqual(errors, [], errors)
@@ -447,7 +447,7 @@ class NonPortableTests(unittest.TestCase):
                 with open(os.path.join(d, "commentable-html%s" % ext), "w") as fh:
                     fh.write("/* stub */")
             css = os.path.join(d, "commentable-html.css").replace("\\", "/")
-            html = build_nonportable().replace('href="commentable-html.css"', 'href="%s"' % css)
+            html = build_nonshareable().replace('href="commentable-html.css"', 'href="%s"' % css)
             doc = os.path.join(d, "doc.html")
             with open(doc, "w", encoding="utf-8", newline="") as fh:
                 fh.write(html)
@@ -464,7 +464,7 @@ class NonPortableTests(unittest.TestCase):
                 with open(p, "w", encoding="utf-8") as fh:
                     fh.write("/* stub */")
                 urls[ext] = Path(p).resolve().as_uri()
-            html = (build_nonportable()
+            html = (build_nonshareable()
                     .replace('href="commentable-html.css"', 'href="%s"' % urls[".css"])
                     .replace('src="commentable-html.js"', 'src="%s"' % urls[".js"])
                     .replace('src="commentable-html.assets.js"', 'src="%s"' % urls[".assets.js"]))
@@ -476,7 +476,7 @@ class NonPortableTests(unittest.TestCase):
         self.assertFalse(any("remote/CDN URL" in w or "absolute path" in w for w in warnings), warnings)
 
     def test_companion_parent_relative_ref_ok(self):
-        # NonPortable may point at the skill dist/ folder via a ../ path; if the target
+        # NonShareable may point at the skill dist/ folder via a ../ path; if the target
         # resolves to an existing file it is valid (no "escapes the folder" error).
         with tempfile.TemporaryDirectory() as d:
             sub = os.path.join(d, "reports")
@@ -484,7 +484,7 @@ class NonPortableTests(unittest.TestCase):
             for ext in (".css", ".js", ".assets.js"):
                 with open(os.path.join(d, "commentable-html%s" % ext), "w") as fh:
                     fh.write("/* stub */")
-            html = (build_nonportable()
+            html = (build_nonshareable()
                     .replace('href="commentable-html.css"',
                              'href="../commentable-html.css"')
                     .replace('src="commentable-html.js"',
@@ -498,7 +498,7 @@ class NonPortableTests(unittest.TestCase):
         self.assertEqual(errors, [], errors)
 
     def test_companion_in_subfolder_ok(self):
-        # A subdirectory reference (e.g. the skill's dist/) is the intended nonportable
+        # A subdirectory reference (e.g. the skill's dist/) is the intended nonshareable
         # workflow, so it is valid as long as the file exists at the resolved path.
         with tempfile.TemporaryDirectory() as d:
             dist = os.path.join(d, "dist")
@@ -506,7 +506,7 @@ class NonPortableTests(unittest.TestCase):
             for ext in (".css", ".js", ".assets.js"):
                 with open(os.path.join(dist, "commentable-html%s" % ext), "w") as fh:
                     fh.write("/* stub */")
-            html = (build_nonportable()
+            html = (build_nonshareable()
                     .replace('href="commentable-html.css"',
                              'href="dist/commentable-html.css"')
                     .replace('src="commentable-html.js"',
@@ -520,33 +520,33 @@ class NonPortableTests(unittest.TestCase):
         self.assertEqual(errors, [], errors)
 
     def test_remote_companion_url_errors(self):
-        html = build_nonportable().replace(
+        html = build_nonshareable().replace(
             'href="commentable-html.css"',
             'href="https://cdn.example.com/commentable-html.css"')
-        self.assertNonPortableError(html, "remote/CDN URL")
+        self.assertNonShareableError(html, "remote/CDN URL")
 
     def test_protocol_relative_companion_url_errors(self):
-        html = build_nonportable().replace(
+        html = build_nonshareable().replace(
             'href="commentable-html.css"',
             'href="//cdn.example.com/commentable-html.css"')
-        self.assertNonPortableError(html, "remote/CDN URL")
+        self.assertNonShareableError(html, "remote/CDN URL")
 
     def test_non_file_scheme_companion_ref_errors(self):
-        html = build_nonportable().replace(
+        html = build_nonshareable().replace(
             'src="commentable-html.js"',
             'src="vscode://extension/commentable-html.js"')
-        self.assertNonPortableError(html, "non-file URL scheme")
+        self.assertNonShareableError(html, "non-file URL scheme")
 
-    def test_nonportable_demo_key_survivor_is_flagged(self):
-        # The real nonportable template (nonportable demo key + nonportable demo title) is clean,
+    def test_nonshareable_demo_key_survivor_is_flagged(self):
+        # The real nonshareable template (nonshareable demo key + nonshareable demo title) is clean,
         # but changing only the title while keeping the demo key is a survived retrofit.
-        eco = os.path.join(ROOT, "dist", "NONPORTABLE.html")
+        eco = os.path.join(ROOT, "dist", "NONSHAREABLE.html")
         with open(eco, encoding="utf-8") as fh:
             html = fh.read()
-        mutated = html.replace("<title>Commentable HTML - NonPortable Demo</title>",
-                               "<title>My Real NonPortable Doc</title>")
+        mutated = html.replace("<title>Commentable HTML - NonShareable Demo</title>",
+                               "<title>My Real NonShareable Doc</title>")
         with tempfile.TemporaryDirectory() as d:
-            p = os.path.join(d, "NONPORTABLE.html")
+            p = os.path.join(d, "NONSHAREABLE.html")
             with open(p, "w", encoding="utf-8", newline="") as fh:
                 fh.write(mutated)
             for c in ("css", "js", "assets"):
@@ -556,7 +556,7 @@ class NonPortableTests(unittest.TestCase):
             errors, _ = validate.validate(p)
         self.assertTrue(any("demo content root survived" in e for e in errors), errors)
 
-class NonPortableBaseDirTests(unittest.TestCase):
+class NonShareableBaseDirTests(unittest.TestCase):
     """CMH-VAL-05: the optional base_dir controls how companion refs are resolved."""
 
     def _write(self, d, content):
@@ -569,7 +569,7 @@ class NonPortableBaseDirTests(unittest.TestCase):
         # Companions are MISSING on disk. The default base_dir (the file's dir) flags
         # them; base_dir=None defers the existence check (placement not yet done).
         with tempfile.TemporaryDirectory() as d:
-            p = self._write(d, build_nonportable())
+            p = self._write(d, build_nonshareable())
             errors_default, _ = validate.validate(p)
             errors_none, _ = validate.validate(p, base_dir=None)
         self.assertTrue(any("not found" in e for e in errors_default),
@@ -580,7 +580,7 @@ class NonPortableBaseDirTests(unittest.TestCase):
     def test_base_dir_none_still_runs_structural_checks(self):
         # A remote companion URL is a structural error that must fire even when the
         # existence check is deferred with base_dir=None.
-        content = build_nonportable().replace('href="commentable-html.css"',
+        content = build_nonshareable().replace('href="commentable-html.css"',
                                                'href="https://cdn.example.com/commentable-html.css"')
         with tempfile.TemporaryDirectory() as d:
             p = self._write(d, content)
@@ -592,7 +592,7 @@ class NonPortableBaseDirTests(unittest.TestCase):
         # The document lives in dir A (no companions); companions live in dir B.
         # base_dir=B resolves the refs there and validates clean.
         with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
-            p = self._write(a, build_nonportable())
+            p = self._write(a, build_nonshareable())
             for name in ("commentable-html.css", "commentable-html.js", "commentable-html.assets.js"):
                 with open(os.path.join(b, name), "w", encoding="utf-8") as fh:
                     fh.write("/* stub */")

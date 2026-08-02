@@ -113,7 +113,7 @@ test("mobile comparison cards color only the verdicts and show a good/total scor
 });
 
 
-test("the portability section shows three modes including Offline with a source graph (SITE-PLUGIN-09)", async ({ page }) => {
+test("the shareability section shows three modes including Offline with a source graph (SITE-PLUGIN-09)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   await expect(page.locator(".mode-card")).toHaveCount(3);
   await expect(page.locator(".mode-card h3", { hasText: "Offline" })).toHaveCount(1);
@@ -122,8 +122,8 @@ test("the portability section shows three modes including Offline with a source 
   const offline = page.locator(".mode-card", { hasText: "Offline" });
   await expect(offline.locator(".src-cdn")).toHaveCount(0);
   await expect(offline.locator(".src-inline")).not.toHaveCount(0);
-  // Non-portable still pulls mermaid + charts from a CDN.
-  await expect(page.locator(".mode-card", { hasText: "Non-portable" }).locator(".src-cdn")).not.toHaveCount(0);
+  // Non-shareable still pulls mermaid + charts from a CDN.
+  await expect(page.locator(".mode-card", { hasText: "Non-shareable" }).locator(".src-cdn")).not.toHaveCount(0);
 });
 
 
@@ -135,28 +135,28 @@ test("the Comment on anything card lists inline SVG figures (SITE-PLUGIN-28)", a
 });
 
 
-test("the Non-portable mode card is marked legacy and points at the migration tool (SITE-PLUGIN-27)", async ({ page }) => {
+test("the Non-shareable mode card is marked legacy and points at the migration tool (SITE-PLUGIN-27)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
-  const nonPortable = page.locator(".mode-card", { hasText: "Non-portable" });
+  const nonShareable = page.locator(".mode-card", { hasText: "Non-shareable" });
   // The skill no longer generates this mode, so the card must not read as a choice a reader
   // could make: it is the shape older documents have, plus the way out of it.
-  await expect(nonPortable.locator(".badge")).toHaveText("legacy");
-  await expect(nonPortable).toContainText(/no longer generated/i);
-  await expect(nonPortable).toContainText(/to_portable\.py/);
-  await expect(page.locator(".mode-card", { hasText: "Non-portable" }).locator(".badge", { hasText: "default" })).toHaveCount(0);
+  await expect(nonShareable.locator(".badge")).toHaveText("legacy");
+  await expect(nonShareable).toContainText(/no longer generated/i);
+  await expect(nonShareable).toContainText(/to_shareable\.py/);
+  await expect(page.locator(".mode-card", { hasText: "Non-shareable" }).locator(".badge", { hasText: "default" })).toHaveCount(0);
 });
 
 
-test("the portability section explains the CDN chip needs a network connection and Offline removes it (SITE-PLUGIN-10)", async ({ page }) => {
+test("the shareability section explains the CDN chip needs a network connection and Offline removes it (SITE-PLUGIN-10)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const modes = page.locator("#modes");
-  // The CDN chip means mermaid/charts load over the network, so a Non-portable or Portable report
+  // The CDN chip means mermaid/charts load over the network, so a Non-shareable or Shareable report
   // that uses them needs an internet connection to render them; Offline inlines them instead.
   const note = modes.locator(".modes-note");
   await expect(note).toContainText(/internet connection/i);
   await expect(note).toContainText(/mermaid/i);
   await expect(note).toContainText(/chart/i);
-  await expect(note).toContainText(/Portable/);
+  await expect(note).toContainText(/Shareable/);
   await expect(note).toContainText(/Offline/);
 });
 
@@ -311,7 +311,7 @@ test("the What you get Round-trip card explains Copy all returns every comment a
 });
 
 
-test("portability source chips keep AA contrast in the light theme (SITE-A11Y-05)", async ({ page }) => {
+test("shareability source chips keep AA contrast in the light theme (SITE-A11Y-05)", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   for (const selector of [".src-cdn", ".src-inline"]) {

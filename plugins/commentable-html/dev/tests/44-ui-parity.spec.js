@@ -1,9 +1,9 @@
-// UI polish: the overflow-menu portability badge matches the sidebar badge's semantics
+// UI polish: the overflow-menu shareability badge matches the sidebar badge's semantics
 // (data-doc-type, color, tooltip), and prose paragraphs get a readable measure cap.
 import { test, expect } from "@playwright/test";
 import { openInline, openKitchenSink, openToolbarMenu, stageContent, fileUrl, ready, installClipboardCapture } from "./helpers.js";
 
-test("overflow-menu portability badge mirrors the sidebar badge", async ({ page }) => {
+test("overflow-menu shareability badge mirrors the sidebar badge", async ({ page }) => {
   await openInline(page);
   await openToolbarMenu(page);
   const sidebar = await page.evaluate(() => {
@@ -40,7 +40,7 @@ test("top-level prose paragraphs fill the content width (no measure cap)", async
   expect(tableMax).toBe("none");
 });
 
-test("both portability badges flip together (color, background, border) on a layout change", async ({ page }) => {
+test("both shareability badges flip together (color, background, border) on a layout change", async ({ page }) => {
   await installClipboardCapture(page);
   const content = '<h1>B</h1><div class="cm-skip" data-cm-widget="t">'
     + '<div data-cm-slot="Now" id="n"><div data-cm-part="a" data-cm-part-label="A">A</div></div>'
@@ -59,18 +59,18 @@ test("both portability badges flip together (color, background, border) on a lay
     };
   });
   let s = await read();
-  expect(s.sType).toBe("Portable");
-  expect(s.oType).toBe("Portable");
+  expect(s.sType).toBe("Shareable");
+  expect(s.oType).toBe("Shareable");
   expect(s.oBorder).toBe(s.sBorder);
   expect(s.oColor).toBe(s.sColor);
   expect(s.oBg).toBe(s.sBg);
-  // Trigger a layout change so both flip to Not portable.
+  // Trigger a layout change so both flip to Not shareable.
   await page.evaluate(() => document.getElementById("l").appendChild(document.querySelector('[data-cm-part="a"]')));
-  await expect(page.locator("#cmTypeBadge")).toHaveAttribute("data-doc-type", "Not portable");
-  await expect(page.locator("#cmhModeBadge")).toHaveAttribute("data-doc-type", "Not portable");
+  await expect(page.locator("#cmTypeBadge")).toHaveAttribute("data-doc-type", "Not shareable");
+  await expect(page.locator("#cmhModeBadge")).toHaveAttribute("data-doc-type", "Not shareable");
   s = await read();
-  expect(s.sType).toBe("Not portable");
-  expect(s.oType).toBe("Not portable");
+  expect(s.sType).toBe("Not shareable");
+  expect(s.oType).toBe("Not shareable");
   expect(s.oBorder).toBe(s.sBorder);
   expect(s.oColor).toBe(s.sColor);
   expect(s.oBg).toBe(s.sBg);

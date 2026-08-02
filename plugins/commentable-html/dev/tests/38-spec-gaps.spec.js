@@ -46,7 +46,7 @@ test("body fallback anchors comments when #commentRoot is absent (CMH-CORE-15)",
   expect(bundle).toContain("body fallback note");
 });
 
-test("body fallback Portable export strips source directories (CMH-SEC-03)", async ({ page }) => {
+test("body fallback Shareable export strips source directories (CMH-SEC-03)", async ({ page }) => {
   const url = "http://localhost/body-fallback-export.html";
   const html = INLINE_HTML
     .replace(DEMO_ROOT_RE, '<main id="contentWithoutCommentRoot">')

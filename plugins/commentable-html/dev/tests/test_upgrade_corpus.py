@@ -20,7 +20,7 @@ import upgrade  # noqa: E402
 import validate  # noqa: E402
 
 CORPUS_DIR = os.path.join(_paths.DEV, "upgrade-corpus")
-TEMPLATE = _paths.TEMPLATE  # the current dist/PORTABLE.html
+TEMPLATE = _paths.TEMPLATE  # the current dist/SHAREABLE.html
 
 
 def _snapshots():

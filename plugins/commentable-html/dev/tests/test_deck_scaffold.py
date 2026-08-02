@@ -269,7 +269,7 @@ class DeckScaffoldTests(unittest.TestCase):
             self.assertEqual(deck_scaffold.main(
                 ["--slides", "1", "--label", "L", "--out", self.out, "--no-session-id"]), 0)
         html = Path(self.out).read_text(encoding="utf-8")
-        # Check the meta TAG is absent, not the bare name string: the portable deck inlines the
+        # Check the meta TAG is absent, not the bare name string: the shareable deck inlines the
         # runtime JS, which references the meta name "commentable-html-session-id" dynamically.
         self.assertNotIn('<meta name="commentable-html-session-id"', html)
 

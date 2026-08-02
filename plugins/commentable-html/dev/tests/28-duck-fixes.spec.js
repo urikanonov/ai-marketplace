@@ -82,12 +82,12 @@ test.describe("multi-duck panel regression + reload-persistence coverage", () =>
   });
 
   // Duck 3/8: export filename must not stack suffixes.
-  test("Export as Portable does not stack suffixes on a *-comments.html file", async ({ page }) => {
+  test("Export as Shareable does not stack suffixes on a *-comments.html file", async ({ page }) => {
     const p = stageNamed("report-comments.html");
     await openStaged(page, p);
     await addTextComment(page, "#commentRoot section p", "note");
     const [dl] = await Promise.all([page.waitForEvent("download"), clickSidebarExport(page, "#btnSaveHtml")]);
-    expect(dl.suggestedFilename()).toBe("report-portable.html");
+    expect(dl.suggestedFilename()).toBe("report-shareable.html");
   });
 
   // Ducks 1+2: a deleted embedded comment must NOT resurrect on reload (tombstone).
@@ -108,7 +108,7 @@ test.describe("multi-duck panel regression + reload-persistence coverage", () =>
     await p2.reload();
     await ready(p2);
     await expect(p2.locator(".cm-card")).toHaveCount(0); // did NOT resurrect
-    await expect(p2.locator("#cmTypeBadge")).toHaveText("Not portable"); // file still has it embedded
+    await expect(p2.locator("#cmTypeBadge")).toHaveText("Not shareable"); // file still has it embedded
     await p2.close();
   });
 
@@ -282,7 +282,7 @@ test.describe("multi-duck panel regression + reload-persistence coverage", () =>
   });
 
   // Duck 2 (blocking): a comment on a SORTED table cell must anchor correctly for a
-  // recipient of the exported portable file (offsets canonicalized to original order).
+  // recipient of the exported shareable file (offsets canonicalized to original order).
   test("a comment on a sorted table cell exports with a correct anchor", async ({ page, context }) => {
     await openInline(page); // template ships the Service/Requests/p95 sortable table
     await addTextComment(page, '#commentRoot table.cmh-sortable tbody tr td:first-child', "on gateway", 0);

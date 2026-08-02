@@ -58,7 +58,7 @@ async function copyAll(page) {
 
 async function expectNoLayoutChange(page) {
   await settle(page);
-  await expect(page.locator("#cmTypeBadge")).toHaveText("Portable");
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Shareable");
   await expect(page.locator(".cm-card-state")).toHaveCount(0);
   const before = await copiedBundle(page);
   await copyAll(page);
@@ -166,7 +166,7 @@ test("triage cards can be dragged between opted-in slots and copied as layout ch
   await dragCardToSlot(page, cardSelector, targetSlotSelector);
 
   await expect(page.locator(targetSlotSelector).locator(cardSelector)).toHaveCount(1);
-  await expect(page.locator("#cmTypeBadge")).toHaveText("Not portable");
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Not shareable");
   await expect(page.locator(".cm-card-state")).toContainText("API saturation");
 
   const bundle = await copyAll(page);
@@ -229,7 +229,7 @@ test("dropping a widget part onto its own nested slot is a no-op and clears drag
 
     await dragCardToSlot(page, "#nestedCard", "#nestedDone");
     await expect(page.locator("#nestedDone > #nestedCard")).toHaveCount(1);
-    await expect(page.locator("#cmTypeBadge")).toHaveText("Not portable");
+    await expect(page.locator("#cmTypeBadge")).toHaveText("Not shareable");
   } finally {
     fs.rmSync(staged.dir, { recursive: true, force: true });
   }
@@ -381,7 +381,7 @@ test("moving a card away and back to its baseline slot leaves no net widget stat
 
   await dragCardToSlot(page, '[data-cm-part="api-saturation"]', '[data-cm-slot="Investigating"]');
   await expect(page.locator('[data-cm-slot="Investigating"] [data-cm-part="api-saturation"]')).toHaveCount(1);
-  await expect(page.locator("#cmTypeBadge")).toHaveText("Not portable");
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Not shareable");
 
   await dragCardToSlot(page, '[data-cm-part="api-saturation"]', '[data-cm-slot="New"]');
   await expect(page.locator('[data-cm-slot="New"] [data-cm-part="api-saturation"]')).toHaveCount(1);

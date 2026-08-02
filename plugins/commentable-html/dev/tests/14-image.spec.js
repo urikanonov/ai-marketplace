@@ -75,7 +75,7 @@ function stageImageOrderDoc(order) {
     const contentRe = /(<!-- BEGIN: commentable-html - CONTENT[^>]*-->)[\s\S]*?(<!-- END: commentable-html - CONTENT -->)/;
     html = html.replace(contentRe, (_m, a, b) => a + "\n" + imageOrderContent(nextOrder) + "\n" + b);
     html = html.replace('data-comment-key="commentable-html-demo"', 'data-comment-key="' + IMAGE_ORDER_KEY + '"');
-    html = html.replace('data-doc-source="PORTABLE.html"', 'data-doc-source="image-order.html"');
+    html = html.replace('data-doc-source="SHAREABLE.html"', 'data-doc-source="image-order.html"');
     fs.writeFileSync(p, html);
   };
   writeOrder(order);
@@ -704,7 +704,7 @@ test.describe("inline svg figure comments (CMH-IMG-08)", () => {
     }
   });
 
-  test("an inline <svg> comment survives Export as Portable + reopen (CMH-IMG-08)", async ({ page, browser }) => {
+  test("an inline <svg> comment survives Export as Shareable + reopen (CMH-IMG-08)", async ({ page, browser }) => {
     const staged = stageContent(svgFigureContent(), { key: "cmh-svg-figure-export" });
     let saved = null;
     try {
@@ -719,7 +719,7 @@ test.describe("inline svg figure comments (CMH-IMG-08)", () => {
       const html = fs.readFileSync(await dl.path(), "utf8");
       const arr = JSON.parse(html.match(/id="embeddedComments">([\s\S]*?)<\/script>/)[1].trim());
       expect(arr.find((c) => c.id === cid && c.anchorType === "image")).toBeTruthy();
-      saved = path.join(staged.dir, "svg-portable.html");
+      saved = path.join(staged.dir, "svg-shareable.html");
       fs.writeFileSync(saved, html);
       const ctx2 = await browser.newContext();
       const page2 = await ctx2.newPage();

@@ -573,7 +573,7 @@ main > section:nth-of-type(even) {
 .mode-card { display: flex; flex-direction: column; }
 .mode-card p { flex: 1; }
 .mode-sources { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--cp-border); display: flex; flex-direction: column; gap: 8px; }
-/* Footnote under the portability cards: explains that the CDN chip is a network dependency. */
+/* Footnote under the shareability cards: explains that the CDN chip is a network dependency. */
 .modes-note { margin-top: 20px; color: var(--cp-text-muted); font-size: 0.9rem; line-height: 1.6; }
 .modes-note .src { vertical-align: middle; margin-right: 2px; }
 .mode-source { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

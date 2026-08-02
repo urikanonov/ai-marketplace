@@ -1201,7 +1201,7 @@ if (!IS_DECK) {
   if (comments.length || (typeof checklistChanges === "function" && checklistChanges().length) || (typeof notesChanges === "function" && notesChanges().length)) openSidebar();
   else closeSidebar();
 }
-// Signals the nonportable-mode bootstrap that the external runtime initialized, so
+// Signals the nonshareable-mode bootstrap that the external runtime initialized, so
 // the missing-companion-assets banner stays hidden.
 window.__commentableHtmlReady = true;
 window.__commentableHtmlVersion = CMH_VERSION;

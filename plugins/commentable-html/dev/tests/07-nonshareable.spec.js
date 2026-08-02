@@ -5,7 +5,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import {
-  openInline, openNonPortable, openToolbarMenu, readDownload, ready, fileUrl, stageNonPortable, SKILL,
+  openInline, openNonShareable, openToolbarMenu, readDownload, ready, fileUrl, stageNonShareable, SKILL,
 } from "./helpers.js";
 
 function buildVersion() {
@@ -27,17 +27,17 @@ function nextMajorVersion(version) {
   return `${major + 1}.0.0`;
 }
 
-test.describe("nonportable mode", () => {
+test.describe("nonshareable mode", () => {
   test("loads from companion files and reports itself as needing them", async ({ page }) => {
-    await openNonPortable(page);
-    await expect(page.locator("#cmhModeBadge")).toHaveText("Not portable");
-    expect(await page.evaluate(() => document.body.classList.contains("cm-nonportable"))).toBe(true);
+    await openNonShareable(page);
+    await expect(page.locator("#cmhModeBadge")).toHaveText("Not shareable");
+    expect(await page.evaluate(() => document.body.classList.contains("cm-nonshareable"))).toBe(true);
     expect(await page.evaluate(() => !!(window.__COMMENTABLE_ASSETS__ && window.__COMMENTABLE_ASSETS__.css && window.__COMMENTABLE_ASSETS__.js))).toBe(true);
     await expect(page.locator("#cmhAssetBanner")).toBeHidden();
   });
 
-  test("Export with embedded comments produces one portable standalone file in nonportable mode", async ({ page, context }) => {
-    await openNonPortable(page);
+  test("Export with embedded comments produces one shareable standalone file in nonshareable mode", async ({ page, context }) => {
+    await openNonShareable(page);
     await openToolbarMenu(page);
     const [download] = await Promise.all([
       page.waitForEvent("download"),
@@ -46,7 +46,7 @@ test.describe("nonportable mode", () => {
     const html = await readDownload(download);
 
     // No companion references survive; the inline regions are restored - even
-    // though the source document was nonportable, the export is always combined.
+    // though the source document was nonshareable, the export is always combined.
     expect(html).not.toMatch(/<link\b[^>]*\bhref\s*=\s*["'][^"']*commentable-html/i);
     expect(html).not.toMatch(/<script\b[^>]*\bsrc\s*=\s*["'][^"']*commentable-html/i);
     // Scope the version-meta checks to <head>: the inlined runtime source can contain
@@ -66,12 +66,12 @@ test.describe("nonportable mode", () => {
     try {
       execFileSync(PYTHON, ["tools/validate/validate.py", tmp], { cwd: SKILL }); // throws on non-zero exit
 
-      // And it re-opens as a working inline (portable) document.
+      // And it re-opens as a working inline (shareable) document.
       page2 = await context.newPage();
       await page2.goto(fileUrl(tmp));
       await ready(page2);
-      expect(await page2.evaluate(() => document.body.classList.contains("cm-nonportable"))).toBe(false);
-      await expect(page2.locator("#cmhModeBadge")).toHaveText("Portable");
+      expect(await page2.evaluate(() => document.body.classList.contains("cm-nonshareable"))).toBe(false);
+      await expect(page2.locator("#cmhModeBadge")).toHaveText("Shareable");
     } finally {
       if (page2) await page2.close();
       fs.rmSync(tmp, { force: true });
@@ -79,7 +79,7 @@ test.describe("nonportable mode", () => {
   });
 
   test("missing companions reveal the banner and never mark the runtime ready", async ({ page }) => {
-    const { html, dir } = stageNonPortable({ companions: false });
+    const { html, dir } = stageNonShareable({ companions: false });
     try {
       await page.goto(fileUrl(html));
       await expect(page.locator("#cmhAssetBanner")).toBeVisible({ timeout: 6000 });
@@ -92,7 +92,7 @@ test.describe("nonportable mode", () => {
 
   test("an older same-major page version does not show the version banner", async ({ page }) => {
     const older = sameMajorOlderVersion(buildVersion());
-    const { html, dir } = stageNonPortable({
+    const { html, dir } = stageNonShareable({
       mutate: (h) => h.replace(/content="[0-9]+\.[0-9]+\.[0-9]+"/, `content="${older}"`),
     });
     try {
@@ -106,7 +106,7 @@ test.describe("nonportable mode", () => {
 
   test("a different-major page version shows the incompatible banner", async ({ page }) => {
     const newerMajor = nextMajorVersion(buildVersion());
-    const { html, dir } = stageNonPortable({
+    const { html, dir } = stageNonShareable({
       mutate: (h) => h.replace(/content="[0-9]+\.[0-9]+\.[0-9]+"/, `content="${newerMajor}"`),
     });
     try {
@@ -121,7 +121,7 @@ test.describe("nonportable mode", () => {
 
   test("a newer same-major page version shows the soft version banner", async ({ page }) => {
     const newer = sameMajorNewerVersion(buildVersion());
-    const { html, dir } = stageNonPortable({
+    const { html, dir } = stageNonShareable({
       mutate: (h) => h.replace(/content="[0-9]+\.[0-9]+\.[0-9]+"/, `content="${newer}"`),
     });
     try {
@@ -136,7 +136,7 @@ test.describe("nonportable mode", () => {
 
   test("dismissing a version banner hides it across reloads for that version pair", async ({ page }) => {
     const newer = sameMajorNewerVersion(buildVersion());
-    const { html, dir } = stageNonPortable({
+    const { html, dir } = stageNonShareable({
       mutate: (h) => h.replace(/content="[0-9]+\.[0-9]+\.[0-9]+"/, `content="${newer}"`),
     });
     try {

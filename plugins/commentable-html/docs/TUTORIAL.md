@@ -4,7 +4,7 @@ Commentable HTML turns any report, plan, or document into an interactive review 
 
 This walkthrough uses [`examples/report-community-garden.html`](../examples/report-community-garden.html) as a running example. It is a single self-contained file with prose, tables, a KQL query, a Chart.js chart, images, Mermaid diagrams, and a code-review diff, so it lets you try every kind of comment in one place.
 
-**Were you sent a commentable HTML file to review?** You do not need an agent or an account. Select any text, click **Add Comment**, and when you are done click **Copy all** (to hand your notes to an agent) or **Export as Portable** (to send the file back with your comments baked in). The steps below show every kind of thing you can comment on.
+**Were you sent a commentable HTML file to review?** You do not need an agent or an account. Select any text, click **Add Comment**, and when you are done click **Copy all** (to hand your notes to an agent) or **Export as Shareable** (to send the file back with your comments baked in). The steps below show every kind of thing you can comment on.
 
 ## The review workflow
 
@@ -28,10 +28,10 @@ The rest of this tutorial walks through step 2 in detail: every kind of thing yo
 ## 2. Read the document-type bubble and version
 
 1. In the sidebar header, look at the document-type bubble.
-2. It reads **Portable** (green) when the file is safe to share as-is: everything is embedded and every comment is baked in. It reads **Offline** when the file is also ready for a zero-network handoff: any Mermaid diagrams or charts keep working from inlined vendored runtimes and remote loaders are stripped. It reads **Not portable** (orange) when the file still references companion assets or has comments that are not embedded yet. Hover the bubble for the exact reason and how to make it shareable.
+2. It reads **Shareable** (green) when the file is safe to share as-is: everything is embedded and every comment is baked in. It reads **Offline** when the file is also ready for a zero-network handoff: any Mermaid diagrams or charts keep working from inlined vendored runtimes and remote loaders are stripped. It reads **Not shareable** (orange) when the file still references companion assets or has comments that are not embedded yet. Hover the bubble for the exact reason and how to make it shareable.
 3. Next to the bubble, the version indicator shows `v<x.y.z>`, telling you which Commentable HTML runtime produced the file.
 
-Every document the skill generates is Portable. Older documents built in the **Non-portable** mode - which referenced companion files sitting beside the HTML - keep working exactly as before, permanently; only creating new ones has gone away. To make such a document self-contained, run `tools/authoring/to_portable.py <file.html>`: it inlines the layer and keeps your content, your embedded comments, and the handled ids intact.
+Every document the skill generates is Shareable. Older documents built in the **Non-shareable** mode - which referenced companion files sitting beside the HTML - keep working exactly as before, permanently; only creating new ones has gone away. To make such a document self-contained, run `tools/authoring/to_shareable.py <file.html>`: it inlines the layer and keeps your content, your embedded comments, and the handled ids intact.
 
 ## 3. Comment on prose
 
@@ -181,19 +181,19 @@ When you pass a document back and forth with someone else, attribute each commen
 The comments panel header gathers the ways to save, share, and manage the review.
 
 1. Click **Export** in the header to open the file-format menu.
-2. Choose an option: **Portable** bakes your comments into a single self-contained copy, **Offline** makes a zero-network copy after diagrams and charts have rendered, **Markdown** writes the comment bundle to a `.md` file, **Plain HTML** hands over a clean copy with the commenting layer removed, and **PDF** opens your browser's print dialog to save a PDF or print.
+2. Choose an option: **Shareable** bakes your comments into a single self-contained copy, **Offline** makes a zero-network copy after diagrams and charts have rendered, **Markdown** writes the comment bundle to a `.md` file, **Plain HTML** hands over a clean copy with the commenting layer removed, and **PDF** opens your browser's print dialog to save a PDF or print.
 3. The data-management actions live in the separate **More** menu in the ribbon. **Manage storage** opens a window with a pie-chart breakdown of how your browser storage is used - **This document**, **Other commentable-html documents**, **Other** site data, and the **Free** headroom - above a per-document table whose **Share** column shows each document's percentage of commentable-html storage. Expand a row's **Show comments** to browse or delete individual comments, or delete another document's data to free space. Nothing is ever uploaded; this only manages your browser's local storage.
 4. The **More** menu also holds **Clear all comments**, which removes every comment (after a confirmation) so you can start the review over.
 
-![The sidebar export menu open, listing Portable, Offline, Markdown, Plain HTML, and PDF](assets/garden-12-export-menu.png)
+![The sidebar export menu open, listing Shareable, Offline, Markdown, Plain HTML, and PDF](assets/garden-12-export-menu.png)
 
 ## 19. Refresh and repeat
 
 Reload the file the agent hands back. Comments it marked handled are pruned automatically, so only open items remain. Repeat the loop until the panel is empty.
 
-To share the review with another person instead, use the export menu's **Portable** action to bake the comments into a single self-contained copy, or **Plain HTML** to hand over a clean copy with the commenting layer removed.
+To share the review with another person instead, use the export menu's **Shareable** action to bake the comments into a single self-contained copy, or **Plain HTML** to hand over a clean copy with the commenting layer removed.
 
-Use **Export Offline** for a zero-network handoff after Mermaid diagrams and charts have rendered in the browser. It starts from the Portable export, strips remote loaders, conditionally inlines vendored Mermaid / Chart.js, and reopens with the **Offline** badge while keeping live diagrams and chart tooltips.
+Use **Export Offline** for a zero-network handoff after Mermaid diagrams and charts have rendered in the browser. It starts from the Shareable export, strips remote loaders, conditionally inlines vendored Mermaid / Chart.js, and reopens with the **Offline** badge while keeping live diagrams and chart tooltips.
 
 ## 20. Review a board document
 

@@ -2,7 +2,7 @@
 // Produces a standalone copy of the document with the commenting *ability* removed but
 // its appearance intact: the HTML-comment regions (HANDLED IDS, EMBEDDED COMMENTS,
 // COMMENT UI) and the runtime JS are deleted, while every stylesheet is kept - the
-// inline CSS region (or the nonportable companion <link>) carries the document's own
+// inline CSS region (or the nonshareable companion <link>) carries the document's own
 // content styling (tables, sections, code, diff, KQL, images), so the plain copy looks
 // the same. The now-unused .cm-* UI rules are inert because their elements are gone.
 //
@@ -17,7 +17,15 @@ function _buildPlainHtml(baseHtml) {
   const layerDescriptorScript = new RegExp("[ \\t]*<scr" + "ipt\\b[^>]*\\sid\\s*=\\s*([\"'])"
     + "commentableHtmlLayer\\1[^>]*>[\\s\\S]*?<\\/scr" + "ipt>\\s*", "i");
   t = t.replace(layerDescriptorScript, "");
-  t = t.replace(/<!--\s*BEGIN: commentable-html - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONPORTABLE BOOTSTRAP\s*-->\s*/i, "");
+  // The companion bootstrap block, in either spelling - a document produced before the
+  // Portable -> Shareable rename carries the legacy anchor. The two anchors must use the SAME
+  // spelling (a backreference), so a mixed pair can never make the match span from a real
+  // bootstrap into an authored quotation of the other spelling. The strip runs only in companion
+  // mode: a self-contained document has no real bootstrap, so there is nothing to remove and a
+  // literal anchor pair inside authored CONTENT must be left alone.
+  if (NONSHAREABLE_MODE) {
+    t = t.replace(/<!--\s*BEGIN: commentable-html - NON(SHAREABLE|PORTABLE) BOOTSTRAP[\s\S]*?END: commentable-html - NON\1 BOOTSTRAP\s*-->\s*/i, "");
+  }
   // Remove the HTML-comment regions. The END anchor requires its own "<!-- ... END ... -->"
   // comment: embedded comment notes escape every "<" as \u003c, so a note can never forge
   // a "<!--". That prevents note text like "END: commentable-html - EMBEDDED COMMENTS -->"
@@ -32,7 +40,7 @@ function _buildPlainHtml(baseHtml) {
   // the script's own closing tag instead (eat a trailing END marker if present).
   t = t.replace(new RegExp("<!--\\s*=*\\s*BEGIN: commentable-html - JS[\\s\\S]*?"
     + _cmhScriptClosePattern() + "\\s*(?:<!--\\s*=*\\s*END: commentable-html - JS\\s*-->)?"), "");
-  // NonPortable mode loads the runtime from a companion <script src> file; drop only the
+  // NonShareable mode loads the runtime from a companion <script src> file; drop only the
   // JS companion (the CSS companion <link> stays so the content keeps its styling).
   t = t.replace(/[ \t]*<!--\s*commentable-html - layer loaded[^\n]*-->\s*/i, "");
   t = t.replace(_cmhScriptTagPattern("[^>]*commentable-html[^>]*\\.js[^>]*", "\\s*", "ig"), "");
@@ -69,9 +77,9 @@ async function saveAsPlain() {
 }
 const _btnSaveHtml = document.getElementById("btnSaveHtml");
 const _btnSaveHtmlTop = document.getElementById("btnSaveHtmlTop");
-// "Export as Portable" always downloads ONE combined/standalone file
+// "Export as Shareable" always downloads ONE combined/standalone file
 // with the current comments embedded: saveStandalone() rebuilds an inline file in
-// nonportable mode and falls back to the in-file embed for inline documents.
+// nonshareable mode and falls back to the in-file embed for inline documents.
 if (_btnSaveHtml) _btnSaveHtml.addEventListener("click", saveStandalone);
 if (_btnSaveHtmlTop) _btnSaveHtmlTop.addEventListener("click", saveStandalone);
 const _btnSavePlain = document.getElementById("btnSavePlain");

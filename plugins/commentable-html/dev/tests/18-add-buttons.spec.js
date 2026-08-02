@@ -161,7 +161,7 @@ test.describe("add-comment affordances", () => {
     try {
       await routeMermaidLocal(page);
       await installClipboardCapture(page);
-      await page.goto(server.url + "/dist/PORTABLE.html?mermaid=1");
+      await page.goto(server.url + "/dist/SHAREABLE.html?mermaid=1");
       await ready(page);
       const node = page.locator("#commentRoot .mermaid svg g.node").first();
       await expect(node).toBeVisible({ timeout: 20000 });

@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""NonPortable documents can be migrated to Portable, and stay readable forever (CMH-PORT-01/02).
+"""NonShareable documents can be migrated to Shareable, and stay readable forever (CMH-PORT-01/02).
 
-Portable is now the ONLY mode this skill GENERATES, but a NonPortable document created by an
+Shareable is now the ONLY mode this skill GENERATES, but a NonShareable document created by an
 earlier release must keep working indefinitely - there is no deprecation deadline. Two promises
 have to hold, and they pull in opposite directions, so both are pinned here:
 
-1. MIGRATION. `to_portable.py` converts an existing NonPortable document into a self-contained
-   Portable one, preserving its authored content, its embedded comments, and its handled ids.
-   Without it, "we no longer generate NonPortable" would strand every document already out there.
-2. PERMANENT COMPATIBILITY. A NonPortable document is still opened, validated, and finalized. The
-   NonPortable runtime and its companion files are retained on purpose; only CREATING a new one
+1. MIGRATION. `to_shareable.py` converts an existing NonShareable document into a self-contained
+   Shareable one, preserving its authored content, its embedded comments, and its handled ids.
+   Without it, "we no longer generate NonShareable" would strand every document already out there.
+2. PERMANENT COMPATIBILITY. A NonShareable document is still opened, validated, and finalized. The
+   NonShareable runtime and its companion files are retained on purpose; only CREATING a new one
    goes away.
 """
 import io
@@ -27,12 +27,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402
 sys.path.insert(0, _paths.TOOLS)
 import new_document  # noqa: E402
-import to_portable  # noqa: E402
+import to_shareable  # noqa: E402
 import upgrade  # noqa: E402
 import validate  # noqa: E402
 
-_BOOTSTRAP_BEGIN_TEXT = "BEGIN: commentable-html - NONPORTABLE BOOTSTRAP"
-_BOOTSTRAP_END_TEXT = "END: commentable-html - NONPORTABLE BOOTSTRAP"
+_BOOTSTRAP_BEGIN_TEXT = "BEGIN: commentable-html - NONSHAREABLE BOOTSTRAP"
+_BOOTSTRAP_END_TEXT = "END: commentable-html - NONSHAREABLE BOOTSTRAP"
 
 FRAGMENT = ("<h1>Legacy</h1>\n<p>Authored prose that must survive the migration.</p>\n"
             "<pre><code class=\"language-python\">def keep(x):\n    return x\n</code></pre>")
@@ -50,48 +50,48 @@ def _write(path, text):
 
 class _Case(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.mkdtemp(prefix="cmh-to-portable-")
+        self.tmp = tempfile.mkdtemp(prefix="cmh-to-shareable-")
         self.addCleanup(shutil.rmtree, self.tmp, True)
-        self.nonportable = os.path.join(self.tmp, "legacy.html")
-        template = _read(os.path.join(_paths.DIST, "NONPORTABLE.html"))
-        _write(self.nonportable, new_document.make_document(
+        self.nonshareable = os.path.join(self.tmp, "legacy.html")
+        template = _read(os.path.join(_paths.DIST, "NONSHAREABLE.html"))
+        _write(self.nonshareable, new_document.make_document(
             template, FRAGMENT, key="legacy-doc", label="Legacy",
             source="legacy.html", kind="report"))
-        # A NonPortable document references its companions by path; put them alongside so the
+        # A NonShareable document references its companions by path; put them alongside so the
         # document is genuinely loadable and the validator's companion checks are meaningful.
         for name in ("commentable-html.css", "commentable-html.js", "commentable-html.assets.js"):
             shutil.copyfile(os.path.join(_paths.DIST, name), os.path.join(self.tmp, name))
-        self.layer = to_portable.read_layer(_paths.DIST)
+        self.layer = to_shareable.read_layer(_paths.DIST)
         self.layer_assets = _read(os.path.join(_paths.DIST, "commentable-html.assets.js"))
 
 
 class MigrationTests(_Case):
-    """CMH-PORT-01: to_portable.py migrates an existing NonPortable document."""
+    """CMH-PORT-01: to_shareable.py migrates an existing NonShareable document."""
 
-    def test_the_fixture_really_is_nonportable(self):
-        html = _read(self.nonportable)
-        self.assertTrue(to_portable.is_nonportable(html),
-                        "fixture premise: the document must start out NonPortable")
-        self.assertIn('"mode":"nonportable"', html.replace(" ", ""))
+    def test_the_fixture_really_is_nonshareable(self):
+        html = _read(self.nonshareable)
+        self.assertTrue(to_shareable.is_nonshareable(html),
+                        "fixture premise: the document must start out NonShareable")
+        self.assertIn('"mode":"nonshareable"', html.replace(" ", ""))
 
-    def test_migration_produces_a_self_contained_portable_document(self):
-        out, changed = to_portable.to_portable(_read(self.nonportable), self.layer)
+    def test_migration_produces_a_self_contained_shareable_document(self):
+        out, changed = to_shareable.to_shareable(_read(self.nonshareable), self.layer)
         self.assertTrue(changed)
-        self.assertFalse(to_portable.is_nonportable(out))
-        self.assertIn('"mode":"portable"', out.replace(" ", ""))
+        self.assertFalse(to_shareable.is_nonshareable(out))
+        self.assertIn('"mode":"shareable"', out.replace(" ", ""))
         # No companion references may remain: that is what "self-contained" means.
         for name in ("commentable-html.css", "commentable-html.js", "commentable-html.assets.js"):
             self.assertNotIn('href="%s"' % name, out)
             self.assertNotIn('src="%s"' % name, out)
 
     def test_migration_preserves_the_authored_content(self):
-        out, _ = to_portable.to_portable(_read(self.nonportable), self.layer)
+        out, _ = to_shareable.to_shareable(_read(self.nonshareable), self.layer)
         self.assertIn("Authored prose that must survive the migration.", out)
         self.assertIn("def keep(x):", out)
 
     def test_migration_preserves_embedded_comments_and_handled_ids(self):
         # The whole point of migrating rather than regenerating: review state travels with it.
-        html = _read(self.nonportable)
+        html = _read(self.nonshareable)
         marked, n = re.subn(r'(id="handledCommentIds"[^>]*>\s*)\[\]', r'\g<1>["kept-id"]',
                             html, count=1)
         self.assertEqual(n, 1, "fixture premise: the handled-ids block must be present")
@@ -100,7 +100,7 @@ class MigrationTests(_Case):
         marked, n = re.subn(r'(id="embeddedComments"[^>]*>\s*)\[\]',
                             lambda m: m.group(1) + json.dumps([note]), marked, count=1)
         self.assertEqual(n, 1, "fixture premise: the embedded-comments block must be present")
-        out, _ = to_portable.to_portable(marked, self.layer)
+        out, _ = to_shareable.to_shareable(marked, self.layer)
         self.assertIn('"kept-id"', out, "handled ids must survive the migration")
         embedded = re.search(r'id="embeddedComments"[^>]*>\s*([\s\S]*?)</script>', out)
         self.assertIsNotNone(embedded, "the embedded-comments block must survive")
@@ -108,19 +108,19 @@ class MigrationTests(_Case):
                          "the embedded reviewer comments must survive byte for byte")
 
     def test_the_assets_registry_is_dropped_not_inlined(self):
-        """It is a SECOND full copy of the CSS and JS, and Portable does not use it.
+        """It is a SECOND full copy of the CSS and JS, and Shareable does not use it.
 
         `commentable-html.assets.js` defines `window.__COMMENTABLE_ASSETS__` purely so the
-        in-page "Export standalone" action can turn a NonPortable document into a Portable one
+        in-page "Export standalone" action can turn a NonShareable document into a Shareable one
         without fetch(). Once this tool has done that conversion the registry is dead weight,
-        and a natively generated dist/PORTABLE.html does not carry it either - inlining it would
+        and a natively generated dist/SHAREABLE.html does not carry it either - inlining it would
         have added about 937 KB of duplicated payload, roughly doubling the migrated file.
         """
-        out, _ = to_portable.to_portable(_read(self.nonportable), self.layer)
+        out, _ = to_shareable.to_shareable(_read(self.nonshareable), self.layer)
         self.assertNotIn('src="commentable-html.assets.js"', out,
                          "the dropped companion must not still be referenced")
         # The decisive signal is SIZE, not a substring: the phrase "__COMMENTABLE_ASSETS__"
-        # appears in BOTH a migrated and a native Portable document (the runtime references the
+        # appears in BOTH a migrated and a native Shareable document (the runtime references the
         # global, and quotes it in an error message), so a substring check proves nothing. What
         # inlining the registry would actually do is add its ~937 KB duplicate payload.
         registry_kb = len(self.layer_assets) / 1024.0
@@ -132,38 +132,38 @@ class MigrationTests(_Case):
 
     def test_migration_does_not_bloat_the_document(self):
         # Guards the test above with the number a reader cares about: the migrated file must be
-        # in the same league as a natively generated Portable one, not ~937 KB larger.
-        before = _read(self.nonportable)
-        out, _ = to_portable.to_portable(before, self.layer)
-        native = _read(os.path.join(_paths.DIST, "PORTABLE.html"))
+        # in the same league as a natively generated Shareable one, not ~937 KB larger.
+        before = _read(self.nonshareable)
+        out, _ = to_shareable.to_shareable(before, self.layer)
+        native = _read(os.path.join(_paths.DIST, "SHAREABLE.html"))
         self.assertLess(len(out), len(native) + 300 * 1024,
-                        "a migrated document must not be far larger than a native Portable one "
+                        "a migrated document must not be far larger than a native Shareable one "
                         "(got %d vs native %d)" % (len(out), len(native)))
 
     def test_migrating_twice_is_a_no_op(self):
-        once, _ = to_portable.to_portable(_read(self.nonportable), self.layer)
-        twice, changed = to_portable.to_portable(once, self.layer)
-        self.assertFalse(changed, "an already-Portable document must not be rewritten")
+        once, _ = to_shareable.to_shareable(_read(self.nonshareable), self.layer)
+        twice, changed = to_shareable.to_shareable(once, self.layer)
+        self.assertFalse(changed, "an already-Shareable document must not be rewritten")
         self.assertEqual(twice, once)
 
     def test_the_migrated_document_validates(self):
-        out, _ = to_portable.to_portable(_read(self.nonportable), self.layer)
-        errors, _warnings = validate.validate(self.nonportable, html=out)
+        out, _ = to_shareable.to_shareable(_read(self.nonshareable), self.layer)
+        errors, _warnings = validate.validate(self.nonshareable, html=out)
         self.assertEqual(errors, [])
 
     def test_the_cli_migrates_in_place_and_is_reported(self):
         code = subprocess.call(
-            [sys.executable, os.path.join(_paths.TOOLS, "authoring", "to_portable.py"),
-             self.nonportable],
+            [sys.executable, os.path.join(_paths.TOOLS, "authoring", "to_shareable.py"),
+             self.nonshareable],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.assertEqual(code, 0)
-        self.assertFalse(to_portable.is_nonportable(_read(self.nonportable)))
+        self.assertFalse(to_shareable.is_nonshareable(_read(self.nonshareable)))
 
     def test_the_cli_refuses_a_document_that_is_not_commentable_html(self):
         stray = os.path.join(self.tmp, "stray.html")
         _write(stray, "<html><body>not ours</body></html>\n")
         proc = subprocess.run(
-            [sys.executable, os.path.join(_paths.TOOLS, "authoring", "to_portable.py"), stray],
+            [sys.executable, os.path.join(_paths.TOOLS, "authoring", "to_shareable.py"), stray],
             capture_output=True)
         self.assertNotEqual(proc.returncode, 0, "a foreign file must not be silently rewritten")
         self.assertEqual(_read(stray), "<html><body>not ours</body></html>\n")
@@ -178,14 +178,14 @@ class AdversarialContentTests(unittest.TestCase):
     """
 
     def _doc(self, fragment):
-        with io.open(os.path.join(_paths.DIST, "NONPORTABLE.html"), "r", encoding="utf-8",
+        with io.open(os.path.join(_paths.DIST, "NONSHAREABLE.html"), "r", encoding="utf-8",
                      newline="") as fh:
             template = fh.read()
         return new_document.make_document(template, fragment, key="adversarial",
                                           label="Adversarial", source="a.html", kind="report")
 
     def setUp(self):
-        self.layer = to_portable.read_layer(_paths.DIST)
+        self.layer = to_shareable.read_layer(_paths.DIST)
 
     def test_an_authored_script_reference_is_not_mistaken_for_the_real_one(self):
         # DESTRUCTIVE before the fix: the REAL companion script sits AFTER the content region,
@@ -194,7 +194,7 @@ class AdversarialContentTests(unittest.TestCase):
         # failed validation, and (written in place) the original was gone.
         html = self._doc('<h1>Docs</h1>\n<p>Load it with:</p>\n'
                          '<script src="commentable-html.js"></script>\n')
-        out, changed = to_portable.to_portable(html, self.layer)
+        out, changed = to_shareable.to_shareable(html, self.layer)
         self.assertTrue(changed)
         begin = out.index("BEGIN: commentable-html - CONTENT")
         end = out.index("END: commentable-html - CONTENT")
@@ -210,13 +210,13 @@ class AdversarialContentTests(unittest.TestCase):
         # SILENT before the fix: a whole-document replace rewrote the author's own text, and the
         # result still validated, so the loss was invisible.
         html = self._doc('<h1>Docs</h1>\n<p>The descriptor reads '
-                         '<code>"mode":"nonportable"</code> in legacy files.</p>')
-        out, _ = to_portable.to_portable(html, self.layer)
+                         '<code>"mode":"nonshareable"</code> in legacy files.</p>')
+        out, _ = to_shareable.to_shareable(html, self.layer)
         begin = out.index("BEGIN: commentable-html - CONTENT")
         end = out.index("END: commentable-html - CONTENT")
-        self.assertIn('<code>"mode":"nonportable"</code>', out[begin:end],
+        self.assertIn('<code>"mode":"nonshareable"</code>', out[begin:end],
                       "the author's own text must not be rewritten")
-        self.assertIn('"mode":"portable"', out.replace(" ", ""),
+        self.assertIn('"mode":"shareable"', out.replace(" ", ""),
                       "the layer descriptor itself must still be switched")
 
 
@@ -237,7 +237,7 @@ class HostileLayerTests(_Case):
     def _migrate(self, name, payload):
         layer = dict(self.layer)
         layer[name] = layer[name] + payload
-        out, changed = to_portable.to_portable(_read(self.nonportable), layer, self.nonportable)
+        out, changed = to_shareable.to_shareable(_read(self.nonshareable), layer, self.nonshareable)
         self.assertTrue(changed)
         return out
 
@@ -269,10 +269,10 @@ class HostileLayerTests(_Case):
         css = os.path.join(dist, "commentable-html.css")
         _write(css, _read(css) + self.CSS_PAYLOAD)
         proc = subprocess.run(
-            [sys.executable, os.path.join(_paths.TOOLS, "authoring", "to_portable.py"),
-             "--dist", dist, self.nonportable], capture_output=True)
+            [sys.executable, os.path.join(_paths.TOOLS, "authoring", "to_shareable.py"),
+             "--dist", dist, self.nonshareable], capture_output=True)
         self.assertEqual(proc.returncode, 0, proc.stderr.decode("utf-8", "replace"))
-        self._inert(_read(self.nonportable), "style", "window.__cmhPwned=1")
+        self._inert(_read(self.nonshareable), "style", "window.__cmhPwned=1")
 
 
 class ContentMarkerIntegrityTests(_Case):
@@ -297,7 +297,7 @@ class ContentMarkerIntegrityTests(_Case):
         # serialized with '<' escaped), and the authored content legitimately demonstrates the
         # companion link. Before the fix the forged END preceded the genuine BEGIN, the span was
         # discarded, and the LAST match - the author's own link - was replaced with the CSS.
-        template = _read(os.path.join(_paths.DIST, "NONPORTABLE.html"))
+        template = _read(os.path.join(_paths.DIST, "NONSHAREABLE.html"))
         html = new_document.make_document(
             template,
             '<h1>Docs</h1>\n<p>Legacy files load it with:</p>\n'
@@ -306,7 +306,7 @@ class ContentMarkerIntegrityTests(_Case):
             key="forged", label="Forged", source="a.html", kind="report")
         html = self._with_note(html, "BEGIN: commentable-html - CONTENT "
                                      "END: commentable-html - CONTENT -->")
-        out, _ = to_portable.to_portable(html, self.layer, "forged.html")
+        out, _ = to_shareable.to_shareable(html, self.layer, "forged.html")
         begin = out.index("BEGIN: commentable-html - CONTENT", out.index("</head>"))
         end = out.index("<!-- END: commentable-html - CONTENT")
         content = out[begin:end]
@@ -323,14 +323,14 @@ class ContentMarkerIntegrityTests(_Case):
         # Authored content CAN carry a literal marker comment (unlike a reviewer note). Then the
         # region is genuinely ambiguous, and a tool that writes in place must refuse rather than
         # pick one and corrupt the document.
-        template = _read(os.path.join(_paths.DIST, "NONPORTABLE.html"))
+        template = _read(os.path.join(_paths.DIST, "NONSHAREABLE.html"))
         html = new_document.make_document(
             template,
             '<h1>Docs</h1>\n<!-- BEGIN: commentable-html - CONTENT (quoted in a doc) -->\n'
             '<p>Everything between those markers is yours.</p>\n',
             key="ambiguous", label="Ambiguous", source="a.html", kind="report")
         with self.assertRaises(ValueError) as caught:
-            to_portable.to_portable(html, self.layer, "ambiguous.html")
+            to_shareable.to_shareable(html, self.layer, "ambiguous.html")
         self.assertIn("CONTENT", str(caught.exception))
 
 
@@ -345,18 +345,18 @@ class DescriptorTests(_Case):
     def test_a_descriptor_whose_json_is_reformatted_is_still_switched(self):
         # Valid JSON the runtime and validator both accept, but not the exact byte sequence a
         # lexical replace looked for. Migration used to report success and leave the mode alone.
-        html = _read(self.nonportable)
-        spaced = re.sub(r'"mode":"nonportable"', '"mode":\n  "nonportable"', html, count=1)
+        html = _read(self.nonshareable)
+        spaced = re.sub(r'"mode":"nonshareable"', '"mode":\n  "nonshareable"', html, count=1)
         self.assertNotEqual(spaced, html, "fixture premise: the descriptor was reformatted")
-        out, changed = to_portable.to_portable(spaced, self.layer, self.nonportable)
+        out, changed = to_shareable.to_shareable(spaced, self.layer, self.nonshareable)
         self.assertTrue(changed)
-        self.assertEqual(self._descriptor(out)["mode"], "portable")
+        self.assertEqual(self._descriptor(out)["mode"], "shareable")
 
     def test_a_document_without_a_usable_descriptor_is_refused(self):
-        html = _read(self.nonportable)
+        html = _read(self.nonshareable)
         broken = html.replace('id="commentableHtmlLayer"', 'id="commentableHtmlLayerGone"', 1)
         with self.assertRaises(ValueError) as caught:
-            to_portable.to_portable(broken, self.layer, "broken.html")
+            to_shareable.to_shareable(broken, self.layer, "broken.html")
         self.assertIn("descriptor", str(caught.exception).lower())
 
 
@@ -369,7 +369,7 @@ class SafeWriteTests(_Case):
     """
 
     def test_an_interrupted_write_leaves_the_original_document_intact(self):
-        original = _read(self.nonportable)
+        original = _read(self.nonshareable)
         real_open = io.open
 
         def half_open(path, mode="r", *args, **kwargs):
@@ -383,11 +383,11 @@ class SafeWriteTests(_Case):
 
         with mock.patch("io.open", half_open):
             try:
-                code = to_portable.main(["to_portable.py", self.nonportable])
+                code = to_shareable.main(["to_shareable.py", self.nonshareable])
             except (OSError, IOError):
                 code = 1
         self.assertNotEqual(code, 0, "a failed write must be reported, not swallowed")
-        self.assertEqual(_read(self.nonportable), original,
+        self.assertEqual(_read(self.nonshareable), original,
                          "the original document must survive a failed write byte for byte")
         leftovers = [n for n in os.listdir(self.tmp) if n.startswith(".cmh-")]
         self.assertEqual(leftovers, [], "a staged write must clean up after itself")
@@ -417,7 +417,7 @@ class _HalfWriter(object):
 class LegacyReferenceShapeTests(_Case):
     """CMH-PORT-01: the companion references real legacy documents carry are all migrated.
 
-    A NonPortable document does NOT necessarily reference `commentable-html.css` by bare name -
+    A NonShareable document does NOT necessarily reference `commentable-html.css` by bare name -
     that is only what the test fixtures happen to produce. The CLI's own default was an ABSOLUTE
     `file://` URL to the installed skill dist/, and `--assets-relative`, `--copy-assets` and
     `--assets-href PREFIX` each produce a different prefix. Matching the bare byte sequence would
@@ -427,7 +427,7 @@ class LegacyReferenceShapeTests(_Case):
     def _build(self, name, extra_args):
         out = os.path.join(self.tmp, name)
         code = new_document.main([
-            "new_document.py", "--template", os.path.join(_paths.DIST, "NONPORTABLE.html"),
+            "new_document.py", "--template", os.path.join(_paths.DIST, "NONSHAREABLE.html"),
             "--content", "-", "--out", out, "--key", "legacy-%s" % name.split(".")[0],
             "--label", "Legacy", "--source", name, "--kind", "report",
         ] + extra_args)
@@ -436,8 +436,8 @@ class LegacyReferenceShapeTests(_Case):
 
     def _migrated(self, path):
         html = _read(path)
-        self.assertTrue(to_portable.is_nonportable(html))
-        out, changed = to_portable.to_portable(html, self.layer, path)
+        self.assertTrue(to_shareable.is_nonshareable(html))
+        out, changed = to_shareable.to_shareable(html, self.layer, path)
         self.assertTrue(changed)
         return out
 
@@ -448,7 +448,7 @@ class LegacyReferenceShapeTests(_Case):
         self.addCleanup(lambda: setattr(sys, "stdin", self._stdin))
 
     def test_absolute_file_url_companion_refs_are_migrated(self):
-        # The shape the CLI produced BY DEFAULT for every NonPortable document it ever made.
+        # The shape the CLI produced BY DEFAULT for every NonShareable document it ever made.
         out = self._migrated(self._build("absolute.html", []))
         self.assertNotIn("commentable-html.css\"", out)
         self.assertIsNone(re.search(r'<link\b[^>]*commentable-html[^>]*\.css', out, re.IGNORECASE),
@@ -468,10 +468,10 @@ class LineEndingTests(_Case):
     """CMH-PORT-01: a CRLF document migrates. Windows-authored documents are CRLF throughout."""
 
     def test_a_crlf_document_migrates_and_keeps_its_line_endings(self):
-        crlf = _read(self.nonportable).replace("\r\n", "\n").replace("\n", "\r\n")
-        out, changed = to_portable.to_portable(crlf, self.layer, "crlf.html")
+        crlf = _read(self.nonshareable).replace("\r\n", "\n").replace("\n", "\r\n")
+        out, changed = to_shareable.to_shareable(crlf, self.layer, "crlf.html")
         self.assertTrue(changed, "a CRLF document must not be refused")
-        self.assertFalse(to_portable.is_nonportable(out))
+        self.assertFalse(to_shareable.is_nonshareable(out))
         begin = out.index("BEGIN: commentable-html - CONTENT", out.index("</head>"))
         end = out.index("<!-- END: commentable-html - CONTENT")
         self.assertIn("\r\n", out[begin:end],
@@ -484,12 +484,12 @@ class AuthoredScaffoldingTests(_Case):
     """CMH-PORT-01: authored content that quotes the legacy scaffolding is not deleted."""
 
     def test_authored_text_quoting_the_loader_note_is_kept(self):
-        note = "<!-- commentable-html - layer loaded from companion files (nonportable mode) -->"
-        template = _read(os.path.join(_paths.DIST, "NONPORTABLE.html"))
+        note = "<!-- commentable-html - layer loaded from companion files (nonshareable mode) -->"
+        template = _read(os.path.join(_paths.DIST, "NONSHAREABLE.html"))
         html = new_document.make_document(
             template, "<h1>Docs</h1>\n<p>Legacy files carry this note:</p>\n%s\n" % note,
             key="loader-note", label="Note", source="a.html", kind="report")
-        out, _ = to_portable.to_portable(html, self.layer, "note.html")
+        out, _ = to_shareable.to_shareable(html, self.layer, "note.html")
         begin = out.index("BEGIN: commentable-html - CONTENT", out.index("</head>"))
         end = out.index("<!-- END: commentable-html - CONTENT")
         self.assertIn(note, out[begin:end], "the author's own quotation must survive")
@@ -504,7 +504,7 @@ class AuthoredScaffoldingTests(_Case):
         forged = "\n<!-- %s -->\nbody{}\n" % _BOOTSTRAP_BEGIN_TEXT
         layer = dict(self.layer)
         layer["commentable-html.css"] = layer["commentable-html.css"] + forged
-        out, _ = to_portable.to_portable(_read(self.nonportable), layer, self.nonportable)
+        out, _ = to_shareable.to_shareable(_read(self.nonshareable), layer, self.nonshareable)
         self.assertIn("Authored prose that must survive the migration.", out)
         for region in ("CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"):
             self.assertEqual(
@@ -523,10 +523,10 @@ class LiveMarkupOnlyTests(_Case):
     """
 
     def test_a_commented_out_companion_reference_is_not_mistaken_for_the_real_one(self):
-        html = _read(self.nonportable)
+        html = _read(self.nonshareable)
         html = html.replace(
             "</body>", "<!-- <script src=\"commentable-html.js\"></script> -->\n</body>", 1)
-        out, _ = to_portable.to_portable(html, self.layer, "commented.html")
+        out, _ = to_shareable.to_shareable(html, self.layer, "commented.html")
         self.assertIn("<!-- <script src=\"commentable-html.js\"></script> -->", out,
                       "the commented-out copy must be left alone")
         live = re.sub(r"<!--.*?-->", "", out, flags=re.DOTALL)
@@ -534,46 +534,46 @@ class LiveMarkupOnlyTests(_Case):
                          "the REAL reference must have been inlined")
 
     def test_a_commented_out_layer_descriptor_is_not_the_one_that_is_switched(self):
-        html = _read(self.nonportable)
+        html = _read(self.nonshareable)
         decoy = ('<!-- <script type="application/json" id="commentableHtmlLayer">'
-                 '{"version":"0.0.0","mode":"nonportable","regions":[]}</script> -->\n')
+                 '{"version":"0.0.0","mode":"nonshareable","regions":[]}</script> -->\n')
         html = html.replace("<head>", "<head>\n" + decoy, 1)
-        out, _ = to_portable.to_portable(html, self.layer, "decoy.html")
+        out, _ = to_shareable.to_shareable(html, self.layer, "decoy.html")
         live = re.sub(r"<!--.*?-->", "", out, flags=re.DOTALL)
         m = re.search(r'id="commentableHtmlLayer"[^>]*>([\s\S]*?)</script>', live)
         self.assertIsNotNone(m, "the live descriptor must still be present")
-        self.assertEqual(json.loads(m.group(1))["mode"], "portable")
+        self.assertEqual(json.loads(m.group(1))["mode"], "shareable")
 
     def test_a_data_prefixed_attribute_is_not_a_companion_reference(self):
-        html = _read(self.nonportable)
+        html = _read(self.nonshareable)
         html = html.replace(
             "</body>",
             '<link rel="preload" data-href="commentable-html.css" href="host.css">\n</body>', 1)
-        out, _ = to_portable.to_portable(html, self.layer, "decoy-attr.html")
+        out, _ = to_shareable.to_shareable(html, self.layer, "decoy-attr.html")
         self.assertIn('data-href="commentable-html.css" href="host.css"', out,
                       "a data-* attribute must not be read as the companion reference")
 
     def test_two_live_companion_references_are_refused_rather_than_guessed(self):
-        html = _read(self.nonportable)
+        html = _read(self.nonshareable)
         html = html.replace(
             "</body>", '<script src="commentable-html.js"></script>\n</body>', 1)
         with self.assertRaises(ValueError) as caught:
-            to_portable.to_portable(html, self.layer, "ambiguous.html")
+            to_shareable.to_shareable(html, self.layer, "ambiguous.html")
         self.assertIn("commentable-html.js", str(caught.exception))
 
     def test_migrating_a_document_whose_layer_quotes_the_bootstrap_marker_is_idempotent(self):
         # A migrated document can legitimately CONTAIN the bootstrap marker text - in authored
         # prose, or (as the hostile-dist case shows) in inlined companion bytes. Deciding the
-        # mode from that substring made the second run try to migrate an already-Portable
+        # mode from that substring made the second run try to migrate an already-Shareable
         # document and fail, breaking the idempotency this tool promises.
         layer = dict(self.layer)
         layer["commentable-html.css"] += "\n<!-- %s -->\nbody{}\n" % _BOOTSTRAP_BEGIN_TEXT
-        once, changed = to_portable.to_portable(_read(self.nonportable), layer, "once.html")
+        once, changed = to_shareable.to_shareable(_read(self.nonshareable), layer, "once.html")
         self.assertTrue(changed)
         self.assertIn(_BOOTSTRAP_BEGIN_TEXT, once, "premise: the marker text survives inlined")
-        self.assertFalse(to_portable.is_nonportable(once),
-                         "a migrated document must not look NonPortable again")
-        twice, changed_again = to_portable.to_portable(once, layer, "twice.html")
+        self.assertFalse(to_shareable.is_nonshareable(once),
+                         "a migrated document must not look NonShareable again")
+        twice, changed_again = to_shareable.to_shareable(once, layer, "twice.html")
         self.assertFalse(changed_again)
         self.assertEqual(twice, once)
 
@@ -581,10 +581,10 @@ class LiveMarkupOnlyTests(_Case):
         # HTML end tags may carry ignored attributes and trailing space, so `</script >` really
         # does close the element. A matcher that only accepted `</script>` would stop seeing the
         # element - and then refuse a document that a browser loads perfectly well.
-        html = _read(self.nonportable).replace(
+        html = _read(self.nonshareable).replace(
             '<script src="commentable-html.js"></script>',
             '<script src="commentable-html.js"></script >', 1)
-        out, changed = to_portable.to_portable(html, self.layer, "spaced.html")
+        out, changed = to_shareable.to_shareable(html, self.layer, "spaced.html")
         self.assertTrue(changed)
         live = re.sub(r"<!--.*?-->", "", out, flags=re.DOTALL)
         self.assertNotIn('src="commentable-html.js"', live)
@@ -592,66 +592,66 @@ class LiveMarkupOnlyTests(_Case):
     def test_a_document_without_the_assets_registry_still_migrates(self):
         # The registry is optional - the validator only WARNS when it is absent - so a document
         # that never had one (or already dropped it) must not be refused.
-        html = _read(self.nonportable)
+        html = _read(self.nonshareable)
         html = re.sub(r'[ \t]*<script[^>]*src="[^"]*commentable-html\.assets\.js"[^>]*>\s*'
                       r'</script>[ \t]*\r?\n?', "", html, count=1)
         self.assertIsNone(re.search(r'<script[^>]*src="[^"]*commentable-html\.assets\.js"', html),
                           "fixture premise: the registry reference was removed")
-        out, changed = to_portable.to_portable(html, self.layer, "no-registry.html")
+        out, changed = to_shareable.to_shareable(html, self.layer, "no-registry.html")
         self.assertTrue(changed)
-        self.assertFalse(to_portable.is_nonportable(out))
+        self.assertFalse(to_shareable.is_nonshareable(out))
 
 
 class BatchCliTests(_Case):
     """CMH-PORT-01: a mixed batch migrates what it can and still reports failure."""
 
     def _batch(self, extra_args=()):
-        already = os.path.join(self.tmp, "already-portable.html")
-        shutil.copyfile(os.path.join(_paths.DIST, "PORTABLE.html"), already)
+        already = os.path.join(self.tmp, "already-shareable.html")
+        shutil.copyfile(os.path.join(_paths.DIST, "SHAREABLE.html"), already)
         broken = os.path.join(self.tmp, "not-ours.html")
         _write(broken, "<html><body>not ours</body></html>\n")
-        argv = ["to_portable.py"] + list(extra_args) + [self.nonportable, already, broken]
-        return already, broken, to_portable.main(argv)
+        argv = ["to_shareable.py"] + list(extra_args) + [self.nonshareable, already, broken]
+        return already, broken, to_shareable.main(argv)
 
     def test_one_bad_file_does_not_stop_the_others_but_fails_the_run(self):
         before_broken = None
         already, broken, code = self._batch()
         before_broken = "<html><body>not ours</body></html>\n"
         self.assertEqual(code, 1, "a batch with an unusable file must report failure")
-        self.assertFalse(to_portable.is_nonportable(_read(self.nonportable)),
+        self.assertFalse(to_shareable.is_nonshareable(_read(self.nonshareable)),
                          "the legacy document must still have been migrated")
         self.assertEqual(_read(broken), before_broken, "a foreign file is never rewritten")
 
     def test_check_mode_writes_nothing(self):
-        before = _read(self.nonportable)
+        before = _read(self.nonshareable)
         already, broken, code = self._batch(["--check"])
         self.assertEqual(code, 1, "the unusable file still fails the run")
-        self.assertEqual(_read(self.nonportable), before, "--check must not write")
+        self.assertEqual(_read(self.nonshareable), before, "--check must not write")
 
 
 class PermanentCompatibilityTests(_Case):
-    """CMH-PORT-02: a NonPortable document is still opened, validated, and finalized forever."""
+    """CMH-PORT-02: a NonShareable document is still opened, validated, and finalized forever."""
 
-    def test_a_nonportable_document_still_validates(self):
-        errors, _warnings = validate.validate(self.nonportable)
+    def test_a_nonshareable_document_still_validates(self):
+        errors, _warnings = validate.validate(self.nonshareable)
         self.assertEqual(errors, [],
-                         "NonPortable documents are supported permanently; only CREATING new "
+                         "NonShareable documents are supported permanently; only CREATING new "
                          "ones goes away")
 
-    def test_the_nonportable_runtime_and_companions_are_still_shipped(self):
+    def test_the_nonshareable_runtime_and_companions_are_still_shipped(self):
         # Existing documents reference these by bare name. Dropping them would break every
-        # NonPortable document in the world on the next auto-update.
-        for name in ("NONPORTABLE.html", "commentable-html.css", "commentable-html.js",
+        # NonShareable document in the world on the next auto-update.
+        for name in ("NONSHAREABLE.html", "commentable-html.css", "commentable-html.js",
                      "commentable-html.assets.js"):
             self.assertTrue(os.path.exists(os.path.join(_paths.DIST, name)),
-                            "%s must remain in dist/ for existing NonPortable documents" % name)
+                            "%s must remain in dist/ for existing NonShareable documents" % name)
 
-    def test_finalize_still_works_on_a_nonportable_document(self):
+    def test_finalize_still_works_on_a_nonshareable_document(self):
         import finalize
-        result = finalize.finalize(self.nonportable)
+        result = finalize.finalize(self.nonshareable)
         self.assertEqual(result["errors"], [])
-        self.assertTrue(to_portable.is_nonportable(_read(self.nonportable)),
-                        "finalize must not silently convert a NonPortable document")
+        self.assertTrue(to_shareable.is_nonshareable(_read(self.nonshareable)),
+                        "finalize must not silently convert a NonShareable document")
 
 
 if __name__ == "__main__":

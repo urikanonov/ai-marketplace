@@ -65,7 +65,7 @@ text.cm-mermaid-hl, .cm-mermaid-hl > text { fill: var(--cp-accent) !important; f
 .cm-hl-bubble:hover { filter: brightness(1.08); }
 .cm-hl-bubble svg { width: 16px; height: 16px; display: block; }
 
-/* Portability status badge (shown in the toolbar overflow menu). */
+/* Shareability status badge (shown in the toolbar overflow menu). */
 .cm-mode-badge {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 2px 8px; border-radius: 999px;
@@ -73,20 +73,26 @@ text.cm-mermaid-hl, .cm-mermaid-hl > text { fill: var(--cp-accent) !important; f
   border: 1px solid var(--cp-border-strong); color: var(--cp-text-muted);
   background: var(--cp-surface-soft); white-space: nowrap;
 }
-.cm-mode-badge.is-nonportable { color: var(--cp-warning); border-color: var(--cp-warning); }
-/* Parity with the sidebar .cm-type-badge: the overflow-menu portability badge is colored
+.cm-mode-badge.is-nonshareable, .cm-mode-badge.is-nonportable { color: var(--cp-warning); border-color: var(--cp-warning); }
+/* Parity with the sidebar .cm-type-badge: the overflow-menu shareability badge is colored
    and gets a help cursor from the same data-doc-type set by updateDocTypeUi. */
-.cm-mode-badge[data-doc-type="Portable"] { color: var(--cp-success); border-color: var(--cp-success); background: rgba(22, 163, 74, 0.12); }
+.cm-mode-badge[data-doc-type="Shareable"] { color: var(--cp-success); border-color: var(--cp-success); background: rgba(22, 163, 74, 0.12); }
 .cm-mode-badge[data-doc-type="Offline"] { color: var(--cp-accent); border-color: var(--cp-accent); background: var(--cp-accent-soft); }
-.cm-mode-badge[data-doc-type="Not portable"] { color: var(--cp-warning); border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.12); cursor: help; }
+.cm-mode-badge[data-doc-type="Not shareable"] { color: var(--cp-warning); border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.12); cursor: help; }
 
-/* NonPortable-only controls are hidden until the layer detects nonportable mode. */
-.cm-nonportable-only { display: none !important; }
+/* NonShareable-only controls are hidden until the layer detects nonshareable mode.
+   The legacy cm-nonportable* hooks are kept beside the current ones, defensively: they are the
+   pre-rename spelling of a RUNTIME-applied class (nothing shipped bakes it into markup), so a
+   retrofitted host page or a hand-written stylesheet that still uses the old name keeps working. */
+.cm-nonshareable-only, .cm-nonportable-only { display: none !important; }
+body.cm-nonshareable .cm-nonshareable-only,
 body.cm-nonportable .cm-nonportable-only { display: inline-block !important; }
+body.cm-nonshareable .cm-toolbar-menu .cm-nonshareable-only,
 body.cm-nonportable .cm-toolbar-menu .cm-nonportable-only { display: block !important; }
 
-/* Inline-only controls (e.g. Export nonportable) are shown only in a portable/inline
-   document and hidden once the file is in nonportable mode. */
+/* Inline-only controls (e.g. Export nonshareable) are shown only in a shareable/inline
+   document and hidden once the file is in nonshareable mode. */
+body.cm-nonshareable .cm-inline-only,
 body.cm-nonportable .cm-inline-only { display: none !important; }
 .cm-toolbar-menu .cm-inline-only { display: block; }
 
@@ -116,7 +122,7 @@ body.cm-nonportable .cm-inline-only { display: none !important; }
 #btnClearAllTop[aria-disabled="true"], #btnClearAll[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; }
 #btnClearAllTop[aria-disabled="true"]:hover, #btnClearAll[aria-disabled="true"]:hover { background: transparent; }
 
-/* Missing-companion-assets banner (nonportable mode only). Revealed by the tiny
+/* Missing-companion-assets banner (nonshareable mode only). Revealed by the tiny
    inline bootstrap when the external runtime fails to initialize in time. */
 #cmhAssetBanner {
   position: fixed; top: 0; left: 0; right: 0; z-index: 400;

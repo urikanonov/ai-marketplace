@@ -2,10 +2,10 @@ import { test, expect } from "@playwright/test";
 import { openInline } from "./helpers.js";
 
 test.describe("inline (standalone) mode", () => {
-  test("initializes and reports itself as a portable file", async ({ page }) => {
+  test("initializes and reports itself as a shareable file", async ({ page }) => {
     await openInline(page);
-    await expect(page.locator("#cmhModeBadge")).toHaveText("Portable");
-    expect(await page.evaluate(() => document.body.classList.contains("cm-nonportable"))).toBe(false);
+    await expect(page.locator("#cmhModeBadge")).toHaveText("Shareable");
+    expect(await page.evaluate(() => document.body.classList.contains("cm-nonshareable"))).toBe(false);
     expect(await page.evaluate(() => !!window.__COMMENTABLE_ASSETS__)).toBe(false);
     expect(await page.evaluate(() => window.__commentableHtmlVersion)).toBeTruthy();
   });

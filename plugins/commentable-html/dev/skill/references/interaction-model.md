@@ -8,10 +8,10 @@ Commentable HTML keeps review in the artifact. The reviewer comments in place, c
 
 **Self review loop:** generate the artifact, comment in place, click **Copy all**, paste the bundle to the agent, let the agent update the source and mark handled ids, then reload so handled comments are pruned.
 
-**Peer review loop:** run the self review loop first, click **Export as Portable**, share the downloaded file with a peer, receive the peer's Portable HTML with embedded comments, and feed those comments back to the agent.
+**Peer review loop:** run the self review loop first, click **Export as Shareable**, share the downloaded file with a peer, receive the peer's Shareable HTML with embedded comments, and feed those comments back to the agent.
 
 **Reviewer loop:** when someone sends Markdown or HTML, convert or retrofit it, review inline, and send back a
-Portable HTML file with comments embedded.
+Shareable HTML file with comments embedded.
 
 ## End-to-end interaction walkthrough
 
@@ -26,7 +26,7 @@ Portable HTML file with comments embedded.
 6. Clicking a highlight opens its card. When a highlight wraps a link or another clickable element, hovering the
    highlight shows the `#hlBubble`; clicking the bubble opens the comment without triggering the underlying link.
 7. Comments persist in `localStorage` under the document key and can be embedded into the HTML through
-   **Export as Portable**.
+   **Export as Shareable**.
 8. **Copy all** emits a Markdown bundle plus `HANDLED_IDS_JSON: [...]`.
 9. The agent acts on the comments and appends processed ids to `<script id="handledCommentIds">`; on reload those ids
    are pruned from `localStorage`, highlights disappear, and only unresolved comments remain.
@@ -57,7 +57,7 @@ Every add-comment affordance uses the same **"Add Comment"** control (one accent
 - **Headings:** hover a heading and click **Add Comment** to comment the whole heading text; plain click still deep-links to that heading.
 - **Images and charts:** hover or focus an image or a chart canvas and click **Add Comment**; whole-image/whole-chart anchor, multiple comments allowed.
 
-Every comment lands in the sidebar and round-trips through **Copy all**, **Export as Portable**, and the `handledCommentIds` prune contract identically, regardless of anchor type.
+Every comment lands in the sidebar and round-trips through **Copy all**, **Export as Shareable**, and the `handledCommentIds` prune contract identically, regardless of anchor type.
 
 Per-section review is separate from comments. Use `tools/authoring/mark_reviewed.py` to bake
 section-level **Mark reviewed** markers and the TOC filter into a document when the reviewer needs a

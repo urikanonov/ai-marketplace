@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import fs from "fs";
 import {
-  ready, fileUrl, openInline, stageContent, stageNonPortable, startStaticServer, readDownload, openToolbarMenu,
+  ready, fileUrl, openInline, stageContent, stageNonShareable, startStaticServer, readDownload, openToolbarMenu,
 } from "./helpers.js";
 
 // CMH-EXP-09: transient runtime body-state classes (toggled on document.body by the
@@ -54,7 +54,7 @@ async function stageInlineServer() {
 }
 
 test.describe("Export strips transient body state (CMH-EXP-09)", () => {
-  test("Save/Portable export drops sidebar-open and other transient body classes (CMH-EXP-09)", async ({ page }) => {
+  test("Save/Shareable export drops sidebar-open and other transient body classes (CMH-EXP-09)", async ({ page }) => {
     const { staged, server } = await stageInlineServer();
     try {
       await page.goto(server.url + "/test-doc.html");
@@ -105,10 +105,10 @@ test.describe("Export strips transient body state (CMH-EXP-09)", () => {
     }
   });
 
-  // NonPortable Portable export over file:// exercises the _snapshotWithTail() fallback
+  // NonShareable Shareable export over file:// exercises the _snapshotWithTail() fallback
   // base (fetch is blocked) and the _buildStandaloneHtml() inlining path.
-  test("Portable export from a nonportable file (snapshot fallback) drops transient body classes (CMH-EXP-09)", async ({ page }) => {
-    const staged = stageNonPortable({ mutate: bakeTransientBody });
+  test("Shareable export from a nonshareable file (snapshot fallback) drops transient body classes (CMH-EXP-09)", async ({ page }) => {
+    const staged = stageNonShareable({ mutate: bakeTransientBody });
     try {
       await page.goto(fileUrl(staged.html));
       await ready(page);

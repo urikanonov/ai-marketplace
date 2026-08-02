@@ -28,7 +28,7 @@ function stagePrintContent(contentHtml, { key, source = "print.html" }) {
   const contentRe = /(<!-- BEGIN: commentable-html - CONTENT[^>]*-->)[\s\S]*?(<!-- END: commentable-html - CONTENT -->)/;
   html = html.replace(contentRe, (_m, a, b) => a + "\n" + contentHtml + "\n" + b);
   html = html.replace('data-comment-key="commentable-html-demo"', 'data-comment-key="' + key + '"');
-  html = html.replace('data-doc-source="PORTABLE.html"', 'data-doc-source="' + source + '"');
+  html = html.replace('data-doc-source="SHAREABLE.html"', 'data-doc-source="' + source + '"');
   const file = path.join(dir, source);
   fs.writeFileSync(file, html);
   return { dir, html: file };

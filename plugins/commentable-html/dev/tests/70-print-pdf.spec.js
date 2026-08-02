@@ -489,9 +489,9 @@ test("CMH-PRINT-06: an eligible flat document prints as a single continuous no-b
   const deck = await analyzePdf(deckPdf);
   expect(deck.pages.length, "deck is unaffected: still one page per slide, not a single page").toBeGreaterThan(1);
 
-  // Grow-to-fit (the overflow-growth loop): content with an explicit width ABOVE the portable cap
+  // Grow-to-fit (the overflow-growth loop): content with an explicit width ABOVE the shareable cap
   // (816px) must GROW the honored @page past the cap so it is never clipped, instead of staying at the
-  // capped/portable width. This PINS the growth loop: a fixed 1000px-wide block is wider than both the
+  // capped/shareable width. This PINS the growth loop: a fixed 1000px-wide block is wider than both the
   // narrow viewport AND the 816px cap, so without the loop apply() would leave the content column
   // capped, the block would overflow it, and apply() would FALL BACK to normal pagination (no custom
   // @page at all). Assert the parsed @page width GREW above the cap and still covers the content.
@@ -500,7 +500,7 @@ test("CMH-PRINT-06: an eligible flat document prints as a single continuous no-b
   await page.evaluate(() => {
     const root = document.getElementById("commentRoot") || document.body;
     const d = document.createElement("div");
-    // A fixed width well above the 816px portable cap, un-capped so it truly overflows the column.
+    // A fixed width well above the 816px shareable cap, un-capped so it truly overflows the column.
     d.setAttribute("style", "width:1000px;max-width:none;height:40px;background:#eee");
     d.textContent = "wide-probe-content";
     root.appendChild(d);
@@ -518,22 +518,22 @@ test("CMH-PRINT-06: an eligible flat document prints as a single continuous no-b
   });
   await page.emulateMedia({ media: null });
   expect(narrow.pageW,
-    "content wider than the 816px portable cap grows the honored @page ABOVE the cap (not capped-and-clipped)")
+    "content wider than the 816px shareable cap grows the honored @page ABOVE the cap (not capped-and-clipped)")
     .toBeGreaterThan(820);
   expect(narrow.scrollW,
     "the grown single @page still covers the widest content (no right-edge clip on the honored page)")
     .toBeLessThanOrEqual(narrow.pageW + 2);
 
-  // Portable page + generic across ALL drivers: at a WIDE viewport the honored single @page is sized
-  // to a standard, portable page width (US Letter, ~816px) rather than the on-screen reading column
+  // Shareable page + generic across ALL drivers: at a WIDE viewport the honored single @page is sized
+  // to a standard, shareable page width (US Letter, ~816px) rather than the on-screen reading column
   // (~1280px on a wide screen), AND the injected print CSS uses width:auto - it does NOT force a fixed
   // body width. That progressive degradation is what makes it generic: a browser that HONORS the
-  // custom @page (Chromium's native vector "Save as PDF") fills the portable-width page as one tall
+  // custom @page (Chromium's native vector "Save as PDF") fills the shareable-width page as one tall
   // page, while a driver that IGNORES it (Microsoft Print to PDF, physical printers, browsers without
   // custom-@page support) reflows the content into its OWN real Letter/A4 printable area instead of
   // being downscaled to fit an oversized forced body width (the old bug: poor quality, side
   // whitespace, stranded diagrams).
-  const PORTABLE_MAX_W = 820; // US Letter width (816px) + slack
+  const SHAREABLE_MAX_W = 820; // US Letter width (816px) + slack
   await page.setViewportSize({ width: 1280, height: 900 });
   await openForPrint(page, path.join(EXAMPLES, "report-taxi.html"));
   await page.emulateMedia({ media: "print" });
@@ -554,10 +554,10 @@ test("CMH-PRINT-06: an eligible flat document prints as a single continuous no-b
   });
   await page.emulateMedia({ media: null });
   expect(wide.applied, "wide-viewport taxi still uses the single continuous-page path").toBe(true);
-  expect(wide.pageW, "the honored single @page is sized to a portable standard page width")
-    .toBeLessThanOrEqual(PORTABLE_MAX_W);
+  expect(wide.pageW, "the honored single @page is sized to a shareable standard page width")
+    .toBeLessThanOrEqual(SHAREABLE_MAX_W);
   expect(wide.pageH, "the honored single @page is still a tall continuous canvas")
-    .toBeGreaterThan(PORTABLE_MAX_W * 3);
+    .toBeGreaterThan(SHAREABLE_MAX_W * 3);
   expect(wide.usesAutoWidth,
     "print CSS uses width:auto so honoring and non-honoring drivers alike flow into their real page")
     .toBe(true);

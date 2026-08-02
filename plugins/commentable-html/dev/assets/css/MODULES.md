@@ -15,7 +15,7 @@ order the directory listing gives.
 | `10-layout.css` | CMH-CORE, CMH-RESP, CMH-DENSITY | Layout recipe, toolbar, and core chrome. |
 | `20-chrome.css` | CMH-SIDE, CMH-HELP, CMH-FOOT, CMH-DENSITY, CMH-RICH | Attribution footer, sidebar meta, help dialog, TOC chrome, the in-document comment dialog (including its compact formatting toolbar). |
 | `22-section-review.css` | CMH-REVIEW | Section-review badges (four states), TOC state dots, and the segmented review filter. |
-| `30-mermaid.css` | CMH-MMD, CMH-DENSITY | Mermaid commenting layer + NonPortable controls. |
+| `30-mermaid.css` | CMH-MMD, CMH-DENSITY | Mermaid commenting layer + NonShareable controls. |
 | `40-diff.css` | CMH-DIFF | Diff / code-review layer. |
 | `50-content.css` | CMH-CONTENT, CMH-STATS | Default content styling (sections, tables, badges, document-overview strip). |
 | `60-images.css` | CMH-IMG | Image comment layer. |

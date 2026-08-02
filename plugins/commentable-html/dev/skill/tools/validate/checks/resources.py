@@ -1,6 +1,6 @@
-"""Self-contained / offline / NonPortable resource checks: external and network
+"""Self-contained / offline / NonShareable resource checks: external and network
 resource detection, the offline CSP contract, companion-asset reference parsing,
-and the NonPortable vs Portable/offline determination."""
+and the NonShareable vs Shareable/offline determination."""
 
 import re
 import os
@@ -131,7 +131,7 @@ def offline_script_navigates_to_network(body):
 
 META_REFRESH_NETWORK_RE = re.compile(r"(?:^|[;,\s])url\s*=\s*(['\"]?)(?:https?:)?//", re.IGNORECASE)
 
-NONPORTABLE_REGIONS = REGIONS
+NONSHAREABLE_REGIONS = REGIONS
 
 _ADX_RUN_HOST = "dataexplorer.azure.com"
 
@@ -190,7 +190,7 @@ def _offline_csp_errors(html):
     return errors
 
 
-# NonPortable companion references are detected by parsing real link/script/meta
+# NonShareable companion references are detected by parsing real link/script/meta
 # attributes with the tolerant HTMLParser (not a regex), so a '>' in a quoted
 # value, an unquoted href/src, a reordered <meta content=.. name=..>, or a decoy
 # tag inside a comment/script body is handled the same way as the rest of the
@@ -320,42 +320,42 @@ def _layer_tags(doc, tag):
     companion references always sit outside that region - the CSS <link> in <head> before it, the
     runtime <script>s at the end of <body> after it - so an occurrence INSIDE it is the author's
     own prose. A document about commentable-html that DEMONSTRATES the companion markup was being
-    read as NonPortable because of its own content.
+    read as NonShareable because of its own content.
 
     The region is taken from the PARSE, not from marker offsets in the text, so it is exactly the
     region a browser would agree on: real HTML comment markers, inside the live `#commentRoot`,
     outside an inert `<template>`, and never inside CDATA. A string-offset view could be steered
     (markers placed around the real references, or a `<style>`/`<script>` straddling the boundary)
-    into blanking the layer itself and reporting a broken NonPortable document as Portable."""
+    into blanking the layer itself and reporting a broken NonShareable document as Shareable."""
     parser = _as_parser(doc)
     return parser.layer_tags.get(tag, [])
 
 
-def _nonportable_css_refs(doc):
+def _nonshareable_css_refs(doc):
     return [_ref_path(a["href"]) for a in _layer_tags(doc, "link")
             if "commentable-html" in a.get("href", "").lower()
             and _ref_path(a.get("href", "")).lower().endswith(".css")]
 
 
-def _nonportable_js_refs(doc):
+def _nonshareable_js_refs(doc):
     return [_ref_path(a["src"]) for a in _layer_tags(doc, "script")
             if "commentable-html" in a.get("src", "").lower()
             and _ref_path(a.get("src", "")).lower().endswith(".js")]
 
 
-def _nonportable_meta_versions(doc):
+def _nonshareable_meta_versions(doc):
     return [a.get("content", "") for a in _layer_tags(doc, "meta")
             if a.get("name", "").lower() == "commentable-html-version"]
 
 
-def _is_nonportable(doc):
-    """NonPortable = the LAYER references external commentable-html companion files."""
+def _is_nonshareable(doc):
+    """NonShareable = the LAYER references external commentable-html companion files."""
     parser = _as_parser(doc)
-    return bool(_nonportable_css_refs(parser) or _nonportable_js_refs(parser))
+    return bool(_nonshareable_css_refs(parser) or _nonshareable_js_refs(parser))
 
 
-def _check_nonportable(doc, base_dir, id_counts):
-    """NonPortable-mode-only invariants. Returns (errors, warnings).
+def _check_nonshareable(doc, base_dir, id_counts):
+    """NonShareable-mode-only invariants. Returns (errors, warnings).
 
     `doc` is an already-parsed `_DocParser` or raw html; `id_counts` must count only ids OUTSIDE
     the authored CONTENT region (the parser's `layer_ids`), so an authored demonstration cannot
@@ -363,34 +363,34 @@ def _check_nonportable(doc, base_dir, id_counts):
     errors, warnings = [], []
     parser = _as_parser(doc)
 
-    css_refs = _nonportable_css_refs(parser)
-    js_refs = _nonportable_js_refs(parser)
+    css_refs = _nonshareable_css_refs(parser)
+    js_refs = _nonshareable_js_refs(parser)
 
     runtime_refs = [s for s in js_refs if not s.lower().endswith(".assets.js")]
     assets_refs = [s for s in js_refs if s.lower().endswith(".assets.js")]
 
     if not css_refs:
-        errors.append('nonportable mode: no commentable-html stylesheet <link ... .css> found (the layer will be unstyled)')
+        errors.append('nonshareable mode: no commentable-html stylesheet <link ... .css> found (the layer will be unstyled)')
     if not runtime_refs:
-        errors.append('nonportable mode: no commentable-html runtime <script src ... .js> found (the layer will not load)')
+        errors.append('nonshareable mode: no commentable-html runtime <script src ... .js> found (the layer will not load)')
     if not assets_refs:
-        warnings.append('nonportable mode: no commentable-html.*.assets.js is referenced - "Export with embedded comments" cannot rebuild a portable file (add the assets companion or ship a standalone copy)')
+        warnings.append('nonshareable mode: no commentable-html.*.assets.js is referenced - "Export with embedded comments" cannot rebuild a shareable file (add the assets companion or ship a standalone copy)')
 
     # Version stamp: a <meta name="commentable-html-version"> records the skill
     # version that produced the file and lets the runtime detect a stale companion
     # by comparing it against the loaded runtime's CMH_VERSION.
-    metas = _nonportable_meta_versions(parser)
+    metas = _nonshareable_meta_versions(parser)
     if not metas:
-        warnings.append('nonportable mode: missing <meta name="commentable-html-version" content="X"> - the runtime cannot detect a stale/mismatched companion file')
+        warnings.append('nonshareable mode: missing <meta name="commentable-html-version" content="X"> - the runtime cannot detect a stale/mismatched companion file')
 
     # Mandatory missing-asset banner: if the external runtime never loads, the
     # page must say so instead of looking fine but dead.
     if id_counts.get("cmhAssetBanner", 0) == 0:
-        errors.append('nonportable mode: missing the #cmhAssetBanner element (a broken companion load would fail silently) - keep the NONPORTABLE BOOTSTRAP block')
+        errors.append('nonshareable mode: missing the #cmhAssetBanner element (a broken companion load would fail silently) - keep the NONSHAREABLE BOOTSTRAP block')
     if not parser.layer_ready_token:
-        warnings.append('nonportable mode: no bootstrap watchdog (looked for __commentableHtmlReady) - the missing-asset banner will never reveal itself')
+        warnings.append('nonshareable mode: no bootstrap watchdog (looked for __commentableHtmlReady) - the missing-asset banner will never reveal itself')
 
-    # Referenced companion files must resolve to a local file that exists. NonPortable
+    # Referenced companion files must resolve to a local file that exists. NonShareable
     # intentionally points at the skill's dist/ folder (a relative subdirectory or a
     # ../ path, or an absolute file:// URL), so a subfolder / parent reference is
     # allowed. Network URLs and non-file schemes are rejected, absolute filesystem
@@ -403,7 +403,7 @@ def _check_nonportable(doc, base_dir, id_counts):
     doc_dir = os.path.abspath(base_dir) if base_dir is not None else None
     for ref in css_refs + js_refs:
         if re.match(r"(?:https?:)?//", ref, re.I):
-            errors.append('nonportable mode: companion reference "%s" must be a local file, not a remote/CDN URL (the layer must stay self-contained)' % ref)
+            errors.append('nonshareable mode: companion reference "%s" must be a local file, not a remote/CDN URL (the layer must stay self-contained)' % ref)
             continue
         norm = ref.replace("\\", "/")
         file_target = _file_url_to_path(ref)
@@ -412,16 +412,16 @@ def _check_nonportable(doc, base_dir, id_counts):
             target = file_target
             baked_absolute = True
         elif re.match(r"[a-zA-Z][a-zA-Z0-9+.\-]*:", ref) and not re.match(r"[a-zA-Z]:[\\/]", ref):
-            errors.append('nonportable mode: companion reference "%s" must be a local file, not a non-file URL scheme' % ref)
+            errors.append('nonshareable mode: companion reference "%s" must be a local file, not a non-file URL scheme' % ref)
             continue
         elif norm.startswith("/") or re.match(r"[a-zA-Z]:", ref):
-            # Absolute path: usable but leaks a local directory and is not portable.
-            warnings.append('nonportable mode: companion reference "%s" is an absolute path (it leaks a local directory and is not portable) - prefer a relative path to the skill dist/ folder' % ref)
+            # Absolute path: usable but leaks a local directory and is not shareable.
+            warnings.append('nonshareable mode: companion reference "%s" is an absolute path (it leaks a local directory and is not shareable) - prefer a relative path to the skill dist/ folder' % ref)
             target = os.path.abspath(ref)
             baked_absolute = True
         elif base_dir is not None:
             # Relative ref resolved against the document folder; a subdirectory or
-            # ../ path to the skill dist/ folder is the intended nonportable workflow.
+            # ../ path to the skill dist/ folder is the intended nonshareable workflow.
             target = os.path.abspath(os.path.join(os.path.abspath(base_dir), norm))
         else:
             target = None
@@ -432,9 +432,9 @@ def _check_nonportable(doc, base_dir, id_counts):
         # document (even in temp) keeps its existing behavior, so neither is flagged.
         if baked_absolute and target is not None and _is_temp_path(target) \
                 and not _same_dir(os.path.dirname(target), doc_dir):
-            errors.append('nonportable mode: companion reference "%s" resolves inside a temporary directory, which the OS deletes - the shared document will lose its layer. Export a Portable (single-file) copy, or copy dist/ to a durable folder next to the document' % ref)
+            errors.append('nonshareable mode: companion reference "%s" resolves inside a temporary directory, which the OS deletes - the shared document will lose its layer. Export a Shareable (single-file) copy, or copy dist/ to a durable folder next to the document' % ref)
             continue
         if target is not None and (base_dir is not None or file_target is not None) and not os.path.exists(target):
-            errors.append('nonportable mode: referenced companion file not found: %s (point the <link>/<script src> at the skill dist/ folder, or copy dist/ next to the document)' % ref)
+            errors.append('nonshareable mode: referenced companion file not found: %s (point the <link>/<script src> at the skill dist/ folder, or copy dist/ next to the document)' % ref)
 
     return errors, warnings

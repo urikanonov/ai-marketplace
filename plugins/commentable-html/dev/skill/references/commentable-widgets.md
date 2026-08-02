@@ -21,7 +21,7 @@ A labeled SVG node is just a part:
 
 Each part gets a hover / keyboard **Add Comment** affordance (focus it and press
 <kbd>Enter</kbd>). The comment stores `anchorType: "widget"` with the widget name, part id,
-and label, and it restores by widget + part across reloads, Copy all, and Export as Portable.
+and label, and it restores by widget + part across reloads, Copy all, and Export as Shareable.
 The Copy-all bundle records `Anchor: widget "<name>", part "<label>"`.
 
 ```html
@@ -43,10 +43,10 @@ slot that carries `data-cm-draggable`, the change is surfaced deterministically:
   panel opens so the change is not missed),
 - the change is copied in a **Widget layout changes** section of the Copy-all bundle so the
   agent can reformat the source to match, and
-- the document is marked **Not portable** until it is re-exported (the move is not saved into
+- the document is marked **Not shareable** until it is re-exported (the move is not saved into
   the file yet).
 
-Moving every part back to its original slot clears the change and restores portability. The
+Moving every part back to its original slot clears the change and restores shareability. The
 tracking is a pure function of the current DOM (baseline slot vs current slot), so it never
 drifts and needs no persisted state.
 

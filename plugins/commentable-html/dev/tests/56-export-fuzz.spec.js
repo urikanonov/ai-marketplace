@@ -10,7 +10,7 @@ import {
 // output HTML string and is a proven bug attractor (F2 $-replacement corruption, forged markers,
 // escaping). This is a property/fuzz guard: a batch of adversarial notes ($-patterns, escaped <,
 // HTML comments, closing-script tags, unicode, backticks, and literal region-marker phrases) must
-// each round-trip byte-exact through Export as Portable and JSON.parse, and none may break the
+// each round-trip byte-exact through Export as Shareable and JSON.parse, and none may break the
 // embedded-comments JSON, forge a region boundary, or corrupt the file.
 
 const ADVERSARIAL = [
@@ -36,7 +36,7 @@ function embeddedJson(html) {
   return JSON.parse(m[1].trim() || "[]");
 }
 
-test("Export as Portable round-trips a batch of adversarial comment notes byte-exact (GH-REGRESS-EXPORT-HOTSPOT)", async ({ page }) => {
+test("Export as Shareable round-trips a batch of adversarial comment notes byte-exact (GH-REGRESS-EXPORT-HOTSPOT)", async ({ page }) => {
   await openInline(page);
   // Seed one real comment to obtain a valid comment-object template, then clone it once per
   // adversarial note with a fresh SAFE_ID_RE-compatible id, and persist the batch to localStorage.

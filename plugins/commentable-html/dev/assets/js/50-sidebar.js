@@ -382,7 +382,7 @@ function _renderWidgetStateCard(changes) {
       <div class="section">in: <strong>${escapeHtml(_widgetDisplayName(name))}</strong></div>
       <div class="cm-card-state-title">Layout change - ${list.length} item${list.length === 1 ? "" : "s"} moved</div>
       <ul>${items}</ul>
-      <div class="note">Auto-tracked from the current layout. Included in Copy all so the agent can reformat the source; the file stays Not portable until re-exported.</div>
+      <div class="note">Auto-tracked from the current layout. Included in Copy all so the agent can reformat the source; the file stays Not shareable until re-exported.</div>
       <div class="meta">
         <span>${timeHtml}</span>
         <span class="acts">

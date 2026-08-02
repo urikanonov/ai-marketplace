@@ -52,7 +52,7 @@ STAMP_TOKEN = "commentable-html-validated"
 _VALIDATED_META_RE = re.compile(
     r'<meta\s+name=["\']%s["\']\s+content=["\'][^"\']+["\']' % re.escape(STAMP_TOKEN), re.I)
 # A commentable document embeds a content root keyed with data-comment-key; used as the positive
-# half of the portable check (absence of companion refs alone would pass a bare HTML file).
+# half of the shareable check (absence of companion refs alone would pass a bare HTML file).
 _LAYER_RE = re.compile(r'data-comment-key\s*=', re.I)
 # Resource-loading ELEMENTS (matched as a whole tag so we only scan real markup, never the runtime's
 # inline JS where `foo.src = "..."` would false-positive). <a> is excluded on purpose - a hyperlink is
@@ -84,7 +84,7 @@ def _is_companion_ref(url):
     return bool(url) and _SELF_CONTAINED_REF_RE.match(url) is None
 
 
-def _portable_companion_refs(html):
+def _shareable_companion_refs(html):
     """Every local companion-file reference in HTML (element assets + CSS url()), or [] if none."""
     refs = []
     for tag_m in _RESOURCE_TAG_RE.finditer(html):
@@ -173,14 +173,14 @@ def validator_command(kind, artifact, python_exe=None):
         return [python_exe, str(VALIDATE_PY), "--strict", "--no-stamp", str(artifact)]
     if kind == "deck_validate":
         return [python_exe, str(DECK_VALIDATE_PY), "--strict", str(artifact)]
-    if kind in ("portable", "stamp"):
+    if kind in ("shareable", "stamp"):
         return None
     raise ValueError("unknown validator kind: %r" % kind)
 
 
 def _content_check(kind, html):
-    if kind == "portable":
-        refs = _portable_companion_refs(html)
+    if kind == "shareable":
+        refs = _shareable_companion_refs(html)
         if refs:
             return (False, "references companion file %r (not self-contained)" % refs[0])
         if _LAYER_RE.search(html) is None:

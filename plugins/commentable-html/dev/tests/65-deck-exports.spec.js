@@ -1,4 +1,4 @@
-// CMH-DECK-EXPORT-01: all four exports (Portable, Offline, Plain, Markdown) on the SHIPPED
+// CMH-DECK-EXPORT-01: all four exports (Shareable, Offline, Plain, Markdown) on the SHIPPED
 // showcase deck (examples/deck-showcase.html, a kind=slides deck). Each test serves the real
 // deck over http with mermaid routed to the vendored copy (a runtime CDN import browsers block
 // over file://) so the suite stays fully self-contained, exercises the sidebar export button
@@ -70,12 +70,12 @@ async function enterCommentModeAndComment(page, note) {
   await expect(composer).toHaveCount(0);
 }
 
-test("CMH-DECK-EXPORT-01: Export Portable round-trips the showcase deck and reopens self-contained", async ({ page, browser }) => {
+test("CMH-DECK-EXPORT-01: Export Shareable round-trips the showcase deck and reopens self-contained", async ({ page, browser }) => {
   test.setTimeout(60000);
   const { dir, cleanup } = await openDeck(page);
   let ctx2;
   try {
-    await enterCommentModeAndComment(page, "portable deck note");
+    await enterCommentModeAndComment(page, "shareable deck note");
     await expect(page.locator("#btnSidebarExportMenu")).toBeVisible();
     await openSidebarExportMenu(page);
     await expect(page.locator("#btnSaveHtml")).toBeVisible();
@@ -83,7 +83,7 @@ test("CMH-DECK-EXPORT-01: Export Portable round-trips the showcase deck and reop
       page.waitForEvent("download"),
       clickSidebarExport(page, "#btnSaveHtml"),
     ]);
-    expect(download.suggestedFilename()).toMatch(/-portable\.html$/);
+    expect(download.suggestedFilename()).toMatch(/-shareable\.html$/);
     const exportedHtml = await readDownload(download);
 
     // The deck contract and the embedded comment survive; the layer is inlined (self-contained),
@@ -93,13 +93,13 @@ test("CMH-DECK-EXPORT-01: Export Portable round-trips the showcase deck and reop
     expect(exportedHtml).toContain("__commentableHtmlReady");
     expect(exportedHtml).not.toMatch(/<link\b[^>]+commentable-html\.css/);
     expect(exportedHtml).toContain('id="embeddedComments"');
-    expect(exportedHtml).toContain("portable deck note");
+    expect(exportedHtml).toContain("shareable deck note");
     const ids = [...exportedHtml.matchAll(/data-slide-id="([^"]+)"/g)].map((m) => m[1]);
     expect(ids.length).toBeGreaterThan(3);
     expect(new Set(ids).size).toBe(ids.length);
     const firstId = ids[0];
 
-    const exportedPath = path.join(dir, "deck-portable.html");
+    const exportedPath = path.join(dir, "deck-shareable.html");
     fs.writeFileSync(exportedPath, exportedHtml);
     ctx2 = await browser.newContext();
     const page2 = await ctx2.newPage();
@@ -112,8 +112,8 @@ test("CMH-DECK-EXPORT-01: Export Portable round-trips the showcase deck and reop
     expect(await page2.evaluate(() => window.__cmhDeck.activeSlideId())).toBe(firstId);
     await expect.poll(() => page2.locator("mark.cm-hl").count()).toBeGreaterThan(0);
     await enterCommentMode(page2);
-    await expect(page2.locator("#commentList")).toContainText("portable deck note");
-    // A Portable deck keeps only the optional mermaid library loader; the sole permitted network
+    await expect(page2.locator("#commentList")).toContainText("shareable deck note");
+    // A Shareable deck keeps only the optional mermaid library loader; the sole permitted network
     // is that CDN, never the content, comments, or a companion asset file.
     expect(external.every((u) => /cdn\.jsdelivr\.net\/npm\/mermaid@/.test(u))).toBe(true);
   } finally {

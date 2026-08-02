@@ -25,13 +25,13 @@ Single source of truth
 
 Generated (never hand-edit; `--check` fails if they drift)
 ----------------------------------------------------------
-  dist/PORTABLE.html                  - inline / standalone template (self-contained)
+  dist/SHAREABLE.html                  - inline / standalone template (self-contained)
   dist/commentable-html.css           - external layer stylesheet (version-agnostic name)
   dist/commentable-html.js            - external runtime
   dist/commentable-html.assets.js     - asset registry (css+js as strings) used by
-                                        "Export as Portable" to rebuild a portable file
+                                        "Export as Shareable" to rebuild a shareable file
   dist/manifest.json                  - version + sha256 of each companion file
-  dist/NONPORTABLE.html               - nonportable template, sitting next to its companions
+  dist/NONSHAREABLE.html               - nonshareable template, sitting next to its companions
 
 Bumping the version: edit VERSION, then run this builder (it re-stamps every
 spot and regenerates dist). Companion filenames are version-agnostic, so a bump
@@ -47,7 +47,7 @@ the ai-marketplace pkg/dev split - run from dev/):
   python tools/build.py --assets-dir assets --out-dir skill --pkg-dir ../pkg/skills/commentable-html --examples-dir ../examples --check
 
 --assets-dir defaults to <skill>/assets and --out-dir defaults to the skill root (the
-directory that receives dist/PORTABLE.html and dist/). --check compares the files already
+directory that receives dist/SHAREABLE.html and dist/). --check compares the files already
 present in --out-dir against a fresh build.
 """
 import argparse

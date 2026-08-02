@@ -112,7 +112,7 @@ def build_assets_js(css, js, version):
     payload = json.dumps({"version": version, "css": css, "js": js}, indent=2)
     reg = ("/* commentable-html v" + version + " asset registry - GENERATED, do not edit.\n"
            "   Loaded as a classic <script src> so it works from file://; defines the\n"
-           "   css/js string payloads used by 'Export standalone' to rebuild a portable\n"
+           "   css/js string payloads used by 'Export standalone' to rebuild a shareable\n"
            "   single-file copy without fetch(). */\n"
            "window.__COMMENTABLE_ASSETS__ = " + payload + ";\n")
     if re.search(r"</\s*script", reg, re.IGNORECASE):

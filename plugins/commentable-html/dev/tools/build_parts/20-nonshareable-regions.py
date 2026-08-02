@@ -6,7 +6,7 @@ _JS_REGION_RE = re.compile(
     re.S)
 
 _BOOTSTRAP = (
-    "<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->\n"
+    "<!-- BEGIN: commentable-html - NONSHAREABLE BOOTSTRAP -->\n"
     '<div id="cmhAssetBanner" class="cm-skip" role="alert" hidden>\n'
     '  <span class="cmh-asset-message">Commentable-html could not load its companion files. Keep\n'
     "  <code>__JSNAME__</code>, <code>__ASSETSNAME__</code> and <code>__CSSNAME__</code>\n"
@@ -22,11 +22,11 @@ _BOOTSTRAP = (
     "    }\n"
     "  }, 3000);\n"
     "</scr" + "ipt>\n"
-    "<!-- END: commentable-html - NONPORTABLE BOOTSTRAP -->\n"
+    "<!-- END: commentable-html - NONSHAREABLE BOOTSTRAP -->\n"
 )
 
 
-def build_nonportable(shell, version, mermaid_version, vendored_rich_libs_json=None):
+def build_nonshareable(shell, version, mermaid_version, vendored_rich_libs_json=None):
     if vendored_rich_libs_json is None:
         vendored_rich_libs_json = build_vendored_rich_libs_json(ASSETS)
     css_name, js_name, assets_name = _names()
@@ -49,7 +49,7 @@ def build_nonportable(shell, version, mermaid_version, vendored_rich_libs_json=N
     js_add = ("<!-- ============================================================\n"
               "     BEGIN: commentable-html - JS\n"
               "     ============================================================ -->\n"
-              "<!-- commentable-html - layer loaded from companion files (nonportable mode) -->\n"
+              "<!-- commentable-html - layer loaded from companion files (nonshareable mode) -->\n"
               '<script src="' + assets_name + '"></script>\n'
               '<script src="' + js_name + '"></script>\n'
               "<!-- END: commentable-html - JS -->")
@@ -69,14 +69,14 @@ def build_nonportable(shell, version, mermaid_version, vendored_rich_libs_json=N
             .replace("__CSSNAME__", css_name))
     t = t[:idx] + "\n" + boot + t[idx:]
 
-    # 4) Per-document identity so the nonportable demo does not collide with the
+    # 4) Per-document identity so the nonshareable demo does not collide with the
     #    inline demo in localStorage, and is clearly labelled.
     t = t.replace('data-comment-key="commentable-html-demo"',
-                  'data-comment-key="commentable-html-nonportable-demo"', 1)
-    t = t.replace('data-doc-source="PORTABLE.html"', 'data-doc-source="NONPORTABLE.html"', 1)
+                  'data-comment-key="commentable-html-nonshareable-demo"', 1)
+    t = t.replace('data-doc-source="SHAREABLE.html"', 'data-doc-source="NONSHAREABLE.html"', 1)
     t = t.replace("<title>Commentable HTML - Demo</title>",
-                  "<title>Commentable HTML - NonPortable Demo</title>", 1)
-    t = _stamp_layer_descriptor(t, version, "nonportable")
+                  "<title>Commentable HTML - NonShareable Demo</title>", 1)
+    t = _stamp_layer_descriptor(t, version, "nonshareable")
 
     t = re.sub(r"\n{3,}", "\n\n", t)
     t = re.sub(r"\n{3,}", "\n\n", t)
@@ -84,7 +84,7 @@ def build_nonportable(shell, version, mermaid_version, vendored_rich_libs_json=N
     t = t.replace("{{MERMAID_VERSION}}", mermaid_version)
     t = t.replace("{{CMH_VENDORED_RICH_LIBS}}", vendored_rich_libs_json)
     if "{{CMH_" in t or "{{MERMAID_" in t:
-        raise SystemExit("build: an unresolved placeholder remains in NONPORTABLE.html")
+        raise SystemExit("build: an unresolved placeholder remains in NONSHAREABLE.html")
     return t
 
 

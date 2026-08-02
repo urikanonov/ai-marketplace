@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Upgrade an existing commentable-html file to a newer dist/PORTABLE.html.
+"""Upgrade an existing commentable-html file to a newer dist/SHAREABLE.html.
 
 Swaps the three layer regions - CSS, COMMENT UI, and JS - in a deployed standalone
 (inline) commentable-html file with the versions from a template, while leaving the
@@ -12,7 +12,7 @@ That lookup is scoped to `<head>` (authored body content is never mistaken for t
 matches the loader by its mermaid `import(...)`, and preserves a hand-vendored (relative
 import) offline loader rather than re-pointing it at the CDN.
 
-This is the "Upgrade an existing instance to a new dist/PORTABLE.html" recipe from SKILL.md,
+This is the "Upgrade an existing instance to a new dist/SHAREABLE.html" recipe from SKILL.md,
 made deterministic. Doing it by hand is error prone because of two documented footguns:
 the JS payload's own plain-HTML-export code contains marker-like text, so the real JS
 region END is the LAST `END: commentable-html - JS` occurrence, and a naive first
@@ -20,7 +20,7 @@ match truncates the region.
 
 Stdlib-only, local-only, deterministic. Usage:
 
-    python tools/upgrade.py <file.html>                 # upgrade in place from dist/PORTABLE.html
+    python tools/upgrade.py <file.html>                 # upgrade in place from dist/SHAREABLE.html
     python tools/upgrade.py <file.html> --template T     # use a specific template
     python tools/upgrade.py <file.html> --out out.html   # write elsewhere
     python tools/upgrade.py <file.html> --check          # exit 1 if regions are stale, no write
@@ -39,7 +39,7 @@ _toolpath.ensure()
 import _favicon  # noqa: E402
 import doc_stamp  # noqa: E402
 SKILL_ROOT = _toolpath.SKILL_ROOT
-DEFAULT_TEMPLATE = os.path.join(SKILL_ROOT, "dist", "PORTABLE.html")
+DEFAULT_TEMPLATE = _toolpath.dist_template(_toolpath.SHAREABLE_TEMPLATE)
 
 # Regions swapped from the template. HANDLED IDS, EMBEDDED COMMENTS, CONTENT, and the
 # #commentRoot wrapper are document-owned; only its source provenance is normalized.
@@ -49,10 +49,23 @@ LAYER_REGIONS = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"]
 # is not actually a commentable-html document).
 REQUIRED_MARKERS = ["HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "CONTENT", "CSS", "JS"]
 CONTENT_BEGIN_RE = re.compile(r"<!--\s*BEGIN: commentable-html - CONTENT\b", re.IGNORECASE)
-# A real nonportable document carries this exact bootstrap comment. The inline JS body only
+# A real nonshareable document carries this exact bootstrap comment. The inline JS body only
 # mentions the marker text inside a regex literal (with `\s*`, not literal spaces), so
 # matching the full comment avoids a false positive on standalone files.
-NONPORTABLE_MARKER = "<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->"
+NONSHAREABLE_MARKER = "<!-- BEGIN: commentable-html - NONSHAREABLE BOOTSTRAP -->"
+# Documents generated before the Portable -> Shareable rename carry the LEGACY anchor, and they
+# must keep being recognized forever - so both spellings are matched everywhere.
+LEGACY_NONSHAREABLE_MARKER = "<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->"
+NONSHAREABLE_MARKERS = (NONSHAREABLE_MARKER, LEGACY_NONSHAREABLE_MARKER)
+# The pre-rename name of this constant, which other modules and user scripts read across the
+# module boundary. It aliases the LEGACY string so its value and meaning are byte-identical to
+# what a caller reading `upgrade.NONPORTABLE_MARKER` got before the rename.
+NONPORTABLE_MARKER = LEGACY_NONSHAREABLE_MARKER
+
+
+def has_nonshareable_marker(html):
+    """True when the document carries the companion bootstrap anchor, in either spelling."""
+    return any(marker in (html or "") for marker in NONSHAREABLE_MARKERS)
 
 # Older documents predate the mandatory document-kind meta. On upgrade we add a default
 # (generic) kind so the result declares one and passes validation; the author can change
@@ -518,9 +531,9 @@ def _region_inner(text, name, where):
 
 def upgrade(target_html, template_html, target_name="<target>", template_name="<template>"):
     """Return (new_html, changed_region_names). Raises ValueError on an unusable input."""
-    if NONPORTABLE_MARKER in target_html:
+    if has_nonshareable_marker(target_html):
         raise ValueError(
-            "%s looks like a nonportable document (companion assets). Upgrade nonportable files by "
+            "%s looks like a nonshareable document (companion assets). Upgrade nonshareable files by "
             "replacing the dist/ companions from the new release; the version meta is stamped by the build." % target_name)
     for marker in REQUIRED_MARKERS:
         found = bool(CONTENT_BEGIN_RE.search(target_html)) if marker == "CONTENT" \
@@ -615,7 +628,7 @@ def _fatal_warnings(validate_mod, warnings):
 def main(argv):
     p = argparse.ArgumentParser(description="Upgrade a commentable-html file's layer regions from a template.")
     p.add_argument("file", help="the deployed commentable-html file to upgrade")
-    p.add_argument("--template", default=DEFAULT_TEMPLATE, help="template to upgrade from (default: skill dist/PORTABLE.html)")
+    p.add_argument("--template", default=DEFAULT_TEMPLATE, help="template to upgrade from (default: skill dist/SHAREABLE.html)")
     p.add_argument("--out", default=None, help="write result here instead of in place")
     p.add_argument("--check", action="store_true", help="do not write; exit 1 if any region is stale")
     p.add_argument("--strict", action="store_true",
@@ -623,6 +636,9 @@ def main(argv):
                         "and exit non-zero (errors already do this). Off by default so a version-only "
                         "upgrade is never blocked by a pre-existing content warning.")
     args = p.parse_args(argv[1:])
+    # An existing recipe may still name the pre-rename dist/PORTABLE.html; map it onto the file
+    # that exists today rather than failing to read it.
+    args.template = _toolpath.resolve_template_path(args.template)
 
     try:
         target = _read(args.file)

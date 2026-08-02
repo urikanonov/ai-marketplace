@@ -4,7 +4,7 @@ Use this reference when adding, fixing, or validating a Chart.js chart inside a 
 
 ## Contents
 
-- [Dependency and portability](#dependency-and-portability)
+- [Dependency and shareability](#dependency-and-shareability)
 - [Why Chart.js and not hand-rolled SVG](#why-chartjs-and-not-hand-rolled-svg)
 - [Four rules for coexisting with the commenting layer](#four-rules-for-coexisting-with-the-commenting-layer)
 - [Minimal copy-paste recipe (light theme)](#minimal-copy-paste-recipe-light-theme)
@@ -12,7 +12,7 @@ Use this reference when adding, fixing, or validating a Chart.js chart inside a 
 - [Verifying the tooltip actually works](#verifying-the-tooltip-actually-works)
 - [Pitfalls checklist](#pitfalls-checklist)
 
-## Dependency and portability
+## Dependency and shareability
 
 `chart_block.py` emits a bounded canvas wrapper and a guarded Chart.js CDN loader by default: it pins the full version, adds SRI plus `crossorigin="anonymous"`, keeps the loader synchronous, and guards init with `if (typeof Chart === "undefined") return;` so blocked loading leaves a blank canvas instead of throwing. Chart.js built-in tooltips need no extra library.
 
@@ -51,7 +51,7 @@ If the chart already rendered in the browser, **Export Offline** can also make t
  </figure>
  ```
 
-2. **Inject chart scripts before the FINAL `</body>`, never the first.** `dist/PORTABLE.html`
+2. **Inject chart scripts before the FINAL `</body>`, never the first.** `dist/SHAREABLE.html`
  contains an explanatory HTML comment that literally mentions "before `</body>`". A naive
  `html.replace("</body>", init + "</body>", 1)` (or any "replace first occurrence") lands your
  `<script>` **inside that comment**, so `getElementById` returns null and no chart is created -
@@ -66,7 +66,7 @@ If the chart already rendered in the browser, **Export Offline** can also make t
  before the closing `</body>` tag by hand. Place the chart scripts **after the
  `END: commentable-html - JS` marker** (still before the final `</body>`): **Export to Plain HTML**
  strips only the commentable regions up to that marker, so chart scripts placed after it
- (host-owned content) survive the plain export and the chart still renders. **Export as Portable** only
+ (host-owned content) survive the plain export and the chart still renders. **Export as Shareable** only
  rewrites `<script id="embeddedComments">`, so charts are never touched by it either.
 
 3. **Load Chart.js in `<head>` (or before the init script) with a plain SYNCHRONOUS tag.** Do not
@@ -245,7 +245,7 @@ and point count match the source, and `c.scales.y.min` is the floor you set.
 
  `chart_block.py` runs that same validator on its own output before printing, and FAILS CLOSED when
  the check cannot be performed at all - an unimportable or crashing validator, a `validate` module
- that is not this skill's own, or a missing/corrupt `dist/PORTABLE.html` template. It writes nothing
+ that is not this skill's own, or a missing/corrupt `dist/SHAREABLE.html` template. It writes nothing
  and names the cause, so a broken or partial install cannot quietly hand you unchecked fragments. If
  you knowingly want the fragments anyway, pass `--allow-unvalidated-output`; it emits them with a
  warning and never suppresses a real validation failure.

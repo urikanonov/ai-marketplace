@@ -4,7 +4,7 @@ import path from "path";
 import os from "os";
 import {
   openInline, addTextComment, openComposerFor, openToolbarMenu, readDownload, fileUrl, ready,
-  stageContent, stageNonPortable,
+  stageContent, stageNonShareable,
   openSidebarExportMenu, installClipboardCapture, lastCopied,
   clickSidebarExport, startStaticServer,
 } from "./helpers.js";
@@ -82,7 +82,7 @@ test.describe("Save comments / Export plain", () => {
     expect(JSON.parse(m[1].trim())[0].note).toBe("embed this note");
   });
 
-  test("Copy all and Portable export expose only the source basename (CMH-SEC-03)", async ({ page }) => {
+  test("Copy all and Shareable export expose only the source basename (CMH-SEC-03)", async ({ page }) => {
     const sensitiveSource = String.raw`C:\Users\alice\Internal Project\reports\quarterly.html`;
     const staged = stageContent(
       '<section><p id="provenance">Review this provenance.</p></section>',
@@ -177,14 +177,14 @@ test.describe("Save comments / Export plain", () => {
     }
   });
 
-  test("the NonPortable Portable export also keeps the authoring session provenance (CMH-SEC-05)", async ({ page }) => {
-    // NonPortable exports run through _buildStandaloneHtml, a separate build path from the
+  test("the NonShareable Shareable export also keeps the authoring session provenance (CMH-SEC-05)", async ({ page }) => {
+    // NonShareable exports run through _buildStandaloneHtml, a separate build path from the
     // inline one above, so pin it too.
-    const sessionId = "authoring-session-803-nonportable";
-    const staged = stageNonPortable({
+    const sessionId = "authoring-session-803-nonshareable";
+    const staged = stageNonShareable({
       mutate: (html) => html
-        .replace('data-comment-key="commentable-html-nonportable-demo"',
-          'data-comment-key="cmh-session-provenance-nonportable"')
+        .replace('data-comment-key="commentable-html-nonshareable-demo"',
+          'data-comment-key="cmh-session-provenance-nonshareable"')
         .replace("</head>",
           `<meta name="commentable-html-session-id" content="${sessionId}">\n`
             + '<meta name="commentable-html-agent" content="copilot">\n</head>'),
@@ -193,7 +193,7 @@ test.describe("Save comments / Export plain", () => {
       await page.goto(fileUrl(staged.html));
       await ready(page);
       await expect(page.locator("[data-cmh-retain-session-provenance]")).toHaveCount(0);
-      await addTextComment(page, "#commentRoot p", "nonportable provenance note");
+      await addTextComment(page, "#commentRoot p", "nonshareable provenance note");
       for (const selector of ["#btnSaveHtml", "#btnExportOffline", "#btnSavePlain"]) {
         const [download] = await Promise.all([
           page.waitForEvent("download"),
@@ -210,7 +210,7 @@ test.describe("Save comments / Export plain", () => {
     }
   });
 
-  test("sidebar export actions live in a single disclosure and Portable still downloads (CMH-EXP-13)", async ({ page }) => {
+  test("sidebar export actions live in a single disclosure and Shareable still downloads (CMH-EXP-13)", async ({ page }) => {
     await openInline(page);
     await addTextComment(page, "#commentRoot section p", "menu export note");
     await expect(page.locator("#btnSidebarExportMenu")).toBeVisible();
@@ -386,7 +386,7 @@ test.describe("Save comments / Export plain", () => {
       }, true);
     });
     const cases = [
-      ["btnSaveHtml", "Portable"], ["btnSaveHtmlTop", "Portable"],
+      ["btnSaveHtml", "Shareable"], ["btnSaveHtmlTop", "Shareable"],
       ["btnExportOffline", "Offline"], ["btnExportOfflineTop", "Offline"],
       ["btnExportMd", "Markdown"], ["btnExportMdTop", "Markdown"],
       ["btnSavePlain", "Plain HTML"], ["btnSavePlainTop", "Plain HTML"],
@@ -433,14 +433,14 @@ test.describe("Save comments / Export plain", () => {
   });
 
 
-  test("Save, Portable, and Offline exports exclude comments already listed as handled", async ({ page }) => {
+  test("Save, Shareable, and Offline exports exclude comments already listed as handled", async ({ page }) => {
     const inline = stageContent("<section><p>Handled comments must stay gone.</p></section>", {
       key: "cmh-handled-export-inline",
       source: "handled-inline.html",
     });
-    const nonportable = stageNonPortable({
-      mutate: (html) => html.replace('data-comment-key="commentable-html-nonportable-demo"',
-        'data-comment-key="cmh-handled-export-nonportable"'),
+    const nonshareable = stageNonShareable({
+      mutate: (html) => html.replace('data-comment-key="commentable-html-nonshareable-demo"',
+        'data-comment-key="cmh-handled-export-nonshareable"'),
     });
     try {
       await page.goto(fileUrl(inline.html));
@@ -464,20 +464,20 @@ test.describe("Save comments / Export plain", () => {
       expect(offlineHtml).not.toContain(inlineCid);
       expect(offlineHtml).not.toContain("handled inline note");
 
-      await page.goto(fileUrl(nonportable.html));
+      await page.goto(fileUrl(nonshareable.html));
       await ready(page);
-      const portableCid = await markLiveCommentHandled(page, "handled nonportable note");
-      const [portableDownload] = await Promise.all([
+      const shareableCid = await markLiveCommentHandled(page, "handled nonshareable note");
+      const [shareableDownload] = await Promise.all([
         page.waitForEvent("download"),
         clickSidebarExport(page, "#btnSaveHtml"),
       ]);
-      const portableHtml = await readDownload(portableDownload);
-      expect(embeddedComments(portableHtml)).toEqual([]);
-      expect(portableHtml).not.toContain(portableCid);
-      expect(portableHtml).not.toContain("handled nonportable note");
+      const shareableHtml = await readDownload(shareableDownload);
+      expect(embeddedComments(shareableHtml)).toEqual([]);
+      expect(shareableHtml).not.toContain(shareableCid);
+      expect(shareableHtml).not.toContain("handled nonshareable note");
     } finally {
       fs.rmSync(inline.dir, { recursive: true, force: true });
-      fs.rmSync(nonportable.dir, { recursive: true, force: true });
+      fs.rmSync(nonshareable.dir, { recursive: true, force: true });
     }
   });
 

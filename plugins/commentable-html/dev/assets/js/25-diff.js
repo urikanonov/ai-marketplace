@@ -4,7 +4,7 @@
    Diff lines are commentable: hovering a changed/context line shows a
    "+ comment" button and the comment anchors by (diffIndex, lineKey) - a
    structural anchor, like mermaid nodes - so it survives the layout toggle,
-   reload, copy, and Export as Portable. The rendered view lives inside a .cm-skip
+   reload, copy, and Export as Shareable. The rendered view lives inside a .cm-skip
    host so diff text stays out of the text-offset system, and the raw unified
    diff is preserved in a hidden <script class="cmh-diff-src"> so an exported
    file re-renders on open. */

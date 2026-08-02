@@ -5,10 +5,10 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
-  openKitchenSink, openInline, openNonPortable, addTextComment, selectText, openComposerFor,
+  openKitchenSink, openInline, openNonShareable, addTextComment, selectText, openComposerFor,
   distinctCids, allCids, currentToast, copiedBundle, markTextForCid, storedComments,
   denyExternalNetwork, installClipboardCapture, readDownload, fileUrl, ready,
-  startStaticServer, routeMermaidLocal, stageNonPortable, stageInline, openToolbarMenu, KITCHEN_SINK, SKILL,
+  startStaticServer, routeMermaidLocal, stageNonShareable, stageInline, openToolbarMenu, KITCHEN_SINK, SKILL,
   expectNoteFenced,
   clickSidebarExport, clickClearAll,
 } from "./helpers.js";
@@ -546,14 +546,14 @@ test.describe("rejection paths", () => {
 // Exports preserve the current comments; filenames follow the contract
 // ---------------------------------------------------------------------------
 test.describe("exports preserve comments", () => {
-  test("Save comments embeds the comment and downloads <stem>-portable.html", async ({ page }) => {
+  test("Save comments embeds the comment and downloads <stem>-shareable.html", async ({ page }) => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section p", "save me into the file");
     const [dl] = await Promise.all([
       page.waitForEvent("download"),
       clickSidebarExport(page, "#btnSaveHtml"),
     ]);
-    expect(dl.suggestedFilename()).toMatch(/-portable\.html$/);
+    expect(dl.suggestedFilename()).toMatch(/-shareable\.html$/);
     const html = await readDownload(dl);
     expect(html).toContain("save me into the file");
     await expect(page.locator("#toast")).toContainText(/Downloaded/);
@@ -568,28 +568,28 @@ test.describe("exports preserve comments", () => {
       page.waitForEvent("download"),
       page.click("#btnSaveHtmlTop"),
     ]);
-    expect(dl.suggestedFilename()).toMatch(/-portable\.html$/);
+    expect(dl.suggestedFilename()).toMatch(/-shareable\.html$/);
     expect(await readDownload(dl)).toContain("top save note");
   });
 
-  test("Export with embedded comments makes a portable standalone file from an nonportable doc and reopens showing them", async ({ page, context }) => {
+  test("Export with embedded comments makes a shareable standalone file from an nonshareable doc and reopens showing them", async ({ page, context }) => {
     // Over file:// _getBaseHtml() uses the in-memory snapshot (no fetch), so this has
     // no http-server dependency; the HTTP export path is covered by 11-coverage.
     let dir;
     try {
-      const staged = stageNonPortable();
+      const staged = stageNonShareable();
       dir = staged.dir;
       await installClipboardCapture(page);
       await page.goto(fileUrl(staged.html));
       await ready(page);
       await addTextComment(page, "#commentRoot section p", "travels in the standalone");
       // A comment is present so the panel is open: the sidebar "Export with embedded
-      // comments" always yields a portable combined file, even from an nonportable doc.
+      // comments" always yields a shareable combined file, even from an nonshareable doc.
       const [dl] = await Promise.all([
         page.waitForEvent("download"),
         clickSidebarExport(page, "#btnSaveHtml"),
       ]);
-      expect(dl.suggestedFilename()).toMatch(/-portable\.html$/);
+      expect(dl.suggestedFilename()).toMatch(/-shareable\.html$/);
       const html = await readDownload(dl);
       const tmp = path.join(os.tmpdir(), "cmh_std_comments_" + Date.now() + ".html");
       fs.writeFileSync(tmp, html);
@@ -601,7 +601,7 @@ test.describe("exports preserve comments", () => {
         await p2.goto(fileUrl(tmp));
         await ready(p2);
         await expect(p2.locator("#commentList")).toContainText("travels in the standalone");
-        expect(await p2.evaluate(() => document.body.classList.contains("cm-nonportable"))).toBe(false);
+        expect(await p2.evaluate(() => document.body.classList.contains("cm-nonshareable"))).toBe(false);
       } finally {
         if (p2) await p2.close();
         fs.rmSync(tmp, { force: true });
@@ -648,7 +648,7 @@ test.describe("mermaid copy + activation", () => {
     try {
       await routeMermaidLocal(page);
       await installClipboardCapture(page);
-      await page.goto(server.url + "/dist/PORTABLE.html?mermaid=1");
+      await page.goto(server.url + "/dist/SHAREABLE.html?mermaid=1");
       await ready(page);
     } catch (e) {
       await server.close();

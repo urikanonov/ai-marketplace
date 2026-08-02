@@ -83,7 +83,7 @@ function _noteAfterChange() {
   _noteFlushRender();
 }
 // Lightweight UI that must track a note edit IMMEDIATELY so it never lags the already-persisted
-// text: the portability badge, the Copy-all affordance, and the one-time sidebar auto-open. These
+// text: the shareability badge, the Copy-all affordance, and the one-time sidebar auto-open. These
 // are only touched on the dirty-state TRANSITION (note-clean <-> note-dirty), never on every
 // keystroke: updateDocTypeUi() and updateCopyAllState() each recompute widgetStateChanges(), a
 // document-wide querySelectorAll, so calling them per keystroke would reintroduce O(document) work
@@ -132,7 +132,7 @@ function _renderOneNoteCard(ch) {
       <div class="section">note: <strong>${escapeHtml(ch.label)}</strong></div>
       <div class="note cmh-note-diff">${escapeHtml(_notePreview(ch.from))} <span class="cmh-note-arrow">&rarr;</span> ${escapeHtml(_notePreview(ch.to))}</div>
       <div class="cmh-note-search" hidden>${escapeHtml(ch.label)} ${escapeHtml(ch.from)} ${escapeHtml(ch.to)}</div>
-      <div class="note">Auto-tracked from the current note text. Included in Copy all so the agent can cement it into the source; the file stays Not portable until re-exported.</div>
+      <div class="note">Auto-tracked from the current note text. Included in Copy all so the agent can cement it into the source; the file stays Not shareable until re-exported.</div>
       <div class="meta">
         <span></span>
         <span class="acts">

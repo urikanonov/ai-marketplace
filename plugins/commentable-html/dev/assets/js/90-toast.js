@@ -49,7 +49,7 @@ function showToast(msg, opts) {
 // even for the synchronous print dialog.
 (function () {
   const EXPORT_LABELS = {
-    btnSaveHtml: "Portable", btnSaveHtmlTop: "Portable",
+    btnSaveHtml: "Shareable", btnSaveHtmlTop: "Shareable",
     btnExportOffline: "Offline", btnExportOfflineTop: "Offline",
     btnExportMd: "Markdown", btnExportMdTop: "Markdown",
     btnSavePlain: "Plain HTML", btnSavePlainTop: "Plain HTML",

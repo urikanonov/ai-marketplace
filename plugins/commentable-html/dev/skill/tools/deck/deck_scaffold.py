@@ -35,7 +35,7 @@ from deck_common import esc, slide_id  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 PKG = Path(_toolpath.SKILL_ROOT)
-TEMPLATE = PKG / "dist" / "PORTABLE.html"
+TEMPLATE = Path(_toolpath.dist_template(_toolpath.SHAREABLE_TEMPLATE))
 VIEWPORT_CSS = PKG / "vendor" / "frontend-slides" / "viewport-base.css"
 
 import new_document  # noqa: E402

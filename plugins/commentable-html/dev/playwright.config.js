@@ -12,7 +12,7 @@ const fastTestMatch = fastShard
 
 
 // E2E regression suite for the commentable-html layer. Fixtures are the skill's
-// own generated artifacts (dist/PORTABLE.html, dist/NONPORTABLE.html), opened over file://
+// own generated artifacts (dist/SHAREABLE.html, dist/NONSHAREABLE.html), opened over file://
 // so the suite matches how users actually open these documents (double-click).
 export default defineConfig({
   testDir: "./tests",

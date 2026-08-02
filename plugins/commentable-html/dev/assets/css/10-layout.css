@@ -100,9 +100,9 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   padding: var(--cp-chrome-pill-y) var(--cp-chrome-pill-x); border-radius: 999px; white-space: nowrap;
   border: 1px solid var(--cp-border); color: var(--cp-text-soft);
 }
-.cm-type-badge[data-doc-type="Portable"] { color: var(--cp-success); border-color: var(--cp-success); background: rgba(22, 163, 74, 0.12); }
+.cm-type-badge[data-doc-type="Shareable"] { color: var(--cp-success); border-color: var(--cp-success); background: rgba(22, 163, 74, 0.12); }
 .cm-type-badge[data-doc-type="Offline"] { color: var(--cp-accent); border-color: var(--cp-accent); background: var(--cp-accent-soft); }
-.cm-type-badge[data-doc-type="Not portable"] { color: var(--cp-warning); border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.12); cursor: help; }
+.cm-type-badge[data-doc-type="Not shareable"] { color: var(--cp-warning); border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.12); cursor: help; }
 .cm-version { font-size: var(--cp-chrome-tiny-font); color: var(--cp-text-soft); }
 .cm-brand-icon { vertical-align: -3px; margin-right: 0.15rem; flex: none; }
 .cm-brand-link { color: inherit; text-decoration: none; display: inline-flex; align-items: center; border-radius: 6px; }

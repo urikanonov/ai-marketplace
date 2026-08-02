@@ -4,6 +4,49 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.350.0] - 2026-08-02
+
+### Changed
+
+- The "Portable" concept is now called "Shareable" everywhere, because that is what a reader
+  actually gets: one self-contained HTML file you can send to someone. The runtime UI reads
+  `Export as Shareable` / `Shareable` / `Not shareable`, the shareability badge and its tooltips,
+  the Help/About panel, the toasts, the skill references, `SKILL.md`, the tutorial, the demo
+  reports and the showcase deck, and the marketplace site pages all follow. `NonPortable` became
+  `NonShareable`.
+- The rename goes all the way down to the internal identifiers: the layer descriptor now emits
+  `"mode": "shareable"` / `"nonshareable"`, the dist templates are `SHAREABLE.html` and
+  `NONSHAREABLE.html`, the companion bootstrap anchor is
+  `<!-- BEGIN/END: commentable-html - NONSHAREABLE BOOTSTRAP -->`, `new_document.py` and
+  `retrofit.py` take `--shareable` / `--nonshareable`, `tools/authoring/to_portable.py` is now
+  `tools/authoring/to_shareable.py`, and the validator's symbols and diagnostics say
+  `nonshareable mode: ...`.
+
+### Compatibility (existing documents keep working, unchanged)
+
+- Every document produced by an earlier release keeps loading, behaving, and validating exactly as
+  before - with no new error and no new warning:
+  - the legacy descriptor modes `"portable"` / `"nonportable"` stay accepted by the validator, by
+    `to_shareable.py`, and by the runtime, and are treated as equivalent to the new values;
+  - the legacy `NONPORTABLE BOOTSTRAP` comment anchor stays recognized by `upgrade.py`,
+    `retrofit.py`, `to_shareable.py` and the in-page exports, so a legacy companion document still
+    upgrades, migrates, and exports to a single file (a MIXED anchor pair, which a hand-edited or
+    partially-migrated document can carry, is handled too);
+  - re-exporting a file an earlier release produced keeps its name tidy: the pre-rename
+    `-portable` suffix is stripped, so `report-portable.html` exports as `report-shareable.html`
+    rather than `report-portable-shareable.html`;
+  - the legacy `cm-nonportable` / `cm-nonportable-only` CSS hooks - baked into the markup of
+    already-shipped companion documents - are kept beside the new `cm-nonshareable` ones, and the
+    runtime sets both body classes;
+  - the tools resolve `SHAREABLE.html` / `NONSHAREABLE.html` first and fall back to the legacy
+    `PORTABLE.html` / `NONPORTABLE.html` names, so an older checkout or vendored stage still works,
+    and a script that still passes `--template <dist>/PORTABLE.html` is pointed at the current
+    file instead of failing to read a renamed one;
+  - `--portable` and `--nonportable` remain accepted aliases on `new_document.py` and
+    `retrofit.py`, and `tools/validate/validate.py` keeps its pre-rename module symbols
+    (`NONPORTABLE_REGIONS`, `_is_nonportable`, ...) as aliases of the current objects;
+  - `tools/authoring/to_portable.py` remains as a thin alias that forwards to `to_shareable.py`
+    (printing a one-line deprecation note), so an existing script does not break.
 ## [1.333.0] - 2026-08-02
 
 ### Fixed

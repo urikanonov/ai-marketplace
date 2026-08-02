@@ -11,7 +11,7 @@ import { spawnSync } from "child_process";
 import { fileUrl, ready, denyExternalNetwork, DEV, SKILL, DIST, PYTHON } from "./helpers.js";
 
 const SNAPSHOT = path.join(DEV, "upgrade-corpus", "v1.117.0.html");
-const TEMPLATE = path.join(DIST, "PORTABLE.html");
+const TEMPLATE = path.join(DIST, "SHAREABLE.html");
 const UPGRADE = path.join(SKILL, "tools", "authoring", "upgrade.py");
 const TMP = path.join(DEV, "..", "..", "..", "tmp", "upgrade-review-spec");
 
@@ -45,7 +45,7 @@ test("a pre-feature document gains a working section-review UI after upgrade.py 
   expect(await page.locator(".cm-side-toc-review").count()).toBe(0);
   expect(await page.evaluate(() => typeof window.__cmhReview)).toBe("undefined");
 
-  // Upgrade a copy with the current template (dist/PORTABLE.html).
+  // Upgrade a copy with the current template (dist/SHAREABLE.html).
   const target = path.join(TMP, "upgraded.html");
   fs.copyFileSync(SNAPSHOT, target);
   const r = spawnSync(PYTHON, [UPGRADE, target, "--template", TEMPLATE],

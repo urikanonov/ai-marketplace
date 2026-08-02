@@ -7,16 +7,16 @@ Generated Commentable HTML documents separate user content from the review layer
 Every generated document contains this head descriptor:
 
 ```html
-<script type="application/json" id="commentableHtmlLayer">{"version":"<current-runtime-version>","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"<current-runtime-version>","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 ```
 
 - `version` is the Commentable HTML layer version that generated the document.
   This value equals the runtime version that emitted the document.
-- `mode` is `portable`, `offline`, or `nonportable`.
+- `mode` is `shareable`, `offline`, or `nonshareable`.
 - `regions` lists the infra region marker names in document order. The names are the exact text that appears after `BEGIN: commentable-html - ` and `END: commentable-html - `.
 
-Portable documents inline the CSS and JS region bodies. NonPortable documents keep the same marker names, but their CSS and JS regions contain companion `<link>` and `<script src>` references.
-Offline is the same descriptor contract with `mode` set to `offline`, not a second signal. Offline documents are portable documents with remote rich-content loaders removed and vendored mermaid / Chart.js runtimes inlined only when the document uses them.
+Shareable documents inline the CSS and JS region bodies. NonShareable documents keep the same marker names, but their CSS and JS regions contain companion `<link>` and `<script src>` references.
+Offline is the same descriptor contract with `mode` set to `offline`, not a second signal. Offline documents are shareable documents with remote rich-content loaders removed and vendored mermaid / Chart.js runtimes inlined only when the document uses them.
 
 ## Content root
 

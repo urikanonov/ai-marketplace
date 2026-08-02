@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regression tests for tools/upgrade.py (the layer-region upgrade tool).
 
-Standard library only. The real dist/PORTABLE.html is used as both the template and the
+Standard library only. The real dist/SHAREABLE.html is used as both the template and the
 basis for a "deployed" file whose regions are then mutated, so the tests exercise the
 actual region model rather than a synthetic fixture.
 """
@@ -22,7 +22,7 @@ TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
 import upgrade  # noqa: E402
 
-TEMPLATE = os.path.join(ROOT, "dist", "PORTABLE.html")
+TEMPLATE = os.path.join(ROOT, "dist", "SHAREABLE.html")
 
 
 def _tpl():
@@ -51,7 +51,7 @@ class UpgradeUnitTests(unittest.TestCase):
     def test_upgrade_reduces_legacy_source_path_to_basename_cmh_sec_03(self):
         tpl = _tpl()
         legacy = tpl.replace(
-            'data-doc-source="PORTABLE.html"',
+            'data-doc-source="SHAREABLE.html"',
             r'data-doc-source="C:\Users\alice\Internal Project\report.html"',
             1,
         )
@@ -69,7 +69,7 @@ class UpgradeUnitTests(unittest.TestCase):
             1,
         )
         legacy = legacy.replace(' id="commentRoot"', ' id="contentWithoutCommentRoot"', 1)
-        legacy = legacy.replace(' data-doc-source="PORTABLE.html"', "", 1)
+        legacy = legacy.replace(' data-doc-source="SHAREABLE.html"', "", 1)
         out, changed = upgrade.upgrade(legacy, tpl)
         self.assertIn("source provenance", changed)
         self.assertIn('data-doc-source="report.html"', out)
@@ -78,7 +78,7 @@ class UpgradeUnitTests(unittest.TestCase):
     def test_upgrade_normalizes_every_duplicate_source_attribute_cmh_sec_03(self):
         tpl = _tpl()
         legacy = tpl.replace(
-            'data-doc-source="PORTABLE.html"',
+            'data-doc-source="SHAREABLE.html"',
             ('data-doc-source="C:/Users/alice/first/report.html" '
              'data-doc-source="C:/Users/alice/second/report.html"'),
             1,
@@ -92,7 +92,7 @@ class UpgradeUnitTests(unittest.TestCase):
         tpl = _tpl()
         authored_title = r'''title='example data-doc-source="C:\Template\literal.html"' '''
         legacy = tpl.replace(
-            'data-doc-source="PORTABLE.html"',
+            'data-doc-source="SHAREABLE.html"',
             (authored_title
              + 'data-doc-source="C:&#92;Users&#92;alice&#92;report.html"'),
             1,
@@ -174,7 +174,7 @@ class UpgradeUnitTests(unittest.TestCase):
 
     def test_version_meta_is_inserted_when_missing(self):
         # A pre-version-meta legacy document gains the head version meta on upgrade so it
-        # declares the runtime it now carries (and the NonPortable skew check can read it).
+        # declares the runtime it now carries (and the NonShareable skew check can read it).
         tpl = _tpl()
         tpl_version = upgrade._meta_version(tpl)
         stale = _mutate_region_inner(tpl, "JS", "\n/* STALE */\n")
@@ -514,13 +514,13 @@ class UpgradeUnitTests(unittest.TestCase):
         self.assertNotIn("poison-before", inner)
         self.assertNotIn("authored note", inner)
 
-    def test_nonportable_document_is_refused(self):
+    def test_nonshareable_document_is_refused(self):
         tpl = _tpl()
         econ = tpl.replace("<head>",
-                           "<head>\n<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->", 1)
+                           "<head>\n<!-- BEGIN: commentable-html - NONSHAREABLE BOOTSTRAP -->", 1)
         with self.assertRaises(ValueError) as cm:
             upgrade.upgrade(econ, tpl)
-        self.assertIn("nonportable", str(cm.exception).lower())
+        self.assertIn("nonshareable", str(cm.exception).lower())
 
     def test_non_commentable_file_is_refused(self):
         with self.assertRaises(ValueError) as cm:

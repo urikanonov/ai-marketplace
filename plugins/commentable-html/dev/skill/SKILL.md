@@ -1,15 +1,15 @@
 ---
 name: commentable-html
-description: Turn a standalone HTML report, plan, dashboard, or design doc into a commentable review surface. Reviewers select any paragraph, table cell, code block, KQL query, chart, image, Mermaid diagram, or heading, leave inline comments, and export the whole thread back to the agent as a machine-readable bundle. Use when the user asks to add inline comments, leave review feedback, or add a code-review UI on an HTML report, plan, dashboard, or design doc, or wants to retrofit an existing HTML file or a Markdown doc into one portable, self-contained review file. Also triggers on the shorthand cmh.
+description: Turn a standalone HTML report, plan, dashboard, or design doc into a commentable review surface. Reviewers select any paragraph, table cell, code block, KQL query, chart, image, Mermaid diagram, or heading, leave inline comments, and export the whole thread back to the agent as a machine-readable bundle. Use when the user asks to add inline comments, leave review feedback, or add a code-review UI on an HTML report, plan, dashboard, or design doc, or wants to retrofit an existing HTML file or a Markdown doc into one shareable, self-contained review file. Also triggers on the shorthand cmh.
 ---
 
 # Commentable HTML
 
-**Version:** `1.333.0`
+**Version:** `1.350.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
 
-This plugin installs into both Claude Code and the GitHub Copilot CLI (add the marketplace, then `claude plugin install commentable-html@urikan-ai-marketplace` or `copilot plugin install commentable-html@urikan-ai-marketplace`), and the skill is invokable from each agent's CLI and Desktop app. The output is a portable HTML file that works with any agent.
+This plugin installs into both Claude Code and the GitHub Copilot CLI (add the marketplace, then `claude plugin install commentable-html@urikan-ai-marketplace` or `copilot plugin install commentable-html@urikan-ai-marketplace`), and the skill is invokable from each agent's CLI and Desktop app. The output is a shareable HTML file that works with any agent.
 
 ## Capabilities and tool index (use tested routes - never invent a mechanism)
 
@@ -17,7 +17,7 @@ commentable-html ships a tested route for each capability below. When a request 
 
 | Capability / trigger | Tested route / contract | Reference |
 | --- | --- | --- |
-| New document, retrofit an existing HTML, or upgrade an already-layered file | `tools/authoring/new_document.py` creates from a fragment or Markdown-rendered HTML (Portable, a single self-contained file, is the only mode generated), sets identity attrs/kind meta/session stamp (`--session-id` / `--agent`, `--no-session-id`), validates, and suffixes colliding outputs unless `--force` is set. `tools/authoring/retrofit.py` injects the layer into unlayered standalone HTML (Portable, like every other route), preserves host content, accepts `--brand`, bakes highlighting, and validates before writing. `tools/authoring/upgrade.py` refreshes layered HTML; run `finalize.py --strict` afterwards so newer validator warnings are resolved. Choose `--kind report`, `plan`, flat `slides`, `board`, or `generic`; `tools/authoring/recommend_kind.py` only recommends `report`, `plan`, or flat `slides` (mismatch warning is advisory and never overrides your chosen `--kind`). Use `--brand brand.json` only with `new_document.py`, `retrofit.py`, or `deck_scaffold.py` to stamp validated `--cp-*` tokens and local data-URI fonts. `tools/authoring/to_portable.py` migrates an existing NonPortable document to Portable; NonPortable documents stay readable and valid forever. | [Retrofitting](references/retrofitting.md), [Forward-compatible layout](references/forward-compatible-layout.md), [Document layout](references/document-layout.md#reusable-brand-profiles) |
+| New document, retrofit an existing HTML, or upgrade an already-layered file | `tools/authoring/new_document.py` creates from a fragment or Markdown-rendered HTML (Shareable, one self-contained file, is the only mode generated), sets identity attrs/kind meta/session stamp (`--session-id` / `--agent`, `--no-session-id`), validates, and suffixes colliding outputs unless `--force` is set. `tools/authoring/retrofit.py` injects the layer into unlayered standalone HTML (Shareable, like every route), preserves host content, accepts `--brand`, bakes highlighting, and validates before writing. `tools/authoring/upgrade.py` refreshes layered HTML; run `finalize.py --strict` afterwards so newer validator warnings are resolved. Choose `--kind report`, `plan`, flat `slides`, `board`, or `generic`; `tools/authoring/recommend_kind.py` only recommends `report`, `plan`, or flat `slides` (mismatch warning is advisory and never overrides your chosen `--kind`). Use `--brand brand.json` only with `new_document.py`, `retrofit.py`, or `deck_scaffold.py` to stamp validated `--cp-*` tokens and local data-URI fonts. `tools/authoring/to_shareable.py` migrates an existing NonShareable document to Shareable; NonShareable documents stay readable and valid forever. | [Retrofitting](references/retrofitting.md), [Forward-compatible layout](references/forward-compatible-layout.md), [Document layout](references/document-layout.md#reusable-brand-profiles) |
 | Review surface for prose/paragraphs, table cells, headings, code blocks, KQL queries, diffs, Mermaid diagrams, charts, images, widgets, SVG figures and parts, draggable slots (`data-cm-draggable`), and document-wide comments | Runtime selection/comment model, author display names, flat reply threads, `localStorage` persistence, **Copy all**, embedded-comment export, Markdown/print exports, handled-id pruning with `tools/authoring/mark_handled.py`, and per-section Mark reviewed tracking with `tools/authoring/mark_reviewed.py`. | [Interaction model](references/interaction-model.md), [Copy payload format](references/copy-payload.md), [Comment data shape](references/comment-data-shape.md), [Commentable widgets](references/commentable-widgets.md) |
 | Highlighted source code with Copy buttons | `tools/blocks/highlight_code.py` for a block or `tools/blocks/highlight_document.py` for a document pass. | [Code blocks](references/code-blocks.md) |
 | Runnable KQL block plus Run in Azure Data Explorer link | `tools/kusto/kql_highlight.py`; bare link only: `tools/kusto/kusto_link.py`. Every KQL block must be runnable unless explicitly marked code-only with `--code-only` / `data-cmh-kql-no-cluster` (CMH-KQL-08); prefer a real cluster such as `help.kusto.windows.net`. | [Kusto query blocks](references/kusto-query-blocks.md) |
@@ -29,7 +29,7 @@ commentable-html ships a tested route for each capability below. When a request 
 | Layered checklist | `tools/checklist/checklist_scaffold.py`; apply returned reviewer state with `tools/checklist/checklist_apply.py`. | [Layered checklist contract](references/checklist-contract.md) |
 | Editable notes fields | `tools/notes/notes_scaffold.py`; apply returned reviewer state with `tools/notes/notes_apply.py`. | [Editable notes-field contract](references/notes-contract.md) |
 | Real animated slide deck, presentation, pitch deck, slide deck, or convert this ppt | `tools/deck/deck_scaffold.py` is the only real fixed-stage deck creator; flat `--kind slides` is not a deck. It supports session stamps (`--session-id` / `--agent`, `--no-session-id`) and `--brand`. Use `tools/deck/deck_theme.py list` / `apply`, `tools/deck/deck_fix_fonts.py`, `tools/deck/pptx_to_fragment.py`, then `tools/deck/deck_validate.py --strict`. | [Deck design playbook](references/deck-design.md), [Deck runtime interface contract](references/deck-contract.md) |
-| Output modes and export routing | Portable is the only mode generated (a self-contained review file); Offline for zero-network handoff after Mermaid/charts render; Plain HTML / Markdown export when stripping the layer is intended; legacy NonPortable documents keep working and migrate with `to_portable.py`. | [Exports](references/exports.md#what-is-bundled-in-the-file-vs-fetched-from-where) |
+| Output modes and export routing | Shareable is the only mode generated (a self-contained review file); Offline for zero-network handoff after Mermaid/charts render; Plain HTML / Markdown export when stripping the layer is intended; legacy NonShareable documents keep working and migrate with `to_shareable.py`. | [Exports](references/exports.md#what-is-bundled-in-the-file-vs-fetched-from-where) |
 
 ## Always validate before handoff (MUST)
 
@@ -47,14 +47,14 @@ Creation tools validate and surface warnings, but that never replaces the final 
 ## Review loops
 
 - **Self review:** generate the artifact, open it, comment inline, click **Copy all**, paste the bundle to the agent, let the agent update the HTML and mark handled ids, then reload.
-- **Peer review:** self-review first, click **Export as Portable**, share the downloaded HTML, receive the peer's Portable HTML with embedded comments, then feed those comments back to the agent.
-- **Reviewer loop:** render Markdown to HTML and pass it to `tools/authoring/new_document.py --content`, or retrofit existing HTML with `tools/authoring/retrofit.py`, then return a Portable file with embedded comments.
+- **Peer review:** self-review first, click **Export as Shareable**, share the downloaded HTML, receive the peer's Shareable HTML with embedded comments, then feed those comments back to the agent.
+- **Reviewer loop:** render Markdown to HTML and pass it to `tools/authoring/new_document.py --content`, or retrofit existing HTML with `tools/authoring/retrofit.py`, then return a Shareable file with embedded comments.
 
 The runtime supports text selection, right-click fallback, multiple open composers, composer drag handles, link-wrapped highlight bubbles, `localStorage` persistence, embedded comments, and handled-id pruning. See [Interaction model](references/interaction-model.md) for the full walkthrough.
 
 ## Steps
 
-**Defaults from a brief request.** A request like "make me a commentable HTML for X, cover: <topics>" is enough. Every document is **Portable** (one self-contained file), so there is no mode to choose: add a table of contents for multi-section reports, write polished sectioned prose, and use richer blocks only when they aid review. Use **Export Offline** when it must also survive with no network.
+**Defaults from a brief request.** A request like "make me a commentable HTML for X, cover: <topics>" is enough. Every document is **Shareable** (one self-contained file), so there is no mode to choose: add a table of contents for multi-section reports, write polished sectioned prose, and use richer blocks only when they aid review. Use **Export Offline** when it must also survive with no network.
 
 ### Step 1 - Decide whether to add the layer
 
@@ -64,7 +64,7 @@ Use this skill for iterative plans, reports, dashboards, design docs, migration 
 
 Use the upfront tool index to choose the tested route. In short: `new_document.py` creates a new document from a fragment, `retrofit.py` wraps unlayered standalone HTML, `upgrade.py` refreshes an already-layered file, and `deck_scaffold.py` is the ONLY route to a real fixed-stage deck. `--key auto` derives a stable non-demo key; explicit keys must be unique per document on the same origin. `--label` becomes `data-doc-label`, only the basename of `--source` becomes `data-doc-source`, and `--kind` is required (`report`, `plan`, flat `slides`, `board`, or `generic`). `report` and `plan` need a top-level title; run `tools/authoring/recommend_kind.py <fragment-or-html> [--kind <chosen>]` first when the kind is unclear.
 
-Mode decision: there is none for a NEW document - Portable is the only mode generated, and it is what peer review needs. Offline is for zero-network handoff after mermaid diagrams and charts have rendered; Portable still fetches optional Mermaid or Chart.js from a CDN unless those libraries are vendored or the browser **Export Offline** path snapshots them. Portable != offline. Legacy NonPortable documents still open, validate and finalize; `tools/authoring/to_portable.py <file.html>` makes one self-contained. A tool or headless browser cannot read browser `localStorage`; if the user already commented in the browser, use the in-page **Export as Portable** button, or **Export Offline** after rendering.
+Mode decision: none for a NEW document - Shareable is the only mode generated, and it is what peer review needs. Offline is for zero-network handoff after mermaid diagrams and charts have rendered; Shareable still fetches optional Mermaid or Chart.js from a CDN unless those libraries are vendored or the browser **Export Offline** path snapshots them. Shareable != offline. Legacy NonShareable documents still open, validate and finalize; `tools/authoring/to_shareable.py <file.html>` makes one self-contained. A tool or headless browser cannot read browser `localStorage`; if the user already commented in the browser, use the in-page **Export as Shareable** button, or **Export Offline** after rendering.
 
 ### Step 3 - Wire the content root and avoid the footguns
 
@@ -120,7 +120,7 @@ Tell the user to reload, using Ctrl+F5 if needed. Do not edit the user's `localS
 
 ## Return to caller
 
-Report success only after the file is generated, retrofitted, upgraded, or finalized and `python tools/validate/validate.py --strict <file.html>` passes. Return the HTML path plus one sentence telling the user to open it in a browser, select text, leave comments, then use **Copy all** or **Export as Portable**.
+Report success only after the file is generated, retrofitted, upgraded, or finalized and `python tools/validate/validate.py --strict <file.html>` passes. Return the HTML path plus one sentence telling the user to open it in a browser, select text, leave comments, then use **Copy all** or **Export as Shareable**.
 
 ## Handled comments stay handled
 
@@ -142,11 +142,11 @@ Deep deck planning, fixed-stage layout, motion, narrative, review-surface patter
 
 | Mode | Use | What travels |
 | --- | --- | --- |
-| Portable | Every generated document: review, sharing, or archiving | One HTML file with the review layer inlined and comments embedded |
-| Offline | Zero-network handoff | Portable plus rendered mermaid SVG and chart PNG snapshots, with remote loaders stripped |
-| NonPortable (legacy) | Documents from earlier releases; never generated now | Companion CSS/JS/assets referenced beside the file. Supported permanently; `tools/authoring/to_portable.py` migrates one |
+| Shareable | Every generated document: review, sharing, or archiving | One HTML file with the review layer inlined and comments embedded |
+| Offline | Zero-network handoff | Shareable plus rendered mermaid SVG and chart PNG snapshots, with remote loaders stripped |
+| NonShareable (legacy) | Documents from earlier releases; never generated now | Companion CSS/JS/assets referenced beside the file. Supported permanently; `tools/authoring/to_shareable.py` migrates one |
 
-See [Exports](references/exports.md) for bundled-vs-fetched diagrams, NonPortable guardrails, version compatibility, network caveats, export merge semantics, Plain HTML stripping, and Markdown conversion.
+See [Exports](references/exports.md) for bundled-vs-fetched diagrams, NonShareable guardrails, version compatibility, network caveats, export merge semantics, Plain HTML stripping, and Markdown conversion.
 
 ## Document identity
 
