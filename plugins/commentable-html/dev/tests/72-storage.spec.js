@@ -954,6 +954,54 @@ test("the current document's comments can be browsed lazily and deleted per comm
   await expect(page.locator(".cm-storage-current").locator("button", { hasText: "Show comments" })).toHaveCount(0);
 });
 
+test("deleting a current-document comment from the manager closes its in-document dialog (CMH-STORE-15)", async ({ page }) => {
+  const { html } = stageContent(
+    "<section><p>A paragraph the reviewer comments on and then deletes.</p>"
+    + "<p>A second paragraph with its own comment.</p></section>",
+    { key: "cmh-store-popover", source: "popover-delete.html" });
+  await page.goto(fileUrl(html));
+  await ready(page);
+  await addTextComment(page, "#commentRoot p:nth-of-type(1)", "note being edited when it is deleted");
+  await addTextComment(page, "#commentRoot p:nth-of-type(2)", "the other note, kept");
+  const kept = (await storedComments(page)).find((c) => c.note.indexOf("kept") !== -1);
+  const doomed = (await storedComments(page)).find((c) => c.note.indexOf("deleted") !== -1);
+  expect(kept.id).not.toBe(doomed.id);
+  // Open the in-document dialog on the first highlight and put it in EDIT mode: a non-editing
+  // dialog is dismissed by the very click that opens the manager, so edit mode is how a test gets
+  // the dialog past `openManager` - and it is the state the report describes, where the reviewer is
+  // still typing. (The fix is unconditional, so a dialog that reaches the manager any other way -
+  // for example the quota failure that opens the manager programmatically - is closed too.)
+  await page.locator(`mark.cm-hl[data-cid="${doomed.id}"]`).first().hover();
+  await page.locator("#hlBubble").click();
+  const pop = page.locator(".cm-comment-popover");
+  await expect(pop).toBeVisible();
+  await pop.locator('[data-act="edit"]').click();
+  await expect(pop.locator(".cm-comment-popover-edit textarea")).toBeVisible();
+
+  await openManager(page);
+  await expect(pop).toBeVisible();                       // still open over the highlight
+  const current = page.locator(".cm-storage-current");
+  await current.locator("button", { hasText: "Show comments" }).click();
+  // Deleting a DIFFERENT comment must not close this dialog (guards against an over-broad close).
+  const other = page.locator(".cm-storage-comment").filter({ hasText: "kept" });
+  await other.locator(".cm-storage-danger").click();
+  await other.locator(".cm-storage-danger", { hasText: "Confirm" }).click();
+  await expect.poll(async () => (await storedComments(page)).map((c) => c.id)).toEqual([doomed.id]);
+  await expect(pop).toBeVisible();
+
+  // Deleting the comment the dialog IS showing closes it. Re-assert visibility immediately before
+  // the destructive click so the final assertion can only be satisfied by the delete itself.
+  const item = page.locator(".cm-storage-comment").first();
+  await item.locator(".cm-storage-danger").click();
+  await expect(pop).toBeVisible();
+  await item.locator(".cm-storage-danger", { hasText: "Confirm" }).click();
+
+  await expect.poll(async () => (await storedComments(page)).length).toBe(0);
+  // The dialog for the deleted comment must not linger (its Save would have nothing to write); it is
+  // removed from the DOM, not merely hidden.
+  await expect(page.locator(".cm-comment-popover")).toHaveCount(0);
+});
+
 test("another document's comments can be browsed and deleted per comment without touching others (CMH-STORE-15)", async ({ page }) => {
   await open(page, { key: "cmh-browse-other", source: "browse-other.html" });
   await page.evaluate(() => {

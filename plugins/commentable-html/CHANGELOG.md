@@ -4,6 +4,18 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.333.0] - 2026-08-02
+
+### Fixed
+
+- Deleting a comment from the **Manage storage** dialog's per-comment list now closes the
+  in-document comment dialog when it is showing one of the deleted comments, matching the sidebar
+  delete and Clear all paths. Previously the live delete path closed any open floating edit composer
+  but never the in-document dialog, so a reviewer who left that dialog open - especially in edit
+  mode, where an outside click does not dismiss it - kept typing into an editor for a comment that
+  no longer existed until Save discovered the loss. A dialog showing a comment that was NOT deleted
+  stays open.
+
 ## [1.332.0] - 2026-08-02
 
 ### Fixed
