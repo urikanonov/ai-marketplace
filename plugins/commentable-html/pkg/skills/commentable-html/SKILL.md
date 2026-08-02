@@ -5,7 +5,7 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.316.0`
+**Version:** `1.317.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
 
@@ -24,7 +24,7 @@ commentable-html ships a tested route for each capability below. When a request 
 | Unified code-review diff | `tools/blocks/diff_block.py`. | [Code review diffs](references/code-review-diffs.md) |
 | Mermaid diagram and bare-source skip repair | Mermaid structural comment contract; `tools/authoring/fix_skip.py` marks bare source blocks `cm-skip`. | [Mermaid diagrams](references/mermaid-diagrams.md) |
 | Chart.js chart | `tools/blocks/chart_block.py`. | [Chart embedding](references/charts-embedding.md), [Chart recipes](references/charts-recipes.md), [Charts index](references/charts.md) |
-| Commentable local images and chart-canvas comments | `tools/authoring/inline_images.py --strict`. | [Images](references/images-commentable.md) |
+| Commentable local images, inline SVG, and chart-canvas comments | `tools/authoring/inline_images.py --strict`. | [Images](references/images-commentable.md) |
 | Layout, structure, and prose conventions | `tools/authoring/generate_toc.py --in-place`, `tools/authoring/wrap_sections.py`, `tools/authoring/doc_stats.py`, `tools/authoring/normalize_typography.py`, sortable tables, callouts, ADO links, cross-references, `--cp-*` tokens, `data-cm-density`, private class prefixes, and reserved `cmh-*` names. | [Document layout](references/document-layout.md), [Content conventions](references/content-conventions.md), [Validation](references/validation.md) |
 | Layered checklist | `tools/checklist/checklist_scaffold.py`; apply returned reviewer state with `tools/checklist/checklist_apply.py`. | [Layered checklist contract](references/checklist-contract.md) |
 | Editable notes fields | `tools/notes/notes_scaffold.py`; apply returned reviewer state with `tools/notes/notes_apply.py`. | [Editable notes-field contract](references/notes-contract.md) |

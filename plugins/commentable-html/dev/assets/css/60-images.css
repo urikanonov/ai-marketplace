@@ -1,13 +1,14 @@
 /* ---------------------------------------------------------------------------
    Image comment layer - per-image structural anchoring (mirrors the mermaid
-   node layer). A commentable <img> gets a subtle hover ring; the floating
-   #imageAddBtn snaps to its top-right; a commented image keeps a warning ring.
+   node layer). A commentable <img>, chart <canvas> or authored inline <svg>
+   gets a subtle hover ring; the floating #imageAddBtn snaps to its top-right;
+   commented media keeps a warning ring.
    --------------------------------------------------------------------------- */
-#commentRoot img.cm-img-commentable, #commentRoot canvas.cm-img-commentable { cursor: pointer; }
-#commentRoot img.cm-img-commentable:hover, #commentRoot canvas.cm-img-commentable:hover { outline: 2px dashed var(--cp-accent); outline-offset: 2px; }
-#commentRoot img.cm-img-commentable:focus-visible, #commentRoot canvas.cm-img-commentable:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
-#commentRoot img.cm-img-hl, #commentRoot canvas.cm-img-hl { outline: 3px solid var(--cp-warning); outline-offset: 2px; border-radius: 3px; }
-#commentRoot img.cm-img-hl.cm-img-active, #commentRoot canvas.cm-img-hl.cm-img-active { outline-width: 4px; box-shadow: 0 0 0 4px var(--cp-accent-soft); }
+#commentRoot img.cm-img-commentable, #commentRoot canvas.cm-img-commentable, #commentRoot svg.cm-img-commentable { cursor: pointer; }
+#commentRoot img.cm-img-commentable:hover, #commentRoot canvas.cm-img-commentable:hover, #commentRoot svg.cm-img-commentable:hover { outline: 2px dashed var(--cp-accent); outline-offset: 2px; }
+#commentRoot img.cm-img-commentable:focus-visible, #commentRoot canvas.cm-img-commentable:focus-visible, #commentRoot svg.cm-img-commentable:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
+#commentRoot img.cm-img-hl, #commentRoot canvas.cm-img-hl, #commentRoot svg.cm-img-hl { outline: 3px solid var(--cp-warning); outline-offset: 2px; border-radius: 3px; }
+#commentRoot img.cm-img-hl.cm-img-active, #commentRoot canvas.cm-img-hl.cm-img-active, #commentRoot svg.cm-img-hl.cm-img-active { outline-width: 4px; box-shadow: 0 0 0 4px var(--cp-accent-soft); }
 .cmh-chart-tooltip { z-index: 410; white-space: nowrap; }
 .cm-image-add { position: fixed; z-index: 200; }
 /* Commentable widget parts (generic opt-in via data-cm-part inside a data-cm-widget).

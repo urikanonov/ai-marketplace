@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.316.0" />
+<meta name="commentable-html-version" content="1.317.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.316.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.317.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Design review sign-off</title>
 
@@ -1666,14 +1666,15 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 
 /* ---------------------------------------------------------------------------
    Image comment layer - per-image structural anchoring (mirrors the mermaid
-   node layer). A commentable <img> gets a subtle hover ring; the floating
-   #imageAddBtn snaps to its top-right; a commented image keeps a warning ring.
+   node layer). A commentable <img>, chart <canvas> or authored inline <svg>
+   gets a subtle hover ring; the floating #imageAddBtn snaps to its top-right;
+   commented media keeps a warning ring.
    --------------------------------------------------------------------------- */
-#commentRoot img.cm-img-commentable, #commentRoot canvas.cm-img-commentable { cursor: pointer; }
-#commentRoot img.cm-img-commentable:hover, #commentRoot canvas.cm-img-commentable:hover { outline: 2px dashed var(--cp-accent); outline-offset: 2px; }
-#commentRoot img.cm-img-commentable:focus-visible, #commentRoot canvas.cm-img-commentable:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
-#commentRoot img.cm-img-hl, #commentRoot canvas.cm-img-hl { outline: 3px solid var(--cp-warning); outline-offset: 2px; border-radius: 3px; }
-#commentRoot img.cm-img-hl.cm-img-active, #commentRoot canvas.cm-img-hl.cm-img-active { outline-width: 4px; box-shadow: 0 0 0 4px var(--cp-accent-soft); }
+#commentRoot img.cm-img-commentable, #commentRoot canvas.cm-img-commentable, #commentRoot svg.cm-img-commentable { cursor: pointer; }
+#commentRoot img.cm-img-commentable:hover, #commentRoot canvas.cm-img-commentable:hover, #commentRoot svg.cm-img-commentable:hover { outline: 2px dashed var(--cp-accent); outline-offset: 2px; }
+#commentRoot img.cm-img-commentable:focus-visible, #commentRoot canvas.cm-img-commentable:focus-visible, #commentRoot svg.cm-img-commentable:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
+#commentRoot img.cm-img-hl, #commentRoot canvas.cm-img-hl, #commentRoot svg.cm-img-hl { outline: 3px solid var(--cp-warning); outline-offset: 2px; border-radius: 3px; }
+#commentRoot img.cm-img-hl.cm-img-active, #commentRoot canvas.cm-img-hl.cm-img-active, #commentRoot svg.cm-img-hl.cm-img-active { outline-width: 4px; box-shadow: 0 0 0 4px var(--cp-accent-soft); }
 .cmh-chart-tooltip { z-index: 410; white-space: nowrap; }
 .cm-image-add { position: fixed; z-index: 200; }
 /* Commentable widget parts (generic opt-in via data-cm-part inside a data-cm-widget).
@@ -4107,7 +4108,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.316.0";
+const CMH_VERSION = "1.317.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -7110,14 +7111,25 @@ function setupDiffLayer() {
   setupCodeLineNumbers();
 }
 /* ---------- Image comment layer ----------
-   Makes any <img> inside #commentRoot commentable. Each image is indexed in
-   document order (imageIndex); hovering or keyboard-focusing it reveals a
-   floating "+ comment" button, and the comment anchors by (imageIndex) with the
-   src as a fallback key so it survives reload, Copy all, and Export as Portable. This
-   mirrors the mermaid-node layer: images carry no text offsets, so image
-   comments are excluded from backfillContext / restoreHighlights. */
+   Makes any <img>, chart <canvas> or authored inline <svg> inside #commentRoot
+   commentable. Each one is indexed in document order (imageIndex); hovering or
+   keyboard-focusing it reveals a floating "+ comment" button, and the comment
+   anchors by (imageIndex) with the src plus media metadata as a fallback key so
+   it survives reload, Copy all, and Export as Portable. This mirrors the
+   mermaid-node layer: images carry no text offsets, so image comments are
+   excluded from backfillContext / restoreHighlights. */
 const imageEls = [];
 const imageAddBtn = document.getElementById("imageAddBtn");
+// Every commentable media element that can carry an image ring. Shared by the clear and flash
+// paths so a canvas or svg anchor is never left ringed after its comment is deleted.
+const CMH_MEDIA_HL_SEL = "img.cm-img-hl, canvas.cm-img-hl, svg.cm-img-hl";
+// Marks an aria-label this layer synthesized for an otherwise nameless inline <svg>, so the
+// affordance hint is never mistaken for the author's label (the anchor metadata).
+const CMH_SVG_AUTO_LABEL_ATTR = "data-cm-img-auto-label";
+const CMH_SVG_AUTO_LABEL_TEXT = "Image - press Enter to comment";
+// Ancestors whose activation owns the click: an icon inside one of these is chrome, not a figure.
+const CMH_SVG_INTERACTIVE_ANCESTORS = "button, summary, label, [role='button'], [role='menuitem'],"
+  + " [role='tab'], [role='option'], [role='switch'], [role='checkbox'], [role='treeitem']";
 let pendingImage = null;
 let imageAddHideTimer = null;
 let imageActiveEl = null;
@@ -7475,12 +7487,99 @@ function _isChartMedia(el) {
   return !!(el.closest(CMH_CHART_FIGURE_SEL) || el.matches(CMH_CHART_MARK_SEL)
     || el.matches(CMH_CHART_DATA_SEL));
 }
+// Inline SVG MEDIA: an authored <svg> figure is commentable exactly like an <img>, but plenty of
+// SVG in a document must stay inert - UI chrome, a decorative icon, the icon inside a link or
+// button, a rendered mermaid/diff surface, an SVG whose nodes the widget layer already makes
+// commentable part by part, and an inner <svg> nested in an outer one (the outer node is the
+// figure a reader means). `.cm-skip` is UNCONDITIONAL here (unlike the img/canvas paths, whose
+// chart-media exception exists for the built-in canvas renderer): chrome inside a chart figure
+// must never gain an affordance just because an ancestor is a chart.
+const CMH_SVG_DECORATIVE_ROLES = ["presentation", "none"];
+// Element children that only DEFINE graphics rather than draw them. An <svg> made only of these
+// (the sprite-sheet / <symbol> idiom, often width=0 or display:none at the top of a document)
+// paints nothing, so indexing it would add an invisible focus stop and shift every later
+// imageIndex.
+const CMH_SVG_NON_DRAWING = ["defs", "symbol", "style", "title", "desc", "metadata",
+  "filter", "clippath", "mask", "lineargradient", "radialgradient", "pattern"];
+function _isSvgNonDrawing(el) {
+  const kids = el.children;
+  if (!kids.length) return true;
+  for (let i = 0; i < kids.length; i++) {
+    if (CMH_SVG_NON_DRAWING.indexOf((kids[i].tagName || "").toLowerCase()) === -1) return false;
+  }
+  return true;
+}
+function _isSvgZeroSized(el) {
+  const w = parseFloat(el.getAttribute("width"));
+  const h = parseFloat(el.getAttribute("height"));
+  return w === 0 || h === 0;
+}
+// An icon inside a link is chrome, but a link that wraps ONLY the graphic (the "click the figure
+// to open it full size" pattern) is still a figure, and a linked <img> stays commentable too.
+function _isSvgLinkIcon(el) {
+  const link = el.closest("a[href], [role='link']");
+  if (!link) return false;
+  const own = el.textContent || "";
+  const around = (link.textContent || "").replace(own, "");
+  return around.replace(/\s+/g, "").length > 0;
+}
+function _isCommentableSvg(el) {
+  if (el.closest(".cm-skip")) return false;
+  if (el.closest(".cm-mermaid-host") || el.closest(".cmh-diff-host")) return false;
+  if (el.closest('[aria-hidden="true"]')) return false;
+  const role = (el.getAttribute("role") || "").trim().toLowerCase();
+  if (CMH_SVG_DECORATIVE_ROLES.indexOf(role) !== -1) return false;
+  if (el.parentElement && el.parentElement.closest("svg")) return false;
+  // The widget layer owns labeled parts, but ONLY inside a [data-cm-widget]; a stray
+  // [data-cm-part] with no widget ancestor is commentable by neither layer, so the whole
+  // figure stays this layer's target.
+  if (el.closest("[data-cm-widget]")
+    && (el.closest("[data-cm-part]") || el.querySelector("[data-cm-part]"))) return false;
+  if (el.closest(CMH_SVG_INTERACTIVE_ANCESTORS)) return false;
+  if (_isSvgLinkIcon(el)) return false;
+  if (_isSvgZeroSized(el)) return false;
+  if (el.hasAttribute("hidden")) return false;
+  if (el.style && el.style.display === "none") return false;
+  if (_isSvgNonDrawing(el)) return false;
+  return true;
+}
+// The AUTHOR's accessible name for an inline <svg>, in accessible-name order: aria-labelledby
+// (resolved to the referenced elements' text), then aria-label, then a DIRECT-CHILD <title>
+// (only a direct child names the svg, so a figure never borrows a nested shape's tooltip).
+// An aria-label this layer synthesized for a nameless graphic is marked and never counts - that
+// label is an affordance hint, not anchor metadata.
+function _svgLabelledByText(el) {
+  const ids = (el.getAttribute("aria-labelledby") || "").split(/\s+/).filter(Boolean);
+  if (!ids.length) return "";
+  const parts = [];
+  ids.forEach((id) => {
+    let ref = null;
+    try { ref = document.getElementById(id); } catch (e) { ref = null; }
+    if (ref) parts.push(ref.textContent || "");
+  });
+  return parts.join(" ");
+}
+function _svgAuthorLabel(el) {
+  if (!el) return "";
+  const own = el.querySelector(":scope > title");
+  const title = own ? (own.textContent || "") : "";
+  const labelledBy = _svgLabelledByText(el);
+  const label = el.getAttribute("aria-label");
+  // The marker only disqualifies the exact label this layer writes, so an author's own
+  // aria-label still wins even on an element that carries (or forges) the marker.
+  const synthesized = el.getAttribute(CMH_SVG_AUTO_LABEL_ATTR) === "1"
+    && label === CMH_SVG_AUTO_LABEL_TEXT;
+  return _imageOneLine(labelledBy || (synthesized ? "" : label) || title);
+}
 function indexImages() {
   imageEls.length = 0;
-  root.querySelectorAll("img, canvas").forEach((el) => {
+  root.querySelectorAll("img, canvas, svg").forEach((el) => {
+    const tag = (el.tagName || "").toLowerCase();
     const isChartMedia = _isChartMedia(el);
-    if (el.tagName === "IMG") {
+    if (tag === "img") {
       if (el.closest(".cm-skip") && !isChartMedia) return; // skip UI-chrome images
+    } else if (tag === "svg") {
+      if (!_isCommentableSvg(el)) return;
     } else { // CANVAS: only chart canvases are commentable media (never mermaid/diff surfaces).
       if (!isChartMedia) return;
       if (el.closest(".cm-mermaid-host") || el.closest(".cmh-diff-host")) return;
@@ -7489,9 +7588,19 @@ function indexImages() {
     el.classList.add("cm-img-commentable");
     el.dataset.cmImageIndex = String(i);
     if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "0");
-    if (el.tagName === "IMG") {
+    if (tag === "img") {
       const alt = (el.getAttribute("alt") || "").trim();
       el.setAttribute("aria-label", (alt ? alt + " - " : "Image - ") + "press Enter to comment");
+    } else if (tag === "svg") {
+      if (!el.hasAttribute("role")) el.setAttribute("role", "img");
+      // Never overwrite the author's aria-label/<title> - that text IS the anchor metadata this
+      // layer resolves comments by. A graphic with neither would otherwise become a focus stop
+      // with no accessible name, so name it and MARK the label as ours so it stays out of the
+      // metadata.
+      if (!_svgAuthorLabel(el)) {
+        el.setAttribute("aria-label", CMH_SVG_AUTO_LABEL_TEXT);
+        el.setAttribute(CMH_SVG_AUTO_LABEL_ATTR, "1");
+      }
     }
     imageEls.push(el);
   });
@@ -7501,11 +7610,22 @@ function findImageEl(index) {
   return imageEls[index] || root.querySelector(`[data-cm-image-index="${index}"]`) || null;
 }
 function _imageOneLine(value) {
-  return String(value || "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+  // Inert at the WRITE side: line separators (including NEL) and bidi controls are stripped here
+  // so stored media metadata can never carry a line break or a direction override into a bundle
+  // line, a card, or an export, whatever a downstream consumer forgets to re-sanitize.
+  return String(value || "")
+    .replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/g, "")
+    .replace(/[\r\n\t\u0085\u2028\u2029]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 function _imageElMeta(img) {
-  const isCanvas = img && img.tagName === "CANVAS";
-  const alt = _imageOneLine(img && (img.getAttribute("alt") || img.getAttribute("aria-label") || ""));
+  const tag = (img && img.tagName ? img.tagName : "").toLowerCase();
+  const isCanvas = tag === "canvas";
+  const isSvg = tag === "svg";
+  const alt = isSvg
+    ? _svgAuthorLabel(img)
+    : _imageOneLine(img && (img.getAttribute("alt") || img.getAttribute("aria-label")));
   const src = _imageOneLine(img && img.getAttribute("src"));
   const kind = (isCanvas || _isChartMedia(img)) ? "chart" : "image";
   return { alt, src, kind };
@@ -7517,7 +7637,11 @@ function _imageMismatch(img, comment) {
   const alt = _imageOneLine(comment && comment.imageAlt);
   const kind = comment && comment.imageKind;
   const hasAlt = !!(comment && Object.prototype.hasOwnProperty.call(comment, "imageAlt"));
-  return !!((kind && meta.kind !== kind) || (src && meta.src !== src) || (hasAlt && meta.alt !== alt));
+  // A STORED but empty imageSrc is metadata too, not "no opinion": an inline svg never has a src,
+  // so an svg anchor must not silently match an <img> that does (the empty-src slot is what tells
+  // the two media apart when neither carries a label).
+  const hasSrc = !!(comment && Object.prototype.hasOwnProperty.call(comment, "imageSrc"));
+  return !!((kind && meta.kind !== kind) || (hasSrc && meta.src !== src) || (hasAlt && meta.alt !== alt));
 }
 function _imageMatchesMeta(img, comment) {
   const meta = _imageElMeta(img);
@@ -7525,18 +7649,23 @@ function _imageMatchesMeta(img, comment) {
   const alt = _imageOneLine(comment && comment.imageAlt);
   const kind = comment && comment.imageKind;
   const hasAlt = !!(comment && Object.prototype.hasOwnProperty.call(comment, "imageAlt"));
+  const hasSrc = !!(comment && Object.prototype.hasOwnProperty.call(comment, "imageSrc"));
   if (kind && meta.kind !== kind) return false;
-  if (src && meta.src !== src) return false;
+  if (hasSrc && meta.src !== src) return false;
   if (hasAlt && meta.alt !== alt) return false;
-  return !!(kind || src || hasAlt);
+  return !!(kind || hasSrc || hasAlt);
 }
 function resolveImageEl(comment) {
   let img = findImageEl(comment && comment.imageIndex);
   const src = _imageOneLine(comment && comment.imageSrc);
   const kind = comment && comment.imageKind;
   if (_imageMismatch(img, comment)) {
-    const byMeta = imageEls.find(im => _imageMatchesMeta(im, comment));
-    if (byMeta) return byMeta;
+    // Only an UNAMBIGUOUS metadata match may re-anchor the comment: media with no distinguishing
+    // metadata (an unlabeled inline svg has no src at all) must leave the anchor unresolved
+    // rather than silently attach the note to a different figure.
+    const byMeta = imageEls.filter(im => _imageMatchesMeta(im, comment));
+    if (byMeta.length === 1) return byMeta[0];
+    if (byMeta.length > 1) return null;
     const bySrc = src ? imageEls.filter(im => {
       const meta = _imageElMeta(im);
       return meta.src === src && (!kind || meta.kind === kind);
@@ -7548,12 +7677,17 @@ function resolveImageEl(comment) {
 function imageInfo(img) {
   const i = parseInt(img.dataset.cmImageIndex, 10) || 0;
   const meta = _imageElMeta(img);
-  const isCanvas = meta.kind === "chart" && img.tagName === "CANVAS";
+  const isSvg = (img.tagName || "").toLowerCase() === "svg";
   const alt = meta.alt;
   const src = meta.src;
   const shortSrc = src.length > 120 ? src.slice(0, 117) + "..." : src;
   const kind = meta.kind;
-  const quote = alt || (isCanvas ? ("chart " + (i + 1)) : ("image: " + (shortSrc || "(no src)")));
+  // The fallback quote follows the stored KIND, not the tag, so a chart svg and a chart canvas
+  // are both pinned "chart N" while a plain graphic (which has no src to name) reads "image N".
+  const quote = alt
+    || (kind === "chart" ? ("chart " + (i + 1))
+      : isSvg ? ("image " + (i + 1))
+        : ("image: " + (shortSrc || "(no src)")));
   return { imageIndex: i, src, alt, quote, kind };
 }
 function applyImageHighlight(comment) {
@@ -7572,7 +7706,7 @@ function _imgCids(im) {
   return (im.getAttribute("data-cids") || im.getAttribute("data-cid") || "").split(/\s+/).filter(Boolean);
 }
 function clearImageHighlight(id) {
-  root.querySelectorAll("img.cm-img-hl, canvas.cm-img-hl").forEach(im => {
+  root.querySelectorAll(CMH_MEDIA_HL_SEL).forEach(im => {
     const cids = _imgCids(im);
     const rest = cids.filter(c => c !== id);
     if (rest.length === cids.length) return;
@@ -7587,7 +7721,7 @@ function clearImageHighlight(id) {
   });
 }
 function flashImage(id) {
-  const img = [...root.querySelectorAll("img.cm-img-hl, canvas.cm-img-hl")].find(im => _imgCids(im).includes(id));
+  const img = [...root.querySelectorAll(CMH_MEDIA_HL_SEL)].find(im => _imgCids(im).includes(id));
   if (!img) return;
   img.classList.add("cm-img-active");
   setTimeout(() => img.classList.remove("cm-img-active"), 2200);
@@ -16382,6 +16516,7 @@ function showHelp(restoreEl) {
           '<li><strong>Headings:</strong> hover a heading and click the <em>Add Comment</em> button that appears just after the title.</li>' +
           '<li><strong>Tables:</strong> select text inside any cell like normal prose.</li>' +
           '<li><strong>Images:</strong> hover an image (or focus it and press <kbd>Enter</kbd>) and click <em>Add Comment</em> at its corner.</li>' +
+          '<li><strong>Inline SVG figures:</strong> an authored <code>&lt;svg&gt;</code> graphic is commentable as one whole figure, the same way an image is.</li>' +
           '<li><strong>Charts:</strong> a Chart.js canvas is commentable like an image.</li>' +
           '<li><strong>Mermaid diagrams:</strong> hover a node, edge label, gantt bar or sequence message and click <em>Add Comment</em>; hover an empty part of the diagram to comment on the whole diagram.</li>' +
           '<li><strong>Code-review diffs:</strong> select text inside a diff line for that snippet, or hover a line and click <em>Add Comment</em> to comment the whole line.</li>' +

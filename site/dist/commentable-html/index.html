@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.316.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.317.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -338,7 +338,7 @@
           <figcaption class="feature-caption">Select any text and a comment window opens right where you mean it - no alt-tabbing to the chat.</figcaption>
         </figure>
         <div class="grid">
-          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9l-4 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/></svg></span><h3>Comment on anything</h3><p>Prose, table cells, code blocks, KQL queries, charts, images, and mermaid diagram nodes are all selectable and commentable.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9l-4 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/></svg></span><h3>Comment on anything</h3><p>Prose, table cells, code blocks, KQL queries, charts, images, inline SVG figures, and mermaid diagram nodes are all selectable and commentable.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><rect x="5" y="10" width="3" height="8" rx="0.5"/><rect x="10.5" y="5" width="3" height="13" rx="0.5"/><rect x="16" y="13" width="3" height="5" rx="0.5"/></svg></span><h3>Rich content, not just prose</h3><p>Author Chart.js charts, Mermaid diagrams, drag-and-drop triage boards, rendered code diffs (inline or side-by-side), and syntax-highlighted code and KQL snippets - all first-class, and every one of them individually commentable.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 7v10l8 4 8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg></span><h3>Self-contained when you share</h3><p>By default the layer loads from small companion files for cheap iteration. One click inlines the CSS, review UI, and every comment into a single HTML file you can email, archive, or reopen anywhere - no server and no build step.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.6-5.6L20 8"/><path d="M20 3v5h-5"/><path d="M20 12a8 8 0 0 1-13.6 5.6L4 16"/><path d="M4 21v-5h5"/></svg></span><h3>Round-trip to the agent</h3><p>One Copy all hands the agent every comment at once - a Markdown bundle plus a machine-readable id list - so it makes a single coordinated, coherent edit across all your notes instead of a one-at-a-time pass, then marks them handled.</p></div>
@@ -496,12 +496,33 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.317.0] - 2026-08-02</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>An authored inline <code>&lt;svg&gt;</code> figure is now commentable media, exactly like an <code>&lt;img&gt;</code> or a chart canvas. Hovering it (or focusing it and pressing Enter) reveals the pinned <strong>Add Comment</strong> button, the saved comment rings the graphic and lists an <code>image N</code> card, and it survives reload, <strong>Copy all</strong>, <strong>Export as Portable</strong>, and delete like any image comment. The quote and alt come from the svg&#x27;s <code>aria-labelledby</code>, <code>aria-label</code> or a direct-child <code>&lt;title&gt;</code>, and an svg that is chart media pins <code>chart N</code> like a chart canvas. Previously an inline SVG - the shape the skill itself emits when asked for an inline SVG image - had no comment affordance at all, so a figure was silently uncommentable while every other block was commentable.</li>
+              <li>SVG that the runtime or another layer owns stays inert, so no chrome grows an affordance: anything under <code>.cm-skip</code>, anything under an <code>aria-hidden=&quot;true&quot;</code> element, a graphic marked <code>role=&quot;presentation&quot;</code>/<code>role=&quot;none&quot;</code>, an icon beside text in a link or inside a button/summary/label/<code>[role=button]</code>-style control (a link that wraps ONLY the figure keeps it commentable, matching a linked <code>&lt;img&gt;</code>), a rendered mermaid or diff surface, a definitions-only sprite sheet (<code>&lt;defs&gt;</code>/<code>&lt;symbol&gt;</code>, zero width/height, <code>hidden</code> or <code>display:none</code>), an svg whose labelled parts the widget layer already owns, and an inner <code>&lt;svg&gt;</code> nested inside another one.</li>
+              <li>A commentable svg with no author name is given <code>role=&quot;img&quot;</code> and an affordance <code>aria-label</code> so it is never a nameless focus stop; that synthesized label is marked <code>data-cm-img-auto-label</code> and never becomes the comment&#x27;s anchor metadata (only the exact synthesized string is discounted, so a forged marker cannot hide a real name).</li>
+              <li><code>examples/report-metrics.html</code> ships the behavior live: a plain inline SVG &quot;capacity headroom&quot; figure now sits beside the labeled-parts diagram, so the two SVG review models can be compared in one place.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Inline SVG figures now take part in the media index, so <code>imageIndex</code> numbering shifts in a document that contains one. Comments recover through their stored metadata, but an UNLABELED image or chart canvas has none to recover by, so label every commentable graphic (<code>aria-label</code>, <code>aria-labelledby</code> or a direct-child <code>&lt;title&gt;</code>) - an unlabeled one may need re-anchoring after the runtime is upgraded in place under an existing comment key.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>An image comment can no longer be re-anchored to an ambiguous or wrong target. A STORED but empty <code>imageSrc</code> now counts as metadata rather than &quot;no opinion&quot; (an inline svg never has a src, so the empty slot is what distinguishes it from an <code>&lt;img&gt;</code>), and the metadata fallback in <code>resolveImageEl()</code> accepts a match only when exactly ONE candidate matches - mirroring the source-only fallback&#x27;s existing uniqueness guard - instead of taking the first.</li>
+              <li>Media metadata is made inert where it is WRITTEN: an alt/label is now stripped of bidi controls and every line separator (including U+0085) before it is stored, so no consumer can reintroduce a bundle-line or direction-override injection by forgetting to re-sanitize it.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.316.0] - 2026-08-02</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Exported HTML now always keeps the authoring session provenance, and the <code>Keep AI session id in exports</code> checkbox is gone from both the toolbar overflow menu and the sidebar Export menu. The <code>commentable-html-session-id</code> and <code>commentable-html-agent</code> meta tags survive every Portable, Offline, and Plain HTML export unconditionally. The session id is an opaque agent session identifier the authoring tools already stamp by default and the footer already offers to copy, not a secret, so stripping it by default bought almost nothing while it cost a row in the most space-constrained menu and silently dropped authoring provenance from the copy a reviewer actually receives - the copy where knowing which agent session produced the document is most useful. The now-dead strip path in the export runtime is removed with it.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.315.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -511,8 +532,6 @@
               <li>The export-intent toast no longer re-derives the dialog&#x27;s swallow condition. It asks the dialog&#x27;s own predicate, so the announcement can never disagree with whether the export click runs. That predicate keys on the dismiss listener being ARMED (it is registered a tick after the dialog opens), not merely on the dialog existing, so the two windows where nothing is swallowed - the pre-registration tick and a mid-edit dialog - now announce the export that does run instead of suppressing it.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.310.0] - 2026-08-02</h3></div>
             <div class="group-label">Security</div>
@@ -547,14 +566,7 @@
               <li>A side-pane reply or edit draft that survives a sidebar re-render (sorting, a note-typing debounce, a checklist change) now keeps its SELECTION, not just its text. The panel&#x27;s inline editor carries the formatting toolbar, so a re-render that landed between selecting a word and clicking Bold used to collapse the caret to the end of the draft and append bare <code>****</code> instead of wrapping the word. The draft snapshot now records <code>selectionStart</code>/<code>selectionEnd</code> (and the selection direction) and the re-opened editor restores that range. Re-clicking the edit action on an editor that is already open now only re-focuses it, keeping the live selection and its anchor direction instead of collapsing to the end.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.292.0] - 2026-08-02</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Re-exporting an offline file whose inlined library carries no MIT notice now says what actually happened. The <code>data-cmh-offline-lib</code> marker predates the MIT notice comment, so an offline file produced by an exporter version in between carries the library WITHOUT a notice, and <code>Export Offline</code> correctly refuses to re-emit it (redistributing an MIT-licensed library without its notice is a licence violation). It reported that refusal as <code>Offline export is missing the vendored mermaid bundle.</code>, which is misleading - the bundle is right there in the file. The error now names the real cause (the inlined copy has no MIT license notice beside it) and the action that works (re-export from the source document that still carries the vendored payload). It claims that cause only when licensing was the SOLE blocker (a copy the content gates rejected keeps the generic message, since the licence is then not a proven cause) and only for the library that could not be re-emitted, and it asserts nothing it cannot verify - the gates authenticate no provenance, so it never claims who wrote the file. The notice is still never synthesised: with the payload consumed there is no licence text to emit, which is exactly why the copy is refused. Because an Offline export failure names a cause and an action, every one of those toasts is now announced assertively and stays on screen long enough to read instead of using the 3s confirmation toast.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">239 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">240 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

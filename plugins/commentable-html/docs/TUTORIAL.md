@@ -74,6 +74,7 @@ Every document the skill generates is Portable. Older documents built in the **N
 1. Go to **Site Selection** or **Garden Layout**.
 2. Hover an image (or focus it and press Enter).
 3. Click the floating **Add Comment** button at the image corner and save a note. The comment is anchored to the whole image and quotes its alt text.
+4. An inline `<svg>` figure works the same way: hover it (or focus it and press Enter) and click **Add Comment**. The comment quotes the graphic's `aria-label` or `<title>`.
 
 ## 8. Comment on a Mermaid diagram
 
