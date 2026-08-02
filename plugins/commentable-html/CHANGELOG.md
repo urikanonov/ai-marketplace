@@ -4,6 +4,27 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.297.0] - 2026-08-02
+
+### Fixed
+
+- A floating diagram control now stays clipped to a standalone `div.mermaid` host exactly as it
+  does to a `pre.mermaid` one. The clip/scroll container fallback that positions the floating
+  `Add Comment` / `Comment on diagram` buttons and the highlight bubble re-typed its container list
+  and named only `pre.mermaid`, so in a document that authors its diagrams as `div.mermaid` - a
+  shape the runtime indexes as a diagram host everywhere else - the button escaped the host's
+  clipping box and floated over unrelated content. The recognised containers (both the
+  `.cmh-diagram-gallery` card shapes and the generic fallback) are now DERIVED from the shared
+  `CMH_MERMAID_SEL` / `CMH_CHART_FIGURE_SEL` vocabulary through one normalized token list, and a
+  guard pins that derivation, so the clip layer can no longer drift from the vocabulary the rest of
+  the runtime uses.
+- An unstyled `div.mermaid` host is now the same scrolling box as a `pre.mermaid` one. The layer's
+  stylesheet gave only `pre.mermaid` the `overflow-x: auto` box, the `svg { max-width: none }`
+  reset, the scroll-fade edge cue, and the mobile wide-diagram min-width - even though the runtime
+  indexes both host shapes and toggles those very classes on both. A document that authors its
+  diagrams as `div.mermaid` therefore had no scroll box for a wide diagram, and no clipping box for
+  the floating controls above to clamp to.
+
 ## [1.295.0] - 2026-08-02
 
 ### Changed

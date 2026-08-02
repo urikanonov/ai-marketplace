@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.295.0" />
+<meta name="commentable-html-version" content="1.297.0" />
 <meta name="commentable-html-kind" content="slides" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.295.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.297.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML Showcase</title>
 
@@ -1860,9 +1860,17 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: 
   margin: 0; padding-top: 0.85rem;
   border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0;
 }
-#commentRoot pre.mermaid { background: none; border: 0; border-radius: 0; padding: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
-#commentRoot pre.mermaid svg { max-width: none; }
-#commentRoot pre.mermaid.cmh-diagram-scroll-fade {
+/* Both diagram host shapes carry the same box (see CMH_MERMAID_SEL in assets/js/03-selectors.js): a
+   wide diagram scrolls inside its own block instead of overflowing the column, and that block is the
+   clipping box the floating diagram controls clamp to (CMH-RESP-02). Only the resets are pre-only -
+   they undo the code-block chrome a <pre> inherits, which a <div> never had. */
+#commentRoot pre.mermaid { background: none; border: 0; border-radius: 0; padding: 0; }
+#commentRoot pre.mermaid,
+#commentRoot div.mermaid { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+#commentRoot pre.mermaid svg,
+#commentRoot div.mermaid svg { max-width: none; }
+#commentRoot pre.mermaid.cmh-diagram-scroll-fade,
+#commentRoot div.mermaid.cmh-diagram-scroll-fade {
   -webkit-mask-image: linear-gradient(to right, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
   mask-image: linear-gradient(to right, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
 }
@@ -1886,7 +1894,8 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: 
 @media (max-width: 480px) {
   /* Keep only genuinely wide mermaid diagrams legible (they scroll inside their box).
      Small diagrams and responsive Chart.js canvases fit the viewport on their own. */
-  #commentRoot pre.mermaid.cmh-diagram-wide svg { min-width: 560px; }
+  #commentRoot pre.mermaid.cmh-diagram-wide svg,
+  #commentRoot div.mermaid.cmh-diagram-wide svg { min-width: 560px; }
 }
 /* KQL syntax token colors (primer-style; light defaults + dark overrides). Plain
    identifiers/columns inherit --cp-text; only these categories are tinted. */
@@ -5039,7 +5048,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.295.0";
+const CMH_VERSION = "1.297.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -6151,6 +6160,26 @@ function _rectInViewport(r) {
     r.bottom > 4 && r.top < window.innerHeight - 4 &&
     r.right > 4 && r.left < window.innerWidth - 4;
 }
+// The diagram-host shapes, normalized ONCE from the shared vocabulary (CMH_MERMAID_SEL,
+// 03-selectors.js) rather than re-typed, so the clip layer cannot drift from the vocabulary the rest
+// of the runtime indexes by. Empty tokens are dropped and a non-string vocabulary degrades to an
+// empty list, matching `_printMermaidCapSel()`'s contract in 83-print.js: these tokens are spliced
+// into selector LISTS, and one invalid selector makes a browser drop the whole list - here that
+// means `closest()` THROWS and every floating control in the document dies at once. The comma split
+// assumes CMH_MERMAID_SEL stays a list of simple compound selectors, which it is (a future entry
+// with a comma inside `:is(...)` would need a real parser).
+var MERMAID_HOST_TOKENS = (typeof CMH_MERMAID_SEL === "string" ? CMH_MERMAID_SEL : "")
+  .split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+// The `.cmh-diagram-gallery` CARD shapes: a direct-child diagram host, or a direct-child <figure>
+// wrapper.
+var GALLERY_CARD_SEL = MERMAID_HOST_TOKENS.map(function (s) {
+  return ".cmh-diagram-gallery > " + s;
+}).concat([".cmh-diagram-gallery > figure"]).join(", ");
+// The generic clip/scroll containers a floating control is clamped to, outside a gallery card. Built
+// from the same normalized tokens: a literal `pre.mermaid` here left a standalone `div.mermaid` host
+// unrecognised, and its Add button escaped the host's box (issue #769).
+var CLIP_CONTAINER_SEL = MERMAID_HOST_TOKENS
+  .concat([CMH_CHART_FIGURE_SEL, "table", ".cmh-diff-raw"]).join(", ");
 function _clipContainerFor(node) {
   const el = node && (node.nodeType === 1 ? node : node.parentElement);
   if (!el || !el.closest) return null;
@@ -6165,9 +6194,9 @@ function _clipContainerFor(node) {
   // clipped, instead of being clamped to the full (over-wide) table rect. `closest` (not the
   // immediate parent) because an INNER table of a nested pair sits in a `td`, several levels below
   // the wrapper that actually clips it.
-  const gallery = el.closest(".cmh-diagram-gallery > pre.mermaid, .cmh-diagram-gallery > div.mermaid, .cmh-diagram-gallery > figure");
+  const gallery = el.closest(GALLERY_CARD_SEL);
   if (gallery) return gallery;
-  const generic = el.closest("pre.mermaid, figure.chart, table, .cmh-diff-raw");
+  const generic = el.closest(CLIP_CONTAINER_SEL);
   if (generic && generic.tagName === "TABLE") return generic.closest(".cmh-table-scroll") || generic;
   return generic;
 }
@@ -6319,7 +6348,6 @@ function updateMermaidWidthClass(host) {
 // attributes there and on a desktop->mobile resize, leaving the comment tab stop intact. `host` is a
 // mermaid host; the actual gallery CARD is resolved with closest over the exact card selectors.
 var GALLERY_SCROLL_LABEL = "Scrollable diagram - use the arrow keys to scroll";
-var GALLERY_CARD_SEL = ".cmh-diagram-gallery > pre.mermaid, .cmh-diagram-gallery > div.mermaid, .cmh-diagram-gallery > figure";
 function markGalleryCardScrollable(host) {
   const card = host && host.closest && host.closest(GALLERY_CARD_SEL);
   if (!card) return;

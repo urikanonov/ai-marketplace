@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import path from "path";
 import fs from "fs";
-import { SKILL, fileUrl, ready, stageContent, routeMermaidLocal, startStaticServer } from "./helpers.js";
+import { SKILL, fileUrl, ready, stageContent, routeMermaidLocal, startStaticServer, denyExternalNetwork } from "./helpers.js";
 
 const METRICS = path.join(SKILL, "..", "..", "examples", "report-metrics.html");
 
@@ -98,10 +98,14 @@ test("the highlight bubble hides and clamps to a horizontal-overflow clip contai
 
     // Each clip-container selector recognized by _clipContainerFor. .cmh-diff-raw is the inert raw
     // diff block (no per-line commenting), so it is exercised via the highlight bubble like the rest.
+    // BOTH mermaid host shapes are covered: the runtime treats `pre.mermaid` and `div.mermaid` alike
+    // everywhere else, so a document that authors its diagrams as `div.mermaid` must clip the same
+    // (issue #769 - the fallback recognized only the `pre` form).
     const types = [
       { tag: "table", cls: "" },
       { tag: "figure", cls: "chart" },
       { tag: "pre", cls: "mermaid" },
+      { tag: "div", cls: "mermaid" },
       { tag: "div", cls: "cmh-diff-raw" },
     ];
 
@@ -213,6 +217,118 @@ test("the chart Add button clamps inside a narrow chart container on horizontal 
     expect(metrics.narrowerThanViewport, "the chart figure is narrower than the viewport").toBe(true);
     expect(metrics.buttonLeft).toBeGreaterThanOrEqual(metrics.figureLeft - 1);
     expect(metrics.buttonRight).toBeLessThanOrEqual(metrics.figureRight + 1);
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+// Issue #769: `_clipContainerFor` recognized a standalone `pre.mermaid` host but not a standalone
+// `div.mermaid` one, even though the runtime treats both as diagram hosts everywhere else - so in a
+// document that authors its diagrams as `div.mermaid` the floating whole-diagram control escaped the
+// host's clipping/scrolling box. Both shapes are staged with IDENTICAL markup, so this is a parity
+// assertion: whatever holds for `pre.mermaid` must hold for `div.mermaid`. The rendered SVG is inlined
+// rather than produced by mermaid, so the case is hermetic and deterministic - the runtime treats a
+// host whose SVG carries painted nodes as rendered.
+const RENDERED_SVG = '<svg width="900" height="120" viewBox="0 0 900 120" style="width:900px">'
+  + '<g class="node"><rect x="10" y="10" width="140" height="60"></rect><text x="20" y="46">A</text></g>'
+  + '<g class="node"><rect x="750" y="10" width="140" height="60"></rect><text x="760" y="46">B</text></g>'
+  + "</svg>";
+const CLIP_HOST_STYLE = "display:block;width:300px;max-width:300px;height:60px;overflow:auto;margin:0;padding:0;";
+
+test("the whole-diagram button clamps inside a standalone div.mermaid host exactly as inside a pre.mermaid one (CMH-RESP-02)", async ({ page }) => {
+  const staged = stageContent(
+    "<h1>Standalone diagram hosts</h1>"
+    + `<pre class="mermaid" id="preHost" style="${CLIP_HOST_STYLE}">${RENDERED_SVG}</pre>`
+    + `<div class="mermaid" id="divHost" style="${CLIP_HOST_STYLE}">${RENDERED_SVG}</div>`,
+    { key: "cmh-standalone-mermaid-clip", source: "standalone-mermaid-clip.html" });
+  try {
+    // The mermaid loader in the shell fires for any diagram host; block the network so the vendored
+    // library never loads and the staged pre-rendered SVG is the exact thing measured.
+    await denyExternalNetwork(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+
+    const btn = page.locator("#mermaidAddBtn");
+    for (const sel of ["#preHost", "#divHost"]) {
+      const host = page.locator(sel);
+      await expect(host).toHaveAttribute("data-cmh-comment-a11y", "1", { timeout: 10000 });
+      // Scroll the host on BOTH axes before revealing the button, so the diagram overflows its box in
+      // both directions and each axis of the clamp is genuinely exercised (with the host at scroll 0
+      // the diagram's top edge coincides with the box's, and the vertical assertions would hold even
+      // with no clipping at all).
+      await host.evaluate((h) => { h.scrollLeft = 120; h.scrollTop = 40; });
+      // The button is a single shared element that survives the previous iteration, so drop it first
+      // (blur whatever is focused, not this host, which is not focused yet): otherwise a `#divHost`
+      // focus handler that never fired would still be measured as a pass on the stale `#preHost`
+      // placement.
+      await page.evaluate(() => { const a = document.activeElement; if (a && a.blur) a.blur(); });
+      await expect(btn).toBeHidden();
+      // Focusing the host is the deterministic whole-diagram affordance (it reveals the same floating
+      // button an empty-area hover does), so the measurement never depends on pointer coordinates.
+      await host.focus();
+      await expect(btn).toBeVisible();
+      await expect(btn).toHaveText(/diagram/i);
+
+      const m = await page.evaluate((s) => {
+        const h = document.querySelector(s);
+        const b = document.getElementById("mermaidAddBtn").getBoundingClientRect();
+        const r = h.getBoundingClientRect();
+        const svg = h.querySelector("svg").getBoundingClientRect();
+        return {
+          overflowsX: h.scrollWidth > h.clientWidth + 1,
+          overflowsY: h.scrollHeight > h.clientHeight + 1,
+          // The diagram really does extend past the box on both axes at this scroll offset, so a
+          // clip-unaware placement lands outside the host.
+          svgEscapes: svg.right > r.right + 1 && svg.top < r.top - 1,
+          fitsButton: r.width > b.width && r.height > b.height,
+          bLeft: b.left, bRight: b.right, bTop: b.top, bBottom: b.bottom,
+          hLeft: r.left, hRight: r.right, hTop: r.top, hBottom: r.bottom,
+        };
+      }, sel);
+      expect(m.overflowsX, `${sel}: the diagram genuinely overflows its host box horizontally`).toBe(true);
+      expect(m.overflowsY, `${sel}: the diagram genuinely overflows its host box vertically`).toBe(true);
+      expect(m.svgEscapes, `${sel}: the scrolled diagram extends past the host box on both axes`).toBe(true);
+      expect(m.fitsButton, `${sel}: the host is big enough to hold the button`).toBe(true);
+      expect(m.bLeft, `${sel}: button left stays inside the host`).toBeGreaterThanOrEqual(m.hLeft - 2);
+      expect(m.bRight, `${sel}: button right stays inside the host`).toBeLessThanOrEqual(m.hRight + 2);
+      expect(m.bTop, `${sel}: button top stays inside the host`).toBeGreaterThanOrEqual(m.hTop - 2);
+      expect(m.bBottom, `${sel}: button bottom stays inside the host`).toBeLessThanOrEqual(m.hBottom + 2);
+    }
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+// The clipping box the test above clamps to only exists because the layer's own stylesheet makes a
+// diagram host a scroll box. That rule named only `pre.mermaid`, so a document that authors its
+// diagrams as `div.mermaid` got no box at all and the parity above would hold only for a host the
+// AUTHOR styled. This pins the CSS half: an unstyled host of either shape is the same scroll box.
+test("an unstyled div.mermaid host is the same scrolling box as a pre.mermaid one (CMH-RESP-09)", async ({ page }) => {
+  const staged = stageContent(
+    "<h1>Unstyled diagram hosts</h1>"
+    + `<pre class="mermaid" id="barePre">${RENDERED_SVG}</pre>`
+    + `<div class="mermaid" id="bareDiv">${RENDERED_SVG}</div>`,
+    { key: "cmh-bare-mermaid-box", source: "bare-mermaid-box.html" });
+  try {
+    await denyExternalNetwork(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+
+    const m = await page.evaluate(() => ["#barePre", "#bareDiv"].map((s) => {
+      const h = document.querySelector(s);
+      const r = h.getBoundingClientRect();
+      return {
+        sel: s,
+        overflowX: getComputedStyle(h).overflowX,
+        scrolls: h.scrollWidth > h.clientWidth + 1,
+        fitsViewport: r.right <= document.documentElement.clientWidth + 1,
+      };
+    }));
+    for (const host of m) {
+      expect(["auto", "scroll"], `${host.sel}: the host is its own horizontal scroll box`).toContain(host.overflowX);
+      expect(host.scrolls, `${host.sel}: a wide diagram scrolls inside the host`).toBe(true);
+      expect(host.fitsViewport, `${host.sel}: the host box stays inside the viewport`).toBe(true);
+    }
   } finally {
     fs.rmSync(staged.dir, { recursive: true, force: true });
   }
