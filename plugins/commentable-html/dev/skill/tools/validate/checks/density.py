@@ -11,6 +11,8 @@ use section cards). All findings are non-fatal warnings, matching the section-wr
 import re
 from html.parser import HTMLParser
 
+from .parsing import _browser_attrs_dict
+
 MIN_LONG_PARAGRAPH_CHARS = 240
 MAX_CONSECUTIVE_LONG = 4
 
@@ -61,13 +63,10 @@ class _DensityParser(HTMLParser):
     def current_heading(self):
         return self._sections[-1] if self._sections else self._root_heading
 
-    def _attrs(self, attrs):
-        d = {}
-        for k, v in attrs:
-            kl = (k or "").lower()
-            if kl not in d:
-                d[kl] = v if v is not None else ""
-        return d
+    def _attrs(self, tag, attrs):
+        # Browser attribute-value decoding, shared with the document parser, so the content
+        # root and the kind meta read the same on every interpreter (CMH-VAL-21).
+        return _browser_attrs_dict(self, tag.lower(), attrs)
 
     @staticmethod
     def _classes(d):
@@ -103,7 +102,7 @@ class _DensityParser(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
-        d = self._attrs(attrs)
+        d = self._attrs(tag, attrs)
         if tag == "meta":
             self._note_kind(d)
         is_root = self._is_root(tag, d)

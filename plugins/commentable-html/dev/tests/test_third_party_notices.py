@@ -72,5 +72,19 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         self.assertEqual(payload["chartjsLicense"], build.read_vendored_license(VENDOR_DIR, "chart.umd.LICENSE"))
 
 
+    def test_notices_carry_the_psf_license_for_the_vendored_cpython_code(self):
+        # The validator's tolerant parser adapts CPython's start-tag attribute tokenizer and
+        # attribute-value character-reference rule, which makes it a derivative work of Python:
+        # the PSF License requires the license text and copyright notice to travel with it,
+        # plus a brief summary of the changes.
+        notices = _read(STAGE_NOTICES)
+        license_text = build.read_vendored_license(VENDOR_DIR, "cpython.LICENSE")
+        self.assertIn(license_text, notices)
+        self.assertIn("PYTHON SOFTWARE FOUNDATION LICENSE VERSION 2", notices)
+        self.assertIn("Python Software Foundation; All Rights Reserved", notices)
+        self.assertIn("Changes made to Python:", notices)
+        self.assertIn("parsing.py", notices)
+
+
 if __name__ == "__main__":
     unittest.main()

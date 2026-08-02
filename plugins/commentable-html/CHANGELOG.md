@@ -4,6 +4,27 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.361.0] - 2026-08-02
+
+### Fixed
+
+- The validator now decodes an attribute value's character references the way a BROWSER decodes
+  them, on every interpreter. Python 3.12 unescaped the whole value with `html.unescape()`, so a
+  named reference with no trailing semicolon was resolved inside an attribute (`id="&notit;"` became
+  `id="\u00acit;"`), while Python 3.13 and a browser leave it literal. The same document could
+  therefore carry different `id`, `class`, `href`, `src`, `content` and `data-*` values depending on
+  which Python ran the validator - and with them a different duplicate-id, link, meta-handshake or
+  companion-resource verdict. The browser rule for NAMED references, and the start-tag attribute
+  tokenizer it runs over, are now vendored beside the shared `_BrowserBoundaries` layer and applied
+  to the raw start tag, so the values the checks see never come from the host. (Numeric references
+  still resolve through `html.unescape()`, which behaves the same on every interpreter.) Every
+  attribute view in the validator's `checks` package now shares that one helper - both tolerant
+  document passes, the tag-attribute lookup, and the checklist, notes and density passes - so a real
+  duplicate `data-cmh-item` id spelled two ways (`&notit;` and `&amp;notit;`) is no longer missed on
+  Python 3.12. Because that vendors a small amount of CPython's `Lib/html/parser.py`, the shipped
+  `THIRD_PARTY_NOTICES.md` now also carries the PSF License, its copyright notice, and a summary of
+  the changes made.
+
 ## [1.360.0] - 2026-08-02
 
 ### Fixed

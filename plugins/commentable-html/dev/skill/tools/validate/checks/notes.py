@@ -2,6 +2,8 @@
 
 from html.parser import HTMLParser
 
+from .parsing import _browser_attrs_dict
+
 _NOTE_VOID = frozenset(
     "area base br col embed hr img input link meta param source track wbr".split())
 
@@ -29,13 +31,10 @@ class _NotesParser(HTMLParser):
         self._layer_depth = 0
         self.notes = []       # {id, void, nested, in_layer, has_child}
 
-    def _attrs(self, attrs):
-        d = {}
-        for k, v in attrs:
-            kl = (k or "").lower()
-            if kl not in d:
-                d[kl] = v if v is not None else ""
-        return d
+    def _attrs(self, tag, attrs):
+        # Browser attribute-value decoding, shared with the document parser, so a
+        # `data-cmh-note` id reads the same on every interpreter (CMH-VAL-21).
+        return _browser_attrs_dict(self, tag.lower(), attrs)
 
     def _is_layer(self, d):
         if any(a in d for a in _LAYER_ATTRS):
@@ -44,7 +43,7 @@ class _NotesParser(HTMLParser):
         return any(c in cls for c in _LAYER_CLASSES)
 
     def handle_starttag(self, tag, attrs):
-        d = self._attrs(attrs)
+        d = self._attrs(tag, attrs)
         is_note = "data-cmh-note" in d
         if not is_note and self._open_notes > 0:
             # An element child inside every currently-open note.
@@ -70,7 +69,7 @@ class _NotesParser(HTMLParser):
                 self._layer_depth += 1
 
     def handle_startendtag(self, tag, attrs):
-        d = self._attrs(attrs)
+        d = self._attrs(tag, attrs)
         if "data-cmh-note" in d:
             self.notes.append({
                 "id": d.get("data-cmh-note") or "",
