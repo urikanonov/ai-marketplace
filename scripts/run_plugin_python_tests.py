@@ -23,6 +23,8 @@ so intra-suite imports such as `from test_validate import ...` keep working.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
+import os
 import subprocess
 import sys
 import unittest
@@ -96,6 +98,100 @@ def select_shard(files: list[Path], index: int, total: int) -> list[Path]:
     if not (1 <= index <= total):
         raise ValueError(f"shard index {index} out of range 1..{total}")
     return files[index - 1 :: total]
+
+
+def compose_shard(index: int, total: int, job_index: int, jobs: int) -> tuple[int, int]:
+    """Return the single shard that selects job `job_index` of `jobs` WITHIN shard index/total.
+
+    Parallel mode re-invokes this script per worker rather than handing it an explicit file
+    list, so the two levels of round-robin have to collapse into one "i/N" pair. Because
+    select_shard is a plain stride, the composition is exact:
+
+        files[index-1::total][job_index-1::jobs] == files[(index-1)+(job_index-1)*total :: total*jobs]
+
+    which makes the workers a true partition of the selected shard - no file dropped, none
+    run twice - for any combination of an outer CI shard and a local -j.
+    """
+    if total < 1:
+        raise ValueError("shard total must be >= 1")
+    if not (1 <= index <= total):
+        raise ValueError(f"shard index {index} out of range 1..{total}")
+    if jobs < 1:
+        raise ValueError("jobs must be >= 1")
+    if not (1 <= job_index <= jobs):
+        raise ValueError(f"job index {job_index} out of range 1..{jobs}")
+    return ((index - 1) + (job_index - 1) * total + 1, total * jobs)
+
+
+def resolve_jobs(spec: str) -> int:
+    """Resolve --jobs: a positive integer, or "auto" for the CPU count (1 if unknown)."""
+    if spec == "auto":
+        return os.cpu_count() or 1
+    try:
+        n = int(spec)
+    except (TypeError, ValueError):
+        raise ValueError(f"--jobs must be a positive integer or 'auto', got {spec!r}") from None
+    if n < 1:
+        raise ValueError(f"--jobs must be >= 1, got {n}")
+    return n
+
+
+def build_child_argv(index: int, total: int, job_index: int, jobs: int,
+                     args: argparse.Namespace) -> list[str]:
+    """Argv for one parallel worker: the composed shard plus the pass-through flags.
+
+    Deliberately omits --jobs so a worker can never recurse into another fan-out.
+    """
+    idx, tot = compose_shard(index, total, job_index, jobs)
+    cmd = [sys.executable, str(Path(__file__).resolve()), "--shard", f"{idx}/{tot}"]
+    if args.changed_only:
+        cmd += ["--changed-only", "--base-ref", args.base_ref]
+    if args.require_discovered:
+        cmd.append("--require-discovered")
+    # argparse counts -v on top of the default, so replicate the delta, not the total.
+    cmd += ["-v"] * max(0, args.verbose - 1)
+    return cmd
+
+
+def run_parallel(index: int, total: int, jobs: int, args: argparse.Namespace) -> int:
+    """Fan the selected shard out across `jobs` worker processes; aggregate fail-CLOSED.
+
+    Workers are separate PROCESSES (not threads) so the per-file, in-process execution model
+    each worker uses is unchanged - the same isolation `unittest discover` gives, just N of
+    them. Output is captured and replayed in job order so a parallel run stays readable and
+    deterministic; a worker that fails, crashes, or cannot be launched reds the whole run.
+    """
+    commands = [build_child_argv(index, total, j, jobs, args) for j in range(1, jobs + 1)]
+    print(f"Running shard {index}/{total} across {jobs} parallel worker(s).")
+
+    def run_one(cmd: list[str]) -> subprocess.CompletedProcess:
+        return subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True)
+
+    results: list[subprocess.CompletedProcess | BaseException] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+        futures = [pool.submit(run_one, c) for c in commands]
+        for f in futures:
+            try:
+                results.append(f.result())
+            except BaseException as exc:  # noqa: BLE001 - a launch failure must red the run
+                results.append(exc)
+
+    rc = 0
+    for j, res in enumerate(results, start=1):
+        print(f"\n===== worker {j}/{jobs} =====")
+        if isinstance(res, BaseException):
+            print(f"::error::worker {j}/{jobs} could not run: "
+                  f"{type(res).__name__}: {res}", file=sys.stderr)
+            rc = 1
+            continue
+        if res.stdout:
+            print(res.stdout, end="")
+        if res.stderr:
+            print(res.stderr, end="", file=sys.stderr)
+        if res.returncode != 0:
+            print(f"::error::worker {j}/{jobs} failed (exit {res.returncode})", file=sys.stderr)
+            rc = 1
+    return rc
 
 
 def plugin_of(path: Path, repo_root: Path) -> str | None:
@@ -183,6 +279,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--shard", default="1/1",
                     help="Run shard I of N, formatted I/N (default 1/1 = everything).")
+    ap.add_argument("-j", "--jobs", default="1",
+                    help="Run the selected shard across N worker processes, or 'auto' for "
+                         "the CPU count (default 1 = in-process, unchanged behavior).")
     ap.add_argument("--changed-only", action="store_true",
                     help="Only run suites of plugins changed vs --base-ref.")
     ap.add_argument("--base-ref", default="origin/main",
@@ -198,6 +297,20 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError:
         print(f"error: --shard must look like I/N, got {args.shard!r}", file=sys.stderr)
         return 2
+
+    try:
+        jobs = resolve_jobs(args.jobs)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    if jobs > 1:
+        try:
+            compose_shard(index, total, 1, jobs)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        return run_parallel(index, total, jobs, args)
 
     all_files = discover_test_files(REPO_ROOT)
     if args.require_discovered and not all_files:

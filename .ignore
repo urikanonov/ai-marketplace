@@ -1,0 +1,36 @@
+# ripgrep-only ignore rules (does NOT affect git; see .gitignore for that).
+#
+# Why this file exists: `.gitignore` already lists `.worktrees/`, but ripgrep still
+# descends into it, because each `.worktrees/<name>` is its own git worktree and so
+# counts as a separate repository root whose parent's ignore rules no longer apply.
+# The result was that an unscoped search spent ~90% of its time walking stale
+# worktree copies of the same files and returned no extra matches. Measured on this
+# repo: `rg -l commentMode` took 12.7s by default and 1.2s with `.worktrees`
+# excluded, with an identical 28 hits. At ~13s an agent's search budget is easily
+# exceeded, and the resulting partial results cause retry loops.
+#
+# Keep this list to things that are NEVER a useful search target. Generated files
+# that a human or agent may legitimately want to read (site/dist, the built example
+# reports) are deliberately NOT listed. To search anything below anyway, pass
+# `rg --no-ignore` (or `--no-ignore-vcs` plus an explicit path).
+
+# Parallel worktrees: duplicate copies of the whole tree (see AGENTS.md).
+.worktrees/
+
+# Dependency trees and caches.
+node_modules/
+__pycache__/
+.venv/
+
+# Vendored and minified bundles: single-line third-party blobs, never edited here.
+*.min.js
+*.min.css
+
+# Packaged archives (binary; rg cannot search them usefully anyway).
+*.zip
+
+# Test/build scratch output.
+test-results/
+playwright-report/
+.playwright-cli/
+audit_out/

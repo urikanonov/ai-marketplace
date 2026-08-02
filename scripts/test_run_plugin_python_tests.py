@@ -8,6 +8,7 @@ loading/running is not (CI runs the real suites).
 """
 import contextlib
 import io
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -236,6 +237,146 @@ class GitChangedPathsTests(unittest.TestCase):
         self.assertIsNone(
             rp._git_changed_paths("refs/does/not/exist/ever", rp.REPO_ROOT)
         )
+
+
+class ComposeShardTests(unittest.TestCase):
+    """--jobs subdivides the SELECTED shard, so composition must stay an exact partition.
+
+    The parallel mode re-invokes this script with a single composed "i/N" shard rather than
+    handing children an explicit file list, so the composition arithmetic is the only thing
+    standing between "-j 4" and silently dropped or double-run test files.
+    """
+
+    def test_composition_equals_direct_subselection(self):
+        files = [Path(f"test_{i}.py") for i in range(23)]
+        for total in (1, 2, 3):
+            for index in range(1, total + 1):
+                for jobs in (1, 2, 4, 5):
+                    outer = rp.select_shard(files, index, total)
+                    rebuilt = []
+                    for j in range(1, jobs + 1):
+                        idx, tot = rp.compose_shard(index, total, j, jobs)
+                        rebuilt.extend(rp.select_shard(files, idx, tot))
+                    self.assertEqual(
+                        sorted(rebuilt, key=str), sorted(outer, key=str),
+                        f"index={index} total={total} jobs={jobs} lost or duplicated files",
+                    )
+                    self.assertEqual(len(rebuilt), len(outer))
+
+    def test_jobs_of_one_is_identity(self):
+        self.assertEqual(rp.compose_shard(2, 3, 1, 1), (2, 3))
+
+    def test_rejects_bad_job_index_or_count(self):
+        for j, jobs in [(0, 1), (2, 1), (-1, 3), (1, 0)]:
+            with self.assertRaises(ValueError):
+                rp.compose_shard(1, 1, j, jobs)
+
+
+class ResolveJobsTests(unittest.TestCase):
+    def test_auto_uses_cpu_count(self):
+        with mock.patch.object(rp.os, "cpu_count", return_value=8):
+            self.assertEqual(rp.resolve_jobs("auto"), 8)
+
+    def test_auto_falls_back_to_one_when_cpu_count_unknown(self):
+        with mock.patch.object(rp.os, "cpu_count", return_value=None):
+            self.assertEqual(rp.resolve_jobs("auto"), 1)
+
+    def test_explicit_integer(self):
+        self.assertEqual(rp.resolve_jobs("3"), 3)
+
+    def test_rejects_non_positive_or_garbage(self):
+        for bad in ["0", "-2", "abc", ""]:
+            with self.assertRaises(ValueError):
+                rp.resolve_jobs(bad)
+
+
+class ParallelMainTests(unittest.TestCase):
+    """--jobs N must fan out to N children and aggregate their exit codes fail-CLOSED."""
+
+    def _fake_run(self, codes):
+        calls = []
+
+        def run(cmd, **kwargs):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, codes[len(calls) - 1], "", "")
+
+        return run, calls
+
+    def test_spawns_one_child_per_job_with_composed_shards(self):
+        run, calls = self._fake_run([0, 0, 0])
+        with mock.patch.object(rp.subprocess, "run", side_effect=run):
+            rc = rp.main(["--jobs", "3"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(calls), 3)
+        shards = sorted(c[c.index("--shard") + 1] for c in calls)
+        self.assertEqual(shards, ["1/3", "2/3", "3/3"])
+        # A child must never recurse into parallel mode.
+        for c in calls:
+            self.assertNotIn("--jobs", c)
+
+    def test_any_failing_child_reds_the_run(self):
+        run, _ = self._fake_run([0, 1, 0])
+        with mock.patch.object(rp.subprocess, "run", side_effect=run):
+            self.assertEqual(rp.main(["--jobs", "3"]), 1)
+
+    def test_composes_with_an_outer_shard(self):
+        run, calls = self._fake_run([0, 0])
+        with mock.patch.object(rp.subprocess, "run", side_effect=run):
+            rc = rp.main(["--shard", "2/3", "--jobs", "2"])
+        self.assertEqual(rc, 0)
+        shards = sorted(c[c.index("--shard") + 1] for c in calls)
+        # shard 2/3 split 2 ways -> files[1::3][0::2] and files[1::3][1::2]
+        self.assertEqual(shards, ["2/6", "5/6"])
+
+    def test_forwards_changed_only_and_base_ref_to_children(self):
+        run, calls = self._fake_run([0, 0])
+        with mock.patch.object(rp.subprocess, "run", side_effect=run):
+            rp.main(["--jobs", "2", "--changed-only", "--base-ref", "origin/dev"])
+        for c in calls:
+            self.assertIn("--changed-only", c)
+            self.assertIn("--base-ref", c)
+            self.assertEqual(c[c.index("--base-ref") + 1], "origin/dev")
+
+    def test_jobs_of_one_runs_in_process_without_spawning(self):
+        one = [rp.REPO_ROOT / "plugins/x/dev/tests/test_only.py"]
+        with mock.patch.object(rp, "discover_test_files", return_value=one), \
+             mock.patch.object(rp, "discover_importable_modules", return_value=one), \
+             mock.patch.object(rp.subprocess, "run") as spawned:
+            rp.main(["--shard", "3/3", "--jobs", "1"])
+        spawned.assert_not_called()
+
+    def test_bad_jobs_value_returns_2(self):
+        for bad in ["0", "-1", "abc"]:
+            self.assertEqual(rp.main(["--jobs", bad]), 2, bad)
+
+
+class HookWiringTests(unittest.TestCase):
+    """The pre-push hook is the reason --jobs exists, so pin the wiring it depends on.
+
+    The hook was measured at ~30 minutes with the suites inline, and 52% of observed pushes
+    used --no-verify as a result. Two properties keep it usable: the suites are opt-in behind
+    PREPUSH_TESTS, and when they DO run they fan out with --jobs. A silent revert of either
+    would quietly restore the slow hook that trained everyone to bypass it.
+    """
+
+    def _hook(self):
+        hook = rp.REPO_ROOT / ".githooks" / "pre-push"
+        if not hook.exists():
+            self.skipTest("pre-push hook not present")
+        return hook.read_text(encoding="utf-8")
+
+    def test_plugin_suite_invocations_request_parallel_jobs(self):
+        source = self._hook().replace("\\\n", " ")
+        calls = [ln.strip() for ln in source.splitlines()
+                 if "run_plugin_python_tests.py" in ln and ln.strip().startswith("run_hermetic ")]
+        self.assertTrue(calls, "the hook no longer launches the plugin Python suites")
+        for call in calls:
+            self.assertIn("--jobs", call,
+                          "the hook runs the plugin suites serially again: %r" % (call,))
+
+    def test_suites_are_gated_behind_prepush_tests(self):
+        self.assertIn("PREPUSH_TESTS", self._hook(),
+                      "the slow suites are inline in pre-push again (no PREPUSH_TESTS opt-in)")
 
 
 class ShardMatrixContiguityTests(unittest.TestCase):
