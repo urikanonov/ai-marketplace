@@ -8,9 +8,11 @@ loading/running is not (CI runs the real suites).
 """
 import contextlib
 import io
+import re
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -295,10 +297,15 @@ class ParallelMainTests(unittest.TestCase):
 
     def _fake_run(self, codes):
         calls = []
+        lock = threading.Lock()
 
         def run(cmd, **kwargs):
-            calls.append(cmd)
-            return subprocess.CompletedProcess(cmd, codes[len(calls) - 1], "", "")
+            # Workers run concurrently, so claim the index and record the call under one lock;
+            # append-then-index on a fresh len() could hand two workers the same code.
+            with lock:
+                idx = len(calls)
+                calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, codes[idx], "", "")
 
         return run, calls
 
@@ -375,11 +382,38 @@ class HookWiringTests(unittest.TestCase):
                           "the hook runs the plugin suites serially again: %r" % (call,))
 
     def test_suites_are_gated_behind_prepush_tests(self):
-        # Assert the GUARD, not merely the word: a bare mention in a comment must not satisfy this.
-        source = self._hook()
-        self.assertRegex(
-            source, r'if\s+\[\s+"\$\{PREPUSH_TESTS:-0\}"\s+=\s+"1"\s+\]',
-            "the slow suites are inline in pre-push again (no PREPUSH_TESTS guard)")
+        """Structural, not textual: every suite launch must sit INSIDE a PREPUSH_TESTS block.
+
+        Asserting the string 'PREPUSH_TESTS' appears is not enough - it already occurs in comments
+        and in the skip message, so moving both run_hermetic calls back outside the conditional
+        would leave such a test green while restoring the ~30-minute hook.
+        """
+        guard = re.compile(r'^\s*if\s+\[\s+"\$\{PREPUSH_TESTS:-0\}"\s+=\s+"1"\s+\]')
+        depth, guard_depth, offenders = 0, None, []
+        for raw in self._hook().replace("\\\n", " ").splitlines():
+            line = raw.strip()
+            if guard.match(raw) and guard_depth is None:
+                guard_depth = depth
+            if re.match(r"^\s*if\s", raw):
+                depth += 1
+            elif line == "fi":
+                depth -= 1
+                if guard_depth is not None and depth <= guard_depth:
+                    guard_depth = None
+            if line.startswith("run_hermetic ") and guard_depth is None:
+                offenders.append(line)
+        self.assertEqual(
+            offenders, [],
+            "these pre-push suite launches are no longer behind the PREPUSH_TESTS opt-in, so the "
+            "hook is slow again: %r" % (offenders,))
+
+    def test_the_gate_check_itself_would_catch_a_regression(self):
+        # The guard above is only worth having if it actually fails when the opt-in is removed;
+        # prove that on a synthetic hook rather than trusting the scanner.
+        unguarded = 'run_hermetic "plugin Python tests" "$PY" scripts/run_plugin_python_tests.py\n'
+        with mock.patch.object(HookWiringTests, "_hook", lambda self: unguarded):
+            with self.assertRaises(AssertionError):
+                HookWiringTests.test_suites_are_gated_behind_prepush_tests(self)
 
     def test_windows_only_plugin_tests_actually_exist(self):
         """Pins the coverage gap that PREPUSH_TESTS opened, so it cannot be forgotten.

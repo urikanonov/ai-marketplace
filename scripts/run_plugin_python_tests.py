@@ -203,13 +203,13 @@ def run_parallel(index: int, total: int, jobs: int, args: argparse.Namespace) ->
         return subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True,
                               encoding="utf-8", errors="replace")
 
-    results: list[subprocess.CompletedProcess | BaseException] = []
+    results: list[subprocess.CompletedProcess | Exception] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
         futures = [pool.submit(run_one, c) for c in commands]
         for f in futures:
             try:
                 results.append(f.result())
-            except BaseException as exc:  # noqa: BLE001 - a launch failure must red the run
+            except Exception as exc:  # noqa: BLE001 - a launch failure must red the run
                 results.append(exc)
 
     rc = 0

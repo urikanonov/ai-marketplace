@@ -348,11 +348,13 @@ sharded job's matrix a complete `1..N` cover so an entry can never be silently d
   test left a file behind or changed the repository tree, which is the guard that keeps scratch
   fixtures out of the repo root. If you are editing files while the (slow) suite runs, the tree diff
   will flag YOUR edits; pass `--no-worktree-check` for that case - the sandbox check still applies.
-- The `pre-push` hook and CI run the validators, the Python script unit tests, the changelog/version
-  gates, and the `--check` drift guards on every push. The browser (Playwright) suites are the slower,
-  occasionally flaky gates: they do NOT run in the pre-push hook by default (set `RUN_E2E=1` to include
-  them), and CI is their authoritative gate. Run the relevant browser suite yourself before you push a
-  change that touches it.
+- The `pre-push` hook and CI run the validators, the changelog/version gates, and the `--check` drift
+  guards on every push. The TEST SUITES are opt-in in the hook (`PREPUSH_TESTS=1 git push`, which adds
+  the Python script unit tests and the changed plugins' suites, run in parallel), because running them
+  inline measured ~30 minutes and most pushes ended up using `--no-verify` instead. The browser
+  (Playwright) suites are opt-in too (`RUN_E2E=1`). CI is the authoritative gate for all of them and
+  runs them on every PR. Run the relevant suite yourself before you push a change that touches it.
+  In PowerShell, set the variable first: `$env:PREPUSH_TESTS = '1'; git push`.
 
 ## Pitfall checklist
 
