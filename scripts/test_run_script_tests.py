@@ -691,22 +691,23 @@ class ParallelRunnerEndToEnd(unittest.TestCase):
 
     def test_the_same_tests_run_serially_and_in_parallel(self):
         # Two execution engines (a `unittest discover` subprocess serially, an in-process
-        # TextTestRunner per worker) must not drift apart in what they select.
+        # TextTestRunner per worker) must not drift apart in what they select. Each engine gets its
+        # OWN suite directory: rewriting one set of modules in place can hand the second run a
+        # stale `__pycache__` entry (same size, same mtime second) and it silently re-executes the
+        # first run's code.
         with tempfile.TemporaryDirectory() as tmp:
-            tests = Path(tmp) / "suite"
-            tests.mkdir()
-            for name, marks in (("serial", Path(tmp) / "m1"), ("parallel", Path(tmp) / "m2")):
-                marks.mkdir()
-            self._marked_suite(tests, Path(tmp) / "m1", modules=3, per_module=2)
-            serial = self._run(tests, jobs="1")
-            self.assertEqual(serial.returncode, 0, serial.stdout[-3000:] + serial.stderr[-3000:])
-            ran_serial = sorted(p.name.rsplit("-", 1)[0] for p in (Path(tmp) / "m1").iterdir())
-            self._marked_suite(tests, Path(tmp) / "m2", modules=3, per_module=2)
-            parallel = self._run(tests, jobs="3")
-            self.assertEqual(parallel.returncode, 0,
-                             parallel.stdout[-3000:] + parallel.stderr[-3000:])
-            ran_parallel = sorted(p.name.rsplit("-", 1)[0] for p in (Path(tmp) / "m2").iterdir())
-            self.assertEqual(ran_parallel, ran_serial)
+            ran = {}
+            for name, jobs in (("serial", "1"), ("parallel", "3")):
+                tests, marker = Path(tmp) / ("suite-" + name), Path(tmp) / ("marks-" + name)
+                tests.mkdir()
+                marker.mkdir()
+                self._marked_suite(tests, marker, modules=3, per_module=2)
+                proc = self._run(tests, jobs=jobs)
+                self.assertEqual(proc.returncode, 0,
+                                 proc.stdout[-3000:] + proc.stderr[-3000:])
+                ran[name] = sorted(p.name.rsplit("-", 1)[0] for p in marker.iterdir())
+            self.assertTrue(ran["serial"], "the serial run executed nothing, so this proves nothing")
+            self.assertEqual(ran["parallel"], ran["serial"])
 
     def test_a_test_exported_twice_still_runs_once(self):
         # `test_build_site_data.py` star-imports the split modules, so discovery yields each of
