@@ -51,7 +51,11 @@ test.describe("Clear Comments confirm dialog", () => {
     await openInline(page);
     await page.click("#btnToggleSidebar"); // open the panel (empty state)
     await expect(page.locator("#commentList .cm-card")).toHaveCount(0);
-    await clickClearAll(page);
+    // The item advertises the empty state (aria-disabled), so activate it with the keyboard.
+    await openSidebarMoreMenu(page);
+    await expect(page.locator("#btnClearAll")).toHaveAttribute("aria-disabled", "true");
+    await page.locator("#btnClearAll").focus();
+    await page.keyboard.press("Enter");
     await expect(page.locator(".cm-modal")).toHaveCount(0); // no confirm dialog for an empty set
   });
 

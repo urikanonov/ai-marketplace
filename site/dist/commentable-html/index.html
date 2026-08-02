@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.322.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.325.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,27 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.325.0] - 2026-08-02</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li><code>Clear all comments</code> now also lives in the floating toolbar&#x27;s overflow (<code>...</code>) menu, grouped right after <code>Manage storage</code>, so a reviewer working with the comments panel hidden can clear without re-opening the panel. It is a second ENTRY POINT, not a second implementation: both the toolbar and sidebar items bind to one handler, so the confirmation text, the nothing-to-clear guard, and the reset semantics (comments, notes, checklist, widget layout, open editors and popovers) are identical. Focus returns to the trigger of whichever menu was opened, and the toolbar count pill and portability badge refresh afterwards.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Both <code>Clear all comments</code> items now advertise the empty state instead of looking available and doing nothing: while no comment, note, checklist, or layout change is pending they are <code>aria-disabled</code>, dimmed, and carry a <code>Nothing to clear...</code> tooltip, exactly as <code>Copy all</code> does.</li>
+              <li>Activating <code>Clear all comments</code> with nothing to clear no longer drops keyboard focus to the page body. The owning menu still closes on the click, but no confirmation dialog opens to restore focus, so the handler now returns focus to that menu&#x27;s trigger itself.</li>
+              <li>Both <code>Clear all comments</code> items take their accessible name from their visible label instead of an <code>aria-label=&quot;Clear Comments&quot;</code> override, so a screen reader announces (and a voice-control user can speak) the same name that is printed on the destructive control.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.322.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>Export Offline no longer trusts the first <code>cmhVendoredRichLibs</code> block it finds, and never ships a library without its MIT notice. The payload is INFRASTRUCTURE, so it is now resolved from the document being exported as a payload-id script OUTSIDE the content root and EXACTLY one of them: an authored decoy planted inside the content region used to come first in document order and win, and its compressed bytes were inflated and inlined into an export whose own CSP allows inline script - document-supplied code running in a file the recipient believes is a clean skill-generated export. A document that has a candidate but cannot single one out (two of them, or a content boundary that cannot be pinned down because the content-root id is missing or duplicated) is now a loud, distinct failure rather than &quot;no payload&quot;, so it cannot quietly hand the export to the document&#x27;s own copies. The authoring step collapses a rich document to exactly one payload copy, so a finalized document is never born in that state. The consume-and-strip also removed only the FIRST payload block, leaving a second one - including one parked in a <code>&lt;template&gt;</code> - inside a file that is supposed to carry the libraries inline and no payload at all; every infrastructure block is now stripped, while a payload-id script inside the content root is preserved as the authored content it is (and no longer exempt from the network-import strip). Finally, a library and its notice travel as ONE unit: a payload whose notice text had been stripped, or replaced by a non-string value, used to re-emit the library bytes with no notice at all - a silent MIT compliance break - and now fails the export naming the missing NOTICE and the remedy rather than a bundle the document does carry.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.321.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -509,8 +524,6 @@
               <li><code>tools/blocks/chart_block.py</code> no longer raises <code>TypeError</code> when a cached <code>sys.modules[&quot;validate&quot;]</code> carries a <code>__file__</code> that is not a usable path. Its containment guard now normalizes the value through <code>os.fspath</code> and refuses anything that is not a non-empty string - a plain object, an int, bytes, a <code>PathLike</code> whose <code>__fspath__</code> returns bytes or raises, or a <code>str</code> subclass with a hostile <code>__bool__</code> - and the refusal message no longer raises while rendering an odd value (a tuple, or one whose <code>__str__</code> raises). A path that cannot be canonicalized at all (an embedded NUL byte, an over-long path) is refused the same way, as is a cached module whose <code>__file__</code> ACCESS raises (a lazy loader or an import proxy), and the &quot;unexpected result&quot; reason now renders a misbehaving validator&#x27;s own value without letting its <code>__repr__</code> raise. So that install shape comes back as the named &quot;could not check&quot; reason the fail-closed path exists for - and the <code>--allow-unvalidated-output</code> opt-out stays reachable - instead of escaping as a traceback from outside the caller&#x27;s try block. <code>tools/authoring/new_document.py</code> carried the same seam and gets the identical hardening, so the two stay in parity.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.317.0] - 2026-08-02</h3></div>
             <div class="group-label">Added</div>
@@ -555,15 +568,7 @@
               <li>The residual is documented rather than implied away, in BOTH directions. The strip reads raw source for a literal shape, so it misses an aliased sink (<code>var l = location; l.href = ...</code>), computed access, a URL assembled at runtime, a bare unprefixed <code>open(...)</code>, a bare <code>location =</code> that does not follow a statement delimiter, anything inside a script carrying one of the four reserved ids the strip skips, and any other navigation sink (a synthesized anchor click, a script-injected refresh meta). In the other direction it removes any preserved script that navigates to a network URL literal at all - an intentional SSO redirect or help popup included - and over-matches a script whose comment or string merely spells one of those shapes. See the CMH-OFFLINE-05 spec row, which also records why per-script hashes were rejected as a fix.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.297.0] - 2026-08-02</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A floating diagram control now stays clipped to a standalone <code>div.mermaid</code> host exactly as it does to a <code>pre.mermaid</code> one. The clip/scroll container fallback that positions the floating <code>Add Comment</code> / <code>Comment on diagram</code> buttons and the highlight bubble re-typed its container list and named only <code>pre.mermaid</code>, so in a document that authors its diagrams as <code>div.mermaid</code> - a shape the runtime indexes as a diagram host everywhere else - the button escaped the host&#x27;s clipping box and floated over unrelated content. The recognised containers (both the <code>.cmh-diagram-gallery</code> card shapes and the generic fallback) are now DERIVED from the shared <code>CMH_MERMAID_SEL</code> / <code>CMH_CHART_FIGURE_SEL</code> vocabulary through one normalized token list, and a guard pins that derivation, so the clip layer can no longer drift from the vocabulary the rest of the runtime uses.</li>
-              <li>An unstyled <code>div.mermaid</code> host is now the same scrolling box as a <code>pre.mermaid</code> one. The layer&#x27;s stylesheet gave only <code>pre.mermaid</code> the <code>overflow-x: auto</code> box, the <code>svg { max-width: none }</code> reset, the scroll-fade edge cue, and the mobile wide-diagram min-width - even though the runtime indexes both host shapes and toggles those very classes on both. A document that authors its diagrams as <code>div.mermaid</code> therefore had no scroll box for a wide diagram, and no clipping box for the floating controls above to clamp to.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">242 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">243 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

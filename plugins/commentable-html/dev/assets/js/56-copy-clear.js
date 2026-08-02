@@ -310,7 +310,8 @@ function _setCopyAllTip(btn, text) {
   else btn.setAttribute("data-cmh-tip", text);
 }
 function updateCopyAllState() {
-  const disabled = !_copyAllState().hasContent;
+  const state = _copyAllState();
+  const disabled = !state.hasContent;
   Object.keys(CMH_COPY_ALL_TITLES).forEach((id) => {
     const btn = document.getElementById(id);
     if (!btn) return;
@@ -318,6 +319,10 @@ function updateCopyAllState() {
     btn.classList.toggle("cm-copy-disabled", disabled);
     _setCopyAllTip(btn, disabled ? "No comments to copy" : CMH_COPY_ALL_TITLES[id]);
   });
+  // The Clear all items share this state's document scans rather than repeating them: an extra
+  // widgetStateChanges()/checklistChanges()/notesChanges() pass here would run on every keystroke
+  // of a note burst (CMH-NOTE-17 budgets exactly two document scans per dirty transition).
+  if (typeof updateClearAllState === "function") updateClearAllState(state);
 }
 const _cmRenderCommentsForCopyAll = renderComments;
 renderComments = function () {

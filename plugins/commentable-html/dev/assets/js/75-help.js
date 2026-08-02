@@ -16,6 +16,9 @@ function showHelp(restoreEl) {
       + '<div class="cm-help-topic-body">' + body + '</div>'
       + '</details>';
   };
+  // An older document's shell may predate the toolbar Clear item while loading current companion
+  // assets, so only advertise that entry point when this document actually has it.
+  const hasToolbarClear = !!document.getElementById("btnClearAllTop");
   box.innerHTML =
     '<div class="cm-help-head">' +
       '<h2>' + CMH_ICON_SVG + ' Commentable HTML v' + CMH_VERSION + ' - Help</h2>' +
@@ -76,7 +79,7 @@ function showHelp(restoreEl) {
           '<li><strong>Edit from the document:</strong> hover a highlight and click the orange <em>Open comment</em> bubble to see the note right there, then click <strong>Edit</strong> to edit it in place in that little dialog - no jumping to another part of the page.</li>' +
           '<li><strong>Jump</strong> from a card to its highlight (collapsed sections auto-expand first).</li>' +
           '<li><strong>Sort</strong> the cards oldest-first or newest-first with the arrows, or click again for document order.</li>' +
-          '<li><strong>Clear all comments</strong> (in the <strong>More</strong> menu) deletes every comment and always asks for confirmation first (Cancel is the default).</li>' +
+          '<li><strong>Clear all comments</strong> (in the sidebar\'s <strong>More</strong> menu' + (hasToolbarClear ? ', or the collapsed toolbar\'s overflow <kbd>...</kbd> menu' : '') + ') deletes every comment and always asks for confirmation first (Cancel is the default)' + (hasToolbarClear ? ', so you can clear without re-opening the panel' : '') + '.</li>' +
         '</ul>') +
       T('Threads, replies and author names',
         '<ul>' +
@@ -91,7 +94,7 @@ function showHelp(restoreEl) {
           '<li>The <strong>Comments</strong> heading carries a <strong>count bubble</strong> showing how many items still need attention: open comment threads plus any unresolved review-note and checklist changes (each top-level thread counts once, not its individual replies). The portability badge and version sit at the right of the same row.</li>' +
           '<li>Below it, a row of captioned buttons - <strong>Search</strong>, <strong>Sort</strong>, <strong>More</strong>, <strong>Help</strong>, and <strong>Hide</strong>. <strong>Help</strong> opens this dialog; <strong>Hide</strong> collapses the panel, leaving a small floating toolbar to bring it back.</li>' +
           '<li><strong>Copy all</strong> (the primary button) copies every comment as a Markdown bundle to paste back to the agent; beside it, the <strong>Export</strong> button opens the file-format menu. The <strong>Search</strong> button in the ribbon reveals a search field (hidden by default) that filters the list by each comment\'s note text.</li>' +
-          '<li><strong>More</strong> opens a menu with <strong>Manage storage</strong> and <strong>Clear all comments</strong>. While the panel is collapsed, the floating toolbar\'s overflow <kbd>...</kbd> menu holds the export actions, Manage storage, and <strong>Help &amp; About</strong>.</li>' +
+          '<li><strong>More</strong> opens a menu with <strong>Manage storage</strong> and <strong>Clear all comments</strong>. While the panel is collapsed, the floating toolbar\'s overflow <kbd>...</kbd> menu holds the export actions, Manage storage, ' + (hasToolbarClear ? '<strong>Clear all comments</strong> (the same confirmed clear), ' : '') + 'and <strong>Help &amp; About</strong>.</li>' +
         '</ul>') +
       T('Portable or Not portable',
         '<p>A bubble at the top of the panel shows whether this file is safe to share as-is:</p>' +

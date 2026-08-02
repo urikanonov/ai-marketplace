@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { openInline, ready, openToolbarMenu, openSidebarExportMenu, fileUrl, INLINE, openKitchenSinkNonPortable } from "./helpers.js";
+import { openInline, ready, openToolbarMenu, openSidebarExportMenu, openSidebarMoreMenu, addTextComment, fileUrl, INLINE, openKitchenSinkNonPortable } from "./helpers.js";
 
 // UI batch 5: searchable/collapsible Help, custom tooltips, compact sidebar header,
 // bigger section caret, and icons on the TOC / scroll buttons.
@@ -128,7 +128,9 @@ test.describe("compact sidebar header", () => {
     await expect(exportButton).toHaveAttribute("aria-controls", "sidebarExportMenu");
     await expect(exportButton).toHaveAttribute("aria-expanded", "false");
     expect(await exportButton.getAttribute("aria-haspopup")).toBeNull();
-    await expect(page.locator("#btnClearAll")).toHaveAttribute("aria-label", "Clear Comments");
+    // The accessible name comes from the visible label - no aria-label override that would
+    // announce a shorter, different name than the one a voice-control user can read (WCAG 2.5.3).
+    expect(await page.locator("#btnClearAll").getAttribute("aria-label")).toBeNull();
   });
 
   test("the runtime footer does not leave a large empty gap above it", async ({ page }) => {
@@ -409,5 +411,164 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
     expect(await page.locator(".cm-tooltip").count()).toBe(0);
     expect(await page.locator(".cm-help-overlay").count()).toBe(0);
     expect(await page.locator(".cm-sidebar").count()).toBe(0);
+  });
+});
+
+// Clear all comments is reachable from the toolbar overflow menu too, so a reviewer working with
+// the comments panel hidden does not have to re-open the panel to clear. It is a second ENTRY
+// POINT into the one clear-all flow, never a second implementation.
+test.describe("Clear all comments from the toolbar overflow menu (CMH-UI-13)", () => {
+  async function seedComment(page) {
+    await openInline(page);
+    await addTextComment(page, "#commentRoot p", "clear me from the collapsed toolbar");
+    await expect(page.locator("#commentList .cm-card")).toHaveCount(1);
+  }
+
+  async function hidePanel(page) {
+    await page.click("#btnCloseSidebar");
+    await expect(page.locator("body.sidebar-open")).toHaveCount(0);
+    await expect(page.locator("#btnToolbarMenu")).toBeVisible();
+  }
+
+  test("the overflow menu groups Clear all comments beside Manage storage (CMH-UI-13)", async ({ page }) => {
+    await openInline(page);
+    await openToolbarMenu(page);
+    const item = page.locator("#toolbarMenu #btnClearAllTop");
+    await expect(item).toBeVisible();
+    expect((await item.textContent()).trim()).toBe("Clear all comments");
+    await expect(item).toHaveClass(/danger/);
+    expect(await item.locator("svg.cm-ui-ico").count()).toBe(1);
+    const tip = (await item.getAttribute("title")) || (await item.getAttribute("data-cmh-tip"));
+    expect((tip || "").length).toBeGreaterThan(8);
+    // Both entry points take their accessible name from the visible label (no aria-label override
+    // announcing a different, shorter name than a voice-control user reads - WCAG 2.5.3).
+    expect(await item.getAttribute("aria-label")).toBeNull();
+    expect(await page.locator("#btnClearAll").getAttribute("aria-label")).toBeNull();
+    // ...and the COMPUTED accessible name really is the visible label, not just the absence of an
+    // override (an aria-labelledby could still rename it).
+    await expect(page.locator("#toolbarMenu").getByRole("button", { name: "Clear all comments" })).toHaveCount(1);
+    // The two data-management actions stay together: Clear sits right after Manage storage.
+    const next = await page.locator("#toolbarMenu #btnStorageTop")
+      .evaluate((el) => el.nextElementSibling && el.nextElementSibling.id);
+    expect(next).toBe("btnClearAllTop");
+    // Adding the item leaves the menu's Escape/focus contract intact (CMH-UI-10).
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#toolbarMenu")).toBeHidden();
+    await expect(page.locator("#btnToolbarMenu")).toBeFocused();
+  });
+
+  test("clearing from the overflow menu works with the panel hidden (CMH-UI-13)", async ({ page }) => {
+    await openInline(page);
+    await openToolbarMenu(page);
+    const pristineMode = (await page.locator("#cmhModeBadge").textContent()).trim();
+    // Pin the premise so the round-trip below cannot degrade into asserting the same value twice.
+    expect(pristineMode).toBe("Portable");
+    await page.keyboard.press("Escape");
+    await addTextComment(page, "#commentRoot p", "clear me from the collapsed toolbar");
+    await expect(page.locator("#commentList .cm-card")).toHaveCount(1);
+    await hidePanel(page);
+    await expect(page.locator("#toolbarCount")).toHaveText("1");
+
+    await openToolbarMenu(page);
+    // With something to clear, both items are live again and carry the destructive tooltip.
+    for (const sel of ["#btnClearAllTop", "#btnClearAll"]) {
+      const b = page.locator(sel);
+      await expect(b, sel).toHaveAttribute("aria-disabled", "false");
+      const tip = (await b.getAttribute("title")) || (await b.getAttribute("data-cmh-tip"));
+      expect(tip, sel).toMatch(/Delete every comment/);
+    }
+    await expect(page.locator("#cmhModeBadge")).toHaveText("Not portable");
+    await page.click("#btnClearAllTop");
+    // The menu closes on the action and its trigger's expanded state follows.
+    await expect(page.locator("#toolbarMenu")).toBeHidden();
+    await expect(page.locator("#btnToolbarMenu")).toHaveAttribute("aria-expanded", "false");
+    const modal = page.locator(".cm-modal");
+    await expect(modal).toBeVisible();
+    await expect(page.locator("#commentList .cm-card")).toHaveCount(1); // nothing cleared yet
+    await modal.locator("button.danger").click(); // OK
+
+    await expect(page.locator(".cm-modal")).toHaveCount(0);
+    await expect(page.locator("body.sidebar-open")).toHaveCount(0); // the panel never re-opened
+    await expect(page.locator("#commentList .cm-card")).toHaveCount(0);
+    await expect(page.locator("#commentRoot .cm-hl")).toHaveCount(0);
+    await expect(page.locator("#toolbarCount")).toHaveText("0");
+    // Focus lands on the still-visible overflow trigger, not the now-hidden menu item.
+    await expect(page.locator("#btnToolbarMenu")).toBeFocused();
+    await openToolbarMenu(page);
+    await expect(page.locator("#cmhModeBadge")).toHaveText(pristineMode);
+    // ...and the item goes back to its empty state without needing the panel.
+    await expect(page.locator("#btnClearAllTop")).toHaveAttribute("aria-disabled", "true");
+  });
+
+  test("the overflow menu Clear all runs the same confirmed flow as the sidebar item (CMH-UI-13)", async ({ page }) => {
+    await seedComment(page);
+    // Sidebar entry point: capture the confirmation text, then cancel.
+    await openSidebarMoreMenu(page);
+    await page.click("#btnClearAll");
+    const sidebarMsg = await page.locator(".cm-modal-msg").textContent();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".cm-modal")).toHaveCount(0);
+    await expect(page.locator("#btnMoreMenu")).toBeFocused(); // cancel restores to the sidebar trigger
+    // Toolbar entry point with the panel hidden: byte-identical confirmation text.
+    await hidePanel(page);
+    await openToolbarMenu(page);
+    await page.click("#btnClearAllTop");
+    expect(await page.locator(".cm-modal-msg").textContent()).toBe(sidebarMsg);
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".cm-modal")).toHaveCount(0);
+    await expect(page.locator("#btnToolbarMenu")).toBeFocused(); // ...and to the toolbar trigger
+    await expect(page.locator("#commentList .cm-card")).toHaveCount(1); // cancel kept everything
+  });
+
+  test("with nothing to clear both entry points are inert and keep focus on their trigger (CMH-UI-13)", async ({ page }) => {
+    await openInline(page);
+    // Pristine document: no comments, and no widget / checklist / note change tracked yet, so the
+    // shared guard sees nothing to clear. (The count pill is deliberately NOT the premise here - it
+    // excludes widget-layout changes, so it can read 0 while the guard is non-empty.) The proof the
+    // guard is empty is that no confirmation opens below.
+    await expect(page.locator("#commentList .cm-card")).toHaveCount(0);
+    expect(await page.evaluate(() => window.__cmhStorageCodec.read().length)).toBe(0);
+    await openToolbarMenu(page);
+    // Both items advertise the empty state identically, so the two entry points never disagree.
+    for (const sel of ["#btnClearAllTop", "#btnClearAll"]) {
+      const b = page.locator(sel);
+      await expect(b, sel).toHaveAttribute("aria-disabled", "true");
+      const tip = (await b.getAttribute("title")) || (await b.getAttribute("data-cmh-tip"));
+      expect(tip, sel).toMatch(/Nothing to clear/);
+    }
+    // Activate with the keyboard (an aria-disabled control is not "actionable" for a synthetic
+    // click, but a real user - and a real keyboard - can still fire it).
+    await page.locator("#btnClearAllTop").focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".cm-modal")).toHaveCount(0); // no confirm dialog for an empty set
+    // The menu still closed on the click, so focus must land on its trigger, not <body>.
+    await expect(page.locator("#toolbarMenu")).toBeHidden();
+    await expect(page.locator("#btnToolbarMenu")).toBeFocused();
+    // The sidebar item behaves identically - the guard is shared, and so is the focus contract.
+    await page.click("#btnToggleSidebar");
+    await openSidebarMoreMenu(page);
+    await page.locator("#btnClearAll").focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".cm-modal")).toHaveCount(0);
+    await expect(page.locator("#sidebarMoreMenu")).toBeHidden();
+    await expect(page.locator("#btnMoreMenu")).toBeFocused();
+  });
+
+  test("a repeat activation while the confirm dialog is open does not pull focus out of it (CMH-UI-13)", async ({ page }) => {
+    await seedComment(page);
+    await hidePanel(page);
+    await openToolbarMenu(page);
+    await page.click("#btnClearAllTop");
+    const modal = page.locator(".cm-modal");
+    await expect(modal).toBeVisible();
+    // Re-activate the (now hidden) item programmatically: the re-entrancy guard must return
+    // WITHOUT restoring focus, or the caret would land behind the aria-modal overlay.
+    await page.locator("#btnClearAllTop").evaluate((b) => b.click());
+    await expect(modal).toBeVisible();
+    const inside = await page.evaluate(() => document.querySelector(".cm-modal").contains(document.activeElement));
+    expect(inside).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".cm-modal")).toHaveCount(0);
+    await expect(page.locator("#commentList .cm-card")).toHaveCount(1);
   });
 });

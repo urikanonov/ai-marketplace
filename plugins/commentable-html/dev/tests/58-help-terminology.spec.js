@@ -73,6 +73,9 @@ test.describe("Help terminology matches the current button labels", () => {
     for (const label of ["Export", "Sort", "More", "Help", "Hide", "Search", "Copy all", "Manage storage", "Clear all comments"]) {
       expect(panelText, `panel-and-toolbar topic names ${label}`).toContain(label);
     }
+    // The collapsed-toolbar sentence names Clear all comments as a second entry point, so a reader
+    // working with the panel hidden knows the overflow menu can clear too (CMH-UI-13).
+    expect(panelText).toMatch(/collapsed[\s\S]*overflow[\s\S]*Clear all comments/);
     // The managing-storage topic points reviewers at the More menu, not the old Export menu.
     await search.fill("Managing storage");
     const storageTopic = page.locator(".cm-help-topic:visible", { hasText: "Managing storage" });
@@ -86,7 +89,29 @@ test.describe("Help terminology matches the current button labels", () => {
     await expect(commentsTopic).toHaveCount(1);
     const commentsText = await commentsTopic.innerText();
     expect(commentsText).toContain("Clear all comments");
+    expect(commentsText).toMatch(/Clear all comments[\s\S]*More[\s\S]*overflow/); // both entry points (CMH-UI-13)
     expect(commentsText).not.toContain("Clear deletes");
+  });
+
+  test("a shell without the toolbar Clear item does not advertise it (CMH-HELP-TERMS-01)", async ({ page }) => {
+    // An older document's shell can load CURRENT companion assets (same-major runtimes are
+    // compatible), so the help copy must describe the chrome THIS document actually has.
+    await openInline(page);
+    await page.evaluate(() => {
+      const b = document.getElementById("btnClearAllTop");
+      if (b) b.remove();
+    });
+    await openToolbarMenu(page);
+    await page.click("#btnHelpTop");
+    await expect(page.locator(".cm-help")).toBeVisible();
+    const search = page.locator(".cm-help-search-input");
+    await search.fill("Clear all comments");
+    const commentsText = await page.locator(".cm-help-topic:visible", { hasText: "Managing comments" }).innerText();
+    expect(commentsText).toContain("Clear all comments"); // the sidebar route is still described
+    expect(commentsText).not.toMatch(/Clear all comments[\s\S]*More[\s\S]*overflow/);
+    await search.fill("panel and toolbar");
+    const panelText = await page.locator(".cm-help-topic:visible", { hasText: "The panel and toolbar" }).innerText();
+    expect(panelText).not.toMatch(/collapsed[\s\S]*overflow[\s\S]*Clear all comments/);
   });
 });
 

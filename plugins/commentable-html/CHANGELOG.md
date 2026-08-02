@@ -4,6 +4,30 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.325.0] - 2026-08-02
+
+### Added
+
+- `Clear all comments` now also lives in the floating toolbar's overflow (`...`) menu, grouped right
+  after `Manage storage`, so a reviewer working with the comments panel hidden can clear without
+  re-opening the panel. It is a second ENTRY POINT, not a second implementation: both the toolbar and
+  sidebar items bind to one handler, so the confirmation text, the nothing-to-clear guard, and the
+  reset semantics (comments, notes, checklist, widget layout, open editors and popovers) are
+  identical. Focus returns to the trigger of whichever menu was opened, and the toolbar count pill
+  and portability badge refresh afterwards.
+
+### Fixed
+
+- Both `Clear all comments` items now advertise the empty state instead of looking available and
+  doing nothing: while no comment, note, checklist, or layout change is pending they are
+  `aria-disabled`, dimmed, and carry a `Nothing to clear...` tooltip, exactly as `Copy all` does.
+- Activating `Clear all comments` with nothing to clear no longer drops keyboard focus to the page
+  body. The owning menu still closes on the click, but no confirmation dialog opens to restore
+  focus, so the handler now returns focus to that menu's trigger itself.
+- Both `Clear all comments` items take their accessible name from their visible label instead of an
+  `aria-label="Clear Comments"` override, so a screen reader announces (and a voice-control user can
+  speak) the same name that is printed on the destructive control.
+
 ## [1.322.0] - 2026-08-02
 
 ### Fixed

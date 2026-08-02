@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.322.0" />
+<meta name="commentable-html-version" content="1.325.0" />
 <meta name="commentable-html-kind" content="board" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.322.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.325.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Incident Triage Board</title>
 
@@ -1298,6 +1298,11 @@ body.cm-nonportable .cm-inline-only { display: none !important; }
   padding: var(--cp-chrome-menu-item-y) var(--cp-chrome-action-x); border-radius: 8px; font-size: var(--cp-chrome-font);
 }
 .cm-toolbar-menu button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
+.cm-toolbar-menu button.danger { color: var(--cp-danger); }
+.cm-toolbar-menu button.danger:hover { background: var(--cp-danger-soft); color: var(--cp-danger); }
+/* Both Clear all comments items dim identically while there is nothing to clear. */
+#btnClearAllTop[aria-disabled="true"], #btnClearAll[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; }
+#btnClearAllTop[aria-disabled="true"]:hover, #btnClearAll[aria-disabled="true"]:hover { background: transparent; }
 
 /* Missing-companion-assets banner (nonportable mode only). Revealed by the tiny
    inline bootstrap when the external runtime fails to initialize in time. */
@@ -3872,6 +3877,7 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
       <button id="btnExportMdTop" type="button" title="Download a .md file (a deterministic block-by-block conversion; comments are appended as a section)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4 M8.5 17v-4l2 2 2-2v4"/></svg><span>Export to Markdown</span></button>
       <button id="btnPrintTop" type="button" title="Open the browser's print dialog to save this document as a PDF (or print it). Ctrl/Cmd+P also works."><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6 M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2 M6 14h12v7H6z"/></svg><span>Save as PDF</span></button>
       <button id="btnStorageTop" type="button" title="View and delete the comment data every commentable-html document has stored in this browser, to free up local storage"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3z M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6 M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg><span>Manage storage</span></button>
+      <button id="btnClearAllTop" type="button" class="danger" title="Delete every comment (asks for confirmation first)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16 M9 7V5h6v2 M6 7l1 13h10l1-13"/></svg><span>Clear all comments</span></button>
       <button id="btnHelpTop" type="button" title="Open help and about: what every button does and how the review workflow works" aria-haspopup="dialog"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M9.5 9.5a2.5 2.5 0 0 1 4.5 1.4c0 1.6-2 1.9-2 3.1 M12 17h.01"/></svg><span>Help &amp; About</span></button>
     </div>
   </div>
@@ -3894,7 +3900,7 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
         <div id="sidebarMoreMenu" class="cm-sidebar-export-menu cm-sidebar-more-menu" hidden>
           <div class="cm-menu-group">Manage</div>
           <button type="button" id="btnStorage" aria-label="Manage storage" title="View and delete the comment data every commentable-html document has stored in this browser, to free up local storage"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3z M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6 M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg><span>Manage storage</span></button>
-          <button type="button" id="btnClearAll" class="danger" aria-label="Clear Comments" title="Delete every comment (asks for confirmation first)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16 M9 7V5h6v2 M6 7l1 13h10l1-13"/></svg><span>Clear all comments</span></button>
+          <button type="button" id="btnClearAll" class="danger" title="Delete every comment (asks for confirmation first)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16 M9 7V5h6v2 M6 7l1 13h10l1-13"/></svg><span>Clear all comments</span></button>
         </div>
       </div>
       <button type="button" id="btnHelp" class="cm-ribbon-btn cm-help-btn" title="Open help and about: what every button does and how the review workflow works" aria-haspopup="dialog"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M9.5 9.5a2.5 2.5 0 0 1 4.5 1.4c0 1.6-2 1.9-2 3.1 M12 17h.01"/></svg><span class="cm-ribbon-cap">Help</span></button>
@@ -4136,7 +4142,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.322.0";
+const CMH_VERSION = "1.325.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -12932,7 +12938,8 @@ function _setCopyAllTip(btn, text) {
   else btn.setAttribute("data-cmh-tip", text);
 }
 function updateCopyAllState() {
-  const disabled = !_copyAllState().hasContent;
+  const state = _copyAllState();
+  const disabled = !state.hasContent;
   Object.keys(CMH_COPY_ALL_TITLES).forEach((id) => {
     const btn = document.getElementById(id);
     if (!btn) return;
@@ -12940,6 +12947,10 @@ function updateCopyAllState() {
     btn.classList.toggle("cm-copy-disabled", disabled);
     _setCopyAllTip(btn, disabled ? "No comments to copy" : CMH_COPY_ALL_TITLES[id]);
   });
+  // The Clear all items share this state's document scans rather than repeating them: an extra
+  // widgetStateChanges()/checklistChanges()/notesChanges() pass here would run on every keystroke
+  // of a note burst (CMH-NOTE-17 budgets exactly two document scans per dirty transition).
+  if (typeof updateClearAllState === "function") updateClearAllState(state);
 }
 const _cmRenderCommentsForCopyAll = renderComments;
 renderComments = function () {
@@ -14953,11 +14964,53 @@ function performClearAll() {
   if (typeof resetAllNotes === "function") resetAllNotes();
   renderComments();
 }
-document.getElementById("btnClearAll").addEventListener("click", async () => {
+// Clear all comments has TWO entry points - the sidebar More menu and the toolbar overflow menu
+// (the only chrome a reviewer has while the panel is hidden). Both bind to this one handler, so
+// the confirmation text, the nothing-to-clear guard, and the reset semantics can never disagree;
+// only the focus-restore target differs, because each item lives in a menu that closes on click
+// and focus must land on the still-visible trigger of the menu the user actually opened.
+const CMH_CLEAR_ALL_TITLE = "Delete every comment (asks for confirmation first)";
+const CMH_CLEAR_ALL_EMPTY_TIP = "Nothing to clear - there are no comments, note, checklist, or layout changes yet";
+function _clearAllPending() {
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
   const noteChanges = (typeof notesChanges === "function") ? notesChanges() : [];
-  if (_clearAllBusy || (!comments.length && !stateChanges.length && !clChanges.length && !noteChanges.length)) return;  // guard re-entrant double-clicks
+  return comments.length + stateChanges.length + clChanges.length + noteChanges.length;
+}
+function _setClearAllTip(btn, text) {
+  // Mirror the copy-all tip handling: once the tooltip layer has adopted a control (title moved to
+  // data-cmh-tip) the managed attribute is the one to refresh, or the native tooltip reappears.
+  if (btn.hasAttribute("title") || !btn.hasAttribute("data-cmh-tip")) btn.setAttribute("title", text);
+  else btn.setAttribute("data-cmh-tip", text);
+}
+// Keep BOTH clear items showing the same empty state, so the two entry points never disagree about
+// whether there is anything to clear (the same contract Copy all uses). The caller passes the
+// already-computed copy-all state so this adds no extra document scan on a typing burst.
+function updateClearAllState(state) {
+  const s = state || (typeof _copyAllState === "function" ? _copyAllState() : null);
+  const disabled = s
+    ? !(comments.length || s.changes.length || s.clCh.length || s.noteCh.length)
+    : _clearAllPending() === 0;
+  ["btnClearAll", "btnClearAllTop"].forEach(function (id) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.setAttribute("aria-disabled", disabled ? "true" : "false");
+    btn.classList.toggle("cm-clear-disabled", disabled);
+    _setClearAllTip(btn, disabled ? CMH_CLEAR_ALL_EMPTY_TIP : CMH_CLEAR_ALL_TITLE);
+  });
+}
+updateClearAllState();
+async function _confirmClearAll(restoreId) {
+  // A confirm dialog is already up: do NOT touch focus - moving it to the menu trigger would pull
+  // the caret outside the aria-modal dialog and behind its overlay.
+  if (_clearAllBusy) return;
+  const restore = document.getElementById(restoreId);
+  if (_clearAllPending() === 0) {
+    // Nothing to clear: no dialog opens, so no restoreFocus fires - but the owning menu still
+    // closes on this click, which would drop focus to <body>. Put it back on the menu's trigger.
+    if (restore && typeof restore.focus === "function") restore.focus();
+    return;
+  }
   _clearAllBusy = true;
   try {
     const ok = await showConfirm({
@@ -14967,14 +15020,23 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
       confirmLabel: "OK",
       cancelLabel: "Cancel",
       danger: true,
-      // Clear lives in the More menu, which closes (hiding btnClearAll) when clicked, so restore
-      // focus to the still-visible More button instead of the now-hidden Clear item.
-      restoreFocus: document.getElementById("btnMoreMenu") || undefined,
+      restoreFocus: restore || undefined,
     });
     if (!ok) return;
     performClearAll();
   } finally {
     _clearAllBusy = false;
+  }
+}
+[["btnClearAll", "btnMoreMenu"], ["btnClearAllTop", "btnToolbarMenu"]].forEach(function (pair) {
+  const b = document.getElementById(pair[0]);
+  if (b) {
+    b.addEventListener("click", function () {
+      // The listener cannot await, so surface a failure instead of leaving a floating rejection.
+      _confirmClearAll(pair[1]).catch(function (e) {
+        try { console.warn("commentable-html: clear all comments failed:", e); } catch (e2) { /* no-op */ }
+      });
+    });
   }
 });
 /* ---------- Export as Portable (embed comments + download a copy) ---------- */
@@ -16651,6 +16713,9 @@ function showHelp(restoreEl) {
       + '<div class="cm-help-topic-body">' + body + '</div>'
       + '</details>';
   };
+  // An older document's shell may predate the toolbar Clear item while loading current companion
+  // assets, so only advertise that entry point when this document actually has it.
+  const hasToolbarClear = !!document.getElementById("btnClearAllTop");
   box.innerHTML =
     '<div class="cm-help-head">' +
       '<h2>' + CMH_ICON_SVG + ' Commentable HTML v' + CMH_VERSION + ' - Help</h2>' +
@@ -16711,7 +16776,7 @@ function showHelp(restoreEl) {
           '<li><strong>Edit from the document:</strong> hover a highlight and click the orange <em>Open comment</em> bubble to see the note right there, then click <strong>Edit</strong> to edit it in place in that little dialog - no jumping to another part of the page.</li>' +
           '<li><strong>Jump</strong> from a card to its highlight (collapsed sections auto-expand first).</li>' +
           '<li><strong>Sort</strong> the cards oldest-first or newest-first with the arrows, or click again for document order.</li>' +
-          '<li><strong>Clear all comments</strong> (in the <strong>More</strong> menu) deletes every comment and always asks for confirmation first (Cancel is the default).</li>' +
+          '<li><strong>Clear all comments</strong> (in the sidebar\'s <strong>More</strong> menu' + (hasToolbarClear ? ', or the collapsed toolbar\'s overflow <kbd>...</kbd> menu' : '') + ') deletes every comment and always asks for confirmation first (Cancel is the default)' + (hasToolbarClear ? ', so you can clear without re-opening the panel' : '') + '.</li>' +
         '</ul>') +
       T('Threads, replies and author names',
         '<ul>' +
@@ -16726,7 +16791,7 @@ function showHelp(restoreEl) {
           '<li>The <strong>Comments</strong> heading carries a <strong>count bubble</strong> showing how many items still need attention: open comment threads plus any unresolved review-note and checklist changes (each top-level thread counts once, not its individual replies). The portability badge and version sit at the right of the same row.</li>' +
           '<li>Below it, a row of captioned buttons - <strong>Search</strong>, <strong>Sort</strong>, <strong>More</strong>, <strong>Help</strong>, and <strong>Hide</strong>. <strong>Help</strong> opens this dialog; <strong>Hide</strong> collapses the panel, leaving a small floating toolbar to bring it back.</li>' +
           '<li><strong>Copy all</strong> (the primary button) copies every comment as a Markdown bundle to paste back to the agent; beside it, the <strong>Export</strong> button opens the file-format menu. The <strong>Search</strong> button in the ribbon reveals a search field (hidden by default) that filters the list by each comment\'s note text.</li>' +
-          '<li><strong>More</strong> opens a menu with <strong>Manage storage</strong> and <strong>Clear all comments</strong>. While the panel is collapsed, the floating toolbar\'s overflow <kbd>...</kbd> menu holds the export actions, Manage storage, and <strong>Help &amp; About</strong>.</li>' +
+          '<li><strong>More</strong> opens a menu with <strong>Manage storage</strong> and <strong>Clear all comments</strong>. While the panel is collapsed, the floating toolbar\'s overflow <kbd>...</kbd> menu holds the export actions, Manage storage, ' + (hasToolbarClear ? '<strong>Clear all comments</strong> (the same confirmed clear), ' : '') + 'and <strong>Help &amp; About</strong>.</li>' +
         '</ul>') +
       T('Portable or Not portable',
         '<p>A bubble at the top of the panel shows whether this file is safe to share as-is:</p>' +

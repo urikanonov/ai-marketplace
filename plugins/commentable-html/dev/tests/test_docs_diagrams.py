@@ -257,7 +257,8 @@ class SkillTrimDocsTests(unittest.TestCase):
         checks = {
             "document-layout.md": (
                 "runtime toolbar",
-                "Clear Comments",
+                "export actions, **Manage storage**, **Clear all comments**, and Help",
+                "sidebar **More** menu and from the\ncollapsed toolbar's **... more** menu",
                 "Per-document configuration example",
                 "oldest-first and newest-first",
                 "Clicking the active arrow again",
