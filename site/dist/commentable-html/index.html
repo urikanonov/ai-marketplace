@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.326.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.332.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.332.0] - 2026-08-02</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The in-document comment dialog no longer overflows a short viewport, which could put its Cancel and Save buttons out of reach. The dialog now caps its height to the measured viewport (minus the same 8px margin its position clamp uses, so a dynamic mobile browser toolbar counts) with a <code>calc(100vh - 16px)</code> CSS fallback and its own <code>box-sizing: border-box</code>, and scrolls internally instead: the rendered note in the note view and the toolbar-plus-textarea block in the edit form, with the actions row pinned and on screen. An in-progress edit, which deliberately outlives its anchor scrolling out of view, is re-fitted to the viewport on its own, so a mid-edit viewport shrink no longer strands Save and Cancel off screen either, and content that grows after the dialog was placed - dragging the textarea&#x27;s resize handle - re-fits it through a <code>ResizeObserver</code> rather than pushing the actions row past the bottom edge. (<code>CMH-CORE-18</code>)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.326.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>A floating control (the hover bubble, the <strong>Add Comment</strong> buttons, the whole-diagram button) is now bounded by the intersection of EVERY clipping container around its target, not just the nearest one. A diagram host inside a scrolling table wrapper, inside a <code>figure.chart</code>, or inside a raw diff block is itself clipped by that outer box, so a target the outer box has scrolled out of view now hides the control instead of leaving it floating over unrelated content, and a target that is only partly visible clamps the control to the visible intersection. Previously the resolver honoured only the first matching ancestor, so the inner box shadowed the outer scroller. Only a container that genuinely clips takes part, so a recognised box an author left <code>overflow: visible</code> (or a <code>display: contents</code> one, which generates no box at all) no longer bounds a control anchored to content that plainly spills out of it.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.325.0] - 2026-08-02</h3></div>
             <div class="group-label">Added</div>
@@ -515,8 +524,6 @@
               <li>Both <code>Clear all comments</code> items take their accessible name from their visible label instead of an <code>aria-label=&quot;Clear Comments&quot;</code> override, so a screen reader announces (and a voice-control user can speak) the same name that is printed on the destructive control.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.322.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -557,16 +564,7 @@
               <li>Exported HTML now always keeps the authoring session provenance, and the <code>Keep AI session id in exports</code> checkbox is gone from both the toolbar overflow menu and the sidebar Export menu. The <code>commentable-html-session-id</code> and <code>commentable-html-agent</code> meta tags survive every Portable, Offline, and Plain HTML export unconditionally. The session id is an opaque agent session identifier the authoring tools already stamp by default and the footer already offers to copy, not a secret, so stripping it by default bought almost nothing while it cost a row in the most space-constrained menu and silently dropped authoring provenance from the copy a reviewer actually receives - the copy where knowing which agent session produced the document is most useful. The now-dead strip path in the export runtime is removed with it.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.315.0] - 2026-08-02</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The in-document comment dialog no longer swallows the reviewer&#x27;s first click on a control of an editor that is open alongside it. The dialog&#x27;s dismiss handler swallows any outside pointer click (capture-phase <code>preventDefault</code> + <code>stopPropagation</code>) so it cannot follow a link the highlight sits on, but the side pane&#x27;s inline reply/edit editor and the floating composer both stay open when the dialog opens, so the first click on their formatting, Save, or Cancel buttons did nothing and had to be repeated. Both are now carved out. Every other outside click is unchanged, including the keyboard-activated (<code>detail === 0</code>) case and the mid-edit case where the dialog stays open.</li>
-              <li>The whole guard is now resolved by IDENTITY against the layer&#x27;s own state - the one active inline editor, the composers the layer opened, and the live dialog element - rather than by matching <code>cm-</code> class names. The annotated document is author content, so a class match let content in the document spoof its way out of the swallow; the &quot;the click landed inside the dialog&quot; test had the same hole, where a spoofing element left the real dialog open AND let the click act. Document content carrying either class name is now swallowed like any other outside click.</li>
-              <li>The export-intent toast no longer re-derives the dialog&#x27;s swallow condition. It asks the dialog&#x27;s own predicate, so the announcement can never disagree with whether the export click runs. That predicate keys on the dismiss listener being ARMED (it is registered a tick after the dialog opens), not merely on the dialog existing, so the two windows where nothing is swallowed - the pre-registration tick and a mid-edit dialog - now announce the export that does run instead of suppressing it.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">244 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">245 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

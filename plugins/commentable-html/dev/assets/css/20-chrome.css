@@ -308,14 +308,24 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 12px;
   box-shadow: var(--cp-shadow); padding: var(--cp-chrome-card-y);
   display: flex; flex-direction: column; gap: var(--cp-chrome-card-gap);
+  /* Height cap: a fallback for the exact px cap the runtime sets from the measured viewport
+     (issue #825). Whatever does not fit scrolls inside the note or the edit form below, never past
+     the viewport edge, so Save/Cancel stay reachable on a short screen. `box-sizing` is set here
+     rather than inherited from the host document: with the default content box the cap would
+     exclude this padding and border and the dialog would overflow the viewport again. */
+  box-sizing: border-box; max-height: calc(100vh - 16px); overflow: hidden;
 }
 .cm-comment-popover-note {
   white-space: pre-wrap; word-break: break-word; color: var(--cp-text);
   font-size: var(--cp-chrome-body-font); line-height: 1.5;
-  max-height: 40vh; overflow-y: auto;
+  max-height: 40vh; overflow-y: auto; min-height: 0; padding: 4px;
 }
-.cm-comment-popover-meta { color: var(--cp-text-muted); font-size: var(--cp-chrome-small-font); }
-.cm-comment-popover-edit { display: flex; flex-direction: column; }
+.cm-comment-popover-meta { color: var(--cp-text-muted); font-size: var(--cp-chrome-small-font); flex: none; }
+/* The 4px inset keeps the toolbar's, the textarea's, and a note link's focus ring inside the
+   scrollport: a scroll container clips, and those sit flush against its edges. It covers the
+   layer's widest focus treatment (a 2px outline at a 2px offset) with a pixel to spare - widen it
+   alongside any wider ring. */
+.cm-comment-popover-edit { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; padding: 4px; }
 /* The shared formatting toolbar (issue #776) sits above the textarea in a narrow fixed-width
    dialog, so tighten it (as the side pane does) to keep all seven buttons on one row. */
 .cm-comment-popover-edit .cm-format-bar { margin: 0 0 0.35rem; gap: 3px; }
@@ -332,7 +342,7 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   background: var(--cp-surface); color: var(--cp-text);
 }
 .cm-comment-popover-input.cm-invalid { border-color: var(--cp-danger, #dc2626); }
-.cm-comment-popover-acts { display: flex; justify-content: flex-end; gap: var(--cp-chrome-gap); }
+.cm-comment-popover-acts { display: flex; justify-content: flex-end; gap: var(--cp-chrome-gap); flex: none; }
 .cm-comment-popover button {
   background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
   padding: var(--cp-chrome-control-y) var(--cp-chrome-control-x); border-radius: 6px; cursor: pointer;

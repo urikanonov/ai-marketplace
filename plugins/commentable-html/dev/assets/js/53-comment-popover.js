@@ -25,6 +25,15 @@ let _popoverNoteId = null;
 // Removes the formatting toolbar's listeners; the toolbar itself dies with the editor markup, so
 // this only has to run when the editor is replaced or the dialog closes.
 let _popoverFormatOff = null;
+// The last position the layer WROTE, so the unanchored re-fit clamps its own previous output rather
+// than a measured rect: a fixed element inside a transformed host ancestor measures at a different
+// offset than it was written to, and feeding that back in would walk the dialog across the screen.
+let _popoverLeft = null;
+let _popoverTop = null;
+// Watches the dialog's own box, so content that grows AFTER it was positioned (the reviewer drags
+// the textarea's resize handle) is re-fitted instead of pushing the actions row past the bottom.
+let _popoverResizeObs = null;
+let _popoverRefitting = false;
 
 function _releasePopoverFormatBar() {
   if (!_popoverFormatOff) return;
@@ -33,23 +42,70 @@ function _releasePopoverFormatBar() {
   try { off(); } catch (e) {}
 }
 
+// The margin the dialog keeps from every viewport edge, and the height cap derived from it.
+const _POPOVER_MARGIN = 8;
+
+// Nothing else constrains the dialog's height, so on a short viewport the edit form's Save/Cancel
+// row could sit past the bottom edge with no way to scroll to it (issue #825). Cap it to the
+// MEASURED viewport - which follows a dynamic mobile browser toolbar, unlike a `vh` unit - and let
+// the content scroll inside. No floor: a cap that exceeded the viewport would reintroduce the very
+// overflow this prevents.
+function _capCommentPopoverToViewport() {
+  if (!commentPopover) return;
+  commentPopover.style.maxHeight = Math.max(0, window.innerHeight - _POPOVER_MARGIN * 2) + "px";
+}
+
+// Re-fit the dialog to the viewport WITHOUT re-anchoring it. An in-progress edit deliberately
+// survives its anchor scrolling out of view, and on that path there is no anchor to position
+// against - but a viewport shrink must still not strand Save/Cancel off screen.
+function _clampCommentPopoverIntoViewport() {
+  if (!commentPopover) return;
+  _capCommentPopoverToViewport();
+  const margin = _POPOVER_MARGIN;
+  const w = commentPopover.offsetWidth || 320;
+  const h = commentPopover.offsetHeight || 160;
+  const cur = (_popoverLeft == null || _popoverTop == null)
+    ? commentPopover.getBoundingClientRect()
+    : { left: _popoverLeft, top: _popoverTop };
+  const left = Math.min(Math.max(margin, cur.left), Math.max(margin, window.innerWidth - w - margin));
+  const top = Math.min(Math.max(margin, cur.top), Math.max(margin, window.innerHeight - h - margin));
+  _writeCommentPopoverPosition(left, top);
+}
+
+function _writeCommentPopoverPosition(left, top) {
+  _popoverLeft = left;
+  _popoverTop = top;
+  commentPopover.style.left = left + "px";
+  commentPopover.style.top = top + "px";
+}
+
+// Re-fit after the dialog's own content changed size. Guarded against re-entry because writing the
+// cap can itself change the box the observer is watching.
+function _refitCommentPopover() {
+  if (!commentPopover || _popoverRefitting) return;
+  _popoverRefitting = true;
+  try { _syncCommentPopoverToAnchor(); } finally { _popoverRefitting = false; }
+}
+
 function _positionCommentPopover(mark) {
   if (!commentPopover || !mark) return false;
+  // Cap BEFORE anything can return early, so the height cap is never skipped on a path that leaves
+  // the dialog open, and before measuring, so the clamp below sees the capped height.
+  _capCommentPopoverToViewport();
   const rect = mark.getClientRects()[0] || mark.getBoundingClientRect();
   // Close instead of clamping when the anchor is scrolled/clipped out of view, matching the
   // hover bubble and the other floating affordances (they all use _clipAwareRect).
   const visible = (typeof _clipAwareRect === "function") ? _clipAwareRect(mark, rect) : rect;
   if (!visible) return false;
+  const margin = _POPOVER_MARGIN;
   const w = commentPopover.offsetWidth || 320;
   const h = commentPopover.offsetHeight || 160;
-  const margin = 8;
   let left = visible.left;
   let top = visible.bottom + margin;
   if (top + h > window.innerHeight) top = Math.max(margin, visible.top - h - margin);
   left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - w - margin));
   top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - h - margin));
-  commentPopover.style.left = left + "px";
-  commentPopover.style.top = top + "px";
+  _writeCommentPopoverPosition(left, top);
   return true;
 }
 
@@ -99,12 +155,15 @@ function closeCommentPopover() {
   if (_popoverKeydown) { document.removeEventListener("keydown", _popoverKeydown, true); _popoverKeydown = null; }
   _popoverArmed = false;
   _releasePopoverFormatBar();
+  if (_popoverResizeObs) { try { _popoverResizeObs.disconnect(); } catch (e) {} _popoverResizeObs = null; }
   commentPopover.remove();
   commentPopover = null;
   _popoverAnchorMark = null;
   _popoverEditing = false;
   _popoverCid = null;
   _popoverNoteId = null;
+  _popoverLeft = null;
+  _popoverTop = null;
 }
 
 // The comment the open dialog is showing, re-read from the live array so a delete or an edit made
@@ -191,7 +250,7 @@ function _renderCommentPopoverView(c) {
     e.preventDefault(); e.stopPropagation();
     closeCommentPopover();
   });
-  _positionCommentPopover(_popoverAnchorMark);
+  if (!_positionCommentPopover(_popoverAnchorMark)) _clampCommentPopoverIntoViewport();
 }
 
 // Cancel an in-progress edit: back to the note view with focus on Edit, dialog left open (unless
@@ -302,7 +361,10 @@ function _renderCommentPopoverEdit(c) {
   };
   wrap.addEventListener("keydown", onEditorKeydown);
   acts.addEventListener("keydown", onEditorKeydown);
-  _positionCommentPopover(_popoverAnchorMark);
+  // The edit form is much taller than the note view, so if the anchor cannot be resolved right now
+  // (it scrolled out of view, or its highlight was re-rendered) the dialog is re-fitted on its own
+  // rather than left at the shorter view's position with the taller form in it.
+  if (!_positionCommentPopover(_popoverAnchorMark)) _clampCommentPopoverIntoViewport();
   setTimeout(() => { try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {} }, 0);
 }
 
@@ -332,6 +394,15 @@ function openCommentPopover(id, mark) {
   _popoverNoteId = "cmh-pop-note-" + Math.random().toString(36).slice(2, 9);
   _renderCommentPopoverView(c);
   if (!_positionCommentPopover(_popoverAnchorMark)) { closeCommentPopover(); return; }
+  // Content that grows AFTER the dialog was positioned (the reviewer drags the textarea's resize
+  // handle) would otherwise push the actions row past the bottom edge, where `overflow: hidden`
+  // clips it with no way to scroll back - the same class of bug as the missing height cap.
+  if (typeof ResizeObserver === "function") {
+    try {
+      _popoverResizeObs = new ResizeObserver(() => _refitCommentPopover());
+      _popoverResizeObs.observe(el);
+    } catch (e) { _popoverResizeObs = null; }
+  }
 
   // A click outside the dialog closes it. A pointer click (detail > 0) is also swallowed
   // (capture-phase preventDefault + stopPropagation) so it performs no other action - for
@@ -390,7 +461,11 @@ function openCommentPopover(id, mark) {
 function _syncCommentPopoverToAnchor() {
   if (!commentPopover) return;
   const pinned = _popoverAnchorMark && root.contains(_popoverAnchorMark) && _positionCommentPopover(_popoverAnchorMark);
-  if (!pinned && !_popoverEditing) closeCommentPopover();
+  if (!pinned && !_popoverEditing) { closeCommentPopover(); return; }
+  // An edit outlives its anchor scrolling away, so re-fit it to the viewport on its own: without
+  // this, a viewport shrink mid-edit would keep the stale cap and position and put Save/Cancel back
+  // out of reach (issue #825).
+  if (!pinned) _clampCommentPopoverIntoViewport();
 }
 window.addEventListener("scroll", _syncCommentPopoverToAnchor, true);
 window.addEventListener("resize", _syncCommentPopoverToAnchor);

@@ -4,6 +4,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.332.0] - 2026-08-02
+
+### Fixed
+
+- The in-document comment dialog no longer overflows a short viewport, which could put its Cancel
+  and Save buttons out of reach. The dialog now caps its height to the measured viewport (minus the
+  same 8px margin its position clamp uses, so a dynamic mobile browser toolbar counts) with a
+  `calc(100vh - 16px)` CSS fallback and its own `box-sizing: border-box`, and scrolls internally
+  instead: the rendered note in the note view and the toolbar-plus-textarea block in the edit form,
+  with the actions row pinned and on screen. An in-progress edit, which deliberately outlives its
+  anchor scrolling out of view, is re-fitted to the viewport on its own, so a mid-edit viewport
+  shrink no longer strands Save and Cancel off screen either, and content that grows after the
+  dialog was placed - dragging the textarea's resize handle - re-fits it through a `ResizeObserver`
+  rather than pushing the actions row past the bottom edge. (`CMH-CORE-18`)
+
 ## [1.326.0] - 2026-08-02
 
 ### Fixed
