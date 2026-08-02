@@ -29,6 +29,14 @@ spec-and-test rules in [../AGENTS.md](../AGENTS.md); where they overlap, AGENTS.
   `SITE-DEMO-08`, `CMH-DIFF-11`). Reuse an id when you refine its behavior; never renumber or delete a
   shipped id. The spec row must name the covering test by its exact title, and the test title must keep
   the id in parentheses so the two stay searchable together.
+- **Do not borrow another file's feature id.** `scripts/check_spec_test_refs.py` fails when one id is
+  carried by test titles in MORE THAN ONE file and that id's spec row does not cite every one of them.
+  Two tests in the SAME spec file may share an id (a single behavior asserted from several angles is
+  the existing convention here); a test in a DIFFERENT file that reuses an id is either a new behavior
+  that needs its own id, or genuine extra coverage that the row must list. That is the gate the
+  `DEMO-TRIM-06`/`DEMO-TRIM-07` reuse slipped past (#800). The same checker also verifies the reverse
+  direction - every test in a `*regressions*.spec.js` or `*.test.mjs` suite that carries an id is
+  owned by that id's row.
 - **Assert observable behavior, not tautologies.** Prove the real outcome (an element is visible, a
   block scrolls, a value navigates), not a metric that is true by construction. A prior mobile
   scroll test was rewritten because it asserted scroll numbers that could not fail; test what a user

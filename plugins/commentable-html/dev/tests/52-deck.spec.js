@@ -172,7 +172,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(page.locator(".cmh-deck-count")).toHaveText("1 / 3");
   });
 
-  test("CMH-DECK-20: edge hover arrows reveal, click-navigate, and Enter/Space advance only from the stage", async ({ page }) => {
+  test("CMH-DECK-32: edge hover arrows reveal, click-navigate, and Enter/Space advance only from the stage", async ({ page }) => {
     await openDeck(page);
     const viewport = page.locator(".deck-viewport");
     const prevEdge = page.locator(".cmh-deck-edge-nav-prev");
