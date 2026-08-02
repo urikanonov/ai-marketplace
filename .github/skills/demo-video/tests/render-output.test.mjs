@@ -7,6 +7,7 @@ import {
   tokenizeCommand,
   joinCommand,
   askFromCast,
+  castText,
   terminalPage,
   stagePage,
 } from "../tools/record_demo.mjs";
@@ -340,16 +341,26 @@ test("the phase caption never overlaps the window chrome (DEMO-SAFE-39)", () => 
   // The SHADOW counts, not just the box: a blur reaches above the pill by (blur - offset), and a
   // soft gradient over the strip is still a strip that is not flat. The first cut of this fix
   // cleared the border but left the shadow bleeding in, and the gate still failed.
-  const shadow = /#phase\s*\{[^}]*box-shadow:\s*0\s+(\d+)px\s+(\d+)px/.exec(css);
-  assert.ok(shadow, "#phase has no box-shadow to account for");
-  const reach = Number(shadow[2]) - Number(shadow[1]);
+  // Parsed strictly: a `spread` 4th length, or a second comma-separated layer, would each add reach
+  // the naive two-capture form silently ignored, so an unexpected shape fails here rather than in a
+  // published clip.
+  const declaration = /#phase\s*\{[^}]*?box-shadow:\s*([^;}]+)/.exec(css);
+  assert.ok(declaration, "#phase has no box-shadow to account for");
+  // Split on TOP-LEVEL commas only - a colour like `rgba(0,0,0,.5)` carries its own.
+  const layers = declaration[1].replace(/\([^)]*\)/g, "()").split(",");
+  assert.equal(layers.length, 1,
+    `#phase has ${layers.length} shadow layers; this test only reasons about one`);
+  const lengths = layers[0].match(/-?[\d.]+(?:px)?/g) || [];
+  assert.equal(lengths.length, 3,
+    `#phase box-shadow has ${lengths.length} lengths, expected offset-x, offset-y and blur`);
+  const [, offsetY, blur] = lengths.map((v) => Number(v.replace("px", "")));
+  const reach = blur - offsetY;
   const top = cssPx(css, "#phase", "top");
   assert.ok(top - reach >= chromeBottom,
     `the phase caption reaches ${top - reach}px, inside the chrome that ends at ${chromeBottom}px`);
 });
 
 test("the window chrome carries no text unless the operator opts in (DEMO-SAFE-38)", () => {
-
   for (const [name, build] of [["terminal", buildTerminalPage], ["stage", buildStagePage]]) {
     for (const cast of [
       { cols: 80, rows: 24, command: LEAKY },
@@ -370,5 +381,36 @@ test("the window chrome carries no text unless the operator opts in (DEMO-SAFE-3
       LEAKY,
       `${name} page ignored --show-command`,
     );
+    // A cast can carry an EMPTY argv (a foreign or truncated one). `[]` is truthy in JS, so a bare
+    // `argv || command` picks it and the usable command is silently dropped - the opted-in chrome
+    // then reads "session" and the operator is told nothing about why.
+    assert.equal(
+      chromeTitleOf(build({ cols: 80, rows: 24, argv: [], command: "copilot --banner" }, { "show-command": true })),
+      "copilot --banner",
+      `${name} page let an empty argv shadow the command`,
+    );
   }
+});
+
+// Every scan gate reads `castText`, and what it does NOT read cannot be caught. The title card is
+// the largest type in the clip and `askFromCast` fills it from a cast MARK, so a foreign, legacy or
+// hand-edited cast whose mark text carries the launch command (or a host, a home path, a token)
+// sails through `scan`/`render`/`loop` and is published in the opening frames. The marks were
+// outside the scan the whole time; it only became load-bearing now that the chrome draws nothing,
+// which makes the card the primary text surface.
+test("the credential scan reads the text the title card will publish (DEMO-SAFE-40)", () => {
+  const cast = {
+    cols: 80,
+    rows: 24,
+    command: "copilot",
+    argv: ["copilot"],
+    events: [],
+    marks: [{ label: "ask", text: `please review ${LEAKY}` }],
+  };
+  const scanned = castText(cast);
+  assert.ok(scanned.includes("disable-mcp-server"),
+    "the scan does not read mark text, so it cannot catch a leak the title card will publish");
+  // And what the card actually renders is that same text, so the two cannot drift apart.
+  assert.ok(askFromCast(cast, {}).includes("disable-mcp-server"),
+    "the title card no longer renders the ask mark; re-point this test at whatever it renders");
 });

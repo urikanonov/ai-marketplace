@@ -11,12 +11,20 @@ Reviewing that by eye does not work. It survived two review rounds and a frame-b
 first time, because the eye reads a title bar as chrome rather than as content. So this checks every
 frame mechanically instead:
 
-  * a TERMINAL frame is identified by its dark background where a browser frame is light;
+  * a frame is JUDGED when the traffic lights are drawn, unfaded, at their canonical position -
+    which is exactly the condition under which the strip beside them IS the title bar;
   * on such a frame the title strip must be FLAT - a solid masked box, or empty chrome. Rendered
     text is high-contrast against that background, so any real spread in luminance means text.
 
 It is deliberately not a text recogniser. "The strip is not flat" is the property that matters and
 it cannot be argued with, whereas an OCR pass would invite a debate about confidence thresholds.
+
+Judging on the lights replaced a mid-frame luminance probe that stood in for "is this the terminal".
+That proxy both dropped ~10% of plainly-terminal frames on the busiest clip (dense output raised the
+mid-frame mean past its cut-off, and those are precisely the frames whose strip is most crowded) and
+admitted cross-fade frames where the report slides OVER the chrome. The lights answer the real
+question directly: they are only fully saturated at that spot when the chrome is on screen, settled,
+and unoccluded.
 """
 
 import argparse
@@ -43,29 +51,48 @@ CLIP_DIR = os.path.join("site", "dist", "assets")
 #   .wrap    padding 18px 20px      -> chrome starts at y=18, content is inset 20px each side
 #   .dot     11px, gap 8px, three   -> the lights span x=20..69   (video 12..41)
 #   .title   margin-left 8px        -> a window title starts at x=77  (video 46)
-#   .chrome  padding-bottom 12px    -> the terminal starts at y=41  (video 25)
+#   .chrome  padding-bottom 20px    -> the terminal starts at y=49  (video 29)
 #
-# The strip stops SHORT of the terminal. Running it to the bottom of the chrome block overlapped the
-# terminal's first row, and that row's antialiased top read as a strip that is not flat - 14 frames
-# of a clean clip flagged with no text anywhere near the title bar.
+# The strip stops SHORT of the terminal, and the chrome's bottom padding is what buys that room.
+# Running the strip to the bottom of the chrome block overlapped the terminal's first row, and that
+# row's antialiased top read as a strip that is not flat - 14 frames of a clean clip flagged with no
+# text anywhere near the title bar. Merely touching its edge was not enough either: with 12px of
+# padding the worst judged frame measured a spread of 10 against a tolerance of 12, so the next
+# re-record with slightly brighter top-row output would have failed. The separation is the fix.
 STRIP = "crop=iw-66:22:46:1"
-# A patch from the MIDDLE of the frame, used only to tell a terminal frame from a browser one: the
-# terminal is near-black there, a browser page is light. It is deliberately far from the title strip
-# - an earlier version sampled the strip's own row, so the command text raised the reading and the
-# leaking frames scored closer to a fade than to the terminal they plainly were.
-KIND = "crop=400:200:200:200"
-# Luminance spread above which the strip is carrying something drawn rather than a flat fill. A
-# masked box measures 0; antialiased text on this theme measures far above this.
-FLAT_TOLERANCE = 12.0
-# Mean luminance below which a frame is UNAMBIGUOUSLY the terminal. Measured: a settled terminal
-# frame reads 29-36 and the cross-fade jumps straight to 42 and climbs, so this sits in the gap.
-# Being strict is what lets every terminal frame be judged - including the LAST ones in a segment,
-# which is exactly where the mask ran out and the command was published.
-TERMINAL_MAX_MEAN = 38.0
-# Saturation above which the strip is holding something COLOURED. Nothing in the title bar is: the
-# chrome is grey on near-black. The traffic lights are vivid, so this catches a clip whose scale
-# pushed them into the strip, which otherwise surfaces as an unexplainable flatness failure.
-LIGHTS_SATURATION = 80.0
+# The traffic lights. A frame is JUDGED only when they are fully drawn here, which is precisely when
+# the strip beside them is the title bar: settled, on screen, and not faded under an overlay.
+LIGHTS = "crop=30:8:12:11"
+# Saturation at which the lights are fully drawn. Measured: 83-93 unoccluded, and any cross-fade or
+# overlay drops it well below. On the loop clip, admitting frames at 60 let the report panel's white
+# edge into the strip (spread 86); at this value the same clip's worst judged frame measures 12.
+LIGHTS_PRESENT = 80.0
+# Below this ANYWHERE in a clip there is no window chrome at all, so having judged nothing is the
+# honest answer rather than a blind spot: the browser-only clip peaks at 2. A clip whose lights DO
+# appear but never reach LIGHTS_PRESENT is a geometry problem, not a pass - see scan_clip.
+LIGHTS_ABSENT = 20.0
+# Luminance spread above which the strip is carrying something drawn rather than a flat fill.
+# Measured end to end at the publish scale, rendering the SAME cast both ways: a real leaked title
+# (`--show-command`) reads 167, a clean terminal-only clip reads 8, and the loop clip - whose report
+# panel cross-fades over the window - reads 12. This sits in that 13x gap with room on both sides.
+# It used to sit at 12, i.e. exactly on the noise ceiling with zero margin, which is why a clean
+# re-record kept landing one unit from failing.
+FLAT_TOLERANCE = 40.0
+# Saturation above which the STRIP is holding something COLOURED. Nothing in the title bar is: the
+# chrome is grey on near-black. Measured, a judged frame's strip peaks at 15 while the lights read
+# 83-93, so this sits in that gap - it catches a clip whose scale pushed the lights into the strip,
+# which otherwise surfaces as an unexplainable flatness failure, without crying scale on a clean clip.
+LIGHTS_SATURATION = 60.0
+# The scale every published clip is rendered at, and the one these offsets describe.
+PUBLISH_SCALE = 0.6
+
+
+class ScaleMismatch(Exception):
+    """A clip whose geometry these offsets do not describe, so its measurements mean nothing.
+
+    Not a SystemExit: `main` scans a LIST, and aborting the whole run on the first bad clip hides
+    every later clip's independent leak until the first is fixed and the gate rerun.
+    """
 
 
 
@@ -115,30 +142,45 @@ def _measure(ffmpeg, clip, crop, keys):
 def scan_clip(ffmpeg, clip):
     """Return the list of (t, spread) for frames whose terminal title strip is not flat."""
     strip = _measure(ffmpeg, clip, STRIP, ("YMIN", "YMAX", "SATMAX"))
-    kind = _measure(ffmpeg, clip, KIND, ("YAVG",))
+    lights = _measure(ffmpeg, clip, LIGHTS, ("SATMAX",))
 
     if not strip:
         raise SystemExit("no frames decoded from %s" % clip)
-    if len(strip) != len(kind):
-        raise SystemExit("frame count mismatch reading %s (%d vs %d)" % (clip, len(strip), len(kind)))
+    if len(strip) != len(lights):
+        raise SystemExit("frame count mismatch reading %s (%d vs %d)"
+                         % (clip, len(strip), len(lights)))
 
-    dark = [row["YAVG"] <= TERMINAL_MAX_MEAN for row in kind]
+    drawn = [row["SATMAX"] >= LIGHTS_PRESENT for row in lights]
+    brightest = max(row["SATMAX"] for row in lights)
+    if brightest < LIGHTS_ABSENT:
+        # No window chrome anywhere: a browser-only clip has no title bar to leak from. Judging
+        # nothing is the honest answer here, and only here.
+        return []
+    if not any(drawn):
+        # The chrome IS in this clip but never lands where these offsets expect it, so every
+        # measurement above was taken somewhere meaningless. Passing would be a gate that checked
+        # nothing while reporting OK - the exact failure this script replaced.
+        raise ScaleMismatch(
+            "%s shows window chrome (lights peak at %.0f) but never at the position these offsets "
+            "describe, so no frame could be judged: it was not rendered at the publish scale. "
+            "Re-render it with --scale %s (see the demo-video SKILL.md)." % (clip, brightest, PUBLISH_SCALE))
+
     bad = []
     for i, row in enumerate(strip):
-        # EVERY unambiguously-terminal frame is judged, with no positional window. A cross-fade
-        # frame is excluded because it is not unambiguously terminal, not because of where it sits -
+        # EVERY frame showing settled chrome is judged, with no positional window. A cross-fade
+        # frame is excluded because its lights are not fully drawn, not because of where it sits -
         # so the last frames of a segment are still checked, and that is precisely where the mask
         # ran out and the command was published.
-        if not dark[i]:
+        if not drawn[i]:
             continue
         # These offsets hold at the publish scale only. Rendered larger, the traffic lights land
         # inside the strip and every terminal frame "leaks" - a phantom that reads exactly like the
         # real thing and sends the operator hunting for text that is not there. Say so instead.
         if row["SATMAX"] > LIGHTS_SATURATION:
-            raise SystemExit(
+            raise ScaleMismatch(
                 "%s has colour in its title strip at t=%.2fs, which means the traffic lights are "
                 "inside it: this clip was not rendered at the publish scale. Re-render it with "
-                "--scale 0.6 (see the demo-video SKILL.md) and scan again." % (clip, row["t"]))
+                "--scale %s (see the demo-video SKILL.md) and scan again." % (clip, row["t"], PUBLISH_SCALE))
         if row["YMAX"] - row["YMIN"] > FLAT_TOLERANCE:
             bad.append((row["t"], row["YMAX"] - row["YMIN"]))
     return bad
@@ -173,9 +215,18 @@ def main(argv):
         return 0
 
     failed = False
+    mis_scaled = False
     for clip in clips:
-        bad = scan_clip(ffmpeg, clip)
         name = os.path.relpath(clip, REPO_ROOT)
+        try:
+            bad = scan_clip(ffmpeg, clip)
+        except ScaleMismatch as problem:
+            # Keep going: every clip gets its own verdict in one run, so a second problem elsewhere
+            # is not hidden behind the first.
+            failed = True
+            mis_scaled = True
+            print("FAIL %s: %s" % (name, problem))
+            continue
         if bad:
             failed = True
             print("FAIL %s: %d frame(s) show text in the terminal title bar" % (name, len(bad)))
@@ -186,8 +237,10 @@ def main(argv):
         else:
             print("OK   %s" % name)
     if failed:
-        print("\nA published clip is showing its launch command. Re-mask the WHOLE terminal segment "
-              "(measure the boundaries, do not guess them), or re-record with the current recorder.")
+        if not mis_scaled:
+            print("\nA published clip is showing its launch command. Re-mask the WHOLE terminal "
+                  "segment (measure the boundaries, do not guess them), or re-record with the "
+                  "current recorder.")
         return 1
     return 0
 
