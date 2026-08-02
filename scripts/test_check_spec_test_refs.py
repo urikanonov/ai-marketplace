@@ -83,6 +83,40 @@ class ReadCachingTests(unittest.TestCase):
             hits = [n for p, n in counts.items() if p.endswith(name)]
             self.assertEqual(hits, [1], "%s was not read exactly once: %r" % (name, hits))
 
+    def test_every_caching_layer_processes_each_source_once(self):
+        """Each layer must be pinned, not just the file read.
+
+        Counting Path.read_text alone would still pass if the AST parse, the symbol walk, or the
+        JS title scan stopped caching - and those were the dominant cost once reads were cached
+        (1511 name lookups produced ~6M ast.walk steps). Entering an OUTER scope keeps the caches
+        alive past check_spec's own scope so their hit/miss counters can be inspected.
+        """
+        parses = []
+        real_parse = refs.ast.parse
+
+        def counting_parse(*args, **kwargs):
+            parses.append(kwargs.get("filename") or (args[1] if len(args) > 1 else "?"))
+            return real_parse(*args, **kwargs)
+
+        with mock.patch.object(refs.ast, "parse", counting_parse):
+            with refs.cache_scope():
+                self.assertEqual(refs.check_spec(self.spec, self.base), [])
+                ast_info = refs._python_ast_fingerprinted.cache_info()
+                sym_info = refs._python_symbols_fingerprinted.cache_info()
+                js_info = refs._js_test_titles.cache_info()
+                read_info = refs._read_fingerprinted.cache_info()
+
+        # All 8 rows name the same two test files, so every layer must be re-used.
+        self.assertEqual(len(parses), 1, "test_demo.py was parsed more than once: %r" % (parses,))
+        self.assertEqual(ast_info.misses, 1, "the AST cache did not collapse to one parse")
+        self.assertEqual(sym_info.misses, 1, "the symbol walk ran more than once per module")
+        self.assertGreater(sym_info.hits, 0, "the symbol-walk cache was never re-used")
+        self.assertGreater(js_info.hits, 0, "the JS title cache was never re-used")
+        self.assertGreater(read_info.hits, 0, "the read cache was never re-used")
+        # One scan per (source, pattern) pair, not per referencing row.
+        self.assertLessEqual(js_info.misses, 2,
+                             "demo.spec.js was scanned once per row: %r" % (js_info,))
+
     def test_a_changed_file_is_picked_up_without_any_cache_clearing(self):
         # Correctness must not depend on a caller remembering to clear. Caches are scoped to one
         # top-level check, so a rewrite between checks is always seen.
