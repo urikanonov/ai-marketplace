@@ -11,6 +11,7 @@ import os
 import re
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -397,6 +398,30 @@ class ScaleGuardTests(unittest.TestCase):
             ccc.scan_clip, ccc.find_ffmpeg = original_scan, original_find
         self.assertEqual(seen, ["bad.webm", "good.webm"])
         self.assertNotEqual(code, 0)
+
+    def test_a_clip_on_another_drive_is_still_scanned(self):
+        # `os.path.relpath` raises on Windows when the two paths are on different drives, and the
+        # only thing it is used for here is a short LABEL. Scanning a clip outside the checkout is
+        # the normal case, not a corner: SKILL.md tells the operator to render to a scratch
+        # directory and pass the new clips in, and the script suite runs from a sandbox cwd. On the
+        # CI Windows runner (checkout on D:, temp on C:) that killed the whole run with a ValueError
+        # before a single clip got a verdict - a naming detail taking down the gate.
+        scanned = []
+
+        def fake(ffmpeg, clip):
+            scanned.append(clip)
+            return [], 5
+
+        original_scan, original_find = ccc.scan_clip, ccc.find_ffmpeg
+        ccc.scan_clip, ccc.find_ffmpeg = fake, lambda: "ffmpeg"
+        try:
+            with mock.patch("os.path.relpath",
+                            side_effect=ValueError("path is on mount 'C:', start on mount 'D:'")):
+                code = ccc.main(["C:\\scratch\\demo.webm"])
+        finally:
+            ccc.scan_clip, ccc.find_ffmpeg = original_scan, original_find
+        self.assertEqual(scanned, ["C:\\scratch\\demo.webm"])
+        self.assertEqual(code, 0)
 
 
 if __name__ == "__main__":

@@ -103,6 +103,20 @@ class ScaleMismatch(Exception):
 
 
 
+def display_name(clip):
+    """A short label for a clip, chosen so it can never take the scan down.
+
+    `os.path.relpath` raises on Windows when the two paths sit on different drives, and this is only
+    a label. Scanning a clip from OUTSIDE the checkout is the normal case - SKILL.md has the operator
+    render to a scratch directory and pass the new clips in - so on a machine whose temp directory is
+    on another drive than the repo, naming a clip used to abort the whole run before any verdict.
+    """
+    try:
+        return os.path.relpath(clip, REPO_ROOT)
+    except ValueError:
+        return clip
+
+
 def find_ffmpeg():
     """A full ffmpeg build. Playwright bundles a VP8-only one that cannot decode these clips, so it
     is deliberately not used here - it fails with 'no decoder found for: vp9'."""
@@ -230,7 +244,7 @@ def main(argv):
     failed = False
     mis_scaled = False
     for clip in clips:
-        name = os.path.relpath(clip, REPO_ROOT)
+        name = display_name(clip)
         try:
             bad, judged = scan_clip(ffmpeg, clip)
         except ScaleMismatch as problem:
