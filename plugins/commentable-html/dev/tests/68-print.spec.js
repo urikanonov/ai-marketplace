@@ -329,3 +329,65 @@ test("CMH-PRINT-07: the measure CSS caps both mermaid hosts, so the measured pag
     "a div.mermaid document measures essentially the same page height as the identical pre.mermaid one")
     .toBeLessThan(200);
 });
+
+
+test("CMH-PRINT-08: print drops the diagram scroll-fade mask on both mermaid hosts", async ({ page }) => {
+  // The scroll-fade mask is an ON-SCREEN cue that a wide diagram scrolls horizontally inside its own
+  // box: it fades the host's left and right 18px. Paper does not scroll, so on paper the cue is
+  // meaningless and only washes out the printed diagram's edges. Both host shapes carry the class
+  // (CMH_MERMAID_SEL), so both must come out unmasked in print.
+  //
+  // The class is applied by the runtime only when a diagram genuinely overflows, which depends on
+  // measured widths; the case is STAGED here (class pre-applied in the markup and re-asserted below)
+  // so the test pins the print behavior rather than the overflow heuristics.
+  const svg = '<svg viewBox="0 0 2400 300" width="2400" height="300" role="img" aria-label="wide diagram">'
+    + '<rect width="2400" height="300" fill="#cccccc"></rect></svg>';
+  const content = `
+    <section>
+      <h2>Diagrams</h2>
+      <pre class="mermaid cmh-diagram-wide cmh-diagram-scroll-fade" id="preHost" data-processed="true">${svg}</pre>
+      <div class="mermaid cmh-diagram-wide cmh-diagram-scroll-fade" id="divHost" data-processed="true">${svg}</div>
+    </section>`;
+  const staged = stagePrintContent(content, { key: "cmh-print-fade", source: "print-fade.html" });
+
+  await denyExternalNetwork(page);
+  await page.goto(fileUrl(staged.html));
+  await ready(page);
+
+  // Re-apply the class before each read: the mermaid layer re-syncs it from live measurements, and a
+  // host it decided does not overflow would leave nothing to assert about (a vacuous green).
+  const readMasks = () => page.evaluate(() => {
+    const out = {};
+    ["preHost", "divHost"].forEach((id) => {
+      const el = document.getElementById(id);
+      el.classList.add("cmh-diagram-scroll-fade");
+      const cs = getComputedStyle(el);
+      out[id] = { mask: cs.maskImage, webkitMask: cs.webkitMaskImage };
+    });
+    return out;
+  });
+
+  // On screen the cue must still be there - this fix must not silently delete the affordance. The
+  // SHAPE is asserted, not just "a gradient": a gradient with opaque edge stops is no fade at all,
+  // and a plain `toContain("linear-gradient")` would accept it.
+  const onScreen = await readMasks();
+  const transparentStops = (value) => (String(value).match(/rgba\(0,\s*0,\s*0,\s*0\)/g) || []).length;
+  expect(onScreen.preHost.webkitMask, "the on-screen scroll-fade cue survives on pre.mermaid").toContain("linear-gradient");
+  expect(onScreen.divHost.webkitMask, "the on-screen scroll-fade cue survives on div.mermaid").toContain("linear-gradient");
+  expect(onScreen.preHost.mask, "the unprefixed on-screen cue survives on pre.mermaid").toContain("linear-gradient");
+  expect(onScreen.divHost.mask, "the unprefixed on-screen cue survives on div.mermaid").toContain("linear-gradient");
+  expect(transparentStops(onScreen.preHost.mask), "pre.mermaid fades out at BOTH edges").toBeGreaterThanOrEqual(2);
+  expect(transparentStops(onScreen.divHost.mask), "div.mermaid fades out at BOTH edges").toBeGreaterThanOrEqual(2);
+
+  await page.emulateMedia({ media: "print" });
+
+  const inPrint = await readMasks();
+  // Both properties are read, but they are ONE signal here: Chromium aliases -webkit-mask-image and
+  // mask-image into a single computed value, so no Chromium assertion can tell them apart. That the
+  // stylesheet still declares BOTH (which matters for a report opened in another browser) is pinned
+  // textually in tests/test_vendored_libs.py instead.
+  expect(inPrint.preHost.webkitMask, "a pre.mermaid host prints with no edge mask").toBe("none");
+  expect(inPrint.divHost.webkitMask, "a div.mermaid host prints with no edge mask").toBe("none");
+  expect(inPrint.preHost.mask, "a pre.mermaid host prints with no unprefixed edge mask").toBe("none");
+  expect(inPrint.divHost.mask, "a div.mermaid host prints with no unprefixed edge mask").toBe("none");
+});
