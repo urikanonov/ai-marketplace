@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.291.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.292.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.292.0] - 2026-08-02</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Re-exporting an offline file whose inlined library carries no MIT notice now says what actually happened. The <code>data-cmh-offline-lib</code> marker predates the MIT notice comment, so an offline file produced by an exporter version in between carries the library WITHOUT a notice, and <code>Export Offline</code> correctly refuses to re-emit it (redistributing an MIT-licensed library without its notice is a licence violation). It reported that refusal as <code>Offline export is missing the vendored mermaid bundle.</code>, which is misleading - the bundle is right there in the file. The error now names the real cause (the inlined copy has no MIT license notice beside it) and the action that works (re-export from the source document that still carries the vendored payload). It claims that cause only when licensing was the SOLE blocker (a copy the content gates rejected keeps the generic message, since the licence is then not a proven cause) and only for the library that could not be re-emitted, and it asserts nothing it cannot verify - the gates authenticate no provenance, so it never claims who wrote the file. The notice is still never synthesised: with the payload consumed there is no licence text to emit, which is exactly why the copy is refused. Because an Offline export failure names a cause and an action, every one of those toasts is now announced assertively and stays on screen long enough to read instead of using the 3s confirmation toast.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.291.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li><code>tools/authoring/new_document.py</code> no longer writes a document it could not self-validate. Its <code>_self_validate</code> returned <code>(None, None)</code> when the sibling <code>validate</code> module was unimportable; <code>main()</code> unpacked that into errors/warnings, <code>if errors:</code> was falsy, and the new document was written UNVALIDATED - so the one self-check the generator has disappeared exactly on the broken or partial install it exists for. It now fails CLOSED by default: nothing reaches <code>--out</code> or stdout and it exits non-zero naming the actual cause. The seam is hardened the same way <code>chart_block.py</code> was: a <code>validate</code> module resolved from outside this skill&#x27;s own tools dir is refused BEFORE its module body runs (compared canonically, so a junction or a differently-cased path does not false-alarm), and a crashing validator or an unexpected return shape (notably <code>(None, None)</code>, which would otherwise read as &quot;no errors, no warnings&quot;) counts as &quot;could not check&quot; rather than escaping as a traceback. A caller who knowingly accepts unchecked output passes the new <code>--allow-unvalidated-output</code>, which writes it with a warning; that flag never suppresses a real validation failure.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.285.0] - 2026-08-02</h3></div>
             <div class="group-label">Added</div>
@@ -509,8 +518,6 @@
               <li>The in-document comment dialog (the one you get by clicking a highlight) now offers the same rich-text editing as the floating composer and the side panel. Its Edit form carries the shared formatting toolbar (bold, italic, underline, strikethrough, inline code, link, bullet list) above the textarea, and Ctrl/Cmd+B/I/U/K apply the matching formatting - from the textarea and from a focused toolbar, Cancel, or Save button, since the keys are bound to the editor and action containers rather than the textarea. Ctrl/Cmd+Enter still saves and Escape still cancels back to the rendered note with the dialog left open; a blank save still marks the field invalid, and formatting (not just typing) now clears that state. Mid-IME-composition the toolbar, save, and cancel are all inert, so a candidate window can never splice markers into provisional text or discard the draft. The toolbar is tightened to fit the fixed-width dialog on one row, and keeps a &gt;=44px touch target on phones (wrapping rather than overflowing).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.282.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -550,14 +557,7 @@
               <li>A formatting-toolbar click during an IME composition is ignored on both surfaces, so markers can no longer be spliced into provisional (for example CJK candidate) text. The same tracked composition state also guards each editor&#x27;s save and cancel keys, so Ctrl/Cmd+Enter and Esc stay inert mid-composition even on an engine that reports the keydown with <code>isComposing</code> already false.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.276.0] - 2026-07-29</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The two author-time scans that locate code blocks - the syntax-highlighting guardrail (CMH-VAL-11) and the runnable-KQL rule (CMH-KQL-08) - now read PARSED elements instead of matching text over a masked copy of the document. The mask closed the two real defects it was built for, but a text scan still drew the block boundary in four places a browser does not, and each one could hide a real raw block from a guardrail that exists to catch it: - every HTML raw-text / RCDATA element holds text, not markup, yet only <code>&lt;script&gt;</code> and <code>&lt;style&gt;</code> were treated that way. A <code>&lt;pre&gt;</code>/<code>&lt;code&gt;</code> written inside a <code>&lt;textarea&gt;</code>, <code>&lt;title&gt;</code>, <code>&lt;xmp&gt;</code>, <code>&lt;iframe&gt;</code>, <code>&lt;noembed&gt;</code>, <code>&lt;noframes&gt;</code> or <code>&lt;noscript&gt;</code> was read as authored markup, and its unpaired opener could swallow the author&#x27;s real block that followed; - a <code>&lt;![CDATA[ ... ]]&gt;</code> section in foreign content (<code>&lt;svg&gt;</code>/<code>&lt;math&gt;</code>) is a declaration whose content is character data, so a block quoted there was both flagged on its own and able to hide a later real one; - the legacy comment close <code>--!&gt;</code> was not recognized, so a comment ending that way stayed &quot;open&quot; to the document&#x27;s next <code>--&gt;</code> - which the layer always supplies - blanking every authored block in between; - matching attributes up to the first <code>&gt;</code> ended a tag inside a QUOTED attribute value, so <code>&lt;code title=&quot;a &gt; b&quot; class=&quot;language-python&quot;&gt;</code> lost its language label entirely and a <code>data-cmh-kql-no-cluster</code> marker written after such a value was invisible.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">232 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">233 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

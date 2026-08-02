@@ -430,21 +430,44 @@ function _offlineCaptureInlinedRichLibs(doc) {
   head.querySelectorAll("script[data-cmh-offline-lib]").forEach(function (s) {
     const lib = s.getAttribute("data-cmh-offline-lib") || "";
     if (lib !== "chartjs" && lib !== "mermaid") return;
-    if (s.attributes.length !== 1) return;
+    // A copy this exporter refused for PROVENANCE is remembered separately from one it refused for
+    // LICENSING: the specific unlicensed-copy message below may only be shown when licensing was
+    // the sole blocker, or a document holding both an unsafe copy and a notice-less one would send
+    // the user after a licence when the real problem was a tampered bundle.
+    if (s.attributes.length !== 1) { found[lib + "Rejected"] = true; return; }
     const code = s.textContent || "";
-    if (!code.trim() || _offlineScriptHasNetworkImport(code)) return;
-    if (_OFFLINE_SCRIPT_DATA_ESCAPE_RE.test(code)) return;
+    if (!code.trim() || _offlineScriptHasNetworkImport(code)) { found[lib + "Rejected"] = true; return; }
+    if (_OFFLINE_SCRIPT_DATA_ESCAPE_RE.test(code)) { found[lib + "Rejected"] = true; return; }
     const license = _offlineAdjacentLibNotice(s, lib);
     // A blank notice would make `_offlineAppendLibNotice` a no-op, redistributing the library with
-    // no MIT notice at all, so treat it as no notice.
-    if (!license.trim()) return;
+    // no MIT notice at all, so treat it as no notice. The marker was introduced before the notice
+    // was, so an offline file from an exporter version in between carries the library UNLICENSED:
+    // remember that, because the bundle IS in the file and only the licence blocks re-emitting it -
+    // the generic missing-bundle error would send the user looking for the wrong thing.
+    if (!license.trim()) { found[lib + "Unlicensed"] = true; return; }
     // LAST match wins: this exporter appends the library as the head's last child, so a marker
     // placed earlier must never displace the genuine copy (that would "succeed" with a diagram
-    // that never renders).
+    // that never renders). The flag describes the WINNING copy, so a later licensed copy clears an
+    // earlier unlicensed one rather than leaving a stale reason behind.
     found[lib] = code;
     found[lib + "License"] = license;
+    found[lib + "Unlicensed"] = false;
   });
   return found;
+}
+// Synthesising the notice is NOT an option: with the payload consumed the exporter has no copy of
+// the licence text to emit, which is exactly why the copy is refused. Point at the source document
+// that does still carry the payload instead. The message states only what the exporter can actually
+// see - a marked copy with no usable notice - and asserts nothing it cannot verify: the capture
+// gates authenticate no provenance, so neither "an older exporter wrote this" nor "your source
+// document still has the payload" may be claimed as fact about a document it has never seen.
+function _offlineMissingLibError(name, unlicensed) {
+  if (unlicensed) {
+    return new Error("Offline export cannot re-emit the inlined " + name + " library: it has no MIT license"
+      + " notice beside it, so re-emitting it would redistribute it unlicensed. Re-export from the source"
+      + " document that still carries the vendored payload.");
+  }
+  return new Error("Offline export is missing the vendored " + name + " bundle.");
 }
 async function _offlineInlineRichLibs(doc, referencesChartLib, inlinedLibs) {
   const head = doc.head || doc.querySelector("head");
@@ -460,18 +483,25 @@ async function _offlineInlineRichLibs(doc, referencesChartLib, inlinedLibs) {
   // The payload wins when it carries the library (a fresh copy of the vendored bytes); the captured
   // copy is the fallback for a document that no longer has a payload.
   const lib = function (key) {
-    if (bundle[key]) return { code: bundle[key], license: bundle[key + "License"] || "" };
-    return { code: captured[key] || "", license: captured[key + "License"] || "" };
+    if (bundle[key]) return { code: bundle[key], license: bundle[key + "License"] || "", unlicensed: false };
+    return {
+      code: captured[key] || "",
+      license: captured[key + "License"] || "",
+      // Only when licensing was the SOLE reason nothing could be reused: a copy this exporter
+      // rejected for provenance makes the licence an unproven cause, so fall back to the generic
+      // message rather than name a cause that may be wrong.
+      unlicensed: !!captured[key + "Unlicensed"] && !captured[key + "Rejected"],
+    };
   };
   if (needCharts) {
     const chartjs = lib("chartjs");
-    if (!chartjs.code) throw new Error("Offline export is missing the vendored Chart.js bundle.");
+    if (!chartjs.code) throw _offlineMissingLibError("Chart.js", chartjs.unlicensed);
     _offlineAppendLibNotice(doc, head, "Chart.js", chartjs.license);
     _offlineAppendInlineScript(doc, head, chartjs.code, { "data-cmh-offline-lib": "chartjs" });
   }
   if (needMermaid) {
     const mermaid = lib("mermaid");
-    if (!mermaid.code) throw new Error("Offline export is missing the vendored mermaid bundle.");
+    if (!mermaid.code) throw _offlineMissingLibError("mermaid", mermaid.unlicensed);
     _offlineAppendLibNotice(doc, head, "mermaid", mermaid.license);
     _offlineAppendInlineScript(doc, head, mermaid.code, { "data-cmh-offline-lib": "mermaid" });
     _offlineAppendInlineScript(doc, head,
@@ -540,10 +570,14 @@ async function _buildOfflineHtml(portableHtml) {
   _ensureOfflineCsp(doc);
   return _retargetLayerDescriptor(_serializeOfflineDoc(doc), "offline").replace(/\n{3,}/g, "\n\n");
 }
+// An export that FAILED is the one toast a user must actually finish reading: it names the cause
+// and the action to take, and some of those messages are long. The 3s default is a confirmation
+// timing, so give a failure an assertive announcement and enough time to read it.
+const _OFFLINE_EXPORT_ERROR_TOAST = { alert: true, duration: 10000 };
 async function saveOffline() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
-  catch (e) { showToast("Could not load base HTML."); return; }
+  catch (e) { showToast("Could not load base HTML.", _OFFLINE_EXPORT_ERROR_TOAST); return; }
   baseHtml = _applyWidgetLayoutToHtml(baseHtml);
   baseHtml = _applyChecklistStateToHtml(baseHtml);
   baseHtml = _applyNoteStateToHtml(baseHtml);
@@ -555,10 +589,10 @@ async function saveOffline() {
     portable = NONPORTABLE_MODE
       ? _buildStandaloneHtml(baseHtml, exportComments)
       : _buildSavedHtml(baseHtml, exportComments);
-  } catch (e) { showToast(e.message); return; }
+  } catch (e) { showToast(e.message, _OFFLINE_EXPORT_ERROR_TOAST); return; }
   let text;
   try { text = await _buildOfflineHtml(portable); }
-  catch (e) { showToast(e.message); return; }
+  catch (e) { showToast(e.message, _OFFLINE_EXPORT_ERROR_TOAST); return; }
   const filename = _suggestedOfflineFilename();
   _downloadHtml(text, filename);
   showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded.", { center: true });
