@@ -966,9 +966,11 @@ test("deleting a current-document comment from the manager closes its in-documen
   const kept = (await storedComments(page)).find((c) => c.note.indexOf("kept") !== -1);
   const doomed = (await storedComments(page)).find((c) => c.note.indexOf("deleted") !== -1);
   expect(kept.id).not.toBe(doomed.id);
-  // Open the in-document dialog on the first highlight and put it in EDIT mode: an outside click
-  // does not dismiss it while editing, so it survives opening the manager - exactly the reported
-  // situation, and the only state in which this bug is reachable.
+  // Open the in-document dialog on the first highlight and put it in EDIT mode: a non-editing
+  // dialog is dismissed by the very click that opens the manager, so edit mode is how a test gets
+  // the dialog past `openManager` - and it is the state the report describes, where the reviewer is
+  // still typing. (The fix is unconditional, so a dialog that reaches the manager any other way -
+  // for example the quota failure that opens the manager programmatically - is closed too.)
   await page.locator(`mark.cm-hl[data-cid="${doomed.id}"]`).first().hover();
   await page.locator("#hlBubble").click();
   const pop = page.locator(".cm-comment-popover");
