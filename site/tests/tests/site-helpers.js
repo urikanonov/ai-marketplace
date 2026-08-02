@@ -1,3 +1,31 @@
+// The plugin page's demo iframe is loading="lazy" and every demo document is a self-contained
+// 1-2.5 MB report, so asserting straight on the framed content makes ONE timeout cover both the
+// download and the mount - on a cold runner the download eats it and the content assertion is
+// what reports the failure. Scroll the frame in (what a reader reaching the section does), wait
+// for the expected document to finish loading, and only then hand the caller a frame locator.
+async function demoFrameReady(page, selector, expectedFile, timeout = 60000) {
+  await page.locator(selector).scrollIntoViewIfNeeded();
+  try {
+    await page.waitForFunction(
+      ([sel, want]) => {
+        const el = document.querySelector(sel);
+        const doc = el && el.contentDocument;
+        if (!doc || doc.readyState !== "complete") return false;
+        return !want || String(doc.location.href).includes(want);
+      },
+      [selector, expectedFile || ""],
+      { timeout },
+    );
+  } catch (error) {
+    throw new Error(
+      `the demo document ${expectedFile || ""} never finished loading in ${selector} within `
+        + `${timeout}ms - the frame load failed, not the content assertion that follows`,
+      { cause: error },
+    );
+  }
+  return page.frameLocator(selector);
+}
+
 function contrastRatio(foreground, background) {
   const channel = (value) => {
     const normalized = value / 255;
@@ -92,4 +120,4 @@ function installNetworkBlock(test) {
   });
 }
 
-module.exports = { contrastRatio, compositedContrast, installNetworkBlock };
+module.exports = { contrastRatio, compositedContrast, demoFrameReady, installNetworkBlock };

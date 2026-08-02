@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { contrastRatio, compositedContrast, installNetworkBlock } = require("./site-helpers");
+const { contrastRatio, compositedContrast, demoFrameReady, installNetworkBlock } = require("./site-helpers");
 
 installNetworkBlock(test);
 
@@ -284,17 +284,19 @@ test("demo tabs expose a complete ARIA tabs contract", async ({ page }) => {
 
 
 test("demo mounts inside the iframe on the plugin page (CSP allows it)", async ({ page }) => {
+  test.slow();
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   // The demo iframe is lazy-loaded far down the page; scroll it into view so it loads (as a
-  // real reader reaching the section would), then assert it mounts under the page CSP.
-  await page.locator("#demo iframe").scrollIntoViewIfNeeded();
-  const frame = page.frameLocator("#demo iframe");
-  await expect(frame.locator(".cm-toolbar")).toHaveCount(1, { timeout: 20000 });
-  await expect(frame.locator("#btnCopyAll")).toBeAttached({ timeout: 20000 });
+  // real reader reaching the section would) and wait for that document, then assert it mounts
+  // under the page CSP.
+  const frame = await demoFrameReady(page, "#demo iframe", "report-taxi.html");
+  await expect(frame.locator(".cm-toolbar")).toHaveCount(1);
+  await expect(frame.locator("#btnCopyAll")).toBeAttached();
 });
 
 
 test("all demo reports load and their toolbars mount", async ({ page }) => {
+  test.slow();
   for (const report of ["report-taxi.html", "report-community-garden.html", "report-triage.html", "report-metrics.html", "report-checklist.html", "report-notes.html"]) {
     await page.goto("/commentable-html/demo/" + report, { waitUntil: "domcontentloaded" });
     await expect(page.locator(".cm-toolbar")).toHaveCount(1, { timeout: 15000 });

@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { contrastRatio, compositedContrast, installNetworkBlock } = require("./site-helpers");
+const { contrastRatio, compositedContrast, demoFrameReady, installNetworkBlock } = require("./site-helpers");
 const fs = require("fs");
 const path = require("path");
 
@@ -464,6 +464,7 @@ test("demo slider switches the iframe, title, and full-screen target", async ({ 
 
 
 test("demo slider exposes and loads the Checklist report (SITE-DEMO-09)", async ({ page }) => {
+  test.slow();
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const checklist = page.locator("#demo-tab-checklist");
   await expect(checklist).toBeVisible();
@@ -476,12 +477,13 @@ test("demo slider exposes and loads the Checklist report (SITE-DEMO-09)", async 
   await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", /report-checklist\.html/);
   await expect(page.locator("#demo-title")).toHaveText("Checklist");
   await expect(page.locator("#demo-panel")).toHaveAttribute("aria-labelledby", "demo-tab-checklist");
-  const frame = page.frameLocator("#demo-iframe");
-  await expect(frame.locator("[data-cmh-checklist]")).toHaveCount(2, { timeout: 15000 });
+  const frame = await demoFrameReady(page, "#demo-iframe", "report-checklist.html");
+  await expect(frame.locator("[data-cmh-checklist]")).toHaveCount(2);
 });
 
 
 test("demo slider exposes and loads the Showcase deck (SITE-DEMO-10)", async ({ page }) => {
+  test.slow();
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const showcase = page.locator("#demo-tab-showcase");
   await expect(showcase).toBeVisible();
@@ -492,16 +494,16 @@ test("demo slider exposes and loads the Showcase deck (SITE-DEMO-10)", async ({ 
   await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", /deck-showcase\.html/);
   await expect(page.locator("#demo-title")).toHaveText("Showcase Deck");
   await expect(page.locator("#demo-panel")).toHaveAttribute("aria-labelledby", "demo-tab-showcase");
-  // Scroll the lazy demo iframe into view so it loads promptly (as a reader reaching it would),
-  // then assert the deck mounts inside it.
-  await page.locator("#demo-iframe").scrollIntoViewIfNeeded();
-  const frame = page.frameLocator("#demo-iframe");
-  await expect(frame.locator("#commentRoot[data-cmh-mode='deck']")).toHaveCount(1, { timeout: 15000 });
+  // Scroll the lazy demo iframe into view so it loads promptly (as a reader reaching it would) and
+  // wait for the deck document itself to land, then assert the deck mounts inside it.
+  const frame = await demoFrameReady(page, "#demo-iframe", "deck-showcase.html");
+  await expect(frame.locator("#commentRoot[data-cmh-mode='deck']")).toHaveCount(1);
   await expect(frame.locator(".cmh-deck-mode-toggle")).toBeVisible();
 });
 
 
 test("demo slider exposes and loads the Notes report (SITE-DEMO-11)", async ({ page }) => {
+  test.slow();
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const notes = page.locator("#demo-tab-notes");
   await expect(notes).toBeVisible();
@@ -525,6 +527,7 @@ test("demo slider exposes and loads the Notes report (SITE-DEMO-11)", async ({ p
 
 
 test("every example is present on the site as a live demo tab (SITE-DEMO-12)", async ({ page, request }) => {
+  test.slow();
   // The examples/ directory is the source of truth for "examples"; every HTML example must be
   // surfaced on the site as a live demo - a slider tab that loads it in the demo iframe, backed
   // by the file actually being served under commentable-html/demo/. This parity check fails if a
