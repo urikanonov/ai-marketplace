@@ -376,10 +376,16 @@ sharded job's matrix a complete `1..N` cover so an entry can never be silently d
   `npx playwright test`. Filter with `-g "SITE-DEMO-08"` while iterating.
 - A plugin suite: from `plugins/<plugin>/dev`, the same `npm ci` / install / `npm test` flow.
 - Generator tests: `python scripts/run_script_tests.py --pattern test_build_site_data.py`.
-- The whole `scripts/` suite: `python scripts/run_script_tests.py`. Always use the runner rather than
+- The whole `scripts/` suite: `python scripts/run_script_tests.py --jobs auto` (leave off `--jobs`
+  for one serial run). Always use the runner rather than
   `unittest discover` directly - it runs the suite from a throwaway working directory and fails if a
   test left a file behind or changed the repository tree, which is the guard that keeps scratch
-  fixtures out of the repo root. If you are editing files while the (slow) suite runs, the tree diff
+  fixtures out of the repo root. `--jobs` keeps that guard: each worker process gets its OWN sandbox
+  and runs a deterministic stride of the discovered tests, while the repository snapshot is taken
+  once around the whole run (987.0s serial to 159.7s across 16 workers here). Because a worker runs a
+  SLICE of a module rather than the whole file, a test that depends on another test in its class
+  having run first will only fail under `--jobs` - fix the dependency, do not go back to serial.
+  If you are editing files while the suite runs, the tree diff
   will flag YOUR edits; pass `--no-worktree-check` for that case - the sandbox check still applies.
   A SIBLING worktree is not your problem though: the snapshot compares only the refs this worktree
   owns (the branch HEAD is on, plus the per-worktree `refs/bisect/*`, `refs/rewritten/*` and

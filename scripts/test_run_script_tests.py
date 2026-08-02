@@ -9,6 +9,7 @@ memory, so `run_script_tests.py` makes the leak IMPOSSIBLE to miss: it runs the 
 throwaway working directory and fails if anything is left in it, or if the repository working
 tree changed while the suite ran.
 """
+import argparse
 import os
 import subprocess
 import sys
@@ -314,6 +315,127 @@ class DiscoverArgv(unittest.TestCase):
         self.assertEqual(argv[argv.index("-p") + 1], "test_*.py")
 
 
+class ShardSelection(unittest.TestCase):
+    """The stride partition: every test runs in exactly one shard, or the run is not equivalent."""
+
+    def test_the_shards_are_an_exact_partition(self):
+        items = list(range(23))
+        for total in (1, 2, 3, 5, 16, 32):
+            collected = [x for i in range(1, total + 1)
+                         for x in rst.select_shard(items, i, total)]
+            self.assertEqual(len(collected), len(items),
+                             "shards of %d dropped or duplicated an item" % total)
+            self.assertEqual(sorted(collected), items)
+
+    def test_neighbouring_items_land_in_different_shards(self):
+        # Round-robin, not contiguous slicing: files discovered next to each other tend to cost
+        # the same, so striding spreads the expensive neighbours across workers.
+        self.assertEqual(rst.select_shard(list(range(6)), 1, 3), [0, 3])
+
+    def test_more_shards_than_items_leaves_empty_shards_rather_than_failing(self):
+        self.assertEqual(rst.select_shard([1, 2], 3, 4), [])
+
+    def test_an_out_of_range_shard_is_rejected(self):
+        for index, total in ((0, 1), (2, 1), (1, 0), (-1, 3)):
+            with self.assertRaises(ValueError):
+                rst.select_shard([1, 2, 3], index, total)
+
+
+class ComposedShards(unittest.TestCase):
+    def test_workers_partition_the_shard_they_were_given(self):
+        items = list(range(37))
+        for total in (1, 3):
+            for index in range(1, total + 1):
+                mine = rst.select_shard(items, index, total)
+                for jobs in (1, 2, 4, 7):
+                    collected = []
+                    for job in range(1, jobs + 1):
+                        i, t = rst.compose_shard(index, total, job, jobs)
+                        collected += rst.select_shard(items, i, t)
+                    self.assertEqual(sorted(collected), sorted(mine),
+                                     "%d job(s) of shard %d/%d is not a partition"
+                                     % (jobs, index, total))
+
+    def test_a_bad_job_index_is_rejected(self):
+        for job, jobs in ((0, 1), (2, 1), (1, 0)):
+            with self.assertRaises(ValueError):
+                rst.compose_shard(1, 1, job, jobs)
+
+
+class JobResolution(unittest.TestCase):
+    def test_auto_is_the_cpu_count(self):
+        self.assertEqual(rst.resolve_jobs("auto"), os.cpu_count() or 1)
+
+    def test_an_explicit_count_is_taken_as_is(self):
+        self.assertEqual(rst.resolve_jobs("3"), 3)
+
+    def test_a_meaningless_count_is_rejected(self):
+        for spec in ("0", "-2", "many", ""):
+            with self.assertRaises(ValueError):
+                rst.resolve_jobs(spec)
+
+
+class WorkerArgv(unittest.TestCase):
+    def _args(self, **over):
+        base = dict(tests_dir="/repo/scripts", pattern="test_*.py", repo_root="/repo",
+                    no_worktree_check=False, shard="1/1", jobs="4")
+        base.update(over)
+        return argparse.Namespace(**base)
+
+    def test_a_worker_can_never_recurse_into_another_fan_out(self):
+        argv = rst.build_child_argv(1, 1, 3, 4, self._args(), python="py")
+        self.assertNotIn("--jobs", argv)
+        self.assertNotIn("-j", argv)
+
+    def test_a_worker_runs_its_own_composed_shard(self):
+        argv = rst.build_child_argv(1, 1, 3, 4, self._args(), python="py")
+        self.assertEqual(argv[argv.index("--shard") + 1], "3/4")
+
+    def test_a_worker_leaves_the_repository_check_to_the_parent(self):
+        # The parent snapshots the repository ONCE around the whole fan-out; letting every worker
+        # snapshot it too would only race their own `git update-index` calls.
+        argv = rst.build_child_argv(1, 1, 1, 2, self._args(), python="py")
+        self.assertIn("--no-worktree-check", argv)
+
+    def test_a_worker_inherits_the_suite_selection(self):
+        argv = rst.build_child_argv(1, 1, 1, 2,
+                                    self._args(pattern="test_check_*.py"), python="py")
+        self.assertEqual(argv[argv.index("--tests-dir") + 1], "/repo/scripts")
+        self.assertEqual(argv[argv.index("--pattern") + 1], "test_check_*.py")
+        self.assertEqual(argv[argv.index("--repo-root") + 1], "/repo")
+
+
+class ParallelAggregation(unittest.TestCase):
+    """Fail CLOSED: only a complete set of exit-0 workers is a pass."""
+
+    def _ok(self):
+        return subprocess.CompletedProcess(["py"], 0, "ok\n", "")
+
+    def _bad(self, code=1):
+        return subprocess.CompletedProcess(["py"], code, "", "boom\n")
+
+    def test_every_worker_succeeding_passes(self):
+        rc, errors = rst.aggregate_results([self._ok(), self._ok()])
+        self.assertEqual((rc, errors), (0, []))
+
+    def test_a_failing_worker_reds_the_run(self):
+        rc, errors = rst.aggregate_results([self._ok(), self._bad(2)])
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("2", errors[0])
+
+    def test_a_worker_that_could_not_be_launched_reds_the_run(self):
+        rc, errors = rst.aggregate_results([self._ok(), OSError("no python")])
+        self.assertNotEqual(rc, 0)
+        self.assertIn("no python", errors[0])
+
+    def test_no_workers_at_all_reds_the_run(self):
+        # A fan-out that launched nothing must never look like a clean suite.
+        rc, errors = rst.aggregate_results([])
+        self.assertNotEqual(rc, 0)
+        self.assertTrue(errors)
+
+
 class RunnerEndToEnd(unittest.TestCase):
     """Drive the real runner against throwaway suites; it is the gate, so it must actually gate."""
 
@@ -386,6 +508,123 @@ class RunnerEndToEnd(unittest.TestCase):
             sandbox = leaked[0].split("sandbox:", 1)[1].strip()
             self.assertFalse(os.path.exists(sandbox),
                              "the runner left its own sandbox behind: %s" % sandbox)
+
+
+#: A test that records every execution of itself as a uniquely named file, so a suite run across
+#: several workers can be checked for a test that ran twice as well as one that never ran.
+MARKED_TEST = """\
+import tempfile
+import unittest
+
+
+class Marked%(n)d(unittest.TestCase):
+%(bodies)s
+"""
+
+MARKED_BODY = """\
+    def test_%(k)d(self):
+        tempfile.mkstemp(prefix="marked%(n)d-%(k)d-", dir=%(marker)r)
+"""
+
+
+class ParallelRunnerEndToEnd(unittest.TestCase):
+    """`--jobs` must give the same verdict as a serial run, and keep every guard."""
+
+    def _run(self, tests_dir, repo_root="", jobs="4", extra=()):
+        return subprocess.run(
+            [sys.executable, str(SCRIPTS / "run_script_tests.py"),
+             "--tests-dir", str(tests_dir), "--repo-root", str(repo_root),
+             "--jobs", jobs] + list(extra),
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            env=clean_git_env())
+
+    def _marked_suite(self, tests, marker, modules=5, per_module=3):
+        """`modules` fake test modules of `per_module` tests each, all marking `marker`."""
+        for n in range(modules):
+            bodies = "".join(MARKED_BODY % {"k": k, "n": n, "marker": str(marker)}
+                             for k in range(per_module))
+            _fake_suite(tests, "test_marked%d.py" % n,
+                        MARKED_TEST % {"n": n, "bodies": bodies})
+
+    def test_a_clean_suite_passes_in_parallel(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _fake_suite(tmp, "test_clean.py", CLEAN_TEST)
+            proc = self._run(tmp)
+            self.assertEqual(proc.returncode, 0, proc.stdout[-3000:] + proc.stderr[-3000:])
+
+    def test_every_test_runs_exactly_once_across_the_workers(self):
+        # The whole point of the fan-out: a partition, not a sample and not a re-run.
+        with tempfile.TemporaryDirectory() as tmp:
+            tests, marker = Path(tmp) / "suite", Path(tmp) / "marks"
+            tests.mkdir()
+            marker.mkdir()
+            self._marked_suite(tests, marker)
+            proc = self._run(tests, jobs="4")
+            self.assertEqual(proc.returncode, 0, proc.stdout[-3000:] + proc.stderr[-3000:])
+            ran = sorted(p.name.rsplit("-", 1)[0] for p in marker.iterdir())
+            expected = sorted("marked%d-%d" % (n, k) for n in range(5) for k in range(3))
+            self.assertEqual(ran, expected,
+                             "the workers did not run each test exactly once")
+
+    def test_a_failing_test_in_any_worker_reds_the_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _fake_suite(tmp, "test_clean.py", CLEAN_TEST)
+            _fake_suite(tmp, "test_fail.py", FAILING_TEST)
+            self.assertNotEqual(self._run(tmp).returncode, 0)
+
+    def test_a_worker_that_leaks_into_its_sandbox_is_caught(self):
+        # Each worker gets its OWN throwaway cwd, so the #791 guard survives the fan-out.
+        with tempfile.TemporaryDirectory() as tmp:
+            _fake_suite(tmp, "test_clean.py", CLEAN_TEST)
+            _fake_suite(tmp, "test_leak.py", LEAKING_TEST)
+            proc = self._run(tmp)
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("a.md", proc.stderr)
+
+    def test_a_suite_that_dirties_the_repository_still_fails(self):
+        # The repository snapshot is taken once around the whole fan-out, not per worker.
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            init = subprocess.run(["git", "-C", str(repo), "init", "-q", "-b", "main"],
+                                  capture_output=True, text=True, env=clean_git_env())
+            if init.returncode != 0:
+                self.skipTest("git is not available")
+            tests = Path(tmp) / "suite"
+            tests.mkdir()
+            _fake_suite(tests, "test_clean.py", CLEAN_TEST)
+            _fake_suite(tests, "test_dirty.py",
+                        "import unittest\nfrom pathlib import Path\n\n\n"
+                        "class Dirty(unittest.TestCase):\n"
+                        "    def test_writes_into_the_repo(self):\n"
+                        "        Path(%r).write_text('x', encoding='utf-8')\n"
+                        % str(repo / "a.md"))
+            proc = self._run(tests, repo_root=repo)
+            self.assertEqual(proc.returncode, 1, proc.stdout[-3000:] + proc.stderr[-3000:])
+            self.assertIn("a.md", proc.stderr)
+
+    def test_discovering_nothing_fails_closed(self):
+        # A fan-out that ran zero tests must not look like a clean suite; serially an empty
+        # discovery is a visible "Ran 0 tests", but N silent workers are not.
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = self._run(tmp)
+            self.assertNotEqual(proc.returncode, 0,
+                                proc.stdout[-3000:] + proc.stderr[-3000:])
+
+    def test_a_shard_runs_only_its_own_slice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tests, marker = Path(tmp) / "suite", Path(tmp) / "marks"
+            tests.mkdir()
+            marker.mkdir()
+            self._marked_suite(tests, marker, modules=2, per_module=2)
+            proc = subprocess.run(
+                [sys.executable, str(SCRIPTS / "run_script_tests.py"),
+                 "--tests-dir", str(tests), "--repo-root", "", "--shard", "1/2"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                env=clean_git_env())
+            self.assertEqual(proc.returncode, 0, proc.stdout[-3000:] + proc.stderr[-3000:])
+            self.assertEqual(len(list(marker.iterdir())), 2,
+                             "shard 1/2 of 4 tests should have run 2 of them")
 
 
 if __name__ == "__main__":

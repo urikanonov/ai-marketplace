@@ -35,7 +35,7 @@ jobs:
       - name: Verify deck theme presets acknowledge the vendored commit (staleness gate)
         run: python plugins/commentable-html/dev/tools/check_theme_sources.py
       - name: Run script tests
-        run: python scripts/run_script_tests.py
+        run: python scripts/run_script_tests.py --jobs auto
       - name: Verify spec test references
         run: python scripts/check_spec_test_refs.py
       - name: Set up Node.js
@@ -92,7 +92,7 @@ jobs:
       - name: Block unresolved conflict markers
         run: python scripts/check_conflict_markers.py
       - name: Run script tests
-        run: python scripts/run_script_tests.py
+        run: python scripts/run_script_tests.py --jobs auto
       - name: Verify spec test references
         run: python scripts/check_spec_test_refs.py
 

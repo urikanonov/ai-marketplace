@@ -230,8 +230,11 @@ class ScopeResetTests(unittest.TestCase):
 class SpecTestReferenceTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(__file__).resolve().parent.parent
-        self.sandbox = self.root / "tmp" / "test_check_spec_test_refs"
-        shutil.rmtree(self.sandbox, ignore_errors=True)
+        # A PRIVATE temp directory, never a fixed path inside the repository: this used to be
+        # `<repo>/tmp/test_check_spec_test_refs`, which two runners (or two workers of
+        # `run_script_tests.py --jobs`) share - one test's setUp then deletes the tree another
+        # test is still using, and the suite fails on a race rather than on a defect.
+        self.sandbox = Path(tempfile.mkdtemp(prefix="spec-refs-"))
         self.addCleanup(shutil.rmtree, self.sandbox, ignore_errors=True)
         self.base = self.sandbox / "base"
         self.base.mkdir(parents=True)
@@ -251,9 +254,6 @@ class SpecTestReferenceTests(unittest.TestCase):
             encoding="utf-8",
             newline="\n",
         )
-
-    def tearDown(self):
-        shutil.rmtree(self.sandbox, ignore_errors=True)
 
     def _spec(self, coverage):
         return self._spec_rows((("DEMO-01", coverage),))

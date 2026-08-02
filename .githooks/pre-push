@@ -81,9 +81,11 @@ fi
 # the runner launches it from a THROWAWAY working directory and fails if the suite left anything
 # in it, or if this repository changed while it ran. That is what keeps a test's scratch fixture
 # out of the repo root (issue #791 - `a.md` and `old.md` reached `main` that way).
-# NOTE: measured at ~640s, so this whole block - INCLUDING that sandbox/leak guard - is opt-in
-# behind PREPUSH_TESTS. Locally the guard therefore runs only when you ask for it; the required
-# `validate` job always runs it, so a leak still cannot reach `main`.
+# NOTE: measured at 639.8s serially (987.0s as the suite stands now), so this whole block -
+# INCLUDING that sandbox/leak guard - is opt-in behind PREPUSH_TESTS. When it does run it fans out
+# with --jobs auto (159.7s here across 16 workers), each worker in its own sandbox. Locally the
+# guard therefore runs only when you ask for it; the required `validate` job always runs it, so a
+# leak still cannot reach `main`.
 # A long run while you keep editing would trip the repository diff on YOUR edits rather than on a
 # leak; opt out of just that diff with PREPUSH_ALLOW_TREE_EDITS=1 instead of skipping every check
 # with --no-verify.
@@ -93,7 +95,7 @@ if [ "${PREPUSH_ALLOW_TREE_EDITS:-0}" = "1" ]; then
 fi
 if [ "${PREPUSH_TESTS:-0}" = "1" ]; then
   # shellcheck disable=SC2086 # deliberate word splitting: zero or one option
-  run_hermetic "script unit tests" "$PY" scripts/run_script_tests.py $_scripts_opts
+  run_hermetic "script unit tests" "$PY" scripts/run_script_tests.py --jobs auto $_scripts_opts
 fi
 run "spec test references" "$PY" scripts/check_spec_test_refs.py
 run "doc-surface declarations for new features" "$PY" scripts/check_doc_surfaces.py
