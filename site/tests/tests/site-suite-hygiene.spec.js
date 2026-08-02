@@ -23,23 +23,45 @@ const HAS_BUDGET = /\btest\.(?:slow|setTimeout)\s*\(/;
 // 2000ms (failure) later. A spec that reads that live races the revert twice over - a poll can
 // miss the window on a cold or loaded runner, and separate assertions spread across it so the
 // later ones read a reverted button (#859). The recorder captures every state from before the
-// click, so it must be installed BEFORE the click to see any of them.
+// click, so it must be installed BEFORE the click to see any of them, its recorded states must
+// actually be what the spec asserts on, and no live feedback assertion may remain beside it.
 const COPY_BUTTON = /\.copy-btn/;
-const CLICK = /\.click\s*\(/;
+// Not just .click(): a keyboard or synthetic activation copies too, and treating one as "no click"
+// would make the whole block EXEMPT rather than merely unordered.
+const ACTIVATE =
+  /\.(?:click|dblclick|dispatchEvent)\s*\(|\.press\s*\(|mouse\s*\.\s*click\s*\(|keyboard\s*\.\s*press\s*\(/;
 const COPY_FEEDBACK =
   /["']copied["']|copy-failed|copy-status|copy manually|Copied to clipboard|clipboard\s*\.\s*readText/;
 const USES_RECORDER = /\brecordCopyFeedback\s*\(/;
+// The recorded states have to be the thing the spec reads, or the recorder is decoration.
+const READS_RECORDED = /\.(?:waitForState|waitForQuiet|labels|states)\s*\(/;
+// The exact shapes that raced the revert before this guard existed.
+const LIVE_FEEDBACK_ASSERTION =
+  /toHaveText\s*\(\s*["'](?:copied|copy manually|Copied to clipboard\.|Copy unavailable\.[^"']*)["']|toHaveClass\s*\(\s*\/copy-failed/;
+// A binding for the copy button itself, so ordering is judged against ITS activation rather than
+// whichever element the test happens to click first (a tab, a consent prompt).
+const COPY_BINDING = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=[^;\n]*\.copy-btn/;
 
 function assertsCopyFeedback(body) {
-  return COPY_BUTTON.test(body) && CLICK.test(body) && COPY_FEEDBACK.test(body);
+  return COPY_BUTTON.test(body) && ACTIVATE.test(body) && COPY_FEEDBACK.test(body);
+}
+
+function copyActivationIndex(body) {
+  const binding = body.match(COPY_BINDING);
+  if (binding) {
+    const named = new RegExp("\\b" + binding[1] + "\\s*\\.\\s*(?:click|dblclick|press|dispatchEvent)\\s*\\(");
+    const index = body.search(named);
+    if (index >= 0) return index;
+  }
+  return body.search(ACTIVATE);
 }
 
 // Installing the recorder after the click would miss the very transition it exists to capture, so
 // position is checked, not just presence.
 function recorderPrecedesClick(body) {
   const recorder = body.search(USES_RECORDER);
-  const click = body.search(CLICK);
-  return recorder >= 0 && click >= 0 && recorder < click;
+  const activation = copyActivationIndex(body);
+  return recorder >= 0 && activation >= 0 && recorder < activation;
 }
 
 // Judged on the WHOLE test body rather than one line: holding the selector in a variable
@@ -251,29 +273,90 @@ test("copy-button assertions read a recorded transition instead of racing the re
   const unrelatedBlock = testBlocks(unrelated).find((block) => block.title === "unrelated");
   expect(assertsCopyFeedback(unrelatedBlock.body)).toBe(false);
 
+  // Ordering is judged against the COPY button's own activation, so clicking something else first
+  // (a tab, a consent prompt) is not mistaken for the copy click.
+  const tabFirst = [
+    'test("tab first", async ({ page }) => {',
+    "  test.slow();",
+    '  await page.locator(".install-tab").first().click();',
+    '  const btn = page.locator("#install .copy-btn").first();',
+    "  const feedback = await recordCopyFeedback(btn);",
+    "  await btn.click();",
+    '  await feedback.waitForState((state) => state.copied, "copied");',
+    "});",
+  ].join("\n");
+  const tabFirstBlock = testBlocks(tabFirst).find((block) => block.title === "tab first");
+  expect(assertsCopyFeedback(tabFirstBlock.body)).toBe(true);
+  expect(recorderPrecedesClick(tabFirstBlock.body)).toBe(true);
+  expect(READS_RECORDED.test(tabFirstBlock.body)).toBe(true);
+  expect(LIVE_FEEDBACK_ASSERTION.test(tabFirstBlock.body)).toBe(false);
+  expect(HAS_BUDGET.test(tabFirstBlock.body)).toBe(true);
+
+  // A keyboard activation copies just as a click does, so it must not make the block exempt.
+  const keyboard = [
+    'test("keyboard", async ({ page }) => {',
+    '  const btn = page.locator("#install .copy-btn").first();',
+    "  await btn.press(\"Enter\");",
+    '  await expect(btn).toHaveText("copied");',
+    "});",
+  ].join("\n");
+  const keyboardBlock = testBlocks(keyboard).find((block) => block.title === "keyboard");
+  expect(assertsCopyFeedback(keyboardBlock.body)).toBe(true);
+  expect(recorderPrecedesClick(keyboardBlock.body)).toBe(false);
+
+  // A recorder that is installed and then ignored is decoration: the live assertion beside it is
+  // still the race, so both the missing read and the surviving live assertion are caught.
+  const decorative = [
+    'test("decorative", async ({ page }) => {',
+    "  test.slow();",
+    '  const btn = page.locator("#install .copy-btn").first();',
+    "  const feedback = await recordCopyFeedback(btn);",
+    "  await btn.click();",
+    '  await expect(btn).toHaveText("copied");',
+    "});",
+  ].join("\n");
+  const decorativeBlock = testBlocks(decorative).find((block) => block.title === "decorative");
+  expect(recorderPrecedesClick(decorativeBlock.body)).toBe(true);
+  expect(READS_RECORDED.test(decorativeBlock.body)).toBe(false);
+  expect(LIVE_FEEDBACK_ASSERTION.test(decorativeBlock.body)).toBe(true);
+
   const dir = __dirname;
   const files = fs.readdirSync(dir).filter((name) => name.endsWith(".spec.js") && name !== SELF);
   expect(files.length).toBeGreaterThan(0);
 
   const racyFeedback = [];
   const unbudgeted = [];
+  const outsideATest = [];
   for (const file of files) {
     const source = fs.readFileSync(path.join(dir, file), "utf8");
     for (const block of testBlocks(source)) {
       const where = `${file} - ${block.title}`;
       if (!assertsCopyFeedback(block.body)) continue;
-      if (!recorderPrecedesClick(block.body)) racyFeedback.push(where);
-      // A budget only exists inside a test, so the module-scope pseudo-block is exempt from it.
-      if (block.title === "<module scope>") continue;
+      // A budget can only be declared inside a test, so a copy flow extracted to module scope would
+      // escape it entirely - keep the flow in the test rather than exempting it.
+      if (block.title === "<module scope>") {
+        outsideATest.push(where);
+        continue;
+      }
+      if (!recorderPrecedesClick(block.body)
+        || !READS_RECORDED.test(block.body)
+        || LIVE_FEEDBACK_ASSERTION.test(block.body)) {
+        racyFeedback.push(where);
+      }
       if (!HAS_BUDGET.test(block.body)) unbudgeted.push(where);
     }
   }
   expect(
+    outsideATest,
+    "keep a copy-button flow inside the test that owns it: a helper at module scope cannot declare "
+      + "test.slow(), so extracting the flow there hides it from the budget check",
+  ).toEqual([]);
+  expect(
     racyFeedback,
-    "install recordCopyFeedback() from site-helpers.js BEFORE clicking a copy button and assert on "
-      + "the recorded states: the label, the state class, and the live-region text revert 1500-2000ms "
-      + "after the clipboard call resolves, so a live assertion races that revert and a second one "
-      + "reads an already-reverted button",
+    "install recordCopyFeedback() from site-helpers.js BEFORE activating a copy button, assert on "
+      + "the states it records, and drop any live feedback assertion: the label, the state class, "
+      + "and the live-region text revert 1500-2000ms after the clipboard call resolves, so a live "
+      + "assertion races that revert and a second one reads an already-reverted button",
   ).toEqual([]);
   expect(
     unbudgeted,

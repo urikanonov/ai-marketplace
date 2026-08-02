@@ -213,23 +213,32 @@ test("copy button restores its original label after a rapid double click", async
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const btn = page.locator("#install .copy-btn").first();
   const label = (await btn.textContent()).trim();
+  // Count the clipboard writes as they settle. Each click starts its own write and its own 1500ms
+  // revert, so without this the assertion could be satisfied by the FIRST click's cycle alone while
+  // the second write is still in flight - which is the single-click case SITE-COPY-01 already
+  // covers, not the double click this test is named for.
+  await page.evaluate(() => {
+    const write = navigator.clipboard.writeText.bind(navigator.clipboard);
+    window.__copyWrites = 0;
+    navigator.clipboard.writeText = (text) => write(text).then(
+      (value) => { window.__copyWrites += 1; return value; },
+      (error) => { window.__copyWrites += 1; throw error; },
+    );
+  });
   const feedback = await recordCopyFeedback(btn);
   await btn.click();
   await btn.click();
-  // Assert the recorded transition, not a live sample: the revert timer only starts once the
-  // clipboard write resolves, so a live assertion gives the write and the 1500ms revert one
-  // deadline. The COUNT of feedback cycles is not fixed - each click's write starts its own revert,
-  // so a slow runner can legitimately show "copied" twice - but the button must only ever show
-  // those two labels and must come to rest on the original one.
-  const shown = async () => {
-    const labels = await feedback.labels();
-    return { distinct: [...new Set(labels)].sort(), first: labels[0], last: labels[labels.length - 1] };
-  };
-  await expect.poll(shown, { timeout: 20000 }).toEqual({
-    distinct: [label, "copied"].sort(),
-    first: label,
-    last: label,
-  });
+  await expect.poll(() => page.evaluate(() => window.__copyWrites), { timeout: 20000 }).toBe(2);
+  // Both writes have settled, so the last revert is now the only thing outstanding; wait for the
+  // recorded feedback to go quiet rather than sampling a state that is still mid-transition.
+  await feedback.waitForQuiet();
+  const labels = await feedback.labels();
+  // The number of feedback cycles is not fixed (a slow runner can show "copied" twice), but the
+  // button must only ever show those two labels and must come to rest on the original one.
+  expect(
+    { distinct: [...new Set(labels)].sort(), last: labels[labels.length - 1] },
+    `recorded labels: ${JSON.stringify(labels)}`,
+  ).toEqual({ distinct: [label, "copied"].sort(), last: label });
 });
 
 

@@ -75,13 +75,45 @@ async function recordCopyFeedback(btn) {
     });
     if (live) observer.observe(live, { childList: true, characterData: true, subtree: true });
   });
-  const states = () => btn.evaluate((el) => el.__copyFeedback || []);
+  const states = () => btn.evaluate((el) => {
+    if (!el.__copyFeedback) {
+      throw new Error(
+        "recordCopyFeedback's recorder is missing on this element - it was re-rendered or the page "
+          + "navigated since the recorder was installed",
+      );
+    }
+    return el.__copyFeedback;
+  });
   return {
     states,
     // The distinct labels the button has shown, in order, so a transition can be asserted whole.
     labels: async () => (await states())
       .map((state) => state.label)
       .filter((label, index, all) => index === 0 || all[index - 1] !== label),
+    // Resolves once no new state has been recorded for `quietMs`, so an assertion on the FINAL
+    // state cannot land while a revert timer (or a second, slower clipboard write) is still in
+    // flight. The default is comfortably past the 2000ms failure revert.
+    waitForQuiet: async (quietMs = 2500, timeout = 20000) => {
+      const deadline = Date.now() + timeout;
+      let recorded = await states();
+      let lastChange = Date.now();
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const next = await states();
+        if (next.length !== recorded.length) {
+          recorded = next;
+          lastChange = Date.now();
+        } else if (Date.now() - lastChange >= quietMs) {
+          return next;
+        }
+        if (Date.now() >= deadline) {
+          throw new Error(
+            `copy-button feedback never went quiet for ${quietMs}ms within ${timeout}ms - recorded: `
+              + JSON.stringify(next),
+          );
+        }
+      }
+    },
     waitForState: async (match, what, timeout = 20000) => {
       const deadline = Date.now() + timeout;
       for (;;) {
