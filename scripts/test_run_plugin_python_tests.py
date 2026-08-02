@@ -375,8 +375,62 @@ class HookWiringTests(unittest.TestCase):
                           "the hook runs the plugin suites serially again: %r" % (call,))
 
     def test_suites_are_gated_behind_prepush_tests(self):
-        self.assertIn("PREPUSH_TESTS", self._hook(),
-                      "the slow suites are inline in pre-push again (no PREPUSH_TESTS opt-in)")
+        # Assert the GUARD, not merely the word: a bare mention in a comment must not satisfy this.
+        source = self._hook()
+        self.assertRegex(
+            source, r'if\s+\[\s+"\$\{PREPUSH_TESTS:-0\}"\s+=\s+"1"\s+\]',
+            "the slow suites are inline in pre-push again (no PREPUSH_TESTS guard)")
+
+    def test_windows_only_plugin_tests_still_have_pre_merge_coverage(self):
+        """Making the local suites opt-in removed the only place Windows-only tests ran.
+
+        Several plugin suites are skipUnless(os.name == "nt") - directory-junction containment
+        and the PowerShell launcher - so they SKIP on Linux. Before PREPUSH_TESTS they were
+        covered incidentally by a maintainer's local (Windows) pre-push run. CI must therefore
+        carry a Windows runner, or those tests regress with every required check green.
+        """
+        import yaml
+        wf = rp.REPO_ROOT / ".github" / "workflows" / "plugin-tests.yml"
+        matrix = yaml.safe_load(wf.read_text(encoding="utf-8"))["jobs"]["python"]["strategy"]["matrix"]
+        self.assertIn("os", matrix, "the plugin Python job has no OS matrix")
+        self.assertTrue(
+            any(str(o).startswith("windows") for o in matrix["os"]),
+            "no Windows runner in the plugin Python matrix, so skipUnless(os.name=='nt') "
+            "suites have no pre-merge coverage: %r" % (matrix["os"],))
+
+    def test_windows_only_plugin_tests_actually_exist(self):
+        # The guard above is only meaningful while such tests exist; if they all go away, this
+        # fails and the Windows matrix can be reconsidered deliberately rather than by accident.
+        hits = []
+        for f in rp.discover_test_files(rp.REPO_ROOT):
+            text = f.read_text(encoding="utf-8", errors="replace")
+            if 'skipUnless(os.name == "nt"' in text or "skipUnless(os.name == 'nt'" in text:
+                hits.append(f.name)
+        self.assertTrue(hits, "no Windows-only plugin tests found; revisit the Windows CI matrix")
+
+
+class ParallelSpawnSmokeTests(unittest.TestCase):
+    """Exercise the REAL spawn path once, unmocked.
+
+    Every other parallel test mocks subprocess.run, and CI shards with --shard (serially per
+    runner) rather than --jobs, so without this the actual fan-out - child argv, interpreter
+    launch, output capture, exit-code aggregation - would never execute in any automated run.
+    An empty selection keeps it fast and independent of git state while still starting two real
+    interpreters.
+    """
+
+    def test_real_workers_spawn_and_aggregate_success(self):
+        n = len(rp.discover_test_files(rp.REPO_ROOT))
+        empty = n + 1  # shard (n+1)/(n+1) selects nothing, whatever the corpus size
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = rp.main(["--shard", f"{empty}/{empty}", "--jobs", "2"])
+        text = out.getvalue()
+        self.assertEqual(rc, 0, text)
+        self.assertIn("worker 1/2", text)
+        self.assertIn("worker 2/2", text)
+        # The children really ran and reported their own (empty) selection.
+        self.assertIn("nothing to run", text)
 
 
 class ShardMatrixContiguityTests(unittest.TestCase):

@@ -160,6 +160,14 @@ def run_parallel(index: int, total: int, jobs: int, args: argparse.Namespace) ->
     each worker uses is unchanged - the same isolation `unittest discover` gives, just N of
     them. Output is captured and replayed in job order so a parallel run stays readable and
     deterministic; a worker that fails, crashes, or cannot be launched reds the whole run.
+
+    HERMETICITY REQUIREMENT: unlike the scripts suite (which run_script_tests.py confines to a
+    throwaway cwd), plugin suites run with REPO_ROOT as their working directory. Serially that
+    was harmless; with -j the workers run concurrently in the SAME directory, so a test that
+    writes a fixed repo-relative path would now race a sibling worker and flake only under -j.
+    Every plugin test must therefore write through tempfile/TemporaryDirectory (they all do
+    today). Splitting by whole FILES keeps same-file ordering intact, so only cross-file shared
+    state is at risk.
     """
     commands = [build_child_argv(index, total, j, jobs, args) for j in range(1, jobs + 1)]
     print(f"Running shard {index}/{total} across {jobs} parallel worker(s).")

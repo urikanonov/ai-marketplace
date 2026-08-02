@@ -548,6 +548,13 @@ PREPUSH_TESTS=1 PREPUSH_FULL=1 git push   # + every plugin's suite, not just cha
 RUN_E2E=1 git push              # + the Playwright suites
 ```
 
+PowerShell has no `VAR=1 cmd` prefix syntax, so set the variable first (and clear it after, since
+it persists for the rest of the session):
+
+```powershell
+$env:PREPUSH_TESTS = '1'; git push; Remove-Item Env:\PREPUSH_TESTS
+```
+
 The script unit tests always go through `scripts/run_script_tests.py`, never `unittest discover`
 directly: the runner launches the suite from a THROWAWAY working directory and then fails if the
 suite left anything in it, or if the repository working tree changed while it ran. That is what keeps

@@ -81,10 +81,12 @@ fi
 # the runner launches it from a THROWAWAY working directory and fails if the suite left anything
 # in it, or if this repository changed while it ran. That is what keeps a test's scratch fixture
 # out of the repo root (issue #791 - `a.md` and `old.md` reached `main` that way).
+# NOTE: measured at ~640s, so this whole block - INCLUDING that sandbox/leak guard - is opt-in
+# behind PREPUSH_TESTS. Locally the guard therefore runs only when you ask for it; the required
+# `validate` job always runs it, so a leak still cannot reach `main`.
 # A long run while you keep editing would trip the repository diff on YOUR edits rather than on a
 # leak; opt out of just that diff with PREPUSH_ALLOW_TREE_EDITS=1 instead of skipping every check
-# with --no-verify. The sandbox check still runs.
-# Measured at ~640s, so it is opt-in (PREPUSH_TESTS=1); the required `validate` job always runs it.
+# with --no-verify.
 _scripts_opts=""
 if [ "${PREPUSH_ALLOW_TREE_EDITS:-0}" = "1" ]; then
   _scripts_opts="--no-worktree-check"

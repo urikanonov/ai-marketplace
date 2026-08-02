@@ -293,7 +293,7 @@ jobs:
   python:
     needs: changes
     if: ${{ needs.changes.outputs.run_plugin == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -301,7 +301,14 @@ jobs:
       # keeps the per-file, in-process execution model of `unittest discover`, so no new
       # shared-state parallelism is introduced; different files just run on different runners.
       # The shard is a single "index/total" string (one source of truth for the count).
+      #
+      # Windows is in the matrix because several suites are `skipUnless(os.name == "nt")` -
+      # directory-junction containment in the build and resource extractor, and the PowerShell
+      # launcher in the session hooks. Those SKIP on Linux, so before this they were only ever
+      # exercised by a maintainer's local pre-push run; once that became opt-in they would have
+      # had no pre-merge coverage at all.
       matrix:
+        os: [ubuntu-latest, windows-latest]
         shard: ["1/5", "2/5", "3/5", "4/5", "5/5"]
     env:
       SHARD: ${{ matrix.shard }}
@@ -314,7 +321,10 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
+      # bash on both runners so the one `${SHARD}` expansion means the same thing (PowerShell
+      # would read ${SHARD} as a shell variable, not the environment one, and pass it empty).
       - name: Run plugin Python test suites (shard)
+        shell: bash
         run: python scripts/run_plugin_python_tests.py "--shard=${SHARD}" --require-discovered
 
   plugin-tests:
