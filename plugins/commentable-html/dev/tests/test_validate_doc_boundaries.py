@@ -66,17 +66,35 @@ class DocParserRawTextTests(unittest.TestCase):
         self.assertEqual(_ids(html), ["wrap"])
 
     def test_plaintext_is_incrementally_fed_the_same_way(self):
-        # The feed()/close() path must resolve an unterminated construct exactly as
+        # The feed()/close() path must resolve a never-closing construct exactly as
         # parse_document() does; close() is the end of the document either way.
-        html = '<div id="wrap"></div><!-- note <div id="quoted">'
+        html = '<div id="wrap"></div><plaintext><div id="a"></plaintext><div id="b">'
         p = parsing._DocParser(html)
         p.feed(html)
         p.close()
         self.assertEqual(p.all_ids, ["wrap"])
 
+    def test_a_zero_width_root_does_not_swallow_its_later_siblings(self):
+        # A self-closed foreign element and a void element have no CONTENT, so a later sibling is
+        # not inside them - reading it as inside would let CONTENT markers a browser puts OUTSIDE
+        # an empty #commentRoot define the region.
+        for root in ('<svg id="commentRoot"/>', '<img id="commentRoot">'):
+            with self.subTest(root=root):
+                parser = parsing._parse_document(
+                    root + "<section><h2>Later</h2></section>")
+                self.assertTrue(parser.has_comment_root)
+                self.assertEqual(parser.headings, [])
+
 
 class DocParserCommentTests(unittest.TestCase):
     """The comment closes a BROWSER honours - and only those."""
+
+    def test_an_unterminated_comment_is_resolved_the_same_way_when_fed_incrementally(self):
+        html = '<div id="wrap"></div><!-- note <div id="quoted">'
+        p = parsing._DocParser(html)
+        p.feed(html)
+        p.close()
+        self.assertEqual(p.all_ids, ["wrap"])
 
     def test_the_legacy_bang_comment_close_ends_the_comment(self):
         html = '<!-- quoted --!><div id="real"></div><!-- trailing -->'

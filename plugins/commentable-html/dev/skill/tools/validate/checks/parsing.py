@@ -800,7 +800,17 @@ class _DocParser(_BrowserBoundaries):
             self._mermaid_stack.append(current_mermaid)
             if tag == "figure":
                 self._figure_chart.append("chart" in set((ad.get("class") or "").split()))
+        else:
+            self._close_zero_width()
         self._enter_raw_text(tag, ns)
+
+    def _close_zero_width(self):
+        """An element that is never PUSHED (a void tag, a self-closed foreign one) has no
+        content, so any depth-keyed state `_record` just opened at this depth ends immediately.
+        Without this a `<svg id="commentRoot"/>` or `<img id="commentRoot">` would leave
+        `_in_comment_root()` true for every later sibling, and CONTENT markers a browser puts
+        OUTSIDE the empty root would be read as inside it."""
+        self._truncate_stacks(len(self.stack))
 
     def handle_startendtag(self, tag, attrs):
         # HTML5: a trailing slash on a NON-void HTML tag is ignored by browsers, which treat it
@@ -819,6 +829,7 @@ class _DocParser(_BrowserBoundaries):
                 if idx is not None:
                     self.mermaid_blocks[idx]["has_svg"] = True
             self._record(tag, ad, "cm-skip" in set((ad.get("class") or "").split()))
+            self._close_zero_width()
             return
         self.handle_starttag(tag, attrs)
 
