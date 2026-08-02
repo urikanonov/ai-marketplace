@@ -12,11 +12,11 @@
       "mark": "ask",
       "idleMs": 4000,
       "submitMs": 1500,
-      "send": "Write md2html.mjs and a short PLAN.md, then run 2 rounds of multi-duck on them and finish with a PANEL SUMMARY table of the consolidated findings."
+      "send": "Write slugify.mjs with a slugify(text) function and a few tests, then run 2 rounds of multi-duck over it with 4 fast ducks, and finish with a PANEL SUMMARY table of the findings."
     },
     {
       "mark": "quit",
-      "timeoutMs": 5400000,
+      "timeoutMs": 3600000,
       "idleMs": 30000,
       "delayMs": 3000,
       "submitMs": 1500,
