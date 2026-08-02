@@ -5,6 +5,7 @@ import contextlib
 import io
 import json
 import os
+import pathlib
 import re
 import subprocess
 import sys
@@ -343,6 +344,44 @@ class ChartBlockUnvalidatedOutputTests(unittest.TestCase):
         for value in (object(), 3, b"tools/validate/validate.py", None, ""):
             with self.subTest(value=value):
                 self.assertFalse(chart_block._contained(value))
+
+    def test_a_misbehaving_pathlike_file_is_refused_rather_than_raising(self):
+        # os.PathLike is accepted by the guard, but a PathLike is only a promise of
+        # __fspath__ - one that hands back bytes, or raises, must still be refused rather
+        # than reaching realpath/startswith and escaping as a traceback.
+        class BytesPath:
+            def __fspath__(self):
+                return b"tools/validate/validate.py"
+
+        class BrokenPath:
+            def __fspath__(self):
+                raise RuntimeError("no path here")
+
+        for value in (BytesPath(), BrokenPath()):
+            with self.subTest(value=type(value).__name__):
+                self.assertFalse(chart_block._contained(value))
+        # ...and a well-behaved PathLike naming the real validator is still accepted, so
+        # the refusal above is a guard, not a blanket rejection of every PathLike.
+        real = pathlib.Path(TOOLS) / "validate" / "validate.py"
+        self.assertTrue(chart_block._contained(real))
+
+    def test_an_unformattable_module_file_still_comes_back_as_a_reason(self):
+        # The refusal MESSAGE interpolates __file__, so a value that cannot be formatted
+        # (a tuple, or one whose __str__ raises) must not turn the named reason back into
+        # the traceback this seam exists to replace.
+        class Hostile:
+            def __str__(self):
+                raise RuntimeError("nope")
+
+        for value in ((1, 2), Hostile()):
+            with self.subTest(value=type(value).__name__):
+                odd = types.ModuleType("validate")
+                odd.__file__ = value
+                odd.validate = lambda path: ([], [])
+                with mock.patch.dict(sys.modules, {"validate": odd}):
+                    module, reason = chart_block._load_validator()
+                self.assertIsNone(module)
+                self.assertIn("not this skill's", reason)
 
     def _run_with_template(self, template_path, extra_argv=()):
         out, err = io.StringIO(), io.StringIO()

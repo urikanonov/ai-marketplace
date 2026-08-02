@@ -363,13 +363,35 @@ def _contained(path):
     Both sides are compared in two forms - fully resolved, and merely absolute - so a
     junction, a differently-cased path, OR a per-file symlink of validate.py to a shared
     location all still count as the real validator rather than tripping the guard.
+
+    Anything that is not a usable path string is REFUSED rather than allowed to raise:
+    `os.PathLike` is only a promise of `__fspath__`, and the caller runs outside its own
+    try block, so a value that cannot be normalized has to come back as "not ours".
     """
-    if not isinstance(path, (str, os.PathLike)) or not path:
+    try:
+        path = os.fspath(path)
+    except Exception:  # noqa: BLE001  a non-path value, or a hostile/broken __fspath__
+        return False
+    if not isinstance(path, str) or not path:
         return False
     expected = os.path.join(_TOOLS_DIR, "validate")
-    candidates = {_canonical(path), os.path.normcase(os.path.abspath(path))}
-    bases = {_canonical(expected), os.path.normcase(os.path.abspath(expected))}
-    return any(c.startswith(b + os.sep) for c in candidates if c for b in bases if b)
+    try:
+        candidates = {_canonical(path), os.path.normcase(os.path.abspath(path))}
+        bases = {_canonical(expected), os.path.normcase(os.path.abspath(expected))}
+        return any(c.startswith(b + os.sep) for c in candidates if c for b in bases if b)
+    except (OSError, ValueError):
+        # A NUL byte or an over-long path cannot name the real validator either.
+        return False
+
+
+def _describe(value):
+    """Render a module origin for a message without letting an odd value raise."""
+    try:
+        if not value:
+            return "an unknown location"
+        return str(value) or "an unknown location"
+    except Exception:  # noqa: BLE001  a hostile __bool__ or __str__
+        return "an unrepresentable location"
 
 
 def _load_validator():
@@ -389,19 +411,20 @@ def _load_validator():
                 type(exc).__name__, exc)
         if spec is None:
             return None, "the sibling 'validate' tool is not importable (no module named 'validate')"
-        if not _contained(getattr(spec, "origin", "") or ""):
+        origin = getattr(spec, "origin", "")
+        if not _contained(origin):
             return None, ("the 'validate' module on sys.path is %s, not this skill's "
-                          "tools/validate/validate.py" % (spec.origin or "an unknown location"))
+                          "tools/validate/validate.py" % (_describe(origin),))
         try:
             import validate as module  # noqa: F401
         except Exception as exc:  # noqa: BLE001
             _toolpath.warn_missing_tool("validate", "self-validation of the new document")
             return None, "the sibling 'validate' tool could not be imported (%s: %s)" % (
                 type(exc).__name__, exc)
-    if not _contained(getattr(module, "__file__", "") or ""):
+    origin = getattr(module, "__file__", "")
+    if not _contained(origin):
         return None, ("the imported 'validate' module is %s, not this skill's "
-                      "tools/validate/validate.py" % (getattr(module, "__file__", "")
-                                                      or "an unknown location"))
+                      "tools/validate/validate.py" % (_describe(origin),))
     return module, None
 
 
