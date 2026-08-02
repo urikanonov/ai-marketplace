@@ -650,9 +650,16 @@ class SpecTestReferenceTests(unittest.TestCase):
 
         issues = refs.check_all(((spec, self.base),))
 
+        # The COMPLETE list, so a spurious or duplicated report from `check_all`'s two-half split
+        # is caught too. DEMO-02/DEMO-03 come from setUp's demo.spec.js, which the ownership half
+        # now reads because it is an ordinary `*.spec.js`.
         self.assertEqual(
-            ["feature id `ORPHAN-77` has no spec row"],
-            [issue.message for issue in issues if "ORPHAN-77" in issue.message],
+            [
+                "feature id `ORPHAN-77` has no spec row",
+                "feature id `DEMO-02` has no spec row",
+                "feature id `DEMO-03` has no spec row",
+            ],
+            [issue.message for issue in issues],
         )
 
     def test_reverse_map_checks_a_suite_title_id_for_ownership_only(self):
@@ -699,6 +706,21 @@ class SpecTestReferenceTests(unittest.TestCase):
             [issue.message for issue in issues if "ORPHAN-44" in issue.message],
         )
 
+    def test_a_test_fail_title_can_be_cited_by_a_spec_row(self):
+        # The forward half of the same grammar: a row citing a `test.fail(...)` title must be
+        # accepted as an exact test reference, not rejected as prose.
+        (self.base / "tests" / "failing.spec.js").write_text(
+            "test.fail('a known-failing behavior (DEMO-45)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec_rows((
+            ("DEMO-01", "`tests/demo.spec.js` - `real browser title (DEMO-01)`"),
+            ("DEMO-45", "`tests/failing.spec.js` - `a known-failing behavior (DEMO-45)`"),
+        ))
+
+        self.assertEqual(refs.check_spec(spec, self.base), [])
+
     def test_tests_dir_prefers_the_spec_directory_over_the_base(self):
         # The site target's base is the repo root, so a `<base>/tests` preference would let a
         # future repo-root `tests/` shadow `site/tests/tests` and silently stop checking it.
@@ -724,9 +746,10 @@ class SpecTestReferenceTests(unittest.TestCase):
         )
         spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
 
-        corpus = refs._test_corpus(spec, self.base, reverse_only=True)
+        corpus = refs._test_corpus(spec, self.base)
 
         self.assertIn(nested / "deep.test.mjs", corpus)
+        self.assertTrue(refs._is_reverse_mapped((nested / "deep.test.mjs").name))
 
     def test_test_corpus_covers_every_playwright_test_extension(self):
         for name in ("extra.test.js", "extra.spec.ts", "extra.spec.cjs", "extra.test.mts"):
@@ -1039,10 +1062,13 @@ class SpecTestReferenceTests(unittest.TestCase):
 
         self.assertEqual(
             [], [i.message for i in restricted if "is not cited by its" in i.message])
-        self.assertEqual(
-            ["test title `an uncited behavior (DEMO-01)` is not cited by its `DEMO-01` spec row"],
-            [i.message for i in full if "is not cited by its" in i.message],
+        uncited = [i.message for i in full if "is not cited by its" in i.message]
+        self.assertEqual(1, len(uncited))
+        self.assertIn(
+            "test title `an uncited behavior (DEMO-01)` is not cited by its `DEMO-01` spec row",
+            uncited[0],
         )
+        self.assertIn("covering-tests cell", uncited[0])
 
     def test_the_site_spec_is_fully_reverse_mapped(self):
         self.assertIn(
@@ -1087,16 +1113,19 @@ class SpecTestReferenceTests(unittest.TestCase):
         # `*.test.*` / `*regressions*.spec.*` subset it was limited to.
         spec = (self.root / "plugins" / "commentable-html" / "dev" / "SPEC.md").resolve()
         base = spec.parent
-        reverse_only = spec not in refs.FULLY_REVERSE_MAPPED_SPECS
-        corpus = refs._test_corpus(spec, base, reverse_only=reverse_only)
+        self.assertIn(spec, refs.FULLY_REVERSE_MAPPED_SPECS)
+        # `check_all` sends a fully mapped target's WHOLE corpus through the citation half.
+        corpus = refs._test_corpus(spec, base)
         plain = [path.name for path in corpus if not refs._is_reverse_mapped(path.name)]
 
         self.assertTrue(plain, "no plain .spec.js file is reverse-mapped for commentable-html")
 
     def test_a_fully_mapped_spec_reports_a_same_file_uncited_carrier_once(self):
-        # The duplicate direction still relaxes the same-file case. That is not a hole now that
-        # every target is fully reverse-mapped: the REVERSE direction demands the citation, and
-        # the relaxation keeps the miss from being reported twice.
+        # An INVARIANT test, not a guard on the `FULLY_REVERSE_MAPPED_SPECS` membership change
+        # (that is what the two tests above pin): it passes the mapping in explicitly. What it
+        # pins is the answer to issue #853's third question - the duplicate direction still
+        # relaxes the same-file case, and that is not a hole, because the REVERSE direction
+        # demands the citation and the relaxation keeps the same miss from being reported twice.
         base = self.sandbox / "solo-base"
         (base / "tests").mkdir(parents=True)
         (base / "tests" / "solo.spec.js").write_text(
@@ -1116,11 +1145,25 @@ class SpecTestReferenceTests(unittest.TestCase):
         )
 
         self.assertEqual([], refs.check_duplicate_feature_ids(((spec, base),)))
-        self.assertEqual(
-            ["test title `another angle (DEMO-01)` is not cited by its `DEMO-01` spec row"],
-            [issue.message
-             for issue in refs.check_all(((spec, base),), frozenset({spec.resolve()}))],
+        issues = refs.check_all(((spec, base),), frozenset({spec.resolve()}))
+        self.assertEqual(1, len(issues))
+        self.assertIn(
+            "test title `another angle (DEMO-01)` is not cited by its `DEMO-01` spec row",
+            issues[0].message,
         )
+
+    def test_a_target_with_no_tests_directory_fails_closed(self):
+        # With no tests dir the reverse and duplicate directions are silent no-ops, so a mistyped
+        # base would look like a permanently clean target.
+        bare = self.sandbox / "bare"
+        bare.mkdir()
+        spec = bare / "SPEC.md"
+        spec.write_text("# Spec\n", encoding="utf-8", newline="\n")
+
+        issues = refs.check_all(((spec, bare),))
+
+        self.assertEqual(1, len(issues))
+        self.assertIn("no tests directory found for this target", issues[0].message)
 
     def test_real_specs_have_current_test_references(self):
         issues = refs.check_all()

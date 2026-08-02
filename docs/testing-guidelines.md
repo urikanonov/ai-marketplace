@@ -31,17 +31,21 @@ spec-and-test rules in [../AGENTS.md](../AGENTS.md); where they overlap, AGENTS.
   the id in parentheses so the two stay searchable together.
 - **Do not borrow another file's feature id.** `scripts/check_spec_test_refs.py` fails when one id is
   carried by test titles in MORE THAN ONE file and a spec row that owns the id does not cite every
-  one of them. Two tests in the SAME spec file may share an id while it stays in that file (a single
-  behavior asserted from several angles is the existing convention here); once the id also appears in
-  another file, EVERY carrier - including the same-file ones - must be listed on the row. A test in a
+  one of them. Two tests in the SAME spec file may share an id (a single behavior asserted from
+  several angles is the existing convention here), but the owning row must still list EVERY title:
+  the reverse direction below demands a citation for each carrier, same-file ones included. The
+  duplicate direction only escalates when the id also appears in another file. A test in a
   different file that reuses an id is therefore either a new behavior that needs its own id, or
   genuine extra coverage the row must name. That is the gate the `DEMO-TRIM-06`/`DEMO-TRIM-07` reuse
   slipped past (#800). Hiding the reuse in a `describe(...)` wrapper does not help: a suite title
-  still counts toward "how many files carry this id". The same checker also verifies the reverse
+  still counts toward "how many files carry this id", and its id must have a row of its own.
+  The same checker also verifies the reverse
   direction - every JS `test`/`it` title that carries an id is owned by that id's row, across the
   WHOLE `*.spec.*` / `*.test.*` corpus of every shipped target (an ordinary `tests/45-foo.spec.js`
   is checked exactly like a `*regressions*.spec.*` one), and that row must CITE the title. A
-  `describe(...)` suite title is checked for ownership only, since a row cannot cite one. Write a
+  `describe(...)` suite title is checked for ownership only, since a row cannot cite one. Any
+  `AREA-NN`-shaped token in a title is read as a feature id, so do not put one in a title
+  incidentally (`decodes UTF-8 input` would be read as the id `UTF-8`). Write a
   covering-tests cell file-first - `` `tests/x.spec.js` - `a title`,
   `another title` `` - because a title only counts as cited when it appears AFTER its file
   reference and before the next one (or the next `;`). Keep prose semicolons OUT of a coverage
