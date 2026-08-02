@@ -154,3 +154,4 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-PORT-07 | opt-out: an internal compatibility shim for already-shipped document markup; a reader sees no new capability | opt-out: a compatibility invariant with nothing to demonstrate on a slide |
 | CMH-PORT-08 | opt-out: build/authoring tooling detail (how a tool locates its template); not reader-facing | opt-out: a tooling detail with nothing to demonstrate on a slide |
 | CMH-PORT-09 | opt-out: a deprecated-alias guarantee for the agent-facing CLI; the reader-facing docs name only the current spelling | opt-out: a CLI alias with nothing to demonstrate on a slide |
+| CMH-PRINT-08 | opt-out: a print-fidelity invariant - the printed diagram simply looks right; the on-screen scroll cue is unchanged, so there is nothing new for a reader to learn or do | opt-out: print/PDF fidelity, not something a viewer needs shown on a slide |

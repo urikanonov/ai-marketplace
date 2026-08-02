@@ -329,3 +329,59 @@ test("CMH-PRINT-07: the measure CSS caps both mermaid hosts, so the measured pag
     "a div.mermaid document measures essentially the same page height as the identical pre.mermaid one")
     .toBeLessThan(200);
 });
+
+
+test("CMH-PRINT-08: print drops the diagram scroll-fade mask on both mermaid hosts", async ({ page }) => {
+  // The scroll-fade mask is an ON-SCREEN cue that a wide diagram scrolls horizontally inside its own
+  // box: it fades the host's left and right 18px. Paper does not scroll, so on paper the cue is
+  // meaningless and only washes out the printed diagram's edges. Both host shapes carry the class
+  // (CMH_MERMAID_SEL), so both must come out unmasked in print.
+  //
+  // The class is applied by the runtime only when a diagram genuinely overflows, which depends on
+  // measured widths; the case is STAGED here (class pre-applied in the markup and re-asserted below)
+  // so the test pins the print behavior rather than the overflow heuristics.
+  const svg = '<svg viewBox="0 0 2400 300" width="2400" height="300" role="img" aria-label="wide diagram">'
+    + '<rect width="2400" height="300" fill="#cccccc"></rect></svg>';
+  const content = `
+    <section>
+      <h2>Diagrams</h2>
+      <pre class="mermaid cmh-diagram-wide cmh-diagram-scroll-fade" id="preHost" data-processed="true">${svg}</pre>
+      <div class="mermaid cmh-diagram-wide cmh-diagram-scroll-fade" id="divHost" data-processed="true">${svg}</div>
+    </section>`;
+  const staged = stagePrintContent(content, { key: "cmh-print-fade", source: "print-fade.html" });
+
+  await denyExternalNetwork(page);
+  await page.goto(fileUrl(staged.html));
+  await ready(page);
+
+  // Re-apply the class before each read: the mermaid layer re-syncs it from live measurements, and a
+  // host it decided does not overflow would leave nothing to assert about (a vacuous green).
+  const readMasks = () => page.evaluate(() => {
+    const out = {};
+    ["preHost", "divHost"].forEach((id) => {
+      const el = document.getElementById(id);
+      el.classList.add("cmh-diagram-scroll-fade");
+      const cs = getComputedStyle(el);
+      out[id] = { mask: cs.maskImage, webkitMask: cs.webkitMaskImage };
+    });
+    return out;
+  });
+
+  // On screen the cue must still be there - this fix must not silently delete the affordance.
+  const onScreen = await readMasks();
+  expect(onScreen.preHost.webkitMask, "the on-screen scroll-fade cue survives on pre.mermaid").toContain("linear-gradient");
+  expect(onScreen.divHost.webkitMask, "the on-screen scroll-fade cue survives on div.mermaid").toContain("linear-gradient");
+  expect(onScreen.preHost.mask, "the unprefixed on-screen cue survives on pre.mermaid").toContain("linear-gradient");
+  expect(onScreen.divHost.mask, "the unprefixed on-screen cue survives on div.mermaid").toContain("linear-gradient");
+
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+
+  const inPrint = await readMasks();
+  // Both the prefixed and unprefixed properties are asserted: the rule sets both, so resetting only
+  // one would still print faded edges in the engine that honors the other.
+  expect(inPrint.preHost.webkitMask, "a pre.mermaid host prints with no edge mask").toBe("none");
+  expect(inPrint.divHost.webkitMask, "a div.mermaid host prints with no edge mask").toBe("none");
+  expect(inPrint.preHost.mask, "a pre.mermaid host prints with no unprefixed edge mask").toBe("none");
+  expect(inPrint.divHost.mask, "a div.mermaid host prints with no unprefixed edge mask").toBe("none");
+});

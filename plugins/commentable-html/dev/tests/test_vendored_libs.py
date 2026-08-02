@@ -955,6 +955,89 @@ class RuntimeParityTests(unittest.TestCase):
             "longer declared is dead CSS. Note the cap must target the rendered `svg` INSIDE the "
             "host, not the host box." % (sorted(capped), sorted(self._mermaid_hosts())))
 
+    def _iter_css_rules(self, css):
+        """Yield `(at_rule_preludes, selector, declarations)` for every rule in a stylesheet.
+
+        A plain scan, not a CSS parser: it tracks the stack of enclosing at-rule preludes (so a
+        rule's media context is known) and treats a declaration block as brace-free, which holds
+        for this project's flat CSS. Feed it COMMENT-STRIPPED text, for the same reason the cap
+        pin above strips comments - prose that merely describes a rule must not stand in for it.
+        """
+        rules, stack, i, start, n = [], [], 0, 0, len(css)
+        while i < n:
+            ch = css[i]
+            if ch == "{":
+                prelude = css[start:i].strip()
+                if prelude.startswith("@"):
+                    stack.append(prelude)
+                    i += 1
+                    start = i
+                    continue
+                end = css.find("}", i)
+                end = n if end == -1 else end
+                rules.append((tuple(stack), prelude, css[i + 1:end]))
+                i = end + 1
+                start = i
+                continue
+            if ch == "}":
+                if stack:
+                    stack.pop()
+                i += 1
+                start = i
+                continue
+            i += 1
+        return rules
+
+    def test_the_diagram_scroll_fade_mask_is_screen_only_on_exactly_the_shared_mermaid_hosts(self):
+        """CMH-PRINT-08: the scroll cue exists in ONE media context, so print cannot inherit it.
+
+        The edge fade tells a reader a wide diagram scrolls horizontally inside its own box. Paper
+        does not scroll, so a mask that survives into print only washes out the printed diagram's
+        edges. The robust expression is to declare the mask `screen`-only at the source rather than
+        to add a second, print-scoped reset: a reset is a SECOND surface that can drift (exactly how
+        `div.mermaid` fell out of the tall-media cap while `pre.mermaid` kept it, CMH-PRINT-07), and
+        it would also owe a `measureCss()` mirror by the paired-print-surfaces convention.
+
+        Pinned in both directions, across every stylesheet partial: there is exactly ONE such rule,
+        it sits inside a screen-only `@media` block, and it covers exactly the shared
+        `CMH_MERMAID_SEL` vocabulary - so the mask can neither leak back into print nor fade one
+        host shape while leaving the other alone.
+        """
+        css_dir = os.path.join(_paths.DEV, "assets", "css")
+        faded = []
+        for name in sorted(os.listdir(css_dir)):
+            if not name.endswith(".css"):
+                continue
+            css = self._strip_css_comments(self._read_css(name))
+            for media, selector, decls in self._iter_css_rules(css):
+                if "cmh-diagram-scroll-fade" in selector and "mask-image" in decls:
+                    faded.append((name, media, selector))
+        self.assertEqual(
+            len(faded), 1,
+            "expected exactly one scroll-fade mask rule across the CSS partials; found %d (%s). A "
+            "second one is a second surface that can disagree with the first - which is the drift "
+            "this pin exists to prevent. Re-point this check if the rule legitimately moved."
+            % (len(faded), [(n, s.strip()) for n, _m, s in faded]))
+        name, media, selector = faded[0]
+        self.assertTrue(
+            any(re.match(r"@media\s+screen\b", prelude) for prelude in media),
+            "the scroll-fade mask rule in %s is no longer inside a screen-only @media block (at-rule "
+            "context: %s). Outside one it applies in PRINT too, and a wide diagram prints with faded "
+            "left and right edges for a scroll that paper cannot do." % (name, list(media)))
+        for prelude in media:
+            self.assertNotIn(
+                "print", prelude,
+                "the scroll-fade mask rule in %s sits in an at-rule context that names print (%r); "
+                "the cue is for scrolling, which paper does not do." % (name, prelude))
+        selector = re.sub(r"\[[^\]]*\]", "[]", selector)
+        faded_hosts = set(re.findall(r"([A-Za-z][\w-]*\.[\w-]+)\.cmh-diagram-scroll-fade", selector))
+        self.assertEqual(
+            faded_hosts, set(self._mermaid_hosts()),
+            "the scroll-fade mask rule and the shared CMH_MERMAID_SEL vocabulary have diverged "
+            "(faded hosts: %s; declared: %s). A declared host with no fade loses the scroll cue; a "
+            "faded host that is no longer declared is dead CSS."
+            % (sorted(faded_hosts), sorted(self._mermaid_hosts())))
+
     def test_every_runtime_selector_is_recognised_by_the_author_time_detector(self):
         markup = {
             "pre.mermaid": '<pre class="mermaid cm-skip">graph TD; A--&gt;B;</pre>',

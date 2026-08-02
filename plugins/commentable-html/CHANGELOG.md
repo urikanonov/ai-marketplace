@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.351.0] - 2026-08-02
+
+### Fixed
+
+- A wide diagram no longer prints with washed-out edges. The scroll-fade mask that cues horizontal
+  scrolling on screen is now declared `screen`-only, so a diagram host carrying it prints with no
+  edge mask - for both `pre.mermaid` and `div.mermaid` hosts. The on-screen cue is unchanged.
+
 ## [1.350.0] - 2026-08-02
 
 ### Changed

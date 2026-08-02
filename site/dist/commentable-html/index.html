@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.350.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.351.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.351.0] - 2026-08-02</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A wide diagram no longer prints with washed-out edges. The scroll-fade mask that cues horizontal scrolling on screen is now declared <code>screen</code>-only, so a diagram host carrying it prints with no edge mask - for both <code>pre.mermaid</code> and <code>div.mermaid</code> hosts. The on-screen cue is unchanged.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.350.0] - 2026-08-02</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -507,6 +514,8 @@
               <li>Every document produced by an earlier release keeps loading, behaving, and validating exactly as before - with no new error and no new warning: - the legacy descriptor modes <code>&quot;portable&quot;</code> / <code>&quot;nonportable&quot;</code> stay accepted by the validator, by <code>to_shareable.py</code>, and by the runtime, and are treated as equivalent to the new values; - the legacy <code>NONPORTABLE BOOTSTRAP</code> comment anchor stays recognized by <code>upgrade.py</code>, <code>retrofit.py</code>, <code>to_shareable.py</code> and the in-page exports, so a legacy companion document still upgrades, migrates, and exports to a single file (a MIXED anchor pair, which a hand-edited or partially-migrated document can carry, is handled too); - re-exporting a file an earlier release produced keeps its name tidy: the pre-rename <code>-portable</code> suffix is stripped, so <code>report-portable.html</code> exports as <code>report-shareable.html</code> rather than <code>report-portable-shareable.html</code>; - the legacy <code>cm-nonportable</code> / <code>cm-nonportable-only</code> CSS hooks - baked into the markup of already-shipped companion documents - are kept beside the new <code>cm-nonshareable</code> ones, and the runtime sets both body classes; - the tools resolve <code>SHAREABLE.html</code> / <code>NONSHAREABLE.html</code> first and fall back to the legacy <code>PORTABLE.html</code> / <code>NONPORTABLE.html</code> names, so an older checkout or vendored stage still works, and a script that still passes <code>--template &lt;dist&gt;/PORTABLE.html</code> is pointed at the current file instead of failing to read a renamed one; - <code>--portable</code> and <code>--nonportable</code> remain accepted aliases on <code>new_document.py</code> and <code>retrofit.py</code>, and <code>tools/validate/validate.py</code> keeps its pre-rename module symbols (<code>NONPORTABLE_REGIONS</code>, <code>_is_nonportable</code>, ...) as aliases of the current objects; - <code>tools/authoring/to_portable.py</code> remains as a thin alias that forwards to <code>to_shareable.py</code> (printing a one-line deprecation note), so an existing script does not break.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.333.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -514,8 +523,6 @@
               <li>Deleting a comment from the <strong>Manage storage</strong> dialog&#x27;s per-comment list now closes the in-document comment dialog when it is showing one of the deleted comments, matching the sidebar delete and Clear all paths. Previously the live delete path closed any open floating edit composer but never the in-document dialog, so a reviewer who left that dialog open - especially in edit mode, where an outside click does not dismiss it - kept typing into an editor for a comment that no longer existed until Save discovered the loss. A dialog showing a comment that was NOT deleted stays open.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.332.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -550,14 +557,7 @@
               <li>Export Offline no longer trusts the first <code>cmhVendoredRichLibs</code> block it finds, and never ships a library without its MIT notice. The payload is INFRASTRUCTURE, so it is now resolved from the document being exported as a payload-id script OUTSIDE the content root and EXACTLY one of them: an authored decoy planted inside the content region used to come first in document order and win, and its compressed bytes were inflated and inlined into an export whose own CSP allows inline script - document-supplied code running in a file the recipient believes is a clean skill-generated export. A document that has a candidate but cannot single one out (two of them, or a content boundary that cannot be pinned down because the content-root id is missing or duplicated) is now a loud, distinct failure rather than &quot;no payload&quot;, so it cannot quietly hand the export to the document&#x27;s own copies. The authoring step collapses a rich document to exactly one payload copy, so a finalized document is never born in that state. The consume-and-strip also removed only the FIRST payload block, leaving a second one - including one parked in a <code>&lt;template&gt;</code> - inside a file that is supposed to carry the libraries inline and no payload at all; every infrastructure block is now stripped, while a payload-id script inside the content root is preserved as the authored content it is (and no longer exempt from the network-import strip). Finally, a library and its notice travel as ONE unit: a payload whose notice text had been stripped, or replaced by a non-string value, used to re-emit the library bytes with no notice at all - a silent MIT compliance break - and now fails the export naming the missing NOTICE and the remedy rather than a bundle the document does carry.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.321.0] - 2026-08-02</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li><code>tools/blocks/chart_block.py</code> no longer raises <code>TypeError</code> when a cached <code>sys.modules[&quot;validate&quot;]</code> carries a <code>__file__</code> that is not a usable path. Its containment guard now normalizes the value through <code>os.fspath</code> and refuses anything that is not a non-empty string - a plain object, an int, bytes, a <code>PathLike</code> whose <code>__fspath__</code> returns bytes or raises, or a <code>str</code> subclass with a hostile <code>__bool__</code> - and the refusal message no longer raises while rendering an odd value (a tuple, or one whose <code>__str__</code> raises). A path that cannot be canonicalized at all (an embedded NUL byte, an over-long path) is refused the same way, as is a cached module whose <code>__file__</code> ACCESS raises (a lazy loader or an import proxy), and the &quot;unexpected result&quot; reason now renders a misbehaving validator&#x27;s own value without letting its <code>__repr__</code> raise. So that install shape comes back as the named &quot;could not check&quot; reason the fail-closed path exists for - and the <code>--allow-unvalidated-output</code> opt-out stays reachable - instead of escaping as a traceback from outside the caller&#x27;s try block. <code>tools/authoring/new_document.py</code> carried the same seam and gets the identical hardening, so the two stay in parity.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">247 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">248 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
