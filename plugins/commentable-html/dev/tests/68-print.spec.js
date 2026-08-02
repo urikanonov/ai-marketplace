@@ -367,12 +367,17 @@ test("CMH-PRINT-08: print drops the diagram scroll-fade mask on both mermaid hos
     return out;
   });
 
-  // On screen the cue must still be there - this fix must not silently delete the affordance.
+  // On screen the cue must still be there - this fix must not silently delete the affordance. The
+  // SHAPE is asserted, not just "a gradient": a gradient with opaque edge stops is no fade at all,
+  // and a plain `toContain("linear-gradient")` would accept it.
   const onScreen = await readMasks();
+  const transparentStops = (value) => (String(value).match(/rgba\(0,\s*0,\s*0,\s*0\)/g) || []).length;
   expect(onScreen.preHost.webkitMask, "the on-screen scroll-fade cue survives on pre.mermaid").toContain("linear-gradient");
   expect(onScreen.divHost.webkitMask, "the on-screen scroll-fade cue survives on div.mermaid").toContain("linear-gradient");
   expect(onScreen.preHost.mask, "the unprefixed on-screen cue survives on pre.mermaid").toContain("linear-gradient");
   expect(onScreen.divHost.mask, "the unprefixed on-screen cue survives on div.mermaid").toContain("linear-gradient");
+  expect(transparentStops(onScreen.preHost.mask), "pre.mermaid fades out at BOTH edges").toBeGreaterThanOrEqual(2);
+  expect(transparentStops(onScreen.divHost.mask), "div.mermaid fades out at BOTH edges").toBeGreaterThanOrEqual(2);
 
   await page.emulateMedia({ media: "print" });
 

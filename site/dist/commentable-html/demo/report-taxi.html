@@ -1887,13 +1887,10 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: 
 #commentRoot div.mermaid { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
 #commentRoot pre.mermaid svg,
 #commentRoot div.mermaid svg { max-width: none; }
-/* The edge fade is a SCROLL cue, so it is scoped to `screen` at the source rather than reset again in
-   92-print.css: paper does not scroll, and a mask that survives into print only washes out the printed
-   diagram's left and right edges for nothing. Declaring it once, screen-only, keeps the cue in a single
-   rule - a print reset would be a redundant SECOND rule naming the same host set, which is the shape
-   that let div.mermaid fall out of the tall-media cap while pre.mermaid kept it (CMH-PRINT-07). A mask
-   changes no layout, so the CMH-PRINT-06 single-page measurement (taken under screen media, where the
-   cue still applies) is unaffected. CMH-PRINT-08. */
+/* The edge fade is a SCROLL cue, so it is declared screen-only here rather than reset again in
+   92-print.css: paper does not scroll, and a print reset would be a redundant second rule naming the
+   same host set - the shape that let one host drop out of the print cap (CMH-PRINT-07). See the
+   CMH-PRINT-08 spec row for the full rationale. */
 @media screen {
   #commentRoot pre.mermaid.cmh-diagram-scroll-fade,
   #commentRoot div.mermaid.cmh-diagram-scroll-fade {
