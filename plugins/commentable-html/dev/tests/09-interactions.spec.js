@@ -292,16 +292,26 @@ test.describe("comment interactions", () => {
     };
 
     // The note view is capped inside the viewport, and the cap is the RUNTIME's measured-viewport
-    // px value (which tracks a dynamic mobile browser toolbar), not only the static `vh` fallback.
+    // px value (which tracks a dynamic mobile browser toolbar), not only the static `vh` fallback -
+    // which is asserted separately, by reading what the dialog falls back to without the inline cap.
     fitsViewport(await boxOf(pop));
-    expect(await pop.evaluate((el) => el.style.maxHeight)).toBe(`${(await page.evaluate(() => window.innerHeight)) - 16}px`);
-    // The overflowing note scrolls INSIDE its own region, and the actions row stays on screen with
-    // the note scrolled to the bottom.
+    const caps = await pop.evaluate((el) => {
+      const inline = el.style.maxHeight;
+      el.style.maxHeight = "";
+      const css = getComputedStyle(el).maxHeight;
+      el.style.maxHeight = inline;
+      return { inline, css, vh: window.innerHeight };
+    });
+    expect(caps.inline).toBe(`${caps.vh - 16}px`);
+    expect(caps.css).not.toBe("none");
+    // The overflowing note scrolls INSIDE its own region, and both actions stay on screen with the
+    // note scrolled to the bottom.
     const note = pop.locator(".cm-comment-popover-note");
     expect((await boxOf(note)).hidden).toBeGreaterThan(1);
     await note.evaluate((el) => { el.scrollTop = el.scrollHeight; });
     expect(await note.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
     fitsViewport(await boxOf(pop));
+    fitsViewport(await boxOf(pop.locator('[data-act="close"]')));
     fitsViewport(await boxOf(pop.locator('[data-act="edit"]')));
 
     // So is the edit form, whose toolbar + textarea + actions row are what used to overflow.
@@ -312,12 +322,13 @@ test.describe("comment interactions", () => {
     const dialog = await boxOf(pop);
     expect(dialog.hidden).toBeLessThanOrEqual(1);
 
-    // Cancel and Save are both on screen, by pointer and by keyboard, and Save still works.
+    // Cancel and Save are both on screen, and reachable by real Tab navigation from the textarea.
     fitsViewport(await boxOf(pop.locator('[data-act="edit-cancel"]')));
     fitsViewport(await boxOf(pop.locator('[data-act="edit-save"]')));
+    await pop.locator("textarea.cm-comment-popover-input").focus();
     for (const act of ["edit-cancel", "edit-save"]) {
+      await page.keyboard.press("Tab");
       const btn = pop.locator(`[data-act="${act}"]`);
-      await btn.focus();
       await expect(btn).toBeFocused();
       fitsViewport(await boxOf(btn));
     }
@@ -355,9 +366,17 @@ test.describe("comment interactions", () => {
     // An in-progress edit deliberately survives its anchor scrolling out of view, so the dialog is
     // then re-fitted on its own rather than left with a stale cap and position.
     await page.evaluate(() => window.scrollBy(0, 2000));
+    // Precondition: the anchor really is off screen, so this exercises the unanchored re-fit and
+    // not the ordinary anchored reposition.
+    expect(await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return r.bottom < 0 || r.top > window.innerHeight;
+    })).toBe(true);
     await expect(pop).toBeVisible();
     await page.setViewportSize({ width: 390, height: 200 });
     await expect(pop).toBeVisible();
+    // The runtime re-capped from the new measured viewport (not just the CSS fallback).
+    await expect.poll(() => pop.evaluate((el) => el.style.maxHeight)).toBe("184px");
 
     const boxOf = (loc) => loc.evaluate((el) => {
       const r = el.getBoundingClientRect();
@@ -371,6 +390,41 @@ test.describe("comment interactions", () => {
     await pop.locator("textarea.cm-comment-popover-input").fill("saved after the shrink");
     await pop.locator('[data-act="edit-save"]').click();
     expect((await storedComments(page))[0].note).toBe("saved after the shrink");
+  });
+
+  test("CMH-CORE-18: growing the textarea after the dialog is placed re-fits it instead of pushing Save off screen", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "grow me after placement");
+    const cid = (await allCids(page))[0];
+    // A viewport where the cap is NOT binding, so only the re-fit on content growth can keep the
+    // dialog inside it: the edit form starts well under the cap and then grows past the bottom.
+    await page.setViewportSize({ width: 390, height: 700 });
+    if (await page.evaluate(() => document.body.classList.contains("sidebar-open"))) {
+      await page.locator("#btnCloseSidebar").click();
+      await expect(page.locator("body")).not.toHaveClass(/sidebar-open/);
+    }
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await expect(pop).toBeVisible();
+    await pop.locator('[data-act="edit"]').click();
+    const ta = pop.locator("textarea.cm-comment-popover-input");
+    await expect(ta).toBeVisible();
+
+    // The reviewer drags the textarea's resize handle (it is `resize: vertical`) well past the
+    // space left below the dialog's top edge.
+    await ta.evaluate((el) => { el.style.height = "600px"; });
+    const bottoms = async () => await pop.evaluate((el) => {
+      const d = el.getBoundingClientRect();
+      const save = el.querySelector('[data-act="edit-save"]').getBoundingClientRect();
+      return { dialog: d.bottom, top: d.top, save: save.bottom, vh: window.innerHeight };
+    });
+    await expect.poll(async () => (await bottoms()).save <= (await bottoms()).vh + 0.5).toBe(true);
+    const b = await bottoms();
+    expect(b.top).toBeGreaterThanOrEqual(-0.5);
+    expect(b.dialog).toBeLessThanOrEqual(b.vh + 0.5);
+    await pop.locator('[data-act="edit-save"]').click();
+    await expect(pop.locator(".cm-comment-popover-note")).toContainText("grow me after placement");
   });
 
   test("CMH-CORE-16: a dirty in-place edit is not swallowed, switched away, or duplicated (CMH-THREAD-10)", async ({ page }) => {

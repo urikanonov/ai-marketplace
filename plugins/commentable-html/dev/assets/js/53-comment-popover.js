@@ -25,6 +25,15 @@ let _popoverNoteId = null;
 // Removes the formatting toolbar's listeners; the toolbar itself dies with the editor markup, so
 // this only has to run when the editor is replaced or the dialog closes.
 let _popoverFormatOff = null;
+// The last position the layer WROTE, so the unanchored re-fit clamps its own previous output rather
+// than a measured rect: a fixed element inside a transformed host ancestor measures at a different
+// offset than it was written to, and feeding that back in would walk the dialog across the screen.
+let _popoverLeft = null;
+let _popoverTop = null;
+// Watches the dialog's own box, so content that grows AFTER it was positioned (the reviewer drags
+// the textarea's resize handle) is re-fitted instead of pushing the actions row past the bottom.
+let _popoverResizeObs = null;
+let _popoverRefitting = false;
 
 function _releasePopoverFormatBar() {
   if (!_popoverFormatOff) return;
@@ -55,11 +64,27 @@ function _clampCommentPopoverIntoViewport() {
   const margin = _POPOVER_MARGIN;
   const w = commentPopover.offsetWidth || 320;
   const h = commentPopover.offsetHeight || 160;
-  const cur = commentPopover.getBoundingClientRect();
+  const cur = (_popoverLeft == null || _popoverTop == null)
+    ? commentPopover.getBoundingClientRect()
+    : { left: _popoverLeft, top: _popoverTop };
   const left = Math.min(Math.max(margin, cur.left), Math.max(margin, window.innerWidth - w - margin));
   const top = Math.min(Math.max(margin, cur.top), Math.max(margin, window.innerHeight - h - margin));
+  _writeCommentPopoverPosition(left, top);
+}
+
+function _writeCommentPopoverPosition(left, top) {
+  _popoverLeft = left;
+  _popoverTop = top;
   commentPopover.style.left = left + "px";
   commentPopover.style.top = top + "px";
+}
+
+// Re-fit after the dialog's own content changed size. Guarded against re-entry because writing the
+// cap can itself change the box the observer is watching.
+function _refitCommentPopover() {
+  if (!commentPopover || _popoverRefitting) return;
+  _popoverRefitting = true;
+  try { _syncCommentPopoverToAnchor(); } finally { _popoverRefitting = false; }
 }
 
 function _positionCommentPopover(mark) {
@@ -80,8 +105,7 @@ function _positionCommentPopover(mark) {
   if (top + h > window.innerHeight) top = Math.max(margin, visible.top - h - margin);
   left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - w - margin));
   top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - h - margin));
-  commentPopover.style.left = left + "px";
-  commentPopover.style.top = top + "px";
+  _writeCommentPopoverPosition(left, top);
   return true;
 }
 
@@ -131,12 +155,15 @@ function closeCommentPopover() {
   if (_popoverKeydown) { document.removeEventListener("keydown", _popoverKeydown, true); _popoverKeydown = null; }
   _popoverArmed = false;
   _releasePopoverFormatBar();
+  if (_popoverResizeObs) { try { _popoverResizeObs.disconnect(); } catch (e) {} _popoverResizeObs = null; }
   commentPopover.remove();
   commentPopover = null;
   _popoverAnchorMark = null;
   _popoverEditing = false;
   _popoverCid = null;
   _popoverNoteId = null;
+  _popoverLeft = null;
+  _popoverTop = null;
 }
 
 // The comment the open dialog is showing, re-read from the live array so a delete or an edit made
@@ -223,7 +250,7 @@ function _renderCommentPopoverView(c) {
     e.preventDefault(); e.stopPropagation();
     closeCommentPopover();
   });
-  _positionCommentPopover(_popoverAnchorMark);
+  if (!_positionCommentPopover(_popoverAnchorMark)) _clampCommentPopoverIntoViewport();
 }
 
 // Cancel an in-progress edit: back to the note view with focus on Edit, dialog left open (unless
@@ -334,7 +361,10 @@ function _renderCommentPopoverEdit(c) {
   };
   wrap.addEventListener("keydown", onEditorKeydown);
   acts.addEventListener("keydown", onEditorKeydown);
-  _positionCommentPopover(_popoverAnchorMark);
+  // The edit form is much taller than the note view, so if the anchor cannot be resolved right now
+  // (it scrolled out of view, or its highlight was re-rendered) the dialog is re-fitted on its own
+  // rather than left at the shorter view's position with the taller form in it.
+  if (!_positionCommentPopover(_popoverAnchorMark)) _clampCommentPopoverIntoViewport();
   setTimeout(() => { try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {} }, 0);
 }
 
@@ -364,6 +394,15 @@ function openCommentPopover(id, mark) {
   _popoverNoteId = "cmh-pop-note-" + Math.random().toString(36).slice(2, 9);
   _renderCommentPopoverView(c);
   if (!_positionCommentPopover(_popoverAnchorMark)) { closeCommentPopover(); return; }
+  // Content that grows AFTER the dialog was positioned (the reviewer drags the textarea's resize
+  // handle) would otherwise push the actions row past the bottom edge, where `overflow: hidden`
+  // clips it with no way to scroll back - the same class of bug as the missing height cap.
+  if (typeof ResizeObserver === "function") {
+    try {
+      _popoverResizeObs = new ResizeObserver(() => _refitCommentPopover());
+      _popoverResizeObs.observe(el);
+    } catch (e) { _popoverResizeObs = null; }
+  }
 
   // A click outside the dialog closes it. A pointer click (detail > 0) is also swallowed
   // (capture-phase preventDefault + stopPropagation) so it performs no other action - for

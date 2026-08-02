@@ -883,12 +883,14 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-comment-popover-note {
   white-space: pre-wrap; word-break: break-word; color: var(--cp-text);
   font-size: var(--cp-chrome-body-font); line-height: 1.5;
-  max-height: 40vh; overflow-y: auto; min-height: 0;
+  max-height: 40vh; overflow-y: auto; min-height: 0; padding: 4px;
 }
 .cm-comment-popover-meta { color: var(--cp-text-muted); font-size: var(--cp-chrome-small-font); flex: none; }
-/* The 3px inset keeps the toolbar's and textarea's focus ring inside the scrollport: a scroll
-   container clips, and both sit flush against its edges. */
-.cm-comment-popover-edit { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; padding: 3px; }
+/* The 4px inset keeps the toolbar's, the textarea's, and a note link's focus ring inside the
+   scrollport: a scroll container clips, and those sit flush against its edges. It covers the
+   layer's widest focus treatment (a 2px outline at a 2px offset) with a pixel to spare - widen it
+   alongside any wider ring. */
+.cm-comment-popover-edit { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; padding: 4px; }
 /* The shared formatting toolbar (issue #776) sits above the textarea in a narrow fixed-width
    dialog, so tighten it (as the side pane does) to keep all seven buttons on one row. */
 .cm-comment-popover-edit .cm-format-bar { margin: 0 0 0.35rem; gap: 3px; }

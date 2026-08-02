@@ -4,7 +4,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.331.0] - 2026-08-02
+## [1.332.0] - 2026-08-02
 
 ### Fixed
 
@@ -15,7 +15,9 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   instead: the rendered note in the note view and the toolbar-plus-textarea block in the edit form,
   with the actions row pinned and on screen. An in-progress edit, which deliberately outlives its
   anchor scrolling out of view, is re-fitted to the viewport on its own, so a mid-edit viewport
-  shrink no longer strands Save and Cancel off screen either. (`CMH-CORE-18`)
+  shrink no longer strands Save and Cancel off screen either, and content that grows after the
+  dialog was placed - dragging the textarea's resize handle - re-fits it through a `ResizeObserver`
+  rather than pushing the actions row past the bottom edge. (`CMH-CORE-18`)
 
 ## [1.326.0] - 2026-08-02
 
