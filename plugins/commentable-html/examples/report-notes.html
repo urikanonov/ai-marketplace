@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.315.0" />
+<meta name="commentable-html-version" content="1.316.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.315.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.316.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Design review sign-off</title>
 
@@ -893,22 +893,6 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   cursor: pointer;
 }
 .cm-sidebar .cm-sidebar-export-menu button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
-/* The provenance toggle is a setting, not an action: align it to the same left edge as the menu
-   items, mute it, and separate it from the export buttons below with a hairline so the menu reads
-   as "one setting, then the export actions". */
-.cm-sidebar-export-menu > label {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--cp-chrome-gap);
-  padding: var(--cp-chrome-menu-item-y) var(--cp-chrome-action-x);
-  margin-bottom: 0.15rem;
-  border-bottom: 1px solid var(--cp-border);
-  color: var(--cp-text-soft);
-  font-size: var(--cp-chrome-tiny-font);
-  line-height: 1.35;
-  cursor: pointer;
-}
-.cm-sidebar-export-menu > label input { flex: none; margin: 0.1rem 0 0; }
 /* The More menu reuses the export-menu shell; mark Clear as destructive. */
 .cm-sidebar-more-menu .cm-menu-group { padding: 0.3rem 0.45rem 0.15rem; font-size: var(--cp-chrome-tiny-font); letter-spacing: 0.08em; text-transform: uppercase; color: var(--cp-text-soft); font-weight: 700; }
 .cm-sidebar-more-menu button.danger { color: var(--cp-danger); }
@@ -3867,7 +3851,6 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
     </button>
     <div id="toolbarMenu" class="cm-toolbar-menu" hidden>
       <span id="cmhModeBadge" class="cm-mode-badge" aria-live="polite" title="Portability of this file"></span>
-      <label title="By default, exported copies remove the id of the AI session and agent that generated this file. Check this to keep that authoring provenance embedded in the exported file."><input type="checkbox" id="cmhRetainSessionProvenanceTop" data-cmh-retain-session-provenance> Keep AI session id in exports</label>
       <button id="btnShowTop" type="button" title="Show the comments panel"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg><span>Comments</span></button>
       <button id="btnSaveHtmlTop" type="button" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Export as Portable</span></button>
       <button id="btnExportOfflineTop" type="button" title="Download an offline HTML copy with current comments embedded, remote loaders removed, and vendored mermaid or Chart.js inlined only when this document needs them"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v7 M9 7l3 3 3-3 M5 14h14v5H5z M8 16.5h.01 M12 16.5h4"/></svg><span>Export Offline</span></button>
@@ -3908,7 +3891,6 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
       <div class="cm-sidebar-export">
         <button type="button" id="btnSidebarExportMenu" class="cm-sidebar-export-toggle" title="Export or download this document" aria-controls="sidebarExportMenu" aria-expanded="false"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Export</span></button>
         <div id="sidebarExportMenu" class="cm-sidebar-export-menu" hidden>
-          <label title="By default, exported copies remove the id of the AI session and agent that generated this file. Check this to keep that authoring provenance embedded in the exported file."><input type="checkbox" id="cmhRetainSessionProvenanceSidebar" data-cmh-retain-session-provenance> Keep AI session id in exports</label>
           <button type="button" id="btnSaveHtml" aria-label="Export as Portable" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Portable</span></button>
           <button type="button" id="btnExportOffline" aria-label="Export Offline" title="Download an offline HTML copy with current comments embedded, remote loaders removed, and vendored mermaid or Chart.js inlined only when this document needs them"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v7 M9 7l3 3 3-3 M5 14h14v5H5z M8 16.5h.01 M12 16.5h4"/></svg><span>Offline</span></button>
           <button type="button" id="btnExportMd" aria-label="Export to Markdown" title="Download a .md file (a deterministic block-by-block conversion; comments are appended as a section)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4 M8.5 17v-4l2 2 2-2v4"/></svg><span>Markdown</span></button>
@@ -4125,7 +4107,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.315.0";
+const CMH_VERSION = "1.316.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -14994,50 +14976,6 @@ function _normalizeDocSourceInHtml(html) {
   if (!changed) return raw;
   return raw.slice(0, rootTag.start) + nextTag + raw.slice(rootTag.end);
 }
-function _retainSessionProvenance() {
-  return Array.prototype.some.call(
-    document.querySelectorAll("[data-cmh-retain-session-provenance]"),
-    function (option) { return option.checked; });
-}
-function _stripSessionProvenanceFromHtml(html) {
-  const raw = String(html == null ? "" : html);
-  const lower = raw.toLowerCase();
-  let out = "";
-  let cursor = 0;
-  let search = 0;
-  for (;;) {
-    const start = lower.indexOf("<meta", search);
-    if (start < 0) return out + raw.slice(cursor);
-    if (!/[\s/>]/.test(raw[start + 5] || "")) {
-      search = start + 5;
-      continue;
-    }
-    const end = _cmhTagEnd(raw, start);
-    if (end < 0) return out + raw.slice(cursor);
-    const tag = raw.slice(start, end + 1);
-    const name = _cmhTagAttributes(tag).find(function (attr) {
-      return attr.name === "name" && attr.valueStart != null;
-    });
-    const value = name
-      ? _cmhDecodeAttribute(tag.slice(name.valueStart, name.valueEnd)).toLowerCase() : "";
-    out += raw.slice(cursor, start);
-    if (value !== "commentable-html-session-id" && value !== "commentable-html-agent") out += tag;
-    cursor = end + 1;
-    search = cursor;
-  }
-}
-function _prepareExportHtml(html) {
-  return _retainSessionProvenance() ? html : _stripSessionProvenanceFromHtml(html);
-}
-function _initSessionProvenanceOptions() {
-  const options = Array.prototype.slice.call(document.querySelectorAll("[data-cmh-retain-session-provenance]"));
-  options.forEach(function (option) {
-    option.addEventListener("change", function () {
-      options.forEach(function (other) { other.checked = option.checked; });
-    });
-  });
-}
-_initSessionProvenanceOptions();
 async function _getBaseHtml() {
   // Prefer the on-disk version (cleaner diff). Fall back to the snapshot
   // taken at IIFE start if fetch fails (file://, network unavailable, blocked).
@@ -15207,7 +15145,6 @@ async function saveHtml() {
   baseHtml = _applyChecklistStateToHtml(baseHtml);
   baseHtml = _applyNoteStateToHtml(baseHtml);
   baseHtml = _applyReviewStateToHtml(baseHtml);
-  baseHtml = _prepareExportHtml(baseHtml);
   const exportComments = _exportableComments();
   let text;
   try { text = _buildSavedHtml(baseHtml, exportComments); }
@@ -15280,7 +15217,6 @@ async function saveAsPlain() {
   catch (e) { showToast("Could not load base HTML."); return; }
   baseHtml = _applyChecklistStateToHtml(baseHtml);
   baseHtml = _applyNoteStateToHtml(baseHtml);
-  baseHtml = _prepareExportHtml(baseHtml);
   let text;
   try { text = _buildPlainHtml(baseHtml); }
   catch (e) { showToast(e.message); return; }
@@ -15482,7 +15418,6 @@ async function saveStandalone() {
   baseHtml = _applyChecklistStateToHtml(baseHtml);
   baseHtml = _applyNoteStateToHtml(baseHtml);
   baseHtml = _applyReviewStateToHtml(baseHtml);
-  baseHtml = _prepareExportHtml(baseHtml);
   const exportComments = _exportableComments();
   let text;
   try { text = _buildStandaloneHtml(baseHtml, exportComments); }
@@ -16158,7 +16093,6 @@ async function saveOffline() {
   baseHtml = _applyChecklistStateToHtml(baseHtml);
   baseHtml = _applyNoteStateToHtml(baseHtml);
   baseHtml = _applyReviewStateToHtml(baseHtml);
-  baseHtml = _prepareExportHtml(baseHtml);
   const exportComments = _exportableComments();
   let portable;
   try {

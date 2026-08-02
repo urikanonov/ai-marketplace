@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.316.0] - 2026-08-02
+
+### Changed
+
+- Exported HTML now always keeps the authoring session provenance, and the `Keep AI session id in
+  exports` checkbox is gone from both the toolbar overflow menu and the sidebar Export menu. The
+  `commentable-html-session-id` and `commentable-html-agent` meta tags survive every Portable,
+  Offline, and Plain HTML export unconditionally. The session id is an opaque agent session
+  identifier the authoring tools already stamp by default and the footer already offers to copy, not
+  a secret, so stripping it by default bought almost nothing while it cost a row in the most
+  space-constrained menu and silently dropped authoring provenance from the copy a reviewer actually
+  receives - the copy where knowing which agent session produced the document is most useful. The
+  now-dead strip path in the export runtime is removed with it.
+
 ## [1.315.0] - 2026-08-02
 
 ### Fixed

@@ -28,6 +28,14 @@ test.describe("Save comments / Export plain", () => {
     return JSON.parse(m[1].trim() || "[]");
   }
 
+  // Every provenance meta tag in an exported file, in document order. Matching the whole tag (not
+  // just the session id substring) keeps the CMH-SEC-05 assertions from passing because the id
+  // happens to appear somewhere else, such as inside the embedded comment JSON.
+  function provenanceMeta(html) {
+    return (html.match(/<meta[^>]*>/gi) || [])
+      .filter((tag) => /name="commentable-html-(session-id|agent)"/i.test(tag));
+  }
+
   test("a comment note with a closing-script tag is escaped and round-trips decoded", async ({ page, browser }) => {
     await openInline(page);
     const evil = "evil </" + "script><img src=x onerror=alert(1)>";
@@ -128,22 +136,27 @@ test.describe("Save comments / Export plain", () => {
     }
   });
 
-  test("HTML exports strip authoring session provenance by default (CMH-SEC-05)", async ({ page }) => {
-    const sessionId = "private-session-622>suffix";
-    const staged = stageContent("<section><p>Private provenance.</p></section>", {
+  test("every HTML export keeps the authoring session provenance and neither menu offers a strip toggle (CMH-SEC-05)", async ({ page }) => {
+    const sessionId = "authoring-session-803";
+    const staged = stageContent("<section><p>Authoring provenance.</p></section>", {
       key: "cmh-session-provenance-export",
-      source: "private-provenance.html",
+      source: "authored-provenance.html",
     });
     try {
       const authored = fs.readFileSync(staged.html, "utf8").replace("</head>",
-        `<meta name="commentable-html-session&#45;id" content="${sessionId}">\n`
+        `<meta name="commentable-html-session-id" content="${sessionId}">\n`
           + '<meta name="commentable-html-agent" content="copilot">\n</head>');
       fs.writeFileSync(staged.html, authored);
       const server = await startStaticServer(staged.dir);
       try {
         await page.goto(server.url + "/test-doc.html");
         await ready(page);
+        await expect(page.locator("[data-cmh-retain-session-provenance]")).toHaveCount(0);
+        await openToolbarMenu(page);
+        await expect(page.locator("#toolbarMenu input")).toHaveCount(0);
         await addTextComment(page, "#commentRoot p", "export this review");
+        await openSidebarExportMenu(page);
+        await expect(page.locator("#sidebarExportMenu input")).toHaveCount(0);
 
         for (const selector of ["#btnSaveHtml", "#btnExportOffline", "#btnSavePlain"]) {
           const [download] = await Promise.all([
@@ -151,8 +164,10 @@ test.describe("Save comments / Export plain", () => {
             clickSidebarExport(page, selector),
           ]);
           const html = await readDownload(download);
-          expect(html).not.toContain(sessionId);
-          expect(html).not.toContain('suffix">');
+          expect(provenanceMeta(html), selector).toEqual([
+            `<meta name="commentable-html-session-id" content="${sessionId}">`,
+            '<meta name="commentable-html-agent" content="copilot">',
+          ]);
         }
       } finally {
         await server.close();
@@ -162,38 +177,33 @@ test.describe("Save comments / Export plain", () => {
     }
   });
 
-  test("both export menus synchronize explicit provenance retention for every HTML export (CMH-SEC-05)", async ({ page }) => {
-    const sessionId = "private-session-retained-622";
-    const staged = stageContent("<section><p>Private provenance.</p></section>", {
-      key: "cmh-session-provenance-retain",
-      source: "private-provenance.html",
+  test("the NonPortable Portable export also keeps the authoring session provenance (CMH-SEC-05)", async ({ page }) => {
+    // NonPortable exports run through _buildStandaloneHtml, a separate build path from the
+    // inline one above, so pin it too.
+    const sessionId = "authoring-session-803-nonportable";
+    const staged = stageNonPortable({
+      mutate: (html) => html
+        .replace('data-comment-key="commentable-html-nonportable-demo"',
+          'data-comment-key="cmh-session-provenance-nonportable"')
+        .replace("</head>",
+          `<meta name="commentable-html-session-id" content="${sessionId}">\n`
+            + '<meta name="commentable-html-agent" content="copilot">\n</head>'),
     });
     try {
-      const authored = fs.readFileSync(staged.html, "utf8").replace("</head>",
-        `<meta name="commentable-html-session-id" content="${sessionId}">\n</head>`);
-      fs.writeFileSync(staged.html, authored);
       await page.goto(fileUrl(staged.html));
       await ready(page);
-      await openToolbarMenu(page);
-      const options = page.locator("[data-cmh-retain-session-provenance]");
-      await expect(options).toHaveCount(2);
-      await expect(options.first()).not.toBeChecked();
-      await expect(options.last()).not.toBeChecked();
-      await options.first().check();
-      await expect(options.last()).toBeChecked();
-      await addTextComment(page, "#commentRoot p", "retain this provenance");
-      await openSidebarExportMenu(page);
-      await options.last().uncheck();
-      await expect(options.first()).not.toBeChecked();
-      await openSidebarExportMenu(page);
-      await options.last().check();
-      await expect(options.first()).toBeChecked();
+      await expect(page.locator("[data-cmh-retain-session-provenance]")).toHaveCount(0);
+      await addTextComment(page, "#commentRoot p", "nonportable provenance note");
       for (const selector of ["#btnSaveHtml", "#btnExportOffline", "#btnSavePlain"]) {
         const [download] = await Promise.all([
           page.waitForEvent("download"),
           clickSidebarExport(page, selector),
         ]);
-        expect(await readDownload(download)).toContain(sessionId);
+        const html = await readDownload(download);
+        expect(provenanceMeta(html), selector).toEqual([
+          `<meta name="commentable-html-session-id" content="${sessionId}">`,
+          '<meta name="commentable-html-agent" content="copilot">',
+        ]);
       }
     } finally {
       fs.rmSync(staged.dir, { recursive: true, force: true });
@@ -246,17 +256,17 @@ test.describe("Save comments / Export plain", () => {
       const container = document.querySelector(".cm-sidebar .head-primary");
       const menu = document.getElementById("sidebarExportMenu");
       const btn = menu.querySelector("button");
-      const label = menu.querySelector("label");
+      const menuBox = menu.getBoundingClientRect();
+      const overflow = Math.max(...Array.from(menu.querySelectorAll("button"))
+        .map((el) => el.getBoundingClientRect().right - menuBox.right));
       return {
         containerWidth: container.getBoundingClientRect().width,
-        menuWidth: menu.getBoundingClientRect().width,
-        menuRight: menu.getBoundingClientRect().right,
-        menuLeft: menu.getBoundingClientRect().left,
+        menuWidth: menuBox.width,
+        menuRight: menuBox.right,
+        menuLeft: menuBox.left,
         viewportWidth: window.innerWidth,
         btnBg: getComputedStyle(btn).backgroundColor,
-        btnPadLeft: getComputedStyle(btn).paddingLeft,
-        labelPadLeft: getComputedStyle(label).paddingLeft,
-        labelClip: Math.max(0, label.scrollWidth - label.clientWidth),
+        itemOverflow: overflow,
       };
     });
     // The menu is sized to its content, not stretched to fill the primary row it now lives in.
@@ -264,13 +274,10 @@ test.describe("Save comments / Export plain", () => {
     // It stays on-screen (docked-right sidebar): right edge within the viewport, left edge >= 0.
     expect(m.menuRight).toBeLessThanOrEqual(m.viewportWidth + 1);
     expect(m.menuLeft).toBeGreaterThanOrEqual(-1);
-    // Its widest item (the provenance label) is not clipped.
-    expect(m.labelClip).toBeLessThanOrEqual(0.5);
+    // No item spills out of the menu box.
+    expect(m.itemOverflow).toBeLessThanOrEqual(0.5);
     // Menu-item buttons are transparent at rest (a clean dropdown item, not a bordered button).
     expect(["rgba(0, 0, 0, 0)", "transparent"]).toContain(m.btnBg);
-    // The provenance setting label shares the buttons' left padding so it lines up with them
-    // instead of sitting flush against the menu edge.
-    expect(m.labelPadLeft).toBe(m.btnPadLeft);
   });
 
   test("each export shows a centered toast naming the export (CMH-EXP-15)", async ({ page }) => {
@@ -425,14 +432,6 @@ test.describe("Save comments / Export plain", () => {
     await expect(page.locator("#toast")).toContainText("Exporting as PDF");
   });
 
-  test("the provenance checkbox has a clear label and explanatory tooltip (CMH-SEC-05)", async ({ page }) => {
-    await openInline(page);
-    await addTextComment(page, "#commentRoot section p", "provenance label note");
-    await openSidebarExportMenu(page);
-    const label = page.locator("label:has(#cmhRetainSessionProvenanceSidebar)");
-    await expect(label).toContainText("Keep AI session id in exports");
-    await expect(label).toHaveAttribute("title", /AI session and agent/i);
-  });
 
   test("Save, Portable, and Offline exports exclude comments already listed as handled", async ({ page }) => {
     const inline = stageContent("<section><p>Handled comments must stay gone.</p></section>", {

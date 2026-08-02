@@ -181,7 +181,6 @@ async function saveStandalone() {
   baseHtml = _applyChecklistStateToHtml(baseHtml);
   baseHtml = _applyNoteStateToHtml(baseHtml);
   baseHtml = _applyReviewStateToHtml(baseHtml);
-  baseHtml = _prepareExportHtml(baseHtml);
   const exportComments = _exportableComments();
   let text;
   try { text = _buildStandaloneHtml(baseHtml, exportComments); }
