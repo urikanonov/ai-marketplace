@@ -60,11 +60,11 @@ function showToast(msg, opts) {
     if (!btn) return;
     const label = EXPORT_LABELS[btn.id];
     if (!label) return;
-    // An open comment popover swallows an outside pointer click (detail > 0) to close itself
-    // (53-comment-popover.js _popoverDismiss), so the export handler never runs. Mirror that
-    // exact condition here so the intent toast is not shown for an export that will not happen.
-    // A keyboard-activated click (detail 0) is allowed through, so it still announces.
-    if (e.detail > 0 && document.querySelector(".cm-comment-popover")) return;
+    // An open comment dialog swallows an outside pointer click to close itself, so the export
+    // handler never runs. Ask the dialog's OWN predicate rather than re-deriving the condition
+    // here, so the toast can never announce an export that will not happen - nor suppress one
+    // that will. A keyboard-activated click (detail 0) is never swallowed, so it still announces.
+    if (cmhPopoverWouldSwallowClick(e)) return;
     showToast("Exporting as " + label + "...", { center: true, duration: 2500 });
   }, true);
 })();

@@ -4,6 +4,30 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.315.0] - 2026-08-02
+
+### Fixed
+
+- The in-document comment dialog no longer swallows the reviewer's first click on a control of an
+  editor that is open alongside it. The dialog's dismiss handler swallows any outside pointer click
+  (capture-phase `preventDefault` + `stopPropagation`) so it cannot follow a link the highlight sits
+  on, but the side pane's inline reply/edit editor and the floating composer both stay open when the
+  dialog opens, so the first click on their formatting, Save, or Cancel buttons did nothing and had
+  to be repeated. Both are now carved out. Every other outside click is unchanged, including the
+  keyboard-activated (`detail === 0`) case and the mid-edit case where the dialog stays open.
+- The whole guard is now resolved by IDENTITY against the layer's own state - the one active inline
+  editor, the composers the layer opened, and the live dialog element - rather than by matching
+  `cm-` class names. The annotated document is author content, so a class match let content in the
+  document spoof its way out of the swallow; the "the click landed inside the dialog" test had the
+  same hole, where a spoofing element left the real dialog open AND let the click act. Document
+  content carrying either class name is now swallowed like any other outside click.
+- The export-intent toast no longer re-derives the dialog's swallow condition. It asks the dialog's
+  own predicate, so the announcement can never disagree with whether the export click runs. That
+  predicate keys on the dismiss listener being ARMED (it is registered a tick after the dialog
+  opens), not merely on the dialog existing, so the two windows where nothing is swallowed - the
+  pre-registration tick and a mid-edit dialog - now announce the export that does run instead of
+  suppressing it.
+
 ## [1.310.0] - 2026-08-02
 
 ### Security

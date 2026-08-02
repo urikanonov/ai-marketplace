@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.310.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.315.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,15 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.315.0] - 2026-08-02</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The in-document comment dialog no longer swallows the reviewer&#x27;s first click on a control of an editor that is open alongside it. The dialog&#x27;s dismiss handler swallows any outside pointer click (capture-phase <code>preventDefault</code> + <code>stopPropagation</code>) so it cannot follow a link the highlight sits on, but the side pane&#x27;s inline reply/edit editor and the floating composer both stay open when the dialog opens, so the first click on their formatting, Save, or Cancel buttons did nothing and had to be repeated. Both are now carved out. Every other outside click is unchanged, including the keyboard-activated (<code>detail === 0</code>) case and the mid-edit case where the dialog stays open.</li>
+              <li>The whole guard is now resolved by IDENTITY against the layer&#x27;s own state - the one active inline editor, the composers the layer opened, and the live dialog element - rather than by matching <code>cm-</code> class names. The annotated document is author content, so a class match let content in the document spoof its way out of the swallow; the &quot;the click landed inside the dialog&quot; test had the same hole, where a spoofing element left the real dialog open AND let the click act. Document content carrying either class name is now swallowed like any other outside click.</li>
+              <li>The export-intent toast no longer re-derives the dialog&#x27;s swallow condition. It asks the dialog&#x27;s own predicate, so the announcement can never disagree with whether the export click runs. That predicate keys on the dismiss listener being ARMED (it is registered a tick after the dialog opens), not merely on the dialog existing, so the two windows where nothing is swallowed - the pre-registration tick and a mid-edit dialog - now announce the export that does run instead of suppressing it.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.310.0] - 2026-08-02</h3></div>
             <div class="group-label">Security</div>
             <ul>
@@ -504,6 +513,8 @@
               <li>The residual is documented rather than implied away, in BOTH directions. The strip reads raw source for a literal shape, so it misses an aliased sink (<code>var l = location; l.href = ...</code>), computed access, a URL assembled at runtime, a bare unprefixed <code>open(...)</code>, a bare <code>location =</code> that does not follow a statement delimiter, anything inside a script carrying one of the four reserved ids the strip skips, and any other navigation sink (a synthesized anchor click, a script-injected refresh meta). In the other direction it removes any preserved script that navigates to a network URL literal at all - an intentional SSO redirect or help popup included - and over-matches a script whose comment or string merely spells one of those shapes. See the CMH-OFFLINE-05 spec row, which also records why per-script hashes were rejected as a fix.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.297.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -512,8 +523,6 @@
               <li>An unstyled <code>div.mermaid</code> host is now the same scrolling box as a <code>pre.mermaid</code> one. The layer&#x27;s stylesheet gave only <code>pre.mermaid</code> the <code>overflow-x: auto</code> box, the <code>svg { max-width: none }</code> reset, the scroll-fade edge cue, and the mobile wide-diagram min-width - even though the runtime indexes both host shapes and toggles those very classes on both. A document that authors its diagrams as <code>div.mermaid</code> therefore had no scroll box for a wide diagram, and no clipping box for the floating controls above to clamp to.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.295.0] - 2026-08-02</h3></div>
             <div class="group-label">Changed</div>
@@ -545,14 +554,7 @@
               <li><code>tools/authoring/new_document.py</code> no longer writes a document it could not self-validate. Its <code>_self_validate</code> returned <code>(None, None)</code> when the sibling <code>validate</code> module was unimportable; <code>main()</code> unpacked that into errors/warnings, <code>if errors:</code> was falsy, and the new document was written UNVALIDATED - so the one self-check the generator has disappeared exactly on the broken or partial install it exists for. It now fails CLOSED by default: nothing reaches <code>--out</code> or stdout and it exits non-zero naming the actual cause. The seam is hardened the same way <code>chart_block.py</code> was: a <code>validate</code> module resolved from outside this skill&#x27;s own tools dir is refused BEFORE its module body runs (compared canonically, so a junction or a differently-cased path does not false-alarm), and a crashing validator or an unexpected return shape (notably <code>(None, None)</code>, which would otherwise read as &quot;no errors, no warnings&quot;) counts as &quot;could not check&quot; rather than escaping as a traceback. A caller who knowingly accepts unchecked output passes the new <code>--allow-unvalidated-output</code>, which writes it with a warning; that flag never suppresses a real validation failure.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.285.0] - 2026-08-02</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>The in-document comment dialog (the one you get by clicking a highlight) now offers the same rich-text editing as the floating composer and the side panel. Its Edit form carries the shared formatting toolbar (bold, italic, underline, strikethrough, inline code, link, bullet list) above the textarea, and Ctrl/Cmd+B/I/U/K apply the matching formatting - from the textarea and from a focused toolbar, Cancel, or Save button, since the keys are bound to the editor and action containers rather than the textarea. Ctrl/Cmd+Enter still saves and Escape still cancels back to the rendered note with the dialog left open; a blank save still marks the field invalid, and formatting (not just typing) now clears that state. Mid-IME-composition the toolbar, save, and cancel are all inert, so a candidate window can never splice markers into provisional text or discard the draft. The toolbar is tightened to fit the fixed-width dialog on one row, and keeps a &gt;=44px touch target on phones (wrapping rather than overflowing).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">237 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">238 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

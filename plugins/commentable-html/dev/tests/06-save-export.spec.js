@@ -340,6 +340,33 @@ test.describe("Save comments / Export plain", () => {
     await expect(page.locator("#toast")).toContainText("Exporting as PDF");
   });
 
+  test("the export toast announces while the comment popover is mid-edit, which never swallows (CMH-EXP-15)", async ({ page }) => {
+    await openInline(page);
+    await addTextComment(page, "#commentRoot section p", "mid-edit guard note");
+    await page.evaluate(() => {
+      window.__printed = 0;
+      window.print = () => { window.__printed += 1; };
+    });
+    const cid = await page.locator("mark.cm-hl").first().getAttribute("data-cid");
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await expect(pop).toBeVisible();
+    // A dialog being edited in place stays open and never swallows the outside click, so the
+    // export DOES run - and must therefore be announced, not silently suppressed.
+    await pop.locator('[data-act="edit"]').click();
+    await expect(pop.locator(".cm-comment-popover-edit")).toHaveCount(1);
+
+    await page.evaluate(() => {
+      document.getElementById("btnPrint").dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+    });
+    await expect(pop).toBeVisible();
+    expect(await page.evaluate(() => window.__printed)).toBe(1);
+    await expect(page.locator("#toast")).toHaveClass(/cm-toast-center/);
+    await expect(page.locator("#toast")).toContainText("Exporting as PDF");
+  });
+
   test("every export control (both menus, all five formats) announces its centered toast label (CMH-EXP-15)", async ({ page }) => {
     await openInline(page);
     await addTextComment(page, "#commentRoot section p", "map coverage note");
@@ -371,6 +398,31 @@ test.describe("Save comments / Export plain", () => {
       expect(shown.center, `${id} toast should be centered`).toBe(true);
       expect(shown.text, `${id} should announce "${label}"`).toBe(`Exporting as ${label}...`);
     }
+  });
+
+  test("the export toast announces in the window before the popover's dismiss listener is armed (CMH-EXP-15)", async ({ page }) => {
+    await openInline(page);
+    await addTextComment(page, "#commentRoot section p", "arming window note");
+    await page.evaluate(() => {
+      window.__printed = 0;
+      window.print = () => { window.__printed += 1; };
+    });
+    const cid = await page.locator("mark.cm-hl").first().getAttribute("data-cid");
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await expect(page.locator("#hlBubble")).toBeVisible();
+    // The dialog registers its dismiss listener on the NEXT tick, so a click in the same task opens
+    // the dialog while nothing is listening yet: the export runs and must therefore be announced.
+    // Both clicks are dispatched in one evaluate, before that timeout can fire.
+    await page.evaluate(() => {
+      document.getElementById("hlBubble").dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+      document.getElementById("btnPrint").dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+    });
+    await expect(page.locator(".cm-comment-popover")).toBeVisible();
+    expect(await page.evaluate(() => window.__printed)).toBe(1);
+    await expect(page.locator("#toast")).toHaveClass(/cm-toast-center/);
+    await expect(page.locator("#toast")).toContainText("Exporting as PDF");
   });
 
   test("the provenance checkbox has a clear label and explanatory tooltip (CMH-SEC-05)", async ({ page }) => {

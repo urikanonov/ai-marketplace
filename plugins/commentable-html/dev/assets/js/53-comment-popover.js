@@ -4,12 +4,17 @@
    reviewer edits exactly where they clicked instead of being sent to a floating composer. A click
    anywhere else closes the dialog; a pointer click there is also swallowed so it performs no other
    action (for example it does not follow a link the highlight sits on), while a keyboard-activated
-   click still reaches its target. While the dialog is being edited it stays open (an outside click
+   click, and a click on a control of an editor the layer itself has open (the side pane's inline
+   editor or the floating composer), still reach their target.
+   While the dialog is being edited it stays open (an outside click
    or the anchor scrolling away would discard the draft). The sidebar jump still runs alongside this
    from 52-hover-bubble.js. */
 let commentPopover = null;
 let _popoverAnchorMark = null;
 let _popoverDismiss = null;
+// Set only once the dismiss listener is actually REGISTERED (a tick after the dialog opens), so the
+// swallow predicate never claims a click will be swallowed while nothing is listening yet.
+let _popoverArmed = false;
 let _popoverKeydown = null;
 let _popoverEditing = false;
 // The dialog's identity is kept in JS state, never re-read from its own DOM attributes: the note id
@@ -48,10 +53,51 @@ function _positionCommentPopover(mark) {
   return true;
 }
 
+// The element a click landed on, normalized to an Element so the containment checks below work for
+// a synthetic click dispatched at a text node too.
+function _cmhClickElement(target) {
+  if (!target) return null;
+  return target.nodeType === 1 ? target : (target.parentElement || null);
+}
+
+// True when the click landed inside the LIVE dialog. Identity, never a class match: the annotated
+// document is author content, and an element there carrying `cm-comment-popover` would otherwise be
+// mistaken for the dialog - leaving the real one open AND letting the click act.
+function _cmhClickIsInPopover(target) {
+  const el = _cmhClickElement(target);
+  return !!(commentPopover && el && commentPopover.contains(el));
+}
+
+// The editors the dialog must never steal a click from: the side pane's inline reply/edit editor
+// and the floating composer. Both are resolved by IDENTITY against the layer's own state - the one
+// active inline editor, and the set of composers the layer opened - never by a bare class match,
+// which document content could spoof to defeat the outside-click swallow below.
+function _cmhClickIsInLayerEditor(target) {
+  const el = _cmhClickElement(target);
+  if (!el) return false;
+  const pane = _activeInlineEditor && _activeInlineEditor.el;
+  if (pane && pane.contains(el)) return true;
+  const composer = el.closest ? el.closest(".cm-composer") : null;
+  return !!(composer && openComposers.has(composer));
+}
+
+// True when the open dialog will swallow this click (capture-phase preventDefault +
+// stopPropagation), so the click never reaches its target. 90-toast.js asks THIS predicate rather
+// than re-deriving the condition, so the two can never drift apart. It keys on the dismiss listener
+// being ARMED, not merely on the dialog existing: the listener is registered a tick after the dialog
+// opens, and in that window nothing swallows anything.
+function cmhPopoverWouldSwallowClick(e) {
+  if (!commentPopover || !_popoverArmed || !e || !(e.detail > 0)) return false;
+  if (_popoverEditing) return false;
+  if (_cmhClickIsInPopover(e.target)) return false;
+  return !_cmhClickIsInLayerEditor(e.target);
+}
+
 function closeCommentPopover() {
   if (!commentPopover) return;
   if (_popoverDismiss) { document.removeEventListener("click", _popoverDismiss, true); _popoverDismiss = null; }
   if (_popoverKeydown) { document.removeEventListener("keydown", _popoverKeydown, true); _popoverKeydown = null; }
+  _popoverArmed = false;
   _releasePopoverFormatBar();
   commentPopover.remove();
   commentPopover = null;
@@ -294,11 +340,16 @@ function openCommentPopover(id, mark) {
   // is never blocked from activating an outside control. Clicks inside pass through.
   _popoverDismiss = (e) => {
     if (!commentPopover) return;
-    if (e.target && e.target.closest && e.target.closest(".cm-comment-popover")) return;
+    if (_cmhClickIsInPopover(e.target)) return;
     // Mid-edit the dialog stays open (closing it would silently discard the draft) and the click
     // is left alone, so the rest of the page keeps working while the editor is up.
     if (_popoverEditing) return;
-    if (e.detail > 0) { e.preventDefault(); e.stopPropagation(); }
+    // A click inside one of the layer's own editors - the side pane's inline reply/edit editor or
+    // the floating composer - belongs to that editor. Swallowing it would make the reviewer's first
+    // click on a formatting or Save/Cancel control do nothing, so the dialog closes but the click
+    // proceeds to its control. `cmhPopoverWouldSwallowClick` resolves those editors through the
+    // layer's own state, so document content cannot spoof its way out of the swallow.
+    if (cmhPopoverWouldSwallowClick(e)) { e.preventDefault(); e.stopPropagation(); }
     closeCommentPopover();
   };
   _popoverKeydown = (e) => {
@@ -312,7 +363,7 @@ function openCommentPopover(id, mark) {
       if (isNoteComposing(ta)) return;
       // Escape belongs to the editor only while focus is inside it: another overlay's Escape (a
       // Help panel, a confirm dialog) must not silently discard the draft sitting behind it.
-      if (!(e.target && e.target.closest && e.target.closest(".cm-comment-popover"))) return;
+      if (!_cmhClickIsInPopover(e.target)) return;
       e.preventDefault(); e.stopPropagation();
       // Escape cancels an in-progress edit first (back to the note); a second Escape closes.
       _cancelCommentPopoverEdit();
@@ -326,6 +377,7 @@ function openCommentPopover(id, mark) {
     if (!commentPopover) return;
     document.addEventListener("click", _popoverDismiss, true);
     document.addEventListener("keydown", _popoverKeydown, true);
+    _popoverArmed = true;
   }, 0);
 
   const editBtn = el.querySelector('[data-act="edit"]');
