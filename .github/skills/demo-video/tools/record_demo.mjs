@@ -1214,12 +1214,29 @@ async function captureTerminal(args) {
 // the output would wave through a credential passed on the command line. `argv` carries the same
 // invocation and is what the label now reads, so it is scanned as well: a cast whose two forms ever
 // diverge must not have an unscanned half.
-function castText(cast) {
+// Everything a cast can put ON SCREEN, so the credential gate scans no less than the render draws.
+// The marks matter as much as the stream: `askFromCast` fills the title card - the largest type in
+// the clip - from a mark's text, so a foreign, legacy or hand-edited cast whose mark carries the
+// launch command (or a host, a home path, a token) would otherwise pass every gate and be published
+// in the opening frames. For a cast this tool captured the ask was also typed into the terminal, so
+// it is in `events` too; that is exactly why the omission was invisible.
+export function castText(cast) {
   const argv = Array.isArray(cast.argv) ? cast.argv.join("\n") : "";
-  return `${cast.command || ""}\n${argv}\n${cast.events.map((e) => e.data).join("")}`;
+  const marks = Array.isArray(cast.marks)
+    ? cast.marks.map((m) => (m && m.text ? String(m.text) : "")).join("\n")
+    : "";
+  return `${cast.command || ""}\n${argv}\n${marks}\n${cast.events.map((e) => e.data).join("")}`;
 }
 
-// The tail of a real capture is dead air: the session records on until the script's quit step
+// Everything that will be RENDERED, which is what a render-time gate has to see: the cast plus the
+// ask as it actually resolves. `--ask` is operator-supplied and never touches the cast, so it
+// reached the title card - the largest type in the clip - completely unscanned, and it is the
+// documented render recipe. Same argument as the marks: scan what will be on screen, not just what
+// was captured.
+export function publishedText(cast, args = {}) {
+  return `${castText(cast)}\n${askFromCast(cast, args)}`;
+}
+
 // fires, so without this the clip spends its ending on an empty prompt and the exit screen. Says
 // what it dropped, because silently shortening someone's session is its own kind of surprise.
 function trimForRender(cast, args) {
@@ -1293,10 +1310,30 @@ function scanCast(args) {
   return findings;
 }
 
+// The invocation to reason about: `argv` when it is actually there, otherwise the flattened string.
+// `[]` is TRUTHY in JavaScript, so a bare `cast.argv || cast.command` picks an empty argv over a
+// perfectly good command and silently reports "session"; an `argv` of `""` does the opposite and
+// falls through to the lossy string path. Neither is what the caller means.
+function castInvocation(cast) {
+  return Array.isArray(cast.argv) && cast.argv.length ? cast.argv : cast.command;
+}
+
+// What the chrome DRAWS. `windowLabel` decides what it may SAY, and its answer is still what the
+// title card falls back to - but the strip itself stays empty, because `scripts/check_clip_chrome.py`
+// fails a published clip whose terminal title bar is not FLAT. That gate is deliberately not a text
+// recogniser: "the strip is not flat" is the property that cannot be argued with. Drawing even a safe
+// label there would mean masking every clip by hand before publishing, and that hand mask is exactly
+// what shipped ten leaking frames when it stopped 0.44s before its segment ended (#815). Rendering
+// nothing makes a clip born flat, so a re-record needs no manual patching to be publishable.
+function chromeTitle(cast, args = {}) {
+  const opted = args.showCommand === true || args["show-command"] === true;
+  return opted ? windowLabel(castInvocation(cast), args) : "";
+}
+
 export function terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask, args = {}, xterm = null }) {
   // The label is computed HERE, from the cast, so a caller cannot pass the raw command by mistake
   // or by a revert. That bypass is exactly how this leak shipped, one layer up.
-  const title = windowLabel(cast.argv || cast.command, args);
+  const title = chromeTitle(cast, args);
   const xtermJs = xterm ? xterm.js : fs.readFileSync(resolveOptionalPath("@xterm/xterm", "lib", "xterm.js"), "utf8");
   const xtermCss = xterm ? xterm.css : fs.readFileSync(resolveOptionalPath("@xterm/xterm", "css", "xterm.css"), "utf8");
   const payload = scriptJson({
@@ -1318,7 +1355,7 @@ export function terminalPage({ cast, timeline, fontSize, endHoldMs, introMs, ask
   html, body { margin: 0; height: 100%; background: #0b0f16; color: #e6edf3;
     font: 13px/1.4 "Segoe UI", system-ui, sans-serif; }
   .wrap { height: 100%; display: flex; flex-direction: column; padding: 18px 20px; box-sizing: border-box; }
-  .chrome { display: flex; align-items: center; gap: 8px; padding-bottom: 12px; }
+  .chrome { display: flex; align-items: center; gap: 8px; padding-bottom: 20px; }
   .dot { width: 11px; height: 11px; border-radius: 50%; }
   .title { margin-left: 8px; opacity: .75; font-size: 12px; letter-spacing: .2px; }
   .term { flex: 1; min-height: 0; }
@@ -1431,12 +1468,12 @@ export function askFromCast(cast, args, preferredMark = "ask") {
   // and it would be painted across the card in the largest type in the clip.
   const chosen = marks.find((m) => m.label === preferredMark && m.text);
   if (chosen) return String(chosen.text).trim();
-  const fromCommand = promptFromCommand(cast.argv || cast.command);
+  const fromCommand = promptFromCommand(castInvocation(cast));
   if (fromCommand) return fromCommand;
   // NOT the raw command. With no prompt to state there is nothing worth reading here, and the
   // invocation would be painted across the card in the largest type in the clip - a louder leak
   // than the window chrome that prompted this.
-  return windowLabel(cast.argv || cast.command, args);
+  return windowLabel(castInvocation(cast), args);
 }
 
 // The card has to hold whatever the real prompt turned out to be, and a real prompt is often a
@@ -1457,7 +1494,7 @@ function askFontPx(ask) {
 // iframe on top of it. Node drives the phases through `window.__stage`, and because page.evaluate
 // awaits a returned promise, the handshake needs no polling.
 export function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, reportUrl, args = {}, xterm = null }) {
-  const title = windowLabel(cast.argv || cast.command, args);
+  const title = chromeTitle(cast, args);
   const xtermJs = xterm ? xterm.js : fs.readFileSync(resolveOptionalPath("@xterm/xterm", "lib", "xterm.js"), "utf8");
   const xtermCss = xterm ? xterm.css : fs.readFileSync(resolveOptionalPath("@xterm/xterm", "css", "xterm.css"), "utf8");
   const payload = scriptJson({
@@ -1479,7 +1516,7 @@ export function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, r
   html, body { margin: 0; height: 100%; background: #0b0f16; color: #e6edf3;
     font: 13px/1.4 "Segoe UI", system-ui, sans-serif; overflow: hidden; }
   .wrap { height: 100%; display: flex; flex-direction: column; padding: 18px 20px; box-sizing: border-box; }
-  .chrome { display: flex; align-items: center; gap: 8px; padding-bottom: 12px; }
+  .chrome { display: flex; align-items: center; gap: 8px; padding-bottom: 20px; }
   .dot { width: 11px; height: 11px; border-radius: 50%; }
   .title { margin-left: 8px; opacity: .75; font-size: 12px; letter-spacing: .2px; }
   .term { flex: 1; min-height: 0; }
@@ -1493,11 +1530,13 @@ export function stagePage({ cast, segments, fontSize, introMs, endHoldMs, ask, r
     opacity: 0; pointer-events: none; transition: opacity 380ms ease; z-index: 4; }
   #report.on { opacity: 1; pointer-events: auto; }
   /* A caption for each phase, so a viewer knows they are watching one loop rather than three
-     unrelated clips spliced together. */
-  #phase { position: fixed; left: 50%; top: 26px; transform: translateX(-50%); z-index: 7;
+     unrelated clips spliced together. The shadow is kept TIGHT on purpose: a blur radius is a
+     Gaussian parameter, so the renderer paints out to roughly 1.5 radii beyond the box, and at
+     40px that reached over the window chrome the flatness gate inspects. */
+  #phase { position: fixed; left: 50%; top: 80px; transform: translateX(-50%); z-index: 7;
     padding: 14px 30px; border-radius: 999px; background: #0d1117; color: #e6edf3;
     border: 2px solid rgba(240,246,252,0.34); font-size: 24px; font-weight: 700; letter-spacing: .3px;
-    box-shadow: 0 14px 40px rgba(0,0,0,.5); opacity: 0; transition: opacity 300ms ease;
+    box-shadow: 0 14px 20px rgba(0,0,0,.5); opacity: 0; transition: opacity 300ms ease;
     white-space: nowrap; }
   #phase.on { opacity: 1; }
   #intro { position: fixed; inset: 0; background: #0b0f16; display: flex; flex-direction: column;
@@ -1616,7 +1655,7 @@ function reviewPreamble() {
 async function recordLoop(args) {
   const { cast, capturedHere } = readCast(args);
   const rules = rulesForThisMachine();
-  const findings = scanText(castText(cast), rules);
+  const findings = scanText(publishedText(cast, args), rules);
   if (findings.length && !args["allow-findings"]) {
     throw new Error(
       `this cast still scans dirty (${findings.length} finding(s)); run 'scan --cast <file>' to see them. `
@@ -1848,7 +1887,7 @@ async function renderTerminal(args) {
   const rules = rulesForThisMachine();
   // Scanned BEFORE any trim, deliberately. The gate exists to stop a secret reaching a published
   // clip, and scanning only the kept span would let a trim decide what the gate gets to see.
-  const findings = scanText(castText(fullCast), rules);
+  const findings = scanText(publishedText(fullCast, args), rules);
   if (findings.length && !args["allow-findings"]) {
     throw new Error(
       `this cast still scans dirty (${findings.length} finding(s)); run 'scan --cast <file>' to see them. `
@@ -2067,7 +2106,7 @@ const USAGE = `demo-video recorder
   node record_demo.mjs scan    --cast <file.cast.json>
   node record_demo.mjs frames  --clip <file.webm> [--count 12]
 
-The window chrome shows the PROGRAM NAME only; --show-command publishes the whole launch command.
+The window chrome draws no title, so a clip is born flat; --show-command publishes the whole launch command.
 
 Everything is written under tmp/demo-video (gitignored). Nothing is committed.`;
 

@@ -7,6 +7,8 @@ import {
   tokenizeCommand,
   joinCommand,
   askFromCast,
+  castText,
+  publishedText,
   terminalPage,
   stagePage,
 } from "../tools/record_demo.mjs";
@@ -280,7 +282,9 @@ test("neither rendered page publishes the launch command (DEMO-SAFE-34)", () => 
   for (const [name, build] of [["terminal", buildTerminalPage], ["stage", buildStagePage]]) {
     for (const command of commands) {
       const html = build({ cols: 80, rows: 24, command }, {});
-      assert.ok(html.includes('"copilot"'), `${name} page lost the safe label`);
+      // That a SAFE label survives is DEMO-SAFE-38's business now: the chrome draws nothing by
+      // default, so for a command carrying a prompt the label appears nowhere on the page. What
+      // this row pins is the leak - no flags, no operator path, in either page.
       assert.ok(!html.includes("disable-mcp-server"),
         `${name} page published the launch flags for: ${command}`);
     }
@@ -302,4 +306,130 @@ test("neither rendered page publishes the launch command (DEMO-SAFE-34)", () => 
     assert.ok(!fromArgv.includes("Contoso"), `${name} page published a path fragment`);
     assert.ok(!fromArgv.includes("disable-mcp-server"), `${name} page published the flags`);
   }
+});
+
+// What the chrome may say and what it DOES say are separate questions. `scripts/check_clip_chrome.py`
+// fails a published clip whose terminal title strip is not FLAT, because flatness is the one property
+// that cannot be argued with - it is deliberately not a text recogniser. So a safe label is still text,
+// and a clip rendered with one has to be masked by hand before it can ship. That mask is the fragile
+// step that already published ten leaking frames when it stopped 0.44s early (#815). Render the chrome
+// empty instead, so a freshly recorded clip is born flat and a re-record needs no manual patching.
+function chromeTitleOf(html) {
+  const m = /getElementById\("title"\)\.textContent = (.*);/.exec(html);
+  assert.ok(m, "the page no longer sets the chrome title at all");
+  return JSON.parse(m[1]);
+}
+
+// The phase caption is an overlay pinned to the top of the loop clip, and it used to start ABOVE
+// the bottom of the window chrome - so its rounded top edge and border crossed the title strip.
+// That reads as "the title bar is not empty" to `scripts/check_clip_chrome.py`, which fails a clip
+// whose terminal title strip is not flat, and it looked wrong too: the pill sat across the traffic
+// lights. Derive both numbers from the page's own CSS so this cannot drift back.
+function cssPx(css, rule, prop) {
+  const block = new RegExp(`${rule}\\s*\\{([^}]*)\\}`).exec(css);
+  assert.ok(block, `no ${rule} rule in the stage page`);
+  const value = new RegExp(`(?:^|[;\\s])${prop}:\\s*(-?[\\d.]+)px`).exec(block[1]);
+  assert.ok(value, `${rule} has no ${prop}`);
+  return Number(value[1]);
+}
+
+test("the phase caption never overlaps the window chrome (DEMO-SAFE-39)", () => {
+  const css = buildStagePage({ cols: 80, rows: 24, command: LEAKY }, {});
+  // The chrome block: the wrap's top padding, the traffic lights, and the gap under them.
+  const chromeBottom = cssPx(css, "\\.wrap", "padding")
+    + cssPx(css, "\\.dot", "height")
+    + cssPx(css, "\\.chrome", "padding-bottom");
+  // The SHADOW counts, not just the box, and its reach is the RENDERER's, not the CSS length. A
+  // blur radius is a Gaussian parameter, not a hard painted edge: Chromium maps it to a sigma of
+  // half the radius and Skia allocates the mask out to about three sigma, so the shadow can put ink
+  // roughly 1.5 blur radii beyond its own box. The naive `blur - offset` reading of the same
+  // declaration claimed 26px where the renderer can reach 46px, and it happened to pass by ONE
+  // pixel - a wrong model with no slack, which is how the first cut of this fix cleared the border
+  // and left the shadow bleeding into the strip with the gate still failing.
+  // Parsed strictly: a `spread` 4th length, or a second comma-separated layer, would each add reach
+  // the naive two-capture form silently ignored, so an unexpected shape fails here rather than in a
+  // published clip.
+  const declaration = /#phase\s*\{[^}]*?box-shadow:\s*([^;}]+)/.exec(css);
+  assert.ok(declaration, "#phase has no box-shadow to account for");
+  // Split on TOP-LEVEL commas only - a colour like `rgba(0,0,0,.5)` carries its own.
+  const layers = declaration[1].replace(/\([^)]*\)/g, "()").split(",");
+  assert.equal(layers.length, 1,
+    `#phase has ${layers.length} shadow layers; this test only reasons about one`);
+  const lengths = layers[0].match(/-?[\d.]+(?:px)?/g) || [];
+  assert.equal(lengths.length, 3,
+    `#phase box-shadow has ${lengths.length} lengths, expected offset-x, offset-y and blur`);
+  const [, offsetY, blur] = lengths.map((v) => Number(v.replace("px", "")));
+  const reach = (blur * 1.5) - offsetY;
+  const top = cssPx(css, "#phase", "top");
+  // A margin, not a touch. Clearing by a single pixel meant any one-pixel change to the chrome's
+  // padding or dot size would push the loop clip's flatness back toward the noise ceiling with this
+  // test still green - the same zero-slack trap the tolerance itself was in.
+  assert.ok(top - reach >= chromeBottom + 4,
+    `the phase caption reaches ${top - reach}px, too close to the chrome that ends at ${chromeBottom}px`);
+});
+
+test("the window chrome carries no text unless the operator opts in (DEMO-SAFE-38)", () => {
+  for (const [name, build] of [["terminal", buildTerminalPage], ["stage", buildStagePage]]) {
+    for (const cast of [
+      { cols: 80, rows: 24, command: LEAKY },
+      { cols: 80, rows: 24, command: "copilot --banner" },
+      {
+        cols: 80,
+        rows: 24,
+        command: "C:\\Users\\demo\\Contoso Secret Project\\bin\\copilot --disable-mcp-server kusto",
+        argv: ["C:\\Users\\demo\\Contoso Secret Project\\bin\\copilot", "--disable-mcp-server", "kusto"],
+      },
+    ]) {
+      assert.equal(chromeTitleOf(build(cast, {})), "",
+        `${name} page drew text in the chrome, so the clip cannot pass the flatness gate`);
+    }
+    // Opting in still shows the whole command, so the flag is not silently dead.
+    assert.equal(
+      chromeTitleOf(build({ cols: 80, rows: 24, command: LEAKY }, { "show-command": true })),
+      LEAKY,
+      `${name} page ignored --show-command`,
+    );
+    // A cast can carry an EMPTY argv (a foreign or truncated one). `[]` is truthy in JS, so a bare
+    // `argv || command` picks it and the usable command is silently dropped - the opted-in chrome
+    // then reads "session" and the operator is told nothing about why.
+    assert.equal(
+      chromeTitleOf(build({ cols: 80, rows: 24, argv: [], command: "copilot --banner" }, { "show-command": true })),
+      "copilot --banner",
+      `${name} page let an empty argv shadow the command`,
+    );
+  }
+});
+
+// Every scan gate reads `castText`, and what it does NOT read cannot be caught. The title card is
+// the largest type in the clip and `askFromCast` fills it from a cast MARK, so a foreign, legacy or
+// hand-edited cast whose mark text carries the launch command (or a host, a home path, a token)
+// sails through `scan`/`render`/`loop` and is published in the opening frames. The marks were
+// outside the scan the whole time; it only became load-bearing now that the chrome draws nothing,
+// which makes the card the primary text surface.
+test("the credential scan reads the text the title card will publish (DEMO-SAFE-40)", () => {
+  const cast = {
+    cols: 80,
+    rows: 24,
+    command: "copilot",
+    argv: ["copilot"],
+    events: [],
+    marks: [{ label: "ask", text: `please review ${LEAKY}` }],
+  };
+  const scanned = castText(cast);
+  assert.ok(scanned.includes("disable-mcp-server"),
+    "the scan does not read mark text, so it cannot catch a leak the title card will publish");
+  // And what the card actually renders is that same text, so the two cannot drift apart.
+  assert.ok(askFromCast(cast, {}).includes("disable-mcp-server"),
+    "the title card no longer renders the ask mark; re-point this test at whatever it renders");
+});
+
+// `--ask` never touches the cast, so scanning the cast alone left the operator-supplied string -
+// painted at up to 30px, the largest type in the clip - completely unchecked. It is the documented
+// render recipe, and it matters more now the chrome draws nothing and the card leads the clip.
+test("the render gate scans an operator-supplied --ask too (DEMO-SAFE-41)", () => {
+  const clean = { cols: 80, rows: 24, command: "copilot", argv: ["copilot"], events: [], marks: [] };
+  assert.ok(!publishedText(clean, {}).includes("disable-mcp-server"),
+    "a clean cast should not read dirty");
+  assert.ok(publishedText(clean, { ask: `please review ${LEAKY}` }).includes("disable-mcp-server"),
+    "--ask reaches the title card unscanned");
 });

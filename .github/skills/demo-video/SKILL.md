@@ -133,6 +133,59 @@ load-bearing for this clip: a different directory works for the duck recipe but 
 round trip. `--snapshot-out` keeps the report AS REVIEWED, because the agent edits it in place and
 without the copy the "before" side of the round trip is gone.
 
+Capturing is only half the job - the three clips are then RENDERED from what those phases produced,
+and each takes different flags:
+
+```powershell
+# demo-commentable-html.webm - the browser montage on its own, at publish length and scale
+node "$skill\tools\record_demo.mjs" report --example "C:\demo\report.html" `
+  --seconds 30 --scale 0.6 `
+  --out "$repo\tmp\rerecord-review\demo-commentable-html.webm"
+
+# demo-commentable-html-loop.webm - the round trip. --example is the report AS REVIEWED and
+# --example-after the one the agent then fixed.
+node "$skill\tools\record_demo.mjs" loop --cast "$repo\tmp\demo-video\loop.cast.json" `
+  --example "C:\demo\report-before.html" --example-after "C:\demo\report.html" `
+  --scale 0.6 --out "$repo\tmp\rerecord-review\demo-commentable-html-loop.webm"
+
+# demo-multi-duck.webm - the duck cast, with the summary left at its natural pace
+node "$skill\tools\record_demo.mjs" render --cast "$repo\tmp\demo-video\duck.cast.json" `
+  --seconds 42.7 --idle 900 --hold 320 --head 60 --tail 60 --scale 0.6 `
+  --out "$repo\tmp\rerecord-review\demo-multi-duck.webm"
+```
+
+**Pass `--example-after`, or the loop clip ends on nothing.** A capture keeps recording until its
+`quit` step fires, so the cast runs on past the last interesting output; without the resolved report
+to cut to, the clip spends its closing seconds on an empty terminal tearing the session down. With it
+the clip ends where the story does. `render` needs no `--ask` when the cast came from the committed
+recipe - its `ask` mark is already one readable sentence, and the card quotes that.
+
+**Render every publishable clip at `--scale 0.6`.** It is not only a file-size lever: the required
+`site` gate (`scripts/check_clip_chrome.py`) reads the window chrome at fixed video pixels, which
+hold at that scale. Rendered larger, the traffic lights land inside the strip it inspects and every
+terminal frame reports a leak - the gate names the scale when it sees colour there, but it costs a
+render either way. The three published clips are `demo-commentable-html.webm` (the `report` subject),
+`demo-commentable-html-loop.webm` (the `loop` subject) and `demo-multi-duck.webm` (`render` over the
+duck cast).
+
+A freshly rendered clip needs NO hand-applied ffmpeg mask: the chrome draws no title and the loop's
+phase caption clears it, so the strip is born flat. Confirm it before publishing rather than
+assuming, and check the clips you are replacing too, so a regression is obvious:
+
+```powershell
+python "$repo\scripts\check_clip_chrome.py" --require-ffmpeg <new clips...>
+```
+
+That needs a full ffmpeg build; Playwright's bundled one is VP8-only and cannot decode these VP9
+clips. Point `DEMO_CLIP_FFMPEG` at a real build if `ffmpeg` is not on PATH. The scan reports how
+many frames it judged, so read that number: a clip that judged far fewer than its length suggests
+its chrome was occluded, and one that judged none says so outright.
+
+**The posters are a published surface too, and no gate scans them.** `site/src/poster-*.jpg` is the
+first thing a reader sees, it carries the window chrome, and the launch command shipped in one once
+before. A re-record makes the old posters stale as well as unchecked, so regenerate each poster from
+its NEW clip and look at it before publishing - the scan only reads `.webm`.
+
 `--allow-all` is what keeps an unattended capture from stalling: it covers tools, paths and URLs, so
 no permission dialog can appear with nobody there to answer it. Be clear-eyed that it is the BROAD
 grant, not just the path prompt the skill's own reference files trigger - which is the other reason
@@ -217,12 +270,16 @@ these are NOT covered, and only your own eyes will catch them:
   the scrubber reads the byte stream, while the viewer reads the rendered grid.
 
 **Everything visible in the terminal chrome is published too, not just the output.** The window
-title bar is part of the frame, and it holds the launch command. On a real machine that command is
-an inventory of internal tooling - which MCP servers you disable, which hosts you point at - and
-none of it is a secret by any rule, so redaction cannot catch it. The clip therefore shows the
-PROGRAM NAME only (`copilot`), with the path, any leading `NAME=value` environment assignment, and
-every flag dropped; anything that is not a plausible bare program name degrades to `session`. Pass
-`--show-command` when the invocation genuinely is the story.
+title bar is part of the frame, and it used to hold the launch command. On a real machine that
+command is an inventory of internal tooling - which MCP servers you disable, which hosts you point
+at - and none of it is a secret by any rule, so redaction cannot catch it. The chrome therefore
+draws NOTHING at all now: a safe label is still text, and `scripts/check_clip_chrome.py` fails a
+published clip whose title strip is not flat, so a clip with any title had to be masked by hand
+before it could ship. Rendered empty, a clip is born publishable. The safe reduction is still
+computed - the PROGRAM NAME only (`copilot`), with the path, any leading `NAME=value` environment
+assignment, and every flag dropped, degrading to `session` for anything that is not a plausible bare
+program name - and it is what the title card falls back to. Pass `--show-command` when the
+invocation genuinely is the story, and expect to mask that clip by hand.
 
 **The title card is the loudest surface of all** - it is the largest type in the clip. It states the
 prompt that was actually typed, and it is bounded: a `-p` prompt ends at its closing quote (or at the
