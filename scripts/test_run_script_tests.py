@@ -378,7 +378,7 @@ class JobResolution(unittest.TestCase):
 class WorkerArgv(unittest.TestCase):
     def _args(self, **over):
         base = dict(tests_dir="/repo/scripts", pattern="test_*.py", repo_root="/repo",
-                    no_worktree_check=False, shard="1/1", jobs="4")
+                    no_worktree_check=False, shard="1/1", jobs="4", sandbox=None)
         base.update(over)
         return argparse.Namespace(**base)
 
@@ -397,12 +397,75 @@ class WorkerArgv(unittest.TestCase):
         argv = rst.build_child_argv(1, 1, 1, 2, self._args(), python="py")
         self.assertIn("--no-worktree-check", argv)
 
+    def test_a_worker_is_given_the_sandbox_the_parent_owns(self):
+        # The parent creates and INSPECTS the sandbox, so a test that ends the worker early
+        # (os._exit) cannot skip the leftover check.
+        argv = rst.build_child_argv(1, 1, 1, 2, self._args(), sandbox="/tmp/box", python="py")
+        self.assertEqual(argv[argv.index("--sandbox") + 1], "/tmp/box")
+
     def test_a_worker_inherits_the_suite_selection(self):
         argv = rst.build_child_argv(1, 1, 1, 2,
                                     self._args(pattern="test_check_*.py"), python="py")
         self.assertEqual(argv[argv.index("--tests-dir") + 1], "/repo/scripts")
         self.assertEqual(argv[argv.index("--pattern") + 1], "test_check_*.py")
         self.assertEqual(argv[argv.index("--repo-root") + 1], "/repo")
+
+
+class DuplicateTests(unittest.TestCase):
+    """A compatibility module that re-exports another's cases must not run them twice."""
+
+    class Sample(unittest.TestCase):
+        def test_one(self):
+            pass
+
+        def test_two(self):
+            pass
+
+    def _suite(self):
+        loader = unittest.TestLoader()
+        return loader.loadTestsFromTestCase(DuplicateTests.Sample)
+
+    def test_the_same_test_is_kept_once(self):
+        both = list(rst.iter_tests(self._suite())) + list(rst.iter_tests(self._suite()))
+        self.assertEqual(len(both), 4)
+        unique = rst.dedupe_tests(both)
+        self.assertEqual([t.id() for t in unique], [t.id() for t in rst.iter_tests(self._suite())])
+
+    def test_order_is_preserved(self):
+        tests = list(rst.iter_tests(self._suite()))
+        self.assertEqual([t.id() for t in rst.dedupe_tests(tests)], [t.id() for t in tests])
+
+
+class CoverageCrossCheck(unittest.TestCase):
+    """Each worker discovers independently, so the parent must confirm they saw the same suite."""
+
+    def _report(self, index, total, discovered, running):
+        return "noise\n" + (rst.COVERAGE % (index, total, discovered, running)) + "\nmore\n"
+
+    def test_a_complete_partition_is_accepted(self):
+        outputs = [self._report(1, 2, 10, 5), self._report(2, 2, 10, 5)]
+        self.assertEqual(rst.check_coverage(outputs), [])
+
+    def test_a_worker_that_discovered_a_different_suite_reds_the_run(self):
+        # An import error collapses a module into one _FailedTest, so that worker strides a
+        # DIFFERENT population and the union of shards is no longer the suite.
+        outputs = [self._report(1, 2, 10, 5), self._report(2, 2, 7, 4)]
+        problems = rst.check_coverage(outputs)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("disagree", problems[0])
+
+    def test_shards_that_do_not_add_up_red_the_run(self):
+        outputs = [self._report(1, 2, 10, 5), self._report(2, 2, 10, 4)]
+        problems = rst.check_coverage(outputs)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("9", problems[0])
+
+    def test_a_silent_worker_reds_the_run(self):
+        problems = rst.check_coverage([self._report(1, 2, 10, 5), "nothing to see"])
+        self.assertTrue(problems)
+
+    def test_no_output_at_all_reds_the_run(self):
+        self.assertTrue(rst.check_coverage([]))
 
 
 class ParallelAggregation(unittest.TestCase):
@@ -625,6 +688,75 @@ class ParallelRunnerEndToEnd(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stdout[-3000:] + proc.stderr[-3000:])
             self.assertEqual(len(list(marker.iterdir())), 2,
                              "shard 1/2 of 4 tests should have run 2 of them")
+
+    def test_the_same_tests_run_serially_and_in_parallel(self):
+        # Two execution engines (a `unittest discover` subprocess serially, an in-process
+        # TextTestRunner per worker) must not drift apart in what they select.
+        with tempfile.TemporaryDirectory() as tmp:
+            tests = Path(tmp) / "suite"
+            tests.mkdir()
+            for name, marks in (("serial", Path(tmp) / "m1"), ("parallel", Path(tmp) / "m2")):
+                marks.mkdir()
+            self._marked_suite(tests, Path(tmp) / "m1", modules=3, per_module=2)
+            serial = self._run(tests, jobs="1")
+            self.assertEqual(serial.returncode, 0, serial.stdout[-3000:] + serial.stderr[-3000:])
+            ran_serial = sorted(p.name.rsplit("-", 1)[0] for p in (Path(tmp) / "m1").iterdir())
+            self._marked_suite(tests, Path(tmp) / "m2", modules=3, per_module=2)
+            parallel = self._run(tests, jobs="3")
+            self.assertEqual(parallel.returncode, 0,
+                             parallel.stdout[-3000:] + parallel.stderr[-3000:])
+            ran_parallel = sorted(p.name.rsplit("-", 1)[0] for p in (Path(tmp) / "m2").iterdir())
+            self.assertEqual(ran_parallel, ran_serial)
+
+    def test_a_test_exported_twice_still_runs_once(self):
+        # `test_build_site_data.py` star-imports the split modules, so discovery yields each of
+        # their tests twice; across workers the copies could otherwise run CONCURRENTLY.
+        with tempfile.TemporaryDirectory() as tmp:
+            tests, marker = Path(tmp) / "suite", Path(tmp) / "marks"
+            tests.mkdir()
+            marker.mkdir()
+            self._marked_suite(tests, marker, modules=1, per_module=3)
+            _fake_suite(tests, "test_aggregator.py", "from test_marked0 import *  # noqa: F401,F403\n")
+            proc = self._run(tests, jobs="3")
+            self.assertEqual(proc.returncode, 0, proc.stdout[-3000:] + proc.stderr[-3000:])
+            self.assertEqual(len(list(marker.iterdir())), 3,
+                             "the re-exported tests ran more than once")
+
+    def test_a_worker_that_exits_early_cannot_skip_the_leak_check(self):
+        # The sandbox belongs to the PARENT, so a test that calls os._exit(0) after writing into
+        # the cwd still reds the run.
+        with tempfile.TemporaryDirectory() as tmp:
+            _fake_suite(tmp, "test_clean.py", CLEAN_TEST)
+            _fake_suite(tmp, "test_sneaky.py",
+                        "import os\nimport unittest\n\n\n"
+                        "class Sneaky(unittest.TestCase):\n"
+                        "    def test_writes_then_exits(self):\n"
+                        "        with open('a.md', 'w', encoding='utf-8') as fh:\n"
+                        "            fh.write('scratch')\n"
+                        "        os._exit(0)\n")
+            proc = self._run(tmp, jobs="2")
+            self.assertNotEqual(proc.returncode, 0,
+                                proc.stdout[-3000:] + proc.stderr[-3000:])
+            self.assertIn("a.md", proc.stderr)
+
+    def test_a_worker_runs_with_the_git_environment_scrubbed(self):
+        # In-process shards must see the same scrubbed environment the serial subprocess gets, or
+        # a git-spawning test under a hook targets the REAL repository (#283).
+        with tempfile.TemporaryDirectory() as tmp:
+            _fake_suite(tmp, "test_env.py",
+                        "import os\nimport unittest\n\n\n"
+                        "class Env(unittest.TestCase):\n"
+                        "    def test_git_dir_is_gone(self):\n"
+                        "        self.assertIsNone(os.environ.get('GIT_DIR'))\n"
+                        "    def test_identity_is_set(self):\n"
+                        "        self.assertTrue(os.environ.get('GIT_AUTHOR_NAME'))\n")
+            env = clean_git_env()
+            env["GIT_DIR"] = str(Path(tmp) / "not-a-repo")
+            proc = subprocess.run(
+                [sys.executable, str(SCRIPTS / "run_script_tests.py"),
+                 "--tests-dir", tmp, "--repo-root", "", "--shard", "1/2"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+            self.assertEqual(proc.returncode, 0, proc.stdout[-3000:] + proc.stderr[-3000:])
 
 
 if __name__ == "__main__":

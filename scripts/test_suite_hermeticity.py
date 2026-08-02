@@ -154,6 +154,124 @@ def _test_modules():
     return sorted(p for p in SCRIPTS.glob("test_*.py") if p.name != SELF)
 
 
+#: The repository's own scratch directories. They are GITIGNORED, which is exactly what makes a
+#: fixture built there invisible: an absolute path defeats the sandbox cwd, and
+#: `git ls-files --others --exclude-standard` drops ignored files from the untracked digest, so
+#: neither leak guard sees it. Under `--jobs` two workers then race on the same fixed directory
+#: (issue #832 - `test_check_spec_test_refs.py` deleted a tree another worker was still using).
+_REPO_SCRATCH_DIRS = ("tmp", ".plans", ".worktrees")
+#: What "this path starts at the repository" looks like in a test module.
+_REPO_ROOT_MARKERS = ("__file__", "REPO_ROOT", "REPO", "SCRIPTS", "ROOT",
+                      "self.root", "self.repo_root")
+
+
+def _is_repo_expr(source, names):
+    """True when this expression source starts at the repository (directly or via a bound name)."""
+    if any(re.search(r"\b%s\b" % re.escape(marker), source) for marker in _REPO_ROOT_MARKERS):
+        return True
+    return any(re.search(r"\b%s\b" % re.escape(name), source) for name in names)
+
+
+def _repo_root_names(tree):
+    """Names bound to a repository-derived path (`root = Path(__file__).resolve().parent`), so a
+    fixture built off the variable rather than the literal expression is still recognized."""
+    names = set()
+    changed = True
+    while changed:
+        changed = False
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            if not _is_repo_expr(ast.unparse(node.value), names):
+                continue
+            for target in node.targets:
+                name = ast.unparse(target)
+                if name not in names:
+                    names.add(name)
+                    changed = True
+    return names
+
+
+def _path_base(node):
+    """The leftmost operand of a `a / b / c` chain, or the first argument of an `...join(a, b)`."""
+    if isinstance(node, ast.Call):
+        return node.args[0] if node.args else None
+    while isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        node = node.left
+    return node
+
+
+def repo_scratch_paths(source, filename="<test>"):
+    """Descriptions of every fixed path this module builds under a repo scratch directory.
+
+    Matches both spellings a fixture is written with: `<repo-ish> / "tmp" / "name"` and
+    `os.path.join(<repo-ish>, "tmp", "name")`. Reading such a path is as suspect as writing one
+    here, because the fixture pattern always writes; a test that genuinely needs the repository
+    reads a TRACKED path, which no scratch directory is.
+    """
+    found = []
+    tree = ast.parse(source, filename=filename)
+    names = _repo_root_names(tree)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+            pass
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                and node.func.attr == "join":
+            pass
+        else:
+            continue
+        base = _path_base(node)
+        if base is None or not _is_repo_expr(ast.unparse(base), names):
+            continue
+        literals = [c.value for c in ast.walk(node)
+                    if isinstance(c, ast.Constant) and isinstance(c.value, str)]
+        if any(part in _REPO_SCRATCH_DIRS for part in literals):
+            found.append("%s:%d %s" % (filename, node.lineno, ast.unparse(node)))
+    return found
+
+
+class TestsMustNotBuildFixturesInsideTheRepository(unittest.TestCase):
+    """A fixture path built from the repository root is invisible to BOTH leak guards.
+
+    The sandbox cwd only catches a RELATIVE write, and the worktree snapshot only hashes untracked
+    files git does not ignore - so a fixture under the repo's own `tmp/` slips past both, and under
+    `--jobs` it is also a shared directory two workers fight over. Fixtures belong in
+    `tempfile.mkdtemp()`/`TemporaryDirectory()`."""
+
+    def test_no_scripts_test_builds_a_fixture_under_a_repo_scratch_directory(self):
+        offenders = []
+        for path in _test_modules():
+            offenders += repo_scratch_paths(path.read_text(encoding="utf-8"), path.name)
+        self.assertEqual(
+            offenders, [],
+            "these fixture paths live inside the repository's gitignored scratch directories, "
+            "where neither leak guard can see them and parallel workers race each other - build "
+            "them with tempfile.mkdtemp()/TemporaryDirectory() instead: %r" % (offenders,))
+
+    def test_the_rule_catches_the_pattern_it_exists_for(self):
+        # The exact shape that raced under --jobs (scripts/test_check_spec_test_refs.py, pre-fix),
+        # plus the os.path.join spelling of the same thing.
+        for source in (
+            'from pathlib import Path\n'
+            'root = Path(__file__).resolve().parent.parent\n'
+            'sandbox = root / "tmp" / "test_check_spec_test_refs"\n',
+            'import os\n'
+            'sandbox = os.path.join(REPO_ROOT, "tmp", "fixtures")\n',
+            'self.sandbox = self.root / "tmp" / "x"\n',
+        ):
+            self.assertTrue(repo_scratch_paths(source),
+                            "the rule missed a repo-scratch fixture path: %r" % source)
+
+    def test_the_rule_leaves_legitimate_paths_alone(self):
+        for source in (
+            'import tempfile\nsandbox = tempfile.mkdtemp(prefix="x-")\n',
+            'spec = self.root / "site" / "tests" / "SPEC.md"\n',
+            'out = Path(tmp) / "tmp" / "nested"\n',
+        ):
+            self.assertEqual(repo_scratch_paths(source), [],
+                             "the rule flagged a legitimate path: %r" % source)
+
+
 class StaticGitEnvRule(unittest.TestCase):
     """Any scripts test that spawns git must scrub the inherited git environment."""
 
