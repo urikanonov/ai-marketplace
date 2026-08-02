@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import contextlib
 import functools
 import re
 import sys
@@ -59,6 +60,15 @@ def _display(path: Path) -> str:
         return path.as_posix()
 
 
+def _scoped(fn):
+    """Run fn inside a cache_scope, so a top-level check never re-uses another run's cache."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with cache_scope():
+            return fn(*args, **kwargs)
+    return wrapper
+
+
 def _fingerprint(path: Path) -> tuple[int, int] | None:
     """(mtime_ns, size) for path, or None when it cannot be stat'd.
 
@@ -102,16 +112,41 @@ def _python_ast_fingerprinted(path: Path, fingerprint: tuple[int, int] | None) -
 
 
 def clear_caches() -> None:
-    """Drop every memoized read/parse.
-
-    Not needed for correctness - the caches key on a file's (mtime, size), so a changed file is
-    picked up on its own. This is for a caller that wants a guaranteed cold run (a benchmark, or a
-    test counting how often a file is read).
-    """
+    """Drop every memoized read/parse."""
     _read_fingerprinted.cache_clear()
     _python_ast_fingerprinted.cache_clear()
     _python_symbols_fingerprinted.cache_clear()
     _js_test_titles.cache_clear()
+
+
+_cache_depth = 0
+
+
+@contextlib.contextmanager
+def cache_scope():
+    """Confine the memo caches to ONE top-level check, then drop them.
+
+    This, not the fingerprint, is what makes the caching sound. A (mtime_ns, size) key is a
+    heuristic: a same-SIZE rewrite that lands in the same mtime tick (or has its mtime restored)
+    is indistinguishable from no change, and for this checker a stale hit means a spec row whose
+    test was renamed still PASSES - a false green on a required gate.
+
+    Within a single check the tree is static: the pass is synchronous and reads files it never
+    writes, so nothing can change under it and caching is exact. Scoping to that window keeps the
+    whole speedup (the win is re-use WITHIN one pass, where a file is referenced by many rows) and
+    leaves nothing cached afterwards to go stale. Nested scopes share one window, so check_all
+    still re-uses reads across its specs.
+    """
+    global _cache_depth
+    if _cache_depth == 0:
+        clear_caches()
+    _cache_depth += 1
+    try:
+        yield
+    finally:
+        _cache_depth -= 1
+        if _cache_depth == 0:
+            clear_caches()
 
 
 def _row_cells(line: str) -> list[str] | None:
@@ -411,6 +446,7 @@ def _clause_end(text: str, start: int, default_end: int) -> int:
     return default_end
 
 
+@_scoped
 def check_spec(spec_path: Path, base_dir: Path) -> list[SpecIssue]:
     issues: list[SpecIssue] = []
     text = _read(spec_path)
@@ -474,6 +510,7 @@ def check_spec(spec_path: Path, base_dir: Path) -> list[SpecIssue]:
     return issues
 
 
+@_scoped
 def check_test_id_mappings(
     spec_path: Path,
     base_dir: Path,
@@ -517,6 +554,7 @@ def check_test_id_mappings(
     return issues
 
 
+@_scoped
 def check_all(targets: tuple[tuple[Path, Path], ...] = SPEC_TARGETS) -> list[SpecIssue]:
     issues: list[SpecIssue] = []
     for spec_path, base_dir in targets:

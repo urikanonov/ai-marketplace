@@ -84,10 +84,8 @@ class ReadCachingTests(unittest.TestCase):
             self.assertEqual(hits, [1], "%s was not read exactly once: %r" % (name, hits))
 
     def test_a_changed_file_is_picked_up_without_any_cache_clearing(self):
-        # Correctness must not depend on a caller remembering to clear: the cache keys on the
-        # file's (mtime, size), so rewriting it invalidates the entry on its own. Before this was
-        # fingerprinted, the tests below in this module all failed - each rewrites the same fixture
-        # paths and was served the previous test's contents.
+        # Correctness must not depend on a caller remembering to clear. Caches are scoped to one
+        # top-level check, so a rewrite between checks is always seen.
         spec = self.sandbox / "SPEC2.md"
         spec.write_text(
             "# Spec\n\n| Feature id | Behavior | Covering tests |\n| --- | --- | --- |\n"
@@ -102,8 +100,41 @@ class ReadCachingTests(unittest.TestCase):
             encoding="utf-8", newline="\n",
         )
         issues = refs.check_spec(spec, self.base)
+        self.assertTrue(issues, "the rewritten file was served from a previous run's cache")
+
+    def test_a_same_length_rewrite_with_a_restored_mtime_is_still_detected(self):
+        """The (mtime_ns, size) fingerprint alone is a HEURISTIC, so it must not be load-bearing.
+
+        A rewrite that keeps the byte length and restores the original mtime is indistinguishable
+        from no change. If the caches survived between checks, the renamed method would still be
+        served from cache and a spec row whose test no longer exists would PASS - a false green on
+        a required gate. Run-scoped caching is what makes this safe, so pin it directly.
+        """
+        target = self.base / "tests" / "test_demo.py"
+        original = target.read_text(encoding="utf-8")
+        before = target.stat()
+
+        spec = self.sandbox / "SPEC3.md"
+        spec.write_text(
+            "# Spec\n\n| Feature id | Behavior | Covering tests |\n| --- | --- | --- |\n"
+            "| DEMO-01 | B. | `tests/test_demo.py` - `DemoTests.test_case_01` |\n",
+            encoding="utf-8", newline="\n",
+        )
+        self.assertEqual(refs.check_spec(spec, self.base), [])
+
+        # Same byte length: rename test_case_01 -> test_case_9X (equal length, still 8 methods).
+        rewritten = original.replace("def test_case_01(", "def test_case_99(")
+        self.assertEqual(len(rewritten), len(original), "fixture rewrite must keep the size equal")
+        target.write_text(rewritten, encoding="utf-8", newline="\n")
+        os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        self.assertEqual(target.stat().st_size, before.st_size)
+        self.assertEqual(target.stat().st_mtime_ns, before.st_mtime_ns)
+
+        issues = refs.check_spec(spec, self.base)
         self.assertTrue(
-            issues, "the rewritten file was served from cache; the fingerprint is not in the key")
+            issues,
+            "a same-size, same-mtime rewrite was served from cache: the renamed method went "
+            "undetected, so a stale spec row would pass the gate")
 
     def test_clear_caches_forces_a_cold_read(self):
         refs.check_spec(self.spec, self.base)
@@ -115,11 +146,10 @@ class RealRepoResultsAreUnchangedTests(unittest.TestCase):
     """Caching must not change the verdict on the real tree - the whole point is same-in, same-out."""
 
     def test_repo_check_is_clean_and_repeatable(self):
-        refs.clear_caches()
         first = refs.check_all()
-        second = refs.check_all()  # served entirely from cache
+        second = refs.check_all()  # a second, independently-scoped run
         self.assertEqual(first, [], "the repository's spec references should be clean")
-        self.assertEqual(first, second, "a cached second run disagreed with the first")
+        self.assertEqual(first, second, "a repeated run disagreed with the first")
 
 
 class SpecTestReferenceTests(unittest.TestCase):
