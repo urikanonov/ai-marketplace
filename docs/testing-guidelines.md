@@ -29,6 +29,19 @@ spec-and-test rules in [../AGENTS.md](../AGENTS.md); where they overlap, AGENTS.
   `SITE-DEMO-08`, `CMH-DIFF-11`). Reuse an id when you refine its behavior; never renumber or delete a
   shipped id. The spec row must name the covering test by its exact title, and the test title must keep
   the id in parentheses so the two stay searchable together.
+- **Do not borrow another file's feature id.** `scripts/check_spec_test_refs.py` fails when one id is
+  carried by test titles in MORE THAN ONE file and a spec row that owns the id does not cite every
+  one of them. Two tests in the SAME spec file may share an id while it stays in that file (a single
+  behavior asserted from several angles is the existing convention here); once the id also appears in
+  another file, EVERY carrier - including the same-file ones - must be listed on the row. A test in a
+  different file that reuses an id is therefore either a new behavior that needs its own id, or
+  genuine extra coverage the row must name. That is the gate the `DEMO-TRIM-06`/`DEMO-TRIM-07` reuse
+  slipped past (#800). Hiding the reuse in a `describe(...)` wrapper does not help: a suite title
+  still counts toward "how many files carry this id". The same checker also verifies the reverse
+  direction - every test in a `*regressions*.spec.*` or `*.test.*` suite that carries an id is owned
+  by that id's row. Write a covering-tests cell file-first - `` `tests/x.spec.js` - `a title`,
+  `another title` `` - because a title only counts as cited when it appears AFTER its file
+  reference and before the next one (or the next `;`).
 - **Assert observable behavior, not tautologies.** Prove the real outcome (an element is visible, a
   block scrolls, a value navigates), not a metric that is true by construction. A prior mobile
   scroll test was rewritten because it asserted scroll numbers that could not fail; test what a user

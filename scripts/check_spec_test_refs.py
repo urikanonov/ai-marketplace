@@ -1,5 +1,42 @@
 #!/usr/bin/env python3
-"""Verify spec rows point at real tests and exact test names."""
+"""Verify spec rows point at real tests and exact test names.
+
+Three directions are checked:
+
+- FORWARD (`check_spec`): every test file and exact test name a spec row cites exists.
+- REVERSE (`check_test_id_mappings`): every test that CARRIES a feature id is owned by that id's
+  spec row. For a target listed in `FULLY_REVERSE_MAPPED_SPECS` this covers its WHOLE test
+  corpus; for the rest it covers only what `_is_reverse_mapped` accepts - the `*.test.*` suites
+  and the `*regressions*.spec.*` files. A target graduates to the full corpus once every feature
+  id its tests carry is owned and cited by its spec, which is a spec cleanup rather than a code
+  change: the site target is there today, commentable-html is not (a few dozen of its test titles
+  have no owning row, or a row that does not cite them, and several would need brand-new feature
+  ids, which also demands a doc-surface registry entry). Issue #853 tracks that cleanup and
+  carries the measured breakdown. Until it lands, a commentable-html `*.spec.*` file is covered by
+  the forward direction and by the cross-file duplicate check below, but not by the reverse
+  mapping.
+- DUPLICATE (`check_duplicate_feature_ids`): a feature id carried by test titles in MORE THAN ONE
+  file must have every one of those titles cited by a spec row that owns the id, so a new test
+  cannot quietly borrow an id another file already owns. It reads the WHOLE test corpus, not just
+  the reverse-mapped part. Three rules bound it:
+  - While an id lives in ONE file, extra titles there need no citation: a single behavior
+    asserted from several angles in its own spec file is the repo's existing convention (114
+    instances). The moment the id also appears in another file, traceability matters more than
+    that convenience, so EVERY carrier of it - including the same-file ones - must be cited.
+  - An id whose AREA (the segment before the first `-`) no spec row anywhere owns is skipped. An
+    `HTTP-404` in a title matches the feature-id shape, and must not red CI on its own. A NEW id
+    in a known area - `CMH-DECK-99`, say - is still checked even before it has a row, because
+    that is exactly the borrow this gate exists to catch and most of the `*.spec.*` corpus is not
+    reverse-mapped yet.
+  - A `describe(...)` wrapper counts toward "how many files carry this id", since hiding a borrow
+    in a suite title is the obvious evasion, but only a `test(...)`/`it(...)` title is REPORTED -
+    a suite title cannot be cited by a row (issue #629), so demanding it be cited would be a
+    demand no author could satisfy.
+
+Only `test(...)` / `it(...)` titles are read by the REVERSE direction. A `describe(...)` suite
+title groups tests rather than being one, and the forward direction refuses a suite title as
+coverage (issue #629), so a row could not cite one even if asked to.
+"""
 
 from __future__ import annotations
 
@@ -20,11 +57,29 @@ SPEC_TARGETS = (
     (REPO_ROOT / ".github" / "skills" / "demo-video" / "SPEC.md",
      REPO_ROOT / ".github" / "skills" / "demo-video"),
 )
+# Specs whose ENTIRE test corpus is reverse-mapped, not just the `*.test.*` / regressions subset.
+# A spec joins this set once every feature id its tests carry is owned and cited by it; see the
+# module docstring and issue #853.
+FULLY_REVERSE_MAPPED_SPECS = frozenset({
+    (REPO_ROOT / "site" / "tests" / "SPEC.md").resolve(),
+    (REPO_ROOT / ".github" / "skills" / "demo-video" / "SPEC.md").resolve(),
+})
 
+# One grammar for "a JS/TS test file" everywhere. Playwright's default testMatch is
+# `**/*.@(spec|test).?(c|m)[jt]s`, so the corpus the reverse and duplicate directions read must
+# recognise every one of those spellings - otherwise a file CI really runs (say `foo.test.js`) is
+# invisible to both gates. The CITATION grammar has to agree with it, or a legitimately cited
+# `tests/x.spec.ts` row would be unciteable and the gate would red a correct spec.
+_JS_TEST_SUFFIX = r"[cm]?[jt]s"
 _TEST_PATH_RE = re.compile(
-    r"`((?:tests|site/tests/tests)/[^`]+\.(?:py|js|mjs)|scripts/test_[^`]+\.py)`"
+    r"`((?:tests|site/tests/tests)/[^`]+\.(?:py|%s)|scripts/test_[^`]+\.py)`" % _JS_TEST_SUFFIX
 )
-_BACKTICK_PATH_RE = re.compile(r"`([^`]+\.(?:py|js|mjs|ts|tsx))`")
+_JS_TEST_FILE_RE = re.compile(r"\.(?:spec|test)\.%s$" % _JS_TEST_SUFFIX, re.IGNORECASE)
+_JS_TEST_ONLY_FILE_RE = re.compile(r"\.test\.%s$" % _JS_TEST_SUFFIX, re.IGNORECASE)
+_REGRESSION_FILE_RE = re.compile(
+    r"regressions[^/\\]*\.spec\.%s$" % _JS_TEST_SUFFIX, re.IGNORECASE)
+_JS_SUFFIXES = frozenset({".js", ".cjs", ".mjs", ".ts", ".cts", ".mts"})
+_BACKTICK_PATH_RE = re.compile(r"`([^`]+\.(?:py|%s|tsx))`" % _JS_TEST_SUFFIX)
 _QUOTED_RE = re.compile(r"`([^`]+)`")
 _FEATURE_ID_RE = re.compile(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)*-\d+[a-z]?\b")
 _PY_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?")
@@ -220,11 +275,11 @@ def _file_has_name(path: Path, name: str) -> bool:
     text = _read(path)
     if _FEATURE_ID_RE.fullmatch(name.strip()):
         haystack = ("\n".join(_js_test_titles(text, _JS_TITLE_RE))
-                    if path.suffix in {".js", ".mjs"} else text)
+                    if path.suffix in _JS_SUFFIXES else text)
         return name in set(_FEATURE_ID_RE.findall(haystack))
     if path.suffix == ".py":
         return _python_has_name(path, name)
-    if path.suffix in {".js", ".mjs"}:
+    if path.suffix in _JS_SUFFIXES:
         return name in _js_test_titles(text, _JS_TITLE_RE)
     return False
 
@@ -263,7 +318,7 @@ def _is_exact_test_name(path: Path, name: str) -> bool:
     or a non-test helper does NOT count - the strict gate wants an exact TEST, per issue #629."""
     if _FEATURE_ID_RE.fullmatch(name.strip()):
         return False
-    if path.suffix in {".js", ".mjs"}:
+    if path.suffix in _JS_SUFFIXES:
         return name in _js_test_titles(_read(path), _JS_TEST_ONLY_RE)
     if path.suffix == ".py":
         return _python_is_exact_test(path, name)
@@ -434,7 +489,7 @@ def _referenced_names(segment: str, test_path: Path) -> list[str]:
 def _looks_like_test_reference(name: str, test_path: Path) -> bool:
     if _FEATURE_ID_RE.search(name):
         return True
-    if test_path.suffix in {".js", ".mjs"}:
+    if test_path.suffix in _JS_SUFFIXES:
         return bool(re.search(r"\s", name))
     if _PY_NAME_RE.fullmatch(name):
         return (
@@ -444,6 +499,97 @@ def _looks_like_test_reference(name: str, test_path: Path) -> bool:
             or re.search(r"(Tests?|Case)$", name) is not None
         )
     return False
+
+
+def _tests_dir(spec_path: Path, base_dir: Path) -> Path | None:
+    """The tests directory a spec owns.
+
+    `<spec dir>/tests` is tried FIRST because it is the unambiguous one: it resolves `dev/tests`,
+    `.github/skills/demo-video/tests`, and `site/tests/tests` alike. Preferring `<base>/tests`
+    would let a future repo-root `tests/` shadow the site target's real corpus and silently stop
+    checking it. `<base>/tests` stays as the fallback for a target whose spec does not sit beside
+    its tests.
+    """
+    for candidate in (spec_path.parent / "tests", base_dir / "tests"):
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+def _is_reverse_mapped(name: str) -> bool:
+    """Whether a test file name is in the reverse-mapping corpus (see the module docstring)."""
+    return bool(_JS_TEST_ONLY_FILE_RE.search(name) or _REGRESSION_FILE_RE.search(name))
+
+
+def _test_corpus(spec_path: Path, base_dir: Path, reverse_only: bool = False) -> tuple[Path, ...]:
+    """Every JS test file under the spec's tests dir, recursively.
+
+    Recursive, not flat: the forward direction accepts a nested citation
+    (`tests/sub/x.spec.js`), so a flat scan would let a test one directory down fall out of the
+    reverse and duplicate directions while still being a valid citation - and still RUNNING in CI.
+    One walk filtered by name, rather than a walk per glob, keeps the added cost negligible.
+    """
+    tests_dir = _tests_dir(spec_path, base_dir)
+    if tests_dir is None:
+        return ()
+    found: list[Path] = []
+    for path in tests_dir.rglob("*"):
+        name = path.name
+        if not _JS_TEST_FILE_RE.search(name) or not path.is_file():
+            continue
+        if reverse_only and not _is_reverse_mapped(name):
+            continue
+        found.append(path)
+    return tuple(sorted(set(found), key=lambda path: path.as_posix()))
+
+
+def _spec_rows(spec_path: Path) -> dict[str, list[str]]:
+    rows: dict[str, list[str]] = {}
+    for line in _read(spec_path).splitlines():
+        cells = _row_cells(line)
+        if cells and _FEATURE_ID_RE.fullmatch(cells[0]):
+            rows.setdefault(cells[0], []).append(cells[-1])
+    return rows
+
+
+def _coverage_rel(base_dir: Path, test_path: Path) -> str:
+    """The path spelling a coverage cell uses for *test_path*."""
+    resolved = test_path.resolve()
+    if resolved.is_relative_to(base_dir.resolve()):
+        return resolved.relative_to(base_dir.resolve()).as_posix()
+    if resolved.is_relative_to(REPO_ROOT):
+        return resolved.relative_to(REPO_ROOT).as_posix()
+    return resolved.as_posix()
+
+
+def _row_cites(coverage_cells: list[str], rel: str, title: str) -> bool:
+    """Whether a coverage cell names *title* in the clause belonging to *rel*.
+
+    A cell routinely lists several files, each with its own titles
+    (`` `tests/a.spec.js` - `A`; `tests/b.spec.js` - `B` ``). Asking only whether both strings
+    appear SOMEWHERE in the cell would let `tests/a.spec.js` claim `B` - so a borrowed id could be
+    excused by a citation that never named the borrowing test. The clause ends at the next test
+    path OR at the first `;` outside a code span (`_clause_end`, the same bound the forward
+    direction uses), so a trailing `source:` note cannot supply a citation either.
+    """
+    quoted_title = "`%s`" % title
+    for coverage in coverage_cells:
+        matches = list(_TEST_PATH_RE.finditer(coverage))
+        for index, match in enumerate(matches):
+            if match.group(1) != rel:
+                continue
+            next_ref = matches[index + 1].start() if index + 1 < len(matches) else len(coverage)
+            end = _clause_end(coverage, match.end(), next_ref)
+            if quoted_title in coverage[match.end():end]:
+                return True
+    return False
+
+
+def _title_line(text: str, title: str) -> int:
+    index = text.find(title)
+    if index < 0:
+        return 1
+    return text[:index].count("\n") + 1
 
 
 def _clause_end(text: str, start: int, default_end: int) -> int:
@@ -527,23 +673,15 @@ def check_test_id_mappings(
     base_dir: Path,
     test_paths: tuple[Path, ...],
 ) -> list[SpecIssue]:
-    rows: dict[str, list[str]] = {}
-    for line in _read(spec_path).splitlines():
-        cells = _row_cells(line)
-        if cells and _FEATURE_ID_RE.fullmatch(cells[0]):
-            rows.setdefault(cells[0], []).append(cells[-1])
+    rows = _spec_rows(spec_path)
 
     issues: list[SpecIssue] = []
     for test_path in test_paths:
         text = _read(test_path)
-        rel = (
-            test_path.resolve().relative_to(base_dir.resolve()).as_posix()
-            if test_path.resolve().is_relative_to(base_dir.resolve())
-            else test_path.resolve().relative_to(REPO_ROOT).as_posix()
-        )
-        for title in sorted(_js_test_titles(text, _JS_TITLE_RE)):
-            line_no = text[:text.find(title)].count("\n") + 1
-            for feature_id in _FEATURE_ID_RE.findall(title):
+        rel = _coverage_rel(base_dir, test_path)
+        for title in sorted(_js_test_titles(text, _JS_TEST_ONLY_RE)):
+            line_no = _title_line(text, title)
+            for feature_id in sorted(set(_FEATURE_ID_RE.findall(title))):
                 matching_rows = rows.get(feature_id)
                 if not matching_rows:
                     issues.append(SpecIssue(
@@ -552,10 +690,7 @@ def check_test_id_mappings(
                         "feature id `%s` has no spec row" % feature_id,
                     ))
                     continue
-                if not any(
-                    "`%s`" % rel in coverage and "`%s`" % title in coverage
-                    for coverage in matching_rows
-                ):
+                if not _row_cites(matching_rows, rel, title):
                     issues.append(SpecIssue(
                         test_path,
                         line_no,
@@ -566,14 +701,84 @@ def check_test_id_mappings(
 
 
 @_scoped
-def check_all(targets: tuple[tuple[Path, Path], ...] = SPEC_TARGETS) -> list[SpecIssue]:
+def check_duplicate_feature_ids(
+    targets: tuple[tuple[Path, Path], ...] = SPEC_TARGETS,
+) -> list[SpecIssue]:
+    """Fail when one feature id is carried by test titles in more than one FILE and no spec row
+    that owns the id cites every one of them (see the module docstring for the two bounding
+    rules)."""
+    rows_by_spec: dict[Path, dict[str, list[str]]] = {}
+    for spec_path, _base_dir in targets:
+        rows_by_spec[spec_path] = _spec_rows(spec_path)
+    known_areas = {
+        feature_id.split("-", 1)[0]
+        for rows in rows_by_spec.values()
+        for feature_id in rows
+    }
+
+    uses: dict[str, list[tuple[Path, str, int, bool]]] = {}
+    for spec_path, base_dir in targets:
+        for test_path in _test_corpus(spec_path, base_dir):
+            text = _read(test_path)
+            test_only = _js_test_titles(text, _JS_TEST_ONLY_RE)
+            for title in sorted(_js_test_titles(text, _JS_TITLE_RE)):
+                line_no = _title_line(text, title)
+                for feature_id in sorted(set(_FEATURE_ID_RE.findall(title))):
+                    uses.setdefault(feature_id, []).append(
+                        (test_path, title, line_no, title in test_only))
+
+    issues: list[SpecIssue] = []
+    for feature_id, entries in sorted(uses.items()):
+        # Identity is the RESOLVED path: two targets can each hold a `tests/x.spec.js`, and
+        # collapsing them by their spec-relative spelling would hide a genuine cross-file reuse.
+        if len({test_path.resolve() for test_path, *_rest in entries}) < 2:
+            continue
+        if feature_id.split("-", 1)[0] not in known_areas:
+            # Not a feature id at all: an `HTTP-404` in a title matches the same shape, and no
+            # spec anywhere owns that area, so it must not red CI on its own.
+            continue
+        owners = [
+            (spec_path, base_dir)
+            for spec_path, base_dir in targets
+            if feature_id in rows_by_spec[spec_path]
+        ]
+        for test_path, title, line_no, is_test_title in entries:
+            # A `describe(...)` wrapper still makes an id span files (that is how a borrow hides),
+            # but only a real test can be CITED, so only a real test is reported.
+            if not is_test_title:
+                continue
+            if any(
+                _row_cites(
+                    rows_by_spec[spec_path].get(feature_id, []),
+                    _coverage_rel(base_dir, test_path),
+                    title,
+                )
+                for spec_path, base_dir in owners
+            ):
+                continue
+            issues.append(SpecIssue(
+                test_path,
+                line_no,
+                "feature id `%s` is also used by test `%s` in another file, and its `%s` spec "
+                "row does not cite this test (one feature id, one behavior)"
+                % (feature_id, title, feature_id),
+            ))
+    return issues
+
+
+@_scoped
+def check_all(
+    targets: tuple[tuple[Path, Path], ...] = SPEC_TARGETS,
+    fully_reverse_mapped: frozenset[Path] = FULLY_REVERSE_MAPPED_SPECS,
+) -> list[SpecIssue]:
     issues: list[SpecIssue] = []
     for spec_path, base_dir in targets:
         issues.extend(check_spec(spec_path, base_dir))
-        regression_dir = base_dir / "tests"
-        if regression_dir.is_dir():
-            regression_tests = tuple(sorted(regression_dir.glob("*regressions*.spec.js")))
-            issues.extend(check_test_id_mappings(spec_path, base_dir, regression_tests))
+        reverse_only = spec_path.resolve() not in fully_reverse_mapped
+        reverse_mapped = _test_corpus(spec_path, base_dir, reverse_only=reverse_only)
+        if reverse_mapped:
+            issues.extend(check_test_id_mappings(spec_path, base_dir, reverse_mapped))
+    issues.extend(check_duplicate_feature_ids(targets))
     return issues
 
 

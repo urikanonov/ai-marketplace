@@ -133,6 +133,8 @@ run "commentable-html layer dist in sync (build.py --check)" "$PY" \
   --out-dir plugins/commentable-html/dev/skill \
   --pkg-dir plugins/commentable-html/pkg/skills/commentable-html \
   --examples-dir plugins/commentable-html/examples --check
+run "commentable-html dev SPEC in sync (build_spec.py --check)" "$PY" \
+  plugins/commentable-html/dev/tools/build_spec.py --check
 
 if command -v node >/dev/null 2>&1; then
   run "commentable-html test fixtures in sync (generate.mjs --check)" \

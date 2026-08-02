@@ -232,6 +232,7 @@ class SpecTestReferenceTests(unittest.TestCase):
         self.root = Path(__file__).resolve().parent.parent
         self.sandbox = self.root / "tmp" / "test_check_spec_test_refs"
         shutil.rmtree(self.sandbox, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, self.sandbox, ignore_errors=True)
         self.base = self.sandbox / "base"
         self.base.mkdir(parents=True)
         (self.base / "tests").mkdir()
@@ -255,12 +256,18 @@ class SpecTestReferenceTests(unittest.TestCase):
         shutil.rmtree(self.sandbox, ignore_errors=True)
 
     def _spec(self, coverage):
+        return self._spec_rows((("DEMO-01", coverage),))
+
+    def _spec_rows(self, rows):
         spec = self.sandbox / "SPEC.md"
         spec.write_text(
             "# Spec\n\n"
             "| Feature id | Behavior | Covering tests |\n"
             "| --- | --- | --- |\n"
-            "| DEMO-01 | Demo behavior. | %s |\n" % coverage,
+            + "".join(
+                "| %s | Demo behavior. | %s |\n" % (feature_id, coverage)
+                for feature_id, coverage in rows
+            ),
             encoding="utf-8",
             newline="\n",
         )
@@ -630,6 +637,386 @@ class SpecTestReferenceTests(unittest.TestCase):
         )
 
         self.assertEqual(refs.check_spec(spec, self.base), [])
+
+    def test_reverse_map_covers_test_mjs_suites(self):
+        (self.base / "tests" / "trim.test.mjs").write_text(
+            "test('an unmapped mjs behavior (ORPHAN-77)', () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
+
+        issues = refs.check_all(((spec, self.base),))
+
+        self.assertEqual(
+            ["feature id `ORPHAN-77` has no spec row"],
+            [issue.message for issue in issues],
+        )
+
+    def test_reverse_map_ignores_describe_suite_titles(self):
+        regression = self.base / "tests" / "suite-regressions.spec.js"
+        regression.write_text(
+            "describe('a suite group (ORPHAN-88)', () => {\n"
+            "  test('DEMO-01: a mapped regression', async () => {});\n"
+            "});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec(
+            "`tests/suite-regressions.spec.js` - `DEMO-01: a mapped regression`"
+        )
+
+        self.assertEqual(refs.check_test_id_mappings(spec, self.base, (regression,)), [])
+
+    def test_tests_dir_prefers_the_spec_directory_over_the_base(self):
+        # The site target's base is the repo root, so a `<base>/tests` preference would let a
+        # future repo-root `tests/` shadow `site/tests/tests` and silently stop checking it.
+        nested = self.sandbox / "outer"
+        (nested / "tests").mkdir(parents=True)
+        spec = nested / "SPEC.md"
+        spec.write_text("# Spec\n", encoding="utf-8", newline="\n")
+        (self.sandbox / "tests").mkdir()
+
+        self.assertEqual(refs._tests_dir(spec, self.sandbox), nested / "tests")
+        # A spec that does not sit beside a tests dir still falls back to the base.
+        bare = self.sandbox / "bare"
+        bare.mkdir()
+        self.assertEqual(refs._tests_dir(bare / "SPEC.md", self.base), self.base / "tests")
+
+    def test_test_corpus_finds_nested_test_files(self):
+        nested = self.base / "tests" / "sub"
+        nested.mkdir()
+        (nested / "deep.test.mjs").write_text(
+            "test('a nested behavior (DEMO-31)', () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
+
+        corpus = refs._test_corpus(spec, self.base, reverse_only=True)
+
+        self.assertIn(nested / "deep.test.mjs", corpus)
+
+    def test_test_corpus_covers_every_playwright_test_extension(self):
+        for name in ("extra.test.js", "extra.spec.ts", "extra.spec.cjs", "extra.test.mts"):
+            (self.base / "tests" / name).write_text(
+                "test('a behavior in %s (DEMO-32)', () => {});\n" % name,
+                encoding="utf-8",
+                newline="\n",
+            )
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
+
+        corpus = {path.name for path in refs._test_corpus(spec, self.base)}
+
+        self.assertLessEqual(
+            {"extra.test.js", "extra.spec.ts", "extra.spec.cjs", "extra.test.mts"},
+            corpus,
+        )
+
+    def test_test_corpus_skips_a_directory_that_matches_the_glob(self):
+        (self.base / "tests" / "fixture.spec.js").mkdir()
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
+
+        corpus = refs._test_corpus(spec, self.base)
+
+        self.assertNotIn(self.base / "tests" / "fixture.spec.js", corpus)
+
+    def test_row_cites_requires_the_title_in_its_own_file_clause(self):
+        # A cell listing two files must not let the first file claim the second's title.
+        coverage = ["`tests/a.spec.js` - `A title (DEMO-01)`; "
+                    "`tests/b.spec.js` - `B title (DEMO-01)`"]
+
+        self.assertTrue(refs._row_cites(coverage, "tests/a.spec.js", "A title (DEMO-01)"))
+        self.assertTrue(refs._row_cites(coverage, "tests/b.spec.js", "B title (DEMO-01)"))
+        self.assertFalse(refs._row_cites(coverage, "tests/a.spec.js", "B title (DEMO-01)"))
+
+    def test_duplicate_check_is_not_satisfied_by_another_files_citation(self):
+        (self.base / "tests" / "other.spec.js").write_text(
+            "test('a borrowed behavior (DEMO-01)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        # The row names other.spec.js, but only for a title that file does not contain, so the
+        # borrowed test is NOT cited even though both strings appear in the cell.
+        spec = self._spec(
+            "`tests/demo.spec.js` - `real browser title (DEMO-01)`, `a borrowed behavior "
+            "(DEMO-01)`; `tests/other.spec.js` - `something else entirely (DEMO-01)`"
+        )
+
+        issues = refs.check_duplicate_feature_ids(((spec, self.base),))
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("a borrowed behavior (DEMO-01)", issues[0].message)
+
+    def test_duplicate_check_skips_an_id_no_spec_row_owns(self):
+        # `HTTP-404` matches the feature-id shape but is prose, so it must not red the gate.
+        for name in ("first.spec.js", "second.spec.js"):
+            (self.base / "tests" / name).write_text(
+                "test('a request that answers HTTP-404 in %s', async () => {});\n" % name,
+                encoding="utf-8",
+                newline="\n",
+            )
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
+
+        self.assertEqual(refs.check_duplicate_feature_ids(((spec, self.base),)), [])
+
+    def test_duplicate_check_uses_resolved_paths_as_file_identity(self):
+        # Two targets can each hold a `tests/shared.test.mjs`; collapsing them by their
+        # spec-relative spelling would hide the reuse.
+        other_base = self.sandbox / "other"
+        (other_base / "tests").mkdir(parents=True)
+        (other_base / "tests" / "shared.test.mjs").write_text(
+            "test('the borrowing behavior (DEMO-55)', () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        (self.base / "tests" / "shared.test.mjs").write_text(
+            "test('the owning behavior (DEMO-55)', () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec_rows((
+            ("DEMO-01", "`tests/demo.spec.js` - `real browser title (DEMO-01)`"),
+            ("DEMO-55", "`tests/shared.test.mjs` - `the owning behavior (DEMO-55)`"),
+        ))
+        other_spec = other_base / "SPEC.md"
+        other_spec.write_text("# Spec\n", encoding="utf-8", newline="\n")
+
+        issues = refs.check_duplicate_feature_ids(((spec, self.base), (other_spec, other_base)))
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("the borrowing behavior (DEMO-55)", issues[0].message)
+
+    def test_duplicate_check_does_not_let_another_spec_excuse_a_use(self):
+        other_base = self.sandbox / "other"
+        (other_base / "tests").mkdir(parents=True)
+        (other_base / "tests" / "borrow.spec.js").write_text(
+            "test('the borrowing behavior (DEMO-01)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
+        other_spec = other_base / "SPEC.md"
+        other_spec.write_text("# Spec\n", encoding="utf-8", newline="\n")
+
+        issues = refs.check_duplicate_feature_ids(((spec, self.base), (other_spec, other_base)))
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("the borrowing behavior (DEMO-01)", issues[0].message)
+
+    def test_a_cross_file_use_also_demands_citations_for_the_same_file_pair(self):
+        (self.base / "tests" / "pair.spec.js").write_text(
+            "test('the first assertion (DEMO-42)', async () => {});\n"
+            "test('the second assertion (DEMO-42)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        (self.base / "tests" / "elsewhere.spec.js").write_text(
+            "test('a third file also uses it (DEMO-42)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec_rows((
+            ("DEMO-01", "`tests/demo.spec.js` - `real browser title (DEMO-01)`"),
+            ("DEMO-42", "`tests/pair.spec.js` - `the first assertion (DEMO-42)`"),
+        ))
+
+        issues = refs.check_duplicate_feature_ids(((spec, self.base),))
+
+        self.assertEqual(len(issues), 2)
+        self.assertEqual(
+            sorted(
+                title
+                for title in ("the second assertion (DEMO-42)",
+                              "a third file also uses it (DEMO-42)")
+                if any(title in issue.message for issue in issues)
+            ),
+            ["a third file also uses it (DEMO-42)", "the second assertion (DEMO-42)"],
+        )
+
+    def test_reports_feature_id_reused_by_a_test_in_another_file(self):
+        (self.base / "tests" / "other.spec.js").write_text(
+            "test('a different behavior that borrows the id (DEMO-01)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
+
+        issues = refs.check_duplicate_feature_ids(((spec, self.base),))
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("feature id `DEMO-01` is also used by test", issues[0].message)
+        self.assertIn("a different behavior that borrows the id (DEMO-01)", issues[0].message)
+
+    def test_accepts_a_feature_id_whose_spec_row_cites_every_test_that_carries_it(self):
+        (self.base / "tests" / "other.spec.js").write_text(
+            "test('the same behavior asserted end to end (DEMO-01)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec(
+            "`tests/demo.spec.js` - `real browser title (DEMO-01)`; "
+            "`tests/other.spec.js` - `the same behavior asserted end to end (DEMO-01)`"
+        )
+
+        self.assertEqual(refs.check_duplicate_feature_ids(((spec, self.base),)), [])
+
+    def test_allows_two_tests_in_one_file_to_share_a_feature_id(self):
+        (self.base / "tests" / "pair.spec.js").write_text(
+            "test('the first assertion (DEMO-42)', async () => {});\n"
+            "test('the second assertion (DEMO-42)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec_rows((
+            ("DEMO-01", "`tests/demo.spec.js` - `real browser title (DEMO-01)`"),
+            ("DEMO-42", "`tests/pair.spec.js` - `the first assertion (DEMO-42)`"),
+        ))
+
+        self.assertEqual(refs.check_duplicate_feature_ids(((spec, self.base),)), [])
+
+    def test_duplicate_check_does_not_report_a_describe_suite_title(self):
+        # A describe title cannot be cited by a row (issue #629), so it is never REPORTED - but it
+        # does still count toward "how many files carry this id" (see the test below).
+        (self.base / "tests" / "other.spec.js").write_text(
+            "describe('a suite that mentions the id (DEMO-01)', () => {\n"
+            "  test('an unrelated assertion', async () => {});\n"
+            "});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
+
+        self.assertEqual(refs.check_duplicate_feature_ids(((spec, self.base),)), [])
+
+    def test_a_describe_title_still_makes_an_id_span_files(self):
+        # Hiding the borrow in a suite title is the obvious evasion: the id now spans two files,
+        # so the real test that carries it must be cited.
+        (self.base / "tests" / "other.spec.js").write_text(
+            "describe('a suite that borrows the id (DEMO-01)', () => {\n"
+            "  test('an unrelated assertion', async () => {});\n"
+            "});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec("`tests/demo.spec.js` - prose only, no cited title")
+
+        issues = refs.check_duplicate_feature_ids(((spec, self.base),))
+
+        self.assertEqual(
+            ["real browser title (DEMO-01)"],
+            [title for title in ("real browser title (DEMO-01)",)
+             if any(title in issue.message for issue in issues)],
+        )
+
+    def test_row_cites_stops_at_a_source_trailer(self):
+        coverage = ["`tests/a.spec.js` - `A title (DEMO-01)`; "
+                    "source: `assets/js/x.js` - `borrowed title (DEMO-01)`"]
+
+        self.assertTrue(refs._row_cites(coverage, "tests/a.spec.js", "A title (DEMO-01)"))
+        self.assertFalse(refs._row_cites(coverage, "tests/a.spec.js", "borrowed title (DEMO-01)"))
+
+    def test_a_typescript_test_file_can_be_cited_and_checked(self):
+        (self.base / "tests" / "typed.spec.ts").write_text(
+            "test('a typed behavior (DEMO-61)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec_rows((
+            ("DEMO-01", "`tests/demo.spec.js` - `real browser title (DEMO-01)`"),
+            ("DEMO-61", "`tests/typed.spec.ts` - `a typed behavior (DEMO-61)`"),
+        ))
+
+        self.assertEqual(refs.check_spec(spec, self.base), [])
+
+    def test_duplicate_check_flags_a_new_id_in_a_known_area_without_a_row(self):
+        # Most of the `*.spec.*` corpus is not reverse-mapped, so an id with no row yet must still
+        # be caught when it spans files - that is the borrow this gate exists for.
+        for name in ("first.spec.js", "second.spec.js"):
+            (self.base / "tests" / name).write_text(
+                "test('a behavior in %s (DEMO-88)', async () => {});\n" % name,
+                encoding="utf-8",
+                newline="\n",
+            )
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
+
+        issues = refs.check_duplicate_feature_ids(((spec, self.base),))
+
+        self.assertEqual(len(issues), 2)
+        self.assertIn("DEMO-88", issues[0].message)
+
+    def test_duplicate_check_reads_the_owning_specs_rows_not_the_finding_specs(self):
+        for name in ("first.spec.js", "second.spec.js"):
+            (self.base / "tests" / name).write_text(
+                "test('a behavior in %s (DEMO-91)', async () => {});\n" % name,
+                encoding="utf-8",
+                newline="\n",
+            )
+        empty_spec = self.sandbox / "EMPTY_SPEC.md"
+        empty_spec.write_text("# Spec\n", encoding="utf-8", newline="\n")
+        owning_spec = self._spec_rows((
+            ("DEMO-01", "`tests/demo.spec.js` - `real browser title (DEMO-01)`"),
+            ("DEMO-91",
+             "`tests/first.spec.js` - `a behavior in first.spec.js (DEMO-91)`; "
+             "`tests/second.spec.js` - `a behavior in second.spec.js (DEMO-91)`"),
+        ))
+
+        issues = refs.check_duplicate_feature_ids(
+            ((empty_spec, self.base), (owning_spec, self.base)))
+
+        self.assertEqual([], [issue.format() for issue in issues if "DEMO-91" in issue.message])
+
+    def test_test_corpus_matches_test_file_names_case_insensitively(self):
+        (self.base / "tests" / "Odd.Spec.JS").write_text(
+            "test('an oddly cased behavior (DEMO-71)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
+
+        corpus = {path.name for path in refs._test_corpus(spec, self.base)}
+
+        self.assertIn("Odd.Spec.JS", corpus)
+
+    def test_check_all_runs_the_duplicate_feature_id_check(self):
+        (self.base / "tests" / "other.spec.js").write_text(
+            "test('a different behavior that borrows the id (DEMO-01)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
+
+        issues = refs.check_all(((spec, self.base),))
+
+        self.assertEqual(
+            1,
+            len([issue for issue in issues if "is also used by test" in issue.message]),
+        )
+
+    def test_check_all_reverse_maps_the_whole_corpus_of_a_fully_mapped_spec(self):
+        # A spec that has finished the cleanup gets its ORDINARY `*.spec.js` files reverse-mapped
+        # too, not just its `*.test.*` / regressions subset (the site target, today).
+        (self.base / "tests" / "plain.spec.js").write_text(
+            "test('an unmapped behavior (ORPHAN-66)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
+
+        restricted = refs.check_all(((spec, self.base),), frozenset())
+        full = refs.check_all(((spec, self.base),), frozenset({spec.resolve()}))
+
+        self.assertEqual([], [i for i in restricted if "ORPHAN-66" in i.message])
+        self.assertEqual(
+            ["feature id `ORPHAN-66` has no spec row"],
+            [issue.message for issue in full if "ORPHAN-66" in issue.message],
+        )
+
+    def test_the_site_spec_is_fully_reverse_mapped(self):
+        self.assertIn(
+            (self.root / "site" / "tests" / "SPEC.md").resolve(),
+            refs.FULLY_REVERSE_MAPPED_SPECS,
+        )
 
     def test_real_specs_have_current_test_references(self):
         issues = refs.check_all()
