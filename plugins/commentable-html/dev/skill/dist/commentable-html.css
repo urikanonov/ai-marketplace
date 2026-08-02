@@ -1114,6 +1114,11 @@ body.cm-nonportable .cm-inline-only { display: none !important; }
   padding: var(--cp-chrome-menu-item-y) var(--cp-chrome-action-x); border-radius: 8px; font-size: var(--cp-chrome-font);
 }
 .cm-toolbar-menu button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
+.cm-toolbar-menu button.danger { color: var(--cp-danger); }
+.cm-toolbar-menu button.danger:hover { background: var(--cp-danger-soft); color: var(--cp-danger); }
+/* Both Clear all comments items dim identically while there is nothing to clear. */
+#btnClearAllTop[aria-disabled="true"], #btnClearAll[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; }
+#btnClearAllTop[aria-disabled="true"]:hover, #btnClearAll[aria-disabled="true"]:hover { background: transparent; }
 
 /* Missing-companion-assets banner (nonportable mode only). Revealed by the tiny
    inline bootstrap when the external runtime fails to initialize in time. */

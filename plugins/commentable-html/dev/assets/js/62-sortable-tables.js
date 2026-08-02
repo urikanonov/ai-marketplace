@@ -319,11 +319,53 @@ function performClearAll() {
   if (typeof resetAllNotes === "function") resetAllNotes();
   renderComments();
 }
-document.getElementById("btnClearAll").addEventListener("click", async () => {
+// Clear all comments has TWO entry points - the sidebar More menu and the toolbar overflow menu
+// (the only chrome a reviewer has while the panel is hidden). Both bind to this one handler, so
+// the confirmation text, the nothing-to-clear guard, and the reset semantics can never disagree;
+// only the focus-restore target differs, because each item lives in a menu that closes on click
+// and focus must land on the still-visible trigger of the menu the user actually opened.
+const CMH_CLEAR_ALL_TITLE = "Delete every comment (asks for confirmation first)";
+const CMH_CLEAR_ALL_EMPTY_TIP = "Nothing to clear - there are no comments, note, checklist, or layout changes yet";
+function _clearAllPending() {
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
   const noteChanges = (typeof notesChanges === "function") ? notesChanges() : [];
-  if (_clearAllBusy || (!comments.length && !stateChanges.length && !clChanges.length && !noteChanges.length)) return;  // guard re-entrant double-clicks
+  return comments.length + stateChanges.length + clChanges.length + noteChanges.length;
+}
+function _setClearAllTip(btn, text) {
+  // Mirror the copy-all tip handling: once the tooltip layer has adopted a control (title moved to
+  // data-cmh-tip) the managed attribute is the one to refresh, or the native tooltip reappears.
+  if (btn.hasAttribute("title") || !btn.hasAttribute("data-cmh-tip")) btn.setAttribute("title", text);
+  else btn.setAttribute("data-cmh-tip", text);
+}
+// Keep BOTH clear items showing the same empty state, so the two entry points never disagree about
+// whether there is anything to clear (the same contract Copy all uses). The caller passes the
+// already-computed copy-all state so this adds no extra document scan on a typing burst.
+function updateClearAllState(state) {
+  const s = state || (typeof _copyAllState === "function" ? _copyAllState() : null);
+  const disabled = s
+    ? !(comments.length || s.changes.length || s.clCh.length || s.noteCh.length)
+    : _clearAllPending() === 0;
+  ["btnClearAll", "btnClearAllTop"].forEach(function (id) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.setAttribute("aria-disabled", disabled ? "true" : "false");
+    btn.classList.toggle("cm-clear-disabled", disabled);
+    _setClearAllTip(btn, disabled ? CMH_CLEAR_ALL_EMPTY_TIP : CMH_CLEAR_ALL_TITLE);
+  });
+}
+updateClearAllState();
+async function _confirmClearAll(restoreId) {
+  // A confirm dialog is already up: do NOT touch focus - moving it to the menu trigger would pull
+  // the caret outside the aria-modal dialog and behind its overlay.
+  if (_clearAllBusy) return;
+  const restore = document.getElementById(restoreId);
+  if (_clearAllPending() === 0) {
+    // Nothing to clear: no dialog opens, so no restoreFocus fires - but the owning menu still
+    // closes on this click, which would drop focus to <body>. Put it back on the menu's trigger.
+    if (restore && typeof restore.focus === "function") restore.focus();
+    return;
+  }
   _clearAllBusy = true;
   try {
     const ok = await showConfirm({
@@ -333,13 +375,22 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
       confirmLabel: "OK",
       cancelLabel: "Cancel",
       danger: true,
-      // Clear lives in the More menu, which closes (hiding btnClearAll) when clicked, so restore
-      // focus to the still-visible More button instead of the now-hidden Clear item.
-      restoreFocus: document.getElementById("btnMoreMenu") || undefined,
+      restoreFocus: restore || undefined,
     });
     if (!ok) return;
     performClearAll();
   } finally {
     _clearAllBusy = false;
+  }
+}
+[["btnClearAll", "btnMoreMenu"], ["btnClearAllTop", "btnToolbarMenu"]].forEach(function (pair) {
+  const b = document.getElementById(pair[0]);
+  if (b) {
+    b.addEventListener("click", function () {
+      // The listener cannot await, so surface a failure instead of leaving a floating rejection.
+      _confirmClearAll(pair[1]).catch(function (e) {
+        try { console.warn("commentable-html: clear all comments failed:", e); } catch (e2) { /* no-op */ }
+      });
+    });
   }
 });

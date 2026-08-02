@@ -78,6 +78,7 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-THREAD-09 | opt-out: internal draft-preservation robustness, not separately documented | opt-out: internal draft-preservation robustness, not a deck topic |
 | CMH-THREAD-10 | help | opt-out: sidebar note-edit-in-place detail, not a distinct slide |
 | CMH-UI-12 | opt-out: click-target sizing of the already-documented Open comment bubble, no new capability | opt-out: control sizing, nothing to demonstrate on a slide |
+| CMH-UI-13 | help | opt-out: a second entry point into the already-shown clear-all flow; the deck's own toolbar demo covers the overflow menu, and a destructive clear is not a slide to run live |
 | CMH-AUTHOR-01 | tutorial, help | deck |
 | CMH-AUTHOR-02 | tutorial, help | deck |
 | CMH-AUTHOR-03 | opt-out: agent-facing Copy all attribution format and injection hardening | opt-out: agent-facing Copy all attribution format, not a deck topic |

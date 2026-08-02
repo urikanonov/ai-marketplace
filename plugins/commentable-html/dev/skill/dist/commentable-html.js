@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.322.0";
+const CMH_VERSION = "1.325.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -8880,7 +8880,8 @@ function _setCopyAllTip(btn, text) {
   else btn.setAttribute("data-cmh-tip", text);
 }
 function updateCopyAllState() {
-  const disabled = !_copyAllState().hasContent;
+  const state = _copyAllState();
+  const disabled = !state.hasContent;
   Object.keys(CMH_COPY_ALL_TITLES).forEach((id) => {
     const btn = document.getElementById(id);
     if (!btn) return;
@@ -8888,6 +8889,10 @@ function updateCopyAllState() {
     btn.classList.toggle("cm-copy-disabled", disabled);
     _setCopyAllTip(btn, disabled ? "No comments to copy" : CMH_COPY_ALL_TITLES[id]);
   });
+  // The Clear all items share this state's document scans rather than repeating them: an extra
+  // widgetStateChanges()/checklistChanges()/notesChanges() pass here would run on every keystroke
+  // of a note burst (CMH-NOTE-17 budgets exactly two document scans per dirty transition).
+  if (typeof updateClearAllState === "function") updateClearAllState(state);
 }
 const _cmRenderCommentsForCopyAll = renderComments;
 renderComments = function () {
@@ -10901,11 +10906,53 @@ function performClearAll() {
   if (typeof resetAllNotes === "function") resetAllNotes();
   renderComments();
 }
-document.getElementById("btnClearAll").addEventListener("click", async () => {
+// Clear all comments has TWO entry points - the sidebar More menu and the toolbar overflow menu
+// (the only chrome a reviewer has while the panel is hidden). Both bind to this one handler, so
+// the confirmation text, the nothing-to-clear guard, and the reset semantics can never disagree;
+// only the focus-restore target differs, because each item lives in a menu that closes on click
+// and focus must land on the still-visible trigger of the menu the user actually opened.
+const CMH_CLEAR_ALL_TITLE = "Delete every comment (asks for confirmation first)";
+const CMH_CLEAR_ALL_EMPTY_TIP = "Nothing to clear - there are no comments, note, checklist, or layout changes yet";
+function _clearAllPending() {
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
   const noteChanges = (typeof notesChanges === "function") ? notesChanges() : [];
-  if (_clearAllBusy || (!comments.length && !stateChanges.length && !clChanges.length && !noteChanges.length)) return;  // guard re-entrant double-clicks
+  return comments.length + stateChanges.length + clChanges.length + noteChanges.length;
+}
+function _setClearAllTip(btn, text) {
+  // Mirror the copy-all tip handling: once the tooltip layer has adopted a control (title moved to
+  // data-cmh-tip) the managed attribute is the one to refresh, or the native tooltip reappears.
+  if (btn.hasAttribute("title") || !btn.hasAttribute("data-cmh-tip")) btn.setAttribute("title", text);
+  else btn.setAttribute("data-cmh-tip", text);
+}
+// Keep BOTH clear items showing the same empty state, so the two entry points never disagree about
+// whether there is anything to clear (the same contract Copy all uses). The caller passes the
+// already-computed copy-all state so this adds no extra document scan on a typing burst.
+function updateClearAllState(state) {
+  const s = state || (typeof _copyAllState === "function" ? _copyAllState() : null);
+  const disabled = s
+    ? !(comments.length || s.changes.length || s.clCh.length || s.noteCh.length)
+    : _clearAllPending() === 0;
+  ["btnClearAll", "btnClearAllTop"].forEach(function (id) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.setAttribute("aria-disabled", disabled ? "true" : "false");
+    btn.classList.toggle("cm-clear-disabled", disabled);
+    _setClearAllTip(btn, disabled ? CMH_CLEAR_ALL_EMPTY_TIP : CMH_CLEAR_ALL_TITLE);
+  });
+}
+updateClearAllState();
+async function _confirmClearAll(restoreId) {
+  // A confirm dialog is already up: do NOT touch focus - moving it to the menu trigger would pull
+  // the caret outside the aria-modal dialog and behind its overlay.
+  if (_clearAllBusy) return;
+  const restore = document.getElementById(restoreId);
+  if (_clearAllPending() === 0) {
+    // Nothing to clear: no dialog opens, so no restoreFocus fires - but the owning menu still
+    // closes on this click, which would drop focus to <body>. Put it back on the menu's trigger.
+    if (restore && typeof restore.focus === "function") restore.focus();
+    return;
+  }
   _clearAllBusy = true;
   try {
     const ok = await showConfirm({
@@ -10915,14 +10962,23 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
       confirmLabel: "OK",
       cancelLabel: "Cancel",
       danger: true,
-      // Clear lives in the More menu, which closes (hiding btnClearAll) when clicked, so restore
-      // focus to the still-visible More button instead of the now-hidden Clear item.
-      restoreFocus: document.getElementById("btnMoreMenu") || undefined,
+      restoreFocus: restore || undefined,
     });
     if (!ok) return;
     performClearAll();
   } finally {
     _clearAllBusy = false;
+  }
+}
+[["btnClearAll", "btnMoreMenu"], ["btnClearAllTop", "btnToolbarMenu"]].forEach(function (pair) {
+  const b = document.getElementById(pair[0]);
+  if (b) {
+    b.addEventListener("click", function () {
+      // The listener cannot await, so surface a failure instead of leaving a floating rejection.
+      _confirmClearAll(pair[1]).catch(function (e) {
+        try { console.warn("commentable-html: clear all comments failed:", e); } catch (e2) { /* no-op */ }
+      });
+    });
   }
 });
 /* ---------- Export as Portable (embed comments + download a copy) ---------- */
@@ -12599,6 +12655,9 @@ function showHelp(restoreEl) {
       + '<div class="cm-help-topic-body">' + body + '</div>'
       + '</details>';
   };
+  // An older document's shell may predate the toolbar Clear item while loading current companion
+  // assets, so only advertise that entry point when this document actually has it.
+  const hasToolbarClear = !!document.getElementById("btnClearAllTop");
   box.innerHTML =
     '<div class="cm-help-head">' +
       '<h2>' + CMH_ICON_SVG + ' Commentable HTML v' + CMH_VERSION + ' - Help</h2>' +
@@ -12659,7 +12718,7 @@ function showHelp(restoreEl) {
           '<li><strong>Edit from the document:</strong> hover a highlight and click the orange <em>Open comment</em> bubble to see the note right there, then click <strong>Edit</strong> to edit it in place in that little dialog - no jumping to another part of the page.</li>' +
           '<li><strong>Jump</strong> from a card to its highlight (collapsed sections auto-expand first).</li>' +
           '<li><strong>Sort</strong> the cards oldest-first or newest-first with the arrows, or click again for document order.</li>' +
-          '<li><strong>Clear all comments</strong> (in the <strong>More</strong> menu) deletes every comment and always asks for confirmation first (Cancel is the default).</li>' +
+          '<li><strong>Clear all comments</strong> (in the sidebar\'s <strong>More</strong> menu' + (hasToolbarClear ? ', or the collapsed toolbar\'s overflow <kbd>...</kbd> menu' : '') + ') deletes every comment and always asks for confirmation first (Cancel is the default)' + (hasToolbarClear ? ', so you can clear without re-opening the panel' : '') + '.</li>' +
         '</ul>') +
       T('Threads, replies and author names',
         '<ul>' +
@@ -12674,7 +12733,7 @@ function showHelp(restoreEl) {
           '<li>The <strong>Comments</strong> heading carries a <strong>count bubble</strong> showing how many items still need attention: open comment threads plus any unresolved review-note and checklist changes (each top-level thread counts once, not its individual replies). The portability badge and version sit at the right of the same row.</li>' +
           '<li>Below it, a row of captioned buttons - <strong>Search</strong>, <strong>Sort</strong>, <strong>More</strong>, <strong>Help</strong>, and <strong>Hide</strong>. <strong>Help</strong> opens this dialog; <strong>Hide</strong> collapses the panel, leaving a small floating toolbar to bring it back.</li>' +
           '<li><strong>Copy all</strong> (the primary button) copies every comment as a Markdown bundle to paste back to the agent; beside it, the <strong>Export</strong> button opens the file-format menu. The <strong>Search</strong> button in the ribbon reveals a search field (hidden by default) that filters the list by each comment\'s note text.</li>' +
-          '<li><strong>More</strong> opens a menu with <strong>Manage storage</strong> and <strong>Clear all comments</strong>. While the panel is collapsed, the floating toolbar\'s overflow <kbd>...</kbd> menu holds the export actions, Manage storage, and <strong>Help &amp; About</strong>.</li>' +
+          '<li><strong>More</strong> opens a menu with <strong>Manage storage</strong> and <strong>Clear all comments</strong>. While the panel is collapsed, the floating toolbar\'s overflow <kbd>...</kbd> menu holds the export actions, Manage storage, ' + (hasToolbarClear ? '<strong>Clear all comments</strong> (the same confirmed clear), ' : '') + 'and <strong>Help &amp; About</strong>.</li>' +
         '</ul>') +
       T('Portable or Not portable',
         '<p>A bubble at the top of the panel shows whether this file is safe to share as-is:</p>' +
