@@ -121,6 +121,11 @@ def owned_refs(repo_root, env=None):
     (a suite that commits its fixtures moves it) and the per-worktree namespaces in
     `_OWNED_REF_PATTERNS`. A detached HEAD owns no branch, which is recorded as such rather than
     dropped, so the snapshot stays comparable.
+
+    The accepted cost: a suite that leaves a stray BRANCH, TAG or STASH behind is no longer caught,
+    because those live in the shared store and are indistinguishable from a sibling's work. They
+    leave the checkout itself untouched, which is what this guard is for - a stray FILE (issue #791)
+    still fails through `status`, `diff` and the untracked digest.
     """
     if not repo_root:
         return None
@@ -133,7 +138,7 @@ def owned_refs(repo_root, env=None):
         if branch:
             patterns.append(branch)
         proc = subprocess.run(["git", "-C", str(repo_root), "for-each-ref",
-                               "--format=%(refname) %(objectname)"] + sorted(patterns),
+                               "--format=%(refname) %(objectname)", "--"] + sorted(patterns),
                               capture_output=True, text=True, env=env)
     except OSError:
         return None

@@ -218,7 +218,8 @@ class WorktreeState(unittest.TestCase):
     def test_a_sibling_worktrees_commit_is_not_this_worktrees_change(self):
         # Issue #830: every worktree shares one `.git` refs store, so an unrelated agent committing
         # in ITS worktree moved a ref this checkout never touched and failed the run. Nothing leaked
-        # here, so the snapshot must be identical.
+        # here, so the snapshot must be identical - including when the sibling leaves a PER-worktree
+        # ref (`refs/bisect/*`) behind, which is the sibling's business and not this checkout's.
         with tempfile.TemporaryDirectory() as tmp:
             env = clean_git_env()
             root = Path(tmp) / "main"
@@ -235,6 +236,9 @@ class WorktreeState(unittest.TestCase):
             before = rst.worktree_state(root)
             (sibling / "theirs.md").write_bytes(b"theirs\n")
             self._commit(sibling, env, "theirs.md", "sibling work")
+            subprocess.run(["git", "-C", str(sibling), "update-ref", "refs/bisect/bad",
+                            self._ref(sibling, env, "HEAD")],
+                           check=True, capture_output=True, text=True, env=env)
             self.assertNotEqual(self._ref(root, env, "refs/heads/sibling"),
                                 self._ref(root, env, "refs/heads/main"),
                                 "the sibling did not actually commit, so this proves nothing")
@@ -274,8 +278,11 @@ class WorktreeState(unittest.TestCase):
             self.assertNotEqual(rst.worktree_state(tmp), before)
 
     def _init(self, root, env):
-        proc = subprocess.run(["git", "-C", str(root), "init", "-q", "-b", "main"],
-                              capture_output=True, text=True, env=env)
+        try:
+            proc = subprocess.run(["git", "-C", str(root), "init", "-q", "-b", "main"],
+                                  capture_output=True, text=True, env=env)
+        except OSError:
+            return False
         return proc.returncode == 0
 
     def _ref(self, root, env, name):
