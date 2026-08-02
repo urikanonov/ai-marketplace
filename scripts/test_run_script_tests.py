@@ -215,10 +215,79 @@ class WorktreeState(unittest.TestCase):
                              "the commit moved, so this would be caught without the ref probe")
             self.assertNotEqual(rst.worktree_state(tmp), before)
 
+    def test_a_sibling_worktrees_commit_is_not_this_worktrees_change(self):
+        # Issue #830: every worktree shares one `.git` refs store, so an unrelated agent committing
+        # in ITS worktree moved a ref this checkout never touched and failed the run. Nothing leaked
+        # here, so the snapshot must be identical - including when the sibling leaves a PER-worktree
+        # ref (`refs/bisect/*`) behind, which is the sibling's business and not this checkout's.
+        with tempfile.TemporaryDirectory() as tmp:
+            env = clean_git_env()
+            root = Path(tmp) / "main"
+            root.mkdir()
+            if not self._init(root, env):
+                self.skipTest("git is not available")
+            (root / "keep.md").write_bytes(b"keep\n")
+            self._commit(root, env, "keep.md", "base")
+            sibling = Path(tmp) / "sibling"
+            added = subprocess.run(["git", "-C", str(root), "worktree", "add", "-q",
+                                    "-b", "sibling", str(sibling)],
+                                   capture_output=True, text=True, env=env)
+            self.assertEqual(added.returncode, 0, added.stderr)
+            before = rst.worktree_state(root)
+            (sibling / "theirs.md").write_bytes(b"theirs\n")
+            self._commit(sibling, env, "theirs.md", "sibling work")
+            subprocess.run(["git", "-C", str(sibling), "update-ref", "refs/bisect/bad",
+                            self._ref(sibling, env, "HEAD")],
+                           check=True, capture_output=True, text=True, env=env)
+            self.assertNotEqual(self._ref(root, env, "refs/heads/sibling"),
+                                self._ref(root, env, "refs/heads/main"),
+                                "the sibling did not actually commit, so this proves nothing")
+            self.assertEqual(rst.worktree_state(root), before,
+                             "a sibling worktree's commit was blamed on this worktree")
+
+    def test_a_fetch_moving_a_remote_tracking_ref_is_not_a_change(self):
+        # The other half of #830: any concurrent `git fetch` rewrites `refs/remotes/*` in the shared
+        # store, which this worktree neither caused nor leaked.
+        with tempfile.TemporaryDirectory() as tmp:
+            env = clean_git_env()
+            if not self._init(tmp, env):
+                self.skipTest("git is not available")
+            (Path(tmp) / "keep.md").write_bytes(b"keep\n")
+            self._commit(tmp, env, "keep.md", "base")
+            before = rst.worktree_state(tmp)
+            subprocess.run(["git", "-C", tmp, "update-ref", "refs/remotes/origin/main",
+                            self._head(tmp, env)], check=True, capture_output=True, text=True,
+                           env=env)
+            self.assertEqual(rst.worktree_state(tmp), before,
+                             "a remote-tracking ref update was blamed on this worktree")
+
+    def test_a_left_behind_bisect_is_still_a_change(self):
+        # Per-worktree refs are NOT shared, so they stay in the snapshot: a suite that leaves a
+        # bisect (or a rebase) running in the repository is a leak nothing else here notices.
+        with tempfile.TemporaryDirectory() as tmp:
+            env = clean_git_env()
+            if not self._init(tmp, env):
+                self.skipTest("git is not available")
+            (Path(tmp) / "keep.md").write_bytes(b"keep\n")
+            self._commit(tmp, env, "keep.md", "base")
+            before = rst.worktree_state(tmp)
+            subprocess.run(["git", "-C", tmp, "update-ref", "refs/bisect/bad", self._head(tmp, env)],
+                           check=True, capture_output=True, text=True, env=env)
+            self.assertEqual(self._status(tmp, env), "",
+                             "the tree is dirty, so status alone would already have caught this")
+            self.assertNotEqual(rst.worktree_state(tmp), before)
+
     def _init(self, root, env):
-        proc = subprocess.run(["git", "-C", str(root), "init", "-q", "-b", "main"],
-                              capture_output=True, text=True, env=env)
+        try:
+            proc = subprocess.run(["git", "-C", str(root), "init", "-q", "-b", "main"],
+                                  capture_output=True, text=True, env=env)
+        except OSError:
+            return False
         return proc.returncode == 0
+
+    def _ref(self, root, env, name):
+        return subprocess.run(["git", "-C", str(root), "rev-parse", name],
+                              capture_output=True, text=True, env=env).stdout.strip()
 
     def _commit(self, root, env, path, message):
         for args in (["add", path], ["commit", "-qm", message]):
