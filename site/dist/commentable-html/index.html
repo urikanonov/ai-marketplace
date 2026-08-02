@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.361.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.363.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,22 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.363.0] - 2026-08-02</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The reply box in the comments panel is no longer uncomfortable to write in (issue #851). Its text was rendered with the SMALL chrome token (<code>--cp-chrome-small-font</code>, the one used for timestamps and metadata), so a reply was typed about 15% smaller than the comment it answers and smaller than the composer that comment was written in; it now uses the regular <code>--cp-chrome-font</code>, matching both.</li>
+              <li>Every authoring textarea now AUTOGROWS to fit what is being written - the side-pane inline reply/edit editor, the floating comment composer, and the in-document comment dialog&#x27;s editor. A multi-paragraph reply no longer has to be written into a two-line box, scrolled inside, or dragged open by hand on every reply. Growth stops at a cap (the box then scrolls, so Cancel/Save are never pushed out of the panel), removing text shrinks the box back, an editor opened on existing text starts at content size, and a floating composer or dialog that grew keeps itself fully on screen so its Save button stays reachable. Dragging the resize handle still wins - autogrow stops for an editor the reviewer has sized by hand, the cap does not bound that drag, and the hand-picked size now survives a re-render of the comments panel.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.361.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The validator now decodes an attribute value&#x27;s character references the way a BROWSER decodes them, on every interpreter. Python 3.12 unescaped the whole value with <code>html.unescape()</code>, so a named reference with no trailing semicolon was resolved inside an attribute (<code>id=&quot;&amp;notit;&quot;</code> became <code>id=&quot;\u00acit;&quot;</code>), while Python 3.13 and a browser leave it literal. The same document could therefore carry different <code>id</code>, <code>class</code>, <code>href</code>, <code>src</code>, <code>content</code> and <code>data-*</code> values depending on which Python ran the validator - and with them a different duplicate-id, link, meta-handshake or companion-resource verdict. The browser rule for NAMED references, and the start-tag attribute tokenizer it runs over, are now vendored beside the shared <code>_BrowserBoundaries</code> layer and applied to the raw start tag, so the values the checks see never come from the host. (Numeric references still resolve through <code>html.unescape()</code>, which behaves the same on every interpreter.) Every attribute view in the validator&#x27;s <code>checks</code> package now shares that one helper - both tolerant document passes, the tag-attribute lookup, and the checklist, notes and density passes - so a real duplicate <code>data-cmh-item</code> id spelled two ways (<code>&amp;notit;</code> and <code>&amp;amp;notit;</code>) is no longer missed on Python 3.12. Because that vendors a small amount of CPython&#x27;s <code>Lib/html/parser.py</code>, the shipped <code>THIRD_PARTY_NOTICES.md</code> now also carries the PSF License, its copyright notice, and a summary of the changes made.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.360.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -511,8 +521,6 @@
               <li>Two boundaries that go with it: <code>reviewedSections</code> was not in the old skip list, so a runnable one carrying egress used to be removed and is now kept as inert data instead; and the vendored payload id is deliberately NOT neutralized, because it is infrastructure resolved by position, so a script that merely borrows that id stays authored content and must clear the same egress scan as any other script.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.351.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -546,14 +554,7 @@
               <li>The in-document comment dialog no longer overflows a short viewport, which could put its Cancel and Save buttons out of reach. The dialog now caps its height to the measured viewport (minus the same 8px margin its position clamp uses, so a dynamic mobile browser toolbar counts) with a <code>calc(100vh - 16px)</code> CSS fallback and its own <code>box-sizing: border-box</code>, and scrolls internally instead: the rendered note in the note view and the toolbar-plus-textarea block in the edit form, with the actions row pinned and on screen. An in-progress edit, which deliberately outlives its anchor scrolling out of view, is re-fitted to the viewport on its own, so a mid-edit viewport shrink no longer strands Save and Cancel off screen either, and content that grows after the dialog was placed - dragging the textarea&#x27;s resize handle - re-fits it through a <code>ResizeObserver</code> rather than pushing the actions row past the bottom edge. (<code>CMH-CORE-18</code>)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.326.0] - 2026-08-02</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A floating control (the hover bubble, the <strong>Add Comment</strong> buttons, the whole-diagram button) is now bounded by the intersection of EVERY clipping container around its target, not just the nearest one. A diagram host inside a scrolling table wrapper, inside a <code>figure.chart</code>, or inside a raw diff block is itself clipped by that outer box, so a target the outer box has scrolled out of view now hides the control instead of leaving it floating over unrelated content, and a target that is only partly visible clamps the control to the visible intersection. Previously the resolver honoured only the first matching ancestor, so the inner box shadowed the outer scroller. Only a container that genuinely clips takes part, so a recognised box an author left <code>overflow: visible</code> (or a <code>display: contents</code> one, which generates no box at all) no longer bounds a control anchored to content that plainly spills out of it.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">250 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">251 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
