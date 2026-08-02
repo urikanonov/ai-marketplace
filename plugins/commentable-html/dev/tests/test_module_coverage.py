@@ -6,7 +6,9 @@ partial is documented in the sibling MODULES.md with the SPEC feature-id areas i
 test makes that map an enforced gate, not just a listing (GH: modularization multi-duck, ducks 7/8):
 
   - Every partial on disk has exactly one MODULES.md row, and every MODULES.md row names a real
-    partial (no stray/undocumented module, no stale row).
+    partial (no stray/undocumented module, no stale row). "Exactly one" is checked on the RAW rows,
+    not the parsed map: the map is a dict, so a duplicated path silently collapses to the last row
+    (GH #782 - 41-selection.js was listed twice with conflicting SPEC areas and nothing failed).
   - Every SPEC area a module claims is a REAL, TEST-BACKED area: at least one `| <AREA>-NN |` row
     exists in dev/SPEC.md AND that row references a covering test (`tests/` or `manual`), so the map
     cannot point at an empty or untested area.
@@ -37,10 +39,10 @@ def _dir_partials(ext):
                   if os.path.isfile(os.path.join(d, n)) and _PART_RE[ext].match(n))
 
 
-def _modules_map(ext):
-    """Parse dev/assets/<ext>/MODULES.md -> {partial: [SPEC area, ...]}."""
+def _modules_rows(ext):
+    """Parse dev/assets/<ext>/MODULES.md -> [(partial, [SPEC area, ...]), ...] in file order."""
     text = _read(os.path.join(ASSETS, ext, "MODULES.md"))
-    out = {}
+    rows = []
     for line in text.splitlines():
         m = _ROW_RE.match(line)
         if not m:
@@ -48,8 +50,13 @@ def _modules_map(ext):
         name, areas = m.group(1), m.group(2)
         if not _PART_RE[ext].match(name):
             continue  # skip a code-span in prose that is not a partial filename
-        out[name] = [a.strip() for a in areas.split(",") if a.strip()]
-    return out
+        rows.append((name, [a.strip() for a in areas.split(",") if a.strip()]))
+    return rows
+
+
+def _modules_map(ext):
+    """Parse dev/assets/<ext>/MODULES.md -> {partial: [SPEC area, ...]}."""
+    return dict(_modules_rows(ext))
 
 
 class ModuleCoverageTests(unittest.TestCase):
@@ -74,11 +81,28 @@ class ModuleCoverageTests(unittest.TestCase):
                     "%s: %s maps to SPEC area %s but no %s-NN row names a covering test"
                     % (ext, partial, area, area))
 
+    def _check_no_duplicate_rows(self, ext):
+        seen = {}
+        for name, areas in _modules_rows(ext):
+            seen.setdefault(name, []).append(areas)
+        dupes = sorted(n for n, v in seen.items() if len(v) > 1)
+        self.assertEqual(
+            [], dupes,
+            "%s MODULES.md lists the same partial more than once: %s. The map is a dict, so a "
+            "duplicate row silently wins and its SPEC areas can conflict - keep exactly one row "
+            "per partial." % (ext, ", ".join("%s (%d rows)" % (n, len(seen[n])) for n in dupes)))
+
     def test_js_modules_map_to_real_tested_spec_areas(self):
         self._check_ext("js")
 
     def test_css_modules_map_to_real_tested_spec_areas(self):
         self._check_ext("css")
+
+    def test_js_modules_map_has_no_duplicate_rows(self):
+        self._check_no_duplicate_rows("js")
+
+    def test_css_modules_map_has_no_duplicate_rows(self):
+        self._check_no_duplicate_rows("css")
 
 
 if __name__ == "__main__":
