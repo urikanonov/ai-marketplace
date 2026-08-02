@@ -23,6 +23,8 @@ so intra-suite imports such as `from test_validate import ...` keep working.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
+import os
 import subprocess
 import sys
 import unittest
@@ -96,6 +98,136 @@ def select_shard(files: list[Path], index: int, total: int) -> list[Path]:
     if not (1 <= index <= total):
         raise ValueError(f"shard index {index} out of range 1..{total}")
     return files[index - 1 :: total]
+
+
+#: Marker for a test module that carries Windows-only cases. Such a module's tests SKIP on Linux,
+#: so the Linux-only CI matrix cannot cover them; --windows-only selects exactly these files for a
+#: dedicated Windows job. Derived from the source rather than hard-coded so a new Windows-only
+#: suite is picked up automatically instead of silently going uncovered.
+_NT_ONLY_MARKERS = ('skipUnless(os.name == "nt"', "skipUnless(os.name == 'nt'")
+
+
+def has_windows_only_tests(path: Path) -> bool:
+    """True when the test module contains at least one Windows-only (nt) case."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return any(marker in text for marker in _NT_ONLY_MARKERS)
+
+
+def filter_windows_only(files: list[Path]) -> list[Path]:
+    """Keep only the modules that carry Windows-only cases."""
+    return [f for f in files if has_windows_only_tests(f)]
+
+
+def compose_shard(index: int, total: int, job_index: int, jobs: int) -> tuple[int, int]:
+    """Return the single shard that selects job `job_index` of `jobs` WITHIN shard index/total.
+
+    Parallel mode re-invokes this script per worker rather than handing it an explicit file
+    list, so the two levels of round-robin have to collapse into one "i/N" pair. Because
+    select_shard is a plain stride, the composition is exact:
+
+        files[index-1::total][job_index-1::jobs] == files[(index-1)+(job_index-1)*total :: total*jobs]
+
+    which makes the workers a true partition of the selected shard - no file dropped, none
+    run twice - for any combination of an outer CI shard and a local -j.
+    """
+    if total < 1:
+        raise ValueError("shard total must be >= 1")
+    if not (1 <= index <= total):
+        raise ValueError(f"shard index {index} out of range 1..{total}")
+    if jobs < 1:
+        raise ValueError("jobs must be >= 1")
+    if not (1 <= job_index <= jobs):
+        raise ValueError(f"job index {job_index} out of range 1..{jobs}")
+    return ((index - 1) + (job_index - 1) * total + 1, total * jobs)
+
+
+def resolve_jobs(spec: str) -> int:
+    """Resolve --jobs: a positive integer, or "auto" for the CPU count (1 if unknown)."""
+    if spec == "auto":
+        return os.cpu_count() or 1
+    try:
+        n = int(spec)
+    except (TypeError, ValueError):
+        raise ValueError(f"--jobs must be a positive integer or 'auto', got {spec!r}") from None
+    if n < 1:
+        raise ValueError(f"--jobs must be >= 1, got {n}")
+    return n
+
+
+def build_child_argv(index: int, total: int, job_index: int, jobs: int,
+                     args: argparse.Namespace) -> list[str]:
+    """Argv for one parallel worker: the composed shard plus the pass-through flags.
+
+    Deliberately omits --jobs so a worker can never recurse into another fan-out.
+    """
+    idx, tot = compose_shard(index, total, job_index, jobs)
+    cmd = [sys.executable, str(Path(__file__).resolve()), "--shard", f"{idx}/{tot}"]
+    if args.changed_only:
+        cmd += ["--changed-only", "--base-ref", args.base_ref]
+    if args.windows_only:
+        cmd.append("--windows-only")
+    if args.require_discovered:
+        cmd.append("--require-discovered")
+    # argparse counts -v on top of the default, so replicate the delta, not the total.
+    cmd += ["-v"] * max(0, args.verbose - 1)
+    return cmd
+
+
+def run_parallel(index: int, total: int, jobs: int, args: argparse.Namespace) -> int:
+    """Fan the selected shard out across `jobs` worker processes; aggregate fail-CLOSED.
+
+    Workers are separate PROCESSES (not threads) so the per-file, in-process execution model
+    each worker uses is unchanged - the same isolation `unittest discover` gives, just N of
+    them. Output is captured and replayed in job order so a parallel run stays readable and
+    deterministic; a worker that fails, crashes, or cannot be launched reds the whole run.
+
+    HERMETICITY REQUIREMENT: unlike the scripts suite (which run_script_tests.py confines to a
+    throwaway cwd), plugin suites run with REPO_ROOT as their working directory. Serially that
+    was harmless; with -j the workers run concurrently in the SAME directory, so a test that
+    writes a fixed repo-relative path would now race a sibling worker and flake only under -j.
+    Every plugin test must therefore write through tempfile/TemporaryDirectory (they all do
+    today). Splitting by whole FILES keeps same-file ordering intact, so only cross-file shared
+    state is at risk.
+    """
+    commands = [build_child_argv(index, total, j, jobs, args) for j in range(1, jobs + 1)]
+    print(f"Running shard {index}/{total} across {jobs} parallel worker(s).")
+
+    def run_one(cmd: list[str]) -> subprocess.CompletedProcess:
+        # Pin the decode: without it Windows falls back to the ANSI code page (cp1252), so a
+        # worker that printed any non-cp1252 byte would raise UnicodeDecodeError in the PARENT
+        # and mask the real test failure. errors="replace" makes an odd byte a mojibake
+        # character instead of losing the whole worker's output.
+        return subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
+
+    results: list[subprocess.CompletedProcess | Exception] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+        futures = [pool.submit(run_one, c) for c in commands]
+        for f in futures:
+            try:
+                results.append(f.result())
+            except Exception as exc:  # noqa: BLE001 - a launch failure must red the run
+                results.append(exc)
+
+    rc = 0
+    for j, res in enumerate(results, start=1):
+        print(f"\n===== worker {j}/{jobs} =====")
+        if isinstance(res, BaseException):
+            print(f"::error::worker {j}/{jobs} could not run: "
+                  f"{type(res).__name__}: {res}", file=sys.stderr)
+            rc = 1
+            continue
+        if res.stdout:
+            print(res.stdout, end="")
+        if res.stderr:
+            print(res.stderr, end="", file=sys.stderr)
+        if res.returncode != 0:
+            print(f"::error::worker {j}/{jobs} failed (exit {res.returncode})", file=sys.stderr)
+            rc = 1
+    return rc
 
 
 def plugin_of(path: Path, repo_root: Path) -> str | None:
@@ -183,10 +315,16 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--shard", default="1/1",
                     help="Run shard I of N, formatted I/N (default 1/1 = everything).")
+    ap.add_argument("-j", "--jobs", default="1",
+                    help="Run the selected shard across N worker processes, or 'auto' for "
+                         "the CPU count (default 1 = in-process, unchanged behavior).")
     ap.add_argument("--changed-only", action="store_true",
                     help="Only run suites of plugins changed vs --base-ref.")
     ap.add_argument("--base-ref", default="origin/main",
                     help="Base ref for --changed-only (default origin/main).")
+    ap.add_argument("--windows-only", action="store_true",
+                    help="Run only the modules that carry Windows-only (os.name == 'nt') tests, "
+                         "which SKIP on the Linux matrix and so need a Windows runner.")
     ap.add_argument("--require-discovered", action="store_true",
                     help="Fail if no plugin test files exist at all (CI safety net).")
     ap.add_argument("-v", "--verbose", action="count", default=1)
@@ -199,6 +337,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: --shard must look like I/N, got {args.shard!r}", file=sys.stderr)
         return 2
 
+    try:
+        jobs = resolve_jobs(args.jobs)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    if jobs > 1:
+        try:
+            compose_shard(index, total, 1, jobs)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        return run_parallel(index, total, jobs, args)
+
     all_files = discover_test_files(REPO_ROOT)
     if args.require_discovered and not all_files:
         print("error: no plugin Python test suites were discovered "
@@ -209,6 +361,12 @@ def main(argv: list[str] | None = None) -> int:
     check_no_stem_collisions(discover_importable_modules(REPO_ROOT))
 
     files = all_files
+    if args.windows_only:
+        files = filter_windows_only(files)
+        if not files:
+            print("error: --windows-only matched no test modules; if the Windows-only suites "
+                  "were removed, drop the dedicated Windows job too", file=sys.stderr)
+            return 1
     if args.changed_only:
         changed = _git_changed_paths(args.base_ref, REPO_ROOT)
         if changed is None:

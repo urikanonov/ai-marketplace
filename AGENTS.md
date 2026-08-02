@@ -527,14 +527,33 @@ git config core.hooksPath .githooks
 This turns on two hooks: `pre-commit` runs the manifest and Markdown validators plus the
 tracked-file guards (secret-bearing files, Backlog artifacts, and unresolved conflict markers in the
 staged content) before each commit,
-and `pre-push` runs the deterministic gate that mirrors the required CI checks before each push -
-the validators, the script unit tests (via `scripts/run_script_tests.py`), the changed plugins' Python
-suites (via
-`scripts/run_plugin_python_tests.py --changed-only`; set `PREPUSH_FULL=1` to run every plugin's
-suite), `check_changelog_sync`, `check_version_bump`, and the
-`build_site_data.py` / layer `build.py` / fixtures `--check` drift guards - so a push that would fail
-a required check is caught locally first. The slower, occasionally flaky browser (Playwright) suites
-are not run by default; set `RUN_E2E=1 git push` to include them (CI is their authoritative gate).
+and `pre-push` runs the FAST deterministic gates that mirror the required CI checks - the
+validators, `check_changelog_sync`, `check_version_bump`, `check_spec_test_refs`,
+`check_doc_surfaces`, and the `build_site_data.py` / layer `build.py` / fixtures `--check` drift
+guards. Those take seconds and catch the cheap, high-frequency mistakes (a stale generated
+artifact, a missing version bump or changelog entry) before a CI round-trip.
+
+The TEST SUITES are opt-in (`PREPUSH_TESTS=1 git push`), and so are the browser suites
+(`RUN_E2E=1`). This is deliberate: CI is the AUTHORITATIVE gate (`main` is protected and every
+required check runs there, sharded across runners), and running the suites locally on every push
+measured ~30 minutes here (script unit tests 640s, the plugin Python suites up to 1082s). The
+result was that 52% of observed pushes used `--no-verify` - so the hook protected nothing half the
+time. A fast hook that always runs beats a thorough hook that is routinely bypassed. When the
+suites do run they fan out across the CPUs (`--jobs auto`, ~2.8x here).
+
+```bash
+git push                        # fast gates only (seconds)
+PREPUSH_TESTS=1 git push        # + the script and changed-plugin Python suites (parallel)
+PREPUSH_TESTS=1 PREPUSH_FULL=1 git push   # + every plugin's suite, not just changed ones
+RUN_E2E=1 git push              # + the Playwright suites
+```
+
+PowerShell has no `VAR=1 cmd` prefix syntax, so set the variable first (and clear it after, since
+it persists for the rest of the session):
+
+```powershell
+$env:PREPUSH_TESTS = '1'; git push; Remove-Item Env:\PREPUSH_TESTS
+```
 
 The script unit tests always go through `scripts/run_script_tests.py`, never `unittest discover`
 directly: the runner launches the suite from a THROWAWAY working directory and then fails if the
@@ -544,9 +563,10 @@ a test's scratch fixture out of the repo root - a bare relative filename used to
 `main` (#791). The hook, both `validate.yml` jobs, and any launcher added later are held to it by
 `scripts/test_suite_hermeticity.py`.
 
-The `pre-push` hook is SLOW - it runs the full script unit tests plus the changed plugins' Python
+The `pre-push` hook is FAST by default (seconds) because the test suites are opt-in; with
+`PREPUSH_TESTS=1` it is SLOW - it runs the script unit tests plus the changed plugins' Python
 suites (or every plugin's suite with `PREPUSH_FULL=1`), so
-`git push` legitimately takes several minutes with no early output. Do NOT mistake that for a hang: on
+`git push` legitimately takes minutes with no early output. Do NOT mistake that for a hang: on
 PowerShell, piping the push through a buffering command (`git push ... | Select-Object -Last N` or
 `| Out-String`) hides the hook's live progress until it finishes, which makes a working hook look
 frozen - run the push WITHOUT such a pipe (or watch `.githooks/pre-push` output directly) and let it
@@ -743,6 +763,27 @@ exposure is compute/runner abuse.
   (`Join-Path a b c`) throws on Windows PowerShell 5.1 and would silently disable the updater.
 - The bash hook is guarded on `pwsh` being installed; on macOS/Linux the updater needs PowerShell 7.
 - It excludes itself by folder name (a plugin cannot update itself while its hook is running).
+
+## Searching the code
+
+A repo-root `.ignore` file keeps search tools out of content that is never a useful match. It is
+read by ripgrep, `fd`, and other tools built on the same ignore stack (this is why it is `.ignore`
+and not the ripgrep-only `.rgignore`), and it does NOT affect git - `.gitignore` remains the git
+rule. The measurable part is skipping the multi-MB SINGLE-LINE minified bundles, which are
+pathological for a line-oriented scan: an unscoped `rg` over this repo went from 5.8s to 1.1s with
+an identical result set. (`.worktrees/` is listed too, but git already hides it from ripgrep, so
+that entry is belt-and-braces rather than the win.) Generated files a human may legitimately want
+to read (`site/dist`, the built example reports) are deliberately NOT ignored; pass
+`rg --no-ignore` to search anything in the list anyway.
+
+Two habits matter more than the ignore file:
+
+- SCOPE the search to a subdirectory when you know roughly where the code lives. That is the
+  difference between a sub-second answer and a timeout-and-retry loop.
+- The first search after a cold start is much slower than the rest (a warm run is ~1s, a cold one
+  measured 12s) because Windows Defender real-time protection scans each file on first read.
+  Adding a Defender exclusion for the repository directory removes that spike; it needs an elevated
+  shell, so it is a local machine setup step, not something the repo can do for you.
 
 ## House style
 

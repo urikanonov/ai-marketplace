@@ -41,10 +41,15 @@ git config core.hooksPath .githooks
 ```
 
 `core.hooksPath` enables both hooks: `pre-commit` validates the manifest and Markdown before each
-commit, and `pre-push` runs the deterministic CI gate before each push (validators, script unit
-tests, changelog sync, version bump, and the site/layer/fixtures `--check` drift guards). Skip a
-single commit with `git commit --no-verify` or a single push with `git push --no-verify`; add the
-browser Playwright suites to a push with `RUN_E2E=1 git push`.
+commit, and `pre-push` runs the FAST deterministic CI gates before each push (validators, changelog
+sync, version bump, and the site/layer/fixtures `--check` drift guards) - seconds, not minutes. The
+slower test suites are opt-in: add the script unit tests and the changed plugins' Python suites with
+`PREPUSH_TESTS=1 git push`, and the browser Playwright suites with `RUN_E2E=1 git push`. CI runs all
+of them on every PR and is the authoritative gate. Skip a single commit with `git commit --no-verify`
+or a single push with `git push --no-verify`.
+
+In PowerShell there is no `VAR=1 cmd` prefix syntax, so set the variable first:
+`$env:PREPUSH_TESTS = '1'; git push`.
 
 ## Improving an existing plugin
 

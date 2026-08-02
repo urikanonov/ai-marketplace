@@ -8,8 +8,11 @@ loading/running is not (CI runs the real suites).
 """
 import contextlib
 import io
+import re
+import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -236,6 +239,303 @@ class GitChangedPathsTests(unittest.TestCase):
         self.assertIsNone(
             rp._git_changed_paths("refs/does/not/exist/ever", rp.REPO_ROOT)
         )
+
+
+class ComposeShardTests(unittest.TestCase):
+    """--jobs subdivides the SELECTED shard, so composition must stay an exact partition.
+
+    The parallel mode re-invokes this script with a single composed "i/N" shard rather than
+    handing children an explicit file list, so the composition arithmetic is the only thing
+    standing between "-j 4" and silently dropped or double-run test files.
+    """
+
+    def test_composition_equals_direct_subselection(self):
+        files = [Path(f"test_{i}.py") for i in range(23)]
+        for total in (1, 2, 3):
+            for index in range(1, total + 1):
+                for jobs in (1, 2, 4, 5):
+                    outer = rp.select_shard(files, index, total)
+                    rebuilt = []
+                    for j in range(1, jobs + 1):
+                        idx, tot = rp.compose_shard(index, total, j, jobs)
+                        rebuilt.extend(rp.select_shard(files, idx, tot))
+                    self.assertEqual(
+                        sorted(rebuilt, key=str), sorted(outer, key=str),
+                        f"index={index} total={total} jobs={jobs} lost or duplicated files",
+                    )
+                    self.assertEqual(len(rebuilt), len(outer))
+
+    def test_jobs_of_one_is_identity(self):
+        self.assertEqual(rp.compose_shard(2, 3, 1, 1), (2, 3))
+
+    def test_rejects_bad_job_index_or_count(self):
+        for j, jobs in [(0, 1), (2, 1), (-1, 3), (1, 0)]:
+            with self.assertRaises(ValueError):
+                rp.compose_shard(1, 1, j, jobs)
+
+
+class ResolveJobsTests(unittest.TestCase):
+    def test_auto_uses_cpu_count(self):
+        with mock.patch.object(rp.os, "cpu_count", return_value=8):
+            self.assertEqual(rp.resolve_jobs("auto"), 8)
+
+    def test_auto_falls_back_to_one_when_cpu_count_unknown(self):
+        with mock.patch.object(rp.os, "cpu_count", return_value=None):
+            self.assertEqual(rp.resolve_jobs("auto"), 1)
+
+    def test_explicit_integer(self):
+        self.assertEqual(rp.resolve_jobs("3"), 3)
+
+    def test_rejects_non_positive_or_garbage(self):
+        for bad in ["0", "-2", "abc", ""]:
+            with self.assertRaises(ValueError):
+                rp.resolve_jobs(bad)
+
+
+class ParallelMainTests(unittest.TestCase):
+    """--jobs N must fan out to N children and aggregate their exit codes fail-CLOSED."""
+
+    def _fake_run(self, codes):
+        calls = []
+        lock = threading.Lock()
+
+        def run(cmd, **kwargs):
+            # Workers run concurrently, so claim the index and record the call under one lock;
+            # append-then-index on a fresh len() could hand two workers the same code.
+            with lock:
+                idx = len(calls)
+                calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, codes[idx], "", "")
+
+        return run, calls
+
+    def test_spawns_one_child_per_job_with_composed_shards(self):
+        run, calls = self._fake_run([0, 0, 0])
+        with mock.patch.object(rp.subprocess, "run", side_effect=run):
+            rc = rp.main(["--jobs", "3"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(calls), 3)
+        shards = sorted(c[c.index("--shard") + 1] for c in calls)
+        self.assertEqual(shards, ["1/3", "2/3", "3/3"])
+        # A child must never recurse into parallel mode.
+        for c in calls:
+            self.assertNotIn("--jobs", c)
+
+    def test_any_failing_child_reds_the_run(self):
+        run, _ = self._fake_run([0, 1, 0])
+        with mock.patch.object(rp.subprocess, "run", side_effect=run):
+            self.assertEqual(rp.main(["--jobs", "3"]), 1)
+
+    def test_composes_with_an_outer_shard(self):
+        run, calls = self._fake_run([0, 0])
+        with mock.patch.object(rp.subprocess, "run", side_effect=run):
+            rc = rp.main(["--shard", "2/3", "--jobs", "2"])
+        self.assertEqual(rc, 0)
+        shards = sorted(c[c.index("--shard") + 1] for c in calls)
+        # shard 2/3 split 2 ways -> files[1::3][0::2] and files[1::3][1::2]
+        self.assertEqual(shards, ["2/6", "5/6"])
+
+    def test_forwards_changed_only_and_base_ref_to_children(self):
+        run, calls = self._fake_run([0, 0])
+        with mock.patch.object(rp.subprocess, "run", side_effect=run):
+            rp.main(["--jobs", "2", "--changed-only", "--base-ref", "origin/dev"])
+        for c in calls:
+            self.assertIn("--changed-only", c)
+            self.assertIn("--base-ref", c)
+            self.assertEqual(c[c.index("--base-ref") + 1], "origin/dev")
+
+    def test_jobs_of_one_runs_in_process_without_spawning(self):
+        one = [rp.REPO_ROOT / "plugins/x/dev/tests/test_only.py"]
+        with mock.patch.object(rp, "discover_test_files", return_value=one), \
+             mock.patch.object(rp, "discover_importable_modules", return_value=one), \
+             mock.patch.object(rp.subprocess, "run") as spawned:
+            rp.main(["--shard", "3/3", "--jobs", "1"])
+        spawned.assert_not_called()
+
+    def test_bad_jobs_value_returns_2(self):
+        for bad in ["0", "-1", "abc"]:
+            self.assertEqual(rp.main(["--jobs", bad]), 2, bad)
+
+
+class HookWiringTests(unittest.TestCase):
+    """The pre-push hook is the reason --jobs exists, so pin the wiring it depends on.
+
+    The hook was measured at ~30 minutes with the suites inline, and 52% of observed pushes
+    used --no-verify as a result. Two properties keep it usable: the suites are opt-in behind
+    PREPUSH_TESTS, and when they DO run they fan out with --jobs. A silent revert of either
+    would quietly restore the slow hook that trained everyone to bypass it.
+    """
+
+    def _hook(self):
+        hook = rp.REPO_ROOT / ".githooks" / "pre-push"
+        if not hook.exists():
+            self.skipTest("pre-push hook not present")
+        return hook.read_text(encoding="utf-8")
+
+    def test_plugin_suite_invocations_request_parallel_jobs(self):
+        source = self._hook().replace("\\\n", " ")
+        calls = [ln.strip() for ln in source.splitlines()
+                 if "run_plugin_python_tests.py" in ln and ln.strip().startswith("run_hermetic ")]
+        self.assertTrue(calls, "the hook no longer launches the plugin Python suites")
+        for call in calls:
+            self.assertIn("--jobs", call,
+                          "the hook runs the plugin suites serially again: %r" % (call,))
+
+    def test_suites_are_gated_behind_prepush_tests(self):
+        """Structural, not textual: every suite launch must sit INSIDE a PREPUSH_TESTS block.
+
+        Asserting the string 'PREPUSH_TESTS' appears is not enough - it already occurs in comments
+        and in the skip message, so moving both run_hermetic calls back outside the conditional
+        would leave such a test green while restoring the ~30-minute hook.
+        """
+        guard = re.compile(r'^\s*if\s+\[\s+"\$\{PREPUSH_TESTS:-0\}"\s+=\s+"1"\s+\]')
+        depth, guard_depth, offenders = 0, None, []
+        for raw in self._hook().replace("\\\n", " ").splitlines():
+            line = raw.strip()
+            if guard.match(raw) and guard_depth is None:
+                guard_depth = depth
+            if re.match(r"^\s*if\s", raw):
+                depth += 1
+            elif line == "fi":
+                depth -= 1
+                if guard_depth is not None and depth <= guard_depth:
+                    guard_depth = None
+            if line.startswith("run_hermetic ") and guard_depth is None:
+                offenders.append(line)
+        self.assertEqual(
+            offenders, [],
+            "these pre-push suite launches are no longer behind the PREPUSH_TESTS opt-in, so the "
+            "hook is slow again: %r" % (offenders,))
+
+    def test_the_gate_check_itself_would_catch_a_regression(self):
+        # The guard above is only worth having if it actually fails when the opt-in is removed;
+        # prove that on a synthetic hook rather than trusting the scanner.
+        unguarded = 'run_hermetic "plugin Python tests" "$PY" scripts/run_plugin_python_tests.py\n'
+        with mock.patch.object(HookWiringTests, "_hook", lambda self: unguarded):
+            with self.assertRaises(AssertionError):
+                HookWiringTests.test_suites_are_gated_behind_prepush_tests(self)
+
+    def test_windows_only_plugin_tests_actually_exist(self):
+        """Pins the coverage gap that PREPUSH_TESTS opened, so it cannot be forgotten.
+
+        Several plugin suites are skipUnless(os.name == "nt") - directory-junction containment
+        and the PowerShell launcher - so they SKIP on the Linux-only plugin Python CI matrix.
+        Before the suites became opt-in they were covered incidentally by a maintainer's local
+        (Windows) pre-push run. Issue #837 tracks adding windows-latest to that matrix, which
+        was verified to work for these suites but also surfaces three unrelated pre-existing
+        Windows failures. This test fails if those Windows-only tests ever disappear, so the
+        gap is closed deliberately rather than by accident.
+        """
+        hits = []
+        for f in rp.discover_test_files(rp.REPO_ROOT):
+            text = f.read_text(encoding="utf-8", errors="replace")
+            if 'skipUnless(os.name == "nt"' in text or "skipUnless(os.name == 'nt'" in text:
+                hits.append(f.name)
+        self.assertTrue(hits, "no Windows-only plugin tests found; close out issue #837")
+
+
+class ParallelSpawnSmokeTests(unittest.TestCase):
+    """Exercise the REAL spawn path once, unmocked.
+
+    Every other parallel test mocks subprocess.run, and CI shards with --shard (serially per
+    runner) rather than --jobs, so without this the actual fan-out - child argv, interpreter
+    launch, output capture, exit-code aggregation - would never execute in any automated run.
+    An empty selection keeps it fast and independent of git state while still starting two real
+    interpreters.
+    """
+
+    def test_real_workers_spawn_and_aggregate_success(self):
+        n = len(rp.discover_test_files(rp.REPO_ROOT))
+        empty = n + 1  # shard (n+1)/(n+1) selects nothing, whatever the corpus size
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = rp.main(["--shard", f"{empty}/{empty}", "--jobs", "2"])
+        text = out.getvalue()
+        self.assertEqual(rc, 0, text)
+        self.assertIn("worker 1/2", text)
+        self.assertIn("worker 2/2", text)
+        # The children really ran and reported their own (empty) selection.
+        self.assertIn("nothing to run", text)
+
+
+class WindowsOnlySelectionTests(unittest.TestCase):
+    """--windows-only feeds the dedicated Windows CI job; the selection must stay honest."""
+
+    def test_selects_modules_with_the_nt_marker(self):
+        with tempfile.TemporaryDirectory() as d:
+            nt = Path(d) / "test_nt.py"
+            nt.write_text('import os, unittest\n'
+                          '@unittest.skipUnless(os.name == "nt", "junctions")\n'
+                          'def f(): pass\n', encoding="utf-8")
+            plain = Path(d) / "test_plain.py"
+            plain.write_text("import unittest\n", encoding="utf-8")
+            self.assertEqual(rp.filter_windows_only([nt, plain]), [nt])
+
+    def test_accepts_the_single_quoted_spelling(self):
+        with tempfile.TemporaryDirectory() as d:
+            nt = Path(d) / "test_nt2.py"
+            nt.write_text("import os, unittest\n"
+                          "@unittest.skipUnless(os.name == 'nt', 'launcher')\n", encoding="utf-8")
+            self.assertEqual(rp.filter_windows_only([nt]), [nt])
+
+    def test_real_repo_selection_is_nonempty_and_all_marked(self):
+        sel = rp.filter_windows_only(rp.discover_test_files(rp.REPO_ROOT))
+        self.assertTrue(sel, "no Windows-only modules found; the python-windows CI job is now "
+                             "pointless and should be removed together with them")
+        for f in sel:
+            self.assertTrue(rp.has_windows_only_tests(f))
+
+    def test_selection_is_a_strict_subset(self):
+        allf = rp.discover_test_files(rp.REPO_ROOT)
+        sel = rp.filter_windows_only(allf)
+        self.assertTrue(set(sel).issubset(set(allf)))
+        self.assertLess(len(sel), len(allf), "every module looks Windows-only; marker too broad")
+
+    def test_empty_selection_is_a_loud_failure_not_a_silent_pass(self):
+        # A no-op Windows job that reports green would be worse than no job at all.
+        with mock.patch.object(rp, "filter_windows_only", return_value=[]):
+            self.assertEqual(rp.main(["--windows-only"]), 1)
+
+    def test_flag_is_forwarded_to_parallel_workers(self):
+        calls = []
+
+        def run(cmd, **kwargs):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with mock.patch.object(rp.subprocess, "run", side_effect=run):
+            rp.main(["--jobs", "2", "--windows-only"])
+        for c in calls:
+            self.assertIn("--windows-only", c)
+
+
+class WindowsCoverageWiringTests(unittest.TestCase):
+    """The Windows-only suites SKIP on the Linux matrix, so a Windows job must exist and gate.
+
+    Before the pre-push suites became opt-in these ran only incidentally, on a maintainer's local
+    Windows push. If the job below is dropped, the junction-containment and PowerShell-launcher
+    tests go back to having no pre-merge coverage at all - silently, because they SKIP rather
+    than fail on Linux.
+    """
+
+    def _workflow(self):
+        import yaml
+        wf = rp.REPO_ROOT / ".github" / "workflows" / "plugin-tests.yml"
+        return yaml.safe_load(wf.read_text(encoding="utf-8"))
+
+    def test_a_windows_job_runs_the_windows_only_suites(self):
+        job = self._workflow()["jobs"].get("python-windows")
+        self.assertIsNotNone(job, "no python-windows job; Windows-only suites are uncovered")
+        self.assertTrue(str(job["runs-on"]).startswith("windows"), job["runs-on"])
+        run = " ".join(str(s.get("run", "")) for s in job["steps"])
+        self.assertIn("--windows-only", run)
+
+    def test_the_gate_requires_the_windows_job(self):
+        jobs = self._workflow()["jobs"]
+        self.assertIn("python-windows", jobs["plugin-tests"]["needs"])
+        gate = " ".join(str(s.get("run", "")) for s in jobs["plugin-tests"]["steps"])
+        self.assertIn("PYTHON_WINDOWS_RESULT", gate,
+                      "the aggregate gate ignores the Windows job's result")
 
 
 class ShardMatrixContiguityTests(unittest.TestCase):

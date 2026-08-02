@@ -1,12 +1,20 @@
 #!/bin/sh
 # Pre-push hook: run the deterministic checks that gate `main` in CI, so a push
 # that would fail a required check is caught locally before the CI round-trip.
-# The fast, reliable checks always run. The browser (Playwright) suites are
-# slower and occasionally flaky, so they run only when RUN_E2E=1 is set - CI is
-# the authoritative gate for them (the required `site` and `plugin-tests` checks).
+#
+# SCOPE (why this hook is deliberately fast). CI is the AUTHORITATIVE gate: `main` is
+# protected and every required check runs there, sharded across runners. This hook is a
+# convenience that catches the cheap, high-frequency mistakes (a stale generated artifact,
+# a missing version bump or changelog entry, a schema slip) before a CI round-trip. It is
+# NOT a second copy of CI. Measured on this repo, running the full local suites here cost
+# ~30 minutes per push (script unit tests 640s, plugin Python suites up to 1082s), and the
+# result was that 52% of observed pushes used `--no-verify` - a thorough hook that is
+# bypassed half the time protects less than a fast one that always runs. So the suites are
+# OPT-IN (PREPUSH_TESTS=1) and everything left here is seconds, not minutes.
 #
 # Enable once per clone:      git config core.hooksPath .githooks
 # Skip for a single push:     git push --no-verify
+# Also run the test suites:   PREPUSH_TESTS=1 git push
 # Also run the browser E2E:   RUN_E2E=1 git push
 
 export LC_ALL=C
@@ -73,28 +81,39 @@ fi
 # the runner launches it from a THROWAWAY working directory and fails if the suite left anything
 # in it, or if this repository changed while it ran. That is what keeps a test's scratch fixture
 # out of the repo root (issue #791 - `a.md` and `old.md` reached `main` that way).
+# NOTE: measured at ~640s, so this whole block - INCLUDING that sandbox/leak guard - is opt-in
+# behind PREPUSH_TESTS. Locally the guard therefore runs only when you ask for it; the required
+# `validate` job always runs it, so a leak still cannot reach `main`.
 # A long run while you keep editing would trip the repository diff on YOUR edits rather than on a
 # leak; opt out of just that diff with PREPUSH_ALLOW_TREE_EDITS=1 instead of skipping every check
-# with --no-verify. The sandbox check still runs.
+# with --no-verify.
 _scripts_opts=""
 if [ "${PREPUSH_ALLOW_TREE_EDITS:-0}" = "1" ]; then
   _scripts_opts="--no-worktree-check"
 fi
-# shellcheck disable=SC2086 # deliberate word splitting: zero or one option
-run_hermetic "script unit tests" "$PY" scripts/run_script_tests.py $_scripts_opts
+if [ "${PREPUSH_TESTS:-0}" = "1" ]; then
+  # shellcheck disable=SC2086 # deliberate word splitting: zero or one option
+  run_hermetic "script unit tests" "$PY" scripts/run_script_tests.py $_scripts_opts
+fi
 run "spec test references" "$PY" scripts/check_spec_test_refs.py
 run "doc-surface declarations for new features" "$PY" scripts/check_doc_surfaces.py
 run "forbidden secret-bearing files" "$PY" scripts/check_forbidden_files.py
 run "Backlog.md artifacts absent" "$PY" scripts/check_no_backlog.py
 
-# Plugin Python suites. By default only the suites of plugins changed versus origin/main
-# run, so a docs/scripts/site-only push does not rerun every plugin's suite (the slow part
-# of this hook). Set PREPUSH_FULL=1 to run them all. CI shards and always runs the full set.
-if [ "${PREPUSH_FULL:-0}" = "1" ] || ! git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
-  run_hermetic "plugin Python tests (all)" "$PY" scripts/run_plugin_python_tests.py --require-discovered
+# Plugin Python suites. Opt-in (PREPUSH_TESTS=1) because a full local run measured ~1082s
+# serially; when they do run they fan out across the CPUs with --jobs auto (~2.8x here), and
+# only the suites of plugins changed versus origin/main run unless PREPUSH_FULL=1. CI shards
+# and always runs the full set, so it remains the authoritative gate.
+if [ "${PREPUSH_TESTS:-0}" = "1" ]; then
+  if [ "${PREPUSH_FULL:-0}" = "1" ] || ! git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+    run_hermetic "plugin Python tests (all)" "$PY" scripts/run_plugin_python_tests.py \
+      --require-discovered --jobs auto
+  else
+    run_hermetic "plugin Python tests (changed plugins vs origin/main; PREPUSH_FULL=1 for all)" \
+      "$PY" scripts/run_plugin_python_tests.py --changed-only --base-ref origin/main --jobs auto
+  fi
 else
-  run_hermetic "plugin Python tests (changed plugins vs origin/main; PREPUSH_FULL=1 for all)" \
-    "$PY" scripts/run_plugin_python_tests.py --changed-only --base-ref origin/main
+  echo "pre-push: test suites skipped (set PREPUSH_TESTS=1 to run them; CI runs them on every PR)."
 fi
 
 # These two need origin/main to diff against, so guard them on it being fetched
