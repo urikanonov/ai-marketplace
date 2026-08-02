@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.361.0";
+const CMH_VERSION = "1.363.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -5710,16 +5710,30 @@ function cmhAutogrowResize(ta) {
 function cmhAutogrowCap(cs) {
   const raw = (cs.getPropertyValue("--cmh-grow-max") || "").trim();
   const n = parseFloat(raw);
-  const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+  const vh = cmhViewportBox().height;
   let px = NaN;
+  // Only the units this layer understands count. Anything else (a percentage, a typo, a unit that
+  // needs a containing block) falls through to the default rather than being read as pixels.
   if (isFinite(n) && n > 0) {
-    if (raw.slice(-2) === "vh") px = vh * n / 100;
-    else if (raw.slice(-3) === "rem") {
+    const unit = raw.slice(String(n).length).trim().toLowerCase();
+    if (unit === "vh") px = vh * n / 100;
+    else if (unit === "rem") {
       px = n * (parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16);
-    } else px = n;
+    } else if (unit === "px" || unit === "") px = n;
   }
   if (!isFinite(px) || px <= 0) px = vh * 0.45;
   return Math.min(px, Math.max(120, vh - 16));
+}
+
+// The visible viewport box. `visualViewport` accounts for pinch zoom, panning, retractable mobile
+// toolbars, and the soft keyboard, and its origin is NOT (0, 0) while the user is panning a
+// pinch-zoomed page, so its offsets matter as much as its size.
+function cmhViewportBox() {
+  const vv = window.visualViewport;
+  if (vv && vv.width && vv.height) {
+    return { left: vv.offsetLeft || 0, top: vv.offsetTop || 0, width: vv.width, height: vv.height };
+  }
+  return { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
 }
 
 // The nearest scrolling ancestor (the comments list, for a side-pane editor), falling back to the
@@ -5751,16 +5765,14 @@ function cmhClampIntoViewport(el) {
   cmhClampedSurfaces.forEach(function (s) { if (!s.isConnected) cmhClampedSurfaces.delete(s); });
   const margin = 8;
   const rect = el.getBoundingClientRect();
-  // `visualViewport` is the actually-visible area (browser toolbars, soft keyboard); fall back to
-  // the layout viewport. The CSS bound is `dvh`-based for the same reason.
-  const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
-  const topLimit = Math.max(margin, vh - el.offsetHeight - margin);
-  const nextTop = Math.min(Math.max(margin, rect.top), topLimit);
+  const vp = cmhViewportBox();
+  const topLimit = Math.max(vp.top + margin, vp.top + vp.height - el.offsetHeight - margin);
+  const nextTop = Math.min(Math.max(vp.top + margin, rect.top), topLimit);
   if (Math.abs(nextTop - rect.top) >= 1) el.style.top = nextTop + "px";
-  // Narrowing the window can strand a surface off the right edge just as growth strands it below
-  // the fold, so bound the horizontal axis on the same terms.
-  const leftLimit = Math.max(margin, window.innerWidth - el.offsetWidth - margin);
-  const nextLeft = Math.min(Math.max(margin, rect.left), leftLimit);
+  // Narrowing the window, or panning a pinch-zoomed page, can strand a surface off an edge just as
+  // growth strands it below the fold, so bound the horizontal axis on the same terms.
+  const leftLimit = Math.max(vp.left + margin, vp.left + vp.width - el.offsetWidth - margin);
+  const nextLeft = Math.min(Math.max(vp.left + margin, rect.left), leftLimit);
   if (Math.abs(nextLeft - rect.left) >= 1) el.style.left = nextLeft + "px";
 }
 
@@ -5791,9 +5803,21 @@ function cmhAutogrowWatchViewport(ta) {
     };
     window.addEventListener("resize", onViewportChange);
     const vv = window.visualViewport;
-    if (vv && vv.addEventListener) vv.addEventListener("resize", onViewportChange);
+    if (vv && vv.addEventListener) {
+      vv.addEventListener("resize", onViewportChange);
+      // Panning a pinch-zoomed page moves the visible box without resizing it.
+      vv.addEventListener("scroll", onViewportChange);
+    }
   }
+  // Prune here as well as from the teardown paths, so an editor removed by a route that does not
+  // unregister (a sidebar re-render, say) cannot accumulate in the Set.
+  cmhAutogrowLive.forEach(function (t) { if (!t.isConnected) cmhAutogrowLive.delete(t); });
   cmhAutogrowLive.add(ta);
+}
+
+// An editor whose surface is torn down unregisters explicitly.
+function cmhForgetAutogrow(ta) {
+  if (cmhAutogrowLive && ta) cmhAutogrowLive.delete(ta);
 }
 
 // The height a reviewer set by hand, or null when the box is still auto-sized. A drag that has not
@@ -6789,6 +6813,7 @@ function closeComposerElement(el) {
   if (lastFocusedComposer === el) lastFocusedComposer = null;
   if (typeof el._cleanup === "function") el._cleanup();
   cmhForgetClampedSurface(el);
+  cmhForgetAutogrow(el.querySelector("textarea"));
   const opener = el._opener;
   el.remove();
   // Return focus to whatever opened the composer (e.g. a keyboard-focused diff
@@ -8420,7 +8445,7 @@ function closeCommentPopover() {
   _popoverArmed = false;
   _releasePopoverFormatBar();
   if (_popoverResizeObs) { try { _popoverResizeObs.disconnect(); } catch (e) {} _popoverResizeObs = null; }
-  cmhForgetClampedSurface(commentPopover);
+  cmhForgetAutogrow(commentPopover.querySelector("textarea"));
   commentPopover.remove();
   commentPopover = null;
   _popoverAnchorMark = null;
@@ -8557,7 +8582,10 @@ function _renderCommentPopoverEdit(c) {
   _releasePopoverFormatBar();
   _popoverFormatOff = wireNoteFormatBar(formatBar, ta);
   ta.value = c.note == null ? "" : c.note;
-  cmhAutogrow(ta, function () { cmhClampIntoViewport(el); });
+  // The dialog already owns its placement (it caps itself to the viewport and re-clamps against a
+  // tracked left/top), so growth is routed through that refit rather than moved from here - writing
+  // the measured rect directly would leave those tracked coordinates stale.
+  cmhAutogrow(ta, function () { _refitCommentPopover(); });
   function doSave() {
     const val = ta.value.trim();
     if (!val) {

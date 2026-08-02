@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { openInline, addTextComment, openComposerFor, storedComments, setStoredComments, ready } from "./helpers.js";
+import { openInline, addTextComment, openComposerFor, storedComments, setStoredComments, openSearch, ready } from "./helpers.js";
 
 // Issue #851: the authoring textareas (the floating composer, the side-pane inline reply/edit
 // editor, and the in-document popover editor) grow to fit what the reviewer writes instead of
@@ -113,6 +113,28 @@ test.describe("authoring inputs: autogrow and readable size", () => {
     // Measuring a shrink collapses the box for an instant; the panel must not jump while it does.
     await ta.fill("one short line");
     expect(await list.evaluate((el) => el.scrollTop)).toBe(before);
+  });
+
+  test("an editor rebuilt while hidden still reaches content size once revealed (CMH-GROW-01)", async ({ page }) => {
+    await openInline(page);
+    await addTextComment(page, "#commentRoot p", "the initial point", 0);
+    const ta = await openReplyEditor(page);
+    await ta.fill(lines(10, "a long draft"));
+    const tall = await heightOf(ta);
+
+    // Filter the card out of the list, then re-render: the rebuilt editor cannot measure itself
+    // (a hidden box reports no height), so it must retry rather than latch that zero.
+    await openSearch(page);
+    await page.fill("#cmSearchInput", "zzz-no-such-comment");
+    await expect(page.locator(".cm-card").first()).toBeHidden();
+    await page.click("#btnSort");
+    await page.fill("#cmSearchInput", "");
+    await expect(page.locator(".cm-card").first()).toBeVisible();
+
+    const reopened = page.locator(".cm-card .cm-reply-compose textarea").last();
+    await expect(reopened).toHaveValue(/a long draft line 10/);
+    await expect.poll(async () => Math.round(await heightOf(reopened)), { timeout: 5000 })
+      .toBeGreaterThan(Math.round(tall) - 3);
   });
 
   test("an existing reply opens its editor already sized to the reply (CMH-GROW-01)", async ({ page }) => {

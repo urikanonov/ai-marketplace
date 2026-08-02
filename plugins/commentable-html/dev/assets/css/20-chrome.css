@@ -313,9 +313,6 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 
 .cm-comment-popover {
   position: fixed; z-index: 215; width: 320px; max-width: 92vw;
-  /* Same bound as the composer: the edit form autogrows, so the surface itself stays viewport-sized
-     and scrolls rather than growing past the screen with its Save button. */
-  box-sizing: border-box; max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); overflow-y: auto;
   background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 12px;
   box-shadow: var(--cp-shadow); padding: var(--cp-chrome-card-y);
   display: flex; flex-direction: column; gap: var(--cp-chrome-card-gap);

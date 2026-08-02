@@ -156,7 +156,7 @@ function closeCommentPopover() {
   _popoverArmed = false;
   _releasePopoverFormatBar();
   if (_popoverResizeObs) { try { _popoverResizeObs.disconnect(); } catch (e) {} _popoverResizeObs = null; }
-  cmhForgetClampedSurface(commentPopover);
+  cmhForgetAutogrow(commentPopover.querySelector("textarea"));
   commentPopover.remove();
   commentPopover = null;
   _popoverAnchorMark = null;
@@ -293,7 +293,10 @@ function _renderCommentPopoverEdit(c) {
   _releasePopoverFormatBar();
   _popoverFormatOff = wireNoteFormatBar(formatBar, ta);
   ta.value = c.note == null ? "" : c.note;
-  cmhAutogrow(ta, function () { cmhClampIntoViewport(el); });
+  // The dialog already owns its placement (it caps itself to the viewport and re-clamps against a
+  // tracked left/top), so growth is routed through that refit rather than moved from here - writing
+  // the measured rect directly would leave those tracked coordinates stale.
+  cmhAutogrow(ta, function () { _refitCommentPopover(); });
   function doSave() {
     const val = ta.value.trim();
     if (!val) {

@@ -104,5 +104,6 @@
   "90-section-review.spec.js": 25881,
   "91-upgrade-review.spec.js": 2571,
   "92-threads.spec.js": 27307,
+  "93-autogrow.spec.js": 27500,
   "93-chart-bare-canvas.spec.js": 8561
 }

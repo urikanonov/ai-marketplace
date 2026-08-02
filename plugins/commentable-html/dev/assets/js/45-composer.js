@@ -389,6 +389,7 @@ function closeComposerElement(el) {
   if (lastFocusedComposer === el) lastFocusedComposer = null;
   if (typeof el._cleanup === "function") el._cleanup();
   cmhForgetClampedSurface(el);
+  cmhForgetAutogrow(el.querySelector("textarea"));
   const opener = el._opener;
   el.remove();
   // Return focus to whatever opened the composer (e.g. a keyboard-focused diff
