@@ -278,6 +278,34 @@ test.describe("collaboration: author attribution and threads", () => {
     await expect(card.locator(".cm-reply")).toContainText("draft in progress");
   });
 
+  test("a re-render preserves the draft's SELECTION, so the formatting toolbar still wraps it (CMH-THREAD-09)", async ({ page }) => {
+    await openKitchenSink(page);
+    await setReviewerName(page, "Alice");
+    await addTextComment(page, "#commentRoot section p", "root for selection draft", 0);
+    await openSidebarPanel(page);
+    const card = page.locator(".cm-card[data-cid]").first();
+    await card.locator(".cm-reply-btn").click();
+    const ta = card.locator(".cm-reply-compose textarea");
+    await ta.fill("make bold now");
+    // Select the word "bold" (offsets 5..9), the state the reviewer is in just before clicking Bold.
+    // Select it BACKWARDS so the restore is pinned to carry the anchor direction too, not just the
+    // offsets (a re-anchored selection extends the wrong way on the next Shift+Arrow).
+    await ta.evaluate((el) => el.setSelectionRange(5, 9, "backward"));
+    // A re-render now (sorting, a note debounce, ...) must carry the SELECTION across, not just the
+    // text: restoring the text with a collapsed caret at the end silently turns the next Bold click
+    // into "****" appended after the note.
+    await page.click("#btnSort");
+    await expect(ta).toHaveValue("make bold now");
+    await expect.poll(async () => ta.evaluate((el) => [
+      el.selectionStart, el.selectionEnd, el.selectionDirection,
+    ].join(":"))).toBe("5:9:backward");
+    await card.locator('.cm-reply-compose .cm-format-bar button[data-fmt="bold"]').click();
+    await expect(ta).toHaveValue("make **bold** now");
+    // The rehydrated editor still saves normally.
+    await card.locator(".cm-reply-compose .cm-reply-save").click();
+    await expect(card.locator(".cm-reply")).toContainText("make bold now");
+  });
+
   test("editing a reply edits IN the sidebar, prefilled with that reply's own text (CMH-THREAD-07)", async ({ page }) => {
     await openKitchenSink(page);
     await setReviewerName(page, "Alice");
@@ -345,9 +373,26 @@ test.describe("collaboration: author attribution and threads", () => {
     await openSidebarPanel(page);
     const card = page.locator(".cm-card[data-cid]").first();
     await card.locator('.cm-entry-root [data-act="edit"]').click();
-    await card.locator(".cm-entry-root .cm-reply-compose textarea").fill("root draft in progress");
+    const ta = card.locator(".cm-entry-root .cm-reply-compose textarea");
+    await ta.fill("root draft in progress");
+    // The root/reply EDIT path re-opens through openInlineNoteEdit (a different branch, and one whose
+    // editor starts prefilled), so pin the selection restore there too.
+    await ta.evaluate((el) => el.setSelectionRange(5, 10));
     await page.click("#btnSort");
-    await expect(card.locator(".cm-entry-root .cm-reply-compose textarea")).toHaveValue("root draft in progress");
+    await expect(ta).toHaveValue("root draft in progress");
+    await expect.poll(async () => ta.evaluate((el) => [el.selectionStart, el.selectionEnd].join(":")))
+      .toBe("5:10");
+    // Re-clicking edit on an already-open editor only re-focuses it - that must not collapse or
+    // re-anchor the live selection either (the same "click Bold and get bare markers" failure,
+    // another trigger). Move the selection first, BACKWARDS, so this pins the re-focus path itself
+    // rather than the restore that just ran, and so the anchor direction is observable.
+    await ta.evaluate((el) => el.setSelectionRange(2, 8, "backward"));
+    await card.locator('.cm-entry-root [data-act="edit"]').click();
+    await expect.poll(async () => ta.evaluate((el) => [
+      document.activeElement === el, el.selectionStart, el.selectionEnd, el.selectionDirection,
+    ].join(":"))).toBe("true:2:8:backward");
+    await card.locator('.cm-entry-root .cm-format-bar button[data-fmt="bold"]').click();
+    await expect(ta).toHaveValue("ro**ot dra**ft in progress");
     await card.locator(".cm-entry-root .cm-reply-compose .cm-reply-save").click();
     await expect(card.locator(".cm-entry-root .note")).toContainText("root draft in progress");
   });

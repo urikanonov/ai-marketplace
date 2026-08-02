@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.292.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.293.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.293.0] - 2026-08-02</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A side-pane reply or edit draft that survives a sidebar re-render (sorting, a note-typing debounce, a checklist change) now keeps its SELECTION, not just its text. The panel&#x27;s inline editor carries the formatting toolbar, so a re-render that landed between selecting a word and clicking Bold used to collapse the caret to the end of the draft and append bare <code>****</code> instead of wrapping the word. The draft snapshot now records <code>selectionStart</code>/<code>selectionEnd</code> (and the selection direction) and the re-opened editor restores that range. Re-clicking the edit action on an editor that is already open now only re-focuses it, keeping the live selection and its anchor direction instead of collapsing to the end.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.292.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>Re-exporting an offline file whose inlined library carries no MIT notice now says what actually happened. The <code>data-cmh-offline-lib</code> marker predates the MIT notice comment, so an offline file produced by an exporter version in between carries the library WITHOUT a notice, and <code>Export Offline</code> correctly refuses to re-emit it (redistributing an MIT-licensed library without its notice is a licence violation). It reported that refusal as <code>Offline export is missing the vendored mermaid bundle.</code>, which is misleading - the bundle is right there in the file. The error now names the real cause (the inlined copy has no MIT license notice beside it) and the action that works (re-export from the source document that still carries the vendored payload). It claims that cause only when licensing was the SOLE blocker (a copy the content gates rejected keeps the generic message, since the licence is then not a proven cause) and only for the library that could not be re-emitted, and it asserts nothing it cannot verify - the gates authenticate no provenance, so it never claims who wrote the file. The notice is still never synthesised: with the payload consumed there is no licence text to emit, which is exactly why the copy is refused. Because an Offline export failure names a cause and an action, every one of those toasts is now announced assertively and stays on screen long enough to read instead of using the 3s confirmation toast.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.291.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -509,8 +518,6 @@
               <li><code>tools/authoring/new_document.py</code> no longer writes a document it could not self-validate. Its <code>_self_validate</code> returned <code>(None, None)</code> when the sibling <code>validate</code> module was unimportable; <code>main()</code> unpacked that into errors/warnings, <code>if errors:</code> was falsy, and the new document was written UNVALIDATED - so the one self-check the generator has disappeared exactly on the broken or partial install it exists for. It now fails CLOSED by default: nothing reaches <code>--out</code> or stdout and it exits non-zero naming the actual cause. The seam is hardened the same way <code>chart_block.py</code> was: a <code>validate</code> module resolved from outside this skill&#x27;s own tools dir is refused BEFORE its module body runs (compared canonically, so a junction or a differently-cased path does not false-alarm), and a crashing validator or an unexpected return shape (notably <code>(None, None)</code>, which would otherwise read as &quot;no errors, no warnings&quot;) counts as &quot;could not check&quot; rather than escaping as a traceback. A caller who knowingly accepts unchecked output passes the new <code>--allow-unvalidated-output</code>, which writes it with a warning; that flag never suppresses a real validation failure.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.285.0] - 2026-08-02</h3></div>
             <div class="group-label">Added</div>
@@ -544,20 +551,7 @@
               <li>The CONTENT and region markers are now counted and located in one shared view whose <code>&lt;script&gt;</code>/<code>&lt;style&gt;</code> bodies are blanked and whose comments survive (the markers ARE comments), so the marker check and the layer checks can never disagree about what a marker is: a marker quoted in script data neither forges a duplicate-marker error nor defines a boundary. That scan takes its raw-text boundaries from the same tokenizer the code-block checks use, so a <code>&lt;script</code> named inside a comment never opens a region that swallows a marker.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.278.0] - 2026-07-30</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Replying to a comment or editing a comment or reply in the side pane now offers the SAME rich-text editing as writing a new comment: the inline editor carries the formatting toolbar (bold, italic, underline, strikethrough, inline code, link, bullet list) above its textarea, and Ctrl/Cmd+B/I/U/K apply the matching markers to the selection. The notes always RENDERED rich, but the markers were undiscoverable exactly where most follow-up writing happens. The floating new-comment composer and the side pane now build the toolbar and the shortcuts from one shared source (<code>noteFormatBarHtml</code> / <code>wireNoteFormatBar</code> / <code>handleNoteFormatShortcut</code>), so the two surfaces cannot drift apart.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The side-pane inline reply/edit editor&#x27;s key handling now lives on the editor wrapper rather than its textarea, so Ctrl/Cmd+Enter, Esc, and the formatting shortcuts also work while focus is on one of the editor&#x27;s buttons. Previously Esc pressed there fell through to the document handler, which would discard an unrelated open composer&#x27;s draft while leaving the inline editor open.</li>
-              <li>The side-pane inline editor now clears the blank-note invalid state (<code>aria-invalid</code> and the red border) as soon as the reviewer types or formats, matching the floating composer; it used to stay marked invalid until the editor closed.</li>
-              <li>A formatting-toolbar click during an IME composition is ignored on both surfaces, so markers can no longer be spliced into provisional (for example CJK candidate) text. The same tracked composition state also guards each editor&#x27;s save and cancel keys, so Ctrl/Cmd+Enter and Esc stay inert mid-composition even on an engine that reports the keydown with <code>isComposing</code> already false.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">233 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">234 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
