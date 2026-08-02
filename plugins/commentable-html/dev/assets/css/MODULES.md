@@ -3,8 +3,11 @@
 The layer CSS ships as `NN-topic.css` partials in this directory. `build.py` assembles them by
 DIRECTORY SORT (numeric prefix) into one stylesheet; the sort order is the load-bearing cascade.
 Edit the owning partial - never recreate a `commentable-html.css` monolith (a test enforces its
-absence). `tests/test_module_coverage.py` checks every partial is listed here and every listed area
-is a real, test-backed area in `dev/SPEC.md`.
+absence). `tests/test_module_coverage.py` checks every partial is listed here exactly once, in this
+same directory-sort order, and that every listed area is a real, test-backed area in `dev/SPEC.md`.
+The sort is Python `sorted()` BYTE order, not numeric-then-intuition: `-` (0x2D) sorts before `.`
+(0x2E), so a future `60-images-dark.css` would sort BEFORE `60-images.css`. Keep the rows in the
+order the directory listing gives.
 
 | Module | SPEC areas | Purpose |
 | --- | --- | --- |

@@ -4,8 +4,11 @@ The runtime ships as `NN-topic.js` partials in this directory. `build.py` assemb
 DIRECTORY SORT (numeric prefix) into one artifact; the sort order is the single-IIFE statement
 order, so it is load-bearing. Edit the owning partial - never recreate a `commentable-html.js`
 monolith (a test enforces its absence). This map ties each module to the SPEC feature-id areas it
-implements; `tests/test_module_coverage.py` checks every partial is listed here and every listed
-area is a real, test-backed area in `dev/SPEC.md`.
+implements; `tests/test_module_coverage.py` checks every partial is listed here exactly once, in
+this same directory-sort order, and that every listed area is a real, test-backed area in
+`dev/SPEC.md`. The sort is Python `sorted()` BYTE order, not numeric-then-intuition: `-` (0x2D)
+sorts before `.` (0x2E), so a future `26-highlight-md.js` would sort BEFORE `26-highlight.js`. Keep
+the rows in the order the directory listing gives.
 
 Conventions for these partials (they share ONE closure scope after concatenation):
 - Cross-module functions are `function` declarations (hoisted), never `const fn = () =>` (a `const`
@@ -26,18 +29,18 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `03-selectors.js` | CMH-CHART, CMH-MMD, CMH-OFFLINE, CMH-PRINT | The one shared rich-content selector vocabulary (`CMH_MERMAID_SEL`, `CMH_CHART_DATA_SEL`, `CMH_CHART_CANVAS_SEL`, `CMH_RICH_CONTENT_SEL`) the chart renderer, the image layer, the Offline exporter, the print/measure cap in `83-print.js`, and the author-time payload detector all derive from. |
 | `05-persistence.js` | CMH-PERSIST, CMH-STORE, CMH-EXP | localStorage load/merge/save of the comments array; sync compression codec + quota-aware write helpers. |
 | `10-offsets.js` | CMH-CORE, CMH-TEXT | Text-offset anchoring helpers. |
-| `15-context.js` | CMH-CORE, CMH-COPY | Section + surrounding-text context capture. |
+| `15-context.js` | CMH-CORE, CMH-COPY, CMH-CTX | Section + surrounding-text context capture. |
 | `20-mermaid.js` | CMH-MMD, CMH-MMDLOAD, CMH-DECK, CMH-ANCHOR | Mermaid diagram commenting layer; deck diagram contain-fit sizing; hosts the shared `setActiveAdd()` single-affordance sentinel for all structural-anchor layers. |
 | `25-diff.js` | CMH-DIFF | Unified-diff / code-review rendering and anchoring. |
 | `26-highlight.js` | CMH-DIFF, CMH-HL, CMH-TOOL | In-page diff syntax highlighter (`cmhHighlightCode`), the dedicated Markdown tokenizer (`cmhHighlightMarkdown`), and the runtime fallback that highlights un-highlighted prose code blocks (`highlightCodeBlocks`). |
 | `30-images.js` | CMH-IMG, CMH-CHART | Image and chart-canvas comment layer. |
 | `31-links.js` | CMH-LINK | Author-facing link layer: render-time new-tab stamping + per-link commenting. |
-| `35-widgets.js` | CMH-WIDGET | Commentable widgets / SVG nodes; `widgetStateChanges` infra. |
+| `35-widgets.js` | CMH-WIDGET, CMH-STATE | Commentable widgets / SVG nodes; `widgetStateChanges` infra. |
 | `36-checklist.js` | CMH-CHECK | Layered checklist: four-state items, aggregation, minimal persistence, per-list state card, export bake. |
 | `37-notes.js` | CMH-NOTE | Editable notes fields: textarea upgrade, canonical delta persistence, per-note change card, single/multi-line toggle, export bake. |
 | `38-validation-banner.js` | CMH-STAMP | Unvalidated-document fallback banner: shown when a document carries a created stamp but no current validated stamp. |
 | `39-callout.js` | CMH-CALLOUT | Callout accessibility: role="note" + variant aria-label (suppressed when an authored leading strong label exists); pairs with the per-variant ::before glyph in 50-content.css. |
-| `40-doc-comments.js` | CMH-DOCCMT | Document-wide comments. |
+| `40-doc-comments.js` | CMH-DOCCMT | Document-wide comments: the `openDocumentComposer` / `openSlideComposer` composer factories and deck slide-meta capture (the menu entry that reaches them lives in `41-selection.js`). |
 | `41-selection.js` | CMH-SEL, CMH-CORE, CMH-RICH, CMH-A11Y, CMH-DECK, CMH-DOCCMT | Selection handling and the add-comment popup (desktop `mouseup` and the coarse-pointer `selectionchange` path); keeps the add-comment menu above open composers; owns the `#contextMenu` ARIA menu (roving focus, Escape focus restore) and the shared `__cmhRegisterEscapePopup` stack; routes the deck slide-scoped and document/deck-wide comment entries and honors the deck comments-off state. |
 | `43-identity.js` | CMH-AUTHOR | Reviewer identity: per-browser author name (localStorage, seedable via `data-cm-author`), the author pill, and the sidebar identity control (editable, future-comments only). |
 | `43-rich-text.js` | CMH-RICH | Rich-text note renderer (`renderRichNote` tokenizer) and the shared formatting toolbar/shortcut helpers (`applyNoteFormat`, `noteFormatBarHtml`, `wireNoteFormatBar`, `handleNoteFormatShortcut`). |
@@ -48,7 +51,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `52-hover-bubble.js` | CMH-CORE | Hover bubble to open a comment. |
 | `53-comment-popover.js` | CMH-CORE, CMH-RICH | Inline on-screen comment dialog opened from the hover bubble (renders the note rich; note + Edit button, whose in-place editor carries the shared formatting toolbar and shortcuts; an outside pointer click closes it and is swallowed, a keyboard-activated one is not). |
 | `54-sidebar-toggle.js` | CMH-SIDE, CMH-A11Y | Sidebar open/close. |
-| `55-toolbar-menu.js` | CMH-MENU, CMH-UI | Toolbar overflow menu. |
+| `55-toolbar-menu.js` | CMH-MENU-ICON, CMH-UI | Toolbar overflow menu; renders the menu header's brand icon and running-version text. |
 | `56-copy-clear.js` | CMH-COPY | Copy all + Clear all. |
 | `57-storage-manager.js` | CMH-STORE | Cross-document storage manager dialog: document registry, grouping, per-document delete, quota auto-open + retry. |
 | `60-export-markdown.js` | CMH-MD, CMH-CODE | Export to Markdown; per-code-block Copy button, language pill, and optional caption. |

@@ -25,6 +25,9 @@ ASSETS = _paths.ASSETS
 SPEC = os.path.join(DEV, "SPEC.md")
 
 _PART_RE = {"js": re.compile(r"^\d{2}-[a-z0-9-]+\.js$"), "css": re.compile(r"^\d{2}-[a-z0-9-]+\.css$")}
+# Rows are matched against BOTH extensions so a row parked in the wrong MODULES.md is reported by
+# the on-disk set comparison instead of being silently skipped.
+_ANY_PART_RE = re.compile(r"^\d{2}-[a-z0-9-]+\.(?:js|css)$")
 # The backticks are optional so a row that forgets them still reaches the guards below instead of
 # being silently skipped (a malformed duplicate would otherwise stay invisible).
 _ROW_RE = re.compile(r"^\|\s*`?([^`|]+?)`?\s*\|\s*([^|]+?)\s*\|")
@@ -50,7 +53,7 @@ def _modules_rows(ext):
         if not m:
             continue
         name, areas = m.group(1).strip(), m.group(2)
-        if not _PART_RE[ext].match(name):
+        if not _ANY_PART_RE.match(name):
             continue  # skip a code-span in prose that is not a partial filename
         rows.append((name, [a.strip() for a in areas.split(",") if a.strip()]))
     return rows
@@ -62,6 +65,8 @@ def _modules_map(ext):
 
 
 class ModuleCoverageTests(unittest.TestCase):
+    maxDiff = None  # the order assertion's payoff is seeing the full expected row order
+
     def _check_ext(self, ext):
         spec = _read(SPEC)
         on_disk = set(_dir_partials(ext))
@@ -74,7 +79,10 @@ class ModuleCoverageTests(unittest.TestCase):
         for partial, areas in documented.items():
             self.assertTrue(areas, "%s: %s lists no SPEC area" % (ext, partial))
             for area in areas:
-                rows = [ln for ln in spec.splitlines() if ln.startswith("| " + area + "-")]
+                # Anchor on the WHOLE feature id: a prefix match would let a module claim an area
+                # that does not exist (`CMH-MENU` silently matching the `CMH-MENU-ICON-NN` rows).
+                id_re = re.compile(r"^\| " + re.escape(area) + r"-\d+ \|")
+                rows = [ln for ln in spec.splitlines() if id_re.match(ln)]
                 self.assertTrue(
                     rows, "%s: %s maps to SPEC area %s which has no `| %s-NN |` row in SPEC.md"
                     % (ext, partial, area, area))
