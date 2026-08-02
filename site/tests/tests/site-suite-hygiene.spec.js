@@ -18,6 +18,30 @@ const DEMO_DOCUMENT_URL = /demo\//;
 const USES_HELPER = /\bdemoFrameReady\s*\(/;
 const HAS_BUDGET = /\btest\.(?:slow|setTimeout)\s*\(/;
 
+// A copy button's feedback is transient: the runtime sets the label, the state class, and the
+// live-region text when the clipboard call RESOLVES and reverts all three 1500ms (success) or
+// 2000ms (failure) later. A spec that reads that live races the revert twice over - a poll can
+// miss the window on a cold or loaded runner, and separate assertions spread across it so the
+// later ones read a reverted button (#859). The recorder captures every state from before the
+// click, so it must be installed BEFORE the click to see any of them.
+const COPY_BUTTON = /\.copy-btn/;
+const CLICK = /\.click\s*\(/;
+const COPY_FEEDBACK =
+  /["']copied["']|copy-failed|copy-status|copy manually|Copied to clipboard|clipboard\s*\.\s*readText/;
+const USES_RECORDER = /\brecordCopyFeedback\s*\(/;
+
+function assertsCopyFeedback(body) {
+  return COPY_BUTTON.test(body) && CLICK.test(body) && COPY_FEEDBACK.test(body);
+}
+
+// Installing the recorder after the click would miss the very transition it exists to capture, so
+// position is checked, not just presence.
+function recorderPrecedesClick(body) {
+  const recorder = body.search(USES_RECORDER);
+  const click = body.search(CLICK);
+  return recorder >= 0 && click >= 0 && recorder < click;
+}
+
 // Judged on the WHOLE test body rather than one line: holding the selector in a variable
 // (`const el = page.locator("#demo-iframe"); await el.contentFrame();`) splits the two halves
 // across lines, and a line-scoped check waves that straight through.
@@ -182,5 +206,78 @@ test("demo-document assertions wait for the load instead of racing it (SITE-DEMO
     "a test that loads a multi-megabyte demo document must declare test.slow(): the default 30s "
       + "test timeout is shorter than the explicit load wait plus the mount budget, so without it "
       + "the test expires mid-wait on a cold runner",
+  ).toEqual([]);
+});
+
+
+test("copy-button assertions read a recorded transition instead of racing the revert (SITE-COPY-04)", () => {
+  // Prove the detectors still fire on a reintroduced race before trusting a clean scan: this is
+  // exactly the shape both #859 flakes had - click, then sample the live button.
+  const racy = [
+    'test("racy", async ({ page }) => {',
+    '  await page.goto("/");',
+    '  const btn = page.locator("#install .copy-btn").first();',
+    "  await btn.click();",
+    '  await expect(btn).toHaveText("copied");',
+    "});",
+  ].join("\n");
+  const racyBlock = testBlocks(racy).find((block) => block.title === "racy");
+  expect(assertsCopyFeedback(racyBlock.body)).toBe(true);
+  expect(recorderPrecedesClick(racyBlock.body)).toBe(false);
+  expect(HAS_BUDGET.test(racyBlock.body)).toBe(false);
+
+  // A recorder installed AFTER the click has already missed the transition, so presence alone is
+  // not enough - and a click that asserts nothing about the feedback (the card-overlay test) is
+  // not this class of test and stays exempt.
+  const late = [
+    'test("late", async ({ page }) => {',
+    "  test.slow();",
+    '  const btn = page.locator("#install .copy-btn").first();',
+    "  await btn.click();",
+    "  const feedback = await recordCopyFeedback(btn);",
+    '  await feedback.waitForState((state) => state.copied, "copied");',
+    "});",
+  ].join("\n");
+  const lateBlock = testBlocks(late).find((block) => block.title === "late");
+  expect(assertsCopyFeedback(lateBlock.body)).toBe(true);
+  expect(recorderPrecedesClick(lateBlock.body)).toBe(false);
+
+  const unrelated = [
+    'test("unrelated", async ({ page }) => {',
+    '  await page.locator(".plugin-card .copy-btn").first().click();',
+    '  await expect(page).toHaveURL(/\\/$/);',
+    "});",
+  ].join("\n");
+  const unrelatedBlock = testBlocks(unrelated).find((block) => block.title === "unrelated");
+  expect(assertsCopyFeedback(unrelatedBlock.body)).toBe(false);
+
+  const dir = __dirname;
+  const files = fs.readdirSync(dir).filter((name) => name.endsWith(".spec.js") && name !== SELF);
+  expect(files.length).toBeGreaterThan(0);
+
+  const racyFeedback = [];
+  const unbudgeted = [];
+  for (const file of files) {
+    const source = fs.readFileSync(path.join(dir, file), "utf8");
+    for (const block of testBlocks(source)) {
+      const where = `${file} - ${block.title}`;
+      if (!assertsCopyFeedback(block.body)) continue;
+      if (!recorderPrecedesClick(block.body)) racyFeedback.push(where);
+      // A budget only exists inside a test, so the module-scope pseudo-block is exempt from it.
+      if (block.title === "<module scope>") continue;
+      if (!HAS_BUDGET.test(block.body)) unbudgeted.push(where);
+    }
+  }
+  expect(
+    racyFeedback,
+    "install recordCopyFeedback() from site-helpers.js BEFORE clicking a copy button and assert on "
+      + "the recorded states: the label, the state class, and the live-region text revert 1500-2000ms "
+      + "after the clipboard call resolves, so a live assertion races that revert and a second one "
+      + "reads an already-reverted button",
+  ).toEqual([]);
+  expect(
+    unbudgeted,
+    "a test that waits for copy-button feedback must declare test.slow(): the wait covers a "
+      + "clipboard round trip on a cold runner, which the default 30s test timeout does not budget for",
   ).toEqual([]);
 });

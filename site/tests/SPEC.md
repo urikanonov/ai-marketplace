@@ -213,6 +213,7 @@ suite (see `.github/workflows/pages.yml`).
 | SITE-COPY-01 | The install copy button copies the exact command to the clipboard and shows a `copied` confirmation. | `site/tests/tests/site-install.spec.js` - `install command copy button copies the command and shows feedback` |
 | SITE-COPY-02 | When both the async clipboard and `execCommand` fail, the copy button shows a platform-neutral manual-copy hint and a `copy-failed` state instead of claiming success. | `site/tests/tests/site-install.spec.js` - `copy failure gives a platform-neutral manual hint` |
 | SITE-COPY-03 | A rapid double click restores the copy button's original label after its feedback window. | `site/tests/tests/site-demo-accessibility.spec.js` - `copy button restores its original label after a rapid double click` |
+| SITE-COPY-04 | Suite invariant: an assertion on copy-button feedback never races its revert. The runtime sets the label, the state class, and the live-region text only when the clipboard call RESOLVES and reverts all three 1500ms (success) or 2000ms (failure) later, so a spec that clicks a copy button and asserts on that feedback installs the shared `recordCopyFeedback` recorder BEFORE the click and asserts on the recorded states, and declares `test.slow()`. The three guarded failures are distinct: a poll can miss the window outright when a cold clipboard round trip pushes the state past the 5s expect default; separate live assertions spend the window one after another so the later ones read an already-reverted button; and a fixed 4s budget is shorter than a loaded runner delays the revert timer by. A click that asserts nothing about the feedback (the card-overlay test) is exempt, and a recorder installed after the click is rejected because it would have missed the transition. | `site/tests/tests/site-suite-hygiene.spec.js` - `copy-button assertions read a recorded transition instead of racing the revert (SITE-COPY-04)` |
 
 ## Tutorial page
 
@@ -283,10 +284,10 @@ test in the same pull request whenever the site grows a new behavior (see AGENTS
 discipline").
 
 One residual timing gap is known and deliberately not automated. Several specs assert on state that
-a page produces after a timer or a user-gesture round trip (the copy buttons' "copied" label and its
-revert, for example) within a fixed assertion timeout. On a heavily loaded or cold runner those
-budgets can be missed even though the behavior is correct, which shows up as a rare full-suite flake
-rather than a regression; CI runs with `retries: 1` for exactly this. SITE-DEMO-14 closes the
-largest instance of the class (the multi-megabyte demo documents), and the remaining copy-button
-timing sensitivity is tracked as its own issue rather than papered over with a longer timeout here
-(issue 859).
+a page produces after a timer or a user-gesture round trip within a fixed assertion timeout. On a
+heavily loaded or cold runner those budgets can be missed even though the behavior is correct, which
+shows up as a rare full-suite flake rather than a regression; CI runs with `retries: 1` for exactly
+this. The two largest instances of the class are now closed structurally rather than papered over
+with a longer timeout: SITE-DEMO-14 for the multi-megabyte demo documents, and SITE-COPY-04 for the
+copy buttons' transient feedback (issue 859). What remains is the ordinary residue - an assertion on
+a short CSS transition or a focus move - which no shared helper currently covers.

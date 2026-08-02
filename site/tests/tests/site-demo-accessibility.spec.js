@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { contrastRatio, compositedContrast, demoFrameReady, installNetworkBlock } = require("./site-helpers");
+const { contrastRatio, compositedContrast, demoFrameReady, installNetworkBlock, recordCopyFeedback } = require("./site-helpers");
 
 installNetworkBlock(test);
 
@@ -208,18 +208,20 @@ test("the Why section frames HTML as the de-facto standard for AI planning and r
 
 
 test("copy button restores its original label after a rapid double click", async ({ page, context }) => {
+  test.slow();
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const btn = page.locator("#install .copy-btn").first();
   const label = (await btn.textContent()).trim();
+  // Record the labels from before the first click. The revert timer only starts once the clipboard
+  // write resolves, so a live assertion gives the write and the 1500ms revert one deadline; the
+  // recorded transition is asserted whole and survives a runner too loaded to sample it in time.
+  const feedback = await recordCopyFeedback(btn);
   await btn.click();
   await btn.click();
-  // Wait for the copied state FIRST. The restore timer only starts once the clipboard write
-  // resolves, so asserting the final label straight after the clicks puts the write and the
-  // 1500ms restore on one deadline - and under a loaded machine that budget is what runs out,
-  // which made this the suite's flakiest test rather than a real regression.
-  await expect(btn).toHaveText("copied");
-  await expect(btn).toHaveText(label, { timeout: 4000 });
+  await expect
+    .poll(() => feedback.labels(), { timeout: 20000 })
+    .toEqual([label, "copied", label]);
 });
 
 
