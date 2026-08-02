@@ -41,6 +41,94 @@ OFFLINE_CSP_REQUIRED = {
 
 CSS_NETWORK_URL_RE = re.compile(r"url\(\s*(['\"]?)(?:https?:)?//", re.IGNORECASE)
 
+# A DIRECT scripted top-level navigation to a network URL, in an inline script an offline file
+# still carries. The pattern text below is BYTE-IDENTICAL to the `_OFFLINE_NAV_TO_NETWORK_RE`
+# regex literal in assets/js/68-export-offline.js (including the JS-only `\/` escapes, which
+# Python also reads as a literal `/`), and tests/test_vendored_libs.py pins that equality plus a
+# behavioural corpus that runs through the real JS engine whenever node is present. The exporter's
+# strips drop such a script, and this gate must not then certify a hand-authored offline file that
+# keeps one. Top-level navigation is the one egress channel the offline CSP cannot close -
+# `navigate-to` was dropped from CSP Level 3 and `sandbox` is ignored in a meta-delivered policy -
+# so the check is where the guarantee is enforced at all.
+# Every metacharacter whose meaning DIFFERS between the two engines is spelled out rather than
+# shared: `\w` is ASCII-only in JS but Unicode-aware in Python, and JS whitespace includes U+FEFF
+# while Python's does not. Sharing them made the copies disagree on real inputs - a `location.href`
+# assignment separated from its URL by a U+FEFF is valid JS that the exporter stripped and this
+# gate then certified as offline-clean.
+# `re.ASCII` is REQUIRED, not cosmetic: Python's `re.IGNORECASE` otherwise case-folds several
+# non-ASCII letters onto ASCII ones (the dotless i, the long s, the Kelvin sign) that JS's `/i`
+# does not, so `locat<dotless-i>on.href = <url>` - source the exporter PRESERVES, because it is
+# not a real `location` - would be rejected here. That is the false-rejection direction of the
+# same drift the spelled-out classes close, and the parity test asserts the flag is set.
+OFFLINE_NAV_TO_NETWORK_RE = re.compile(
+    r"(?:(?:^|[^.A-Za-z0-9_$])(?:(?:window|self|top|parent|globalThis|document|frames)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r")?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r")*location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r")?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"(?:href[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"=(?!=)|(?:assign|replace)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"\()|(?:^|[^.A-Za-z0-9_$])(?:(?:window|self|top|parent|globalThis|document|frames)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r")?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r")+(?:location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"=(?!=)|open[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"\()|(?:^|[;})>\n\r\u2028\u2029])[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"=(?!=))[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"""["'`](?:https?:)?\/\/""",
+    re.IGNORECASE | re.ASCII)
+
+# The PREFIXED-only sinks (`window.location...`, `top.open(...)`): the prefix chain is mandatory
+# here, and the bare statement-position `location =` alternative is dropped. Used when the script
+# declares its own `location`, below.
+OFFLINE_NAV_PREFIXED_RE = re.compile(
+    r"(?:(?:^|[^.A-Za-z0-9_$])(?:(?:window|self|top|parent|globalThis|document|frames)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r")?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r")+location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r")?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"(?:href[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"=(?!=)|(?:assign|replace)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"\()|(?:^|[^.A-Za-z0-9_$])(?:(?:window|self|top|parent|globalThis|document|frames)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r")?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r")+(?:location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"=(?!=)|open[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"\())[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"""["'`](?:https?:)?\/\/""",
+    re.IGNORECASE | re.ASCII)
+
+# A LOCAL binding named `location` - a declaration keyword, a destructuring declaration naming it,
+# a function parameter, or a catch binding. Every quantifier is bounded, so it cannot backtrack.
+OFFLINE_LOCAL_LOCATION_RE = re.compile(
+    r"(?:^|[^.A-Za-z0-9_$])(?:(?:var|let|const|function|class)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+location(?![A-Za-z0-9_$])|(?:var|let|const)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"[{\[][^}\]]{0,400}location(?![A-Za-z0-9_$])|function[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"[A-Za-z0-9_$]{0,100}[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"\([^)]{0,400}location(?![A-Za-z0-9_$])|catch[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"\([ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"location(?![A-Za-z0-9_$]))",
+    re.IGNORECASE | re.ASCII)
+
+
+def offline_script_navigates_to_network(body):
+    """True when an inline script scripts a top-level navigation to a network URL literal.
+
+    Mirrors `_offlineScriptNavigatesToNetwork` in assets/js/68-export-offline.js. A script that
+    declares its OWN `location` is talking about that object, not the document's, so only the
+    PREFIXED sinks still count there - `const location = {}; location.href = <url>` navigates
+    nothing, and rejecting it would flag a document the exporter deliberately preserves.
+    """
+    src = body or ""
+    if not OFFLINE_NAV_TO_NETWORK_RE.search(src):
+        return False
+    if OFFLINE_LOCAL_LOCATION_RE.search(src):
+        return bool(OFFLINE_NAV_PREFIXED_RE.search(src))
+    return True
+
+
 META_REFRESH_NETWORK_RE = re.compile(r"(?:^|[;,\s])url\s*=\s*(['\"]?)(?:https?:)?//", re.IGNORECASE)
 
 NONPORTABLE_REGIONS = REGIONS

