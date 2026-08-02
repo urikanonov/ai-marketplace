@@ -447,6 +447,111 @@ test.describe("comment interactions", () => {
     expect(page.url()).toBe(url); // the outside click did NOT activate the probe link
   });
 
+  test("CMH-CORE-16: the dialog does not swallow the first click on a side-pane editor control", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "editor owns its clicks");
+    const cid = (await allCids(page))[0];
+    await page.locator(`.cm-card[data-cid="${cid}"] .cm-reply-btn`).click();
+    const editor = page.locator(`.cm-card[data-cid="${cid}"] .cm-reply-compose`);
+    const ta = editor.locator("textarea");
+    await ta.fill("pick me");
+    await ta.evaluate((el) => el.setSelectionRange(0, 4));
+
+    // Opening the dialog from the hover bubble leaves the side-pane editor up (unlike the panel
+    // note-edit path, which closes it), so the outside-click swallow must not eat the reviewer's
+    // first click on one of that editor's controls.
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await expect(pop).toBeVisible();
+    await expect(editor).toHaveCount(1);
+
+    await editor.locator('.cm-format-bar button[data-fmt="bold"]').click();
+    await expect(ta).toHaveValue("**pick** me");
+    await expect(pop).toBeHidden();
+
+    // Save is the same carve-out, and it is the one that has to survive the dialog being torn down
+    // mid-click: reopen the dialog and let the FIRST click on Save commit the reply.
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    await expect(pop).toBeVisible();
+    await editor.locator(".cm-reply-save").click();
+    await expect(pop).toBeHidden();
+    await expect.poll(async () => (await storedComments(page)).some((c) => c.parentId === cid)).toBe(true);
+  });
+
+  test("CMH-CORE-16: the dialog still swallows a click on document content that spoofs the editor class", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "spoof me");
+    const cid = (await allCids(page))[0];
+    // The annotated document is author content, so it can carry the layer's own class names. A
+    // class match alone must NOT buy a link in the document its way out of the swallow - only an
+    // editor the layer actually opened counts. The probe carries no text, so it cannot perturb the
+    // document's text-offset space.
+    await page.evaluate(() => {
+      const wrap = document.createElement("div");
+      wrap.className = "cm-reply-compose";
+      wrap.innerHTML = '<a id="cmh-spoof" href="#spoofed" style="display:block;width:60px;height:20px"></a>';
+      wrap.style.position = "fixed"; wrap.style.top = "4px"; wrap.style.left = "4px"; wrap.style.zIndex = "5";
+      document.getElementById("commentRoot").appendChild(wrap);
+    });
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover[data-cid]");
+    await expect(pop).toBeVisible();
+
+    const url = page.url();
+    await page.locator("#cmh-spoof").click();
+    await expect(pop).toBeHidden();
+    expect(page.url()).toBe(url);
+  });
+
+  test("CMH-CORE-16: the dialog still swallows a click on document content that spoofs the dialog class", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "dialog spoof me");
+    const cid = (await allCids(page))[0];
+    // Same trust boundary for the dialog's OWN class: an author element carrying it must not be
+    // mistaken for the live dialog, which would leave the real one open AND let the click act.
+    await page.evaluate(() => {
+      const wrap = document.createElement("div");
+      wrap.className = "cm-comment-popover";
+      wrap.innerHTML = '<a id="cmh-pspoof" href="#pspoofed" style="display:block;width:60px;height:20px"></a>';
+      wrap.style.position = "fixed"; wrap.style.top = "4px"; wrap.style.left = "4px"; wrap.style.zIndex = "5";
+      document.getElementById("commentRoot").appendChild(wrap);
+    });
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const real = page.locator(`.cm-comment-popover[data-cid="${cid}"]`);
+    await expect(real).toBeVisible();
+
+    const url = page.url();
+    await page.locator("#cmh-pspoof").click();
+    await expect(real).toHaveCount(0);
+    expect(page.url()).toBe(url);
+  });
+
+  test("CMH-CORE-16: the dialog does not swallow the first click on a floating composer control", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(1) p", "anchor note");
+    const cid = (await allCids(page))[0];
+    // A new-comment composer holds an unsaved draft and stays open when the dialog opens, so its
+    // controls are exposed to exactly the same swallow.
+    const composer = await openComposerFor(page, "#commentRoot section:nth-of-type(2) p");
+    const ta = composer.locator("textarea");
+    await ta.fill("pick me");
+    await ta.evaluate((el) => el.setSelectionRange(0, 4));
+
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await expect(pop).toBeVisible();
+    await expect(composer).toHaveCount(1);
+
+    await composer.locator('.cm-format-bar button[data-fmt="bold"]').click();
+    await expect(ta).toHaveValue("**pick** me");
+    await expect(pop).toBeHidden();
+  });
+
   test("CMH-CORE-16: a keyboard-activated outside click closes the dialog but is not swallowed", async ({ page }) => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "keyboard me");
