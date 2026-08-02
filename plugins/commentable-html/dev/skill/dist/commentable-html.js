@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.282.0";
+const CMH_VERSION = "1.284.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -7780,6 +7780,16 @@ let _popoverEditing = false;
 // needless trust boundary and an injection sink.
 let _popoverCid = null;
 let _popoverNoteId = null;
+// Removes the formatting toolbar's listeners; the toolbar itself dies with the editor markup, so
+// this only has to run when the editor is replaced or the dialog closes.
+let _popoverFormatOff = null;
+
+function _releasePopoverFormatBar() {
+  if (!_popoverFormatOff) return;
+  const off = _popoverFormatOff;
+  _popoverFormatOff = null;
+  try { off(); } catch (e) {}
+}
 
 function _positionCommentPopover(mark) {
   if (!commentPopover || !mark) return false;
@@ -7805,6 +7815,7 @@ function closeCommentPopover() {
   if (!commentPopover) return;
   if (_popoverDismiss) { document.removeEventListener("click", _popoverDismiss, true); _popoverDismiss = null; }
   if (_popoverKeydown) { document.removeEventListener("keydown", _popoverKeydown, true); _popoverKeydown = null; }
+  _releasePopoverFormatBar();
   commentPopover.remove();
   commentPopover = null;
   _popoverAnchorMark = null;
@@ -7849,6 +7860,7 @@ function _renderCommentPopoverView(c) {
   const el = commentPopover;
   if (!el) return;
   _popoverEditing = false;
+  _releasePopoverFormatBar();
   el.classList.remove("is-editing");
   const noteId = _popoverNoteId;
   el.innerHTML =
@@ -7929,7 +7941,14 @@ function _renderCommentPopoverEdit(c) {
     + '<button type="button" data-act="edit-cancel">Cancel</button>'
     + '<button type="button" class="primary" data-act="edit-save">Save</button>'
     + "</div>";
+  const wrap = el.querySelector(".cm-comment-popover-edit");
   const ta = el.querySelector("textarea");
+  // The dialog offers the same rich-text editing as the floating composer and the side pane
+  // (issue #776): the shared toolbar above the textarea plus the Ctrl/Cmd formatting shortcuts.
+  const formatBar = noteFormatBarElement();
+  wrap.insertBefore(formatBar, ta);
+  _releasePopoverFormatBar();
+  _popoverFormatOff = wireNoteFormatBar(formatBar, ta);
   ta.value = c.note == null ? "" : c.note;
   function doSave() {
     const val = ta.value.trim();
@@ -7966,10 +7985,20 @@ function _renderCommentPopoverEdit(c) {
     e.preventDefault(); e.stopPropagation();
     _cancelCommentPopoverEdit();
   });
-  ta.addEventListener("keydown", (e) => {
-    if (e.isComposing) return;
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doSave(); }
-  });
+  // Clear the blank-note invalid state as soon as the reviewer types or formats, matching the
+  // other editors (a toolbar action dispatches its own `input` event).
+  ta.addEventListener("input", () => { ta.removeAttribute("aria-invalid"); ta.classList.remove("cm-invalid"); });
+  // Bind on the CONTAINERS, not the textarea, so the shortcuts and Ctrl/Cmd+Enter also work from a
+  // focused toolbar, Cancel, or Save button (they would otherwise be dead keyboard ends). The
+  // dialog's Escape stays with the capture-phase document handler, which already scopes it to the
+  // dialog; the acts row is a sibling of the editor, so both get the handler.
+  const onEditorKeydown = (e) => {
+    if (e.isComposing || isNoteComposing(ta)) return;
+    if (handleNoteFormatShortcut(e, ta)) return;
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); doSave(); }
+  };
+  wrap.addEventListener("keydown", onEditorKeydown);
+  el.querySelector(".cm-comment-popover-acts").addEventListener("keydown", onEditorKeydown);
   _positionCommentPopover(_popoverAnchorMark);
   setTimeout(() => { try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {} }, 0);
 }
@@ -8018,9 +8047,12 @@ function openCommentPopover(id, mark) {
   _popoverKeydown = (e) => {
     if (e.key !== "Escape") return;
     // Mid-IME-composition Escape dismisses the candidate window; it must not cancel the edit
-    // (the sidebar and composer editors ignore composition for the same reason).
+    // (the sidebar and composer editors ignore composition for the same reason). The tracked
+    // composition state covers engines that report the keydown with `isComposing` already false.
     if (e.isComposing) return;
     if (_popoverEditing) {
+      const ta = commentPopover && commentPopover.querySelector("textarea");
+      if (isNoteComposing(ta)) return;
       // Escape belongs to the editor only while focus is inside it: another overlay's Escape (a
       // Help panel, a confirm dialog) must not silently discard the draft sitting behind it.
       if (!(e.target && e.target.closest && e.target.closest(".cm-comment-popover"))) return;
@@ -12101,7 +12133,7 @@ function showHelp(restoreEl) {
           '<li>The agent addresses the comments and marks them handled in this same file; handled comments are pruned on the next load and never reappear in the bundle.</li>' +
         '</ul>') +
       T('Formatting your comment',
-        '<p>Comment notes support lightweight rich text (WhatsApp / Office style). Type the markers, or select text and use the toolbar or a shortcut - in the composer AND in the side panel when you reply to or edit a comment:</p>' +
+        '<p>Comment notes support lightweight rich text (WhatsApp / Office style). Type the markers, or select text and use the toolbar or a shortcut - in the composer, in the side panel when you reply to or edit a comment, AND in the dialog you get by clicking a highlight:</p>' +
         '<ul>' +
           '<li><code>**bold**</code> or <kbd>Ctrl</kbd>+<kbd>B</kbd> for <strong>bold</strong>.</li>' +
           '<li><code>*italic*</code> or <kbd>Ctrl</kbd>+<kbd>I</kbd> for <em>italic</em>.</li>' +

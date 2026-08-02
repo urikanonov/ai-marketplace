@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.282.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.284.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.284.0] - 2026-08-02</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>The in-document comment dialog (the one you get by clicking a highlight) now offers the same rich-text editing as the floating composer and the side panel. Its Edit form carries the shared formatting toolbar (bold, italic, underline, strikethrough, inline code, link, bullet list) above the textarea, and Ctrl/Cmd+B/I/U/K apply the matching formatting - from the textarea and from a focused toolbar, Cancel, or Save button, since the keys are bound to the editor and action containers rather than the textarea. Ctrl/Cmd+Enter still saves and Escape still cancels back to the rendered note with the dialog left open; a blank save still marks the field invalid, and formatting (not just typing) now clears that state. Mid-IME-composition the toolbar, save, and cancel are all inert, so a candidate window can never splice markers into provisional text or discard the draft. The toolbar is tightened to fit the fixed-width dialog on one row, and keeps a &gt;=44px touch target on phones (wrapping rather than overflowing).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.282.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -504,6 +511,8 @@
               <li>The same shared boundary layer closes several smaller cross-version and tree-construction gaps: <code>&lt;plaintext&gt;</code> swallows the rest of the document exactly as a browser does (even past a <code>&lt;/plaintext&gt;</code> that looks like a closer), a tag name folds ASCII-case-insensitively only (so <code>&lt;/\u017fcript&gt;</code> does not end a <code>&lt;script&gt;</code>), the host&#x27;s RCDATA character-reference decoding is no longer inherited (3.13 decoded inside <code>&lt;title&gt;</code>/<code>&lt;textarea&gt;</code>, 3.12 did not), a self-closed foreign element such as <code>&lt;svg&gt;&lt;rect id=&quot;x&quot;/&gt;</code> is recorded as the element it is and never left open, a self-closed void tag such as <code>&lt;hr/&gt;</code> closes an open <code>&lt;p&gt;</code> in both parsers, the implicit <code>&lt;/p&gt;</code> / <code>&lt;/li&gt;</code> close respects HTML5 scope across an <code>&lt;svg&gt;&lt;foreignObject&gt;</code> (while an HTML element merely NAMED <code>&lt;desc&gt;</code> still stops nothing), and the marker scan blanks every raw-text body, so a region marker quoted in a <code>&lt;textarea&gt;</code> or the print <code>&lt;noscript&gt;</code> is not a boundary.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.280.0] - 2026-08-01</h3></div>
             <div class="group-label">Fixed</div>
@@ -512,8 +521,6 @@
               <li><code>measureCss()</code> no longer re-types the diagram vocabulary: it DERIVES its mermaid hosts from the shared <code>CMH_MERMAID_SEL</code> definition. The print stylesheet is plain CSS and cannot reference a constant, so it still spells the hosts out, but it is now PINNED two-directionally to that same definition - so neither PRINT surface can drift back to covering half the hosts.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.279.0] - 2026-07-30</h3></div>
             <div class="group-label">Fixed</div>
@@ -551,18 +558,7 @@
               <li>Re-running <code>Export Offline</code> on an already-offline document that contains a mermaid diagram (or a chart the built-in renderer does not draw) now produces a working download instead of an &quot;Offline export is missing the vendored mermaid bundle&quot; error toast. An Offline export consumes the vendored payload and removes it, so the file it produces carries the libraries inline and no payload at all; the exporter now reads those already-inlined copies and their MIT notices before the strip removes them and re-emits them, so a re-export reuses what is already local. Because re-emitting a captured script grants it execution and the document being exported is untrusted, the <code>data-cmh-offline-lib</code> marker alone is not taken as proof this exporter wrote it: a captured copy must sit in the head, carry exactly the attribute shape the exporter emits (which rules out <code>src</code>, any <code>type</code> - so inert data and a non-executing MIME-parameter type are never promoted to code - and <code>nomodule</code>, whose body never ran), pass the same network-import check the loader strip applies to every other surviving script, and carry no byte sequence that would open a script-data escape. An adjacent MIT notice naming the same library is required as a licensing condition, so the library and its notice always travel together. A document that has neither a payload nor a qualifying inlined copy still fails loudly.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.273.0] - 2026-07-29</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The live chart renderer, the comment layer, and the Offline export no longer disagree about what a chart is. A bare data-bearing canvas (<code>data-cmh-chart-points</code> or <code>data-cmh-chart-source</code> with no <code>cmh-chart</code> class and no <code>figure.chart</code> wrapper) drew nothing at load - only a window resize revived it - was not commentable, and was invisible to the Offline export, so a document that attached its own Chart.js to such a canvas exported without the library and showed an empty canvas. It now draws at load, is commentable like any other chart canvas, and the export recognises it, so the evidence-based Chart.js decision applies to it too: the library travels only when the document actually needs it.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The chart and diagram selectors are declared ONCE, in a new <code>assets/js/03-selectors.js</code> module, and the renderer, the image comment layer, the mermaid layer, the Offline exporter, and the author-time rich-libraries payload detector all derive from it, so the lists can no longer drift. The detector&#x27;s former deliberate superset (any <code>data-cmh-chart*</code> attribute) is now exact parity with the runtime.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">230 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">231 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

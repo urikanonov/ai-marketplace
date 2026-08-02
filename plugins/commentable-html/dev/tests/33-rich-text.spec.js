@@ -34,6 +34,29 @@ async function seedComments(page, comments) {
   await page.waitForFunction(() => window.__commentableHtmlReady === true);
 }
 
+// Comment a passage, then open its in-document dialog from the hover bubble and put it in edit mode.
+async function openPopoverEditor(page, note, viewport) {
+  await openInline(page);
+  await addTextComment(page, SEL, note);
+  if (viewport) {
+    await page.setViewportSize(viewport);
+    // On a phone the comments pane is a full-width sheet over the document, so close it before
+    // reaching for the highlight and its hover bubble.
+    if (await page.evaluate(() => document.body.classList.contains("sidebar-open"))) {
+      await page.locator("#btnCloseSidebar").click();
+      await expect(page.locator("body")).not.toHaveClass(/sidebar-open/);
+    }
+  }
+  const cid = (await storedComments(page))[0].id;
+  await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+  await page.locator("#hlBubble").click();
+  const pop = page.locator(".cm-comment-popover");
+  await expect(pop).toBeVisible();
+  await pop.locator('[data-act="edit"]').click();
+  await expect(pop.locator("textarea.cm-comment-popover-input")).toBeVisible();
+  return pop;
+}
+
 test.describe("rich-text comment notes (CMH-RICH)", () => {
   test("renders bold, italic, underline, strikethrough, and inline code from markers in the sidebar card (CMH-RICH-01)", async ({ page }) => {
     await openInline(page);
@@ -522,5 +545,154 @@ test.describe("rich-text comment notes (CMH-RICH)", () => {
     const stored = await storedComments(page);
     expect(stored.length).toBe(3);
     expect(stored.some((c) => c.note === "**saved** reply")).toBe(true);
+  });
+
+  test("the in-document popover editor offers the same formatting toolbar (CMH-RICH-18)", async ({ page }) => {
+    const pop = await openPopoverEditor(page, "root note");
+    const bar = pop.locator('.cm-format-bar[role="group"]');
+    await expect(bar).toHaveAttribute("aria-label", /formatting/i);
+    const fmts = await bar.locator("button[data-fmt]").evaluateAll((els) => els.map((e) => e.getAttribute("data-fmt")));
+    expect(fmts).toEqual(["bold", "italic", "underline", "strike", "code", "link", "list"]);
+    for (const fmt of fmts) {
+      const btn = bar.locator(`button[data-fmt="${fmt}"]`);
+      await expect(btn).toHaveAttribute("type", "button");
+      expect((await btn.getAttribute("aria-label"))?.trim()).toBeTruthy();
+    }
+
+    const ta = pop.locator("textarea.cm-comment-popover-input");
+    const wraps = { bold: "**hello** world", italic: "*hello* world", underline: "__hello__ world", strike: "~~hello~~ world", code: "`hello` world" };
+    for (const [fmt, expected] of Object.entries(wraps)) {
+      await ta.fill("hello world");
+      await ta.evaluate((el) => el.setSelectionRange(0, 5));
+      await bar.locator(`[data-fmt="${fmt}"]`).click();
+      await expect(ta).toHaveValue(expected);
+    }
+    await ta.fill("hello world");
+    await ta.evaluate((el) => el.setSelectionRange(0, 5));
+    await bar.locator('[data-fmt="link"]').click();
+    await expect(ta).toHaveValue("[hello](url) world");
+    await ta.fill("a\nb");
+    await ta.evaluate((el) => el.setSelectionRange(0, 3));
+    await bar.locator('[data-fmt="list"]').click();
+    await expect(ta).toHaveValue("- a\n- b");
+
+    // A toolbar click during an IME pre-edit is ignored, so markers are never spliced into
+    // provisional composition text; once the composition commits the button works again.
+    await ta.fill("hello world");
+    await ta.evaluate((el) => { el.setSelectionRange(0, 5); el.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })); });
+    await bar.locator('[data-fmt="bold"]').click();
+    await expect(ta).toHaveValue("hello world");
+    await ta.evaluate((el) => { el.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true })); el.setSelectionRange(0, 5); });
+    await bar.locator('[data-fmt="bold"]').click();
+    await expect(ta).toHaveValue("**hello** world");
+
+    // The toolbar fits the narrow dialog: one row, no button past its content box, no overflow.
+    const fit = await pop.evaluate((el) => {
+      const btns = Array.from(el.querySelectorAll(".cm-format-bar button[data-fmt]"));
+      const box = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      return {
+        overflow: el.scrollWidth - el.clientWidth,
+        tops: btns.map((b) => Math.round(b.getBoundingClientRect().top)),
+        maxRight: Math.max(...btns.map((b) => b.getBoundingClientRect().right)),
+        inner: box.right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth),
+      };
+    });
+    expect(fit.overflow).toBeLessThanOrEqual(1);
+    expect(new Set(fit.tops).size).toBe(1);
+    expect(fit.maxRight).toBeLessThanOrEqual(fit.inner + 0.5);
+  });
+
+  test("Ctrl/Cmd+B/I/U/K work in the popover editor; Ctrl+Enter saves and Escape still cancels (CMH-RICH-19)", async ({ page }) => {
+    const pop = await openPopoverEditor(page, "root note");
+    const ta = pop.locator("textarea.cm-comment-popover-input");
+    const shortcuts = { b: "**pick** me", i: "*pick* me", u: "__pick__ me" };
+    for (const [key, expected] of Object.entries(shortcuts)) {
+      await ta.fill("pick me");
+      await ta.evaluate((el) => el.setSelectionRange(0, 4));
+      await ta.press(`Control+${key}`);
+      await expect(ta).toHaveValue(expected);
+    }
+    await ta.fill("pick me");
+    await ta.evaluate((el) => el.setSelectionRange(0, 4));
+    await ta.press("Control+k");
+    await expect(ta).toHaveValue("[pick](url) me");
+    // Cmd (Meta) works too, so the macOS shortcut the Help panel advertises is real here as well.
+    await ta.fill("pick me");
+    await ta.evaluate((el) => el.setSelectionRange(0, 4));
+    await ta.press("Meta+b");
+    await expect(ta).toHaveValue("**pick** me");
+    // ... and from a focused toolbar button, so the seven new controls are not dead keyboard ends.
+    await ta.fill("pick me");
+    await ta.evaluate((el) => el.setSelectionRange(0, 4));
+    await pop.locator('[data-fmt="bold"]').focus();
+    await pop.locator('[data-fmt="bold"]').press("Control+i");
+    await expect(ta).toHaveValue("*pick* me");
+    // ... and from the Cancel/Save row, which is a sibling of the editor rather than inside it.
+    await ta.fill("pick me");
+    await ta.evaluate((el) => el.setSelectionRange(0, 4));
+    await pop.locator('[data-act="edit-cancel"]').focus();
+    await pop.locator('[data-act="edit-cancel"]').press("Control+b");
+    await expect(ta).toHaveValue("**pick** me");
+
+    // A blank save still marks the field invalid, and formatting (not just typing) clears it.
+    await ta.fill("   ");
+    await pop.locator('[data-act="edit-save"]').click();
+    await expect(ta).toHaveAttribute("aria-invalid", "true");
+    await expect(ta).toHaveClass(/cm-invalid/);
+    await pop.locator('[data-fmt="bold"]').click();
+    await expect(ta).not.toHaveAttribute("aria-invalid", "true");
+    await expect(ta).not.toHaveClass(/cm-invalid/);
+
+    // Mid-composition Ctrl+Enter and Escape are both inert, so a candidate window can never save
+    // or discard the draft.
+    await ta.fill("mid composition");
+    await ta.evaluate((el) => el.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })));
+    await ta.press("Control+Enter");
+    await expect(ta).toHaveValue("mid composition");
+    await ta.press("Escape");
+    await expect(ta).toHaveValue("mid composition");
+    await ta.evaluate((el) => el.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true })));
+
+    // Escape still cancels the edit back to the note view, leaving the dialog open (unchanged).
+    await ta.press("Escape");
+    await expect(pop.locator(".cm-comment-popover-note.cmh-rich")).toHaveText("root note");
+    await expect(pop).toBeVisible();
+    expect((await storedComments(page))[0].note).toBe("root note");
+
+    // Ctrl+Enter still saves, markers and all, and the dialog returns to the rendered note.
+    await pop.locator('[data-act="edit"]').click();
+    const ta2 = pop.locator("textarea.cm-comment-popover-input");
+    await ta2.fill("**saved** note");
+    await ta2.press("Control+Enter");
+    await expect(pop.locator(".cm-comment-popover-note.cmh-rich strong")).toHaveText("saved");
+    expect((await storedComments(page))[0].note).toBe("**saved** note");
+  });
+
+  test("the popover toolbar keeps >=44px touch targets on a phone (CMH-RICH-20)", async ({ page }) => {
+    const pop = await openPopoverEditor(page, "root note", { width: 390, height: 844 });
+    const buttons = pop.locator(".cm-format-bar button[data-fmt]");
+    await expect(buttons).toHaveCount(7);
+    const info = await pop.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      const box = el.getBoundingClientRect();
+      return {
+        overflow: el.scrollWidth - el.clientWidth,
+        left: box.left + parseFloat(cs.paddingLeft) + parseFloat(cs.borderLeftWidth),
+        right: box.right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth),
+        boxes: Array.from(el.querySelectorAll(".cm-format-bar button[data-fmt]")).map((b) => {
+          const r = b.getBoundingClientRect();
+          return { w: r.width, h: r.height, left: r.left, right: r.right };
+        }),
+      };
+    });
+    // The bar wraps rather than spilling out of the dialog, so no button is clipped off-screen.
+    expect(info.overflow).toBeLessThanOrEqual(1);
+    for (const b of info.boxes) {
+      expect(b.h).toBeGreaterThanOrEqual(44);
+      expect(b.w).toBeGreaterThanOrEqual(44);
+      expect(b.left).toBeGreaterThanOrEqual(info.left - 0.5);
+      expect(b.right).toBeLessThanOrEqual(info.right + 0.5);
+    }
   });
 });
