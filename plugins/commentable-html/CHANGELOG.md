@@ -4,6 +4,27 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.292.0] - 2026-08-02
+
+### Fixed
+
+- Re-exporting an offline file whose inlined library carries no MIT notice now says what actually
+  happened. The `data-cmh-offline-lib` marker predates the MIT notice comment, so an offline file
+  produced by an exporter version in between carries the library WITHOUT a notice, and
+  `Export Offline` correctly refuses to re-emit it (redistributing an MIT-licensed library without
+  its notice is a licence violation). It reported that refusal as
+  `Offline export is missing the vendored mermaid bundle.`, which is misleading - the bundle is
+  right there in the file. The error now names the real cause (the inlined copy has no MIT license
+  notice beside it) and the action that works (re-export from the source document that still carries
+  the vendored payload). It claims that cause only when licensing was the SOLE blocker
+  (a copy the content gates rejected keeps the generic message, since the licence is then not a
+  proven cause) and only for the library that could not be re-emitted, and it asserts nothing it
+  cannot verify - the gates authenticate no provenance, so it never claims who wrote the file. The
+  notice is still never synthesised: with the payload consumed there is no licence text to emit,
+  which is exactly why the copy is refused. Because an Offline export failure names a cause and an
+  action, every one of those toasts is now announced assertively and stays on screen long enough to
+  read instead of using the 3s confirmation toast.
+
 ## [1.291.0] - 2026-08-02
 
 ### Fixed
