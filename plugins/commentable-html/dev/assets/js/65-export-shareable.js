@@ -98,45 +98,87 @@ function _cmhEncodeAttribute(value, quote) {
   });
   return '"' + encoded + '"';
 }
-function _cmhProvenanceRootTag(html) {
-  let body = null;
-  for (let pos = 0; pos < html.length;) {
-    const start = html.indexOf("<", pos);
+// Walk an HTML string's open tags in document order, skipping the BODIES of raw-text
+// elements (script, style, textarea, title, template) exactly as an HTML parser does, so
+// markup that only LOOKS like a tag because it sits inside a script (the layer's own source
+// spells the embedded-comments block) is never seen as one. `visit` gets each open tag and
+// returns a truthy value to stop the walk and hand that value back.
+function _cmhForEachTag(html, visit) {
+  const raw = String(html == null ? "" : html);
+  const lower = raw.toLowerCase();
+  for (let pos = 0; pos < raw.length;) {
+    const start = raw.indexOf("<", pos);
     if (start < 0) break;
-    if (html.slice(start, start + 4) === "<!--") {
-      const commentEnd = html.indexOf("-->", start + 4);
-      pos = commentEnd < 0 ? html.length : commentEnd + 3;
+    if (raw.slice(start, start + 4) === "<!--") {
+      const commentEnd = raw.indexOf("-->", start + 4);
+      pos = commentEnd < 0 ? raw.length : commentEnd + 3;
       continue;
     }
-    if (!/[A-Za-z]/.test(html[start + 1] || "")) {
+    if (!/[A-Za-z]/.test(raw[start + 1] || "")) {
       pos = start + 1;
       continue;
     }
-    const end = _cmhTagEnd(html, start);
+    const end = _cmhTagEnd(raw, start);
     if (end < 0) break;
-    const tag = html.slice(start, end + 1);
+    const tag = raw.slice(start, end + 1);
     const nameMatch = tag.match(/^<([A-Za-z][\w:-]*)/);
     const name = nameMatch ? nameMatch[1].toLowerCase() : "";
-    const attrs = _cmhTagAttributes(tag);
-    const range = { start, end: end + 1, tag, attrs };
-    const idAttr = attrs.find(function (attr) { return attr.name === "id"; });
-    const firstId = idAttr && idAttr.valueStart != null
-      ? _cmhDecodeAttribute(tag.slice(idAttr.valueStart, idAttr.valueEnd)) : null;
-    if (firstId === "commentRoot") {
-      return range;
-    }
-    if (name === "body" && body === null) body = range;
+    let closeEnd = -1;
+    let next = end + 1;
+    let unterminated = false;
     if (/^(?:script|style|textarea|title|template)$/.test(name)) {
-      const close = html.toLowerCase().indexOf("</" + name, end + 1);
-      if (close < 0) break;
-      const closeEnd = _cmhTagEnd(html, close);
-      pos = closeEnd < 0 ? html.length : closeEnd + 1;
-    } else {
-      pos = end + 1;
+      const close = lower.indexOf("</" + name, end + 1);
+      const tagClose = close < 0 ? -1 : _cmhTagEnd(raw, close);
+      if (tagClose < 0) {
+        // Truncated raw-text element: report no close, so a caller that needs the whole
+        // element (the embedded-comments splice) fails loudly instead of eating the rest.
+        unterminated = true;
+      } else {
+        closeEnd = tagClose + 1;
+        next = closeEnd;
+      }
     }
+    const found = visit({ name, tag, start, tagEnd: end + 1, closeEnd });
+    if (found) return found;
+    if (unterminated) break;
+    pos = next;
   }
-  return body;
+  return null;
 }
+function _cmhTagId(tag) {
+  const attrs = _cmhTagAttributes(tag);
+  const idAttr = attrs.find(function (attr) { return attr.name === "id"; });
+  const value = idAttr && idAttr.valueStart != null
+    ? _cmhDecodeAttribute(tag.slice(idAttr.valueStart, idAttr.valueEnd)) : null;
+  return { attrs, id: value };
+}
+function _cmhProvenanceRootTag(html) {
+  let body = null;
+  const found = _cmhForEachTag(html, function (el) {
+    const parsed = _cmhTagId(el.tag);
+    const range = { start: el.start, end: el.tagEnd, tag: el.tag, attrs: parsed.attrs };
+    if (parsed.id === "commentRoot") return range;
+    if (el.name === "body" && body === null) body = range;
+    return null;
+  });
+  return found || body;
+}
+// Resolve the embedded-comments block as INFRASTRUCTURE: the first <script> whose PARSED id
+// attribute is embeddedComments, located by the tag walk above (which never looks inside a
+// raw-text body) and returned as {start, end} offsets over the ORIGINAL string. A raw text
+// scan cannot answer this question honestly, because the layer's own source - part of every
+// document - contains the very markup being looked for: the missing-region guard could never
+// fire, and a document that had genuinely lost the block had its own runtime source
+// overwritten with the comments JSON instead of failing loudly.
+function _cmhEmbeddedCommentsRange(html) {
+  return _cmhForEachTag(html, function (el) {
+    if (el.name !== "script" || el.closeEnd < 0) return null;
+    if (_cmhTagId(el.tag).id !== "embeddedComments") return null;
+    return { start: el.start, end: el.closeEnd };
+  });
+}
+// Exposed for deterministic tests (locating the block is pure and worth unit-testing).
+window.__cmhFindEmbeddedComments = function (h) { return _cmhEmbeddedCommentsRange(h); };
 function _normalizeDocSourceInHtml(html) {
   const raw = String(html == null ? "" : html);
   const rootTag = _cmhProvenanceRootTag(raw);
@@ -168,7 +210,7 @@ async function _getBaseHtml() {
     const r = await fetch(location.href, { cache: "no-store" });
     if (r.ok) {
       const t = await r.text();
-      if (t && t.includes('id="embeddedComments"')) {
+      if (t && _cmhEmbeddedCommentsRange(t)) {
         return _normalizeDocSourceInHtml(_stripTransientBodyClasses(t));
       }
     }
@@ -262,21 +304,21 @@ function _buildSavedHtml(baseHtml, commentArr) {
   const repl = '<script type="application\/json" id="embeddedComments">\n'
              + json
              + '\n<\/script>';
-  // Match the embedded-comments script by a real, whitespace-delimited id attribute,
-  // regardless of the remaining attribute order or spacing: a document authored or re-saved
-  // as `<script id="embeddedComments" type="...">` must still be found. Requiring whitespace
-  // before `id` (not a bare word boundary) means a decoy `data-id="embeddedComments"` or
-  // `aria-id="embeddedComments"` on another script is never mistaken for the real block. The
-  // body is non-greedy to the first closing tag; comment JSON escapes every "<" as \u003c,
-  // so no closing script tag can appear inside it.
-  const rx = /<script\b[^>]*?\sid\s*=\s*(["'])embeddedComments\1[^>]*>[\s\S]*?<\/script>/i;
-  if (!rx.test(baseHtml)) {
+  // Locate the embedded-comments script STRUCTURALLY (see _cmhEmbeddedCommentsRange): a real,
+  // parsed id attribute on a script that is not itself inside another script's body,
+  // regardless of attribute order or spacing, so a document authored or re-saved as
+  // `<script id="embeddedComments" type="...">` is still found while a decoy
+  // `data-id="embeddedComments"` on another script never is. A document that genuinely lost
+  // the region resolves to nothing and fails here instead of exporting a corrupted copy.
+  const range = _cmhEmbeddedCommentsRange(baseHtml);
+  if (!range) {
     throw new Error('Could not find <scr' + 'ipt id="embeddedComments"> in the source HTML. Make sure the EMBEDDED COMMENTS region is present.');
   }
-  // Use a REPLACER FUNCTION, not a string: `repl` is built from user comment text, and a
+  // Splice by OFFSETS, never String.replace: `repl` is built from user comment text, and a
   // string replacement would expand `$&`, `$1`, `$\``, `$'`, and `$$` (a note containing e.g.
   // `$&` or a shell `$'` would corrupt the embedded-comments JSON and break reload).
-  return baseHtml.replace(rx, () => repl);
+  const src = String(baseHtml);
+  return src.slice(0, range.start) + repl + src.slice(range.end);
 }
 function _suggestedFilename() {
   const path = location.pathname;

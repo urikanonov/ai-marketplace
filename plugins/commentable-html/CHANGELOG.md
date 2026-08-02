@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.375.0] - 2026-08-02
+
+### Fixed
+
+- Export as Shareable (and every path built on it - Save, Standalone, Offline) now locates the
+  embedded-comments block structurally instead of scanning the document text. The layer's own
+  source is part of every document and necessarily spells `<script id="embeddedComments">`, so
+  the text scan was answered by the runtime itself: the "make sure the EMBEDDED COMMENTS region
+  is present" error could never fire, and a document that had genuinely lost that region
+  exported a copy whose runtime source had been overwritten mid-function with the comments JSON.
+  Such a document now fails loudly and downloads nothing, and a re-fetched on-disk copy is
+  accepted as the export base only when a real block resolves in it.
+
 ## [1.371.0] - 2026-08-03
 
 ### Fixed
