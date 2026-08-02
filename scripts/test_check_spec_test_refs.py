@@ -142,14 +142,55 @@ class ReadCachingTests(unittest.TestCase):
         self.assertTrue(counts, "clear_caches did not force any file to be re-read")
 
 
-class RealRepoResultsAreUnchangedTests(unittest.TestCase):
-    """Caching must not change the verdict on the real tree - the whole point is same-in, same-out."""
+class ScopeResetTests(unittest.TestCase):
+    """Repeat runs agree, and each starts from a cold scope.
 
-    def test_repo_check_is_clean_and_repeatable(self):
-        first = refs.check_all()
-        second = refs.check_all()  # a second, independently-scoped run
-        self.assertEqual(first, [], "the repository's spec references should be clean")
+    Deliberately uses the sandbox rather than the real tree: `check_all()` on the repo is the very
+    cost this change exists to cut, and `test_real_specs_have_current_test_references` already
+    asserts the real specs are clean. Re-running it here would just re-pay that cost twice on every
+    push for a duplicate assertion.
+    """
+
+    def setUp(self):
+        self.sandbox = Path(tempfile.mkdtemp(prefix="spec-refs-scope-"))
+        self.addCleanup(shutil.rmtree, self.sandbox, ignore_errors=True)
+        self.base = self.sandbox / "base"
+        (self.base / "tests").mkdir(parents=True)
+        (self.base / "tests" / "test_demo.py").write_text(
+            "import unittest\n\nclass DemoTests(unittest.TestCase):\n"
+            "    def test_case_01(self):\n        pass\n",
+            encoding="utf-8", newline="\n",
+        )
+        self.spec = self.sandbox / "SPEC.md"
+        self.spec.write_text(
+            "# Spec\n\n| Feature id | Behavior | Covering tests |\n| --- | --- | --- |\n"
+            "| DEMO-01 | B. | `tests/test_demo.py` - `DemoTests.test_case_01` |\n",
+            encoding="utf-8", newline="\n",
+        )
+
+    def test_repeated_runs_agree(self):
+        first = refs.check_spec(self.spec, self.base)
+        second = refs.check_spec(self.spec, self.base)
+        self.assertEqual(first, [])
         self.assertEqual(first, second, "a repeated run disagreed with the first")
+
+    def test_every_cache_is_empty_after_a_top_level_check(self):
+        refs.check_spec(self.spec, self.base)
+        sizes = {
+            "_read": refs._read_fingerprinted.cache_info().currsize,
+            "_python_ast": refs._python_ast_fingerprinted.cache_info().currsize,
+            "_python_symbols": refs._python_symbols_fingerprinted.cache_info().currsize,
+            "_js_test_titles": refs._js_test_titles.cache_info().currsize,
+        }
+        self.assertEqual({k: v for k, v in sizes.items() if v}, {},
+                         "caches outlived the scope, so a later run could be served stale entries")
+
+    def test_the_scope_depth_unwinds_even_when_a_check_raises(self):
+        # A stranded depth counter would pin the caches warm for the rest of the process and
+        # silently reinstate the stale-hit false pass this scoping exists to prevent.
+        with self.assertRaises(OSError):
+            refs.check_spec(self.sandbox / "does-not-exist.md", self.base)
+        self.assertEqual(refs._cache_depth, 0, "cache scope depth leaked after an exception")
 
 
 class SpecTestReferenceTests(unittest.TestCase):

@@ -136,6 +136,12 @@ def cache_scope():
     whole speedup (the win is re-use WITHIN one pass, where a file is referenced by many rows) and
     leaves nothing cached afterwards to go stale. Nested scopes share one window, so check_all
     still re-uses reads across its specs.
+
+    SINGLE-THREADED BY CONTRACT: `_cache_depth` is a plain counter, so two threads entering these
+    entry points concurrently could strand it above zero, which would pin the caches warm for the
+    rest of the process and reinstate exactly the stale-hit false pass described above. Every
+    caller today is sequential (the CLI, the pre-push hook, the validate job, and the unittest
+    suite); add a lock here before that changes.
     """
     global _cache_depth
     if _cache_depth == 0:
@@ -213,12 +219,13 @@ def _python_has_name(path: Path, name: str) -> bool:
 def _file_has_name(path: Path, name: str) -> bool:
     text = _read(path)
     if _FEATURE_ID_RE.fullmatch(name.strip()):
-        haystack = "\n".join(_js_test_titles(text)) if path.suffix in {".js", ".mjs"} else text
+        haystack = ("\n".join(_js_test_titles(text, _JS_TITLE_RE))
+                    if path.suffix in {".js", ".mjs"} else text)
         return name in set(_FEATURE_ID_RE.findall(haystack))
     if path.suffix == ".py":
         return _python_has_name(path, name)
     if path.suffix in {".js", ".mjs"}:
-        return name in _js_test_titles(text)
+        return name in _js_test_titles(text, _JS_TITLE_RE)
     return False
 
 
@@ -277,13 +284,17 @@ def _clause_cites_exact_test_name(segment: str, test_path: Path) -> bool:
 
 
 @functools.lru_cache(maxsize=None)
-def _js_test_titles(text: str, pattern: re.Pattern = _JS_TITLE_RE) -> frozenset[str]:
+def _js_test_titles(text: str, pattern: re.Pattern) -> frozenset[str]:
     """Test titles declared in a JS/MJS source.
 
     Cached on the source text (which `_read` returns as one shared, hash-cached string per file),
     because this hand-rolled scanner walks the file character by character and used to run once per
     spec row that referenced the file. Returns a frozenset so a cached result cannot be mutated by
     a caller; `in`, `sorted()`, and `join()` all behave as before.
+
+    `pattern` is REQUIRED rather than defaulted: lru_cache keys on the arguments as PASSED, so a
+    defaulted call and an explicit one that resolve to the same pattern would occupy two entries
+    and scan the same file twice.
     """
     titles: set[str] = set()
     i = 0
@@ -530,7 +541,7 @@ def check_test_id_mappings(
             if test_path.resolve().is_relative_to(base_dir.resolve())
             else test_path.resolve().relative_to(REPO_ROOT).as_posix()
         )
-        for title in sorted(_js_test_titles(text)):
+        for title in sorted(_js_test_titles(text, _JS_TITLE_RE)):
             line_no = text[:text.find(title)].count("\n") + 1
             for feature_id in _FEATURE_ID_RE.findall(title):
                 matching_rows = rows.get(feature_id)
