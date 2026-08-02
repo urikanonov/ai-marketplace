@@ -4,6 +4,52 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.317.0] - 2026-08-02
+
+### Added
+
+- An authored inline `<svg>` figure is now commentable media, exactly like an `<img>` or a chart
+  canvas. Hovering it (or focusing it and pressing Enter) reveals the pinned **Add Comment**
+  button, the saved comment rings the graphic and lists an `image N` card, and it survives reload,
+  **Copy all**, **Export as Portable**, and delete like any image comment. The quote and alt come
+  from the svg's `aria-labelledby`, `aria-label` or a direct-child `<title>`, and an svg that is
+  chart media pins `chart N` like a chart canvas. Previously an inline SVG - the shape the skill
+  itself emits when asked for an inline SVG image - had no comment affordance at all, so a figure
+  was silently uncommentable while every other block was commentable.
+- SVG that the runtime or another layer owns stays inert, so no chrome grows an affordance:
+  anything under `.cm-skip`, anything under an `aria-hidden="true"` element, a graphic marked
+  `role="presentation"`/`role="none"`, an icon beside text in a link or inside a
+  button/summary/label/`[role=button]`-style control (a link that wraps ONLY the figure keeps it
+  commentable, matching a linked `<img>`), a rendered mermaid or diff surface, a definitions-only
+  sprite sheet (`<defs>`/`<symbol>`, zero width/height, `hidden` or `display:none`), an svg whose
+  labelled parts the widget layer already owns, and an inner `<svg>` nested inside another one.
+- A commentable svg with no author name is given `role="img"` and an affordance `aria-label` so it
+  is never a nameless focus stop; that synthesized label is marked `data-cm-img-auto-label` and
+  never becomes the comment's anchor metadata (only the exact synthesized string is discounted, so
+  a forged marker cannot hide a real name).
+- `examples/report-metrics.html` ships the behavior live: a plain inline SVG "capacity headroom"
+  figure now sits beside the labeled-parts diagram, so the two SVG review models can be compared
+  in one place.
+
+### Changed
+
+- Inline SVG figures now take part in the media index, so `imageIndex` numbering shifts in a
+  document that contains one. Comments recover through their stored metadata, but an UNLABELED
+  image or chart canvas has none to recover by, so label every commentable graphic (`aria-label`,
+  `aria-labelledby` or a direct-child `<title>`) - an unlabeled one may need re-anchoring after
+  the runtime is upgraded in place under an existing comment key.
+
+### Fixed
+
+- An image comment can no longer be re-anchored to an ambiguous or wrong target. A STORED but
+  empty `imageSrc` now counts as metadata rather than "no opinion" (an inline svg never has a
+  src, so the empty slot is what distinguishes it from an `<img>`), and the metadata fallback in
+  `resolveImageEl()` accepts a match only when exactly ONE candidate matches - mirroring the
+  source-only fallback's existing uniqueness guard - instead of taking the first.
+- Media metadata is made inert where it is WRITTEN: an alt/label is now stripped of bidi controls
+  and every line separator (including U+0085) before it is stored, so no consumer can reintroduce
+  a bundle-line or direction-override injection by forgetting to re-sanitize it.
+
 ## [1.316.0] - 2026-08-02
 
 ### Changed

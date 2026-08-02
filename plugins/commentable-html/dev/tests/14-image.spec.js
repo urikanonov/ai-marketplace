@@ -2,7 +2,7 @@
 // by (imageIndex) + src, mirroring the mermaid-node layer.
 import { test, expect } from "@playwright/test";
 import { openInline, ready, copiedBundle, fileUrl, INLINE, installClipboardCapture, DEV,
-  clickSidebarExport } from "./helpers.js";
+  clickSidebarExport, stageContent, denyExternalNetwork, storedComments, EXAMPLES } from "./helpers.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -366,5 +366,432 @@ test.describe("image comments", () => {
     await expect(page.locator(".cm-card")).toHaveCount(1); // card rendered
     expect(await page.evaluate(() => window.__xss)).toBeUndefined(); // onerror never fired
     await expect(page.locator("#commentList img")).toHaveCount(0); // no injected element
+  });
+});
+
+// CMH-IMG-08: an authored inline <svg> figure is commentable media exactly like an <img>, while
+// every SVG the runtime (or another layer) owns stays untouched.
+const SVG_FIGURE = "#commentRoot svg.cm-img-commentable";
+const SVG_LABEL = "Quarterly burndown sketch";
+
+function svgFigureContent() {
+  return `<h1>Inline SVG figures</h1>
+    <section aria-labelledby="svg-title">
+      <h2 id="svg-title">Figures</h2>
+      <figure>
+        <svg width="220" height="120" viewBox="0 0 220 120" role="img" aria-label="${SVG_LABEL}"
+             style="display:block;border:2px solid #456;">
+          <rect x="10" y="10" width="200" height="100" fill="#eef"></rect>
+          <path d="M10 110 L210 20" stroke="#345" stroke-width="4" fill="none"></path>
+          <svg x="150" y="70" width="40" height="40" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#b11f4b"></circle></svg>
+        </svg>
+        <figcaption>${SVG_LABEL}</figcaption>
+      </figure>
+      <p class="cm-skip"><svg data-case="cm-skip" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="#999"></rect></svg> chrome icon</p>
+      <p>Decorative <svg data-case="aria-hidden-self" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="#999"></rect></svg> bullet.</p>
+      <p>Wrapped <span aria-hidden="true"><svg data-case="aria-hidden-wrapper" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="#999"></rect></svg></span> icon.</p>
+      <p>Presentational <svg data-case="role-presentation" role="presentation" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="#999"></rect></svg> mark.</p>
+      <p>None-role <svg data-case="role-none" role="none" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="#999"></rect></svg> mark.</p>
+      <svg data-case="sprite-defs" width="0" height="0" aria-label="sprite sheet"><defs><symbol id="ico-star"><path d="M0 0 L8 8"></path></symbol></defs></svg>
+      <p>Hidden <svg data-case="display-none" style="display:none" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="#999"></rect></svg> shape.</p>
+      <p>Zero <svg data-case="zero-height" width="16" height="0" viewBox="0 0 16 16"><rect width="16" height="16" fill="#999"></rect></svg> shape.</p>
+      <figure class="chart"><span class="cm-skip"><svg data-case="chart-chrome" width="40" height="20" viewBox="0 0 40 20" aria-label="chart chrome"><rect width="40" height="20" fill="#999"></rect></svg></span><figcaption>Chart chrome</figcaption></figure>
+      <p><a href="#svg-title">Back to top <svg data-case="in-link" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="#999"></rect></svg></a></p>
+      <p><button type="button">Act <svg data-case="in-button" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="#999"></rect></svg></button></p>
+      <p><label>Pick <svg data-case="in-label" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="#999"></rect></svg></label></p>
+      <p><span role="button" tabindex="0">Go <svg data-case="in-role-button" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="#999"></rect></svg></span></p>
+      <details><summary>More <svg data-case="in-summary" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="#999"></rect></svg></summary><p>Detail body.</p></details>
+      <div data-cm-widget="flow">
+        <svg data-case="widget-parts" width="120" height="60" viewBox="0 0 120 60">
+          <g data-cm-part="node-a" data-cm-part-label="Node A"><rect x="4" y="4" width="60" height="40" fill="#cde"></rect></g>
+        </svg>
+      </div>
+    </section>`;
+}
+
+const SVG_SKIP_CASES = ["cm-skip", "aria-hidden-self", "aria-hidden-wrapper", "role-presentation",
+  "role-none", "sprite-defs", "display-none", "zero-height", "chart-chrome", "in-link", "in-button",
+  "in-label", "in-role-button", "in-summary", "widget-parts"];
+
+async function addSvgComment(page, note) {
+  return addMediaComment(page, SVG_FIGURE, note);
+}
+
+test.describe("inline svg figure comments (CMH-IMG-08)", () => {
+  test("an inline <svg> figure is commentable media and reveals the + button on hover (CMH-IMG-08)", async ({ page }) => {
+    const staged = stageContent(svgFigureContent(), { key: "cmh-svg-figure-hover" });
+    try {
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      // Only the authored figure is commentable: chrome, decorative (own and wrapper
+      // aria-hidden), presentational, sprite-sheet, link-icon, widget-owned and nested inner
+      // SVG nodes are all skipped.
+      await expect(page.locator(SVG_FIGURE)).toHaveCount(1);
+      await expect(page.locator(SVG_FIGURE)).toHaveAttribute("aria-label", SVG_LABEL);
+      await expect(page.locator(SVG_FIGURE)).toHaveAttribute("tabindex", "0");
+      // A REAL pointer, not a synthetic event: an inline svg root hit-tests by SVG rules, so this
+      // is what proves "hovering the figure offers the affordance".
+      await page.locator(SVG_FIGURE).scrollIntoViewIfNeeded();
+      await page.locator(SVG_FIGURE).hover();
+      await expect(page.locator("#imageAddBtn")).toBeVisible();
+      // The widget layer still owns the labeled <g> part inside the diagram SVG.
+      await expect(page.locator("#commentRoot [data-cm-part].cm-part-commentable")).toHaveCount(1);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("decorative, chrome, sprite-sheet and widget-owned svg stay uncommentable (CMH-IMG-08)", async ({ page }) => {
+    const staged = stageContent(svgFigureContent(), { key: "cmh-svg-figure-skips" });
+    try {
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      // Every skip rule is pinned INDIVIDUALLY, so a regression names the rule that broke.
+      const state = await page.evaluate((cases) => {
+        const out = {};
+        cases.forEach((name) => {
+          const el = document.querySelector(`#commentRoot svg[data-case="${name}"]`);
+          out[name] = !el ? "missing" : {
+            commentable: el.classList.contains("cm-img-commentable"),
+            tabindex: el.getAttribute("tabindex"),
+            index: el.getAttribute("data-cm-image-index"),
+          };
+        });
+        return out;
+      }, SVG_SKIP_CASES);
+      for (const name of SVG_SKIP_CASES) {
+        expect(state[name], `${name}: fixture element missing`).not.toBe("missing");
+        expect(state[name].commentable, `${name}: should not be commentable`).toBe(false);
+        expect(state[name].tabindex, `${name}: should not be focusable`).toBeNull();
+        expect(state[name].index, `${name}: should not take an image index`).toBeNull();
+      }
+      // The nested inner <svg> of the authored figure is not a separate target either.
+      await expect(page.locator(SVG_FIGURE)).toHaveCount(1);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an svg named by aria-labelledby anchors by that name (CMH-IMG-08)", async ({ page }) => {    const content = `<h1>Labelledby svg</h1>
+      <figure>
+        <svg width="220" height="120" viewBox="0 0 220 120" aria-labelledby="cap-a"><rect width="220" height="120" fill="#eef"></rect></svg>
+        <figcaption id="cap-a">Error budget burn</figcaption>
+      </figure>`;
+    const staged = stageContent(content, { key: "cmh-svg-labelledby" });
+    try {
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      // A name the author supplied indirectly is still the author's name: no synthesized label.
+      await expect(page.locator(SVG_FIGURE)).not.toHaveAttribute("data-cm-img-auto-label", "1");
+      await addSvgComment(page, "labelledby note");
+      const stored = await storedComments(page);
+      expect(stored[0].imageAlt).toBe("Error budget burn");
+      expect(stored[0].quote).toBe("Error budget burn");
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an unlabeled svg inside figure.chart is chart media (CMH-IMG-08)", async ({ page }) => {
+    const content = `<h1>Chart svg</h1>
+      <figure class="chart">
+        <svg width="220" height="120" viewBox="0 0 220 120"><rect width="220" height="120" fill="#eef"></rect></svg>
+        <figcaption>Hand-drawn chart</figcaption>
+      </figure>`;
+    const staged = stageContent(content, { key: "cmh-svg-chart-kind" });
+    try {
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await addSvgComment(page, "chart svg note");
+      const stored = await storedComments(page);
+      expect(stored[0].imageKind).toBe("chart");
+      expect(stored[0].quote).toBe("chart 1");
+      await expect(page.locator(".cm-card").filter({ hasText: "chart svg note" })).toContainText(/chart 1/);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a link that wraps only the figure keeps it commentable (CMH-IMG-08)", async ({ page }) => {
+    const content = `<h1>Linked figure</h1>
+      <figure>
+        <a href="full-size.html"><svg width="220" height="120" viewBox="0 0 220 120" aria-label="Linked schematic"><rect width="220" height="120" fill="#eef"></rect></svg></a>
+        <figcaption>Open the schematic full size.</figcaption>
+      </figure>`;
+    const staged = stageContent(content, { key: "cmh-svg-linked-figure" });
+    try {
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      // A linked <img> stays commentable, so a linked figure svg must too - only an icon sitting
+      // beside link TEXT is chrome.
+      await expect(page.locator(SVG_FIGURE)).toHaveCount(1);
+      await addSvgComment(page, "linked figure note");
+      const stored = await storedComments(page);
+      expect(stored[0].imageAlt).toBe("Linked schematic");
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a forged auto-label marker cannot hide the author's own name (CMH-IMG-08)", async ({ page }) => {
+    const content = `<h1>Forged marker</h1>
+      <figure>
+        <svg data-cm-img-auto-label="1" aria-label="Innocent chart" width="220" height="120" viewBox="0 0 220 120">
+          <title>Something else entirely</title>
+          <rect width="220" height="120" fill="#eef"></rect>
+        </svg>
+      </figure>`;
+    const staged = stageContent(content, { key: "cmh-svg-forged-marker" });
+    try {
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await addSvgComment(page, "forged marker note");
+      // The stored metadata matches what a reader/AT sees, not the shadowed <title>.
+      const stored = await storedComments(page);
+      expect(stored[0].imageAlt).toBe("Innocent chart");
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an svg labelled only by a direct-child title anchors by that title (CMH-IMG-08)", async ({ page }) => {
+    const content = `<h1>Title-labelled svg</h1>
+      <figure>
+        <svg width="220" height="120" viewBox="0 0 220 120">
+          <title>Latency budget sketch</title>
+          <g><title>inner tooltip</title><rect x="10" y="10" width="200" height="100" fill="#eef"></rect></g>
+        </svg>
+      </figure>`;
+    const staged = stageContent(content, { key: "cmh-svg-figure-title" });
+    try {
+      await installClipboardCapture(page);
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await addSvgComment(page, "title-labelled note");
+      const card = page.locator(".cm-card").filter({ hasText: "title-labelled note" });
+      await expect(card).toContainText("Latency budget sketch");
+      await expect(card).not.toContainText("inner tooltip");
+      await page.click("#btnCopyAll");
+      expect(await copiedBundle(page)).toContain("Alt: Latency budget sketch");
+      // The author's own name is never overwritten by an affordance label.
+      await expect(page.locator(SVG_FIGURE)).not.toHaveAttribute("aria-label", /press Enter/);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an unlabeled svg is named for AT, quotes image N, and survives reload (CMH-IMG-08)", async ({ page }) => {
+    const content = `<h1>Unlabeled svg</h1>
+      <figure>
+        <svg width="220" height="120" viewBox="0 0 220 120"><rect x="10" y="10" width="200" height="100" fill="#eef"></rect></svg>
+      </figure>`;
+    const staged = stageContent(content, { key: "cmh-svg-figure-unlabeled" });
+    try {
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      const figure = page.locator(SVG_FIGURE);
+      // A focusable graphic must never be nameless, but the synthesized name is marked so it
+      // cannot leak into the anchor metadata.
+      await expect(figure).toHaveAttribute("role", "img");
+      await expect(figure).toHaveAttribute("aria-label", "Image - press Enter to comment");
+      await expect(figure).toHaveAttribute("data-cm-img-auto-label", "1");
+      await addSvgComment(page, "unlabeled svg note");
+      const stored = await storedComments(page);
+      expect(stored).toHaveLength(1);
+      expect(stored[0].imageAlt).toBe("");
+      expect(stored[0].quote).toBe("image 1");
+      const cid = await page.locator("svg.cm-img-hl").getAttribute("data-cid");
+      await page.reload();
+      await ready(page);
+      await expect(page.locator(`svg.cm-img-hl[data-cid="${cid}"]`)).toHaveCount(1);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an svg anchor is not re-attached to an <img> that has a src (CMH-IMG-09)", async ({ page }) => {
+    const content = `<h1>Media mix</h1>
+      <p><img src="only-image.png" alt="Capacity headroom" width="60" height="40"></p>
+      <figure><svg width="220" height="120" viewBox="0 0 220 120" aria-label="Capacity headroom"><rect x="10" y="10" width="200" height="100" fill="#eef"></rect></svg></figure>`;
+    const staged = stageContent(content, { key: "cmh-svg-vs-img" });
+    try {
+      // The image and the svg carry the SAME alt and the same kind, so ONLY the stored-but-empty
+      // imageSrc can tell them apart: the stored svg anchor must not ring the image.
+      await page.addInitScript(() => {
+        localStorage.setItem("cmh-svg-vs-img", JSON.stringify([
+          { id: "csvgimg01", anchorType: "image", imageIndex: 0, imageSrc: "",
+            imageAlt: "Capacity headroom", imageKind: "image", quote: "Capacity headroom",
+            note: "svg only", createdAt: new Date().toISOString() },
+        ]));
+      });
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await expect(page.locator("img.cm-img-hl")).toHaveCount(0);
+      await expect(page.locator("svg.cm-img-hl")).toHaveCount(1);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("two unlabeled svg figures leave a reordered anchor unresolved instead of misattributing it (CMH-IMG-09)", async ({ page }) => {
+    const content = `<h1>Two unlabeled figures</h1>
+      <p><img src="pushed-in.png" alt="Pushed in" width="60" height="40"></p>
+      <figure><svg width="200" height="90" viewBox="0 0 200 90"><rect width="200" height="90" fill="#eef"></rect></svg></figure>
+      <figure><svg width="200" height="90" viewBox="0 0 200 90"><circle cx="100" cy="45" r="40" fill="#dde"></circle></svg></figure>`;
+    const staged = stageContent(content, { key: "cmh-svg-ambiguous" });
+    try {
+      // The comment was saved on an svg that used to be index 0; an image now occupies that slot
+      // and both surviving svgs are indistinguishable, so the anchor must fail safe.
+      await page.addInitScript(() => {
+        localStorage.setItem("cmh-svg-ambiguous", JSON.stringify([
+          { id: "csvgamb01", anchorType: "image", imageIndex: 0, imageSrc: "", imageAlt: "",
+            imageKind: "image", quote: "image 1", note: "ambiguous svg", createdAt: new Date().toISOString() },
+        ]));
+      });
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await expect(page.locator("svg.cm-img-hl")).toHaveCount(0);
+      await expect(page.locator("img.cm-img-hl")).toHaveCount(0);
+      // The comment itself is not lost - it is still listed, just not anchored.
+      await expect(page.locator(".cm-card").filter({ hasText: "ambiguous svg" })).toHaveCount(1);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an inline <svg> figure is keyboard-commentable and rings like an image (CMH-IMG-08)", async ({ page }) => {
+    const staged = stageContent(svgFigureContent(), { key: "cmh-svg-figure-keyboard" });
+    try {
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await page.locator(SVG_FIGURE).focus();
+      await expect(page.locator("#imageAddBtn")).toBeVisible();
+      await page.locator(SVG_FIGURE).press("Enter");
+      const composer = page.locator(".cm-composer").last();
+      await expect(composer).toBeVisible();
+      await composer.locator("textarea").fill("label the trend line");
+      await composer.locator('[data-act="save"]').click();
+      await expect(page.locator("svg.cm-img-hl")).toHaveCount(1);
+      const card = page.locator(".cm-card").filter({ hasText: "label the trend line" });
+      await expect(card).toHaveCount(1);
+      await expect(card).toContainText(/image 1/);
+      await expect(card).toContainText(SVG_LABEL);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an inline <svg> comment survives reload and Copy all (CMH-IMG-08)", async ({ page }) => {
+    const staged = stageContent(svgFigureContent(), { key: "cmh-svg-figure-reload" });
+    try {
+      await installClipboardCapture(page);
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await addSvgComment(page, "svg reload note");
+      const cid = await page.locator("svg.cm-img-hl").getAttribute("data-cid");
+      await page.reload();
+      await ready(page);
+      await expect(page.locator(`svg.cm-img-hl[data-cid="${cid}"]`)).toHaveCount(1);
+      await expect(page.locator(".cm-card").filter({ hasText: "svg reload note" })).toHaveCount(1);
+      await page.click("#btnCopyAll");
+      const bundle = await copiedBundle(page);
+      expect(bundle).toContain("## Comment 1 (image)");
+      expect(bundle).toMatch(/Anchor: image #1/);
+      expect(bundle).toContain("Alt: " + SVG_LABEL);
+      expect(bundle).toContain("svg reload note");
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an inline <svg> comment survives Export as Portable + reopen (CMH-IMG-08)", async ({ page, browser }) => {
+    const staged = stageContent(svgFigureContent(), { key: "cmh-svg-figure-export" });
+    let saved = null;
+    try {
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await addSvgComment(page, "embedded svg note");
+      const cid = await page.locator("svg.cm-img-hl").getAttribute("data-cid");
+      const [dl] = await Promise.all([
+        page.waitForEvent("download"),
+        clickSidebarExport(page, "#btnSaveHtml"),
+      ]);
+      const html = fs.readFileSync(await dl.path(), "utf8");
+      const arr = JSON.parse(html.match(/id="embeddedComments">([\s\S]*?)<\/script>/)[1].trim());
+      expect(arr.find((c) => c.id === cid && c.anchorType === "image")).toBeTruthy();
+      saved = path.join(staged.dir, "svg-portable.html");
+      fs.writeFileSync(saved, html);
+      const ctx2 = await browser.newContext();
+      const page2 = await ctx2.newPage();
+      try {
+        await page2.goto(fileUrl(saved));
+        await ready(page2);
+        await expect(page2.locator(`svg.cm-img-hl[data-cid="${cid}"]`)).toHaveCount(1);
+        await expect(page2.locator(".cm-card").filter({ hasText: "embedded svg note" })).toHaveCount(1);
+      } finally {
+        await ctx2.close();
+      }
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("deleting an inline <svg> comment clears its ring (CMH-IMG-08)", async ({ page }) => {
+    const staged = stageContent(svgFigureContent(), { key: "cmh-svg-figure-delete" });
+    try {
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      page.on("dialog", (d) => d.accept());
+      await addSvgComment(page, "remove the svg note");
+      await expect(page.locator("svg.cm-img-hl")).toHaveCount(1);
+      await page.locator(".cm-card").filter({ hasText: "remove the svg note" }).locator('[data-act="del"]').click();
+      await expect(page.locator("svg.cm-img-hl")).toHaveCount(0);
+      await expect(page.locator(".cm-card")).toHaveCount(0);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  // The behavior ships in a live demo: the visuals-matrix report carries a plain inline <svg>
+  // figure beside the labeled-parts diagram, so a reader can actually try it.
+  test("media metadata is normalized at the write side, not just on the way out (CMH-IMG-10)", async ({ page }) => {
+    // The label carries a NEL, a Unicode line separator, a paragraph separator, an RLO and an
+    // ALM - every class the stored metadata must never keep.
+    const label = "Cap\u0085acity\u2028head\u2029room \u202Erev\u061Cersed";
+    const content = `<h1>Hostile label</h1>
+      <figure><svg width="220" height="120" viewBox="0 0 220 120" aria-label="${label}"><rect width="220" height="120" fill="#eef"></rect></svg></figure>`;
+    const staged = stageContent(content, { key: "cmh-svg-write-side" });
+    try {
+      await installClipboardCapture(page);
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await addSvgComment(page, "hostile label note");
+      const stored = await storedComments(page);
+      expect(stored).toHaveLength(1);
+      // Persisted already inert: one line, no bidi controls - not merely sanitized on emission.
+      expect(stored[0].imageAlt).toBe("Cap acity head room reversed");
+      expect(stored[0].imageAlt).not.toMatch(/[\u0085\u2028\u2029\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/);
+      expect(stored[0].quote).toBe(stored[0].imageAlt);
+      await page.click("#btnCopyAll");
+      const bundle = await copiedBundle(page);
+      expect((bundle.match(/^HANDLED_IDS_JSON:/gm) || []).length).toBe(1);
+      expect(bundle).toContain("Alt: " + stored[0].imageAlt);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the visuals-matrix demo ships a commentable inline <svg> figure (CMH-IMG-08, CMH-DEMO-08)", async ({ page }) => {
+    await denyExternalNetwork(page);
+    await page.goto(fileUrl(path.join(EXAMPLES, "report-metrics.html")));
+    await ready(page);
+    const figure = page.locator("#commentRoot svg.cm-img-commentable");
+    await expect(figure).toHaveCount(1);
+    await expect(figure).toHaveAttribute("aria-label", "Capacity headroom by region");
+    // The labeled-parts diagram stays with the widget layer, not the image layer.
+    await expect(page.locator('#commentRoot svg[data-cm-widget="metric-signal-svg"].cm-img-commentable')).toHaveCount(0);
+    await expect(page.locator('#commentRoot [data-cm-part-label="Ingest node"].cm-part-commentable')).toHaveCount(1);
+    await figure.focus();
+    await expect(page.locator("#imageAddBtn")).toBeVisible();
   });
 });

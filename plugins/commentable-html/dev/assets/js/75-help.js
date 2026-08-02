@@ -63,6 +63,7 @@ function showHelp(restoreEl) {
           '<li><strong>Headings:</strong> hover a heading and click the <em>Add Comment</em> button that appears just after the title.</li>' +
           '<li><strong>Tables:</strong> select text inside any cell like normal prose.</li>' +
           '<li><strong>Images:</strong> hover an image (or focus it and press <kbd>Enter</kbd>) and click <em>Add Comment</em> at its corner.</li>' +
+          '<li><strong>Inline SVG figures:</strong> an authored <code>&lt;svg&gt;</code> graphic is commentable as one whole figure, the same way an image is.</li>' +
           '<li><strong>Charts:</strong> a Chart.js canvas is commentable like an image.</li>' +
           '<li><strong>Mermaid diagrams:</strong> hover a node, edge label, gantt bar or sequence message and click <em>Add Comment</em>; hover an empty part of the diagram to comment on the whole diagram.</li>' +
           '<li><strong>Code-review diffs:</strong> select text inside a diff line for that snippet, or hover a line and click <em>Add Comment</em> to comment the whole line.</li>' +
