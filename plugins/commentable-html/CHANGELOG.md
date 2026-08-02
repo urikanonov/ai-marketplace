@@ -4,6 +4,33 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.295.0] - 2026-08-02
+
+### Changed
+
+- The comment formatting toolbar is now a proper ARIA `role="toolbar"` with a roving `tabindex`, so
+  the seven buttons are ONE tab stop instead of seven on every surface that carries it (the floating
+  composer, the side-pane reply/edit editors, and the in-document comment dialog). Left/Right move
+  focus inside the bar and carry the tab stop with them (wrapping at both ends), and Home/End jump to
+  the ends. The keys are consumed
+  on the bar, so an arrow never reaches a document-level handler, and arrow keys inside the textarea
+  still move the caret. Clicking, the Ctrl/Cmd shortcuts, and the mousedown selection retention are
+  unchanged. Previously, opening a reply or an edit in the narrow side pane inserted seven tab stops
+  in front of the textarea.
+- The floating composer's Ctrl/Cmd+B/I/U/K, Ctrl/Cmd+Enter (save) and Escape (cancel) keys now work
+  from a focused toolbar button as well as from the textarea, because they are bound to the composer
+  rather than to the textarea (the side pane and the in-document dialog already did this). Escape now
+  closes only the composer it was pressed in - it can no longer also discard a second open composer's
+  draft - and an open
+  toolbar or sidebar menu still outranks the composer, so Escape dismisses the menu first and leaves
+  the draft behind it intact.
+- The floating composer's toolbar buttons now keep the repo-wide `>=44px` touch target on a phone
+  viewport (they wrap to a second row inside the composer rather than overflowing), matching the
+  side-pane and in-document toolbars. The composer was the last surface still rendering roughly
+  30x22px buttons on a phone.
+- The Help panel's "Formatting your comment" topic documents the toolbar's single tab stop and its
+  arrow-key navigation.
+
 ## [1.293.0] - 2026-08-02
 
 ### Fixed

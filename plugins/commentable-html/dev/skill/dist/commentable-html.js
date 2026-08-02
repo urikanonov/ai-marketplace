@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.293.0";
+const CMH_VERSION = "1.295.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -5788,10 +5788,11 @@ var NOTE_FORMAT_BUTTONS = [
 ];
 
 function noteFormatBarHtml() {
-  var out = '<div class="cm-format-bar" role="group" aria-label="Comment formatting">';
+  var out = '<div class="cm-format-bar" role="toolbar" aria-orientation="horizontal" aria-label="Comment formatting">';
   for (var i = 0; i < NOTE_FORMAT_BUTTONS.length; i++) {
     var b = NOTE_FORMAT_BUTTONS[i];
-    out += '<button type="button" data-fmt="' + escapeHtml(b.fmt) + '" title="' + escapeHtml(b.title)
+    out += '<button type="button" tabindex="' + (i === 0 ? "0" : "-1") + '" data-fmt="' + escapeHtml(b.fmt)
+      + '" title="' + escapeHtml(b.title)
       + '" aria-label="' + escapeHtml(b.label) + '">' + b.html + "</button>";
   }
   return out + "</div>";
@@ -5801,6 +5802,16 @@ function noteFormatBarElement() {
   var host = document.createElement("div");
   host.innerHTML = noteFormatBarHtml();
   return host.firstElementChild;
+}
+
+// Move the toolbar's single tab stop (the ARIA roving-tabindex pattern) to `index`, wrapping at both
+// ends, and optionally focus it.
+function rovingNoteFormatBar(bar, index, focusIt) {
+  var btns = bar.querySelectorAll("button[data-fmt]");
+  if (!btns.length) return;
+  var i = ((index % btns.length) + btns.length) % btns.length;
+  for (var k = 0; k < btns.length; k++) btns[k].tabIndex = k === i ? 0 : -1;
+  if (focusIt) { try { btns[i].focus(); } catch (e) {} }
 }
 
 // Wire a `.cm-format-bar`'s buttons to `ta`; returns a remover for every listener it added.
@@ -5818,6 +5829,38 @@ function wireNoteFormatBar(bar, ta) {
     offs.push(function () {
       ta.removeEventListener("compositionstart", onCompStart);
       ta.removeEventListener("compositionend", onCompEnd);
+    });
+    // Toolbar keyboard navigation: the seven buttons are ONE tab stop, so opening a composer or a
+    // side-pane editor never inserts seven stops in front of the textarea; the arrow keys (plus
+    // Home/End) move focus within the bar and carry the tab stop with them. The keys are stopped
+    // here so an arrow never reaches a document-level handler (deck slide navigation, for example).
+    var onKeyNav = function (e) {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      var btns = Array.prototype.slice.call(bar.querySelectorAll("button[data-fmt]"));
+      var cur = btns.indexOf(document.activeElement);
+      if (cur < 0) return;
+      var next;
+      if (e.key === "ArrowRight") next = cur + 1;
+      else if (e.key === "ArrowLeft") next = cur - 1;
+      else if (e.key === "Home") next = 0;
+      else if (e.key === "End") next = btns.length - 1;
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+      rovingNoteFormatBar(bar, next, true);
+    };
+    // Focus reaching a button any other way (Shift+Tab back into the bar, a script focus) also owns
+    // the tab stop, so the bar and the browser never disagree about which button is tabbable.
+    var onFocusIn = function (e) {
+      var btns = Array.prototype.slice.call(bar.querySelectorAll("button[data-fmt]"));
+      var idx = btns.indexOf(e.target);
+      if (idx >= 0) rovingNoteFormatBar(bar, idx, false);
+    };
+    bar.addEventListener("keydown", onKeyNav);
+    bar.addEventListener("focusin", onFocusIn);
+    offs.push(function () {
+      bar.removeEventListener("keydown", onKeyNav);
+      bar.removeEventListener("focusin", onFocusIn);
     });
     bar.querySelectorAll("button[data-fmt]").forEach(function (btn) {
       // preventDefault on pointer/mouse down keeps the textarea's selection from collapsing when the
@@ -6172,11 +6215,22 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   cleanups.push(addListener(saveBtn, "click", () => saveComposerElement(el)));
   const formatBar = el.querySelector(".cm-format-bar");
   cleanups.push(wireNoteFormatBar(formatBar, ta));
-  cleanups.push(addListener(ta, "keydown", (e) => {
+  // The toolbar buttons are a real focus target (the bar is one roving tab stop), so bind the keys
+  // on the composer ELEMENT, not the textarea: Ctrl/Cmd+B/I/U/K, Ctrl/Cmd+Enter and Escape must work
+  // from a focused toolbar button too, exactly as they do in the side-pane editor. The keys are
+  // consumed here so Escape closes THIS composer only, never another open composer behind it.
+  cleanups.push(addListener(el, "keydown", (e) => {
     if (e.isComposing || isNoteComposing(ta)) return;
     if (handleNoteFormatShortcut(e, ta)) return;
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveComposerElement(el); }
-    else if (e.key === "Escape") { e.preventDefault(); closeComposerElement(el); }
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); saveComposerElement(el); }
+    else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      // An open toolbar/sidebar popup outranks the composer (the same priority the document-level
+      // handler applies), so Escape dismisses it first rather than discarding the draft behind it.
+      if (typeof cmhClosePriorityPopup === "function" && cmhClosePriorityPopup()) return;
+      closeComposerElement(el);
+    }
   }));
   cleanups.push(addListener(el, "focusin", () => { lastFocusedComposer = el; bringToFront(el); }));
   cleanups.push(addListener(el, "mousedown", () => { lastFocusedComposer = el; bringToFront(el); }));
@@ -12255,6 +12309,7 @@ function showHelp(restoreEl) {
           '<li><code>~~strike~~</code> for <s>strikethrough</s>, and <code>`code`</code> for inline code.</li>' +
           '<li>Start a line with <code>- </code> for a bullet list.</li>' +
           '<li><code>[text](https://example.com)</code> or <kbd>Ctrl</kbd>+<kbd>K</kbd> makes a link; bare <code>http(s)://</code> links become clickable on their own.</li>' +
+          '<li>The toolbar is a single <kbd>Tab</kbd> stop: tab to it once, then move between its buttons with <kbd>&larr;</kbd> / <kbd>&rarr;</kbd> (<kbd>Home</kbd> / <kbd>End</kbd> jump to the ends).</li>' +
         '</ul>' +
         '<p>Only <code>http</code>, <code>https</code>, and <code>mailto</code> links are clickable; everything else is shown as plain text. Characters like <code>*</code>, <code>_</code>, <code>~</code>, and <code>`</code> may be read as formatting - the note is stored as the exact text you typed, so <strong>Copy all</strong> always hands the agent the raw markers.</p>') +
       T('Navigation',

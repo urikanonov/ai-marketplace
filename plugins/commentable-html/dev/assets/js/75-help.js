@@ -125,6 +125,7 @@ function showHelp(restoreEl) {
           '<li><code>~~strike~~</code> for <s>strikethrough</s>, and <code>`code`</code> for inline code.</li>' +
           '<li>Start a line with <code>- </code> for a bullet list.</li>' +
           '<li><code>[text](https://example.com)</code> or <kbd>Ctrl</kbd>+<kbd>K</kbd> makes a link; bare <code>http(s)://</code> links become clickable on their own.</li>' +
+          '<li>The toolbar is a single <kbd>Tab</kbd> stop: tab to it once, then move between its buttons with <kbd>&larr;</kbd> / <kbd>&rarr;</kbd> (<kbd>Home</kbd> / <kbd>End</kbd> jump to the ends).</li>' +
         '</ul>' +
         '<p>Only <code>http</code>, <code>https</code>, and <code>mailto</code> links are clickable; everything else is shown as plain text. Characters like <code>*</code>, <code>_</code>, <code>~</code>, and <code>`</code> may be read as formatting - the note is stored as the exact text you typed, so <strong>Copy all</strong> always hands the agent the raw markers.</p>') +
       T('Navigation',

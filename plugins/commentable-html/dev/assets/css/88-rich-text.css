@@ -46,3 +46,8 @@
 .cm-format-bar button strong,
 .cm-format-bar button em,
 .cm-format-bar button s { font-size: inherit; }
+/* On phones the floating composer's toolbar keeps the repo-wide >=44px touch target, matching the
+   side pane (it wraps to a second row rather than overflowing the composer). */
+@media (max-width: 640px) {
+  .cm-composer .cm-format-bar button { min-width: 44px; min-height: 44px; padding: 0.4rem; }
+}

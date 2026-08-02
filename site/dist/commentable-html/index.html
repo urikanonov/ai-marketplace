@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.293.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.295.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,24 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.295.0] - 2026-08-02</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The comment formatting toolbar is now a proper ARIA <code>role=&quot;toolbar&quot;</code> with a roving <code>tabindex</code>, so the seven buttons are ONE tab stop instead of seven on every surface that carries it (the floating composer, the side-pane reply/edit editors, and the in-document comment dialog). Left/Right move focus inside the bar and carry the tab stop with them (wrapping at both ends), and Home/End jump to the ends. The keys are consumed on the bar, so an arrow never reaches a document-level handler, and arrow keys inside the textarea still move the caret. Clicking, the Ctrl/Cmd shortcuts, and the mousedown selection retention are unchanged. Previously, opening a reply or an edit in the narrow side pane inserted seven tab stops in front of the textarea.</li>
+              <li>The floating composer&#x27;s Ctrl/Cmd+B/I/U/K, Ctrl/Cmd+Enter (save) and Escape (cancel) keys now work from a focused toolbar button as well as from the textarea, because they are bound to the composer rather than to the textarea (the side pane and the in-document dialog already did this). Escape now closes only the composer it was pressed in - it can no longer also discard a second open composer&#x27;s draft - and an open toolbar or sidebar menu still outranks the composer, so Escape dismisses the menu first and leaves the draft behind it intact.</li>
+              <li>The floating composer&#x27;s toolbar buttons now keep the repo-wide <code>&gt;=44px</code> touch target on a phone viewport (they wrap to a second row inside the composer rather than overflowing), matching the side-pane and in-document toolbars. The composer was the last surface still rendering roughly 30x22px buttons on a phone.</li>
+              <li>The Help panel&#x27;s &quot;Formatting your comment&quot; topic documents the toolbar&#x27;s single tab stop and its arrow-key navigation.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.293.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>A side-pane reply or edit draft that survives a sidebar re-render (sorting, a note-typing debounce, a checklist change) now keeps its SELECTION, not just its text. The panel&#x27;s inline editor carries the formatting toolbar, so a re-render that landed between selecting a word and clicking Bold used to collapse the caret to the end of the draft and append bare <code>****</code> instead of wrapping the word. The draft snapshot now records <code>selectionStart</code>/<code>selectionEnd</code> (and the selection direction) and the re-opened editor restores that range. Re-clicking the edit action on an editor that is already open now only re-focuses it, keeping the live selection and its anchor direction instead of collapsing to the end.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.292.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -509,8 +521,6 @@
               <li>Re-exporting an offline file whose inlined library carries no MIT notice now says what actually happened. The <code>data-cmh-offline-lib</code> marker predates the MIT notice comment, so an offline file produced by an exporter version in between carries the library WITHOUT a notice, and <code>Export Offline</code> correctly refuses to re-emit it (redistributing an MIT-licensed library without its notice is a licence violation). It reported that refusal as <code>Offline export is missing the vendored mermaid bundle.</code>, which is misleading - the bundle is right there in the file. The error now names the real cause (the inlined copy has no MIT license notice beside it) and the action that works (re-export from the source document that still carries the vendored payload). It claims that cause only when licensing was the SOLE blocker (a copy the content gates rejected keeps the generic message, since the licence is then not a proven cause) and only for the library that could not be re-emitted, and it asserts nothing it cannot verify - the gates authenticate no provenance, so it never claims who wrote the file. The notice is still never synthesised: with the payload consumed there is no licence text to emit, which is exactly why the copy is refused. Because an Offline export failure names a cause and an action, every one of those toasts is now announced assertively and stays on screen long enough to read instead of using the 3s confirmation toast.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.291.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -542,16 +552,7 @@
               <li><code>measureCss()</code> no longer re-types the diagram vocabulary: it DERIVES its mermaid hosts from the shared <code>CMH_MERMAID_SEL</code> definition. The print stylesheet is plain CSS and cannot reference a constant, so it still spells the hosts out, but it is now PINNED two-directionally to that same definition - so neither PRINT surface can drift back to covering half the hosts.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.279.0] - 2026-07-30</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Validator checks about the LAYER can no longer be answered by text an author or a REVIEWER supplied. Each now asks its question of the right SOURCE instead of the raw document string. The scoped <code>.cm-skip[hidden]</code> rule check, the <code>--cp-bg:</code> theme-declaration check and the unscoped <code>[hidden] { display: none }</code> warning read real parsed <code>&lt;style&gt;</code> bodies with CSS comments blanked, because text is not a stylesheet and a commented-out declaration is not a declaration. Previously a document that DOCUMENTS commentable-html could forge the verdict from its own prose: quoting the scoped rule or <code>--cp-bg:</code> SATISFIED a real check, so a document with no theme variables at all passed the ERROR by merely talking about them, while a code sample SHOWING the unscoped rule raised a warning the author could only clear by rewording their content. A <code>&lt;style&gt;</code> an author puts in their own content still counts, since it really would style or hide the page, and an unclosed <code>&lt;style&gt;</code> - which a browser runs to end of file - is now flushed by the parser instead of escaping the scan entirely. Each <code>&lt;style&gt;</code> is read as its own stylesheet, exactly as a browser parses it, so an unterminated comment in one can no longer hide a live unscoped reset in a later one; a <code>&lt;style&gt;</code> whose <code>type</code> is not a CSS type renders nothing and no longer counts; and a quoted string VALUE such as <code>content: &quot;.cm-skip[hidden] --cp-bg: x&quot;</code> is not a selector or a declaration, so it can no longer satisfy either check.</li>
-              <li>The retired <code>--START-COMMENTS-EXPORT--</code> marker check, which is about markup rather than CSS, now reads an ALLOW-list of the layer&#x27;s own CSS, COMMENT UI and JS regions. A deny-list could not be made safe: user text reaches <code>&lt;title&gt;</code>, <code>data-doc-label</code> and every other attribute - <code>new_document --label</code> copies the label verbatim into two of them, so naming a document after the retired marker raised a warning the author could only clear by renaming it - and the HANDLED IDS and EMBEDDED COMMENTS regions exist precisely to carry user text (a reviewer&#x27;s comment bodies, the reviewed-section headings an export bakes in), so they are state containers and are never inspected.</li>
-              <li>The CONTENT and region markers are now counted and located in one shared view whose <code>&lt;script&gt;</code>/<code>&lt;style&gt;</code> bodies are blanked and whose comments survive (the markers ARE comments), so the marker check and the layer checks can never disagree about what a marker is: a marker quoted in script data neither forges a duplicate-marker error nor defines a boundary. That scan takes its raw-text boundaries from the same tokenizer the code-block checks use, so a <code>&lt;script</code> named inside a comment never opens a region that swallows a marker.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">234 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">235 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
