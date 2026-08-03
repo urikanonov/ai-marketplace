@@ -661,6 +661,115 @@ test.describe("section review tracking", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  test("a persisted table sort does not flip a reviewed section to changed (CMH-REVIEW-17)", async ({ page }) => {
+    // A reader sorting a table is a runtime-only DOM reorder that the review marker's hash never
+    // saw. The section hash must be taken over the CANONICAL (authored source-order) content, the
+    // same way the whole-document hash is, or the section flips to "changed" on the machine where
+    // the sort was applied while staying "reviewed" everywhere else (#952).
+    await installClipboardCapture(page);
+    await denyExternalNetwork(page);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    const { html } = stageContent([
+      "<section><h1 id=\"rs-title\">Sorted review</h1><p>Intro paragraph for the demo.</p></section>",
+      "<section><h2 id=\"rs-alpha\">Alpha</h2>",
+      "<table>",
+      "  <thead>",
+      "    <tr><th>Name</th><th>Count</th></tr>",
+      "  </thead>",
+      "  <tbody>",
+      "    <tr><td>Bravo</td><td>2</td></tr>",
+      "    <tr><td>Alpha</td><td>1</td></tr>",
+      "    <tr><td>Charlie</td><td>3</td></tr>",
+      "  </tbody>",
+      "</table>",
+      "</section>",
+    ].join("\n"), { key: "cmh-review-sort", source: "review-sort.html" });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    const badge = page.locator("#rs-alpha .cmh-review-badge");
+    await page.locator("#rs-alpha").hover();
+    await badge.click();
+    await expect(badge).toHaveClass(/cmh-review-reviewed/);
+
+    // Sorting the table in that section must not change its state...
+    await page.locator("#commentRoot table.cmh-sortable th .cmh-sort-ctrl").first().click();
+    await expect(page.locator("#commentRoot table tbody tr td:first-child"))
+      .toHaveText(["Alpha", "Bravo", "Charlie"]);
+    await refresh(page);
+    expect(await stateOf(page, "rs-alpha")).toBe("reviewed");
+
+    // ...nor must the persisted sort re-applied on the next load.
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await expect(page.locator("#commentRoot table tbody tr td:first-child"))
+      .toHaveText(["Alpha", "Bravo", "Charlie"]);
+    expect(await stateOf(page, "rs-alpha")).toBe("reviewed");
+    await expect(page.locator("#rs-alpha .cmh-review-badge")).toHaveClass(/cmh-review-reviewed/);
+
+    // Marking reviewed WHILE a sort is applied must store the canonical hash too, so clearing the
+    // sort (three clicks cycle asc -> desc -> none) does not flip the section to "changed".
+    await page.locator("#rs-title").hover();
+    await page.locator("#rs-title .cmh-review-badge").click();
+    expect(await stateOf(page, "rs-title")).toBe("reviewed");
+    const ctl = page.locator("#commentRoot table.cmh-sortable th .cmh-sort-ctrl").first();
+    await ctl.click();
+    await ctl.click();
+    await expect(page.locator("#commentRoot table tbody tr td:first-child"))
+      .toHaveText(["Bravo", "Alpha", "Charlie"]);
+    await refresh(page);
+    expect(await stateOf(page, "rs-title")).toBe("reviewed");
+    expect(await stateOf(page, "rs-alpha")).toBe("reviewed");
+  });
+
+  test("computing review state never reorders the reader's rows or steals focus (CMH-REVIEW-17)", async ({ page }) => {
+    // The canonical order is READ from the stamped row indices, never restored by moving live rows:
+    // a badge refresh happens on every sidebar render, so mutating the DOM there would blur a
+    // focused control, drop a text selection mid-comment, and churn observers.
+    await installClipboardCapture(page);
+    await denyExternalNetwork(page);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    const { html } = stageContent([
+      "<section><h1 id=\"rf-title\">Focus</h1><p id=\"rf-body\">Body text to select.</p></section>",
+      "<table>",
+      "  <tbody>",
+      "    <tr><td>Bravo</td><td><a id=\"rf-link\" href=\"#rf-title\">two</a></td></tr>",
+      "    <tr><td>Alpha</td><td>one</td></tr>",
+      "    <tr><td>Charlie</td><td>three</td></tr>",
+      "  </tbody>",
+      "  <thead>",
+      "    <tr><th>Name</th><th>Note</th></tr>",
+      "  </thead>",
+      "</table>",
+    ].join("\n"), { key: "cmh-review-focus", source: "review-focus.html" });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await page.locator("#commentRoot table.cmh-sortable th .cmh-sort-ctrl").first().click();
+    const sorted = ["Alpha", "Bravo", "Charlie"];
+    await expect(page.locator("#commentRoot table tbody tr td:first-child")).toHaveText(sorted);
+    await page.locator("#rf-link").focus();
+    // A live text selection inside a moved row must survive too: restoring focus is not enough if
+    // the range was collapsed by a detach/re-insert.
+    await page.evaluate(() => {
+      const cell = document.querySelector("#commentRoot table tbody tr td");
+      const r = document.createRange();
+      r.selectNodeContents(cell.firstChild);
+      const s = window.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+    });
+    const selBefore = await page.evaluate(() => String(window.getSelection()));
+    expect(selBefore).toBe("Alpha");
+    await refresh(page);
+    // The sorted view is untouched and the focused control inside a row still holds focus.
+    await expect(page.locator("#commentRoot table tbody tr td:first-child")).toHaveText(sorted);
+    expect(await page.evaluate(() => document.activeElement && document.activeElement.id)).toBe("rf-link");
+    expect(await page.evaluate(() => String(window.getSelection()))).toBe("Alpha");
+    expect(await page.evaluate(() => {
+      const s = window.getSelection();
+      return s.rangeCount === 1 && !s.getRangeAt(0).collapsed;
+    })).toBe(true);
+  });
+
   test("marking a section reviewed warns when the mark cannot be persisted (CMH-REVIEW-15)", async ({ page }) => {
     // Block only the reviews key so the mark write fails like a full/blocked localStorage.
     await page.addInitScript(() => {

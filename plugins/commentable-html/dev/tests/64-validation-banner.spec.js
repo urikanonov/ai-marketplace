@@ -197,10 +197,22 @@ test.describe("content-bound validation stamp (CMH-STAMP-05)", () => {
     // canonical (unsorted) docHash must still match so the banner stays down after reload.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cmh_sort_"));
     const docPath = path.join(dir, "doc.html");
-    const tableDoc = "<h1>Sortable report</h1><p>Intro prose.</p>"
-      + "<table><thead><tr><th>Name</th><th>Count</th></tr></thead>"
-      + "<tbody><tr><td>Bravo</td><td>2</td></tr><tr><td>Alpha</td><td>1</td></tr>"
-      + "<tr><td>Charlie</td><td>3</td></tr></tbody></table>";
+    // Rows are separated by NEWLINES, like a real authored table: the tbody then holds whitespace
+    // text nodes between them, which is what makes a naive reorder drift the hash (CMH-CONTENT-20).
+    const tableDoc = [
+      "<h1>Sortable report</h1>",
+      "<p>Intro prose.</p>",
+      "<table>",
+      "  <thead>",
+      "    <tr><th>Name</th><th>Count</th></tr>",
+      "  </thead>",
+      "  <tbody>",
+      "    <tr><td>Bravo</td><td>2</td></tr>",
+      "    <tr><td>Alpha</td><td>1</td></tr>",
+      "    <tr><td>Charlie</td><td>3</td></tr>",
+      "  </tbody>",
+      "</table>",
+    ].join("\n");
     execFileSync(PYTHON, ["tools/authoring/new_document.py", "--content", "-", "--key",
       "cmh-sort-e2e", "--label", "Sortable", "--kind", "report", "--source", "doc.html",
       "--shareable", "--out", docPath], { cwd: SKILL, input: tableDoc });
@@ -224,6 +236,84 @@ test.describe("content-bound validation stamp (CMH-STAMP-05)", () => {
       .toHaveAttribute("aria-pressed", "true");
     // Despite the persisted (re-applied) sort, the canonical hash matches the stamp: no banner.
     await expect(page.locator(".cmh-unvalidated-banner")).toHaveCount(0);
+  });
+
+  test("a persisted sort of a whitespace-formatted table does not falsely invalidate the stamp", async ({ page }) => {
+    // Regression (#952): a real authored table has NEWLINES between its <tr> rows, so the tbody
+    // carries whitespace text nodes between them. A sort that appended every row to the end left
+    // that whitespace stranded ahead of the rows, so the rows became textually adjacent - a change
+    // the canonical (unsorted) hash could not undo, because unsorting restores row ORDER only.
+    // The document hash therefore drifted the moment a reader sorted a table, and since the sort is
+    // persisted per browser profile the banner appeared on ONE machine and not another for the very
+    // same file. The rows must be permuted through their existing slots so sorting is text-neutral.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cmh_sortws_"));
+    const docPath = path.join(dir, "doc.html");
+    const tableDoc = [
+      "<h1>Sortable report</h1>",
+      "<p>Intro prose.</p>",
+      "<table>",
+      "  <thead>",
+      "    <tr><th>Name</th><th>Count</th></tr>",
+      "  </thead>",
+      "  <tbody>",
+      "    <tr><td>Bravo</td><td>2</td></tr>",
+      "    <tr><td>Alpha</td><td>1</td></tr>",
+      "    <tr><td>Charlie</td><td>3</td></tr>",
+      "  </tbody>",
+      "</table>",
+    ].join("\n");
+    execFileSync(PYTHON, ["tools/authoring/new_document.py", "--content", "-", "--key",
+      "cmh-sortws-e2e", "--label", "Sortable ws", "--kind", "report", "--source", "doc.html",
+      "--portable", "--out", docPath], { cwd: SKILL, input: tableDoc });
+    execFileSync(PYTHON, ["tools/validate/validate.py", docPath], { cwd: SKILL });
+    await page.goto(fileUrl(docPath));
+    await ready(page);
+    await expect(page.locator(".cmh-unvalidated-banner")).toHaveCount(0);
+    const before = await page.evaluate(() => window.__cmhReview.docHash());
+    // Sorting live must not move the document hash (the canonical hash unsorts before hashing).
+    await page.locator("table.cmh-sortable th .cmh-sort-ctrl").first().click();
+    await expect(page.locator("table.cmh-sortable tbody tr td:first-child"))
+      .toHaveText(["Alpha", "Bravo", "Charlie"]);
+    expect(await page.evaluate(() => window.__cmhReview.docHash())).toBe(before);
+    // ...and neither must the persisted sort re-applied on the next load: no banner, same hash.
+    await page.goto(fileUrl(docPath));
+    await ready(page);
+    await expect(page.locator("table.cmh-sortable tbody tr td:first-child"))
+      .toHaveText(["Alpha", "Bravo", "Charlie"]);
+    expect(await page.evaluate(() => window.__cmhReview.docHash())).toBe(before);
+    await expect(page.locator(".cmh-unvalidated-banner")).toHaveCount(0);
+  });
+
+  test("authored data-cmh-row attributes cannot redefine the canonical order (JS/Python parity)", async ({ page }) => {
+    // The runtime OWNS the row index: it stamps every sortable row with its position in the FILE at
+    // load, before any persisted sort is applied. A document that ships its own data-cmh-row values
+    // (hand-authored, or left over from an older build) must not be able to define a different
+    // "canonical" order, or the runtime would hash rows in that order while the Python hasher reads
+    // the source order - reviving the false banner from the other side (#952).
+    const staged = stageContent([
+      "<h1>Stamped rows</h1>",
+      "<table>",
+      "  <thead>",
+      "    <tr><th>Name</th><th>Count</th></tr>",
+      "  </thead>",
+      "  <tbody>",
+      "    <tr data-cmh-row=\"2\"><td>Bravo</td><td>2</td></tr>",
+      "    <tr data-cmh-row=\"1\"><td>Alpha</td><td>1</td></tr>",
+      "    <tr data-cmh-row=\"0\"><td>Charlie</td><td>3</td></tr>",
+      "  </tbody>",
+      "</table>",
+    ].join("\n"), { key: "cmh-authored-rowidx" });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    // Persist a sort, so the canonical read is engaged on the next load.
+    await page.locator("table.cmh-sortable th .cmh-sort-ctrl").first().click();
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    const jsHash = await page.evaluate(() => window.__cmhReview.docHash());
+    const pyHash = execFileSync(PYTHON, ["-c",
+      "import sys,section_hash;print(section_hash.document_content_hash(open(sys.argv[1],encoding='utf-8').read()),end='')",
+      staged.html], { cwd: path.join(SKILL, "tools", "authoring") }).toString();
+    expect(jsHash).toBe(pyHash);
   });
 
   test("in-root noscript is excluded from the hash on both sides (JS/Python parity)", async ({ page }) => {

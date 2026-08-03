@@ -4,6 +4,27 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.514.0] - 2026-08-03
+
+### Fixed
+
+- Sorting a table no longer changes the document's text. Rows are now permuted through their
+  existing slots instead of being appended to the table body, so the whitespace an author leaves
+  BETWEEN rows stays where it is. Previously one sort stranded all of that whitespace ahead of the
+  rows, making them textually adjacent - a change unsorting could not undo - so the document and
+  section content hashes drifted permanently. Because a sort is remembered per browser profile,
+  the same file then showed the amber "This document was not validated in its current form" banner
+  on the computer where a table had been sorted and not on another, and a sorted table could flip
+  an already-reviewed section to "changed".
+- Section review state now hashes the same canonical (authored source-order) content the validation
+  banner does, so a reader's persisted table sort can no longer flip an already-reviewed section to
+  "changed" (and a section marked reviewed while a table was sorted no longer flips when the sort is
+  cleared). The canonical order is read from the stamped row indices rather than restored by moving
+  rows, so a badge refresh never disturbs the reader's sorted view, focus, or text selection. One
+  upgrade note: a section marked reviewed by an older build WHILE a table was sorted was recorded
+  against the sorted order, so it shows "changed" once after this upgrade; re-marking it stores the
+  canonical hash and it stays reviewed from then on.
+
 ## [1.512.0] - 2026-08-03
 
 ### Fixed
