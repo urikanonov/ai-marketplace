@@ -361,8 +361,8 @@ before it could ship. Rendered empty, a clip is born publishable. The safe reduc
 computed - the PROGRAM NAME only (`copilot`), with the path, any leading `NAME=value` environment
 assignment, and every flag dropped, degrading to `session` for anything that is not a plausible bare
 program name - and it is what the title card falls back to. Pass `--show-command` when the
-invocation genuinely is the story: it publishes the whole command in the chrome AND on the title
-card, and expect to mask that clip by hand.
+invocation genuinely is the story: it publishes the whole command in the chrome, and on the title
+card too whenever the cast has no ask of its own to state. Expect to mask that clip by hand.
 
 **`--show-command` arms BOTH surfaces, and the louder one is the title card.** The flag reads like a
 title-bar control, but the card's last fallback IS the chrome label, so for a cast with no `ask` mark

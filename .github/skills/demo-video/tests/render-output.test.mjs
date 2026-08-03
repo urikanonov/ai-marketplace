@@ -657,9 +657,17 @@ test("--show-command reaches the title card, not just the chrome (DEMO-SAFE-43)"
   const notice = showCommandCardNotice(bare, { "show-command": true });
   assert.match(notice, /TITLE CARD/);
   assert.match(notice, /--ask/);
-  assert.ok(notice.includes(LEAKY), "the notice does not show what the card will actually read");
+  assert.ok(notice.includes(JSON.stringify(LEAKY)),
+    "the notice does not show what the card will actually read");
   assert.equal(showCommandCardNotice(bare, { showCommand: true }), notice,
     "the camelCase spelling does not warn");
+  // The text is the CAST's, and this warning is printed to the operator's own terminal. The gate
+  // strips OSC/CSI before matching, so a foreign cast can carry a control sequence that scans clean
+  // and would then be executed by the terminal that prints it. It must be shown, not obeyed.
+  const escaped = showCommandCardNotice(
+    { command: "copilot \u001b]0;pwned\u0007 --banner \u001b[2J" }, { "show-command": true });
+  assert.doesNotMatch(escaped, /[\u0000-\u001f]/, "a control sequence reached the terminal raw");
+  assert.match(escaped, /\\u001b/, "the control sequence was dropped instead of shown");
   // Silent when the flag is absent, and when it changes nothing: a warning that fires on a clip it
   // does not apply to is the fastest way to teach an operator to ignore it.
   assert.equal(showCommandCardNotice(bare, {}), null);

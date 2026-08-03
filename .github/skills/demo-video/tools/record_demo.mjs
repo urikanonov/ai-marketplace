@@ -1932,8 +1932,12 @@ export function showCommandCardNotice(cast, args = {}) {
   const safe = askFromCast(cast, { ...args, showCommand: false, "show-command": false });
   const published = askFromCast(cast, args);
   if (published === safe) return null;
+  // The text is CAST-CONTROLLED and this goes to the operator's own terminal, so it is quoted
+  // through JSON: the gate strips OSC/CSI before matching, so a foreign cast can carry a control
+  // sequence that passes every scan and would then be EXECUTED by the terminal printing this
+  // warning. Escaped, it is shown rather than obeyed.
   return "--show-command fills the TITLE CARD too, not just the window chrome: with no --ask, no "
-    + `"ask" mark and no -p prompt the card will read "${published}". `
+    + `"ask" mark and no -p prompt the card will read ${JSON.stringify(published)}. `
     + 'Pass --ask "<the ask>" to keep the command off the card.';
 }
 
