@@ -966,6 +966,23 @@ class PackageTests(unittest.TestCase):
                                              ("tools/\u017f\u0301.py", "b")])
 
     @unittest.skipUnless(os.name == "nt", "Windows directory junctions")
+    def test_packager_packages_a_link_shared_between_two_bases(self):
+        # The cycle guard is per-BASE: two runtime dirs reaching the same directory package it
+        # under two different member prefixes, which is a DAG, not a loop, and must not be
+        # mistaken for one (CMH-PKG-15).
+        with tempfile.TemporaryDirectory() as d:
+            stage = self._minimal_stage(d)
+            rc = subprocess.run(["cmd", "/c", "mklink", "/J",
+                                 os.path.join(stage, "vendor", "shared"),
+                                 os.path.join(stage, "tools")],
+                                capture_output=True, text=True)
+            if rc.returncode != 0:
+                self.skipTest("could not create a junction: " + rc.stderr.strip())
+            rels = [rel for rel, _ in build._iter_zip_members(stage)]
+            self.assertIn("tools/f.txt", rels)
+            self.assertIn("vendor/shared/f.txt", rels)
+
+    @unittest.skipUnless(os.name == "nt", "Windows directory junctions")
     def test_packager_rejects_a_junction_cycle(self):
         # A junction pointing at its own ancestor passes containment (it resolves INSIDE the stage)
         # but os.walk follows it, so the walk would recurse until the build died on the path

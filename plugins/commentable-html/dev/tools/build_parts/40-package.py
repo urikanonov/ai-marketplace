@@ -82,7 +82,6 @@ def _iter_zip_members(stage_dir):
     loop until the build dies on the path length)."""
     members = []
     stage_real = os.path.realpath(stage_dir)
-    seen_dirs = set()
     for d in PACKAGE_BULKY_DIRS:
         base = os.path.join(stage_dir, d)
         if not os.path.isdir(base):
@@ -92,6 +91,10 @@ def _iter_zip_members(stage_dir):
             raise SystemExit(
                 "skill-resources.zip: refusing a redirected build-input directory: " + d)
         before = len(members)
+        # Scoped to ONE base's walk: a cycle always recurs within the walk that entered it, while
+        # two bases legitimately reaching the same directory package it under two different member
+        # prefixes - a DAG, not a loop.
+        seen_dirs = set()
         for root, dirs, files in os.walk(base):
             real = os.path.realpath(root)
             if real in seen_dirs:
