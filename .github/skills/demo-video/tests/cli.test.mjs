@@ -324,3 +324,14 @@ test("--show-command is opt-in and scoped to the subjects that film a cast (DEMO
   assert.notEqual(withValue.status, 0, "--show-command swallowed a value");
   assert.match(withValue.stderr, /unexpected argument: yes/);
 });
+
+// The flag's loudest surface is the TITLE CARD, not the chrome it reads like a control for, and
+// `--help` is where an operator meets it - a usage line that describes only the chrome is how the
+// coupling stayed hidden in the first place.
+test("--help says --show-command reaches the title card (DEMO-SAFE-43)", () => {
+  const help = run(["--help"]);
+  assert.equal(help.status, 0, help.stderr);
+  assert.match(help.stdout, /--show-command/);
+  assert.match(help.stdout, /title card/i,
+    "the usage text explains --show-command without naming the title card");
+});

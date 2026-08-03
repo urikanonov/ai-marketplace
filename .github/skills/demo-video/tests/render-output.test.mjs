@@ -9,6 +9,7 @@ import {
   tokenizeCommand,
   joinCommand,
   askFromCast,
+  showCommandCardNotice,
   castText,
   publishedSurfaces,
   gateFindings,
@@ -638,10 +639,34 @@ test("--show-command reaches the title card, not just the chrome (DEMO-SAFE-43)"
   // SENTENCE that introduces it must name the title card - a mention elsewhere in the paragraph is
   // what the operator already had, and it read as a note about the chrome fallback.
   const skill = fs.readFileSync(path.join(import.meta.dirname, "..", "SKILL.md"), "utf8");
-  const sentences = skill.replace(/\s+/g, " ").split(/(?<=[.!?])\s+/)
+  // Emphasis markers are dropped BEFORE the split: a sentence that ends inside a bold lead-in
+  // ("... the title card.**") does not end at the period as far as the lookbehind is concerned, so
+  // leaving them in silently glues it to the next sentence and the assertion below passes on text
+  // that no longer states the coupling at all.
+  const sentences = skill.replace(/\s+/g, " ").replace(/\*+/g, "").split(/(?<=[.!?])\s+/)
     .filter((s) => s.includes("--show-command"));
   assert.ok(sentences.length, "SKILL.md no longer mentions --show-command at all");
   assert.ok(
     sentences.some((s) => /title card/i.test(s)),
     "SKILL.md introduces --show-command without saying it also arms the title card");
+
+  // And the render-time half, because a document only reaches whoever read it. The notice fires
+  // exactly when the flag CHANGES the card, names what the card will read, and prescribes the fix.
+  const notice = showCommandCardNotice(bare, { "show-command": true });
+  assert.match(notice, /TITLE CARD/);
+  assert.match(notice, /--ask/);
+  assert.ok(notice.includes(LEAKY), "the notice does not show what the card will actually read");
+  assert.equal(showCommandCardNotice(bare, { showCommand: true }), notice,
+    "the camelCase spelling does not warn");
+  // Silent when the flag is absent, and when it changes nothing: a warning that fires on a clip it
+  // does not apply to is the fastest way to teach an operator to ignore it.
+  assert.equal(showCommandCardNotice(bare, {}), null);
+  assert.equal(showCommandCardNotice(bare, { "show-command": true, ask: "a short ask" }), null);
+  assert.equal(
+    showCommandCardNotice({ command: LEAKY, marks: [{ label: "ask", text: "review the panel" }] },
+      { "show-command": true }),
+    null);
+  assert.equal(showCommandCardNotice({ command: "copilot -p write the docs" }, { "show-command": true }), null);
+  // A bare `copilot` publishes nothing the safe label was hiding, so there is nothing to warn about.
+  assert.equal(showCommandCardNotice({ command: "copilot" }, { "show-command": true }), null);
 });

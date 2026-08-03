@@ -370,7 +370,8 @@ in the clip - as well as into the chrome. That is the flag doing what it says (i
 opt-in to publishing the command), not a bug: use it only when you have read the command you are
 about to publish. A cast that has something to state is unaffected - an `--ask`, an `ask` mark, or a
 `-p` prompt still wins over the fallback, so the flag only ever fills a card that would otherwise
-carry the bare program name.
+carry the bare program name. `render` and `loop` say so when it happens, quoting what the card will
+read, so the trap is caught even by an operator who never read this paragraph.
 
 **The title card is the loudest surface of all** - it is the largest type in the clip. It states the
 prompt that was actually typed, and it is bounded: a `-p` prompt ends at its closing quote (or at the
