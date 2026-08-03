@@ -346,6 +346,54 @@ _HTML5_ENTITY_NAMES = frozenset(_HTML5_ENTITIES)
 
 _TAG_NAME_RE = re.compile(r"([a-zA-Z][^\t\n\r\f />]*)(?:[\t\n\r\f ]|/(?!>))*")
 
+# A browser folds a tag or attribute NAME ASCII-case-insensitively; Python's `str.lower()` folds
+# outside ASCII too. U+212A KELVIN SIGN is the only character that collides (it lowercases to an
+# ASCII "k"), and that is enough to read `data-\u212aey` as `data-key`, `<lin\u212a>` as `<link>`
+# and `</mar\u212a>` as `</mark>` - names a browser keeps distinct. `html.parser` hands its
+# handlers the Unicode fold, so every name the checks key on is re-folded here, the way the
+# raw-text closer already is through `re.ASCII` (CMH-VAL-21 clause 7).
+_ASCII_LOWER = {c: c + 32 for c in range(ord("A"), ord("Z") + 1)}
+
+# A tag name survives UNFOLDED only in the source, so it is stashed as each tag is parsed (see
+# `_BrowserTagNames`). Everything up to HTML whitespace, `/` or `>` is the name.
+_RAW_TAG_NAME_RE = re.compile(r"[^\t\n\r\f />]*")
+
+
+def _ascii_lower(name):
+    return name.translate(_ASCII_LOWER)
+
+
+class _BrowserTagNames(HTMLParser):
+    """Tag names folded the way a BROWSER folds them: ASCII-only (CMH-VAL-21 clause 7).
+
+    Mixed into every parser in this package that keys on a tag name, because `html.parser` folds
+    with `str.lower()` before it calls a handler - which would make `<lin\u212a>` a `<link>` and
+    `</mar\u212a>` a `</mark>` closer.
+    """
+
+    _raw_tag_name = ""
+
+    def parse_starttag(self, i):
+        self._stash_tag_name(i + 1)
+        return super().parse_starttag(i)
+
+    def parse_endtag(self, i):
+        self._stash_tag_name(i + 2)
+        return super().parse_endtag(i)
+
+    def _stash_tag_name(self, i):
+        m = _RAW_TAG_NAME_RE.match(self.rawdata, i)
+        self._raw_tag_name = m.group(0) if m else ""
+
+    def _browser_tag(self, tag):
+        """`tag` as a BROWSER names it. The stashed raw name is used only when it is THIS tag
+        under the host's own fold; anything else - a name the host truncated at a NUL, a handler
+        reached with a tag it was passed rather than one it just parsed - folds `tag` itself,
+        which leaves it exactly as it already was."""
+        raw = self._raw_tag_name
+        return _ascii_lower(raw) if raw and raw.lower() == tag else _ascii_lower(tag)
+
+
 _ATTR_RE = re.compile(r"""
   ((?<=['"\t\n\r\f /])[^\t\n\r\f />][^\t\n\r\f /=>]*)   # attribute name
   ([\t\n\r\f ]*=[\t\n\r\f ]*                            # value indicator
@@ -402,8 +450,12 @@ def _browser_attrs(parser, tag, attrs):
     m = _TAG_NAME_RE.match(raw, 1)
     if m is None:
         return attrs
-    name = m.group(1).lower()
-    if name != tag and name.split("\x00", 1)[0] != tag:
+    name = m.group(1)
+    # Accepted under EITHER fold: a caller inside a start-tag handler passes the ASCII-folded
+    # name, while one reading `html.parser`'s own `tag` passes the Unicode fold, and neither may
+    # lose the browser decoding by looking foreign.
+    if not any(n == tag or n.split("\x00", 1)[0] == tag
+               for n in (_ascii_lower(name), name.lower())):
         return attrs
     out = []
     k, end = m.end(), len(raw)
@@ -418,7 +470,7 @@ def _browser_attrs(parser, tag, attrs):
             value = value[1:-1]
         if value and "&" in value:
             value = _unescape_attr_value(value)
-        out.append((name.lower(), value))
+        out.append((_ascii_lower(name), value))
         k = m.end()
     return out
 
@@ -429,7 +481,7 @@ def _browser_attrs_dict(parser, tag, attrs):
     comprehension would keep the last, so set-if-absent is what matches the browser."""
     d = {}
     for k, v in _browser_attrs(parser, tag, attrs):
-        kl = (k or "").lower()
+        kl = _ascii_lower(k or "")
         if kl not in d:
             d[kl] = v if v is not None else ""
     return d
@@ -464,7 +516,7 @@ def _end_tag_close(rawdata, i):
     return -1
 
 
-class _BrowserBoundaries(HTMLParser):
+class _BrowserBoundaries(_BrowserTagNames):
     """Where one element ENDS and the next begins, decided the way a BROWSER decides it and
     IDENTICALLY on every interpreter (CMH-VAL-21).
 
@@ -592,6 +644,9 @@ class _BrowserBoundaries(HTMLParser):
         self.clear_cdata_mode()
 
     def parse_endtag(self, i):
+        # Stashed here too: the raw-text branch below returns without ever delegating to the
+        # base's own parse_endtag, so it would otherwise read the PREVIOUS tag's name.
+        self._stash_tag_name(i + 2)
         elem = self.cdata_elem
         rawdata = self.rawdata
         if elem is not None and elem != _PLAINTEXT and self.interesting.match(rawdata, i):
@@ -982,7 +1037,7 @@ class _DocParser(_BrowserBoundaries):
             self._lede_depth = len(self.stack)
 
     def handle_starttag(self, tag, attrs):
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         ad = self._attrs_dict(tag, attrs)
         ns = self._child_namespace(tag, ad)
         if ns == "html":
@@ -1037,7 +1092,7 @@ class _DocParser(_BrowserBoundaries):
         # at once, so it is RECORDED but never pushed - `<svg><rect id="x"/></svg>` is still an
         # element with an id, and a bare `<svg/>` must not be left open (a stale foreign current
         # node would make a following `<![CDATA[` hide live markup).
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         ad = self._attrs_dict(tag, attrs)
         ns = self._child_namespace(tag, ad)
         if self._foreign_self_closes(ns):
@@ -1092,7 +1147,7 @@ class _DocParser(_BrowserBoundaries):
         self._cur_body = []
 
     def handle_endtag(self, tag):
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         if tag == "head":
             self._head_ended = True
         if tag == "script" and self._cur_script is not None:
@@ -1187,7 +1242,7 @@ class _CodeSpanParser(_BrowserBoundaries):
         del self._stack[depth:]
 
     def handle_starttag(self, tag, attrs):
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         ad = self._attrs_dict(tag, attrs)
         ns = self._child_namespace(tag, ad)
         if ns == "html":
@@ -1221,14 +1276,14 @@ class _CodeSpanParser(_BrowserBoundaries):
         # pushed but still implicitly closes an open <p> (`<hr/>`), exactly as in _DocParser.
         # In FOREIGN content the slash really does close the element, so `<svg><rect/>` - and a
         # bare `<svg/>` - leave nothing open.
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         ad = self._attrs_dict(tag, attrs)
         if self._foreign_self_closes(self._child_namespace(tag, ad)):
             return  # a self-closed foreign element: opened and closed at once
         self.handle_starttag(tag, attrs)
 
     def handle_endtag(self, tag):
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         end = self._off()
         for i in range(len(self._stack) - 1, -1, -1):
             if self._stack[i][0] != tag:
@@ -1330,7 +1385,7 @@ class _RawTextSpanParser(_CodeSpanParser):
             self._raw = (self.cdata_elem, self._start_tag_end())
 
     def handle_endtag(self, tag):
-        if self._raw is not None and tag.lower() == self._raw[0]:
+        if self._raw is not None and self._browser_tag(tag) == self._raw[0]:
             self.raw_spans.append((self._raw[1], self._off()))
             self._raw = None
         super().handle_endtag(tag)
@@ -1654,7 +1709,7 @@ def _parser_script_body(parser, script_id, lo=None, hi=None):
     return s["body"] if s is not None else None
 
 
-class _TagAttrParser(HTMLParser):
+class _TagAttrParser(_BrowserTagNames):
     """Collect the attribute dict of every occurrence of one tag using the tolerant
     HTMLParser, so a '>' inside a quoted value is handled correctly and a tag that
     only appears inside an HTML comment or a <script>/<style> body (which HTMLParser
@@ -1662,15 +1717,16 @@ class _TagAttrParser(HTMLParser):
 
     def __init__(self, want):
         super().__init__(convert_charrefs=True)
-        self._want = want.lower()
+        self._want = _ascii_lower(want)
         self.found = []
 
     def handle_starttag(self, tag, attrs):
-        if tag.lower() != self._want:
+        tag = self._browser_tag(tag)
+        if tag != self._want:
             return
         # Same browser attribute decoding the shared boundary layer applies, so this lookup
         # cannot disagree with the parsed document about an attribute's value.
-        self.found.append(_browser_attrs_dict(self, tag.lower(), attrs))
+        self.found.append(_browser_attrs_dict(self, tag, attrs))
 
 
 def _find_tag_attrs(html, tag):

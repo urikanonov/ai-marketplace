@@ -9,9 +9,8 @@ use section cards). All findings are non-fatal warnings, matching the section-wr
 (CMH-VAL-14) precedent.
 """
 import re
-from html.parser import HTMLParser
 
-from .parsing import _browser_attrs_dict
+from .parsing import _BrowserTagNames, _browser_attrs_dict
 
 MIN_LONG_PARAGRAPH_CHARS = 240
 MAX_CONSECUTIVE_LONG = 4
@@ -38,7 +37,7 @@ _LAYOUT_CLASSES = ("cmh-diff", "mermaid", "cmh-mermaid", "cmh-chart", "cmh-kql")
 _LAYOUT_ATTRS = ("data-cmh-checklist", "data-cm-widget")
 
 
-class _DensityParser(HTMLParser):
+class _DensityParser(_BrowserTagNames):
     def __init__(self, min_chars, max_run):
         super().__init__(convert_charrefs=True)
         self.min_chars = min_chars
@@ -66,7 +65,7 @@ class _DensityParser(HTMLParser):
     def _attrs(self, tag, attrs):
         # Browser attribute-value decoding, shared with the document parser, so the content
         # root and the kind meta read the same on every interpreter (CMH-VAL-21).
-        return _browser_attrs_dict(self, tag.lower(), attrs)
+        return _browser_attrs_dict(self, tag, attrs)
 
     @staticmethod
     def _classes(d):
@@ -101,7 +100,7 @@ class _DensityParser(HTMLParser):
             self.kind = (d.get("content") or "").strip().lower()
 
     def handle_starttag(self, tag, attrs):
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         d = self._attrs(tag, attrs)
         if tag == "meta":
             self._note_kind(d)
@@ -180,7 +179,7 @@ class _DensityParser(HTMLParser):
             self.run = 0
 
     def handle_endtag(self, tag):
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         if tag == "p" and self._p_prose:
             self._close_paragraph()
         if tag in _HEADINGS and self._heading_capture:

@@ -17,11 +17,16 @@ import html.parser as _html_parser  # noqa: E402
 from html.parser import HTMLParser  # noqa: E402
 from unittest import mock  # noqa: E402
 
-from checks import checklist, notes, parsing  # noqa: E402
+from checks import checklist, density, notes, parsing  # noqa: E402
 
 # Every HTML raw-text / RCDATA element: its CONTENT is text a reader SEES, never markup.
 RAW_TEXT_ELEMENTS = ("script", "style", "textarea", "title", "xmp", "iframe",
                      "noembed", "noframes", "noscript")
+
+# U+212A KELVIN SIGN: the ONLY character outside ASCII whose `str.lower()` is an ASCII letter
+# ("k"), so it is the whole reachable surface of a Unicode fold turning a tag or attribute name
+# into a name a browser never sees.
+KELVIN = "\u212a"
 
 def _ids(html):
     return parsing._parse_document(html).all_ids
@@ -414,6 +419,103 @@ class DocParserForeignContentTests(unittest.TestCase):
         # NOT close a <script>; full Unicode folding would end the region early.
         html = '<script>var u = "</\u017fcript><div id=\'quoted\'>";</script><div id="real"></div>'
         self.assertEqual(_ids(html), ["real"])
+
+
+class DocParserNameFoldTests(unittest.TestCase):
+    """Tag and ATTRIBUTE names fold ASCII-case-insensitively, the way a browser folds them
+    (CMH-VAL-21 clause 7).
+
+    `html.parser` hands its handlers `name.lower()` - Python's UNICODE fold - and U+212A KELVIN
+    SIGN lowercases to an ASCII "k". So `data-<K>ey` arrives as `data-key`, `<lin<K>>` as
+    `<link>` and `</mar<K>>` as a `</mark>` closer, while a browser keeps every one of them a
+    DIFFERENT name. "k" is the whole reachable surface: no other character outside ASCII
+    lowercases to an ASCII letter, so only a name spelled with a "k" can collide.
+
+    Every pin here is red if its name is folded with `str.lower()` instead - EXCEPT the last,
+    `test_an_ascii_uppercase_name_still_folds`, which is deliberately green on the old code: it
+    is the non-regression half of the rule (ASCII case must still fold).
+    """
+
+    def test_an_attribute_name_folds_ascii_case_only(self):
+        html = '<div id="commentRoot" DATA-%sEY="v"></div>' % KELVIN
+        self.assertEqual(dict(parsing._parse_document(html).comment_root_attrs),
+                         {"id": "commentRoot", "data-%sey" % KELVIN: "v"})
+
+    def test_the_shared_attribute_helper_folds_names_ascii_case_only(self):
+        # The one helper every attribute view in the checks package builds its dict from, so
+        # the checklist, notes, density and tag-lookup passes fold the same way by construction.
+        parser = _StaleRawTagParser('<div DATA-%sEY="v" DATA-B="w">' % KELVIN)
+        self.assertEqual(parser.attrs_for("div", []),
+                         {"data-%sey" % KELVIN: "v", "data-b": "w"})
+
+    def test_a_tag_lookup_folds_ascii_case_only(self):
+        self.assertEqual(parsing._find_tag_attrs('<lin%s rel="icon">' % KELVIN, "link"), [])
+        self.assertEqual(parsing._find_tag_attrs('<LINK rel="icon">', "link"), [{"rel": "icon"}])
+
+    def test_a_start_tag_name_folds_ascii_case_only(self):
+        # `<lin<K>>` is not a `<link>`, so it contributes no favicon link - and, not being VOID,
+        # it is an ordinary element a browser leaves OPEN.
+        html = '<head><lin%s rel="icon" href="f.ico"></head>' % KELVIN
+        self.assertEqual(parsing._parse_document(html).icon_links, [])
+        self.assertEqual(parsing._parse_document(
+            '<head><LINK rel="icon" href="f.ico"></head>').icon_links,
+            [{"rel": "icon", "href": "f.ico"}])
+
+    def test_the_code_block_tokenizer_folds_tag_names_ascii_case_only(self):
+        # `</mar<K>>` is not a `</mark>`, so it does not pop the `<mark>` - and with it the open
+        # `<pre>`, which would destroy the code block's span and fail every consumer closed.
+        spans = parsing.code_block_spans(
+            '<mark><pre>x</mar%s>y</pre></mark>' % KELVIN)
+        self.assertEqual(len(spans.pres), 1)
+        self.assertFalse(spans.unclosed)
+        self.assertIsNotNone(spans.pres[0]["inner"])
+
+    def test_an_end_tag_name_folds_ascii_case_only(self):
+        # `</mar<K>>` is not a `</mark>`, so the cm-skip `<mark>` is still open and still covers
+        # the canvas after it.
+        html = ('<div id="commentRoot"><mark class="cm-skip">x</mar%s>'
+                '<canvas id="c"></canvas></div>' % KELVIN)
+        self.assertEqual([c["skip"] for c in parsing._parse_document(html).canvases], [True])
+
+    def test_the_checklist_pass_folds_tag_names_ascii_case_only(self):
+        # `<lin<K>>` is not a `<link>`, so it is not VOID: it is pushed, and its end tag really
+        # closes the container, leaving the later item OUTSIDE it.
+        parser = checklist._ChecklistParser()
+        parser.feed('<lin%s data-cmh-checklist="c"><li data-cmh-item="a"></li></lin%s>'
+                    '<li data-cmh-item="b"></li>' % (KELVIN, KELVIN))
+        parser.close()
+        self.assertEqual([[i["item_id"] for i in inst["items"]] for inst in parser.instances],
+                         [["a"]])
+
+    def test_the_notes_pass_folds_tag_names_ascii_case_only(self):
+        # Same non-VOID consequence for a note: it is a real element that can hold children.
+        parser = notes._NotesParser()
+        parser.feed('<lin%s data-cmh-note="n"><span>x</span></lin%s>' % (KELVIN, KELVIN))
+        parser.close()
+        self.assertEqual([(n["void"], n["has_child"]) for n in parser.notes], [(False, True)])
+
+    def test_the_density_pass_folds_tag_names_ascii_case_only(self):
+        # `<bloc<K>quote>` is not a `<blockquote>`, so it is not a layout-bearing block and does
+        # not break the prose run: the four long paragraphs are still one wall.
+        long_p = "<p>%s</p>" % ("This sentence is deliberately padded out with filler words " * 5)
+        for name, expect_wall in (("bloc%squote" % KELVIN, True), ("blockquote", False)):
+            with self.subTest(name=name):
+                inner = long_p * 2 + "<%s></%s>" % (name, name) + long_p * 2
+                html = ('<!doctype html><html><head>'
+                        '<meta name="commentable-html-kind" content="report"></head><body>'
+                        '<main id="commentRoot" data-cmh-content-root><h1>T</h1>'
+                        '<section><h2>S</h2>%s</section></main></body></html>' % inner)
+                _errors, warnings = density.check_density(html)
+                self.assertEqual(bool(warnings), expect_wall, warnings)
+
+    def test_an_ascii_uppercase_name_still_folds(self):
+        # The other half of the rule: ASCII case is still folded, so a browser-equivalent
+        # spelling is not read as a different element or attribute.
+        html = '<DIV ID="commentRoot" CLASS="cm-skip"><CANVAS></CANVAS></DIV>'
+        parser = parsing._parse_document(html)
+        self.assertEqual(dict(parser.comment_root_attrs),
+                         {"id": "commentRoot", "class": "cm-skip"})
+        self.assertEqual([c["skip"] for c in parser.canvases], [True])
 
 
 class DocParserAttributeValueTests(unittest.TestCase):
