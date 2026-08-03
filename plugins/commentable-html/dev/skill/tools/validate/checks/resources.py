@@ -4,6 +4,7 @@ and the NonShareable vs Shareable/offline determination."""
 
 import re
 import os
+import json
 import tempfile
 from html.parser import HTMLParser
 from urllib.parse import urlparse
@@ -158,6 +159,80 @@ def offline_script_navigates_to_network(body):
 
 
 META_REFRESH_NETWORK_RE = re.compile(r"(?:^|[;,\s])url\s*=\s*(['\"]?)(?:https?:)?//", re.IGNORECASE)
+
+# Script types that are ACTIVE without being JavaScript, so `_is_executable_js` never looked at
+# them. They get different rules, mirroring `_offlineActiveDataScriptType` /
+# `_offlineActiveDataBlockIsRemovable` in assets/js/68-export-offline.js, which
+# tests/test_vendored_libs.py pins to these in the real JS engine:
+#
+# `speculationrules` is rejected outright - it exists only to make the browser fetch early, it shows
+# a reader nothing, and a `"source": "document"` ruleset prefetches the document's own links without
+# naming a URL at all, so no URL-shaped test could gate it.
+#
+# `importmap` is rejected only when it carries a reference the file cannot resolve on its own,
+# decided by PARSING the JSON (a text scan closes one spelling of a URL and leaves `\u002f`, padding
+# and an embedded tab). Every string counts, key as well as value, because an import map's `imports`
+# and `scopes` keys are references too; a reference is non-local when it carries a scheme (`data:`
+# and `blob:` included - they map a bare specifier onto code the document did not contain) or an
+# authority prefix, which accepts a BACKSLASH as well as a slash in either position because a
+# special scheme's relative and relative-slash states treat the two alike. An unparseable body, or a
+# `src`, is rejected as well.
+OFFLINE_ACTIVE_DATA_TYPES = ("importmap", "speculationrules")
+OFFLINE_NONLOCAL_REF_RE = re.compile(r"^(?:[A-Za-z][A-Za-z0-9+.\-]*:|[/\\][/\\])")
+
+
+def offline_active_data_script_type(attrs):
+    """The normalized active-but-not-JavaScript script type, or "" when it is not one.
+
+    These are HTML KEYWORD types, not MIME types, so a browser matches them exactly after trimming
+    ASCII whitespace - `importmap;charset=utf-8` is inert data and must not be rejected.
+    """
+    t = (attrs.get("type", "") or "").strip("\t\n\f\r ").lower()
+    return t if t in OFFLINE_ACTIVE_DATA_TYPES else ""
+
+
+def offline_is_non_local_ref(value):
+    """True when a reference is not resolvable inside the exported file on its own.
+
+    Mirrors the URL parser's own input cleanup - it strips ASCII tab and newline ANYWHERE and
+    leading C0-or-space - so neither a padded nor a tab-split spelling passes as relative.
+    """
+    s = re.sub(r"[\t\n\r]", "", str(value))
+    s = re.sub(r"^[\x00-\x20]+", "", s)
+    return bool(OFFLINE_NONLOCAL_REF_RE.match(s))
+
+
+def _offline_json_has_non_local_ref(value):
+    if isinstance(value, str):
+        return offline_is_non_local_ref(value)
+    if isinstance(value, list):
+        return any(_offline_json_has_non_local_ref(v) for v in value)
+    if isinstance(value, dict):
+        return any(offline_is_non_local_ref(k) or _offline_json_has_non_local_ref(v)
+                   for k, v in value.items())
+    return False
+
+
+def _reject_json_constant(name):
+    # `JSON.parse` has no NaN/Infinity literals, but Python's json accepts them by default. Rejecting
+    # them keeps the two parses deciding the same thing about the same bytes.
+    raise ValueError("not valid JSON: %s" % name)
+
+
+def offline_active_data_block_is_removable(stype, attrs, body):
+    """Whether the offline exporter would remove this active-but-not-JavaScript block."""
+    if stype == "speculationrules":
+        return True
+    if "src" in attrs:
+        return True
+    try:
+        # The walk is inside the same guard as the parse, so a body nested deeply enough to hit the
+        # recursion limit fails closed like an unparseable one instead of raising out of the check.
+        return _offline_json_has_non_local_ref(
+            json.loads(body or "", parse_constant=_reject_json_constant))
+    except Exception:
+        return True
+
 
 NONSHAREABLE_REGIONS = REGIONS
 

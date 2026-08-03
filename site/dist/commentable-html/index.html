@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.404.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.407.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.407.0] - 2026-08-03</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The Offline export&#x27;s strips now inspect two shapes they used to walk straight past. A <code>&lt;script type=&quot;speculationrules&quot;&gt;</code> or <code>&lt;script type=&quot;importmap&quot;&gt;</code> block is ACTIVE without being JavaScript - a speculation ruleset makes the browser prefetch or prerender by itself, and an import map re-points where a bare module specifier resolves, which the remote-import scan cannot see because the importing script names no URL - so the JavaScript-MIME predicate never looked at either. A speculation ruleset is now removed outright (it can prefetch the document&#x27;s own links through <code>&quot;source&quot;: &quot;document&quot;</code> without naming a URL at all, and it has nothing to offer a single-file offline export), and an import map is removed unless every reference in it, key and value alike, is relative - which is decided by parsing the JSON rather than scanning its text, so a <code>\u002f</code>-escaped, whitespace-padded, tab-split, backslash-authority or <code>data:</code>/<code>blob:</code>-scheme target cannot slip through. An external (<code>src</code>-bearing) or unparseable block is removed too, and a parameterized spelling such as <code>importmap;charset=utf-8</code> is left alone because a browser treats it as inert data. And <code>&lt;template&gt;</code> content, which <code>querySelectorAll</code> never descends into but serialization preserves verbatim, is now walked recursively at any depth by the reserved-id neutralize pass, the loader strip and the event-handler/URL scrub, so a script parked in a template for a later adopter to insert can no longer carry a remote import, a navigation beacon, a network image, a network <code>url(...)</code> or an inline event handler into an offline file. The strict validator applies both rules too - from a mirrored type list and pattern, and from separate template-content views that only the offline checks read - so it can neither bless a file the exporter would strip nor reject one it just produced.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.404.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The validator now folds TAG and ATTRIBUTE names ASCII-case-insensitively, the way a browser folds them, instead of inheriting <code>html.parser</code>&#x27;s Unicode <code>str.lower()</code>. U+212A KELVIN SIGN is the one character outside ASCII that lowercases to an ASCII letter (&quot;k&quot;), and that was enough to read <code>data-\u212aey</code> as <code>data-key</code>, <code>&lt;lin\u212a&gt;</code> as a <code>&lt;link&gt;</code> and <code>&lt;/mar\u212a&gt;</code> as a <code>&lt;/mark&gt;</code> closer - names a browser keeps distinct, so the validator could see a different document from the one a reader gets. The rule that already governed a raw-text end tag (<code>re.ASCII</code>) now governs every name the checks key on, in the one shared attribute helper and in a <code>_BrowserTagNames</code> base the document, code-span, tag-lookup, checklist, notes and density passes all build on.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.403.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -510,8 +519,6 @@
               <li><code>validate.py</code> now reports both shapes of the same problem as errors: a duplicated <code>reviewedSections</code> id (like the three other reserved state-block ids) and an id the EMBEDDED COMMENTS region does not own (a block outside it, or one that is not a <code>&lt;script&gt;</code>), and <code>mark_reviewed.py</code> refuses to write a block that region does not own. Its shape check only ever read the region-owned block, so either file used to pass <code>--strict</code> while the runtime ignored or mis-wrote the reader&#x27;s state.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.399.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -543,14 +550,7 @@
               <li>The Offline export&#x27;s navigation strip, and the strict validator that mirrors it, now recognize a network URL literal spelled WITHOUT the slashes after its scheme (issue #870). A browser resolves <code>location.href = &quot;https:host/path&quot;</code> to <code>https://host/path</code>, so that one-token spelling change navigated the whole document - every reviewer comment with it - to an attacker&#x27;s host while matching neither copy of the pattern, and no CSP delivered in a <code>&lt;meta&gt;</code> can restrict top-level navigation, so nothing else would have stopped it. Unlike the misses the residual documents (aliasing, computed access, a runtime-assembled URL), this one needed no indirection at all, and because the validator agreed with the strip it also blessed such a file as offline-clean. The URL literal is now recognized in the three literal prefixes a browser resolves to a network host - scheme plus slashes, protocol-relative, and scheme-only - in both copies, which stay byte-identical. A quoted <code>https:</code> that is not a navigation (a scheme constant compared against, a comparison, a sink a local binding shadows) still survives, and the tail is a bare alternation of literals, so it cannot backtrack. The literal is still read RAW, so a URL the browser NORMALIZES first - one led or interrupted by whitespace, or a scheme spelled with a JavaScript string escape - is still missed, and that class is now named in the CMH-OFFLINE-05 residual instead of being implied away (issue #914).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.390.0] - 2026-08-03</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Media anchors: an unlabeled figure is no longer identified by its position alone. An image comment resolves by <code>imageIndex</code> and falls back to the stored <code>imageSrc</code>/<code>imageAlt</code>/<code>imageKind</code>, so media with NO label and no src - an unlabeled inline <code>&lt;svg&gt;</code>, an unlabeled chart <code>&lt;canvas&gt;</code> - had no identity at all beyond its index: inserting a figure ahead of it silently moved the comment to a DIFFERENT graphic, because the metadata check had nothing to disagree with. Such a comment now also stores <code>imageSig</code>, a short digest of an AUTHORED shape descriptor (the tag, an author <code>id</code>, the figure&#x27;s caption, an svg&#x27;s <code>viewBox</code> plus the shape it draws down to each descendant&#x27;s drawing attributes and its own text, a chart canvas&#x27;s <code>data-cmh-chart-*</code> attributes) that excludes everything the runtime writes, so a reload, a re-render, a device-pixel-ratio change and an export/reopen all recompute the same value. The comment now re-anchors to the figure it was left on, or stays unresolved when the shape is genuinely ambiguous, instead of attaching itself to another figure. The signature is the discriminator of last resort: it never overrides a label or a src (so redrawing a still-labelled figure keeps its comment), it is never shown to a reader (no card, <code>Copy all</code> line, Markdown export or printed sheet - it rides along only inside an export&#x27;s embedded comment record, so a reopened copy can re-anchor), and a comment saved before the field existed - or one carrying a value no signature this runtime writes could be - resolves exactly as it did.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">262 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">263 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

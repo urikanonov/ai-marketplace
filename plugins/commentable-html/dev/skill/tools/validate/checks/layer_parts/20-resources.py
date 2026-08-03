@@ -101,16 +101,39 @@ def _check_self_contained(html, parser, nonshareable):
         for tag in ("body", "table", "td", "th", "div"):
             for el in _find_tag_attrs(html, tag):
                 _check_network_attr(tag, el, "background")
-        for style in parser.styles:
+        # The exporter removes EVERY `on*` attribute, template content included, so a gate that did
+        # not look would certify a hand-authored offline file the export would have changed - and an
+        # inline handler is exactly the channel the CSP cannot close, since `script-src
+        # 'unsafe-inline'` allows it and no meta-delivered policy restricts top-level navigation.
+        for handler in parser.event_handler_attrs:
+            errors.append('offline mode: <%s %s="..."> carries an inline event handler - it runs '
+                          "with the document's own privileges (the offline CSP allows inline script "
+                          "and cannot stop a navigation), so the export removes it; remove it here too"
+                          % (handler.get("tag", "element"), handler.get("attr", "on...")))
+        for style in parser.styles + parser.template_styles:
             for m in re.finditer(r"@import\s+(?:url\()?['\"]?((?:https?:)?//[^;'\"\)]+)", style.get("body", ""), re.I):
                 errors.append('offline mode: @import "%s" loads over the network - inline or remove it' % m.group(1)[:80])
             if CSS_NETWORK_URL_RE.search(style.get("body", "")):
                 errors.append("offline mode: style block contains a network url(...) - inline or remove it")
-        for style in parser.inline_styles:
+        for style in parser.inline_styles + parser.template_inline_styles:
             if CSS_NETWORK_URL_RE.search(style.get("value", "")):
                 errors.append("offline mode: inline style on <%s> contains a network url(...) - inline or remove it"
                               % style.get("tag", "element"))
-        for script in parser.scripts:
+        # Template-parked content is inert until a script adopts the fragment and inserts it, at
+        # which point a parked script runs and a parked reference loads - so the offline strips walk
+        # into templates and this gate reads what they read. Every other check keeps ignoring
+        # template content, which is why these are separate views rather than a widened `scripts`.
+        for script in parser.scripts + parser.template_scripts:
+            active = offline_active_data_script_type(script["attrs"])
+            if active:
+                if offline_active_data_block_is_removable(active, script["attrs"], script.get("body", "")):
+                    errors.append("offline mode: a <script type=\"%s\"> block is active without being "
+                                  "JavaScript - a speculation ruleset makes the browser fetch on its "
+                                  "own (it needs no URL literal, so it cannot be made offline-safe) "
+                                  "and an import map re-points where a bare module specifier "
+                                  "resolves; remove the ruleset, and give the import map a valid "
+                                  "body whose every reference, key and value, is relative" % active)
+                continue
             if not _is_executable_js(script["attrs"]):
                 continue
             body = script.get("body", "")

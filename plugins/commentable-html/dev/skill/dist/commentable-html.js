@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.404.0";
+const CMH_VERSION = "1.407.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -12539,6 +12539,64 @@ function _offlineIsRunnableScriptType(type) {
   return /^(?:text|application)\/(?:x-)?(?:java|ecma)script$/.test(t) ||
     /^text\/(?:javascript1\.[0-5]|jscript|livescript)$/.test(t);
 }
+// Two script types that are ACTIVE without being JavaScript, so the predicate above never looked at
+// either. They get DIFFERENT rules because their risk is not the same shape.
+//
+// `speculationrules` is removed OUTRIGHT. It exists only to make the browser fetch something early,
+// it shows a reader nothing, and it needs no URL literal at all to reach the network: a
+// `"source": "document"` ruleset prefetches the links the document already carries, so any
+// URL-shaped test is the wrong tool for it. A single-file offline export has nothing to pre-warm.
+//
+// `importmap` has a legitimate local use - it makes a relative module graph resolve - so it is
+// removed only when it carries a reference the file cannot resolve on its own. That is decided by
+// PARSING the JSON rather than scanning its text, because JSON spells the same URL many ways
+// (`\/`, `\u002f`, leading whitespace, an embedded tab the URL parser strips) and a text scan closes
+// one spelling while leaving the rest. Every string in the parsed value counts - KEY as well as
+// value, since an import map's `imports` and `scopes` keys are references too - and a reference is
+// non-local when it carries a scheme (not only `https:`: `data:` and `blob:` map a bare specifier
+// onto code the document did not contain) or an authority prefix. A body that is not valid JSON is
+// removed as well: a browser hard-fails such a map, so failing closed loses nothing. A `src` removes
+// the block too - an external ruleset or map is unreviewable and cannot be self-contained. The
+// strict validator mirrors the type list and the pattern (`OFFLINE_ACTIVE_DATA_TYPES` /
+// `OFFLINE_NONLOCAL_REF_RE`), pinned by a parity test that runs the real engine.
+const _OFFLINE_ACTIVE_DATA_TYPES = ["importmap", "speculationrules"];
+// These two are HTML KEYWORD types, not MIME types, so a browser matches them exactly after
+// trimming ASCII whitespace - `importmap;charset=utf-8` is inert data. Splitting on `;` here would
+// delete an author's inert block, which this repo treats as the costlier error.
+function _offlineActiveDataScriptType(type) {
+  const t = String(type || "").replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, "").toLowerCase();
+  return _OFFLINE_ACTIVE_DATA_TYPES.indexOf(t) !== -1 ? t : "";
+}
+// Mirrors the URL parser's own input cleanup - it strips ASCII tab and newline ANYWHERE and leading
+// C0-or-space - so neither a padded nor a tab-split spelling can pass itself off as relative. The
+// authority prefix accepts a BACKSLASH as well as a slash in either position, because for a special
+// scheme the parser's relative and relative-slash states treat the two alike, so a reference
+// beginning with any two of them resolves to a network (or, from a `file:` document, a UNC)
+// authority. Every character class is spelled out because `\s`/`\w` mean different things in the JS
+// and Python engines, the same reason the navigation pattern below spells its whitespace out.
+const _OFFLINE_NONLOCAL_REF_RE = /^(?:[A-Za-z][A-Za-z0-9+.\-]*:|[\/\\][\/\\])/;
+function _offlineIsNonLocalRef(value) {
+  const s = String(value).replace(/[\t\n\r]/g, "").replace(/^[\x00-\x20]+/, "");
+  return _OFFLINE_NONLOCAL_REF_RE.test(s);
+}
+function _offlineJsonHasNonLocalRef(value) {
+  if (typeof value === "string") return _offlineIsNonLocalRef(value);
+  if (Array.isArray(value)) return value.some(function (v) { return _offlineJsonHasNonLocalRef(v); });
+  if (value && typeof value === "object") {
+    return Object.keys(value).some(function (k) {
+      return _offlineIsNonLocalRef(k) || _offlineJsonHasNonLocalRef(value[k]);
+    });
+  }
+  return false;
+}
+function _offlineActiveDataBlockIsRemovable(type, el) {
+  if (type === "speculationrules") return true;
+  if (el.hasAttribute("src")) return true;
+  // The WALK sits inside the same guard as the parse: a body nested deeply enough to exhaust the
+  // stack must fail closed like an unparseable one, not throw an engine message out of the export.
+  try { return _offlineJsonHasNonLocalRef(JSON.parse(el.textContent || "")); }
+  catch (e) { return true; }
+}
 // The MIT notice wording is single-sourced here because THREE places must agree on it byte for
 // byte - the emitter, the re-export strip that removes a previous pass's notice, and the capture
 // that reads one back. Wording that drifted in one of them used to fail silently: the strip would
@@ -12585,7 +12643,9 @@ function _offlineCssNoNetwork(css) {
     .replace(/url\(\s*(["']?)(?:https?:)?\/\/[^)"']+\1\s*\)/gi, 'url("data:,")');
 }
 function _stripOfflineEventHandlers(doc) {
-  doc.querySelectorAll("*").forEach(function (el) {
+  // Template-parked too: an `on*` attribute on a fragment a script later adopts and inserts is a
+  // live handler the moment it enters the document.
+  _offlineQueryAll(doc, "*").forEach(function (el) {
     Array.from(el.attributes || []).forEach(function (attr) {
       if (/^on/i.test(attr.name || "")) el.removeAttribute(attr.name);
     });
@@ -12714,7 +12774,8 @@ const _OFFLINE_RESERVED_DATA_ID_RE = /^(?:embeddedComments|handledCommentIds|com
 // renderer strip, which never had an id skip at all.
 function _neutralizeOfflineReservedDataScripts(doc) {
   const neutralized = [];
-  doc.querySelectorAll("script[id]").forEach(function (s) {
+  // Template-parked too, so a reserved-id block a script later adopts is inert data by then.
+  _offlineQueryAll(doc, "script[id]").forEach(function (s) {
     if (!_OFFLINE_RESERVED_DATA_ID_RE.test(s.getAttribute("id") || "")) return;
     if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return;
     s.setAttribute("type", "application/json");
@@ -12724,11 +12785,15 @@ function _neutralizeOfflineReservedDataScripts(doc) {
 }
 // How many neutralized blocks the exported file actually KEEPS. Counting at neutralization time
 // would over-report: a later pass legitimately removes some of the same elements (a network `src`
-// script), and the toast would then claim one script was both removed and kept. Membership is read
-// from the element's own parent rather than `doc.contains`, which is FALSE for everything inside a
-// `<template>` even though the export serializes it.
+// script), and the toast would then claim one script was both removed and kept. Membership is
+// decided by RE-WALKING the document, which is the only test that is right for a template-parked
+// block: `doc.contains` reports every one of them as gone (a fragment node is inside no element),
+// and a `parentNode` test would report a block left orphaned inside a detached subtree as kept.
 function _offlineCountKeptNeutralized(doc, neutralized) {
-  return neutralized.filter(function (s) { return s.parentNode !== null; }).length;
+  // A Set, not indexOf: a document may legitimately (or hostilely) carry many reserved-id blocks,
+  // and a linear scan per neutralized element would make the count quadratic in that number.
+  const live = new Set(_offlineQueryAll(doc, "script[id]"));
+  return neutralized.filter(function (s) { return live.has(s); }).length;
 }
 // A script does not always load through `src`: an SVG <script> uses `href` (SVG2) or the legacy
 // `xlink:href`, and its body is EMPTY - so a `script[src]` selector never saw it and the inline
@@ -12776,17 +12841,23 @@ function _stripOfflineNetworkLoads(doc) {
   all("script").forEach(function (s) {
     if (_offlineStripScriptLoad(s)) { dropped += 1; }
   });
-  // The inline-egress scan stays on the DOCUMENT's own scripts, deliberately not the template walk
-  // above. Template content never executes, and the validator's script model skips it too, so
-  // scanning it would delete a template-parked script body the gate is happy with - content loss in
-  // exchange for nothing. The LOAD check above does walk templates, because the validator's
-  // tokenizer reads those attributes and would reject the export.
-  doc.querySelectorAll("script").forEach(function (s) {
+  // The inline-egress scan walks templates too. Template content does not execute ON ITS OWN, but
+  // serialization preserves it verbatim and a second, benign-looking script can adopt the fragment
+  // and insert it, at which point a parked script runs - so a parked remote import or navigation
+  // beacon is a real channel, not a dead one. It costs no false content loss either, because the
+  // strict validator now reads template-parked scripts through its own separate view
+  // (`template_scripts`) and applies the same rules, so the two agree in both directions.
+  all("script").forEach(function (s) {
     // No id is exempt here any more. The layer's own data blocks are exempt because they are inert
     // DATA by the time this runs (`_neutralizeOfflineReservedDataScripts` made sure of it), which is
     // exactly the rule the strict validator applies; and an AUTHORED script that merely borrows a
     // reserved id - the vendored payload id included - is preserved as content by the strip only if
     // it clears the network-egress scan every other script has to clear.
+    const active = _offlineActiveDataScriptType(s.getAttribute("type"));
+    if (active) {
+      if (_offlineActiveDataBlockIsRemovable(active, s)) { s.remove(); dropped += 1; }
+      return;
+    }
     if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return;
     const body = s.textContent || "";
     if (_offlineScriptHasNetworkEgress(body)) {
@@ -13475,7 +13546,7 @@ async function saveOffline() {
   // the author guessing why their document behaves differently offline.
   const n = built.droppedScripts;
   const note = n > 0
-    ? " " + n + " script" + (n === 1 ? " that loads or navigates to the network was" : "s that load or navigate to the network were") + " removed."
+    ? " " + n + " script" + (n === 1 ? " that loads, prefetches, or navigates to the network was" : "s that load, prefetch, or navigate to the network were") + " removed."
     : "";
   // A script that keeps its bytes but loses the ability to run is a quieter change than a removal,
   // and just as surprising to an author who used a reserved id, so it is named too.

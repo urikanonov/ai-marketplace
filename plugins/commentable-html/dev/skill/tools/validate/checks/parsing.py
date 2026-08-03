@@ -875,6 +875,20 @@ class _DocParser(_BrowserBoundaries):
         self.scripts = []
         self.styles = []
         self.inline_styles = []
+        # The same three views for content parked inside a `<template>`. Template content is INERT
+        # (it does not run, does not load, and `getElementById` never sees it), so every ordinary
+        # check must keep ignoring it - but serialization preserves it verbatim and a script can
+        # adopt the fragment and insert it, which is why the offline strips walk into templates.
+        # These lists exist so the OFFLINE checks can see exactly what those strips see, without
+        # changing what any other check counts.
+        self.template_scripts = []
+        self.template_styles = []
+        self.template_inline_styles = []
+        # Every `on*` attribute in the document, template content INCLUDED, as (tag, attr). The
+        # offline strip removes all of them, so the gate needs its own view to agree; the test is
+        # the exporter's literal `^on` one, which also catches `once` - matching it exactly is the
+        # point, since a validator that disagreed would reject the file the exporter just produced.
+        self.event_handler_attrs = []
         self.has_comment_root = False
         self.js_end_marker_pos = None
         self.all_ids = []        # every element id value, in document order
@@ -903,6 +917,9 @@ class _DocParser(_BrowserBoundaries):
         self._mermaid_stack = []         # parallel to self.stack: current mermaid block index, or None
         self._cur_script = None   # (pos, attrs_dict) while inside a <script>
         self._cur_style = None    # (pos, attrs_dict) while inside a <style>
+        self._cur_tpl_raw = None  # (tag, attrs_dict, [body parts]) while inside a TEMPLATE-parked
+                                  # <script>/<style>; kept apart from the two above so template
+                                  # content never leaks into a check that must ignore it.
         self._cur_body = []
         self.commentroot_prose = []  # #commentRoot text NOT inside <a> or a cm-skip element
         self._cr_depth = None        # stack depth at which #commentRoot was entered
@@ -946,9 +963,23 @@ class _DocParser(_BrowserBoundaries):
         if READY_TOKEN in (text or "") and not self._in_commentable_content():
             self.layer_ready_token = True
 
+    def _flush_template_raw(self):
+        """Record a template-parked <script>/<style> body in its own view and clear the state."""
+        if self._cur_tpl_raw is None:
+            return
+        ttag, tad, parts, _depth = self._cur_tpl_raw
+        sink = self.template_scripts if ttag == "script" else self.template_styles
+        sink.append({"pos": None, "attrs": tad, "body": "".join(parts)})
+        self._cur_tpl_raw = None
+
     def _truncate_stacks(self, depth):
         # Every truncation path - an end tag, an implicit </p>/</li> close, a foreign-content
         # breakout - runs through here, so the parallel views can never fall out of step.
+        # A template-parked raw-text element can never outlive the <template> that holds it: an
+        # unterminated one would otherwise keep collecting, and the next parked block's body would
+        # be concatenated onto it into a body no browser would ever see.
+        if self._cur_tpl_raw is not None and depth <= self._cur_tpl_raw[3]:
+            self._flush_template_raw()
         for (t, _s) in self.stack[depth:]:
             if t == "figure" and self._figure_chart:
                 self._figure_chart.pop()
@@ -965,6 +996,8 @@ class _DocParser(_BrowserBoundaries):
 
     def _record(self, tag, ad, own_skip):
         if self._in_template():
+            if "style" in ad:
+                self.template_inline_styles.append({"tag": tag, "value": ad.get("style", "")})
             return  # inert template content
         if tag in self.layer_tags and not self._in_commentable_content():
             self.layer_tags[tag].append(ad)
@@ -1043,6 +1076,9 @@ class _DocParser(_BrowserBoundaries):
         if ns == "html":
             self._implicit_close(tag)
         own_skip = "cm-skip" in set((ad.get("class") or "").split())
+        for _attr in ad:
+            if _attr[:2].lower() == "on":
+                self.event_handler_attrs.append({"tag": tag, "attr": _attr})
         before_mermaid = len(self.mermaid_blocks)
         self._record(tag, ad, own_skip)
         if tag == "svg" and self._mermaid_stack:
@@ -1055,6 +1091,12 @@ class _DocParser(_BrowserBoundaries):
         if tag == "style" and not self._in_template():
             self._cur_style = (self._off(), ad)
             self._cur_body = []
+        if tag in ("script", "style") and self._in_template() and self._cur_tpl_raw is None:
+            # The stack DEPTH is carried so the state can never outlive its template: html.parser
+            # keeps a raw-text element open to EOF, which matches a browser, but if any future path
+            # ever left one open past `</template>` the next parked block's body would silently be
+            # concatenated onto it and the offline check would read a body no browser would see.
+            self._cur_tpl_raw = (tag, ad, [], len(self.stack))
         if (tag in _HEADING_TAGS and self._cur_heading is None and self._cr_depth is not None
                 and not self._cr_closed and len(self.stack) > self._cr_depth and not own_skip
                 and not self._skip_ancestor() and not self._in_template()):
@@ -1107,6 +1149,10 @@ class _DocParser(_BrowserBoundaries):
 
     def handle_data(self, data):
         self._note_ready_token(data)
+        # A template-parked <script>/<style> body is collected ALONGSIDE the ordinary flow (never
+        # instead of it), so adding this view cannot change what any existing check sees.
+        if self._cur_tpl_raw is not None:
+            self._cur_tpl_raw[2].append(data)
         # Capture the raw source text of the current mermaid block (entities are already
         # decoded because convert_charrefs=True), so the mermaid syntax checker can read it.
         # Only meaningful before the diagram renders to <svg>; a rendered block's has_svg
@@ -1145,6 +1191,7 @@ class _DocParser(_BrowserBoundaries):
         self._cur_script = None
         self._cur_style = None
         self._cur_body = []
+        self._flush_template_raw()
 
     def handle_endtag(self, tag):
         tag = self._browser_tag(tag)
@@ -1160,6 +1207,8 @@ class _DocParser(_BrowserBoundaries):
             self.styles.append({"pos": pos, "attrs": ad, "body": "".join(self._cur_body)})
             self._cur_style = None
             self._cur_body = []
+        if self._cur_tpl_raw is not None and tag == self._cur_tpl_raw[0]:
+            self._flush_template_raw()
         if self._cur_heading is not None and tag == self._cur_heading[0]:
             text = re.sub(r"\s+", " ", "".join(self._cur_heading[2])).strip()
             if text:
