@@ -70,7 +70,10 @@ STRIP = "crop=iw-66:22:46:1"
 LIGHTS = "crop=30:6:12:11"
 # The chrome's EMPTY GUTTER: the full-width band of its bottom padding, between the row a title is
 # drawn on and the terminal's first row. Nothing is ever drawn there on a settled frame, whatever
-# the terminal is printing - so content there means something is painted OVER the window.
+# the terminal is printing - so content there means something is painted OVER the window. (A title
+# long enough to WRAP would reach it, at a measured y of 31 against a band at 24-25; that is not a
+# hole, because an occluded frame is still inspected at OCCLUDED_LEAK_TOLERANCE and a wrapped
+# title's first line reads far above it.)
 #
 # That is the one thing the lights cannot see. They reach full saturation at the END of a cross-fade
 # while the report panel is still faintly painted on top, so the strip beside them carries a ghost
@@ -89,22 +92,38 @@ GUTTER = "crop=iw:2:0:24"
 # over the loop clip's 598 judged frames: at most 19 on a settled frame, 24-44 while the report is
 # still on top, and nothing in between. Unlike the strip's tolerance this one can afford to be
 # tight - dropping a settled frame costs one frame of coverage out of hundreds, while calling a
-# clean frame a leak sends the operator hunting for text that is not there.
-GUTTER_TOLERANCE = 22.0
+# clean frame a leak sends the operator hunting for text that is not there. It sits in the MIDDLE of
+# the empty band rather than beside either edge, so neither a slightly noisier settled frame nor a
+# slightly fainter ghost is the first thing to cross it.
+GUTTER_TOLERANCE = 21.0
 # Luminance spread above which a frame's strip is carrying a real title EVEN THOUGH its chrome is
 # occluded, so it is reported rather than exempted by the fade it happened to land on. An occluded
 # frame is not the title bar and is not judged, but "not judged" must not mean "not looked at": the
 # #815 leak sat on the last frames of a segment, which is exactly where a transition begins, and a
 # leaked title long enough to wrap would itself put ink in the gutter and so exempt its own frame.
-# The overlay is FAINT wherever the lights still read as drawn - past about 15% it drags their
-# saturation under LIGHTS_PRESENT - so a real title keeps most of its contrast: measured, a leaked
-# title reads 167 and the worst ghost 33, and this sits between them with room on both sides.
-OCCLUDED_LEAK_TOLERANCE = 100.0
+#
+# Both bounds are arithmetic on the overlay, not a guess. The overlay is FAINT wherever the lights
+# still read as drawn - past about 15% it drags their saturation under LIGHTS_PRESENT - so with the
+# composite `out = (1-a)*window + a*report` and a <= 0.15: a ghost on flat chrome cannot spread more
+# than 0.15*255 = 38 (measured worst: 33), and a real title cannot spread LESS than
+# 0.85*167 - 0.15*255 = 104 even if the report's own content lands exactly out of phase with it
+# (measured unattenuated: 167). This sits between those two worst cases rather than beside either.
+OCCLUDED_LEAK_TOLERANCE = 70.0
 # Share of chrome-showing frames that may be skipped as occluded before the clip's verdict means
 # nothing. A transition is a small fraction of any real clip - the loop clip, the only published one
-# with a report fading over the window, skips 3.5% - so a clip more than half painted over was not
-# measured, it was guessed at, and passing it would be a gate reporting a pass it did not earn.
+# with a report fading over the window, skips 3.5% - so a clip half painted over was not measured,
+# it was guessed at, and passing it would be a gate reporting a pass it did not earn. The comparison
+# is inclusive: exactly half skipped is already implausible for a clip whose transitions are seconds
+# out of a minute.
 MAX_OCCLUDED_SHARE = 0.5
+# Frames that must show the chrome, as a share of the frames that could plausibly have shown it,
+# before the clip was scanned at all. The lights finding the chrome on a HANDFUL of frames is not
+# the innocent case that `LIGHTS_ABSENT` covers - it is a clip whose geometry these offsets nearly
+# miss, and judging those few would report a confident OK on a scan of almost nothing. The
+# denominator takes whichever is larger of the frames that LOOK like a terminal and the frames whose
+# lights are at least partly lit, so neither axis can collapse quietly: measured, the published
+# clips sit at 1.18 and 1.11 against the first, and 93% and 99.6% against the second.
+MIN_CHROME_SHARE = 0.5
 # A patch from the MIDDLE of the frame. It no longer decides which frames to JUDGE - the lights do -
 # but it still answers one question they cannot: is there a terminal in this clip at all? Judging on
 # the lights means a clip whose chrome sits somewhere else entirely (rendered at a much SMALLER
@@ -113,9 +132,12 @@ MAX_OCCLUDED_SHARE = 0.5
 # so failing to find the chrome is a geometry problem rather than a browser-only clip.
 KIND = "crop=400:200:200:200"
 TERMINAL_MAX_MEAN = 38.0
-# Saturation at which the lights are fully drawn. Measured: 83-93 unoccluded, and any cross-fade or
+# Saturation at which the lights are fully drawn. Measured on the published clips: the drawn
+# population reads 81-94 on the loop clip and 80-100 on the multi-duck clip, and any cross-fade or
 # overlay drops it well below. On the loop clip, admitting frames at 60 let the report panel's white
-# edge into the strip (spread 86); at this value the same clip's worst judged frame measures 12.
+# edge into the strip (spread 86); at this value the same clip's worst judged frame measures 11.
+# The dimmest drawn frame sits ON this threshold, so drift costs coverage rather than correctness -
+# and coverage is floored below (MIN_CHROME_SHARE), which is what makes that trade safe.
 LIGHTS_PRESENT = 80.0
 # Below this ANYWHERE in a clip the window chrome was never found, which is only a legitimate pass
 # when no terminal appears either (the browser-only clip peaks at 2). See scan_clip.
@@ -235,6 +257,12 @@ def scan_clip(ffmpeg, clip):
 
     drawn = [row["SATMAX"] >= LIGHTS_PRESENT for row in lights]
     brightest = max(row["SATMAX"] for row in lights)
+    # Frames where the chrome is at least PARTLY lit. A frame whose lights fall just under
+    # LIGHTS_PRESENT is not judged and not counted as occluded either, so without this the coverage
+    # floor below would be blind on that axis: a clip whose chrome reads as faded almost everywhere
+    # would pass on the handful that made it through, which is the same 5%-coverage pass the
+    # occlusion floor exists to stop.
+    lit_frames = sum(1 for row in lights if row["SATMAX"] >= LIGHTS_ABSENT)
     terminal_frames = sum(1 for row in kind if row["YAVG"] <= TERMINAL_MAX_MEAN)
     if not any(drawn):
         # The chrome was never found where these offsets expect it. That is only innocent when there
@@ -245,6 +273,13 @@ def scan_clip(ffmpeg, clip):
         # title falls left of the strip - the mirror of the over-scaled case below.
         if terminal_frames == 0 and brightest < LIGHTS_ABSENT:
             return [], 0, 0
+        if terminal_frames == 0:
+            # Chrome is on screen but never settles: naming the scale here would be the wrong
+            # diagnosis for a clip that is all transition.
+            raise ChromeOccluded(
+                "%s never shows its window chrome settled (its traffic lights peak at %.0f, under "
+                "the %.0f a drawn light reads), so no frame could be judged. Re-record it, or "
+                "check that its transitions settle." % (clip, brightest, LIGHTS_PRESENT))
         raise ScaleMismatch(
             "%s shows a terminal on %d frame(s) but its window chrome never appears where these "
             "offsets expect it (lights peak at %.0f), so no frame could be judged: it was not "
@@ -252,6 +287,7 @@ def scan_clip(ffmpeg, clip):
             "SKILL.md)." % (clip, terminal_frames, brightest, PUBLISH_SCALE))
 
     bad = []
+    suspect = []
     judged = 0
     occluded = 0
     worst_occluded = 0.0
@@ -272,17 +308,19 @@ def scan_clip(ffmpeg, clip):
         if gutter_spread > GUTTER_TOLERANCE:
             occluded += 1
             worst_occluded = max(worst_occluded, gutter_spread)
+            # Not judged is not the same as not looked at. The overlay is faint wherever the lights
+            # still read as drawn, so a real title keeps most of its contrast - and a leaked title
+            # long enough to wrap would put ink in the gutter and exempt its own frame. Report it
+            # rather than let a fade excuse it. This runs whatever the strip's colour says: colour
+            # is a hint about SCALE, and letting it short-circuit the check would hand a leak the
+            # one exemption this branch exists to deny.
+            if spread > OCCLUDED_LEAK_TOLERANCE:
+                suspect.append((row["t"], spread))
             if row["SATMAX"] > LIGHTS_SATURATION:
                 # Colour here is either a mis-scaled clip (the lights inside the strip) or a
                 # coloured ghost. Do not decide from one frame: remember it, and let the verdict
                 # below say "scale" only if the whole clip turned out to be unreadable.
                 coloured = coloured if coloured is not None else row["t"]
-            elif spread > OCCLUDED_LEAK_TOLERANCE:
-                # Not judged is not the same as not looked at. The overlay is faint wherever the
-                # lights still read as drawn, so a real title keeps most of its contrast - and a
-                # leaked title long enough to wrap would put ink in the gutter and exempt its own
-                # frame. Report it rather than let a fade excuse it.
-                bad.append((row["t"], spread))
             continue
         # These offsets hold at the publish scale only. Rendered larger, the traffic lights land
         # inside the strip and every terminal frame "leaks" - a phantom that reads exactly like the
@@ -295,7 +333,29 @@ def scan_clip(ffmpeg, clip):
         judged += 1
         if spread > FLAT_TOLERANCE:
             bad.append((row["t"], spread))
-    if not judged or occluded > MAX_OCCLUDED_SHARE * (judged + occluded):
+    chrome_frames = judged + occluded
+    scannable = max(terminal_frames, lit_frames)
+    if suspect and len(suspect) * 2 >= occluded:
+        # A title-sized spread on the ODD skipped frame is weak evidence - on a clip whose geometry
+        # this gate does not describe it is as likely to be terminal output bleeding into the strip.
+        # On MOST of them it is a signature: that is what a leaked title long enough to wrap looks
+        # like, since its own ink is what dirties the gutter. Promote it to the verdict.
+        bad.extend(suspect)
+        suspect = []
+    # A leak found on a JUDGED frame outranks any complaint about coverage: both fail the run, but
+    # only one of them tells the operator there is a command on screen, and swallowing that into a
+    # generic "this clip could not be read" would bury the finding this gate exists to make. A hit
+    # on a SKIPPED frame is weaker evidence - the frame is not the title bar by definition - so it
+    # does not overrule the diagnosis, but it is named in it rather than dropped.
+    if not bad and (not judged
+                    or occluded >= MAX_OCCLUDED_SHARE * chrome_frames
+                    or chrome_frames < MIN_CHROME_SHARE * scannable):
+        note = ""
+        if suspect:
+            note = (" %d of the skipped frame(s) carry a title-sized spread (worst %.0f at "
+                    "t=%.2fs), so look at them by eye before trusting this clip."
+                    % (len(suspect), max(s for _, s in suspect),
+                       max(suspect, key=lambda hit: hit[1])[0]))
         # Every skipped frame is a frame not checked, so a clip MOSTLY skipped must fail rather than
         # print a bare OK on the handful that survived - the same rule the lights already follow
         # above. All-or-nothing would not do: the published loop clip of an older recorder, whose
@@ -306,17 +366,29 @@ def scan_clip(ffmpeg, clip):
                 "%s has colour in its title strip at t=%.2fs and its chrome reads as painted over "
                 "on %d of %d frame(s): the probes are not landing on the chrome, which is what a "
                 "clip rendered at another scale looks like. Re-render it with --scale %s (see the "
-                "demo-video SKILL.md) and scan again."
-                % (clip, coloured, occluded, judged + occluded, PUBLISH_SCALE))
+                "demo-video SKILL.md) and scan again.%s"
+                % (clip, coloured, occluded, chrome_frames, PUBLISH_SCALE, note))
+        if chrome_frames < MIN_CHROME_SHARE * scannable:
+            # The lights found the chrome, but on so few frames that judging them would report a
+            # confident OK on a scan of almost nothing. Measured, the published clips show settled
+            # chrome on more frames than look like a terminal and on 93-99% of the frames whose
+            # lights are lit at all, so this is a geometry problem rather than a clip that simply
+            # has few terminal moments.
+            raise ScaleMismatch(
+                "%s could have shown its window chrome on %d frame(s) but it is only found settled "
+                "on %d of them, so almost nothing could be scanned: these offsets are not landing "
+                "on its chrome. Re-render it with --scale %s (see the demo-video SKILL.md).%s"
+                % (clip, scannable, chrome_frames, PUBLISH_SCALE, note))
         raise ChromeOccluded(
             "%s shows its window chrome on %d frame(s) but something is painted over it on %d of "
             "them (worst gutter spread %.0f), so %s. Either the clip's chrome does not match the "
             "geometry this gate measures - an older recorder, or a hand-applied mask whose box "
             "crosses the chrome's bottom padding - or its transitions never settle. Re-scan a clip "
-            "from the current recorder, or re-record this one."
-            % (clip, judged + occluded, occluded, worst_occluded,
-               "no frame could be judged" if not judged else "only %d could be judged" % judged))
-    return bad, judged, occluded
+            "from the current recorder, or re-record this one.%s"
+            % (clip, chrome_frames, occluded, worst_occluded,
+               "no frame could be judged" if not judged else "only %d could be judged" % judged,
+               note))
+    return sorted(bad + suspect), judged, occluded
 
 
 def main(argv):
