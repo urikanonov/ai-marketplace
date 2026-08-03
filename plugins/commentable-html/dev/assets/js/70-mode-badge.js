@@ -93,7 +93,9 @@ function _embeddedCommentSig() {
 // skill/companion resources, and/or has comments that are not embedded in the file). The
 // bubble hover explains WHY a file is not shareable.
 function isOfflineDocument() {
-  const script = document.getElementById("commentableHtmlLayer");
+  // The layer's descriptor, not whichever element got the id first: a content-region decoy must
+  // not be able to declare what this document IS (cmhLayerBlock).
+  const script = cmhLayerBlock(document, "commentableHtmlLayer");
   if (script) {
     try {
       const data = JSON.parse((script.textContent || "").trim() || "{}");

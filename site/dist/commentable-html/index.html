@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.407.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.416.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,29 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.416.0] - 2026-08-03</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The export no longer decides WHICH block is the layer&#x27;s own by document position. The embedded comments, the handled ids, and the <code>commentableHtmlLayer</code> descriptor are now resolved against the content-root boundary: a script that borrows one of those ids inside <code>#commentRoot</code> is authored content and is never the layer&#x27;s block, so it can neither receive the review state on export nor stand in for a block the document has actually lost (that still fails loudly). The same boundary applies on the READ side - the embedded comments, the handled ids that PRUNE live comments, and the descriptor read behind the Offline badge - so an export always rewrites exactly the block a reload reads back. (The review-state block answers to the stricter region-ownership rule instead.)</li>
+              <li>A document with more than one element carrying the content-root id now resolves NOTHING instead of falling back to position. That duplicate is exactly how a planted wrapper would re-point the boundary, so the export refuses with a message naming the duplicate id, and a reader admits no block. A document that simply has no content root is unchanged: nothing delimits an untrusted region there, so the plain tree-order answer still stands.</li>
+              <li>Every descriptor copy in the layer&#x27;s own region is retargeted by every export that writes a copy of the document (Save and Shareable as much as Standalone and Offline), not just the first one a reader resolves. The mode a plain Save writes is the document&#x27;s own, so a re-saved Offline copy stays Offline. Rewriting only that one left any other reserved-id copy stale, so an exported document could ship two descriptors disagreeing about what it IS. Additional copies are only rewritten when they are inert data (no <code>src</code>, a non-runnable type), so an author&#x27;s runnable script that borrows the id keeps its code; a copy inside the content root is returned byte-intact; and a document whose only owner of that id sits in the content root is refused rather than given a freshly minted second descriptor.</li>
+              <li>Plain export&#x27;s data-leak safety net judges what survived by the same boundary instead of a document-wide text probe, so a document carrying an authored reserved-id script in its content no longer aborts an otherwise clean plain export. An ambiguous (contested) boundary still counts every owner as leaked, so that case fails closed.</li>
+              <li>When elements carry a reserved id but none resolve, the runtime now says so once per id on the console, and each export names which state it hit (&quot;the block is inside the content root&quot;, &quot;the content-root id is duplicated&quot;, &quot;the region is absent&quot;), so review state can never silently vanish behind a misleading message.</li>
+            </ul>
+            <div class="group-label">Notes</div>
+            <ul>
+              <li>Recorded as a deliberate scope boundary: Export as Shareable does NOT neutralize a script that borrows a reserved commentable-html data id, the way Export Offline retypes one to inert JSON. Offline does that because its zero-network promise requires the egress strips&#x27; reserved-id exemption to be earned; Shareable makes no such promise and preserves author scripts by design, so the decoy travels untouched. What protects a Shareable export is the boundary above, not a rewrite of the author&#x27;s script.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.407.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The Offline export&#x27;s strips now inspect two shapes they used to walk straight past. A <code>&lt;script type=&quot;speculationrules&quot;&gt;</code> or <code>&lt;script type=&quot;importmap&quot;&gt;</code> block is ACTIVE without being JavaScript - a speculation ruleset makes the browser prefetch or prerender by itself, and an import map re-points where a bare module specifier resolves, which the remote-import scan cannot see because the importing script names no URL - so the JavaScript-MIME predicate never looked at either. A speculation ruleset is now removed outright (it can prefetch the document&#x27;s own links through <code>&quot;source&quot;: &quot;document&quot;</code> without naming a URL at all, and it has nothing to offer a single-file offline export), and an import map is removed unless every reference in it, key and value alike, is relative - which is decided by parsing the JSON rather than scanning its text, so a <code>\u002f</code>-escaped, whitespace-padded, tab-split, backslash-authority or <code>data:</code>/<code>blob:</code>-scheme target cannot slip through. An external (<code>src</code>-bearing) or unparseable block is removed too, and a parameterized spelling such as <code>importmap;charset=utf-8</code> is left alone because a browser treats it as inert data. And <code>&lt;template&gt;</code> content, which <code>querySelectorAll</code> never descends into but serialization preserves verbatim, is now walked recursively at any depth by the reserved-id neutralize pass, the loader strip and the event-handler/URL scrub, so a script parked in a template for a later adopter to insert can no longer carry a remote import, a navigation beacon, a network image, a network <code>url(...)</code> or an inline event handler into an offline file. The strict validator applies both rules too - from a mirrored type list and pattern, and from separate template-content views that only the offline checks read - so it can neither bless a file the exporter would strip nor reject one it just produced.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.404.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -509,8 +526,6 @@
               <li>The validator now folds TAG and ATTRIBUTE names ASCII-case-insensitively, the way a browser folds them, instead of inheriting <code>html.parser</code>&#x27;s Unicode <code>str.lower()</code>. U+212A KELVIN SIGN is the one character outside ASCII that lowercases to an ASCII letter (&quot;k&quot;), and that was enough to read <code>data-\u212aey</code> as <code>data-key</code>, <code>&lt;lin\u212a&gt;</code> as a <code>&lt;link&gt;</code> and <code>&lt;/mar\u212a&gt;</code> as a <code>&lt;/mark&gt;</code> closer - names a browser keeps distinct, so the validator could see a different document from the one a reader gets. The rule that already governed a raw-text end tag (<code>re.ASCII</code>) now governs every name the checks key on, in the one shared attribute helper and in a <code>_BrowserTagNames</code> base the document, code-span, tag-lookup, checklist, notes and density passes all build on.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.403.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -543,14 +558,7 @@
               <li>The <code>Export Offline</code> action no longer inlines the vendored rich-content payload&#x27;s bytes without scanning them. The payload is inflated and appended as an EXECUTABLE script AFTER both offline strips have run, so a remote dynamic import or a direct scripted navigation to a network URL routed through the payload used to land in the exported file with the strips bypassed - egress inside a file whose whole promise is zero network, and a capability the ordinary authored-script path never had (the strips delete exactly those shapes). The payload&#x27;s bytes now clear the same two content gates the captured-copy path already applied - the network-egress scan and the script-data escape check - through one shared predicate, so the two paths cannot drift. A refusal is loud and specific: the export fails with a message naming the library, the pattern its bytes matched, and the remedy (re-run the authoring finalize step to refresh the vendored payload), and no file is downloaded, instead of the generic missing-bundle message that sent the user looking for a payload the document does carry. There is deliberately no fallback to a copy already inlined in the document, which would let anyone who can edit the payload invert the payload-wins precedence and silently substitute another source. The shipped bundles pass the gates, so the legitimate path is unchanged.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.391.0] - 2026-08-03</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The Offline export&#x27;s navigation strip, and the strict validator that mirrors it, now recognize a network URL literal spelled WITHOUT the slashes after its scheme (issue #870). A browser resolves <code>location.href = &quot;https:host/path&quot;</code> to <code>https://host/path</code>, so that one-token spelling change navigated the whole document - every reviewer comment with it - to an attacker&#x27;s host while matching neither copy of the pattern, and no CSP delivered in a <code>&lt;meta&gt;</code> can restrict top-level navigation, so nothing else would have stopped it. Unlike the misses the residual documents (aliasing, computed access, a runtime-assembled URL), this one needed no indirection at all, and because the validator agreed with the strip it also blessed such a file as offline-clean. The URL literal is now recognized in the three literal prefixes a browser resolves to a network host - scheme plus slashes, protocol-relative, and scheme-only - in both copies, which stay byte-identical. A quoted <code>https:</code> that is not a navigation (a scheme constant compared against, a comparison, a sink a local binding shadows) still survives, and the tail is a bare alternation of literals, so it cannot backtrack. The literal is still read RAW, so a URL the browser NORMALIZES first - one led or interrupted by whitespace, or a scheme spelled with a JavaScript string escape - is still missed, and that class is now named in the CMH-OFFLINE-05 residual instead of being implied away (issue #914).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">263 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">264 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

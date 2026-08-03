@@ -69,6 +69,7 @@
   "57-highlight-parity.spec.js": 2877,
   "58-board-ux.spec.js": 15494,
   "58-help-terminology.spec.js": 10901,
+  "58-reserved-block-region.spec.js": 22000,
   "59-checklist.spec.js": 25519,
   "60-comment-search.spec.js": 16031,
   "60-diagram-syntax.spec.js": 14743,

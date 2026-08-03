@@ -138,15 +138,18 @@ test("the embedded-comments block is resolved structurally, never from text a br
       // template content is an inert fragment, invisible to getElementById; nesting must not
       // end the skip early
       nestedTemplate: "<template><template></template>" + MENTION + "</template>",
+      // <noscript> content is TEXT to a browser running the layer, so the layer ignores it on
+      // BOTH sides (CMH-EXP-17 imposes that one scripting model): the real block still wins, and
+      // the decoy alone resolves nothing. A parsed document does build those children (parsing
+      // has scripting disabled), which is exactly why the two models are reconciled rather than
+      // left to disagree - otherwise one inert <noscript> block could veto every export.
+      noscript: "<noscript>" + MENTION + "</noscript>",
       // a decoy attribute is not an id
       decoyAttribute: OPEN + ' data-id="embeddedComments">DECOY' + CLOSE,
     };
     // Shapes where the walk and a parsed document CANNOT agree on what the block is, so the
     // resolver must refuse rather than guess (see the assertions below for why).
     const ambiguous = {
-      // <noscript> content is text to a browser running the layer, but markup to a parsed
-      // document (parsing has scripting disabled), so the two disagree about the decoy.
-      noscript: "<noscript>" + MENTION + "</noscript>",
       // not a <script> element at all: the tag name runs to the first delimiter, so the id
       // belongs to an unknown element that shadows the real block for getElementById.
       notAScriptTag: "<scr" + "ipt.foo id=\"embeddedComments\">DECOY</scr" + "ipt.foo>",

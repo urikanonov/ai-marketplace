@@ -1,4 +1,52 @@
 /* ---------- Save as plain HTML (strip the comment layer) ---------- */
+// The layer's own data blocks, judged by the CONTENT-ROOT BOUNDARY rather than by a document-wide
+// text scan: a script inside the content root that borrows a reserved id is authored content
+// (CMH-EXP-19), which no region strip can remove and which must not make a legitimate export
+// abort. The descriptor is in the list because an export that declares a mode maintains ADDITIONAL
+// descriptor copies in the layer's region (CMH-EXP-18), and a "plain" copy that still declares
+// itself a commentable-html document with a mode would be a silent leak.
+const _CMH_PLAIN_DATA_IDS = ["handledCommentIds", "embeddedComments", "reviewedSections", "commentableHtmlLayer"];
+function _cmhPlainLeakedState(html) {
+  const src = String(html == null ? "" : html);
+  // Cheap probe on the bare ids (not a quoted-attribute pattern, which an unquoted `id=...` would
+  // slip past), so the ordinary export never pays for a second parse.
+  if (!/handledCommentIds|embeddedComments|reviewedSections|commentableHtmlLayer/.test(src)) {
+    return { leaked: false, contested: false };
+  }
+  const doc = new DOMParser().parseFromString(src, "text/html");
+  const state = cmhContentRootState(doc);
+  const leaked = _CMH_PLAIN_DATA_IDS.some(function (id) {
+    const owners = cmhLayerIdOwners(doc, id);
+    // A contested boundary cannot tell the layer's blocks from content, so every owner counts:
+    // fail closed rather than ship comment data in a copy that claims to carry none.
+    if (state.contested) return owners.length > 0;
+    return owners.some(function (node) { return !(state.root && state.root.contains(node)); });
+  });
+  return { leaked: leaked, contested: state.contested };
+}
+// Remove every descriptor copy the layer owns, by verified OFFSETS rather than a first-match text
+// replace: an export that declares a mode may leave more than one, and a text replace would either
+// stop at the first or reach into authored content. Returns null when nothing resolves, so the
+// caller can fall back to the historical single-match strip.
+function _cmhStripLayerDescriptors(html) {
+  const src = String(html == null ? "" : html);
+  const found = _cmhVerifiedScriptRanges(src, "commentableHtmlLayer");
+  if (!found.ranges.length) return null;
+  const ordered = found.ranges.slice().sort(function (a, b) { return b.start - a.start; });
+  let out = src;
+  let limit = out.length;
+  for (let i = 0; i < ordered.length; i += 1) {
+    const range = ordered[i];
+    if (range.end > limit) return null;
+    let end = range.end;
+    while (end < out.length && /\s/.test(out.charAt(end))) end += 1;
+    let start = range.start;
+    while (start > 0 && (out.charAt(start - 1) === " " || out.charAt(start - 1) === "\t")) start -= 1;
+    out = out.slice(0, start) + out.slice(end);
+    limit = start;
+  }
+  return out;
+}
 // Produces a standalone copy of the document with the commenting *ability* removed but
 // its appearance intact: the HTML-comment regions (HANDLED IDS, EMBEDDED COMMENTS,
 // COMMENT UI) and the runtime JS are deleted, while every stylesheet is kept - the
@@ -14,9 +62,16 @@
 function _buildPlainHtml(baseHtml) {
   let t = baseHtml;
   _assertSingleLayerRegions(t);
-  const layerDescriptorScript = new RegExp("[ \\t]*<scr" + "ipt\\b[^>]*\\sid\\s*=\\s*([\"'])"
-    + "commentableHtmlLayer\\1[^>]*>[\\s\\S]*?<\\/scr" + "ipt>\\s*", "i");
-  t = t.replace(layerDescriptorScript, "");
+  // Every descriptor copy the layer owns, resolved by the boundary; the historical single-match
+  // text strip stays as the fallback for a document the resolver cannot verify.
+  const withoutDescriptors = _cmhStripLayerDescriptors(t);
+  if (withoutDescriptors != null) {
+    t = withoutDescriptors;
+  } else {
+    const layerDescriptorScript = new RegExp("[ \\t]*<scr" + "ipt\\b[^>]*\\sid\\s*=\\s*([\"'])"
+      + "commentableHtmlLayer\\1[^>]*>[\\s\\S]*?<\\/scr" + "ipt>\\s*", "i");
+    t = t.replace(layerDescriptorScript, "");
+  }
   // The companion bootstrap block, in either spelling - a document produced before the
   // Portable -> Shareable rename carries the legacy anchor. The two anchors must use the SAME
   // spelling (a backreference), so a mixed pair can never make the match span from a real
@@ -46,11 +101,17 @@ function _buildPlainHtml(baseHtml) {
   t = t.replace(_cmhScriptTagPattern("[^>]*commentable-html[^>]*\\.js[^>]*", "\\s*", "ig"), "");
   t = t.replace(/[ \t]*<!--\s*END: commentable-html - JS\s*-->\s*/i, "");
   t = _stripTransientBodyClasses(t);
-  // Data-safety net: the comment-data scripts must be gone. If a malformed or hand-edited
-  // marker made a region strip miss, fail loudly instead of downloading a plain file that
-  // still leaks the comments.
-  if (/id\s*=\s*["'](?:handledCommentIds|embeddedComments|reviewedSections)["']/.test(t)) {
-    throw new Error("Plain export aborted: the comment regions could not be fully removed (malformed markers?).");
+  // Data-safety net: the layer's own comment-data blocks must be gone. Judge that against the
+  // CONTENT-ROOT BOUNDARY rather than the document text: a script inside the content root that
+  // borrows a reserved id is authored content (CMH-EXP-19), which no region strip can remove and
+  // which must not make a legitimate export abort.
+  const leak = _cmhPlainLeakedState(t);
+  if (leak.leaked) {
+    // Name the actual cause. A contested boundary is not a marker problem, and sending the author
+    // after malformed markers when the fix is a duplicate id wastes their time.
+    throw new Error(leak.contested
+      ? _CMH_CONTESTED_ROOT_ERROR
+      : "Plain export aborted: the comment regions could not be fully removed (malformed markers?).");
   }
   return t.replace(/\n{3,}/g, "\n\n");
 }

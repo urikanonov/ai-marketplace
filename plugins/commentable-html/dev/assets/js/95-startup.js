@@ -1,7 +1,9 @@
 /* ---------- Handled-id pruning + startup ---------- */
 function getHandledIds() {
-  const el = document.getElementById("handledCommentIds");
-  if (!el) return new Set();
+  // The boundary, not tree order: a handled-ids block planted inside the content root could
+  // otherwise name a live comment and have pruneHandled() delete it from the reviewer's store.
+  const el = cmhLayerBlock(document, "handledCommentIds");
+  if (!el) { cmhWarnUnresolvedBlock("handledCommentIds"); return new Set(); }
   try {
     const arr = JSON.parse((el.textContent || "").trim() || "[]");
     return new Set(arr);

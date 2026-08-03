@@ -1,5 +1,84 @@
 /* ---------- Config (auto-discovered, never edit per-doc) ---------- */
 const root = document.getElementById("commentRoot") || document.body;
+// The layer's own data blocks - the CMH-FWDCOMPAT-01 descriptor and the embedded-comments,
+// handled-ids and reviewed-sections blocks - are INFRASTRUCTURE: they live OUTSIDE the content
+// root. An element inside the content root that borrows one of those reserved ids is authored
+// CONTENT and is never the layer's block, so resolving one by document POSITION
+// (`getElementById`, or the first match in the source text) lets a decoy displace it. Resolve
+// against the boundary instead, and do it on the READ side and the WRITE side alike: an exporter
+// that scoped only its writes would update the real block while the runtime still read the decoy
+// back, which is worse than agreeing on the wrong one.
+//
+// The boundary has three states, and the difference matters:
+//   unique    - exactly one content root; the ordinary case.
+//   none      - the document never delimited a content region, so nothing is inside one and the
+//               plain tree-order answer stands (this is not a weakening: there is no untrusted
+//               region to be outside OF).
+//   contested - more than one element claims the id. A duplicate id is legal HTML and
+//               `getElementById` silently takes the first, so a wrapper planted around the genuine
+//               root would re-point the boundary and hand the win straight back to a decoy. There
+//               is no safe answer, so resolve NOTHING: an export refuses loudly and a reader
+//               admits no block, rather than falling back to the position rule this boundary
+//               exists to replace.
+function cmhContentRootState(doc) {
+  const d = doc || document;
+  const roots = Array.prototype.filter.call(d.querySelectorAll("#commentRoot"), function (node) {
+    // Same one-scripting-model rule as cmhLayerIdOwners: a root parked in a `<noscript>` exists
+    // only in a scripting-disabled parse, so counting it would let an inert block contest a
+    // boundary the live runtime never sees contested.
+    return !(node.closest && node.closest("noscript"));
+  });
+  if (roots.length > 1) return { contested: true, root: null };
+  return { contested: false, root: roots.length === 1 ? roots[0] : null };
+}
+function cmhContentRoot(doc) {
+  return cmhContentRootState(doc).root;
+}
+// Every element owning `id`, in tree order, with the boundary NOT applied. The id is compared as
+// an ATTRIBUTE VALUE rather than written as an id-selector literal: this source is inlined
+// verbatim into every self-contained export, and a literal would make an exported file look like
+// it still carries such a block to anything scanning its text.
+//
+// `<noscript>` descendants are excluded so one scripting model answers everywhere. The layer only
+// runs with scripting ENABLED, where a `<noscript>` body is text and holds no elements at all -
+// but the standalone parse an export runs over a document STRING has scripting disabled and does
+// build them. Counting them would let one inert `<noscript>` block in a document make the export
+// disagree with the very runtime that will read the file back.
+function cmhLayerIdOwners(doc, id) {
+  const d = doc || document;
+  return Array.prototype.filter.call(d.querySelectorAll("[id]"), function (node) {
+    return node.getAttribute("id") === id && !(node.closest && node.closest("noscript"));
+  });
+}
+// The owners the boundary accepts as the layer's own, in tree order.
+function cmhLayerBlocks(doc, id) {
+  const d = doc || document;
+  const state = cmhContentRootState(d);
+  if (state.contested) return [];
+  return cmhLayerIdOwners(d, id).filter(function (node) {
+    return !(state.root && state.root.contains(node));
+  });
+}
+function cmhLayerBlock(doc, id) {
+  const blocks = cmhLayerBlocks(doc, id);
+  return blocks.length ? blocks[0] : null;
+}
+// Say WHY a reserved block resolved to nothing while elements carrying its id exist, once per id.
+// Plain absence is normal (a document with no comments yet), but "the block is there and the layer
+// ignored it" is a document-shape problem the reader would otherwise experience as review state
+// that silently vanished. The exports fail loudly for the same two states; this is the load-time
+// half of that diagnosis.
+const _CMH_WARNED_BLOCKS = Object.create(null);
+function cmhWarnUnresolvedBlock(id) {
+  if (_CMH_WARNED_BLOCKS[id]) return;
+  const owners = cmhLayerIdOwners(document, id);
+  if (!owners.length) return;
+  _CMH_WARNED_BLOCKS[id] = true;
+  console.warn("commentable-html: ignoring " + owners.length + " element(s) carrying the reserved id "
+    + id + " - " + (cmhContentRootState(document).contested
+      ? "this document has more than one element with the content-root id, so the layer cannot tell its own blocks from authored content."
+      : "they are inside the content root, where authored content lives. Move the block above the content root."));
+}
 function _docSourceBasename(source) {
   const value = String(source == null ? "" : source);
   const withoutSuffix = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(value)
@@ -52,7 +131,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.407.0";
+const CMH_VERSION = "1.416.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
