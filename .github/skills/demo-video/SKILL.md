@@ -64,6 +64,28 @@ an out-of-memory crash that loses the recording. The ceiling is set by FINALISAT
 serialising peak at roughly 25x the captured size - not by what can be held, so raise it only with
 that multiplier in mind. A real 24 minute Copilot session is a few megabytes.
 
+A capture ALWAYS finalizes - it can never hang holding the session. That was not free: a capture used
+to wait on the session's own exit with no bound, so a TUI that printed its answer and then never
+exited held a ninety minute run in memory and wrote nothing (one sat for seventeen hours), and Ctrl+C
+- the only way out - exited before writing anything. Three things now guarantee a cast:
+
+- **Ctrl+C writes the cast.** The first SIGINT/SIGTERM ends the session and finalizes, warning that
+  the ending may not be the one the recipe asked for. A second one exits immediately, so an operator
+  who will not wait for the write is still not stuck.
+- **The wall clock is authoritative** (`--exit-grace`, 120 seconds). Once a `--script` has sent its
+  last turn, the session gets that long to exit on its own; then it is killed and the cast is written
+  regardless of what the stream is doing. Nothing here trusts quiet: a TUI repaints, so "the stream
+  went silent" is not a signal that anything finished. The grace applies only to a SCRIPTED capture -
+  an interactive one has an operator sitting in front of it and is never killed for being quiet.
+- **A stalled capture says so** (`--progress`, every 60 seconds; `0` turns it off). The line names
+  elapsed time, how long the session has been silent, how much has been captured, and the step being
+  waited on, so a wedge is visible without watching a log file's mtime by eye. It goes to stderr and
+  only when stdout is NOT a terminal, because drawing a status line into a live TUI corrupts the very
+  screen the clip is of - the unattended run whose log nobody is watching is the case that needs it.
+
+An ending the clock or the operator forced is reported in the closing lines and exits non-zero, so a
+capture that did not end the way the recipe asked can never read like a clean take.
+
 `render` replays the cast into a real terminal emulator (xterm.js) on a compressed clock: any gap
 longer than the idle threshold collapses to a short hold with a visible "skipping ahead Ns" badge, so
 the model thinking, the test run and the duck panel do not cost the viewer the wall clock. Gaps below

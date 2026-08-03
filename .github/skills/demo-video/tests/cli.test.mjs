@@ -78,6 +78,16 @@ test("the argument contract fails loudly rather than guessing (DEMO-CLI-02)", ()
   const missingExample = run(["report", "--list", "--example", path.join(HERE, "no-such.html")]);
   assert.notEqual(missingExample.status, 0, "a missing example was accepted");
   assert.match(missingExample.stderr, /no-such\.html/);
+
+  // The capture watchdogs are settled BEFORE the pty is loaded and the session spawned, so a typo
+  // costs a second rather than a session that is already running with a child attached - and a
+  // silently dropped `--progress` would leave an operator believing a wedge would be reported.
+  const badProgress = run(["capture", "--progress", "-1", "--", "node"]);
+  assert.notEqual(badProgress.status, 0, "a negative --progress was accepted");
+  assert.match(badProgress.stderr, /--progress must be a non-negative number/);
+  const badGrace = run(["capture", "--exit-grace", "0", "--", "node"]);
+  assert.notEqual(badGrace.status, 0, "a zero --exit-grace was accepted");
+  assert.match(badGrace.stderr, /--exit-grace must be greater than zero/);
 });
 
 test("the safety gate refuses a dirty cast before any browser starts (DEMO-CLI-03)", () => {

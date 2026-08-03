@@ -29,6 +29,7 @@
 //   node record_demo.mjs report  [--seconds 10] [--example <file>] [--out <file.webm>] [--list]
 //   node record_demo.mjs loop    --cast <file.cast.json> --example <report.html> [--split paste]
 //   node record_demo.mjs capture [--out <f.cast.json>] [--cols 120] [--rows 30] [--script <f.json>] [--max-mb 48] -- <cmd...>
+//                                [--exit-grace 120] [--progress 60]
 //   node record_demo.mjs render  --cast <file.cast.json> [--seconds 45] [--out <file.webm>]
 //   node record_demo.mjs scan    --cast <file.cast.json> [--ask "<text>"]
 
@@ -42,7 +43,7 @@ import http from "http";
 import { planBeats, fitTimeline, compressTimeline, coalesceEvents, applySpeedWindows, parseSpeedWindows, MIN_BEAT_MS } from "./timeline.mjs";
 import { REPORT_BEATS } from "./report-beats.mjs";
 import { DEFAULT_RULES, homeRules, scanText, stripOsc, scrubEvents, scrubText, createScrubber } from "./redact.mjs";
-import { readScript, stepReady, stepPayload, stepSubmit, fileReady, stepGaveUpNotice, makeSizeGuard, captureLimitBytes } from "./script.mjs";
+import { readScript, stepReady, stepPayload, stepSubmit, fileReady, stepGaveUpNotice, makeSizeGuard, captureLimitBytes, sessionEndState, progressLine, stallNotice, DEFAULT_EXIT_GRACE_MS, DEFAULT_KILL_GRACE_MS, DEFAULT_PROGRESS_MS } from "./script.mjs";
 import { recordCapture, wasCapturedHere } from "./provenance.mjs";
 import { trimCast } from "./trim.mjs";
 
@@ -108,7 +109,7 @@ const STRING_KEYS = new Set([
   "example", "out", "cast", "clip", "seconds", "cols", "rows", "idle", "hold",
   "width", "height", "count", "font", "frames-dir", "scale", "tail", "head", "end-hold", "intro", "ask",
   "script", "review-out", "snapshot-out", "split", "speed-windows", "example-after", "seconds-resolved", "max-mb", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "dpr",
-  "until", "until-after", "until-gap",
+  "until", "until-after", "until-gap", "exit-grace", "progress",
 ]);
 const KNOWN_FLAGS = new Set([...STRING_KEYS, "list", "allow-findings", "show-command", "help"]);
 // Flags that never take a value. Without this, `--show-command yes` swallows `yes` as the value and
@@ -120,7 +121,7 @@ const BOOLEAN_FLAGS = new Set(["list", "allow-findings", "show-command", "help"]
 // told nothing, and gets a clip that is not what they asked for.
 const SUBJECT_FLAGS = {
   report: ["example", "out", "seconds", "width", "height", "scale", "list", "review-out", "snapshot-out"],
-  capture: ["out", "cols", "rows", "script", "max-mb"],
+  capture: ["out", "cols", "rows", "script", "max-mb", "exit-grace", "progress"],
   render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "head", "end-hold", "intro", "ask", "speed-windows", "allow-findings", "show-command", "until", "until-after", "until-gap"],
   loop: ["cast", "example", "example-after", "seconds-resolved", "out", "split", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "idle", "hold", "width", "height", "font", "scale", "dpr", "intro", "end-hold", "ask", "allow-findings", "show-command"],
   scan: ["cast", "ask"],
@@ -951,203 +952,243 @@ export function launchSpec(executable, args, platform = process.platform) {
   return { file: executable, args };
 }
 
-async function captureTerminal(args) {
-  const command = args.passthrough;
-  if (!command.length) throw new Error("capture needs a command after --, e.g. -- copilot");
-  const pty = loadOptional("node-pty");
-  const executable = resolveExecutable(command[0]);
-  const launch = launchSpec(executable, command.slice(1));
-  const cols = Math.round(numberOpt(args, "cols", 120));
-  const rows = Math.round(numberOpt(args, "rows", 30));
-  const outFile = args.out
-    ? path.resolve(String(args.out))
-    : path.join(OUT_ROOT, `session-${stamp()}.cast.json`);
-  ensureDir(path.dirname(outFile));
+// The step driver: it decides WHEN to send each turn, and nothing else. The clock, the sleeper and
+// the session are injected, so the whole of it - including the paths that only happen after an hour
+// of waiting - is exercised deterministically instead of by trying to reproduce a wedge.
+export async function driveScript(script, session, hooks = {}) {
+  const {
+    now = Date.now,
+    nap = sleep,
+    pollMs = 200,
+    warn = (line) => console.warn(line),
+    onWaiting = () => {},
+    onTimeout = () => {},
+  } = hooks;
+  for (const step of script.steps) {
+    const startedAt = now();
+    // Each step only reads output produced SINCE IT BEGAN. Sharing one buffer let a step whose
+    // marker had already appeared for an earlier step fire immediately, before the session had
+    // done anything the step was waiting on.
+    const from = session.seen();
+    let skipped = false;
+    for (;;) {
+      if (session.exited()) throw new Error(`session ended while step "${step.mark}" was waiting`);
+      const state = stepReady(step, {
+        buffer: session.since(from),
+        lastDataAt: session.lastDataAt(),
+        now: now(),
+        startedAt,
+        fileExists: step.expectFile ? fileReady(step.expectFile, startedAt) : false,
+      });
+      if (state.skip) {
+        warn(`  script: optional step "${step.mark}" ${state.reason}; skipping`);
+        skipped = true;
+        break;
+      }
+      if (state.ready) {
+        if (state.timedOut) {
+          // A non-optional step that gives up is NOT a clean run: the session did not do the
+          // thing the recipe waited for. Send anyway (the alternative is hanging), but remember
+          // it - a warning that scrolled past forty minutes ago is a warning nobody saw, and the
+          // shipped loop recipe really did time out waiting for a marker the agent never printed
+          // while its summary line still read like a clean capture.
+          onTimeout({ mark: step.mark, reason: state.reason });
+          warn(`  script: step "${step.mark}" ${state.reason}; sending anyway`);
+        }
+        break;
+      }
+      onWaiting(`step "${step.mark}" ${state.reason}`);
+      await nap(pollMs);
+    }
+    onWaiting(null);
+    if (skipped) continue;
+    if (step.delayMs) await nap(step.delayMs);
+    if (session.exited()) throw new Error(`session ended before step "${step.mark}" could be sent`);
+    const payload = stepPayload(step);
+    // Record WHAT WAS TYPED alongside the mark, so a render can put the real prompt on its
+    // title card instead of a paraphrase somebody has to keep in sync by hand.
+    session.mark(step.mark, payload.replace(/\u001b\[20[01]~/g, ""));
+    session.write(payload);
+    const submit = stepSubmit(step);
+    if (submit) { await nap(step.submitMs); session.write(submit); }
+  }
+}
 
-  const rules = rulesForThisMachine();
-  // A second scrubber for the LIVE stream, kept separate from the one that cleans the cast so the
-  // two never share carry state.
-  const liveScrubber = createScrubber({ rules });
-  const started = Date.now();
+// The capture's control core: collect the stream, drive the script, decide when the session is over,
+// and WRITE THE CAST. The pty, the clock and the sleeper are parameters so this whole path is
+// testable without either - which matters because the expensive failures here are the ones that only
+// appear after an hour.
+//
+// The rule this exists to enforce: a capture ALWAYS finalizes. It used to wait on `child.onExit`
+// with no bound at all, so a TUI that printed its answer and then never exited held a ninety minute
+// session in memory forever and wrote nothing (one such capture sat for seventeen hours), and the
+// only way out - Ctrl+C - exited before writing anything, losing the lot. Now the wall clock ends
+// the session, an interrupt ends it too, and both still produce the cast.
+export async function captureSession({
+  child,
+  script = null,
+  outFile,
+  outRoot = OUT_ROOT,
+  rules = rulesForThisMachine(),
+  command = [],
+  cols = 120,
+  rows = 30,
+  maxMb = 48,
+  maxBytes = null,
+  exitGraceMs = DEFAULT_EXIT_GRACE_MS,
+  killGraceMs = DEFAULT_KILL_GRACE_MS,
+  progressMs = DEFAULT_PROGRESS_MS,
+  pollMs = 200,
+  tailMs = 250,
+  now = Date.now,
+  nap = sleep,
+  onData = () => {},
+  onEnd = () => {},
+  warn = (line) => console.warn(line),
+  progress = () => {},
+  attachInterrupt = () => {},
+}) {
+  const started = now();
   const events = [];
-  const child = pty.spawn(launch.file, launch.args, {
-    name: "xterm-256color",
-    cols,
-    rows,
-    cwd: process.cwd(),
-    env: process.env,
-  });
-
-  const wasRaw = process.stdin.isRaw;
-  const script = args.script ? readScript(String(args.script)) : null;
-  // A scripted capture drives the session itself, and the marks it records are what a later render
-  // uses to find each turn - the point where the report was generated, the point where the review
-  // was pasted back - so a composite clip can splice the browser phase between them.
   const marks = [];
+  const timedOutSteps = [];
   let buffer = "";
   // Total bytes ever seen, which never rewinds. `buffer` keeps only a recent window, so a plain
-  // index into it goes stale the moment that window slides - see sinceStep below.
+  // index into it goes stale the moment that window slides - see `since` below.
   let seen = 0;
-  let lastDataAt = Date.now();
+  let bytes = 0;
+  let lastDataAt = started;
+  let childExited = false;
+  let exitCode = null;
+  let driverError = null;
+  let overflowed = false;
+  let waiting = null;
+  // The session is over once the supervisor says so, not only when the child dies. Without this the
+  // driver would keep waiting out a step's timeout after an interrupt had already ended the session
+  // - re-creating, on the very path that exists to stop a hang, a wait measured in tens of minutes.
+  let sessionOver = false;
   // Output produced since a step began, as much of it as is still retained. Slicing `buffer` by a
   // recorded LENGTH breaks once the window slides: the offset then points past what is kept, and a
   // step whose buffer was already full when it started would slice an empty string and wait for its
   // marker forever - which for the shipped script is a twenty-five minute hang.
-  const sinceStep = (fromSeen) => buffer.slice(Math.max(0, buffer.length - (seen - fromSeen)));
-  // The driver waits on the session; if the session ends, every wait it is in must end too.
-  let childExited = false;
-  let driverError = null;
-  // Steps that gave up waiting. Kept so the END of a capture can say so - see the warning below.
-  const timedOutSteps = [];
-  let overflowed = false;
+  const since = (fromSeen) => buffer.slice(Math.max(0, buffer.length - (seen - fromSeen)));
+
   // 48MB of captured BYTES, not code units. The binding constraint is not the capture, it is
   // FINALISATION: scrubbing builds a projection, an offset map and a second copy of every event,
   // then JSON.stringify builds another - measured at roughly 25x the captured size in resident
   // memory. A limit that only bounded the capture would still run out of memory in the step that
-  // writes the cast, losing the recording this exists to save. A real session is well under this:
-  // a 24 minute Copilot capture is a few megabytes.
-  const maxMb = args["max-mb"] == null ? 48 : args["max-mb"];
-  const maxBytes = captureLimitBytes(maxMb);
-  const guardSize = makeSizeGuard(maxBytes, () => {
+  // writes the cast, losing the recording this exists to save.
+  const guardSize = makeSizeGuard(maxBytes == null ? captureLimitBytes(maxMb) : maxBytes, () => {
     overflowed = true;
-    console.warn(`\n  capture: reached the ${maxMb}MB limit (--max-mb); ending the session and `
+    warn(`\n  capture: reached the ${maxMb}MB limit (--max-mb); ending the session and `
       + "keeping what was recorded so far.");
     try { child.kill(); } catch (e) { /* already gone */ }
   });
-  const onInput = (data) => { try { child.write(data.toString("utf8")); } catch (e) { /* child is gone */ } };
-  const onResize = () => { try { child.resize(process.stdout.columns || cols, process.stdout.rows || rows); } catch (e) { /* child is gone */ } };
-  // Raw mode belongs to the CALLER's terminal, so it must be handed back on every path - a throw, a
-  // Ctrl+C, a child that dies badly - or the operator is left with an unusable shell.
-  let restored = false;
-  const restore = () => {
-    if (restored) return;
-    restored = true;
-    process.stdin.off("data", onInput);
-    process.stdout.off("resize", onResize);
-    if (process.stdin.isTTY) { try { process.stdin.setRawMode(!!wasRaw); } catch (e) { /* already closed */ } }
-    process.stdin.pause();
-  };
-  const onSignal = () => {
-    restore();
-    // The scrubber holds a whitespace-free run back until it can prove it is not a credential.
-    // Exiting without flushing loses that text from the operator's own terminal for good.
-    if (!process.stdout.isTTY) { try { process.stdout.write(liveScrubber.end()); } catch (e) { /* closed */ } }
-    try { child.kill(); } catch (e) { /* already gone */ }
-    process.exit(130);
-  };
-  process.once("SIGINT", onSignal);
-  process.once("SIGTERM", onSignal);
 
-  let exitCode = 0;
-  try {
-    if (process.stdin.isTTY) process.stdin.setRawMode(true);
-    process.stdin.resume();
-    process.stdin.on("data", onInput);
-    process.stdout.on("resize", onResize);
-    child.onData((data) => {
-      // The operator's own terminal shows the session RAW, because they are interacting with it.
-      // Anything else - a pipe, a CI log, an agent transcript - gets the scrubbed stream, since a
-      // credential printed to a persisted log leaks just as surely as one written into the cast.
-      process.stdout.write(process.stdout.isTTY ? data : liveScrubber.push(data));
-      events.push({ t: Date.now() - started, data });
-      // The driver below waits on what the session has PRINTED, so the buffer it reads is kept
-      // here rather than re-derived. It is capped because a long agent run prints megabytes and the
-      // only thing a step ever looks for is a recent marker.
-      buffer = (buffer + data).slice(-65536);
-      seen += data.length;
-      lastDataAt = Date.now();
-      // Everything captured is held in memory until the child exits, because the raw stream is
-      // never written to disk unscrubbed. That makes memory the binding constraint, and running out
-      // of it loses a recording that took twenty minutes to make. So the size is bounded and the
-      // capture is ENDED cleanly at the limit - the operator keeps what was recorded up to that
-      // point and is told plainly why it stopped, instead of the process dying with nothing.
-      guardSize(Buffer.byteLength(data, "utf8"));
-    });
-    // Scripted turns are driven from here, alongside the live stdin forwarding above (an operator
-    // watching can still intervene). Each step waits for its own condition, sends, and records a
-    // mark at the moment it sent.
-    const driver = script ? (async () => {
-      for (const step of script.steps) {
-        const startedAt = Date.now();
-        // Each step only reads output produced SINCE IT BEGAN. Sharing one buffer let a step whose
-        // marker had already appeared for an earlier step fire immediately, before the session had
-        // done anything the step was waiting on.
-        const from = seen;
-        let skipped = false;
-        for (;;) {
-          if (childExited) throw new Error(`session ended while step "${step.mark}" was waiting`);
-          const state = stepReady(step, {
-            buffer: sinceStep(from),
-            lastDataAt,
-            now: Date.now(),
-            startedAt,
-            fileExists: step.expectFile ? fileReady(step.expectFile, startedAt) : false,
-          });
-          if (state.skip) {
-            console.warn(`  script: optional step "${step.mark}" ${state.reason}; skipping`);
-            skipped = true;
-            break;
-          }
-          if (state.ready) {
-            if (state.timedOut) {
-              // A non-optional step that gives up is NOT a clean run: the session did not do the
-              // thing the recipe waited for. Send anyway (the alternative is hanging), but remember
-              // it - a warning that scrolled past forty minutes ago is a warning nobody saw, and the
-              // shipped loop recipe really did time out waiting for a marker the agent never printed
-              // while its summary line still read like a clean capture.
-              timedOutSteps.push({ mark: step.mark, reason: state.reason });
-              console.warn(`  script: step "${step.mark}" ${state.reason}; sending anyway`);
-            }
-            break;
-          }
-          await sleep(200);
-        }
-        if (skipped) continue;
-        if (step.delayMs) await sleep(step.delayMs);
-        if (childExited) throw new Error(`session ended before step "${step.mark}" could be sent`);
-        const payload = stepPayload(step);
-        // Record WHAT WAS TYPED alongside the mark, so a render can put the real prompt on its
-        // title card instead of a paraphrase somebody has to keep in sync by hand. Scrubbed like
-        // everything else, and capped because one of these steps pastes a whole review bundle.
-        marks.push({
-          label: step.mark,
-          t: Date.now() - started,
-          eventIndex: events.length,
-          text: scrubText(payload.replace(/\u001b\[20[01]~/g, ""), rules).slice(0, 2000),
-        });
-        child.write(payload);
-        const submit = stepSubmit(step);
-        if (submit) { await sleep(step.submitMs); child.write(submit); }
-      }
-    })().catch((e) => {
-      // A driver that gives up must not leave the session sitting on a prompt forever - a capture
-      // waiting on a step that can no longer be satisfied would otherwise hang for the whole of
-      // every remaining timeout, which the shipped script measures in tens of minutes.
-      driverError = e;
-      console.warn(`  script: ${e.message}; ending the session`);
-      try { child.kill(); } catch (killErr) { /* already gone */ }
-    }) : null;
-    exitCode = await new Promise((resolve) => child.onExit(({ exitCode: code }) => {
-      childExited = true;
-      resolve(code);
-    }));
-    if (driver) await driver;
-    // onExit can fire while the pty still has buffered output in flight, and the tail of a session
-    // (the final result, the closing prompt) is exactly what a demo wants to show. Let it land.
-    await sleep(250);
-  } finally {
-    restore();
-    // Never orphan the child. The happy path leaves through onExit, but a setup throw or a signal
-    // would otherwise leave a pty running with nobody reading it.
-    try { child.kill(); } catch (e) { /* already gone */ }
-    // Whatever the live scrubber was holding back belongs on the operator's stream too.
-    if (!process.stdout.isTTY) { try { process.stdout.write(liveScrubber.end()); } catch (e) { /* closed */ } }
-    process.off("SIGINT", onSignal);
-    process.off("SIGTERM", onSignal);
+  child.onExit(({ exitCode: code }) => {
+    childExited = true;
+    exitCode = code == null ? 0 : code;
+  });
+  child.onData((data) => {
+    onData(data);
+    events.push({ t: now() - started, data });
+    // The driver waits on what the session has PRINTED, so the buffer it reads is kept here rather
+    // than re-derived. It is capped because a long agent run prints megabytes and the only thing a
+    // step ever looks for is a recent marker.
+    buffer = (buffer + data).slice(-65536);
+    seen += data.length;
+    const length = Buffer.byteLength(data, "utf8");
+    bytes += length;
+    lastDataAt = now();
+    // Everything captured is held in memory until the child exits, because the raw stream is never
+    // written to disk unscrubbed. So the size is bounded and the capture is ENDED cleanly at the
+    // limit - the operator keeps what was recorded up to that point and is told plainly why it
+    // stopped, instead of the process dying with nothing.
+    guardSize(length);
+  });
+
+  // The operator's escape hatch, handed straight back to the caller so a signal handler can use it.
+  // It reports whether it was the FIRST interrupt: a second one means the operator will not wait for
+  // the write either, and the caller is free to exit hard.
+  let interruptedAt = null;
+  attachInterrupt(() => {
+    if (interruptedAt !== null) return false;
+    interruptedAt = now();
+    return true;
+  });
+
+  // Scripted turns are driven alongside the live stdin forwarding the caller wires up, so an
+  // operator watching can still intervene.
+  let driverDoneAt = null;
+  const driver = script
+    ? driveScript(script, {
+      exited: () => childExited || sessionOver,
+      since,
+      seen: () => seen,
+      lastDataAt: () => lastDataAt,
+      write: (text) => child.write(text),
+      mark: (label, text) => marks.push({
+        label,
+        t: now() - started,
+        eventIndex: events.length,
+        // Scrubbed like everything else, and capped because one of these steps pastes a whole
+        // review bundle.
+        text: scrubText(text, rules).slice(0, 2000),
+      }),
+    }, {
+      now,
+      nap,
+      pollMs,
+      warn,
+      onWaiting: (text) => { waiting = text; },
+      onTimeout: (entry) => timedOutSteps.push(entry),
+    })
+      .catch((e) => {
+        // A driver that gives up must not leave the session sitting on a prompt forever - a capture
+        // waiting on a step that can no longer be satisfied would otherwise hang for the whole of
+        // every remaining timeout, which the shipped script measures in tens of minutes.
+        driverError = e;
+        warn(`  script: ${e.message}; ending the session`);
+        try { child.kill(); } catch (killErr) { /* already gone */ }
+      })
+      .finally(() => { driverDoneAt = now(); waiting = null; })
+    : null;
+
+  // The supervisor. Nothing here trusts the stream: a TUI repaints, goes quiet mid-thought, and can
+  // fall silent for an hour while the child stays alive, so the decision to stop is the clock's.
+  let killedAt = null;
+  let gaveUpBecause = null;
+  let ended = null;
+  let nextProgressAt = started + progressMs;
+  for (;;) {
+    if (childExited) { ended = gaveUpBecause || "exit"; break; }
+    const at = now();
+    const state = sessionEndState({ now: at, driverDoneAt, interruptedAt, killedAt, exitGraceMs, killGraceMs });
+    if (state.action === "kill") {
+      killedAt = at;
+      gaveUpBecause = state.reason;
+      warn(`\n  WARNING: ${stallNotice({ ended: state.reason, quietMs: at - lastDataAt, graceMs: exitGraceMs })}`);
+      try { child.kill(); } catch (e) { /* already gone */ }
+    } else if (state.action === "finalize") {
+      // The child ignored the kill. Stop waiting for it rather than let it hold the recording.
+      ended = state.reason;
+      break;
+    }
+    if (progressMs > 0 && at >= nextProgressAt) {
+      progress(progressLine({ now: at, startedAt: started, lastDataAt, bytes, waiting }));
+      nextProgressAt = at + progressMs;
+    }
+    await nap(pollMs);
   }
+  sessionOver = true;
+  // onExit can fire while the pty still has buffered output in flight, and the tail of a session
+  // (the final result, the closing prompt) is exactly what a demo wants to show. Let it land.
+  if (tailMs) await nap(tailMs);
+  if (driver) await driver;
+  onEnd({ ended });
 
   // The COMMAND is part of the clip too - it is the title bar of the render - and a real invocation
-  // can carry a credential (`curl -H "Authorization: Bearer ..."`), so it is scrubbed like output.
+  // can carry a credential (`curl -H "Authorization: ******"`), so it is scrubbed like output.
   // Argv elements holding whitespace are re-quoted so the stored string round-trips: joining them
   // bare loses the boundary, and a Windows path with a space then reads as several tokens.
   const commandLine = scrubText(joinCommand(command), rules);
@@ -1179,41 +1220,180 @@ async function captureTerminal(args) {
     events: scrubbed.events.map((e) => ({ t: e.t, data: e.data })),
   };
   const castBytes = JSON.stringify(cast);
+  ensureDir(path.dirname(outFile));
   fs.writeFileSync(outFile, castBytes);
   // Provenance is recorded OUT OF BAND - see tools/provenance.mjs. The `scrubbedBy` field above is
   // a claim the file makes about itself and is never trusted for this decision.
-  recordCapture(OUT_ROOT, castBytes);
+  recordCapture(outRoot, castBytes);
   const transcriptFile = outFile.replace(/\.cast\.json$/, "") + ".transcript.txt";
   fs.writeFileSync(transcriptFile, scrubbed.transcript);
+
+  return {
+    outFile,
+    transcriptFile,
+    cast,
+    marks,
+    timedOutSteps,
+    overflowed,
+    driverError,
+    ended,
+    exitCode,
+    redactions: scrubbed.redactions,
+    leftover: scanText(castText(cast), rules),
+  };
+}
+
+async function captureTerminal(args) {
+  const command = args.passthrough;
+  if (!command.length) throw new Error("capture needs a command after --, e.g. -- copilot");
+  const cols = Math.round(numberOpt(args, "cols", 120));
+  const rows = Math.round(numberOpt(args, "rows", 30));
+  const maxMb = args["max-mb"] == null ? 48 : args["max-mb"];
+  const maxBytes = captureLimitBytes(maxMb);
+  const exitGraceMs = Math.round(numberOpt(args, "exit-grace", DEFAULT_EXIT_GRACE_MS / 1000) * 1000);
+  // Zero disables the progress line, so it is parsed here rather than through numberOpt, which
+  // refuses zero for options where zero would silently mean "no limit".
+  const progressSeconds = args.progress == null ? DEFAULT_PROGRESS_MS / 1000 : Number(args.progress);
+  if (!Number.isFinite(progressSeconds) || progressSeconds < 0) {
+    throw new Error("Option --progress must be a non-negative number of seconds (0 turns it off)");
+  }
+  // Every option is settled BEFORE the pty is loaded and the session spawned: a typo should cost a
+  // second, not a session that is already running with a child attached.
+  const script = args.script ? readScript(String(args.script)) : null;
+  const pty = loadOptional("node-pty");
+  const executable = resolveExecutable(command[0]);
+  const launch = launchSpec(executable, command.slice(1));
+  const outFile = args.out
+    ? path.resolve(String(args.out))
+    : path.join(OUT_ROOT, `session-${stamp()}.cast.json`);
+  ensureDir(path.dirname(outFile));
+
+  const rules = rulesForThisMachine();
+  // A second scrubber for the LIVE stream, kept separate from the one that cleans the cast so the
+  // two never share carry state.
+  const liveScrubber = createScrubber({ rules });
+  const child = pty.spawn(launch.file, launch.args, {
+    name: "xterm-256color",
+    cols,
+    rows,
+    cwd: process.cwd(),
+    env: process.env,
+  });
+
+  const wasRaw = process.stdin.isRaw;
+  const onInput = (data) => { try { child.write(data.toString("utf8")); } catch (e) { /* child is gone */ } };
+  const onResize = () => { try { child.resize(process.stdout.columns || cols, process.stdout.rows || rows); } catch (e) { /* child is gone */ } };
+  // Raw mode belongs to the CALLER's terminal, so it must be handed back on every path - a throw, a
+  // Ctrl+C, a child that dies badly - or the operator is left with an unusable shell.
+  let restored = false;
+  const restore = () => {
+    if (restored) return;
+    restored = true;
+    process.stdin.off("data", onInput);
+    process.stdout.off("resize", onResize);
+    if (process.stdin.isTTY) { try { process.stdin.setRawMode(!!wasRaw); } catch (e) { /* already closed */ } }
+    process.stdin.pause();
+  };
+  // The FIRST signal ends the session and lets the capture finalize. It used to kill the child and
+  // exit(130) without writing anything, so stopping a wedged capture by hand - the operator's only
+  // option - threw away the entire session. A SECOND signal is the operator saying they will not
+  // wait for the write either, and only then is the process torn down.
+  let interrupt = null;
+  const onSignal = () => {
+    if (interrupt && interrupt()) {
+      restore();
+      console.warn("\n  capture: interrupted; ending the session and writing what was recorded...");
+      return;
+    }
+    restore();
+    // The scrubber holds a whitespace-free run back until it can prove it is not a credential.
+    // Exiting without flushing loses that text from the operator's own terminal for good.
+    if (!process.stdout.isTTY) { try { process.stdout.write(liveScrubber.end()); } catch (e) { /* closed */ } }
+    try { child.kill(); } catch (e) { /* already gone */ }
+    process.exit(130);
+  };
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
+
+  let outcome;
+  try {
+    if (process.stdin.isTTY) process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.on("data", onInput);
+    process.stdout.on("resize", onResize);
+    outcome = await captureSession({
+      child,
+      script,
+      outFile,
+      rules,
+      command,
+      cols,
+      rows,
+      maxMb,
+      maxBytes,
+      exitGraceMs,
+      progressMs: Math.round(progressSeconds * 1000),
+      // The operator's own terminal shows the session RAW, because they are interacting with it.
+      // Anything else - a pipe, a CI log, an agent transcript - gets the scrubbed stream, since a
+      // credential printed to a persisted log leaks just as surely as one written into the cast.
+      onData: (data) => process.stdout.write(process.stdout.isTTY ? data : liveScrubber.push(data)),
+      // Progress goes to stderr, and only when stdout is NOT a terminal. An operator sitting in
+      // front of the TUI can already see it is stuck, and a status line drawn into a live TUI
+      // corrupts the very screen the clip is of; the unattended run whose log nobody is watching is
+      // the case that needs it.
+      progress: process.stdout.isTTY
+        ? () => {}
+        : (line) => { try { process.stderr.write(`  ${line}\n`); } catch (e) { /* closed */ } },
+      attachInterrupt: (fn) => { interrupt = fn; },
+      onEnd: () => restore(),
+    });
+  } finally {
+    restore();
+    // Never orphan the child. The happy path leaves through onExit, but a setup throw or a signal
+    // would otherwise leave a pty running with nobody reading it.
+    try { child.kill(); } catch (e) { /* already gone */ }
+    // Whatever the live scrubber was holding back belongs on the operator's stream too.
+    if (!process.stdout.isTTY) { try { process.stdout.write(liveScrubber.end()); } catch (e) { /* closed */ } }
+    process.off("SIGINT", onSignal);
+    process.off("SIGTERM", onSignal);
+  }
 
   // A driver that could not finish means the session is NOT the one the script describes - a turn
   // may never have been sent. The cast is still written, because a long capture is expensive and
   // the partial recording may be worth keeping, but it must never look like a clean run.
-  if (driverError) {
-    console.error(`\nFAILED: the capture script did not complete: ${driverError.message}`);
+  if (outcome.driverError) {
+    console.error(`\nFAILED: the capture script did not complete: ${outcome.driverError.message}`);
     console.error("The cast below is PARTIAL - it does not contain every turn the script asked for.");
     process.exitCode = 1;
   }
-  console.log(`\ncast:       ${outFile}`);
-  console.log(`transcript: ${transcriptFile}`);
-  console.log(`redacted:   ${scrubbed.redactions} match(es) scrubbed before writing`);
-  if (overflowed) {
+  console.log(`\ncast:       ${outcome.outFile}`);
+  console.log(`transcript: ${outcome.transcriptFile}`);
+  console.log(`redacted:   ${outcome.redactions} match(es) scrubbed before writing`);
+  if (outcome.overflowed) {
     console.warn(`  NOTE: the session was cut short at the ${maxMb}MB capture limit, so this cast is `
       + "not the whole session.");
   }
   // The expensive silent miss: a step waited its whole timeout, the session never produced what the
   // recipe asked for, and the closing summary still read like a clean take. Say it here, where it
   // cannot scroll away, because deciding to re-run is a lot cheaper than publishing the wrong clip.
-  for (const step of timedOutSteps) {
+  for (const step of outcome.timedOutSteps) {
     console.warn(`  WARNING: ${stepGaveUpNotice(step)}`);
   }
-  const leftover = scanText(castText(cast), rules);
+  // Same reasoning for the ending itself: a capture the clock ended, or one the operator stopped,
+  // is not the take the recipe describes.
+  if (outcome.ended !== "exit") {
+    console.warn(`  WARNING: ${stallNotice({ ended: outcome.ended, graceMs: exitGraceMs })}`);
+  }
+  const leftover = outcome.leftover;
   if (leftover.length) console.warn(`  WARNING: ${leftover.length} finding(s) survived scrubbing - render will refuse this cast`);
   console.log("READ THE TRANSCRIPT before you render or publish: automated redaction is a net, not a gate.");
   // node-pty keeps handles alive after the child exits, so the process would hang on its own - but
   // exiting outright can truncate a piped stdout, losing the paths just printed. Flush, then go.
   await new Promise((done) => process.stdout.write("", done));
-  process.exit(driverError || overflowed ? 1 : (exitCode || 0));
+  if (outcome.ended === "interrupt") process.exit(130);
+  process.exit(outcome.driverError || outcome.overflowed || outcome.ended !== "exit"
+    ? 1
+    : (outcome.exitCode || 0));
 }
 
 // A cast's COMMAND is shown in the clip's title bar, so the gate has to read it too - scanning only
@@ -2250,6 +2430,7 @@ const USAGE = `demo-video recorder
   node record_demo.mjs loop    --cast <file.cast.json> --example <report.html> [--split paste]
                                [--show-command]
   node record_demo.mjs capture [--out <f.cast.json>] [--cols 120] [--rows 30] [--script <f.json>] [--max-mb 48] -- <cmd...>
+                               [--exit-grace 120] [--progress 60]
   node record_demo.mjs render  --cast <file.cast.json> [--seconds 45] [--idle 900] [--out <file.webm>]
                                [--until "<marker>"] [--until-after <mark>] [--until-gap <seconds>]
                                [--show-command]
