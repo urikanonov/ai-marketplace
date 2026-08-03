@@ -52,9 +52,13 @@ Four directions are checked:
 - DUPLICATE ROWS (`check_duplicate_spec_rows`): a feature id is the id cell of at most ONE feature
   row per spec. The other three directions all assume "one feature id, one behavior", but nothing
   enforced it (issue #904): `_spec_rows` merges same-id rows, so a test cited by EITHER row
-  satisfied the other. A row is attributed to the header of the table it sits in, so the
-  "Doc-surface registry" table (`Feature id | Doc surface | Deck`), whose rows also begin with a
-  feature id, is not read as a second row for every registered id.
+  satisfied the other. `_feature_rows` is the single definition of "a spec row" for both this
+  direction and `_spec_rows`, so what is ENFORCED covers what is CONSUMED. A row is excluded only
+  when it sits under a `Doc-surface registry` heading (`_NON_FEATURE_SECTIONS`) AND its table
+  header carries a `Doc surface` column (`_NON_FEATURE_TABLE_HEADERS`) - that table's rows also
+  begin with a feature id. Either gate alone was wrong: keying on the header let a duplicate be
+  parked under any table that spelled a column `Doc surface`. Anything else counts, so the rule
+  fails CLOSED.
 
 The REVERSE direction reads only literal `test(...)` / `it(...)` / `describe(...)` calls that
 BEGIN a line (`_js_test_titles`), so `page.test(...)` is correctly ignored - but so is a
@@ -115,12 +119,19 @@ _BACKTICK_PATH_RE = re.compile(r"`([^`]+\.(?:py|%s|tsx))`" % _JS_TEST_SUFFIX)
 _QUOTED_RE = re.compile(r"`([^`]+)`")
 _FEATURE_ID_RE = re.compile(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)*-\d+[a-z]?\b")
 _PY_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?")
-# Duplicate-row parsing (`_feature_row_lines`): a CommonMark fence, a blockquote prefix, the inline
-# decoration a table cell may carry, and the tables whose feature-id rows are NOT feature rows.
+# Duplicate-row parsing (`_feature_rows`): a CommonMark fence, a blockquote prefix, the inline
+# decoration a table cell may carry, the heading that opens a non-feature section, and the tables
+# whose feature-id rows are NOT feature rows.
 _FENCE_RE = re.compile(r" {0,3}(`{3,}|~{3,})(.*)$")
 _BLOCKQUOTE_RE = re.compile(r"^(?: {0,3}>[ \t]?)+")
-_MD_DECORATION_RE = re.compile(r"[*_`]")
-_NON_FEATURE_TABLE_HEADERS = frozenset({"doc surface"})
+_MD_DECORATION_RE = re.compile(r"^[*_`~]+|[*_`~]+$")
+_HTML_TAG_RE = re.compile(r"</?[A-Za-z][^>]*>")
+_MD_LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_ZERO_WIDTH_RE = re.compile(r"[\u200b-\u200f\ufeff]")
+_HEADING_RE = re.compile(r" {0,3}#{1,6}\s+(.*?)\s*#*\s*$")
+_INDENTED_CODE_RE = re.compile(r" {4,}\S")
+_NON_FEATURE_SECTIONS = ("doc-surface registry",)
+_NON_FEATURE_TABLE_HEADERS = ("doc surface",)
 _JS_TITLE_RE = re.compile(
     r'(?:test\.describe(?:\.(?:only|skip|fixme|fail|serial|parallel))*|'
     r'(?:test|it|describe)(?:\.(?:only|skip|fixme|fail|serial|parallel))*)\s*\(\s*'
@@ -583,112 +594,171 @@ def _test_corpus(spec_path: Path, base_dir: Path) -> tuple[Path, ...]:
 
 
 def _spec_rows(spec_path: Path) -> dict[str, list[str]]:
-    """Map each feature id to the coverage cell of every FEATURE row it owns.
+    """Map each feature id to the coverage cell of every WELL-FORMED feature row it owns.
 
-    Reads the same rows the duplicate-row direction enforces over (`_feature_rows`), so the
-    invariant that is CHECKED is the one that is CONSUMED. Sharing the enumerator is what keeps a
-    "Doc-surface registry" row or a row inside a fenced sample table from becoming a coverage cell
-    an id could be cited from: either would let a citation be satisfied by a line that is not a
-    spec row at all, which is the very borrow this module exists to catch.
+    Reads the same enumeration the duplicate-row direction enforces over (`_feature_rows`), so the
+    invariant that is CHECKED covers everything that is CONSUMED. The relationship is deliberately
+    "enforced is a SUPERSET of consumed", not equality: the duplicate direction is permissive on
+    purpose (a blockquoted, two-cell, or trailing-pipe-less row still counts, so a malformed
+    duplicate is SEEN), but the same permissiveness here would be fail-OPEN - an illustrative row
+    quoted in prose would OWN an id and SATISFY a citation. So only a well-formed row supplies a
+    coverage cell, while every row counts toward the duplicate gate. A registry row or a row inside
+    a fenced sample table is not a row at all for either, which is what stops a citation from being
+    satisfied by a line that is not a spec row.
     """
     rows: dict[str, list[str]] = {}
-    for _line_no, feature_id, cells in _feature_rows(spec_path)[0]:
-        rows.setdefault(feature_id, []).append(cells[-1])
+    for _line_no, feature_id, cells, well_formed in _feature_rows(spec_path)[0]:
+        coverage = rows.setdefault(feature_id, [])
+        if well_formed:
+            coverage.append(cells[-1])
     return rows
 
 
-def _table_cells(line: str) -> list[str] | None:
-    """The cells of a markdown table row, or None when *line* is not one.
+def _unfenced_lines(text: str) -> tuple[tuple[tuple[int, str], ...], int | None]:
+    """Every `(line_no, line)` OUTSIDE a fenced code block, plus an unclosed fence's line.
 
-    Deliberately more permissive than `_row_cells`: it accepts a row with a missing trailing pipe,
-    a row inside a blockquote, and a two-cell row, because this gate must SEE a malformed
-    duplicate row rather than skip it.
+    One fence state machine for the whole module, following CommonMark: a fence opens on a run of
+    3+ backticks or tildes indented at most 3 spaces (4+ spaces is indented CODE, not a fence) and
+    closes only on a run of the SAME character that is at least as long and carries no other text.
+    A backtick fence's info string may not contain a backtick, so such a line is not an opener. A
+    tilde line inside a backtick fence is therefore literal content, and a sample table in a code
+    block is never read as a spec row.
     """
-    stripped = _BLOCKQUOTE_RE.sub("", line).strip()
-    if not stripped.startswith("|"):
-        return None
-    body = stripped[1:]
-    if body.endswith("|"):
-        body = body[:-1]
-    cells = [cell.strip() for cell in body.split("|")]
-    if len(cells) < 2:
-        return None
-    return cells
-
-
-def _undecorated(cell: str) -> str:
-    """*cell* without the inline markdown that decorates it (`**bold**`, `` `code` ``)."""
-    return _MD_DECORATION_RE.sub("", cell).strip()
-
-
-def _feature_rows(
-    spec_path: Path,
-) -> tuple[tuple[tuple[int, str, tuple[str, ...]], ...], int | None]:
-    """Every FEATURE row of *spec_path* as `(line_no, feature_id, cells)`, plus an open fence line.
-
-    The single definition of "a spec row" for this module. The "Doc-surface registry" table
-    (`Feature id | Doc surface | Deck`) also starts every row with a feature id, so rows are
-    attributed to the header of the table they are in rather than to their shape - otherwise every
-    registered id would look like a second row for itself. The rule is deliberately inverted so it
-    FAILS CLOSED: a row counts unless its governing header is one of the explicitly recognised
-    non-feature tables (`_NON_FEATURE_TABLE_HEADERS`). Excluding everything that is not spelled
-    exactly `Behavior` was the opposite, and hid a real duplicate behind a header this parser
-    merely failed to recognise (`**Behavior**`, `Behaviour`, or a cell split apart by a pipe inside
-    a code span). Inline decoration is stripped from both the header cell and the id cell for the
-    same reason, and a blockquoted, two-cell, or trailing-pipe-less row still counts - this parser
-    is deliberately stricter than `_row_cells`, so a malformed duplicate is seen rather than
-    skipped.
-
-    Fenced code blocks are skipped per CommonMark (a fence opens on a run of 3+ backticks or tildes
-    indented at most 3 spaces and closes only on a run of the SAME character that is at least as
-    long and carries no other text), so a sample table in a code block is never read as a row and a
-    tilde line inside a backtick fence does not end it. A fence indented 4+ spaces is indented CODE
-    and never opens one. The second return value is the line where a fence was opened and never
-    closed: an unterminated fence would otherwise silently blank every row after it, and because
-    `dev/SPEC.md` is a concatenation of `dev/spec/NN-*.md` partials, one imbalance in an early
-    partial would un-check every later section.
-    """
-    rows: list[tuple[int, str, tuple[str, ...]]] = []
+    lines: list[tuple[int, str]] = []
     fence: tuple[str, int] | None = None
     fence_line: int | None = None
-    header: list[str] | None = None
-    for line_no, line in enumerate(_read(spec_path).splitlines(), 1):
-        fence_match = _FENCE_RE.match(_BLOCKQUOTE_RE.sub("", line))
-        if fence_match:
-            marker, rest = fence_match.group(1), fence_match.group(2)
+    for line_no, line in enumerate(text.splitlines(), 1):
+        match = _FENCE_RE.match(_BLOCKQUOTE_RE.sub("", line))
+        if match:
+            marker, rest = match.group(1), match.group(2)
             if fence is None:
-                fence, fence_line = (marker[0], len(marker)), line_no
-                continue
-            if fence[0] == marker[0] and len(marker) >= fence[1] and not rest.strip():
+                if marker[0] != "`" or "`" not in rest:
+                    fence, fence_line = (marker[0], len(marker)), line_no
+                    continue
+            elif fence[0] == marker[0] and len(marker) >= fence[1] and not rest.strip():
                 fence, fence_line = None, None
                 continue
         if fence is not None:
             continue
-        cells = _table_cells(line)
-        if cells is None:
-            header = None
+        lines.append((line_no, line))
+    return tuple(lines), fence_line
+
+
+def _table_cells(line: str) -> tuple[list[str], bool] | None:
+    """`(cells, well_formed)` for a markdown table row, or None when *line* is not one.
+
+    Deliberately more permissive than `_row_cells`: a row inside a blockquote, a two-cell row, and
+    a row with a missing trailing pipe are all returned, because the duplicate gate must SEE a
+    malformed duplicate rather than skip it. `well_formed` says whether the row is the canonical
+    shape every other direction consumes - not blockquoted, closed with a trailing pipe, and at
+    least three cells - so the two consumers can differ deliberately (see `_spec_rows`).
+    """
+    unquoted = _BLOCKQUOTE_RE.sub("", line)
+    quoted = unquoted != line
+    stripped = unquoted.strip()
+    if not stripped.startswith("|"):
+        return None
+    body = stripped[1:]
+    closed = body.endswith("|")
+    if closed:
+        body = body[:-1]
+    cells = [cell.strip() for cell in body.split("|")]
+    if len(cells) < 2:
+        return None
+    return cells, (closed and not quoted and len(cells) >= 3)
+
+
+def _undecorated(cell: str) -> str:
+    """*cell* with the markup that WRAPS its text removed, so an id is seen as the reader sees it.
+
+    Strips an HTML tag (`<code>ID</code>`), a markdown link (`[ID](#x)`), a zero-width character,
+    and leading/trailing emphasis/code/strikethrough runs (`**ID**`, `` `ID` ``, `~~ID~~`). Only
+    WRAPPING decoration goes: an id that merely CONTAINS one of those characters (`DEM*O-01`) is
+    left alone rather than being normalised into a different id. Anything the reader sees as a
+    feature id must normalise to one, or a duplicate could hide behind ordinary markup.
+    """
+    text = _ZERO_WIDTH_RE.sub("", cell)
+    text = _HTML_TAG_RE.sub("", text)
+    text = _MD_LINK_RE.sub(r"\1", text)
+    return _MD_DECORATION_RE.sub("", text.strip()).strip()
+
+
+def _is_non_feature_header(header: list[str]) -> bool:
+    """Whether *header* belongs to a table whose feature-id rows are not feature rows.
+
+    Matched as a PREFIX against any cell, so renaming the column (`Doc surfaces`) or inserting one
+    before it does not silently turn every registry row into a duplicate.
+    """
+    return any(
+        _undecorated(cell).lower().startswith(_NON_FEATURE_TABLE_HEADERS)
+        for cell in header
+    )
+
+
+def _is_delimiter_row(cells: list[str]) -> bool:
+    return all(cell and set(cell) <= {"-", ":", " "} for cell in cells)
+
+
+def _feature_rows(
+    spec_path: Path,
+) -> tuple[tuple[tuple[int, str, tuple[str, ...], bool], ...], int | None]:
+    """Every FEATURE row as `(line_no, feature_id, cells, well_formed)`, plus an open fence line.
+
+    The single definition of "a spec row" for this module. The "Doc-surface registry" table
+    (`Feature id | Doc surface | Deck`) also starts every row with a feature id, so a row is
+    excluded when it is BOTH under a recognised non-feature SECTION heading
+    (`_NON_FEATURE_SECTIONS`) AND under a table header carrying a recognised non-feature column
+    (`_NON_FEATURE_TABLE_HEADERS`, matched against ANY header cell so a renamed or reordered column
+    does not silently turn every registry row into a duplicate). Otherwise every registered id
+    would look like a second row for itself - while a table that merely spells a column
+    `Doc surface` somewhere else in the spec cannot be used to park a hidden duplicate.
+
+    The rule is deliberately inverted so it FAILS CLOSED: anything else counts. Excluding
+    everything that is not spelled exactly `Behavior` was the opposite, and hid a real duplicate
+    behind a header this parser merely failed to recognise (`**Behavior**`, `Behaviour`, or a cell
+    split apart by a pipe inside a code span). Wrapping decoration is stripped from the header and
+    id cells for the same reason.
+
+    The header is taken from the line ABOVE each DELIMITER row, as GFM defines it, so header state
+    cannot latch past the end of its table: a second table butted directly against the registry
+    with no blank line gets its own header (or none) rather than inheriting the registry's.
+
+    A line indented 4+ spaces is indented CODE, so - like the fence rule - it is never a row.
+    The second return value is the line where a fence was opened and never closed: an unterminated
+    fence would otherwise silently blank every row after it, and because `dev/SPEC.md` is a
+    concatenation of `dev/spec/NN-*.md` partials, one imbalance in an early partial would un-check
+    every later section.
+    """
+    rows: list[tuple[int, str, tuple[str, ...], bool]] = []
+    header: list[str] | None = None
+    previous: list[str] | None = None
+    in_non_feature_section = False
+    lines, fence_line = _unfenced_lines(_read(spec_path))
+    for line_no, line in lines:
+        heading = _HEADING_RE.match(line)
+        if heading:
+            in_non_feature_section = heading.group(1).strip().lower() in _NON_FEATURE_SECTIONS
+            header, previous = None, None
             continue
-        if all(set(cell) <= {"-", ":", " "} and cell for cell in cells):
+        if _INDENTED_CODE_RE.match(_BLOCKQUOTE_RE.sub("", line)):
+            header, previous = None, None
             continue
-        if _undecorated(cells[0]).lower() in {"feature id", "feature"}:
-            header = cells
+        parsed = _table_cells(line)
+        if parsed is None:
+            header, previous = None, None
             continue
+        cells, well_formed = parsed
+        if _is_delimiter_row(cells):
+            header, previous = previous, None
+            continue
+        previous = cells
         feature_id = _undecorated(cells[0])
         if not _FEATURE_ID_RE.fullmatch(feature_id):
             continue
-        if (header is not None and len(header) > 1
-                and _undecorated(header[1]).lower() in _NON_FEATURE_TABLE_HEADERS):
+        if in_non_feature_section and header is not None and _is_non_feature_header(header):
             continue
-        rows.append((line_no, feature_id, tuple(cells)))
+        rows.append((line_no, feature_id, tuple(cells), well_formed))
     return tuple(rows), fence_line
-
-
-def _feature_row_lines(spec_path: Path) -> dict[str, list[int]]:
-    """Map each feature id to the line numbers of the FEATURE rows whose id cell it is."""
-    lines: dict[str, list[int]] = {}
-    for line_no, feature_id, _cells in _feature_rows(spec_path)[0]:
-        lines.setdefault(feature_id, []).append(line_no)
-    return lines
 
 
 def _coverage_rel(base_dir: Path, test_path: Path) -> str:
@@ -746,7 +816,10 @@ def _clause_end(text: str, start: int, default_end: int) -> int:
 def check_spec(spec_path: Path, base_dir: Path) -> list[SpecIssue]:
     issues: list[SpecIssue] = []
     text = _read(spec_path)
-    for line_no, line in enumerate(text.splitlines(), 1):
+    # Scans every table row, not only feature rows, so a citation anywhere in the spec is checked -
+    # but through the shared fence state machine, so a sample table inside a code block is never
+    # validated as if it were a real citation.
+    for line_no, line in _unfenced_lines(text)[0]:
         cells = _row_cells(line)
         if cells is None:
             continue
@@ -967,7 +1040,7 @@ def check_duplicate_spec_rows(
                 "read; close the fence",
             ))
         lines: dict[str, list[int]] = {}
-        for line_no, feature_id, _cells in rows:
+        for line_no, feature_id, _cells, _well_formed in rows:
             lines.setdefault(feature_id, []).append(line_no)
         for feature_id, line_numbers in sorted(lines.items()):
             if len(line_numbers) < 2:
@@ -989,7 +1062,15 @@ def check_all(
     fully_reverse_mapped: frozenset[Path] = FULLY_REVERSE_MAPPED_SPECS,
 ) -> list[SpecIssue]:
     issues: list[SpecIssue] = []
+    readable = []
     for spec_path, base_dir in targets:
+        if _feature_rows(spec_path)[1] is not None:
+            # An unclosed fence blanks every row after it, so the citation directions would report
+            # "has no spec row" for hundreds of tests and bury the one actionable cause.
+            # `check_duplicate_spec_rows` below reports the fence itself.
+            continue
+        readable.append((spec_path, base_dir))
+    for spec_path, base_dir in readable:
         issues.extend(check_spec(spec_path, base_dir))
         if _tests_dir(spec_path, base_dir) is None:
             # Fail CLOSED: with no tests directory the reverse and duplicate directions are silent
@@ -1017,7 +1098,7 @@ def check_all(
             if rest:
                 issues.extend(check_test_id_mappings(
                     spec_path, base_dir, rest, ownership_only=True))
-    issues.extend(check_duplicate_feature_ids(targets))
+    issues.extend(check_duplicate_feature_ids(readable))
     issues.extend(check_duplicate_spec_rows(targets))
     return issues
 

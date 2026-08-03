@@ -1464,6 +1464,189 @@ class DuplicateSpecRowTests(unittest.TestCase):
         self.assertEqual(
             [], refs.check_duplicate_spec_rows(((first, self.base), (second, self.base))))
 
+    def test_a_doc_surface_header_outside_the_registry_section_does_not_excuse_a_row(self):
+        # Keying only on the header text let a duplicate hide under a table that merely SPELLS its
+        # column `Doc surface` anywhere in the spec.
+        spec = self._write(
+            self._feature_table((("DEMO-01", "real browser title (DEMO-01)"),))
+            + "\n### Some other section\n\n"
+            "| Feature id | Doc surface | Deck |\n"
+            "| --- | --- | --- |\n"
+            "| DEMO-01 | tutorial | deck |\n"
+        )
+
+        issues = refs.check_duplicate_spec_rows(((spec, self.base),))
+
+        self.assertEqual(1, len(issues), [issue.format() for issue in issues])
+        self.assertIn("2 spec rows", issues[0].message)
+
+    def test_a_reordered_or_decorated_registry_header_still_excuses_its_rows(self):
+        # The deny-list matches ANY header cell as a PREFIX, so inserting a column before
+        # `Doc surface`, decorating it, or renaming it `Doc surfaces` does not turn every
+        # registered id into a duplicate.
+        for header in (
+            "| Feature id | Owner | **Doc surface** | Deck |\n",
+            "| Feature id | Doc surfaces | Deck |\n",
+        ):
+            with self.subTest(header=header.strip()):
+                columns = header.count("|") - 1
+                spec = self._write(
+                    self._feature_table((("DEMO-01", "real browser title (DEMO-01)"),))
+                    + "\n### Doc-surface registry\n\n"
+                    + header
+                    + "| " + " | ".join(["---"] * columns) + " |\n"
+                    + "| DEMO-01 | " + " | ".join(["tutorial"] * (columns - 1)) + " |\n"
+                )
+
+                self.assertEqual([], refs.check_duplicate_spec_rows(((spec, self.base),)))
+
+    def test_a_registry_header_does_not_latch_onto_an_adjacent_table(self):
+        # The header comes from the line above each DELIMITER row (GFM), so a table butted
+        # straight against the registry with no blank line gets its OWN header rather than
+        # inheriting the registry's. (A row appended INSIDE the registry table is genuinely a
+        # registry row; `check_doc_surfaces.py` rejects that one, since its cells are not a valid
+        # doc-surface/deck pair.)
+        spec = self._write(
+            self._feature_table((("DEMO-01", "real browser title (DEMO-01)"),))
+            + "\n### Doc-surface registry\n\n"
+            "| Feature id | Doc surface | Deck |\n"
+            "| --- | --- | --- |\n"
+            "| DEMO-01 | tutorial | deck |\n"
+            "| Feature id | Behavior | Covering tests |\n"
+            "| --- | --- | --- |\n"
+            "| DEMO-01 | Demo behavior. | `tests/demo.spec.js` - `another real title (DEMO-02)` |"
+            "\n"
+        )
+
+        issues = refs.check_duplicate_spec_rows(((spec, self.base),))
+
+        self.assertEqual(1, len(issues), [issue.format() for issue in issues])
+        self.assertIn("2 spec rows", issues[0].message)
+
+    def test_a_row_with_no_trailing_pipe_is_still_a_row(self):
+        spec = self._write(
+            self._feature_table((("DEMO-01", "real browser title (DEMO-01)"),))
+            + "| DEMO-01 | Demo behavior. | `tests/demo.spec.js` - `another real title (DEMO-02)`"
+              "\n"
+        )
+
+        issues = refs.check_duplicate_spec_rows(((spec, self.base),))
+
+        self.assertEqual(1, len(issues), [issue.format() for issue in issues])
+
+    def test_a_malformed_row_owns_its_id_but_supplies_no_coverage(self):
+        # Enforced is a SUPERSET of consumed: a blockquoted, two-cell, or unclosed row counts for
+        # the duplicate gate, but must not OWN a citation - an illustrative row quoted in prose
+        # would otherwise satisfy the reverse direction.
+        for shape in (
+            "> | DEMO-01 | Demo. | `tests/demo.spec.js` - `another real title (DEMO-02)` |\n",
+            "| DEMO-01 | `tests/demo.spec.js` - `another real title (DEMO-02)` |\n",
+            "| DEMO-01 | Demo. | `tests/demo.spec.js` - `another real title (DEMO-02)`\n",
+        ):
+            with self.subTest(shape=shape.strip()):
+                spec = self._write(
+                    self._feature_table((("DEMO-01", "real browser title (DEMO-01)"),)) + shape)
+
+                self.assertEqual(1, len(refs._spec_rows(spec)["DEMO-01"]))
+                self.assertFalse(refs._row_cites(
+                    refs._spec_rows(spec)["DEMO-01"], "tests/demo.spec.js",
+                    "another real title (DEMO-02)"))
+                self.assertEqual(
+                    1, len(refs.check_duplicate_spec_rows(((spec, self.base),))))
+
+    def test_an_id_that_merely_contains_decoration_is_not_normalised(self):
+        # Stripping every `*` would turn `DEM*O-01` into `DEMO-01` and invent a duplicate.
+        spec = self._write(
+            self._feature_table((("DEMO-01", "real browser title (DEMO-01)"),))
+            + "| DEM*O-01 | Demo behavior. | `tests/demo.spec.js` - `another real title "
+              "(DEMO-02)` |\n"
+        )
+
+        self.assertEqual([], refs.check_duplicate_spec_rows(((spec, self.base),)))
+
+    def test_decoration_is_stripped_whatever_the_marker(self):
+        for decorated in (
+            "**DEMO-01**", "_DEMO-01_", "`DEMO-01`", "~~DEMO-01~~", "[DEMO-01](#demo-01)",
+            "<code>DEMO-01</code>",
+        ):
+            with self.subTest(decorated=decorated):
+                spec = self._write(
+                    self._feature_table((("DEMO-01", "real browser title (DEMO-01)"),))
+                    + "| %s | Demo behavior. | `tests/demo.spec.js` - `another real title "
+                      "(DEMO-02)` |\n" % decorated
+                )
+
+                issues = refs.check_duplicate_spec_rows(((spec, self.base),))
+
+                self.assertEqual(1, len(issues), [issue.format() for issue in issues])
+                self.assertIn("`DEMO-01`", issues[0].message)
+
+    def test_a_behavior_table_under_the_registry_heading_still_counts(self):
+        # BOTH gates must agree before a row is excused; a real feature table parked under the
+        # registry heading is still a feature table.
+        spec = self._write(
+            self._feature_table((("DEMO-01", "real browser title (DEMO-01)"),))
+            + "\n### Doc-surface registry\n\n"
+            "| Feature id | Behavior | Covering tests |\n"
+            "| --- | --- | --- |\n"
+            "| DEMO-01 | Demo behavior. | `tests/demo.spec.js` - `another real title (DEMO-02)` |"
+            "\n"
+        )
+
+        issues = refs.check_duplicate_spec_rows(((spec, self.base),))
+
+        self.assertEqual(1, len(issues), [issue.format() for issue in issues])
+        self.assertIn("2 spec rows", issues[0].message)
+
+    def test_a_legal_indented_fence_still_opens_and_a_longer_closer_still_closes(self):
+        spec = self._write(
+            self._feature_table((("DEMO-01", "real browser title (DEMO-01)"),))
+            + "\n   ```markdown\n"
+            "| DEMO-01 | Sample. | `tests/demo.spec.js` - `real browser title (DEMO-01)` |\n"
+            "   `````\n"
+        )
+
+        self.assertEqual([], refs.check_duplicate_spec_rows(((spec, self.base),)))
+
+    def test_a_backtick_info_string_containing_a_backtick_does_not_open_a_fence(self):
+        # CommonMark forbids a backtick in a backtick fence's info string, so this line is text -
+        # treating it as a fence would swallow the duplicate below it.
+        spec = self._write(
+            "# Spec\n\n```a`b\n\n"
+            + self._feature_table((
+                ("DEMO-01", "real browser title (DEMO-01)"),
+                ("DEMO-01", "another real title (DEMO-02)"),
+            )).split("# Spec\n\n", 1)[1]
+        )
+
+        issues = refs.check_duplicate_spec_rows(((spec, self.base),))
+
+        self.assertEqual(1, len(issues), [issue.format() for issue in issues])
+        self.assertIn("2 spec rows", issues[0].message)
+
+    def test_a_table_row_inside_an_indented_code_block_is_not_a_row(self):
+        spec = self._write(
+            self._feature_table((("DEMO-01", "real browser title (DEMO-01)"),))
+            + "\nExample:\n\n"
+            "    | DEMO-01 | Sample. | `tests/demo.spec.js` - `real browser title (DEMO-01)` |\n"
+        )
+
+        self.assertEqual([], refs.check_duplicate_spec_rows(((spec, self.base),)))
+
+    def test_check_all_reports_only_the_fence_for_an_unreadable_spec(self):
+        # A blanked row set would otherwise make the citation directions shout "has no spec row"
+        # for every test after the fence and bury the one actionable cause.
+        spec = self._write(
+            "# Spec\n\n```markdown\nan unclosed sample\n\n"
+            + self._feature_table((("DEMO-01", "real browser title (DEMO-01)"),))
+            .split("# Spec\n\n", 1)[1]
+        )
+
+        issues = refs.check_all(((spec, self.base),))
+
+        self.assertEqual(1, len(issues), [issue.format() for issue in issues])
+        self.assertIn("never closed", issues[0].message)
+
     def test_three_rows_for_one_id_are_reported_once_naming_every_line(self):
         spec = self._write(self._feature_table((
             ("DEMO-01", "real browser title (DEMO-01)"),
