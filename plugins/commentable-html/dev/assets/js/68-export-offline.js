@@ -227,20 +227,118 @@ function _offlineScriptHasNetworkImport(body) {
 // that a same-line `{ location = <url> }` is missed. It also over-matches: the URL literal is found
 // in raw source, so a script whose COMMENT or STRING merely spells one of these shapes is stripped
 // too. Both directions are stated in CMH-OFFLINE-05 rather than papered over.
-// Each optional `?` is bound inside its own group rather than sitting between two unbounded
-// whitespace runs: the earlier `WS*\??WS*\.` let one input run split every way, which took ~2.7s in
-// Python and ~10s in node on a 20k-space input - a denial of service on exactly the hostile
-// document this defends against. `test_the_navigation_pattern_cannot_be_made_to_backtrack` pins it.
+// It is a SCAN, not one big pattern, and that is a cost property rather than a style choice. The
+// single pattern this replaced carried the global-prefix chain as an unbounded repetition in front
+// of the sink, so the engine re-entered that chain at EVERY position a prefix could follow - which
+// is every whitespace run - and a long NEAR-match cost quadratic time: `window . ` repeated took
+// 2.3s at 18 KB and 174s at 144 KB in Python, 4x the time for 2x the input. Nothing bounded it: the
+// exporter runs this over every runnable script in the document AND over the vendored payload's
+// INFLATED bytes, so a few hundred base64 bytes bought megabytes of near-match and an export that
+// looked hung. Every shape it recognizes requires the literal `location` or `open`, so the scan is
+// driven from THOSE anchors instead. Forward from an anchor the tail stays a regex, matched STICKY
+// so it cannot wander, and every unbounded whitespace run inside one is followed by a distinct
+// non-whitespace literal, so no run can be split two ways (the earlier `WS*\??WS*\.` could, which
+// took ~2.7s in Python and ~10s in node on a 20k-space input). Backward from an anchor the prefix
+// chain is walked once in code; chains for two different anchors cannot overlap, because no sink
+// name is a prefix name, so the whole scan is linear in the input.
+// `test_the_navigation_scan_stays_linear_as_the_near_match_grows` pins the SCALING, not just one
+// fixed-size input, so the quadratic term cannot come back unnoticed.
 // This comment must not spell out a navigation sink followed by a network URL literal: the layer's
 // own script is stripped by the same pass, so writing the pattern out here deletes the runtime from
 // every offline export (it did, once - the whole suite went red at "JS region has no closing
 // script tag"). `test_the_layer_script_survives_its_own_offline_strips` guards it.
-const _OFFLINE_NAV_TO_NETWORK_RE = /(?:(?:^|[^.A-Za-z0-9_$])(?:(?:window|self|top|parent|globalThis|document|frames)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)*location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:href[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)|(?:assign|replace)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\()|(?:^|[^.A-Za-z0-9_$])(?:(?:window|self|top|parent|globalThis|document|frames)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)+(?:location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)|open[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\()|(?:^|[;})>\n\r\u2028\u2029])[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=))[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*["'`](?:https?:|\/\/)/i;
-const _OFFLINE_NAV_PREFIXED_RE = /(?:(?:^|[^.A-Za-z0-9_$])(?:(?:window|self|top|parent|globalThis|document|frames)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)+location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:href[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)|(?:assign|replace)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\()|(?:^|[^.A-Za-z0-9_$])(?:(?:window|self|top|parent|globalThis|document|frames)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)+(?:location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)|open[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\())[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*["'`](?:https?:|\/\/)/i;
+const _OFFLINE_NAV_ANCHOR_RE = /location|open/gi;
+const _OFFLINE_NAV_PROP_TAIL_RE = /[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:href[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)|(?:assign|replace)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\()[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*["'`](?:https?:|\/\/)/iy;
+const _OFFLINE_NAV_ASSIGN_TAIL_RE = /[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*["'`](?:https?:|\/\/)/iy;
+const _OFFLINE_NAV_OPEN_TAIL_RE = /[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\([ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*["'`](?:https?:|\/\/)/iy;
+const _OFFLINE_NAV_WS_RE = /[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]/;
+const _OFFLINE_NAV_IDENT_RE = /[.A-Za-z0-9_$]/;
+const _OFFLINE_NAV_STATEMENT_RE = /[;})>\n\r\u2028\u2029]/;
+const _OFFLINE_NAV_LINE_BREAK_RE = /[\n\r\u2028\u2029]/;
+const _OFFLINE_NAV_PREFIX_NAMES = ["window", "self", "top", "parent", "globalThis", "document", "frames"];
+const _OFFLINE_NAV_PREFIX_LOWER = _OFFLINE_NAV_PREFIX_NAMES.map(function (n) { return _offlineNavAsciiLower(n); });
 const _OFFLINE_LOCAL_LOCATION_RE = /(?:^|[^.A-Za-z0-9_$])(?:(?:var|let|const|function|class)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+location(?![A-Za-z0-9_$])|(?:var|let|const)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*[{\[][^}\]]{0,400}location(?![A-Za-z0-9_$])|function[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*[A-Za-z0-9_$]{0,100}[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\([^)]{0,400}location(?![A-Za-z0-9_$])|catch[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\([ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*location(?![A-Za-z0-9_$]))/i;
+function _offlineNavAsciiLower(text) {
+  let out = "";
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    out += code >= 65 && code <= 90 ? String.fromCharCode(code + 32) : text.charAt(i);
+  }
+  return out;
+}
+function _offlineNavSkipWsBack(src, pos) {
+  while (pos > 0 && _OFFLINE_NAV_WS_RE.test(src.charAt(pos - 1))) pos--;
+  return pos;
+}
+function _offlineNavBoundaryOk(src, pos) {
+  return pos === 0 || !_OFFLINE_NAV_IDENT_RE.test(src.charAt(pos - 1));
+}
+function _offlineNavPrefixStart(src, pos) {
+  for (let i = 0; i < _OFFLINE_NAV_PREFIX_LOWER.length; i++) {
+    const name = _OFFLINE_NAV_PREFIX_LOWER[i];
+    const start = pos - name.length;
+    if (start >= 0 && _offlineNavAsciiLower(src.slice(start, pos)) === name) return start;
+  }
+  return -1;
+}
+// The global-prefix chain, read BACKWARDS from a sink, standing in for the pattern's old
+// `(?:^|[^.A-Za-z0-9_$])(?:PREFIX WS* (?:\? WS*)? \. WS*)*` head. The boundary is tested at EVERY
+// chain length rather than only the longest, because a shorter chain can end on a whitespace
+// character that is itself a legal boundary - `$window . ` in front of a bare sink matches with no
+// chain at all, and only testing the longest chain would miss it.
+function _offlineNavChainOk(src, index, requirePrefix) {
+  let pos = index;
+  let taken = 0;
+  for (;;) {
+    if ((taken > 0 || !requirePrefix) && _offlineNavBoundaryOk(src, pos)) return true;
+    let scan = _offlineNavSkipWsBack(src, pos);
+    if (scan === 0 || src.charAt(scan - 1) !== ".") return false;
+    scan = _offlineNavSkipWsBack(src, scan - 1);
+    if (scan > 0 && src.charAt(scan - 1) === "?") scan = _offlineNavSkipWsBack(src, scan - 1);
+    const start = _offlineNavPrefixStart(src, scan);
+    if (start < 0) return false;
+    pos = start;
+    taken++;
+  }
+}
+// The `(?:^|[;})>\n\r\u2028\u2029])WS*` head a bare statement-position sink must follow. The run
+// is inspected rather than skipped because a line break inside it is itself a legal delimiter.
+function _offlineNavStatementStart(src, index) {
+  let pos = index;
+  while (pos > 0 && _OFFLINE_NAV_WS_RE.test(src.charAt(pos - 1))) {
+    if (_OFFLINE_NAV_LINE_BREAK_RE.test(src.charAt(pos - 1))) return true;
+    pos--;
+  }
+  return pos === 0 || _OFFLINE_NAV_STATEMENT_RE.test(src.charAt(pos - 1));
+}
+function _offlineNavTailAt(rx, src, index) {
+  rx.lastIndex = index;
+  return rx.test(src);
+}
+// The index of the first sink that navigates to a network URL literal, or -1. `prefixedOnly`
+// drops the two UNPREFIXED shapes, for a script that declares its own binding.
+function _offlineNavSinkIndex(src, prefixedOnly) {
+  _OFFLINE_NAV_ANCHOR_RE.lastIndex = 0;
+  for (let m = _OFFLINE_NAV_ANCHOR_RE.exec(src); m; m = _OFFLINE_NAV_ANCHOR_RE.exec(src)) {
+    const at = m.index;
+    const after = at + m[0].length;
+    _OFFLINE_NAV_ANCHOR_RE.lastIndex = at + 1;
+    if (m[0].length === 4) {
+      if (_offlineNavTailAt(_OFFLINE_NAV_OPEN_TAIL_RE, src, after) &&
+          _offlineNavChainOk(src, at, true)) return at;
+      continue;
+    }
+    if (_offlineNavTailAt(_OFFLINE_NAV_PROP_TAIL_RE, src, after) &&
+        _offlineNavChainOk(src, at, prefixedOnly)) return at;
+    if (_offlineNavTailAt(_OFFLINE_NAV_ASSIGN_TAIL_RE, src, after) &&
+        (_offlineNavChainOk(src, at, true) ||
+         (!prefixedOnly && _offlineNavStatementStart(src, at)))) return at;
+  }
+  return -1;
+}
 function _offlineScriptNavigatesToNetwork(body) {
   const src = String(body || "");
-  if (!_OFFLINE_NAV_TO_NETWORK_RE.test(src)) return false;
+  if (_offlineNavSinkIndex(src, false) < 0) return false;
   // A script that declares its OWN `location` binding is talking about that object, not the
   // document's - `const location = { href: "" }; location.href = <url>` navigates nothing, and
   // deleting the whole script over it is the content loss this strip must not cause. So when a
@@ -248,7 +346,7 @@ function _offlineScriptNavigatesToNetwork(body) {
   // one no matter what a local `location` shadows. This costs nothing an attacker did not already
   // have - aliasing (`var l = location; l.href = <url>`) is a cheaper bypass that has always
   // worked, and both are listed in the CMH-OFFLINE-05 residual.
-  if (_OFFLINE_LOCAL_LOCATION_RE.test(src)) return _OFFLINE_NAV_PREFIXED_RE.test(src);
+  if (_OFFLINE_LOCAL_LOCATION_RE.test(src)) return _offlineNavSinkIndex(src, true) >= 0;
   return true;
 }
 function _offlineScriptHasNetworkEgress(body) {

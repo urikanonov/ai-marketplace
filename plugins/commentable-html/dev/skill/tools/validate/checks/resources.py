@@ -65,14 +65,25 @@ SCRIPT_LOAD_ATTRS = ("src", "href", "xlink:href")
 
 
 # A DIRECT scripted top-level navigation to a network URL, in an inline script an offline file
-# still carries. The pattern text below is BYTE-IDENTICAL to the `_OFFLINE_NAV_TO_NETWORK_RE`
-# regex literal in assets/js/68-export-offline.js (including the JS-only `\/` escapes, which
-# Python also reads as a literal `/`), and tests/test_vendored_libs.py pins that equality plus a
-# behavioural corpus that runs through the real JS engine whenever node is present. The exporter's
-# strips drop such a script, and this gate must not then certify a hand-authored offline file that
-# keeps one. Top-level navigation is the one egress channel the offline CSP cannot close -
-# `navigate-to` was dropped from CSP Level 3 and `sandbox` is ignored in a meta-delivered policy -
-# so the check is where the guarantee is enforced at all.
+# still carries. It is a SCAN rather than one pattern, and the shared parts below are BYTE-IDENTICAL
+# to the same-named regex literals in assets/js/68-export-offline.js (including the JS-only `\/`
+# escapes, which Python also reads as a literal `/`); tests/test_vendored_libs.py pins that equality
+# plus a behavioural corpus that runs the exporter's own scanner through the real JS engine whenever
+# node is present. The exporter's strips drop such a script, and this gate must not then certify a
+# hand-authored offline file that keeps one. Top-level navigation is the one egress channel the
+# offline CSP cannot close - `navigate-to` was dropped from CSP Level 3 and `sandbox` is ignored in
+# a meta-delivered policy - so the check is where the guarantee is enforced at all.
+# WHY A SCAN. The single pattern this replaced carried the global-prefix chain as an unbounded
+# repetition in front of the sink, so the engine re-entered that chain at every position a prefix
+# could follow, and a long NEAR-match cost quadratic time: `window . ` repeated took 2.3s at 18 KB
+# and 174s at 144 KB here, 4x the time for 2x the input. Both callers feed it unbounded
+# document-supplied text - every runnable inline script, and (in the exporter) the vendored
+# payload's INFLATED bytes, where a few hundred base64 bytes buy megabytes of near-match. Every
+# shape recognized here requires the literal `location` or `open`, so the scan is driven from THOSE
+# anchors: forward from an anchor the tail is a regex matched ANCHORED at that offset, with every
+# unbounded whitespace run followed by a distinct non-whitespace literal so no run can be split two
+# ways; backward from an anchor the prefix chain is walked once in code. Prefix chains for two
+# different anchors cannot overlap, because no sink name is a prefix name, so the scan is linear.
 # Every metacharacter whose meaning DIFFERS between the two engines is spelled out rather than
 # shared: `\w` is ASCII-only in JS but Unicode-aware in Python, and JS whitespace includes U+FEFF
 # while Python's does not. Sharing them made the copies disagree on real inputs - a `location.href`
@@ -81,54 +92,36 @@ SCRIPT_LOAD_ATTRS = ("src", "href", "xlink:href")
 # `re.ASCII` is REQUIRED, not cosmetic: Python's `re.IGNORECASE` otherwise case-folds several
 # non-ASCII letters onto ASCII ones (the dotless i, the long s, the Kelvin sign) that JS's `/i`
 # does not, so `locat<dotless-i>on.href = <url>` - source the exporter PRESERVES, because it is
-# not a real `location` - would be rejected here. That is the false-rejection direction of the
-# same drift the spelled-out classes close, and the parity test asserts the flag is set.
+# not a real `location` - would be rejected here. The prefix-name comparison is ASCII-folded in
+# code for the same reason. That is the false-rejection direction of the same drift the spelled-out
+# classes close, and the parity test asserts the flag is set.
 # The URL literal is recognized in the three literal prefixes a browser resolves to a network host:
 # scheme plus slashes, protocol-relative (slashes only), and SCHEME-ONLY - a quoted `https:`/`http:`
 # with NO slashes after it, which a browser resolves to the same host, so requiring the slashes left
 # the whole channel open to a one-token spelling change. It is still read RAW, so a URL the browser
 # NORMALIZES first (leading or embedded ASCII whitespace, a scheme spelled with a JS string escape)
 # is missed; that class is listed in the CMH-OFFLINE-05 residual.
-OFFLINE_NAV_TO_NETWORK_RE = re.compile(
-    r"(?:(?:^|[^.A-Za-z0-9_$])(?:(?:window|self|top|parent|globalThis|document|frames)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r")?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r")*location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r")?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"(?:href[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"=(?!=)|(?:assign|replace)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"\()|(?:^|[^.A-Za-z0-9_$])(?:(?:window|self|top|parent|globalThis|document|frames)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r")?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r")+(?:location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"=(?!=)|open[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"\()|(?:^|[;})>\n\r\u2028\u2029])[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"=(?!=))[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+OFFLINE_NAV_ANCHOR_RE = re.compile(r"location|open", re.IGNORECASE | re.ASCII)
+OFFLINE_NAV_PROP_TAIL_RE = re.compile(
+    r"[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"(?:href[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)|(?:assign|replace)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\()[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
     r"""["'`](?:https?:|\/\/)""",
     re.IGNORECASE | re.ASCII)
+OFFLINE_NAV_ASSIGN_TAIL_RE = re.compile(r"[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"""["'`](?:https?:|\/\/)""", re.IGNORECASE | re.ASCII)
+OFFLINE_NAV_OPEN_TAIL_RE = re.compile(r"[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\([ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"""["'`](?:https?:|\/\/)""", re.IGNORECASE | re.ASCII)
+OFFLINE_NAV_WS_RE = re.compile(r"[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]", re.ASCII)
+OFFLINE_NAV_IDENT_RE = re.compile(r"[.A-Za-z0-9_$]", re.ASCII)
+OFFLINE_NAV_STATEMENT_RE = re.compile(r"[;})>\n\r\u2028\u2029]", re.ASCII)
+OFFLINE_NAV_LINE_BREAK_RE = re.compile(r"[\n\r\u2028\u2029]", re.ASCII)
+OFFLINE_NAV_PREFIX_NAMES = ("window", "self", "top", "parent", "globalThis", "document", "frames")
 
-# The PREFIXED-only sinks (`window.location...`, `top.open(...)`): the prefix chain is mandatory
-# here, and the bare statement-position `location =` alternative is dropped. Used when the script
-# declares its own `location`, below.
-OFFLINE_NAV_PREFIXED_RE = re.compile(
-    r"(?:(?:^|[^.A-Za-z0-9_$])(?:(?:window|self|top|parent|globalThis|document|frames)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r")?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r")+location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r")?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"(?:href[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"=(?!=)|(?:assign|replace)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"\()|(?:^|[^.A-Za-z0-9_$])(?:(?:window|self|top|parent|globalThis|document|frames)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r")?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r")+(?:location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"=(?!=)|open[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"\())[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"""["'`](?:https?:|\/\/)""",
-    re.IGNORECASE | re.ASCII)
+
+# The PREFIXED-only sinks (`window.location...`, `top.open(...)`) are selected with the
+# `prefixed_only` argument below: the prefix chain is mandatory there, and the bare
+# statement-position `location =` alternative is dropped. Used when the script declares its own
+# `location`, further down.
 
 # A LOCAL binding named `location` - a declaration keyword, a destructuring declaration naming it,
 # a function parameter, or a catch binding. Every quantifier is bounded, so it cannot backtrack.
@@ -142,6 +135,107 @@ OFFLINE_LOCAL_LOCATION_RE = re.compile(
     re.IGNORECASE | re.ASCII)
 
 
+def _offline_nav_ascii_lower(text):
+    """ASCII-only case folding, mirroring `_offlineNavAsciiLower` in the exporter.
+
+    `str.lower()` would fold non-ASCII letters onto ASCII ones (and change the string LENGTH for
+    a few of them), which is the same drift `re.ASCII` closes for the patterns above.
+    """
+    out = []
+    for ch in text:
+        code = ord(ch)
+        out.append(chr(code + 32) if 65 <= code <= 90 else ch)
+    return "".join(out)
+
+
+OFFLINE_NAV_PREFIX_LOWER = tuple(_offline_nav_ascii_lower(name)
+                                 for name in OFFLINE_NAV_PREFIX_NAMES)
+
+
+def _offline_nav_skip_ws_back(src, pos):
+    while pos > 0 and OFFLINE_NAV_WS_RE.match(src, pos - 1):
+        pos -= 1
+    return pos
+
+
+def _offline_nav_boundary_ok(src, pos):
+    return pos == 0 or not OFFLINE_NAV_IDENT_RE.match(src, pos - 1)
+
+
+def _offline_nav_prefix_start(src, pos):
+    for name in OFFLINE_NAV_PREFIX_LOWER:
+        start = pos - len(name)
+        if start >= 0 and _offline_nav_ascii_lower(src[start:pos]) == name:
+            return start
+    return -1
+
+
+def _offline_nav_chain_ok(src, index, require_prefix):
+    r"""The global-prefix chain read BACKWARDS from a sink, mirroring `_offlineNavChainOk`.
+
+    Stands in for the old pattern's `(?:^|[^.A-Za-z0-9_$])(?:PREFIX WS* (?:\? WS*)? \. WS*)*`
+    head. The boundary is tested at EVERY chain length rather than only the longest, because a
+    shorter chain can end on a whitespace character that is itself a legal boundary - `$window . `
+    in front of a bare sink matches with no chain at all.
+    """
+    pos = index
+    taken = 0
+    while True:
+        if (taken > 0 or not require_prefix) and _offline_nav_boundary_ok(src, pos):
+            return True
+        scan = _offline_nav_skip_ws_back(src, pos)
+        if scan == 0 or src[scan - 1] != ".":
+            return False
+        scan = _offline_nav_skip_ws_back(src, scan - 1)
+        if scan > 0 and src[scan - 1] == "?":
+            scan = _offline_nav_skip_ws_back(src, scan - 1)
+        start = _offline_nav_prefix_start(src, scan)
+        if start < 0:
+            return False
+        pos = start
+        taken += 1
+
+
+def _offline_nav_statement_start(src, index):
+    """The `(?:^|[;})>\n\r\u2028\u2029])WS*` head a bare statement-position sink must follow.
+
+    The run is inspected rather than skipped because a line break inside it is itself a legal
+    delimiter. Mirrors `_offlineNavStatementStart`.
+    """
+    pos = index
+    while pos > 0 and OFFLINE_NAV_WS_RE.match(src, pos - 1):
+        if OFFLINE_NAV_LINE_BREAK_RE.match(src, pos - 1):
+            return True
+        pos -= 1
+    return pos == 0 or bool(OFFLINE_NAV_STATEMENT_RE.match(src, pos - 1))
+
+
+def offline_nav_sink_index(src, prefixed_only):
+    """Index of the first sink that navigates to a network URL literal, or -1.
+
+    Mirrors `_offlineNavSinkIndex` in assets/js/68-export-offline.js. `prefixed_only` drops the two
+    UNPREFIXED shapes, for a script that declares its own `location` binding.
+    """
+    pos = 0
+    while True:
+        m = OFFLINE_NAV_ANCHOR_RE.search(src, pos)
+        if not m:
+            return -1
+        at, after = m.start(), m.end()
+        pos = at + 1
+        if after - at == 4:
+            if OFFLINE_NAV_OPEN_TAIL_RE.match(src, after) and _offline_nav_chain_ok(src, at, True):
+                return at
+            continue
+        if (OFFLINE_NAV_PROP_TAIL_RE.match(src, after)
+                and _offline_nav_chain_ok(src, at, prefixed_only)):
+            return at
+        if OFFLINE_NAV_ASSIGN_TAIL_RE.match(src, after) and (
+                _offline_nav_chain_ok(src, at, True)
+                or (not prefixed_only and _offline_nav_statement_start(src, at))):
+            return at
+
+
 def offline_script_navigates_to_network(body):
     """True when an inline script scripts a top-level navigation to a network URL literal.
 
@@ -151,10 +245,10 @@ def offline_script_navigates_to_network(body):
     nothing, and rejecting it would flag a document the exporter deliberately preserves.
     """
     src = body or ""
-    if not OFFLINE_NAV_TO_NETWORK_RE.search(src):
+    if offline_nav_sink_index(src, False) < 0:
         return False
     if OFFLINE_LOCAL_LOCATION_RE.search(src):
-        return bool(OFFLINE_NAV_PREFIXED_RE.search(src))
+        return offline_nav_sink_index(src, True) >= 0
     return True
 
 

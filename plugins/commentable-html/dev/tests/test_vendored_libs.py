@@ -12,6 +12,7 @@ detector that scans the whole document reports every document as needing the blo
 silently becomes a no-op. Detection must look only inside the CONTENT region.
 """
 import glob
+import itertools
 import json
 import os
 import re
@@ -1606,41 +1607,105 @@ class RuntimeParityTests(unittest.TestCase):
         'location.href = "./a:b.html"',
     ]
 
-    # The three regex literals the exporter's navigation decision is built from, each paired with
-    # the validator constant that must mirror it byte for byte.
+    # The regex literals and name lists the exporter's navigation SCAN is built from, each paired
+    # with the validator constant that must mirror it byte for byte, and with the JS flags it must
+    # carry. The scan replaced a single repeated-prefix pattern (see `_offlineNavSinkIndex`), so
+    # what is SHARED is now the anchor, the three anchored tails and the character classes; the
+    # walk that joins them is pinned by running the exporter's own source in node, below.
     _NAV_PATTERN_NAMES = (
-        ("_OFFLINE_NAV_TO_NETWORK_RE", "OFFLINE_NAV_TO_NETWORK_RE"),
-        ("_OFFLINE_NAV_PREFIXED_RE", "OFFLINE_NAV_PREFIXED_RE"),
-        ("_OFFLINE_LOCAL_LOCATION_RE", "OFFLINE_LOCAL_LOCATION_RE"),
+        ("_OFFLINE_NAV_ANCHOR_RE", "OFFLINE_NAV_ANCHOR_RE", "gi"),
+        ("_OFFLINE_NAV_PROP_TAIL_RE", "OFFLINE_NAV_PROP_TAIL_RE", "iy"),
+        ("_OFFLINE_NAV_ASSIGN_TAIL_RE", "OFFLINE_NAV_ASSIGN_TAIL_RE", "iy"),
+        ("_OFFLINE_NAV_OPEN_TAIL_RE", "OFFLINE_NAV_OPEN_TAIL_RE", "iy"),
+        ("_OFFLINE_NAV_WS_RE", "OFFLINE_NAV_WS_RE", ""),
+        ("_OFFLINE_NAV_IDENT_RE", "OFFLINE_NAV_IDENT_RE", ""),
+        ("_OFFLINE_NAV_STATEMENT_RE", "OFFLINE_NAV_STATEMENT_RE", ""),
+        ("_OFFLINE_NAV_LINE_BREAK_RE", "OFFLINE_NAV_LINE_BREAK_RE", ""),
+        ("_OFFLINE_LOCAL_LOCATION_RE", "OFFLINE_LOCAL_LOCATION_RE", "i"),
     )
 
-    def _runtime_nav_pattern(self, name="_OFFLINE_NAV_TO_NETWORK_RE"):
-        """One of the exporter's navigation regex SOURCES, extracted from the runtime partial."""
+    def _runtime_nav_pattern(self, name, flags=None):
+        """One of the navigation scan's regex SOURCES, extracted from the runtime partial."""
         source = self._read("68-export-offline.js")
-        m = re.search(r"^const %s = /(.+)/i;$" % re.escape(name), source, re.MULTILINE)
+        m = re.search(r"^const %s = /(.+)/([a-z]*);$" % re.escape(name), source, re.MULTILINE)
         self.assertIsNotNone(
-            m, "the runtime no longer defines %s as a single-line case-insensitive regex literal; "
-               "the parity extraction is stale" % name)
+            m, "the runtime no longer defines %s as a single-line regex literal; the parity "
+               "extraction is stale" % name)
+        if flags is not None:
+            self.assertEqual(
+                m.group(2), flags,
+                "the runtime's %s carries the flags /%s rather than /%s. A tail that loses its "
+                "sticky `y` would SEARCH forward from the anchor instead of matching AT it, which "
+                "both widens the shapes it accepts and reopens the quadratic scan this replaced."
+                % (name, m.group(2), flags))
         return m.group(1)
 
-    def _runtime_navigates(self, sample):
-        """Evaluate the exporter's DECISION in Python, mirroring `_offlineScriptNavigatesToNetwork`.
+    def _runtime_nav_source(self):
+        """The exporter's whole navigation decision, as JS source, for evaluation in node.
 
-        The decision is not one regex: a script that declares its own `location` is talking about
-        that object, so only the PREFIXED sinks count there. Comparing raw pattern hits would miss
-        a drift in that rule, which is the part that decides whether a benign script is deleted.
+        Extracted as one contiguous region rather than re-implemented in Python: the decision is
+        now a SCAN (anchor pass, three anchored tails, the backwards prefix-chain walk and the
+        statement-start rule, plus the local-binding shadow rule), and a Python re-implementation
+        would keep passing after any of those drifted - which is exactly the drift this test
+        exists to catch.
         """
-        full = re.compile(self._runtime_nav_pattern("_OFFLINE_NAV_TO_NETWORK_RE"),
-                          re.IGNORECASE | re.ASCII)
-        prefixed = re.compile(self._runtime_nav_pattern("_OFFLINE_NAV_PREFIXED_RE"),
-                              re.IGNORECASE | re.ASCII)
-        shadow = re.compile(self._runtime_nav_pattern("_OFFLINE_LOCAL_LOCATION_RE"),
-                            re.IGNORECASE | re.ASCII)
-        if not full.search(sample):
-            return False
-        if shadow.search(sample):
-            return bool(prefixed.search(sample))
-        return True
+        source = self._read("68-export-offline.js")
+        start = source.find("const _OFFLINE_NAV_ANCHOR_RE = ")
+        self.assertNotEqual(start, -1,
+                            "the runtime no longer defines _OFFLINE_NAV_ANCHOR_RE; the parity "
+                            "extraction is stale")
+        end = source.find("function _offlineScriptNavigatesToNetwork(body) {", start)
+        self.assertNotEqual(end, -1,
+                            "the runtime no longer defines _offlineScriptNavigatesToNetwork after "
+                            "the navigation constants; the parity extraction is stale")
+        end = source.find("\n}", end)
+        self.assertNotEqual(end, -1,
+                            "could not find the end of _offlineScriptNavigatesToNetwork")
+        region = source[start:end + 2]
+        for name in ("_offlineNavAsciiLower", "_offlineNavPrefixStart", "_offlineNavChainOk",
+                     "_offlineNavStatementStart", "_offlineNavSinkIndex",
+                     "_OFFLINE_LOCAL_LOCATION_RE"):
+            self.assertIn(name, region,
+                          "%s is no longer inside the extracted navigation region, so the parity "
+                          "check would run a partial copy of the decision" % name)
+        return region
+
+    # The pattern the scan replaced, frozen here as an ORACLE. It is deliberately a copy rather
+    # than an import: the point of `test_the_navigation_scan_matches_the_pattern_it_replaced` is
+    # that a hand-written scan recognizes exactly what the regex did, and an oracle that moved with
+    # the code would assert nothing. Update it only when the recognized SHAPES change on purpose,
+    # in the same commit that changes them.
+    _LEGACY_NAV_WS = (r"[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000"
+                      r"\ufeff]")
+    _LEGACY_NAV_CHAIN = (r"(?:(?:window|self|top|parent|globalThis|document|frames)" + _LEGACY_NAV_WS
+                         + r"*(?:\?" + _LEGACY_NAV_WS + r"*)?\." + _LEGACY_NAV_WS + r"*)")
+    _LEGACY_NAV_URL = _LEGACY_NAV_WS + r"""*["'`](?:https?:|\/\/)"""
+    _LEGACY_NAV_PROP = (r"location" + _LEGACY_NAV_WS + r"*(?:\?" + _LEGACY_NAV_WS + r"*)?\."
+                        + _LEGACY_NAV_WS + r"*(?:href" + _LEGACY_NAV_WS + r"*=(?!=)"
+                        r"|(?:assign|replace)" + _LEGACY_NAV_WS + r"*\()")
+    _LEGACY_NAV_BARE = (r"(?:location" + _LEGACY_NAV_WS + r"*=(?!=)|open" + _LEGACY_NAV_WS + r"*\()")
+    _LEGACY_NAV_FULL = re.compile(
+        r"(?:(?:^|[^.A-Za-z0-9_$])" + _LEGACY_NAV_CHAIN + r"*" + _LEGACY_NAV_PROP
+        + r"|(?:^|[^.A-Za-z0-9_$])" + _LEGACY_NAV_CHAIN + r"+" + _LEGACY_NAV_BARE
+        + r"|(?:^|[;})>\n\r\u2028\u2029])" + _LEGACY_NAV_WS + r"*location" + _LEGACY_NAV_WS
+        + r"*=(?!=))" + _LEGACY_NAV_URL, re.IGNORECASE | re.ASCII)
+    _LEGACY_NAV_PREFIXED = re.compile(
+        r"(?:(?:^|[^.A-Za-z0-9_$])" + _LEGACY_NAV_CHAIN + r"+" + _LEGACY_NAV_PROP
+        + r"|(?:^|[^.A-Za-z0-9_$])" + _LEGACY_NAV_CHAIN + r"+" + _LEGACY_NAV_BARE + r")"
+        + _LEGACY_NAV_URL, re.IGNORECASE | re.ASCII)
+
+    # Fragments crossed into a corpus of sinks and NEAR-sinks: a boundary character, a prefix
+    # chain, a sink spelling, an operator and a URL literal. The interesting cells are the ones
+    # that only ALMOST match - `cfg.` in front, a chain that ends in whitespace (which is itself a
+    # legal boundary, so a shorter chain matches where the longest does not), `windows.` and
+    # `locations.href`, `==` rather than `=`, and a relative URL.
+    _NAV_CROSS_HEADS = ("", "$", ";", "\n", " ", "x", ".", "cfg.")
+    _NAV_CROSS_CHAINS = ("", "window.", "window . ", "globalThis?. ", "top.window.", "windows.",
+                         "frames . ? . ", "document.")
+    _NAV_CROSS_SINKS = ("location.href", "LOCATION . href", "location?.href", "location.assign",
+                        "location", "open", "locations.href", "location.replace")
+    _NAV_CROSS_OPS = ("=", " = ", "==", "(", "")
+    _NAV_CROSS_URLS = ('"https://x"', "`https:`", '"./a"', '" https://x"')
 
     def test_the_python_and_js_scripted_navigation_patterns_agree(self):
         """The offline strip (JS) and the strict validator (Python) must recognize the SAME
@@ -1648,22 +1713,22 @@ class RuntimeParityTests(unittest.TestCase):
 
         Top-level navigation is the one egress channel the offline CSP cannot close (`navigate-to`
         was dropped from CSP Level 3 and ships nowhere; `sandbox` is ignored in a meta-delivered
-        policy), so this pattern is not defense in depth behind a boundary - for that channel it IS
+        policy), so this check is not defense in depth behind a boundary - for that channel it IS
         the check. Two independent copies of it are exactly the drift the runnable-script-type
         parity test above exists for: a validator that recognized less would certify an offline file
         the exporter no longer protects, and one that recognized more would reject the file the
         exporter just produced.
 
-        All THREE literals the decision is built from are pinned by TEXT equality, not by
-        re-deriving one from the other. That is the only pin that survives the engines disagreeing:
-        `\\w` is ASCII-only in JS but Unicode-aware in Python, and JS whitespace includes U+FEFF
-        while Python's does not, so a pattern that merely LOOKS shared can still behave differently.
-        Both copies therefore spell those classes out, and
-        `test_the_navigation_pattern_behaves_the_same_in_the_real_js_engine` checks the behaviour in
-        node.
+        Every literal the scan is built from is pinned by TEXT equality, not by re-deriving one from
+        the other. That is the only pin that survives the engines disagreeing: `\\w` is ASCII-only
+        in JS but Unicode-aware in Python, and JS whitespace includes U+FEFF while Python's does
+        not, so a pattern that merely LOOKS shared can still behave differently. The WALK around
+        those literals cannot be pinned by text at all, so
+        `test_the_navigation_pattern_behaves_the_same_in_the_real_js_engine` runs the exporter's own
+        source in node over the same corpus.
         """
-        for js_name, py_name in self._NAV_PATTERN_NAMES:
-            runtime_pattern = self._runtime_nav_pattern(js_name)
+        for js_name, py_name, flags in self._NAV_PATTERN_NAMES:
+            runtime_pattern = self._runtime_nav_pattern(js_name, flags)
             compiled = getattr(resources, py_name)
             self.assertEqual(
                 runtime_pattern, compiled.pattern,
@@ -1680,6 +1745,10 @@ class RuntimeParityTests(unittest.TestCase):
                 "the validator's %s must be compiled with re.ASCII, or Python's Unicode "
                 "case-folding (dotless i, long s, Kelvin sign) makes it match identifiers the JS "
                 "engine - and therefore the exporter - does not" % py_name)
+            self.assertEqual(
+                bool(compiled.flags & re.IGNORECASE), "i" in flags,
+                "the validator's %s and the exporter's %s disagree about case sensitivity"
+                % (py_name, js_name))
             # Guard the spelled-out classes: re-introducing a shared shorthand silently
             # reintroduces the cross-engine divergence, and text equality alone would not notice.
             # Every ASCII-vs-Unicode shorthand is banned, not just the two that actually bit.
@@ -1690,54 +1759,57 @@ class RuntimeParityTests(unittest.TestCase):
                     "(ASCII vs Unicode `\\w`/`\\d`; U+FEFF is JS whitespace but not Python's). "
                     "Spell the class out in both copies instead." % (js_name, shared))
 
-        # Compare the DECISION, not raw pattern hits: the shadow rule (an unprefixed sink in a
-        # script that declares its own `location` is that local object, not the document) is the
-        # part that decides whether a benign script is deleted, so a drift there must fail here.
+        # The prefix chain is walked in code now, so its NAME LIST is shared data rather than part
+        # of a pattern - a name only one side knows about is a sink the strip drops and the gate
+        # blesses, or the reverse.
+        names = re.search(r"^const _OFFLINE_NAV_PREFIX_NAMES = \[(.+?)\];$",
+                          self._read("68-export-offline.js"), re.MULTILINE)
+        self.assertIsNotNone(names,
+                             "the runtime no longer defines _OFFLINE_NAV_PREFIX_NAMES as a "
+                             "single-line array; the parity extraction is stale")
+        self.assertEqual(
+            tuple(re.findall(r'"([^"]+)"', names.group(1))),
+            tuple(resources.OFFLINE_NAV_PREFIX_NAMES),
+            "the exporter's _OFFLINE_NAV_PREFIX_NAMES and the validator's "
+            "OFFLINE_NAV_PREFIX_NAMES have diverged")
+
         for sample in self._NAV_CORPUS_NAVIGATES:
-            self.assertTrue(self._runtime_navigates(sample),
-                            "the runtime no longer strips %r" % sample)
             self.assertTrue(resources.offline_script_navigates_to_network(sample),
                             "the validator no longer rejects %r" % sample)
         for sample in self._NAV_CORPUS_BENIGN:
-            self.assertFalse(self._runtime_navigates(sample),
-                             "the runtime now deletes the benign script %r" % sample)
             self.assertFalse(resources.offline_script_navigates_to_network(sample),
                              "the validator now rejects the benign script %r" % sample)
 
     def test_the_navigation_pattern_behaves_the_same_in_the_real_js_engine(self):
-        """Byte-identical pattern text is necessary but NOT sufficient - run it in node too.
+        """Byte-identical pattern text is necessary but NOT sufficient - run the scan in node too.
 
-        Compiling the extracted JS source with Python's `re` (which the text-equality test above
-        does) can only ever prove what PYTHON does with it; it structurally cannot catch an engine
-        difference, which is exactly the class of bug this pattern hit. So evaluate the same corpus
-        in the actual JS engine and require identical verdicts. Skipped when node is absent, the
-        way the repo's other node-gated checks degrade - CI always has it.
+        Compiling the extracted JS literals with Python's `re` (which the text-equality test above
+        does) can only ever prove what PYTHON does with them; it structurally cannot catch an engine
+        difference, which is exactly the class of bug this check hit. Now that the decision is a
+        SCAN, text equality covers even less of it - the anchor pass, the backwards chain walk and
+        the statement-start rule are code, not pattern - so the exporter's own source is evaluated
+        here. Skipped when node is absent, the way the repo's other node-gated checks degrade - CI
+        always has it.
         """
         node = shutil.which("node")
         if not node:
             self.skipTest("node is not on PATH; the JS-engine parity check needs it")
         payload = {
-            "full": self._runtime_nav_pattern("_OFFLINE_NAV_TO_NETWORK_RE"),
-            "prefixed": self._runtime_nav_pattern("_OFFLINE_NAV_PREFIXED_RE"),
-            "shadow": self._runtime_nav_pattern("_OFFLINE_LOCAL_LOCATION_RE"),
             "navigates": self._NAV_CORPUS_NAVIGATES,
             "benign": self._NAV_CORPUS_BENIGN,
         }
-        # Mirrors `_offlineScriptNavigatesToNetwork`, so this pins the DECISION (including the
-        # shadow rule) in the real engine, not just one pattern's raw hits.
         script = (
-            "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            self._runtime_nav_source() + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
             "const p=JSON.parse(raw);"
-            "const full=new RegExp(p.full,'i');const pre=new RegExp(p.prefixed,'i');"
-            "const sh=new RegExp(p.shadow,'i');"
-            "const decide=s=>full.test(s)?(sh.test(s)?pre.test(s):true):false;"
-            "const out={navigates:p.navigates.map(decide),benign:p.benign.map(decide)};"
-            "process.stdout.write(JSON.stringify(out));});"
+            "process.stdout.write(JSON.stringify({"
+            "navigates:p.navigates.map(_offlineScriptNavigatesToNetwork),"
+            "benign:p.benign.map(_offlineScriptNavigatesToNetwork)}));});"
         )
         proc = subprocess.run([node, "-e", script], input=json.dumps(payload),
                               capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(proc.returncode, 0,
-                         "node could not evaluate the navigation pattern: %s" % proc.stderr)
+                         "node could not evaluate the navigation scan: %s" % proc.stderr)
         verdicts = json.loads(proc.stdout)
         # Length-check before zipping: `zip` truncates silently, so a helper that returned a short
         # (or empty) list would let this pass having asserted nothing.
@@ -1755,10 +1827,65 @@ class RuntimeParityTests(unittest.TestCase):
         for sample, hit in zip(self._NAV_CORPUS_BENIGN, verdicts["benign"]):
             self.assertFalse(hit, "the REAL JS engine deletes the benign script %r" % sample)
             self.assertFalse(resources.offline_script_navigates_to_network(sample),
-                              "the validator rejects the benign script %r" % sample)
+                             "the validator rejects the benign script %r" % sample)
+
+    def _nav_cross_corpus(self):
+        """Every head x chain x sink x operator x URL crossing, plus the awkward hand-written ones.
+
+        Deterministic and generated rather than listed, because the shapes that matter are the
+        near-misses at the JOINS - a boundary character, an optional-chaining dot, a chain that
+        ends in whitespace - and those are combinations, not samples anybody thinks to write down.
+        """
+        corpus = ["".join(parts) for parts in itertools.product(
+            self._NAV_CROSS_HEADS, self._NAV_CROSS_CHAINS, self._NAV_CROSS_SINKS,
+            self._NAV_CROSS_OPS, self._NAV_CROSS_URLS)]
+        corpus.extend([
+            # A shorter chain matches where the longest one does not: the whitespace that ends the
+            # chain element is itself a legal boundary, so this navigates even though `$` is not.
+            '$window . location.href = "https://evil.example"',
+            'a\nwindow . window . location.href = "https://evil.example"',
+            'window.window.window.window.window.window.location.href = "https://evil.example"',
+            '\u2028location = "https://evil.example"',
+            '\ufefflocation.href = "https://evil.example"',
+            'window\n.\nlocation\n=\n"https://evil.example"',
+            "top?.open ( 'https://evil.example' )",
+            'const location = { href: "" }; window.location.href = "https://evil.example";',
+            'var l = location; l.href = "https://evil.example";',
+            'x = location = "https://evil.example"',
+            'if (x) { location = "https://evil.example" }',
+        ])
+        corpus.extend(self._NAV_CORPUS_NAVIGATES)
+        corpus.extend(self._NAV_CORPUS_BENIGN)
+        return corpus
+
+    def test_the_navigation_scan_matches_the_pattern_it_replaced(self):
+        """The linear scan must recognize EXACTLY what the repeated-prefix pattern recognized.
+
+        The rewrite that made this check linear (see `_offlineNavSinkIndex`) is only safe if it is
+        semantics-preserving in BOTH directions: a shape it stopped matching is an egress channel
+        that silently reopened, and a shape it started matching is a benign script the exporter now
+        deletes and the validator now rejects. The corpora above cover the shapes somebody thought
+        to write down; this crosses their fragments so the near-misses at the JOINS are covered too,
+        and compares every verdict against the frozen pattern.
+        """
+        corpus = self._nav_cross_corpus()
+        self.assertGreater(len(corpus), 5000,
+                           "the crossed corpus collapsed to %d samples; the equivalence pin is "
+                           "only as good as what it crosses" % len(corpus))
+        for sample in corpus:
+            for oracle, prefixed_only, which in (
+                    (self._LEGACY_NAV_FULL, False, "every"),
+                    (self._LEGACY_NAV_PREFIXED, True, "the prefixed")):
+                self.assertEqual(
+                    resources.offline_nav_sink_index(sample, prefixed_only) >= 0,
+                    bool(oracle.search(sample)),
+                    "the linear scan and the pattern it replaced disagree about %s sink in %r. A "
+                    "shape the scan stopped matching is an egress channel that silently reopened; "
+                    "one it started matching is a benign script the exporter now deletes."
+                    % (which, sample))
 
     def test_the_navigation_pattern_cannot_be_made_to_backtrack(self):
-        """The pattern must stay linear on adversarial input, in BOTH engines.
+        """The scan must stay linear on adversarial input, in BOTH engines.
 
         It runs over every executable inline script of an offline document - which can include a
         multi-megabyte inlined mermaid bundle - on every `validate.py --strict`, and the exporter
@@ -1766,9 +1893,12 @@ class RuntimeParityTests(unittest.TestCase):
         an optional `?` (`WS*\\??WS*\\.`), so a whitespace run never followed by a dot made the
         engine try every split: a 20k-space input took ~2.7s in Python and ~10s in node, which is a
         denial of service on an attacker-authored document (and an accidental hang on a minified
-        one). The `?` is now bound inside its own group, so each position consumes the run         one way. A second shape amplified the same way: several almost-matching sink segments whose
-        tail never reaches a URL (`window<sp>.<sp>top<sp>.<sp>location<sp>.<sp>href<sp>=<sp>'x'`)
-        took 18s in node at 200 spaces per gap. Both are checked here.
+        one). Each optional part is bound inside its own group now, so each position consumes the
+        run one way. A second shape amplified the same way: several almost-matching sink segments
+        whose tail never reaches a URL (`window<sp>.<sp>top<sp>.<sp>location<sp>.<sp>href<sp>=<sp>'x'`)
+        took 18s in node at 200 spaces per gap. Both are checked here;
+        `test_the_navigation_scan_stays_linear_as_the_near_match_grows` pins the SCALING that a
+        single fixed-size input cannot see.
         """
         evils = [
             "window" + " " * 20000 + "X",
@@ -1780,11 +1910,11 @@ class RuntimeParityTests(unittest.TestCase):
         ]
         for evil in evils:
             start = time.monotonic()
-            self.assertIsNone(resources.OFFLINE_NAV_TO_NETWORK_RE.search(evil))
+            self.assertFalse(resources.offline_script_navigates_to_network(evil))
             elapsed = time.monotonic() - start
             self.assertLess(
                 elapsed, 1.0,
-                "the navigation pattern took %.2fs on a %d-character adversarial input - it is "
+                "the navigation scan took %.2fs on a %d-character adversarial input - it is "
                 "backtracking. Look for two unbounded repetitions that can consume the same input "
                 "(the historical shape was `WS*\\??WS*\\.`); bind the optional part in its own "
                 "group." % (elapsed, len(evil)))
@@ -1792,16 +1922,17 @@ class RuntimeParityTests(unittest.TestCase):
         if not node:
             return
         script = (
-            "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
-            "const p=JSON.parse(raw);const re=new RegExp(p.pattern,'i');"
-            "const out=p.evils.map(e=>{const t=Date.now();const hit=re.test(e);"
+            self._runtime_nav_source() + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);"
+            "const out=p.evils.map(e=>{const t=Date.now();"
+            "const hit=_offlineScriptNavigatesToNetwork(e);"
             "return {ms:Date.now()-t,hit:hit};});"
             "process.stdout.write(JSON.stringify(out));});"
         )
-        payload = {"pattern": self._runtime_nav_pattern(), "evils": evils}
-        proc = subprocess.run([node, "-e", script], input=json.dumps(payload),
+        proc = subprocess.run([node, "-e", script], input=json.dumps({"evils": evils}),
                               capture_output=True, text=True, encoding="utf-8")
-        self.assertEqual(proc.returncode, 0, "node could not run the pattern: %s" % proc.stderr)
+        self.assertEqual(proc.returncode, 0, "node could not run the scan: %s" % proc.stderr)
         results = json.loads(proc.stdout)
         self.assertEqual(len(results), len(evils))
         for evil, result in zip(evils, results):
@@ -1810,6 +1941,84 @@ class RuntimeParityTests(unittest.TestCase):
                             "the REAL JS engine took %dms on a %d-character adversarial input - "
                             "the exporter would hang the reviewer's browser tab on an "
                             "attacker-authored document" % (result["ms"], len(evil)))
+
+    # A near-match that arms the prefix chain and never reaches a sink, at 10x steps. 18 KB is the
+    # size the quadratic pattern took 2.3s on, so the smallest step alone reds a regression in
+    # seconds rather than after the largest one has run for an hour.
+    _NAV_SCALING_STEPS = (2000, 20000, 200000)
+    _NAV_SCALING_BUDGET = 1.0
+
+    def test_the_navigation_scan_stays_linear_as_the_near_match_grows(self):
+        """A 10x longer near-match must not cost ~100x, in BOTH engines.
+
+        The predicate was hardened against catastrophic BACKTRACKING once already, and the test
+        above pins that. It was still QUADRATIC on a long NEAR-match, because the prefix chain was
+        an unbounded repetition in front of the sink and the engine re-entered it at every position
+        a prefix could follow: `"window . " * n` measured 2.3s at 18 KB, 9.4s at 36 KB, 36s at
+        72 KB and 174s at 144 KB here - 4x the time for 2x the input. The existing guard used ~200
+        repetitions, far below where that is visible, which is why a fixed-size input is not enough
+        and this test measures the SCALING.
+
+        It is cheap to trigger from a document: `_stripOfflineNetworkLoads` runs the predicate over
+        every runnable script, and `_offlineLibBytesUnsafe` runs it over the vendored payload's
+        INFLATED bytes, so a few hundred base64 bytes buy megabytes of near-match. The export runs
+        in the reviewer's own browser, so the damage is an Export Offline that appears to hang - but
+        an export that appears to hang is indistinguishable from a broken feature.
+        """
+        elapsed = []
+        for n in self._NAV_SCALING_STEPS:
+            evil = "window . " * n + "x"
+            start = time.monotonic()
+            self.assertFalse(resources.offline_script_navigates_to_network(evil))
+            took = time.monotonic() - start
+            elapsed.append(took)
+            self.assertLess(
+                took, self._NAV_SCALING_BUDGET,
+                "the navigation scan took %.2fs on a %d-character near-match. The scan is meant to "
+                "be driven from the `location`/`open` anchors, so a near-match that contains "
+                "neither costs one pass; a quadratic term is back." % (took, len(evil)))
+        # The absolute budgets above cannot be met by a quadratic implementation at the largest
+        # step, but state the SCALING directly as well: 10x the input, at most 30x the time (with a
+        # floor, because the fastest step is too quick to time reliably).
+        self.assertLess(
+            elapsed[-1], max(0.5, elapsed[-2] * 30),
+            "the navigation scan took %.3fs on a %d-character near-match and %.3fs on one 10x "
+            "longer - that is superlinear growth, so the cost is quadratic again"
+            % (elapsed[-2], len("window . " * self._NAV_SCALING_STEPS[-2] + "x"), elapsed[-1]))
+
+        node = shutil.which("node")
+        if not node:
+            return
+        script = (
+            self._runtime_nav_source() + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);"
+            "process.stdout.write(JSON.stringify(p.steps.map(n=>{"
+            "const evil='window . '.repeat(n)+'x';const t=Date.now();"
+            "const hit=_offlineScriptNavigatesToNetwork(evil);"
+            "return {ms:Date.now()-t,hit:hit,len:evil.length};})));});"
+        )
+        proc = subprocess.run([node, "-e", script],
+                              input=json.dumps({"steps": list(self._NAV_SCALING_STEPS)}),
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0, "node could not run the scan: %s" % proc.stderr)
+        results = json.loads(proc.stdout)
+        self.assertEqual(len(results), len(self._NAV_SCALING_STEPS),
+                         "node returned %d timings for %d steps"
+                         % (len(results), len(self._NAV_SCALING_STEPS)))
+        for result in results:
+            self.assertFalse(result["hit"])
+            self.assertLess(
+                result["ms"], int(self._NAV_SCALING_BUDGET * 1000),
+                "the REAL JS engine took %dms on a %d-character near-match - the exporter would "
+                "hang the reviewer's browser tab on a document that plants one, and the vendored "
+                "payload makes planting one cost a few hundred bytes"
+                % (result["ms"], result["len"]))
+        self.assertLess(
+            results[-1]["ms"], max(500, results[-2]["ms"] * 30),
+            "the REAL JS engine took %dms on a %d-character near-match and %dms on one 10x longer "
+            "- that is superlinear growth"
+            % (results[-2]["ms"], results[-2]["len"], results[-1]["ms"]))
 
     def test_the_layer_script_survives_its_own_offline_strips(self):
         """The review layer's own script is stripped by the same pass as any other inline script.
@@ -1848,7 +2057,6 @@ class RuntimeParityTests(unittest.TestCase):
              "network URL literal, and the layer has several)"),
             (re.compile(r"\bfrom\s+[\"'](?:https?:)?//", re.IGNORECASE), "a remote `from` import"),
             (re.compile(r"\bimport\s+[\"'](?:https?:)?//", re.IGNORECASE), "a bare remote import"),
-            (resources.OFFLINE_NAV_TO_NETWORK_RE, "a scripted navigation to a network URL"),
         ]
         for label, body in sources.items():
             for rx, what in forbidden:
@@ -1860,6 +2068,13 @@ class RuntimeParityTests(unittest.TestCase):
                              label, what,
                              body[max(0, (hit.start() if hit else 0) - 60):
                                   (hit.end() if hit else 0) + 60]))
+            # The navigation half is a SCAN rather than a pattern, so it reports an index.
+            at = resources.offline_nav_sink_index(body, False)
+            self.assertEqual(
+                at, -1, "%s now contains a scripted navigation to a network URL (near %r). The "
+                        "offline export strips its OWN script with that test, so every offline "
+                        "file would ship without the runtime. Reword the comment, or restructure "
+                        "the code." % (label, body[max(0, at - 60):at + 60]))
 
     def test_the_vendored_bundles_pass_the_offline_capture_gates(self):
         """Both paths that inline a library run its bytes through the same content gates, so the
@@ -1898,7 +2113,6 @@ class RuntimeParityTests(unittest.TestCase):
             re.compile(r"\bimport\s*\("),
             re.compile(r"\bfrom\s+[\"'](?:https?:)?//", re.IGNORECASE),
             re.compile(r"\bimport\s+[\"'](?:https?:)?//", re.IGNORECASE),
-            resources.OFFLINE_NAV_TO_NETWORK_RE,
         ]
         vendor = os.path.join(_paths.DEV, "assets", "vendor")
         for name in ("mermaid.min.js", "chart.umd.min.js"):
@@ -1913,6 +2127,12 @@ class RuntimeParityTests(unittest.TestCase):
                     "inline paths would REJECT the genuine library - every export of a document "
                     "needing it would fail loudly. Re-check the bundle, or narrow that check."
                     % (name, rx.pattern))
+            self.assertEqual(
+                resources.offline_nav_sink_index(code, False), -1,
+                "%s now scripts a navigation to a network URL literal, so it can trip the offline "
+                "network-egress check and BOTH inline paths would REJECT the genuine library - "
+                "every export of a document needing it would fail loudly. Re-check the bundle, or "
+                "narrow that check." % name)
             # An end tag (or a start tag) would trip the script-data escape gate in the emitted
             # element; a bare `<!--` is harmless on its own, and mermaid legitimately contains one.
             self.assertIsNone(
