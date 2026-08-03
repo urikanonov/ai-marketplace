@@ -610,10 +610,12 @@ or a private SSH key) is ever tracked - the enforceable stand-in for a push rule
 rulesets are unavailable on public user-owned repos. The same guard refuses a committed scratch dump:
 a `*.diff` / `*.patch` anywhere in the tree, and - at the repo ROOT, which is a closed set - anything
 that is not one of the documented top-level files, so a probe of any shape (`test_svg_exec.html`,
-`temp.txt`, `screenshot.png`, a bare `x`) cannot be committed there. It is anchored, so a real report
-under `examples/` or a page under `site/` is untouched. To add a genuine top-level file, name it in
-`ROOT_ALLOWED` in that script (and add a `!/name` line to `.gitignore` if the root-anchored block
-would hide it). It also runs `check_conflict_markers.py`, which
+`temp.txt`, `screenshot.png`, a bare `x`) cannot be committed there. The top-level DIRECTORIES are
+allowlisted the same way, so a dump cannot dodge the rule by being parked one level down in a new
+`captures/`. Anything under an approved directory is untouched, so a real report under `examples/`
+or a page under `site/` is unaffected. To add a genuine top-level entry, name it in `ROOT_ALLOWED`
+or `ROOT_DIR_ALLOWED` in that script (and add a `!/name` line to `.gitignore` if the root-anchored
+block would hide it). It also runs `check_conflict_markers.py`, which
 fails if any tracked text file still carries an unresolved `<<<<<<<` / `=======` / `>>>>>>>` block:
 a bad conflict resolution is otherwise invisible to every other gate (a marker line is valid Markdown,
 and a file generated from a broken source still matches that source), and one reached `main` that way
@@ -812,7 +814,7 @@ Two habits matter more than the ignore file:
 - Comment only what the code cannot say; keep comments minimal.
 - Pin third-party GitHub Actions by full commit SHA (Dependabot keeps them current).
 - Never commit secrets.
-- Put temporary artifacts (scratch files, downloaded data, one-off test outputs, `git diff` dumps, extracted copies of a source file, probe scripts, generated HTML you are not committing) in the gitignored `tmp/` directory (at the repo root or inside a worktree), never in the repo root itself or another tracked folder. Write them with an ABSOLUTE or `tmp/`-prefixed path (or `$env:TEMP` / `os.tmpdir()`), NOT a bare relative filename: a shell command or (sub-)agent whose working directory defaults to the repo root will otherwise drop a stray `tmp_diff.patch` / `old_54.js` / `out.json` straight into the primary checkout - which is how `diff_local.patch` (an unreferenced SKILL.md diff) once got committed. A root-anchored `.gitignore` block now swallows the common root scratch (`/*.patch`, `/*.diff`, `/*.js`, `/*.mjs`, `/*.py`, `/*.html`, `/*.txt`, `/test_*`, `/temp*`, `/tmp_*`, `/out.*`, `/x`, ...) as a backstop, and `scripts/check_forbidden_files.py` refuses ANY file tracked at the root that is not one of the documented top-level files, but that is a safety net, not a license to skip `tmp/`. `tmp/` is tracked only by its `.gitkeep`, so everything else inside it is ignored and the working tree stays clean.
+- Put temporary artifacts (scratch files, downloaded data, one-off test outputs, `git diff` dumps, extracted copies of a source file, probe scripts, generated HTML you are not committing) in the gitignored `tmp/` directory (at the repo root or inside a worktree), never in the repo root itself or another tracked folder. Write them with an ABSOLUTE or `tmp/`-prefixed path (or `$env:TEMP` / `os.tmpdir()`), NOT a bare relative filename: a shell command or (sub-)agent whose working directory defaults to the repo root will otherwise drop a stray `tmp_diff.patch` / `old_54.js` / `out.json` straight into the primary checkout - which is how `diff_local.patch` (an unreferenced SKILL.md diff) once got committed. A root-anchored `.gitignore` block now swallows the common root scratch (`/*.patch`, `/*.diff`, `/*.js`, `/*.mjs`, `/*.py`, `/*.html`, `/*.txt`, `/test_*`, `/temp*`, `/tmp_*`, `/out.*`, `/x`, `/_*`, ...) as a backstop, and `scripts/check_forbidden_files.py` refuses ANY tracked path whose top-level entry is not one of the documented top-level files or directories, but that is a safety net, not a license to skip `tmp/`. `tmp/` is tracked only by its `.gitkeep`, so everything else inside it is ignored and the working tree stays clean.
 
 ## Feature plans (local, not committed)
 

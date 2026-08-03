@@ -5,11 +5,20 @@ Run from the repo root:
     python -m unittest discover -s scripts -p "test_*.py"
 """
 
+import contextlib
 import importlib.util
+import io
 import os
+import re
+import subprocess
+import sys
 import tempfile
+import unicodedata
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _git_test_env import clean_git_env  # noqa: E402
 
 _MODULE_PATH = Path(__file__).with_name("check_forbidden_files.py")
 _spec = importlib.util.spec_from_file_location("check_forbidden_files", _MODULE_PATH)
@@ -229,6 +238,217 @@ class TrackedFilesTest(unittest.TestCase):
         self.assertIn("scripts/check_forbidden_files.py", files)
         offenders = [p for p in files if cff.is_scratch_artifact(p)]
         self.assertEqual(offenders, [], f"scratch is tracked: {offenders}")
+
+
+class RootDirectoryTest(unittest.TestCase):
+    """The top-level DIRECTORIES are a closed set too, or the file rule has an obvious dodge.
+
+    A root rule that only inspects files waves `captures/out.txt` and `_scratch/probe.html`
+    straight through on a plain `git add -A`, because they have a slash. They are dumps all the
+    same, so the first path component has to be approved either way.
+    """
+
+    def test_flags_a_dump_parked_in_a_new_top_level_directory(self):
+        for path in [
+            "captures/out.txt",
+            "_scratch/probe.html",
+            "backlog/tasks/x.md",
+            "node_modules/left/behind.js",
+            "./captures/out.txt",
+        ]:
+            with self.subTest(path=path):
+                self.assertTrue(cff.is_scratch_artifact(path), f"{path} should be refused")
+
+    def test_allows_anything_under_an_approved_directory(self):
+        for path in [
+            ".github/workflows/validate.yml",
+            ".githooks/pre-commit",
+            ".claude-plugin/marketplace.json",
+            ".vscode/settings.json",
+            "docs/testing-guidelines.md",
+            "plugins/commentable-html/dev/SPEC.md",
+            "scripts/task.py",
+            "site/css/00-base.css",
+        ]:
+            with self.subTest(path=path):
+                self.assertFalse(cff.is_scratch_artifact(path), f"{path} should be allowed")
+
+    def test_tmp_admits_only_its_marker_file(self):
+        """tmp/ is where this guard TELLS you to write scratch, so it cannot be a free pass."""
+        self.assertFalse(cff.is_scratch_artifact("tmp/.gitkeep"))
+        for path in ["tmp/dump.txt", "tmp/probe.html", "tmp/nested/out.json"]:
+            with self.subTest(path=path):
+                self.assertTrue(cff.is_scratch_artifact(path), f"{path} should be refused")
+
+    def test_every_tracked_directory_is_allowed(self):
+        files = cff.tracked_files()
+        if files is None:
+            self.skipTest("git unavailable")
+        offenders = sorted({p for p in files if "/" in p and cff.is_scratch_artifact(p)})
+        self.assertEqual(offenders, [], f"tracked under an unapproved top-level dir: {offenders}")
+
+    def test_the_directory_allowlists_do_not_rot(self):
+        """A name left behind after its entry is gone would quietly widen the closed set."""
+        files = cff.tracked_files()
+        if files is None:
+            self.skipTest("git unavailable")
+        stale = sorted(cff.ROOT_ALLOWED - {p for p in files if "/" not in p})
+        self.assertEqual(stale, [], f"ROOT_ALLOWED names files that are not tracked: {stale}")
+        tracked_dirs = {p.split("/", 1)[0] for p in files if "/" in p}
+        stale_dirs = sorted(cff.ROOT_DIR_ALLOWED - tracked_dirs)
+        self.assertEqual(stale_dirs, [], f"ROOT_DIR_ALLOWED names absent dirs: {stale_dirs}")
+
+
+class DisplayPathTest(unittest.TestCase):
+    """An offender must be PRINTABLE, or the guard's clearest moment becomes a traceback.
+
+    A name that is not valid UTF-8 arrives as surrogates from the scan; printing one to a
+    cp1252 console raises UnicodeEncodeError, losing the refusal message entirely.
+    """
+
+    def test_a_surrogate_bearing_name_survives_a_narrow_console(self):
+        rendered = cff.display_path("bad\udcff.txt")
+        for encoding in ("ascii", "cp1252", "utf-8"):
+            with self.subTest(encoding=encoding):
+                rendered.encode(encoding)
+
+    def test_an_ordinary_name_is_unchanged(self):
+        self.assertEqual(cff.display_path("scripts/task.py"), "scripts/task.py")
+
+
+class TrackedFilesEncodingTest(unittest.TestCase):
+    """A non-ASCII path must survive git and Python intact, or the allowlist misses silently.
+
+    `-z` changes only the DELIMITER, so `core.quotePath` still C-quotes the NAME, and
+    `text=True` without an explicit codec decodes git's path bytes with the locale encoding
+    (cp1252 on Windows). Either corruption turns an allowed name into an unrecognised one, and
+    the guard then refuses a legitimate file with a mangled message.
+    """
+
+    def test_a_non_ascii_name_is_reported_literally(self):
+        try:
+            subprocess.run(["git", "--version"], capture_output=True, check=True)
+        except (OSError, subprocess.CalledProcessError):
+            self.skipTest("git unavailable")
+        name = "caf\u00e9.md"
+        env = clean_git_env()
+        child = (
+            "import runpy, sys; m = runpy.run_path(sys.argv[1]); "
+            "print('\\n'.join(m['tracked_files']() or []))"
+        )
+        with tempfile.TemporaryDirectory() as repo:
+            subprocess.run(["git", "init", "-q"], cwd=repo, check=True, env=env)
+            subprocess.run(
+                ["git", "config", "core.quotePath", "true"], cwd=repo, check=True, env=env
+            )
+            (Path(repo) / name).write_text("x\n", encoding="utf-8")
+            subprocess.run(["git", "add", "-A"], cwd=repo, check=True, env=env)
+            proc = subprocess.run(
+                [sys.executable, "-c", child, str(_MODULE_PATH)],
+                cwd=repo,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                env=clean_git_env(
+                    GIT_DIR=str(Path(repo) / ".git"),
+                    GIT_WORK_TREE=repo,
+                    # The child prints the name down a PIPE, where Python otherwise encodes it
+                    # with the locale codec and the utf-8 decode here would mojibake it.
+                    PYTHONIOENCODING="utf-8",
+                ),
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            listed = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+        # Some filesystems store NFD, so compare canonically: the point is that the name is
+        # LITERAL (not `"caf\303\251.md"` and not `cafÃ©.md`), not which form it round-trips in.
+        normalized = [unicodedata.normalize("NFC", entry) for entry in listed]
+        self.assertIn(name, normalized, f"expected a literal name, got {listed}")
+
+
+class GuardExitStatusTest(unittest.TestCase):
+    """The guard must FAIL on a stray, not merely classify it.
+
+    The unit tests above exercise the classifier; this pins the behavior the required CI job
+    and the pre-commit hook actually depend on - a non-zero exit that names the offender.
+    """
+
+    def _run_main(self, files):
+        original = cff.tracked_files
+        cff.tracked_files = lambda: files
+        buffer = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buffer):
+                status = cff.main()
+        finally:
+            cff.tracked_files = original
+        return status, buffer.getvalue()
+
+    def test_a_root_scratch_dump_fails_the_guard(self):
+        status, out = self._run_main(["README.md", "_t1.txt", "scripts/task.py"])
+        self.assertEqual(status, 1, out)
+        self.assertIn("_t1.txt", out)
+        self.assertIn("ROOT_ALLOWED", out)
+
+    def test_a_dump_in_an_unapproved_directory_fails_the_guard(self):
+        status, out = self._run_main(["README.md", "captures/out.txt"])
+        self.assertEqual(status, 1, out)
+        self.assertIn("captures/out.txt", out)
+        self.assertNotIn("README.md", out)
+
+    def test_an_offender_is_named_once(self):
+        """During a conflict `git ls-files` reports an unmerged path once per stage."""
+        status, out = self._run_main(["_t1.txt", "_t1.txt", "_t1.txt"])
+        self.assertEqual(status, 1, out)
+        self.assertEqual(out.count("  - _t1.txt"), 1, out)
+
+    def test_a_clean_tree_passes(self):
+        status, out = self._run_main(["README.md", "scripts/task.py", "docs/README.md"])
+        self.assertEqual(status, 0, out)
+        self.assertIn("OK", out)
+
+
+class SpecCoverageTest(unittest.TestCase):
+    """`scripts/SPEC.md` must name tests that exist, so a row cannot promise absent coverage.
+
+    `check_spec_test_refs.py` enforces this for the plugin and site specs through its explicit
+    `SPEC_TARGETS` registry; the repo-guard spec is held to the same standard here instead, so
+    its rows are checked without enrolling every `scripts/` suite in that registry at once.
+    """
+
+    _SPEC = _MODULE_PATH.with_name("SPEC.md")
+
+    def _spec_text(self):
+        if not self._SPEC.exists():
+            self.fail(f"missing repo-guard spec: {self._SPEC}")
+        return self._SPEC.read_text(encoding="utf-8")
+
+    def test_every_named_test_exists(self):
+        module = sys.modules[__name__]
+        rows = [
+            line for line in self._spec_text().splitlines() if line.startswith("| REPO-GUARD-")
+        ]
+        self.assertTrue(rows, "the spec declares no REPO-GUARD feature ids")
+        for line in rows:
+            feature_id = line.split("|")[1].strip()
+            named = re.findall(r"`([A-Za-z_]\w*Test\.test_\w+)`", line)
+            with self.subTest(feature_id=feature_id):
+                self.assertTrue(named, f"{feature_id} names no covering test")
+                for ref in named:
+                    cls_name, method = ref.split(".", 1)
+                    cls = getattr(module, cls_name, None)
+                    self.assertIsNotNone(cls, f"{feature_id}: {cls_name} is not in this suite")
+                    self.assertTrue(
+                        callable(getattr(cls, method, None)), f"{feature_id}: {ref} does not exist"
+                    )
+
+    def test_every_feature_id_is_declared_once(self):
+        rows = [
+            line.split("|")[1].strip()
+            for line in self._spec_text().splitlines()
+            if line.startswith("| REPO-GUARD-")
+        ]
+        self.assertTrue(rows, "the spec declares no REPO-GUARD feature ids")
+        self.assertEqual(len(rows), len(set(rows)), f"duplicate feature-id rows: {rows}")
 
 
 if __name__ == "__main__":
