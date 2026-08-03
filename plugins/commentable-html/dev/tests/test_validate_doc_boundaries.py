@@ -221,6 +221,193 @@ class DocParserCommentTests(unittest.TestCase):
         self.assertEqual(_ids(html), ["wrap"])
 
 
+class DocParserMarkerProvenanceTests(unittest.TestCase):
+    """A region marker is a comment the AUTHORING TOOLS wrote, not merely a comment NODE.
+
+    A browser really does create a comment node for `<!BEGIN: ...>`, `<?BEGIN: ...>` and
+    `</ BEGIN: ...>` - each is a BOGUS COMMENT - so routing them to `handle_comment()` is
+    correct. What is not correct is letting one BE a marker: the skill only ever emits a real
+    `<!-- ... -->` comment, so a bogus one carries no provenance and must not open or close the
+    CONTENT region or set the JS end marker.
+    """
+
+    ROOT_OPEN = '<main id="commentRoot" data-comment-key="k" data-doc-label="l">'
+    BEGIN_TEXT = parsing.CONTENT_BEGIN[4:-3].strip()
+
+    # Every shape a browser turns into a bogus comment, spelled with the marker text. The `<?`
+    # one keeps its leading `?` in the comment DATA (the bogus-comment state starts at the `?`),
+    # so it could never match a marker even before provenance existed - it is asserted for
+    # symmetry, and `test_a_bogus_comment_carries_no_source` is what pins its provenance.
+    def _bogus(self, text):
+        return ("<!%s>" % text, "<?%s>" % text, "</ %s>" % text)
+
+    def test_a_bogus_comment_carries_no_source(self):
+        # Provenance is recorded ONLY on the `<!--` path, so every other route to
+        # handle_comment() - including the base parser's own end-of-input fallbacks - is bogus
+        # by DEFAULT and a route added later can only ever fail CLOSED.
+        class _Recorder(parsing._DocParser):
+            def __init__(self, html):
+                super().__init__(html)
+                self.seen = []
+
+            def handle_comment(self, data):
+                self.seen.append((data, self.comment_raw, self.comment_is_bogus))
+                super().handle_comment(data)
+
+        bogus_here = ("<!x>", "<?x>", "<![CDATA[x]]>",
+                      "<!x", "<?x", "</ x")     # the last three are unterminated at EOF
+        for html in bogus_here:
+            with self.subTest(html=html):
+                p = _Recorder(html)
+                p.parse_document(html)
+                self.assertTrue(p.seen, "%r must still produce a comment node" % html)
+                for _data, raw, is_bogus in p.seen:
+                    self.assertIsNone(raw, "%r must carry no comment source" % html)
+                    self.assertTrue(is_bogus)
+
+        # A TERMINATED `</` + junk is resolved by the HOST, which differs: before 3.13
+        # `endtagfind` allows whitespace after `</`, so `</ x>` is an END TAG there and no
+        # comment node exists at all (tracked separately). Either reading is safe here - what
+        # must hold is that a comment one of them DOES produce still carries no source.
+        for html in ("</ x>", "<//>"):
+            with self.subTest(html=html):
+                p = _Recorder(html)
+                p.parse_document(html)
+                for _data, raw, is_bogus in p.seen:
+                    self.assertIsNone(raw, "%r must carry no comment source" % html)
+                    self.assertTrue(is_bogus)
+
+        for html in ("<!-- x -->", "<!-- x --!>", "<!-->", "<!--->", "<!-- x"):
+            with self.subTest(html=html):
+                p = _Recorder(html)
+                p.parse_document(html)
+                self.assertTrue(p.seen, "%r must produce a comment node" % html)
+                for _data, raw, is_bogus in p.seen:
+                    self.assertEqual(raw, html, "%r is a REAL comment" % html)
+                    self.assertFalse(is_bogus)
+
+    def test_a_bogus_comment_cannot_open_the_content_region(self):
+        for forged in self._bogus(self.BEGIN_TEXT):
+            with self.subTest(forged=forged):
+                html = self.ROOT_OPEN + forged + "<p>x</p>" + parsing.CONTENT_END + "</main>"
+                p = parsing._parse_document(html)
+                self.assertFalse(p.content_region_opened,
+                                 "%s must not open the CONTENT region" % forged)
+
+    def test_a_bogus_comment_cannot_close_the_content_region(self):
+        end_text = parsing.CONTENT_END[4:-3].strip()
+        for forged in self._bogus(end_text):
+            with self.subTest(forged=forged):
+                html = (self.ROOT_OPEN + parsing.CONTENT_BEGIN + forged
+                        + "<p>x</p>" + parsing.CONTENT_END + "</main>")
+                p = parsing._parse_document(html)
+                self.assertTrue(p.content_region_closed)
+                # The real END is what closed it, so the region was still open at the forged one.
+                self.assertTrue(p.content_region_opened)
+
+        # And a forged END alone leaves the region unclosed.
+        for forged in self._bogus(end_text):
+            with self.subTest(forged=forged, alone=True):
+                html = self.ROOT_OPEN + parsing.CONTENT_BEGIN + "<p>x</p>" + forged + "</main>"
+                p = parsing._parse_document(html)
+                self.assertFalse(p.content_region_closed,
+                                 "%s must not close the CONTENT region" % forged)
+
+    def test_a_bogus_comment_cannot_set_the_js_end_marker(self):
+        for forged in self._bogus(parsing.JS_END_MARKER_TEXT):
+            with self.subTest(forged=forged):
+                html = "<div>x</div>" + forged + "<div>y</div>"
+                self.assertIsNone(parsing._parse_document(html).js_end_marker_pos,
+                                  "%s must not be the JS end marker" % forged)
+
+    def test_an_unterminated_bogus_construct_cannot_set_the_js_end_marker(self):
+        # It runs to the end of the document as comment DATA (the browser rule), but it is
+        # still bogus, so it is still not a marker. `</ ` is here too: a bare `</` + junk at
+        # EOF is its own end-of-input path, and only the `<!`/`<?` ones would otherwise be
+        # exercised.
+        for opener in ("<!", "<?", "</ "):
+            with self.subTest(opener=opener):
+                html = "<div>x</div>" + opener + parsing.JS_END_MARKER_TEXT
+                self.assertIsNone(parsing._parse_document(html).js_end_marker_pos)
+
+    def test_a_real_marker_comment_still_opens_and_closes_the_region(self):
+        html = (self.ROOT_OPEN + parsing.CONTENT_BEGIN + "<p>x</p>"
+                + parsing.CONTENT_END + "</main>")
+        p = parsing._parse_document(html)
+        self.assertTrue(p.content_region_opened)
+        self.assertTrue(p.content_region_closed)
+
+    def test_a_real_marker_comment_still_sets_the_js_end_marker(self):
+        html = "<div>x</div><!-- %s --><div>y</div>" % parsing.JS_END_MARKER_TEXT
+        pos = parsing._parse_document(html).js_end_marker_pos
+        self.assertIsNotNone(pos)
+        self.assertEqual(pos, html.index("<!--"))
+
+    def test_the_multi_line_js_end_marker_comment_still_counts(self):
+        # The layer's region markers are also written on their own lines inside one comment,
+        # which `_region_marker_matches` accepts - so the parse view must accept it too.
+        html = "<div>x</div><!--\n%s\n--><div>y</div>" % parsing.JS_END_MARKER_TEXT
+        self.assertIsNotNone(parsing._parse_document(html).js_end_marker_pos)
+
+    def test_a_comment_the_marker_count_does_not_see_cannot_open_the_region(self):
+        # Provenance is not only "a real comment": the CONTENT markers are COUNTED in the text
+        # as the exact literal the authoring tools emit (CMH-VAL-20), so a real comment the
+        # count view does not see must not open the region either - otherwise the two views
+        # disagree and a forged one stands in for the real marker exactly as a bogus comment did.
+        text = parsing.CONTENT_BEGIN[4:-3].strip()
+        for forged in ("<!--%s-->" % text,                     # no padding
+                       "<!--   %s   -->" % text,               # extra padding
+                       "<!--\n%s\n-->" % text,                 # its own lines
+                       "<!-- %s --!>" % text):                 # the legacy close
+            with self.subTest(forged=forged):
+                self.assertNotEqual(forged, parsing.CONTENT_BEGIN, "fixture premise")
+                html = (self.ROOT_OPEN + forged + "<p>x</p>"
+                        + parsing.CONTENT_END + "</main>")
+                p = parsing._parse_document(html)
+                self.assertFalse(p.content_region_opened,
+                                 "%s is not the marker the count view sees" % forged)
+
+    def test_a_comment_the_marker_count_does_not_see_cannot_close_the_region(self):
+        text = parsing.CONTENT_END[4:-3].strip()
+        for forged in ("<!--%s-->" % text,
+                       "<!--   %s   -->" % text,
+                       "<!--\n%s\n-->" % text,
+                       "<!-- %s --!>" % text):
+            with self.subTest(forged=forged):
+                self.assertNotEqual(forged, parsing.CONTENT_END, "fixture premise")
+                html = self.ROOT_OPEN + parsing.CONTENT_BEGIN + "<p>x</p>" + forged + "</main>"
+                p = parsing._parse_document(html)
+                self.assertTrue(p.content_region_opened)
+                self.assertFalse(p.content_region_closed,
+                                 "%s is not the marker the count view sees" % forged)
+
+    def test_a_padding_the_marker_count_does_not_accept_is_not_the_js_end_marker(self):
+        # `_region_marker_matches` pads with `[ \t]` only, but `str.strip()` also strips NBSP,
+        # a vertical tab and the other characters Python calls whitespace - so a comment padded
+        # with one is NOT a counted marker and must not be the E5 boundary either.
+        for pad in ("\u00a0", "\x0b", "\x0c", "\u2028", "\u1680"):
+            with self.subTest(pad=repr(pad)):
+                html = "<div>x</div><!--%s%s%s--><div>y</div>" % (
+                    pad, parsing.JS_END_MARKER_TEXT, pad)
+                self.assertIsNone(parsing._parse_document(html).js_end_marker_pos,
+                                  "%r padding is not counted as a marker" % pad)
+
+    def test_the_counted_js_end_marker_shapes_still_set_the_boundary(self):
+        for shape in ("<!-- %s -->", "<!--%s-->", "<!--\n%s\n-->", "<!--\t%s\t-->",
+                      "<!-- ==== %s ==== -->"):
+            with self.subTest(shape=shape):
+                html = "<div>x</div>" + (shape % parsing.JS_END_MARKER_TEXT) + "<div>y</div>"
+                self.assertIsNotNone(parsing._parse_document(html).js_end_marker_pos,
+                                     "%r is a counted marker shape" % shape)
+
+    def test_a_legacy_closed_comment_cannot_set_the_js_end_marker(self):
+        # `--!>` closes a comment in a browser, but `_region_marker_matches` (which counts the
+        # layer's region markers) accepts only a `-->` close, so a `--!>` one is not a marker
+        # there and must not be the E5 boundary here.
+        html = "<div>x</div><!-- %s --!><div>y</div>" % parsing.JS_END_MARKER_TEXT
+        self.assertIsNone(parsing._parse_document(html).js_end_marker_pos)
+
+
 class DocParserEofTests(unittest.TestCase):
     """What a TRUNCATED document resolves to, decided here rather than by the host.
 

@@ -132,6 +132,17 @@ _DATA_KEY_RE = re.compile(r'(?i:data-comment-key)\s*=\s*["\']?([^\s"\'<>]+)')
 # The real region marker is an HTML comment, not bare text in prose.
 JS_END_MARKER_TEXT = "END: commentable-html - JS"
 
+# ...and its comment SOURCE, in exactly the shapes `_region_marker_matches` COUNTS: `[ \t]`
+# padding, the optional `=` decoration, the marker inline or on its own line, and a `-->` close.
+# The comment DATA cannot decide this: `str.strip()` also strips NBSP, a vertical tab and every
+# other character Python calls whitespace, so a comment padded with one read as the marker here
+# while the count view saw only the canonical one - two views disagreeing about which comment is
+# the boundary, which is what lets a forged one stand in for it.
+_JS_END_MARKER_COMMENT_RE = re.compile(
+    r"<!--[ \t]*(?:\r?\n[ \t]*)?(?:=+[ \t]*)?"
+    + re.escape(JS_END_MARKER_TEXT)
+    + r"[ \t]*(?:=+[ \t]*)?(?:\r?\n[ \t]*)?-->")
+
 # JSON <script> ids owned by the commentable layer, not chart data.
 LAYER_JSON_IDS = {"handledCommentIds", "embeddedComments", LAYER_DESCRIPTOR_ID}
 
@@ -736,6 +747,7 @@ class _BrowserBoundaries(_BrowserStartTag):
         self._starts = _line_starts(html)
         self._final = False   # the whole document has been handed to feed()
         self._ns = []         # [(tag, namespace, is_integration_point)], parallel to the stack
+        self._comment_raw = None      # source of the REAL comment being handled (see below)
 
     def parse_document(self, html):
         """Parse a COMPLETE document. Feeding the whole string at once is what lets an
@@ -759,6 +771,41 @@ class _BrowserBoundaries(_BrowserStartTag):
         # character-reference decoding differs across interpreters (see _ATTR_CHARREF_RE).
         return _browser_attrs_dict(self, tag, attrs)
 
+    # -- comment provenance -------------------------------------------------- #
+
+    @property
+    def comment_raw(self):
+        """The SOURCE of the comment `handle_comment()` is handling, or None when a browser
+        SYNTHESIZED it from bogus markup - `<!` + junk, `<?` + anything, or `</` + junk.
+
+        A browser really does create a comment NODE for each of those, so routing them to
+        `handle_comment()` is right. What is NOT right is letting one carry the authority of a
+        comment the skill's tools wrote: the region markers are a `<!-- ... -->` convention,
+        and a subclass that reads them must be able to tell a marker from a comment that merely
+        parses like one. Otherwise `<!BEGIN: commentable-html - CONTENT ...>` opens the content
+        region and `<!END: commentable-html - JS>` sets the JS end marker, which is enough to
+        validate a document whose REAL markers sit somewhere a browser would refuse.
+
+        Only `parse_comment()` (the `<!--` path) fills this in, so a comment that reaches
+        `handle_comment()` by ANY other route - including the base parser's own bogus-comment
+        and end-of-input fallbacks - is bogus by DEFAULT, and a new path can only ever fail
+        CLOSED. The raw source is kept rather than a bare flag because the marker COUNT views
+        match exact source text (CMH-VAL-20), so a marker reader that only compared the comment
+        DATA would still accept a real comment those views do not count.
+        """
+        return self._comment_raw
+
+    @property
+    def comment_is_bogus(self):
+        return self._comment_raw is None
+
+    def _real_comment(self, data, raw):
+        self._comment_raw = raw
+        try:
+            self.handle_comment(data)
+        finally:
+            self._comment_raw = None
+
     # -- cross-version comment, raw-text and CDATA boundaries --------------- #
 
     def parse_comment(self, i, report=True):
@@ -768,12 +815,14 @@ class _BrowserBoundaries(_BrowserStartTag):
         m = _COMMENT_ABRUPT_CLOSE_RE.match(rawdata, i + 4) or _COMMENT_CLOSE_RE.search(rawdata, i + 4)
         if m:
             if report:
-                self.handle_comment(rawdata[i + 4:m.start()])
+                self._real_comment(rawdata[i + 4:m.start()], rawdata[i:m.end()])
             return m.end()
         # Unterminated: a browser treats the rest of the document as comment data. Say so
         # explicitly rather than leaving it to the host - before 3.13 html.parser resumes
         # tokenizing after the next `>`, which resurrects markup a browser never renders.
-        return self._unterminated(i + 4, self.handle_comment if report else (lambda _d: None))
+        return self._unterminated(i + 4,
+                                  (lambda d: self._real_comment(d, rawdata[i:])) if report
+                                  else (lambda _d: None))
 
     def set_cdata_mode(self, elem, **kwargs):
         # Install the raw-text scan boundary a BROWSER uses: the region ends at `</name`
@@ -1449,18 +1498,28 @@ class _DocParser(_BrowserBoundaries):
                 return
 
     def handle_comment(self, data):
+        # A region marker is a comment the AUTHORING TOOLS wrote, so only a REAL comment whose
+        # SOURCE is the marker they emit can be one. A browser also creates a comment node for
+        # a bogus comment (`<!BEGIN: ...>`, `<?END: ...>`, `</ END: ...>`), which is why those
+        # reach this handler at all, and the marker COUNT views match exact source text
+        # (CMH-VAL-20) - so matching the comment DATA alone let both a bogus comment and a real
+        # but uncounted one (`<!--BEGIN: ...-->`, a `--!>` close) stand in for the real marker.
+        raw = self.comment_raw
+        if raw is None:
+            return
         # Exact match, so a prose comment that merely mentions the marker text
         # ("<!-- note: END: commentable-html - JS is the marker -->") is ignored;
-        # a marker inside an inert <template> is ignored too.
+        # a marker inside an inert <template> is ignored too. The JS end marker keeps the
+        # padding and decoration tolerance `_region_marker_matches` has (the layer writes its
+        # region markers on their own lines inside one comment) - and only that.
         if (self.js_end_marker_pos is None and not self._in_template()
-                and data.strip() == JS_END_MARKER_TEXT):
+                and _JS_END_MARKER_COMMENT_RE.fullmatch(raw)):
             self.js_end_marker_pos = self._off()
         if not self._in_template():
-            marker = data.strip()
-            if marker == CONTENT_BEGIN[4:-3].strip() and self._in_comment_root():
+            if raw == CONTENT_BEGIN and self._in_comment_root():
                 self._in_content_region = True
                 self.content_region_opened = True
-            elif marker == CONTENT_END[4:-3].strip():
+            elif raw == CONTENT_END:
                 if self._in_content_region:
                     self.content_region_closed = True
                 self._in_content_region = False

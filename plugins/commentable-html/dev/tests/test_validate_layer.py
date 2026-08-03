@@ -695,6 +695,41 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
         self.assertFalse(any("CONTENT region" in e for e in errors),
                          "a marker quoted in script data is not a real marker: %r" % errors)
 
+    def test_a_bogus_declaration_cannot_forge_the_content_region(self):
+        # A browser turns `<!BEGIN: ...>` into a bogus COMMENT node, so it reached the marker
+        # handler and OPENED the region. The real BEGIN marker could then sit outside
+        # #commentRoot - where the parse must refuse the document - while a forged one inside it
+        # made the region look well-formed. Only a real `<!-- ... -->` comment carries the
+        # provenance of a marker the authoring tools wrote.
+        forged = "<!" + CONTENT_BEGIN[4:-3].strip() + ">"
+        main = MAIN.replace(CONTENT_BEGIN + "\n", forged + "\n", 1)
+        self.assertNotIn(CONTENT_BEGIN, main, "fixture premise: the real BEGIN left #commentRoot")
+        body = [HANDLED_REGION, EMBEDDED_REGION, comment_ui(),
+                CONTENT_BEGIN, main, JS_REGION]
+        doc = build(body=body)
+        self.assertEqual(doc.count(CONTENT_BEGIN), 1, "fixture premise: one real BEGIN marker")
+        self.assertEqual(doc.count(CONTENT_END), 1, "fixture premise: one real END marker")
+        errors, _warnings = _validate_text(doc)
+        self.assertTrue(any("does not parse with a well-formed region" in e for e in errors),
+                        "a bogus <!...> comment must not open the CONTENT region: %r" % errors)
+
+    def test_a_noncanonical_comment_cannot_forge_the_content_region(self):
+        # Same forge as above with a REAL comment the marker COUNT does not see: the count view
+        # matches the exact literal the authoring tools emit, so a padded, unpadded, own-line or
+        # `--!>`-closed variant inside #commentRoot must not open the region either.
+        text = CONTENT_BEGIN[4:-3].strip()
+        for forged in ("<!--%s-->" % text, "<!--   %s   -->" % text,
+                       "<!--\n%s\n-->" % text, "<!-- %s --!>" % text):
+            with self.subTest(forged=forged):
+                main = MAIN.replace(CONTENT_BEGIN + "\n", forged + "\n", 1)
+                body = [HANDLED_REGION, EMBEDDED_REGION, comment_ui(),
+                        CONTENT_BEGIN, main, JS_REGION]
+                doc = build(body=body)
+                self.assertEqual(doc.count(CONTENT_BEGIN), 1, "fixture premise: one real BEGIN")
+                errors, _warnings = _validate_text(doc)
+                self.assertTrue(any("does not parse with a well-formed region" in e for e in errors),
+                                "%s must not open the CONTENT region: %r" % (forged, errors))
+
     def test_an_unterminated_or_string_quoted_css_comment_is_lexed_correctly(self):
         # The comment stripper is a lexer, not a regex, because both mistakes are reachable:
         # an unterminated comment runs to end of input in a real parser (so its text must not

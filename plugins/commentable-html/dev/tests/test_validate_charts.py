@@ -586,6 +586,18 @@ class ChartValidatorTests(unittest.TestCase):
         e, _w, _n = run(html)
         self.assertTrue(any("before the" in x for x in e), e)
 
+    def test_bogus_declaration_marker_is_ignored(self):
+        # A browser turns `<!END: commentable-html - JS>` into a bogus COMMENT node, so it
+        # reached the marker handler and set the E5 boundary EARLIER than the real marker -
+        # silencing the guard for every init between the two. Only a real `<!-- ... -->`
+        # comment is a marker, so the real one still gates the earlier init.
+        for forged in ("<!END: commentable-html - JS>", "</ END: commentable-html - JS>"):
+            with self.subTest(forged=forged):
+                html = build(pre_marker=forged + "\n<script>new Chart(z,{});</script>\n")
+                e, _w, _n = run(html)
+                self.assertTrue(any("before the" in x for x in e),
+                                "%s must not become the JS END marker: %r" % (forged, e))
+
     def test_e4_no_id_chart_json_message(self):
         # An id-less chart-data JSON block that is invalid reports "(no id)".
         html = build().replace(

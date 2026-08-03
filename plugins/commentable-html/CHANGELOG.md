@@ -4,6 +4,24 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.485.0] - 2026-08-03
+
+### Fixed
+
+- The validator no longer lets a comment the marker COUNT views do not see forge a
+  `commentable-html` region marker. A browser turns `<!BEGIN: commentable-html - CONTENT ...>`,
+  `<?END: commentable-html - JS>` and `</ END: commentable-html - JS>` into bogus COMMENT nodes,
+  and the parser correctly routed each to its comment handler - but the handler then treated any
+  comment whose TEXT matched a marker as that marker, while the counting views match the exact
+  source the authoring tools emit. So a forged declaration, or a real but uncounted
+  `<!--BEGIN: ...-->` / `<!-- BEGIN: ... --!>`, could open or close the CONTENT region (letting a
+  document whose counted `BEGIN` marker sits outside `#commentRoot` validate completely clean) or
+  set the `END: commentable-html - JS` boundary early (silencing the chart-init guard for every
+  `new Chart(` between the forged marker and the counted one). A comment now carries its own
+  SOURCE through the shared boundary layer, recorded only on the real `<!--` path - so every other
+  route, including the end-of-input fallbacks, is bogus by default and fails closed - and a marker
+  must be a comment those views count.
+
 ## [1.470.0] - 2026-08-03
 
 ### Fixed
