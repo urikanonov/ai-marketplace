@@ -3,7 +3,14 @@
 from dataclasses import dataclass
 from html.parser import HTMLParser
 import math
+import os
 import re
+import sys
+
+# The shared browser attribute decode lives beside the validator's `checks` package; the shim at
+# the tools/ root resolves it (and degrades to the host's own list on a partial install).
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+import _browser_attrs  # noqa: E402
 
 DEFAULT_MIN_CONTRAST_RATIO = 4.5
 DEFAULT_MIN_STROKE_CONTRAST_RATIO = 3.0
@@ -402,13 +409,15 @@ class _StyleScanner(HTMLParser):
         self._style_attrs = None
         self._style_body = []
 
-    @staticmethod
-    def _attrs_dict(attrs):
-        return {(name or "").lower(): value or "" for name, value in attrs}
+    def _attrs_dict(self, tag, attrs):
+        # The SHARED browser decode (CMH-VAL-21): values re-derived from the raw start tag, and
+        # the FIRST occurrence of a duplicated attribute winning as HTML5 says - a dict
+        # comprehension kept the last one, so a decoy `style=` could hide the live declaration.
+        return _browser_attrs.attrs_dict(self, tag, attrs)
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
-        attr_map = self._attrs_dict(attrs)
+        attr_map = self._attrs_dict(tag, attrs)
         if "style" in attr_map:
             self.inline_styles.append((tag, attr_map, attr_map["style"]))
         if tag == "style":
@@ -416,7 +425,7 @@ class _StyleScanner(HTMLParser):
             self._style_body = []
 
     def handle_startendtag(self, tag, attrs):
-        attr_map = self._attrs_dict(attrs)
+        attr_map = self._attrs_dict(tag.lower(), attrs)
         if "style" in attr_map:
             self.inline_styles.append((tag.lower(), attr_map, attr_map["style"]))
 
@@ -454,11 +463,11 @@ class _DocumentScanner(_StyleScanner):
 
     def handle_starttag(self, tag, attrs):
         super().handle_starttag(tag, attrs)
-        self._push_node(tag, self._attrs_dict(attrs))
+        self._push_node(tag, self._attrs_dict(tag.lower(), attrs))
 
     def handle_startendtag(self, tag, attrs):
         super().handle_startendtag(tag, attrs)
-        node = self._node(tag, self._attrs_dict(attrs), self._order)
+        node = self._node(tag, self._attrs_dict(tag.lower(), attrs), self._order)
         self._order += 1
         node.parent = self._stack[-1]
         node.parent.children.append(node)

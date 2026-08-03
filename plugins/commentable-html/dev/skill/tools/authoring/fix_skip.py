@@ -26,6 +26,9 @@ import re
 import sys
 from html.parser import HTMLParser
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _browser_attrs  # noqa: E402
+
 # Attribute-token matcher for editing an already-located <pre ...> start tag's
 # source text in place: name, then an optional ="quoted"/'quoted'/bare value.
 _ATTR_RE = re.compile(r'([^\s"\'>/=]+)(\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+))?')
@@ -50,20 +53,17 @@ class _MermaidPreLocator(HTMLParser):
         lineno, col = self.getpos()
         return self._offsets[lineno - 1] + col
 
-    @staticmethod
-    def _attrs_dict(attrs):
-        # HTML5 keeps the FIRST occurrence of a duplicated attribute.
-        d = {}
-        for k, v in attrs:
-            kl = (k or "").lower()
-            if kl not in d:
-                d[kl] = v if v is not None else ""
-        return d
+    def _attrs_dict(self, tag, attrs):
+        # The shared browser attribute decode (CMH-VAL-21): HTML5 keeps the FIRST occurrence of
+        # a duplicated attribute, and a named character reference resolves only on an exact
+        # match - so `class="mermaid &nbspcm-skip"` carries ONE literal token, not a `cm-skip`
+        # the author never wrote (which made a block look already fixed).
+        return _browser_attrs.attrs_dict(self, tag, attrs)
 
     def _check(self, tag, attrs):
         if tag.lower() != "pre":
             return
-        ad = self._attrs_dict(attrs)
+        ad = self._attrs_dict(tag.lower(), attrs)
         classes = set((ad.get("class") or "").split())
         if "mermaid" in classes and "cm-skip" not in classes:
             start = self._idx()

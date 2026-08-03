@@ -7,6 +7,9 @@ import re
 import sys
 from html.parser import HTMLParser
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _browser_attrs  # noqa: E402
+
 HEADING_TAGS = {"h2", "h3"}
 VOID_TAGS = {
     "area", "base", "br", "col", "embed", "hr", "img", "input",
@@ -23,15 +26,6 @@ def _line_starts(text):
     for match in re.finditer("\n", text):
         starts.append(match.end())
     return starts
-
-
-def _attrs_dict(attrs):
-    result = {}
-    for key, value in attrs:
-        name = (key or "").lower()
-        if name not in result:
-            result[name] = value if value is not None else ""
-    return result
 
 
 def _has_class(attrs, class_name):
@@ -77,7 +71,9 @@ class _TocParser(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
-        attrs_dict = _attrs_dict(attrs)
+        # The shared browser attribute decode (CMH-VAL-21): the id this tool reads (and links
+        # the table of contents at) is the id a browser gives the element.
+        attrs_dict = _browser_attrs.attrs_dict(self, tag, attrs)
         own_skip = _has_class(attrs_dict, "cm-skip")
         start = self._idx()
         start_text = self.get_starttag_text() or ""
@@ -114,7 +110,7 @@ class _TocParser(HTMLParser):
             self.handle_starttag(tag, attrs)
             return
         tag = tag.lower()
-        attrs_dict = _attrs_dict(attrs)
+        attrs_dict = _browser_attrs.attrs_dict(self, tag, attrs)
         if not self._in_template():
             element_id = attrs_dict.get("id")
             if element_id:

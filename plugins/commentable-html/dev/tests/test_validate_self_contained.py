@@ -33,6 +33,16 @@ class NewCheckTests(unittest.TestCase):
         errors, _ = self._errs_warns(build(body=self._body(MAIN, '<script src="https://evil.cdn/x.js"></script>')))
         self.assertTrue(any("self-contained guarantee" in e for e in errors), errors)
 
+    def test_a_script_hidden_behind_a_bogus_cdata_comment_still_errors(self):
+        # CMH-VAL-21: in HTML content `<![CDATA[` is a bogus comment ending at the first `>`,
+        # so this <script> is LIVE and fetches remote code. The tag lookup this check reads used
+        # to be a bare HTMLParser, which swallowed the whole marked section and reported no
+        # script at all, so the document passed the self-contained guarantee.
+        smuggled = '<![CDATA[><script src="//evil.example/x.js"></script>]]>'
+        errors, _ = self._errs_warns(build(body=self._body(MAIN, smuggled)))
+        self.assertTrue(any("self-contained guarantee" in e and "evil.example" in e
+                            for e in errors), errors)
+
     def test_chartjs_cdn_script_is_exempt_from_self_contained_error(self):
         script = '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>'
         errors, _ = self._errs_warns(build(body=self._body(MAIN, script)))
@@ -95,6 +105,52 @@ class NewCheckTests(unittest.TestCase):
         doc = with_offline_mode(build(body=self._body(MAIN, '<meta http-equiv="refresh" content="0; url=https://example.com/out">')))
         errors, _ = self._errs_warns(doc)
         self.assertTrue(any("offline mode" in e and "meta refresh" in e for e in errors), errors)
+
+    def test_offline_mode_rejects_network_resources_inside_noscript(self):
+        # A <noscript> body is raw TEXT only while scripting is enabled; with scripting off a
+        # browser parses it and really does load what it names. The EGRESS checks must
+        # therefore fail CLOSED on the fallback markup - the redirect and the image below are
+        # live for exactly the reader who cannot run the layer at all.
+        fallback = ('<noscript><meta http-equiv="refresh" content="0;url=//evil.example/out">'
+                    '<img src="//evil.example/x.png" alt="x"></noscript>')
+        errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, fallback))))
+        self.assertTrue(any("offline mode" in e and "meta refresh" in e for e in errors), errors)
+        self.assertTrue(any("evil.example/x.png" in e for e in errors), errors)
+
+    def test_a_csp_meta_inside_noscript_does_not_satisfy_the_offline_policy(self):
+        # The mirror image: a PRESENCE check must read the browser's view, not the fallback
+        # superset. A scripting-enabled browser never creates this element, so it cannot be the
+        # document's policy - reading it would suppress the missing-CSP error outright.
+        doc = with_offline_mode(build(body=self._body(MAIN)), csp=False)
+        doc = doc.replace("<head>\n",
+                          '<head>\n<noscript><meta http-equiv="Content-Security-Policy" '
+                          'content="%s"></noscript>\n' % OFFLINE_CSP, 1)
+        errors, _ = self._errs_warns(doc)
+        self.assertTrue(any("missing Content-Security-Policy" in e for e in errors), errors)
+
+    def test_an_unclosed_noscript_still_contributes_its_fallback_markup(self):
+        # A browser runs an unclosed raw-text element to end of document, so the fallback markup
+        # after it is still live for a scripting-disabled reader.
+        fallback = '<noscript><img src="//evil.example/x.png" alt="x">'
+        errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, fallback))))
+        self.assertTrue(any("evil.example/x.png" in e for e in errors), errors)
+
+    def test_a_document_whose_tag_index_fails_is_reported_not_passed(self):
+        # "Could not look" must not read like "nothing more to find": the self-contained
+        # guarantee is derived from the tag index, so a failed index is its own error.
+        from checks import parsing as _parsing
+        doc = build(body=self._body(MAIN))
+        _parsing._tag_attr_index.cache_clear()
+        self.addCleanup(_parsing._tag_attr_index.cache_clear)
+        with mock.patch.object(_parsing, "_TagAttrParser", side_effect=RuntimeError("boom")):
+            errors, _ = self._errs_warns(doc)
+        self.assertTrue(any("could not parse the document for the self-contained" in e
+                            for e in errors), errors)
+
+    def test_validate_releases_the_shared_tag_index(self):
+        from checks import parsing as _parsing
+        self._errs_warns(build(body=self._body(MAIN)))
+        self.assertEqual(_parsing._tag_attr_index.cache_info().currsize, 0)
 
     def test_offline_mode_rejects_network_css_urls(self):
         css = CSS_REGION.replace(

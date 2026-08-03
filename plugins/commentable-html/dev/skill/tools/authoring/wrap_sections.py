@@ -35,6 +35,9 @@ import re
 import sys
 from html.parser import HTMLParser
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _browser_attrs  # noqa: E402
+
 _VOID = frozenset((
     "area", "base", "br", "col", "embed", "hr", "img", "input", "link",
     "meta", "param", "source", "track", "wbr",
@@ -63,20 +66,16 @@ class _TopLevelLocator(HTMLParser):
         lineno, col = self.getpos()
         return self._offsets[lineno - 1] + col
 
-    @staticmethod
-    def _attrs_dict(attrs):
-        d = {}
-        for k, v in attrs:
-            kl = (k or "").lower()
-            if kl not in d:
-                d[kl] = v if v is not None else ""
-        return d
+    def _attrs_dict(self, tag, attrs):
+        # The shared browser attribute decode (CMH-VAL-21), so the id this tool copies into the
+        # generated `aria-labelledby` is the id a browser gives the heading.
+        return _browser_attrs.attrs_dict(self, tag, attrs)
 
     def _record(self, tag, attrs):
         tag = tag.lower()
         if len(self.stack) == 0:  # direct child of the scope root
             if tag == "h2":
-                ad = self._attrs_dict(attrs)
+                ad = self._attrs_dict(tag, attrs)
                 self.h2_starts.append((self._idx(), ad.get("id")))
             elif tag == "section":
                 self.has_top_section = True
@@ -157,8 +156,11 @@ class _ContentRootLocator(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if tag.lower() in _VOID:
             return
-        is_root = self.inner_start is None and any(
-            (k or "").lower() == "id" and (v or "") == "commentRoot" for k, v in attrs)
+        # The browser's own attribute view (CMH-VAL-21): HTML5 keeps the FIRST `id`, so a decoy
+        # `<main id="decoy" id="commentRoot">` is NOT the content root and the wrapping stays
+        # scoped to the element a browser calls #commentRoot.
+        is_root = self.inner_start is None and (
+            _browser_attrs.attrs_dict(self, tag.lower(), attrs).get("id") == "commentRoot")
         self._depth += 1
         if is_root:
             self._root_depth = self._depth

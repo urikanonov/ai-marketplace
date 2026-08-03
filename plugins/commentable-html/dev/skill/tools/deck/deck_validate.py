@@ -28,6 +28,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import _browser_attrs  # noqa: E402
 from deck_common import SLIDE_ID_RE  # noqa: E402
 from html.parser import HTMLParser  # noqa: E402
 from cmhval import contrast  # noqa: E402
@@ -126,8 +127,10 @@ def _srcset_urls(value):
 class _ActiveContentScanner(HTMLParser):
     """Collect active-content / egress violations from parsed tags and attributes.
 
-    Character references in attribute values are decoded by HTMLParser, and <script>/<style>
-    bodies are treated as CDATA, so a chart's init script or the inlined CSS never trips a check.
+    Attribute values are decoded by the SHARED browser rule (`_browser_attrs`, CMH-VAL-21), not
+    by the host, so this scan reads the same values the validator does on every interpreter and
+    a duplicated attribute resolves the way a browser resolves it. <script>/<style> bodies are
+    treated as CDATA, so a chart's init script or the inlined CSS never trips a check.
     """
 
     def __init__(self):
@@ -147,8 +150,12 @@ class _ActiveContentScanner(HTMLParser):
     def handle_startendtag(self, tag, attrs):
         self._scan(tag, attrs)
 
-    def _scan(self, tag, attrs):
+    def _scan(self, tag, raw_attrs):
         tag = tag.lower()
+        # Every pair, browser-decoded: the SCAN reads them all (a duplicate is still an authored
+        # attribute an author must clean up), while the single-valued question below reads the
+        # first-wins dict a browser resolves to.
+        attrs = _browser_attrs.attrs(self, tag, raw_attrs)
         if tag in _ACTIVE_TAGS:
             self.errors.append(f"deck: <{tag}> is not allowed in the deck body")
         if tag == "script":
@@ -161,7 +168,7 @@ class _ActiveContentScanner(HTMLParser):
                 self.errors.append("deck: external <script> (src/href) is not allowed in the deck body")
             return
         if tag == "meta":
-            attr_map = {(n or "").lower(): (v or "") for n, v in attrs}
+            attr_map = _browser_attrs.attrs_dict(self, tag, raw_attrs)
             if attr_map.get("http-equiv", "").lower() == "refresh":
                 self.errors.append("deck: <meta http-equiv=refresh> (redirect) is not allowed in the deck body")
         egress = _EGRESS_ATTRS.get(tag, set())
@@ -204,10 +211,6 @@ class _AuthoredContentRegion:
         self.depth = depth
         self.lines = 0
         self.elements = elements
-
-
-def _attr_map(attrs):
-    return {(n or "").lower(): (v or "") for n, v in attrs}
 
 
 def _classes(attrs):
@@ -265,8 +268,10 @@ class _AuthoredContentScanner(HTMLParser):
             for region in self._active:
                 region.lines += lines
 
-    def _start(self, tag, attrs, self_closing):
-        attrs = _attr_map(attrs)
+    def _start(self, tag, raw_attrs, self_closing):
+        # The same shared browser decode the active-content scan uses, so an advisory count is
+        # never taken from a value the validator disagrees with (CMH-VAL-21).
+        attrs = _browser_attrs.attrs_dict(self, tag, raw_attrs)
         countable = not self._skip_depth and _authored_element_count(tag, attrs)
         for region in self._active:
             region.depth += 1

@@ -837,5 +837,141 @@ class ConsumerBoundaryTests(unittest.TestCase):
         self.assertEqual(warnings, [], warnings)
 
 
+class TagAttrLookupBoundaryTests(unittest.TestCase):
+    """The tag-attribute lookup the resource checks read draws the SAME element boundaries as
+    the document parser (CMH-VAL-21).
+
+    It used to be a bare `HTMLParser`, so the two views of one document disagreed about what an
+    element even IS - and the disagreement was exploitable, because the self-contained / offline
+    resource checks read the lookup while everything else read the parse.
+    """
+
+    def setUp(self):
+        parsing._tag_attr_index.cache_clear()
+        self.addCleanup(parsing._tag_attr_index.cache_clear)
+
+    def test_a_bogus_cdata_comment_does_not_hide_a_live_script_from_the_tag_lookup(self):
+        # In HTML content `<![CDATA[` is a BOGUS COMMENT ending at the first `>`, so the
+        # external <script> after it is LIVE markup a browser fetches and runs. `html.parser`
+        # consumes the whole marked section instead, which made the lookup report NO script
+        # while the document parser reported one - and the self-contained / offline checks read
+        # the lookup.
+        html = ('<main id="commentRoot"></main>'
+                '<![CDATA[><script src="//evil.example/x.js"></script>]]>')
+        self.assertEqual([d.get("src") for d in parsing._find_tag_attrs(html, "script")],
+                         ["//evil.example/x.js"])
+        self.assertEqual([s["attrs"].get("src") for s in parsing._parse_document(html).scripts],
+                         ["//evil.example/x.js"])
+
+    def test_the_tag_lookup_ignores_an_element_quoted_in_a_raw_text_body(self):
+        # The other direction of the same agreement: an `<img>` a reader only SEES inside a
+        # raw-text body loads nothing, so it must not be reported as a network resource.
+        # `<noscript>` is the one exception, covered by its own test below: its body is real
+        # markup a browser parses (and loads) when scripting is disabled.
+        for elem in [e for e in RAW_TEXT_ELEMENTS if e != "noscript"]:
+            with self.subTest(elem=elem):
+                parsing._tag_attr_index.cache_clear()
+                html = '<%s><img src="//evil.example/x.png"></%s>' % (elem, elem)
+                self.assertEqual(parsing._find_tag_attrs(html, "img"), [])
+                self.assertEqual(len(parsing._find_tag_attrs(html, elem)), 1,
+                                 "the raw-text element itself is still an element")
+
+    def test_the_tag_lookup_sees_noscript_fallback_markup(self):
+        # With scripting DISABLED a browser parses the `<noscript>` body and loads what it
+        # names, so the EGRESS checks must fail CLOSED on it. Sharing the boundary layer
+        # would otherwise have hidden a live network `<meta refresh>` / `<img>` behind the one
+        # raw-text element whose body is markup in a real browsing mode.
+        html = ('<noscript><meta http-equiv="refresh" content="0;url=//evil.example/out">'
+                '<img src="//evil.example/x.png"></noscript>')
+        self.assertEqual([d.get("src")
+                          for d in parsing._find_tag_attrs_egress(html, "img")],
+                         ["//evil.example/x.png"])
+        self.assertEqual([d.get("content")
+                          for d in parsing._find_tag_attrs_egress(html, "meta")],
+                         ["0;url=//evil.example/out"])
+
+    def test_noscript_fallback_markup_is_opt_in_not_the_default_view(self):
+        # The fallback is a SUPERSET for the egress question only. A PRESENCE check ("does this
+        # document declare a CSP / carry a Run link?") must still read the browser's view, or a
+        # phantom element inside `<noscript>` - which a scripting-enabled browser never creates -
+        # would satisfy a requirement no reader of the layer can see.
+        html = '<noscript><meta http-equiv="content-security-policy" content="default-src \'none\'"></noscript>'
+        self.assertEqual(parsing._find_tag_attrs(html, "meta"), [])
+        self.assertEqual(len(parsing._find_tag_attrs_egress(html, "meta")), 1)
+
+    def test_a_noscript_body_that_is_only_text_contributes_no_element(self):
+        # The fallback pass parses the body as MARKUP, so prose in a <noscript> must not
+        # invent elements (and a nested raw-text body inside it stays opaque).
+        html = ('<noscript>enable JavaScript to comment'
+                '<script>var u = "<img src=\'quoted.png\'>";</script></noscript>')
+        self.assertEqual(parsing._find_tag_attrs_egress(html, "img"), [])
+
+    def test_a_failed_tag_index_is_reported_instead_of_read_as_a_clean_document(self):
+        # A partial index would let the self-contained check conclude that the rest of the
+        # document loads nothing, so the failure is FLAGGED and the resource checks fail closed
+        # on it - the same contract `code_block_spans` already has.
+        html = '<img src="//evil.example/x.png">'
+        self.assertFalse(parsing._tag_attrs_failed(html))
+        with mock.patch.object(parsing, "_TagAttrParser", side_effect=RuntimeError("boom")):
+            parsing._tag_attr_index.cache_clear()
+            self.assertTrue(parsing._tag_attrs_failed(html))
+            self.assertEqual(parsing._find_tag_attrs(html, "img"), [])
+        parsing._tag_attr_index.cache_clear()   # do not leave the failed entry cached
+
+    def test_a_failed_noscript_fallback_parse_is_reported_too(self):
+        # The fallback body gets its own parse, so its failure must reach the same flag - a
+        # silently empty fallback view reads exactly like "this document loads nothing".
+        real = parsing._TagAttrParser.parse_document
+
+        def flaky(parser, html):
+            if parser._fallback:
+                raise RuntimeError("boom")
+            return real(parser, html)
+
+        html = '<noscript><img src="//evil.example/x.png"></noscript>'
+        with mock.patch.object(parsing._TagAttrParser, "parse_document", flaky):
+            parsing._tag_attr_index.cache_clear()
+            self.assertTrue(parsing._tag_attrs_failed(html))
+        parsing._tag_attr_index.cache_clear()   # do not leave the failed entry cached
+
+    def test_a_nested_noscript_does_not_drop_out_of_the_fallback_view(self):
+        # The fallback pass is a SCRIPTING-DISABLED read, where `<noscript>` is transparent, so
+        # nesting cannot bury a network resource below a recursion cap.
+        html = ("<noscript>" * 5) + '<img src="//evil.example/x.png">' + ("</noscript>" * 5)
+        self.assertEqual([d.get("src")
+                          for d in parsing._find_tag_attrs_egress(html, "img")],
+                         ["//evil.example/x.png"])
+        self.assertFalse(parsing._tag_attrs_failed(html))
+
+    def test_a_noscript_closer_quoted_in_the_fallback_markup_is_reported(self):
+        # The body's END is decided by the scripting-ENABLED tokenizer (the first `</noscript`),
+        # but a scripting-DISABLED browser is in the DATA state there, so this `</noscript` is
+        # just attribute text to it and the `<img>` really does load. The two views disagree
+        # about where the body stops and the straddling tag reaches the fallback parse
+        # truncated, so it lands in neither index - REPORT that rather than call the document
+        # clean.
+        for quote in ('"', "'"):
+            with self.subTest(quote=quote):
+                parsing._tag_attr_index.cache_clear()
+                html = ('<noscript><img alt=%s</noscript>%s src="//evil.example/x.png">'
+                        "</noscript>" % (quote, quote))
+                self.assertTrue(parsing._tag_attrs_failed(html))
+
+    def test_the_tag_lookup_ends_a_raw_text_region_at_an_attributed_closer(self):
+        html = ('<script>var u = "<img src=\'quoted.png\'>";</script data-x>'
+                '<img src="real.png"><script>var a = 1;</script>')
+        self.assertEqual([d.get("src") for d in parsing._find_tag_attrs(html, "img")],
+                         ["real.png"])
+
+    def test_an_unterminated_comment_hides_the_rest_of_the_document_from_the_tag_lookup(self):
+        html = '<img src="a.png"><!-- oops <img src="b.png">'
+        self.assertEqual([d.get("src") for d in parsing._find_tag_attrs(html, "img")],
+                         ["a.png"])
+
+    def test_a_cdata_section_inside_foreign_content_is_still_a_section(self):
+        html = '<svg><![CDATA[<image href="//evil.example/x.png">]]></svg>'
+        self.assertEqual(parsing._find_tag_attrs(html, "image"), [])
+
+
 if __name__ == "__main__":
     unittest.main()
