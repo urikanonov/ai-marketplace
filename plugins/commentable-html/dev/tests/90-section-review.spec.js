@@ -610,6 +610,9 @@ test.describe("section review tracking", () => {
     await openToolbarMenu(page);
     const [download] = await Promise.all([page.waitForEvent("download"), page.click("#btnSaveHtmlTop")]);
     const saved = await readDownload(download);
+    // Anchor on the download toast first: `not.toContainText` passes vacuously against a toast that
+    // has not been raised yet.
+    await expect(page.locator("#toast")).toContainText("Downloaded");
     await expect(page.locator("#toast")).not.toContainText("Section-review state was left out");
     const region = saved.match(/BEGIN: commentable-html - EMBEDDED COMMENTS[\s\S]*?END: commentable-html - EMBEDDED COMMENTS/);
     expect(region).toBeTruthy();
@@ -617,6 +620,65 @@ test.describe("section review tracking", () => {
     expect(inRegion.length).toBe(1);                                   // inserted inside the region
     expect(Object.keys(JSON.parse(inRegion[0][1].trim()))).toEqual(["rv-alpha"]);
     expect(saved).toContain("DECOY_SENTINEL");                         // the decoy keeps its bytes
+  });
+
+  test("the export declines rather than writing a content-region decoy (CMH-EXP-17)", async ({ page }) => {
+    await installClipboardCapture(page);
+    await denyExternalNetwork(page);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    // The write side answers to the same boundary as the read side: with the layer's own block gone
+    // and only an authored decoy left, the export declines and says so - it neither writes the
+    // reader's state into content nor adds a second carrier the reload would then have to choose
+    // between.
+    const decoy = REVIEW_SCRIPT_OPEN + reviewMarkerJson("rv-beta") + "</script>";
+    const { html } = stageContent(CONTENT + decoy, { key: "cmh-review-write-decoy", source: "write-decoy.html" });
+    const staged = fs.readFileSync(html, "utf8");
+    const owned = staged.match(REVIEW_BLOCK_RE);
+    expect(owned).toBeTruthy();
+    fs.writeFileSync(html, staged.replace(owned[0], ""));
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await page.locator("#rv-alpha").hover();
+    await page.locator("#rv-alpha .cmh-review-badge").click();
+    await openToolbarMenu(page);
+    const [download] = await Promise.all([page.waitForEvent("download"), page.click("#btnSaveHtmlTop")]);
+    const saved = await readDownload(download);
+    await expect(page.locator("#toast")).toContainText("inside the content root");
+    const blocks = [...saved.matchAll(/<script[^>]*type="application\/json"[^>]*id="reviewedSections"[^>]*>([\s\S]*?)<\/script>/g)]
+      .map((m) => JSON.parse(m[1].trim() || "{}"));
+    expect(blocks.length).toBe(1);                      // no second block was invented
+    expect(Object.keys(blocks[0])).toEqual(["rv-beta"]); // the decoy's bytes are untouched
+  });
+
+  test("a document with no content root still resolves its review block (CMH-EXP-17)", async ({ page }) => {
+    await installClipboardCapture(page);
+    await denyExternalNetwork(page);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    // The boundary's THIRD state: a document that never delimited a content region has nothing
+    // inside one, so the plain answer stands and review state must keep working exactly as before -
+    // narrowing the candidates must not turn "no root" into "no blocks".
+    const { html } = stageContent(CONTENT, { key: "cmh-review-no-root", source: "no-root.html" });
+    const staged = fs.readFileSync(html, "utf8");
+    const owned = staged.match(REVIEW_BLOCK_RE);
+    expect(owned).toBeTruthy();
+    expect(staged).toContain('id="commentRoot"');
+    fs.writeFileSync(html, staged
+      .replace(owned[0], REVIEW_SCRIPT_OPEN + reviewMarkerJson("rv-alpha") + "</script>")
+      .replace('id="commentRoot"', 'id="notTheCommentRoot"'));
+    await page.goto(fileUrl(html));
+    await ready(page);
+    expect(await stateOf(page, "rv-alpha")).toBe("changed"); // baked marker read, hash deliberately stale
+    await page.locator("#rv-beta").hover();
+    await page.locator("#rv-beta .cmh-review-badge").click();
+    await openToolbarMenu(page);
+    const [download] = await Promise.all([page.waitForEvent("download"), page.click("#btnSaveHtmlTop")]);
+    const saved = await readDownload(download);
+    await expect(page.locator("#toast")).toContainText("Downloaded");
+    await expect(page.locator("#toast")).not.toContainText("Section-review state was left out");
+    const blocks = [...saved.matchAll(/<script[^>]*type="application\/json"[^>]*id="reviewedSections"[^>]*>([\s\S]*?)<\/script>/g)]
+      .map((m) => JSON.parse(m[1].trim() || "{}"));
+    expect(blocks.length).toBe(1);
+    expect(Object.keys(blocks[0]).sort()).toEqual(["rv-alpha", "rv-beta"]);
   });
 
   test("the runtime section hash matches the JS/Python golden (CMH-REVIEW-08)", async ({ page }) => {
