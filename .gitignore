@@ -57,9 +57,11 @@ plugins/commentable-html/dev/dist/
 # repo root instead of tmp/ (see AGENTS.md rule 1 and House style). The repo root holds no code,
 # HTML, or captured output, so ignore those shapes HERE. Every pattern is root-anchored (leading /)
 # so nothing under plugins/, scripts/, site/, or .github/ is ever hidden; add a `!/name` line if the
-# root ever legitimately needs one of these. scripts/check_forbidden_files.py is the committed
-# backstop: at the repo root it allows only the documented top-level files, so a probe of ANY
-# shape is refused there even if a pattern below does not match it.
+# root ever legitimately needs one of these. An underscore-prefixed dump (`_review_diff1.txt`,
+# `_t1.txt`) has no legitimate root form at all, so `/_*` covers whatever extension the next one
+# picks. scripts/check_forbidden_files.py is the committed backstop: at the repo root it allows only
+# the documented top-level files and directories, so a probe of ANY shape is refused there even if a
+# pattern below does not match it.
 /*.patch
 /*.diff
 /*.js
@@ -87,3 +89,4 @@ plugins/commentable-html/dev/dist/
 /x.*
 /out.*
 /err.*
+/_*

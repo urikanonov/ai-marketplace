@@ -5,10 +5,15 @@ This is the enforceable equivalent of a "block .env / .pem / .key" push rule for
 a public, user-owned repository. GitHub push rulesets are only available on
 organization-owned repos, so this check runs in the required `validate` CI job
 and in the `.githooks/pre-commit` hook instead, ensuring a private key, keystore,
-or dotenv file cannot be committed even by the owner.
+or dotenv file cannot be committed even by the owner. It also refuses a scratch
+diff/patch dump anywhere in the tree, and anything whose top-level entry is not
+one of the repository's allowlisted top-level files or directories.
 
-Run from the repo root:
+The SCAN is cwd-independent (it anchors on this script's own repository), but the
+command below is not - it names the script relative to the repo root:
     python scripts/check_forbidden_files.py
+From a subdirectory, give the script's own path instead, for example
+`python ../scripts/check_forbidden_files.py`.
 """
 
 from __future__ import annotations
@@ -88,9 +93,31 @@ ROOT_ALLOWED = frozenset(
     )
 )
 
+# The top-level DIRECTORIES are a closed set for the same reason, and closing only the file half
+# leaves the obvious dodge open: `captures/out.txt` or `_scratch/probe.html` has a slash, so a
+# file-only rule waves it through on a plain `git add -A` while it is every bit as much a dump.
+# A new top-level directory is a rare, reviewable event, so it earns a line here.
+ROOT_DIR_ALLOWED = frozenset(
+    (
+        ".claude-plugin",
+        ".githooks",
+        ".github",
+        ".vscode",
+        "docs",
+        "plugins",
+        "scripts",
+        "site",
+    )
+)
+
+# tmp/ is deliberately NOT a directory above. It is the place this guard tells you to write
+# scratch, so allowing the directory wholesale would wave through the very dumps it exists to
+# refuse (`tmp/dump.txt` force-added past the .gitignore). Only its marker file may be tracked.
+ROOT_PATH_ALLOWED = frozenset(("tmp/.gitkeep",))
+
 
 def is_root_scratch(path: str) -> bool:
-    """Return True when `path` is a file at the repository root that does not belong there.
+    """Return True when `path` is not under an approved top-level entry of the repository.
 
     `path` is a git index path, so `/` is the only separator: a literal backslash is part of
     the NAME on a case-sensitive filesystem, and translating it would let a root file called
@@ -99,9 +126,14 @@ def is_root_scratch(path: str) -> bool:
     norm = path
     while norm.startswith("./"):
         norm = norm[2:]
-    if "/" in norm or not norm:
+    if norm in ROOT_PATH_ALLOWED:
         return False
-    return norm not in ROOT_ALLOWED
+    if not norm:
+        return False
+    head, slash, _ = norm.partition("/")
+    if slash:
+        return head not in ROOT_DIR_ALLOWED
+    return head not in ROOT_ALLOWED
 
 
 def is_scratch_artifact(path: str) -> bool:
@@ -158,10 +190,17 @@ def tracked_files() -> "list[str] | None":
         return None
     try:
         result = subprocess.run(
-            ["git", "-C", root, "ls-files", "-z", "--full-name"],
+            # A non-ASCII path has to survive two hops, and each corruption is a SILENT
+            # allowlist miss: `core.quotePath=false` stops git C-quoting the name (-z only
+            # changes the delimiter, not the quoting), and the explicit decode below stops
+            # Python reading git's path bytes with the locale codec (cp1252 on Windows).
+            ["git", "-C", root, "-c", "core.quotePath=false", "ls-files", "-z", "--full-name"],
             check=True,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            # surrogateescape keeps a genuinely non-UTF-8 name intact instead of raising.
+            errors="surrogateescape",
         )
     except FileNotFoundError:
         print("check_forbidden_files: git is not installed; skipping the tracked-file scan.")
@@ -178,27 +217,40 @@ def tracked_files() -> "list[str] | None":
     return [path for path in result.stdout.split("\0") if path]
 
 
+def display_path(path: str) -> str:
+    """Render `path` so it can always be printed, whatever the console encoding is.
+
+    A name that is not valid UTF-8 is carried as surrogates by the decode in tracked_files();
+    printing one straight to a cp1252 console raises UnicodeEncodeError, which would replace an
+    actionable refusal with a traceback - the guard failing in the one case it must be clearest.
+    """
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    literal = path.encode("utf-8", "surrogateescape").decode("utf-8", "backslashreplace")
+    return literal.encode(encoding, "backslashreplace").decode(encoding, "replace")
+
+
 def main() -> int:
     files = tracked_files()
     if files is None:
         return 0
     status = 0
-    offenders = sorted(path for path in files if is_forbidden(path))
+    offenders = sorted({path for path in files if is_forbidden(path)})
     if offenders:
         print("check_forbidden_files: secret-bearing files must never be committed:")
         for path in offenders:
-            print(f"  - {path}")
+            print(f"  - {display_path(path)}")
         print("Remove them, add the pattern to .gitignore, and rotate any exposed secret.")
         status = 1
-    scratch = sorted(path for path in files if is_scratch_artifact(path))
+    scratch = sorted({path for path in files if is_scratch_artifact(path)})
     if scratch:
         print("check_forbidden_files: scratch dumps must never be committed:")
         for path in scratch:
-            print(f"  - {path}")
+            print(f"  - {display_path(path)}")
         print("Write them to the gitignored tmp/ instead, with an absolute or tmp/-prefixed path.")
         print(
-            "A diff/patch dump is refused anywhere; at the repo ROOT only the files listed in "
-            "ROOT_ALLOWED in this script are allowed - add a real top-level file there."
+            "A diff/patch dump is refused anywhere; at the repo ROOT only the entries listed in "
+            "ROOT_ALLOWED / ROOT_DIR_ALLOWED in this script are allowed - add a real top-level "
+            "file or directory there."
         )
         status = 1
     if status == 0:
