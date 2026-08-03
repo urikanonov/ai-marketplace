@@ -77,6 +77,8 @@ exited held a ninety minute run in memory and wrote nothing (one sat for sevente
   regardless of what the stream is doing. Nothing here trusts quiet: a TUI repaints, so "the stream
   went silent" is not a signal that anything finished. The grace applies only to a SCRIPTED capture -
   an interactive one has an operator sitting in front of it and is never killed for being quiet.
+  Every other forced ending - the size limit, a script that cannot continue - goes through the same
+  supervisor, so none of them can kill the child and then wait for a session that is already gone.
 - **A stalled capture says so** (`--progress`, every 60 seconds; `0` turns it off). The line names
   elapsed time, how long the session has been silent, how much has been captured, and the step being
   waited on, so a wedge is visible without watching a log file's mtime by eye. It goes to stderr and

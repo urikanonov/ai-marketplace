@@ -185,6 +185,23 @@ function numberOpt(args, key, fallback) {
   return value;
 }
 
+// A capture watchdog is given in SECONDS on the command line and used in MILLISECONDS inside, and
+// both ends of that conversion have to be refused rather than silently accepted: `1e308` seconds
+// becomes Infinity milliseconds, and `0.0004` seconds rounds to zero - each of which turns a
+// watchdog the operator explicitly asked for into no watchdog at all, which is the failure the
+// watchdogs exist to prevent.
+export function watchdogMs(args, key, defaultMs, { allowZero = false } = {}) {
+  const seconds = args[key] == null ? defaultMs / 1000 : Number(args[key]);
+  if (!Number.isFinite(seconds) || seconds < 0 || (!allowZero && seconds <= 0)) {
+    throw new Error(allowZero
+      ? `Option --${key} must be a non-negative number of seconds (0 turns it off)`
+      : `Option --${key} must be a positive number of seconds`);
+  }
+  const ms = seconds === 0 ? 0 : Math.max(1, Math.round(seconds * 1000));
+  if (!Number.isFinite(ms)) throw new Error(`Option --${key} is too large: ${args[key]} seconds`);
+  return ms;
+}
+
 function stamp() {
   return new Date().toISOString().replace(/[:.]/g, "-").replace("Z", "");
 }
@@ -964,6 +981,16 @@ export async function driveScript(script, session, hooks = {}) {
     onWaiting = () => {},
     onTimeout = () => {},
   } = hooks;
+  // Sleeps are taken in poll-sized pieces so an ended session does not have to be waited out: a
+  // step may legitimately ask for a long delay, and the whole point of an interrupt is that the
+  // operator gets the cast now rather than after the recipe's next timer.
+  const napChunked = async (ms) => {
+    const until = now() + ms;
+    while (now() < until) {
+      if (session.exited()) return;
+      await nap(Math.min(pollMs, until - now()));
+    }
+  };
   for (const step of script.steps) {
     const startedAt = now();
     // Each step only reads output produced SINCE IT BEGAN. Sharing one buffer let a step whose
@@ -1002,7 +1029,7 @@ export async function driveScript(script, session, hooks = {}) {
     }
     onWaiting(null);
     if (skipped) continue;
-    if (step.delayMs) await nap(step.delayMs);
+    if (step.delayMs) await napChunked(step.delayMs);
     if (session.exited()) throw new Error(`session ended before step "${step.mark}" could be sent`);
     const payload = stepPayload(step);
     // Record WHAT WAS TYPED alongside the mark, so a render can put the real prompt on its
@@ -1010,7 +1037,7 @@ export async function driveScript(script, session, hooks = {}) {
     session.mark(step.mark, payload.replace(/\u001b\[20[01]~/g, ""));
     session.write(payload);
     const submit = stepSubmit(step);
-    if (submit) { await nap(step.submitMs); session.write(submit); }
+    if (submit) { await napChunked(step.submitMs); session.write(submit); }
   }
 }
 
@@ -1073,6 +1100,20 @@ export async function captureSession({
   // marker forever - which for the shipped script is a twenty-five minute hang.
   const since = (fromSeen) => buffer.slice(Math.max(0, buffer.length - (seen - fromSeen)));
 
+  // How the session was ENDED by something other than the session itself. Every forced ending goes
+  // through here so the supervisor is the one place that decides when to stop waiting: an ending
+  // that only killed the child (as the size guard used to) leaves a child that ignores the kill
+  // holding the recording forever, which is the very failure this file exists to prevent.
+  let forcedAt = null;
+  let forcedReason = "interrupt";
+  let killedAt = null;
+  const forceEnd = (reason) => {
+    if (forcedAt !== null) return false;
+    forcedAt = now();
+    forcedReason = reason;
+    return true;
+  };
+
   // 48MB of captured BYTES, not code units. The binding constraint is not the capture, it is
   // FINALISATION: scrubbing builds a projection, an offset map and a second copy of every event,
   // then JSON.stringify builds another - measured at roughly 25x the captured size in resident
@@ -1082,6 +1123,8 @@ export async function captureSession({
     overflowed = true;
     warn(`\n  capture: reached the ${maxMb}MB limit (--max-mb); ending the session and `
       + "keeping what was recorded so far.");
+    forceEnd("overflow");
+    killedAt = now();
     try { child.kill(); } catch (e) { /* already gone */ }
   });
 
@@ -1110,12 +1153,7 @@ export async function captureSession({
   // The operator's escape hatch, handed straight back to the caller so a signal handler can use it.
   // It reports whether it was the FIRST interrupt: a second one means the operator will not wait for
   // the write either, and the caller is free to exit hard.
-  let interruptedAt = null;
-  attachInterrupt(() => {
-    if (interruptedAt !== null) return false;
-    interruptedAt = now();
-    return true;
-  });
+  attachInterrupt(() => forceEnd("interrupt"));
 
   // Scripted turns are driven alongside the live stdin forwarding the caller wires up, so an
   // operator watching can still intervene.
@@ -1146,9 +1184,12 @@ export async function captureSession({
       .catch((e) => {
         // A driver that gives up must not leave the session sitting on a prompt forever - a capture
         // waiting on a step that can no longer be satisfied would otherwise hang for the whole of
-        // every remaining timeout, which the shipped script measures in tens of minutes.
+        // every remaining timeout, which the shipped script measures in tens of minutes. The
+        // supervisor is told the session is ending so it finalizes on the KILL grace rather than
+        // sitting out the whole exit grace waiting for a child it has already killed.
         driverError = e;
         warn(`  script: ${e.message}; ending the session`);
+        if (!childExited && forceEnd("driver-error")) killedAt = now();
         try { child.kill(); } catch (killErr) { /* already gone */ }
       })
       .finally(() => { driverDoneAt = now(); waiting = null; })
@@ -1156,23 +1197,29 @@ export async function captureSession({
 
   // The supervisor. Nothing here trusts the stream: a TUI repaints, goes quiet mid-thought, and can
   // fall silent for an hour while the child stays alive, so the decision to stop is the clock's.
-  let killedAt = null;
   let gaveUpBecause = null;
   let ended = null;
   let nextProgressAt = started + progressMs;
   for (;;) {
     if (childExited) { ended = gaveUpBecause || "exit"; break; }
     const at = now();
-    const state = sessionEndState({ now: at, driverDoneAt, interruptedAt, killedAt, exitGraceMs, killGraceMs });
+    const state = sessionEndState({ now: at, driverDoneAt, interruptedAt: forcedAt, killedAt, exitGraceMs, killGraceMs });
+    // `sessionEndState` knows only that something forced the ending; which something it was is the
+    // supervisor's to say, so the cast reports being cut short at its size limit as exactly that.
+    const reason = state.reason === "interrupt" ? forcedReason : state.reason;
     if (state.action === "kill") {
       killedAt = at;
-      gaveUpBecause = state.reason;
-      warn(`\n  WARNING: ${stallNotice({ ended: state.reason, quietMs: at - lastDataAt, graceMs: exitGraceMs })}`);
+      gaveUpBecause = reason;
+      warn(`\n  WARNING: ${stallNotice({ ended: reason, quietMs: at - lastDataAt, graceMs: exitGraceMs })}`);
       try { child.kill(); } catch (e) { /* already gone */ }
     } else if (state.action === "finalize") {
       // The child ignored the kill. Stop waiting for it rather than let it hold the recording.
-      ended = state.reason;
+      ended = reason;
       break;
+    } else if (killedAt !== null && gaveUpBecause === null) {
+      // The size guard killed the child itself; record what ended the session so a child that
+      // ignores that kill is finalized under the right reason rather than reported as a clean exit.
+      gaveUpBecause = reason;
     }
     if (progressMs > 0 && at >= nextProgressAt) {
       progress(progressLine({ now: at, startedAt: started, lastDataAt, bytes, waiting }));
@@ -1250,13 +1297,8 @@ async function captureTerminal(args) {
   const rows = Math.round(numberOpt(args, "rows", 30));
   const maxMb = args["max-mb"] == null ? 48 : args["max-mb"];
   const maxBytes = captureLimitBytes(maxMb);
-  const exitGraceMs = Math.round(numberOpt(args, "exit-grace", DEFAULT_EXIT_GRACE_MS / 1000) * 1000);
-  // Zero disables the progress line, so it is parsed here rather than through numberOpt, which
-  // refuses zero for options where zero would silently mean "no limit".
-  const progressSeconds = args.progress == null ? DEFAULT_PROGRESS_MS / 1000 : Number(args.progress);
-  if (!Number.isFinite(progressSeconds) || progressSeconds < 0) {
-    throw new Error("Option --progress must be a non-negative number of seconds (0 turns it off)");
-  }
+  const exitGraceMs = watchdogMs(args, "exit-grace", DEFAULT_EXIT_GRACE_MS);
+  const progressMs = watchdogMs(args, "progress", DEFAULT_PROGRESS_MS, { allowZero: true });
   // Every option is settled BEFORE the pty is loaded and the session spawned: a typo should cost a
   // second, not a session that is already running with a child attached.
   const script = args.script ? readScript(String(args.script)) : null;
@@ -1332,7 +1374,7 @@ async function captureTerminal(args) {
       maxMb,
       maxBytes,
       exitGraceMs,
-      progressMs: Math.round(progressSeconds * 1000),
+      progressMs,
       // The operator's own terminal shows the session RAW, because they are interacting with it.
       // Anything else - a pipe, a CI log, an agent transcript - gets the scrubbed stream, since a
       // credential printed to a persisted log leaks just as surely as one written into the cast.
@@ -1379,9 +1421,10 @@ async function captureTerminal(args) {
   for (const step of outcome.timedOutSteps) {
     console.warn(`  WARNING: ${stepGaveUpNotice(step)}`);
   }
-  // Same reasoning for the ending itself: a capture the clock ended, or one the operator stopped,
-  // is not the take the recipe describes.
-  if (outcome.ended !== "exit") {
+  // The ENDING itself is reported too: a capture the clock ended, or one the operator stopped, is
+  // not the take the recipe describes. An overflow and a failed script already have their own
+  // messages, so only the two endings that would otherwise pass silently are named here.
+  if (outcome.ended === "interrupt" || outcome.ended === "no-exit") {
     console.warn(`  WARNING: ${stallNotice({ ended: outcome.ended, graceMs: exitGraceMs })}`);
   }
   const leftover = outcome.leftover;

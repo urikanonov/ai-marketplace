@@ -87,7 +87,12 @@ test("the argument contract fails loudly rather than guessing (DEMO-CLI-02)", ()
   assert.match(badProgress.stderr, /--progress must be a non-negative number/);
   const badGrace = run(["capture", "--exit-grace", "0", "--", "node"]);
   assert.notEqual(badGrace.status, 0, "a zero --exit-grace was accepted");
-  assert.match(badGrace.stderr, /--exit-grace must be greater than zero/);
+  assert.match(badGrace.stderr, /--exit-grace must be a positive number of seconds/);
+  // Seconds in, milliseconds inside: both ends of that conversion have to be refused rather than
+  // silently turning a watchdog the operator asked for into no watchdog at all.
+  const hugeGrace = run(["capture", "--exit-grace", "1e308", "--", "node"]);
+  assert.notEqual(hugeGrace.status, 0, "an --exit-grace that overflows to Infinity was accepted");
+  assert.match(hugeGrace.stderr, /--exit-grace is too large/);
 });
 
 test("the safety gate refuses a dirty cast before any browser starts (DEMO-CLI-03)", () => {

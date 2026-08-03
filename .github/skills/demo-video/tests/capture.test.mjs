@@ -205,6 +205,80 @@ test("a wedged capture reports progress and says why it gave up (DEMO-CAP-05)", 
   h.cleanup();
 });
 
+test("a size-limit kill the session ignores still finalizes (DEMO-CAP-01)", async () => {
+  // The guard ends the session at the limit, but ENDING IT was all it used to do: a child that
+  // ignores the kill would then sit in the supervisor's "still running" state forever, holding the
+  // very recording the limit exists to save.
+  const h = harness({ killGraceMs: 1000 });
+  const child = fakeChild();
+  const running = captureSession({ ...h.options, child, maxBytes: 8 });
+  child.emit("far more than eight bytes of output\r\n");
+  const outcome = await running;
+
+  assert.equal(outcome.overflowed, true, "the size guard never fired");
+  assert.equal(outcome.ended, "overflow", "an overflowed capture reported a clean ending");
+  assert.equal(child.kills, 1, "the session was ended more than once");
+  assert.ok(fs.existsSync(outcome.outFile), "the overflowed capture lost the session");
+  const cast = JSON.parse(fs.readFileSync(outcome.outFile, "utf8"));
+  assert.match(cast.events.map((e) => e.data).join(""), /eight bytes/);
+  h.cleanup();
+});
+
+test("an interrupt does not wait out a step's own sleep (DEMO-CAP-04)", async () => {
+  // A step may legitimately ask for a long delay before it types. Waiting that out after the
+  // operator asked to stop would rebuild the hang this whole change exists to remove.
+  const h = harness();
+  const child = fakeChild();
+  const startedAt = h.clock.now();
+  const script = normalizeScript({
+    steps: [{ mark: "ask", send: "hello", idleMs: 0, timeoutMs: 60000, delayMs: 3600000 }],
+  }, h.dir);
+  let interrupt = null;
+  const running = captureSession({
+    ...h.options,
+    child,
+    script,
+    attachInterrupt: (fn) => { interrupt = fn; },
+  });
+  child.emit("ready\r\n");
+  interrupt("interrupt");
+  const outcome = await running;
+
+  assert.equal(outcome.ended, "interrupt");
+  assert.ok(
+    h.clock.now() - startedAt < 60000,
+    `the capture waited out the step's hour-long delay: ${h.clock.now() - startedAt}ms`,
+  );
+  assert.deepEqual(child.written, [], "the step typed after the operator stopped the capture");
+  assert.ok(fs.existsSync(outcome.outFile));
+  h.cleanup();
+});
+
+test("a script that cannot continue ends the session on the kill grace, not the exit grace (DEMO-CAP-03)", async () => {
+  // The driver kills the session when a step can no longer be satisfied, but the supervisor used to
+  // know nothing about that kill and would sit out the whole exit grace waiting for a child it had
+  // already killed - two minutes of nothing, on the path that is already going badly.
+  const h = harness({ exitGraceMs: 120000, killGraceMs: 1000 });
+  const child = fakeChild();
+  const startedAt = h.clock.now();
+  const script = normalizeScript({
+    steps: [{ mark: "paste", sendFile: "never-written.md", idleMs: 0, timeoutMs: 1000 }],
+  }, h.dir);
+
+  const running = captureSession({ ...h.options, child, script });
+  child.emit("ready\r\n");
+  const outcome = await running;
+
+  assert.match(outcome.driverError.message, /never appeared/);
+  assert.equal(outcome.ended, "driver-error");
+  assert.ok(
+    h.clock.now() - startedAt < 60000,
+    `a failed script sat out the exit grace: ${h.clock.now() - startedAt}ms`,
+  );
+  assert.ok(fs.existsSync(outcome.outFile), "a failed script lost the partial session");
+  h.cleanup();
+});
+
 test("a session that ends on its own is not killed or warned about (DEMO-CAP-03)", async () => {
   const h = harness();
   // The turn is typed, Enter follows as its own write, and the session ends - the happy path.
