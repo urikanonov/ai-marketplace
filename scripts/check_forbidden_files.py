@@ -57,11 +57,64 @@ SCRATCH_GLOBS = (
     "*.patch",
 )
 
+# Scratch shapes that are forbidden at the REPO ROOT only. An agent's one-off probe lands
+# beside AGENTS.md as `test_svg_exec.html`, `temp.txt`, `local.js`, or a bare `x` - shapes the
+# tree-wide diff/patch rule never saw, so `git add -A` could commit one and every gate would
+# stay green (that is how `diff.txt` and `js-diff.txt`, two unreferenced 38KB diff captures,
+# came to be tracked at the root). The root holds only its documented top-level files - no
+# code, no HTML, no captured output - so anchoring the rule here refuses a probe without
+# touching a real report under examples/, a page under site/, or anything in a plugin.
+# Mirrors the root-anchored block in .gitignore; keep the two in step.
+ROOT_SCRATCH_GLOBS = (
+    "*.html",
+    "*.htm",
+    "*.txt",
+    "*.json",
+    "*.xml",
+    "*.csv",
+    "*.js",
+    "*.mjs",
+    "*.cjs",
+    "*.ts",
+    "*.py",
+    "*.sh",
+    "*.ps1",
+    "test_*",
+    "test-*",
+    "temp",
+    "temp.*",
+    "tmp_*",
+    "tmp-*",
+    "probe*",
+    "scratch*",
+    "out.*",
+    "err.*",
+    "x",
+    "x.*",
+)
+
+# Names that legitimately live at the repo root despite matching a pattern above. Add one here
+# (and a `!/name` line in .gitignore) rather than widening the globs.
+ROOT_ALLOWED = frozenset()
+
+
+def is_root_scratch(path: str) -> bool:
+    """Return True when `path` is a scratch probe sitting at the repository root."""
+    norm = path.replace("\\", "/")
+    if "/" in norm:
+        return False
+    name = norm.lower()
+    if name in ROOT_ALLOWED:
+        return False
+    return any(fnmatch.fnmatchcase(name, pattern) for pattern in ROOT_SCRATCH_GLOBS)
+
 
 def is_scratch_artifact(path: str) -> bool:
-    """Return True when the file looks like a committed scratch diff or patch dump."""
+    """Return True when the file looks like a committed scratch dump."""
     name = path.replace("\\", "/").rsplit("/", 1)[-1].lower()
-    return any(fnmatch.fnmatchcase(name, pattern) for pattern in SCRATCH_GLOBS)
+    if any(fnmatch.fnmatchcase(name, pattern) for pattern in SCRATCH_GLOBS):
+        return True
+    return is_root_scratch(path)
 
 
 def is_forbidden(path: str) -> bool:
@@ -111,10 +164,11 @@ def main() -> int:
         status = 1
     scratch = sorted(path for path in files if is_scratch_artifact(path))
     if scratch:
-        print("check_forbidden_files: scratch diff/patch dumps must never be committed:")
+        print("check_forbidden_files: scratch dumps must never be committed:")
         for path in scratch:
             print(f"  - {path}")
         print("Write them to the gitignored tmp/ instead, with an absolute or tmp/-prefixed path.")
+        print("A diff/patch dump is refused anywhere; a probe shape is refused at the repo root.")
         status = 1
     if status == 0:
         print("check_forbidden_files: no secret-bearing files or scratch dumps are tracked. OK")

@@ -53,11 +53,12 @@ plugins/commentable-html/dev/dist/
 *.diff.txt
 
 # Stray scratch dumped at the repo ROOT. Tooling and (sub-)agents sometimes write a `git diff`, an
-# extracted copy of a source file, a probe script, or captured output at the repo root instead of
-# tmp/ (see AGENTS.md rule 1 and House style). The repo root holds no code files, so ignore code /
-# patch / diff / captured-output dumps HERE. Every pattern is root-anchored (leading /) so nothing
-# under plugins/, scripts/, site/, or .github/ is ever hidden; add a `!/name` line if the root ever
-# legitimately needs one of these.
+# extracted copy of a source file, a probe script, a rendered HTML probe, or captured output at the
+# repo root instead of tmp/ (see AGENTS.md rule 1 and House style). The repo root holds no code,
+# HTML, or captured output, so ignore those shapes HERE. Every pattern is root-anchored (leading /)
+# so nothing under plugins/, scripts/, site/, or .github/ is ever hidden; add a `!/name` line if the
+# root ever legitimately needs one of these. scripts/check_forbidden_files.py refuses the same
+# shapes if one is committed anyway - keep the two lists in step.
 /*.patch
 /*.diff
 /*.js
@@ -65,7 +66,23 @@ plugins/commentable-html/dev/dist/
 /*.cjs
 /*.ts
 /*.py
+/*.sh
+/*.ps1
+/*.html
+/*.htm
+/*.txt
+/*.json
+/*.xml
+/*.csv
+/test_*
+/test-*
+/temp
+/temp.*
 /tmp_*
-/out.txt
-/out.json
-/err.txt
+/tmp-*
+/probe*
+/scratch*
+/x
+/x.*
+/out.*
+/err.*
