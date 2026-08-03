@@ -1107,10 +1107,15 @@ export async function captureSession({
   let forcedAt = null;
   let forcedReason = "interrupt";
   let killedAt = null;
+  // Recorded when the ending is FORCED, not when the supervisor kills: a child that dies obediently
+  // would otherwise be reported as a clean exit, which is the common case in production and exactly
+  // the ending the operator must not be told was clean.
+  let gaveUpBecause = null;
   const forceEnd = (reason) => {
     if (forcedAt !== null) return false;
     forcedAt = now();
     forcedReason = reason;
+    gaveUpBecause = reason;
     return true;
   };
 
@@ -1151,9 +1156,17 @@ export async function captureSession({
   });
 
   // The operator's escape hatch, handed straight back to the caller so a signal handler can use it.
-  // It reports whether it was the FIRST interrupt: a second one means the operator will not wait for
-  // the write either, and the caller is free to exit hard.
-  attachInterrupt(() => forceEnd("interrupt"));
+  // It reports whether it was the operator's FIRST interrupt: a second one means they will not wait
+  // for the write either, and the caller is free to exit hard. Counted SEPARATELY from the forced-end
+  // latch - an overflow or a failed script has already forced the ending, and if that consumed the
+  // latch the operator's first Ctrl+C would be treated as their second and throw the session away,
+  // which is the exact loss this whole change exists to prevent.
+  let interrupts = 0;
+  attachInterrupt(() => {
+    interrupts += 1;
+    forceEnd("interrupt");
+    return interrupts === 1;
+  });
 
   // Scripted turns are driven alongside the live stdin forwarding the caller wires up, so an
   // operator watching can still intervene.
@@ -1197,7 +1210,6 @@ export async function captureSession({
 
   // The supervisor. Nothing here trusts the stream: a TUI repaints, goes quiet mid-thought, and can
   // fall silent for an hour while the child stays alive, so the decision to stop is the clock's.
-  let gaveUpBecause = null;
   let ended = null;
   let quietMs = 0;
   let nextProgressAt = started + progressMs;
@@ -1227,10 +1239,6 @@ export async function captureSession({
       // The child ignored the kill. Stop waiting for it rather than let it hold the recording.
       ended = reason;
       break;
-    } else if (killedAt !== null && gaveUpBecause === null) {
-      // The size guard killed the child itself; record what ended the session so a child that
-      // ignores that kill is finalized under the right reason rather than reported as a clean exit.
-      gaveUpBecause = reason;
     }
     if (progressMs > 0 && at >= nextProgressAt) {
       progress(progressLine({ now: at, startedAt: started, lastDataAt, bytes, waiting: waiting || scriptState() }));
@@ -1315,6 +1323,64 @@ export function isQuitKey(data) {
   return String(data).includes(String.fromCharCode(QUIT_KEY));
 }
 
+// What a keystroke does. Kept out of the pty wiring so the one decision that must never drift -
+// Ctrl+C reaches the session, Ctrl+\ ends the capture - is pinned by a test rather than by reading.
+export function handleCaptureInput(data, { isTTY = false, onQuit = () => {}, write = () => {} } = {}) {
+  if (isTTY && isQuitKey(data)) {
+    onQuit();
+    return "quit";
+  }
+  try { write(data.toString("utf8")); } catch (e) { /* the child is gone */ }
+  return "forwarded";
+}
+
+// The closing summary, built as DATA so the one place that has to repeat what the supervisor
+// measured is testable without a pty. Both halves of that matter: a summary that reads like a clean
+// take is how a wrong ending gets published, and one that invents a number (it claimed the session
+// had been quiet for 0s while the supervisor's own warning carried the real figure) is how an
+// accurate warning stops being believed.
+export function captureSummaryLines(outcome, { maxMb = 48, exitGraceMs = DEFAULT_EXIT_GRACE_MS } = {}) {
+  const lines = [];
+  // A script that could not finish means the session is NOT the one the recipe describes - a turn
+  // may never have been sent. The cast is still written, because a long capture is expensive and the
+  // partial recording may be worth keeping, but it must never look like a clean run.
+  if (outcome.driverError) {
+    lines.push({ level: "error", text: `\nFAILED: the capture script did not complete: ${outcome.driverError.message}` });
+    lines.push({ level: "error", text: "The cast below is PARTIAL - it does not contain every turn the script asked for." });
+  }
+  lines.push({ level: "log", text: `\ncast:       ${outcome.outFile}` });
+  lines.push({ level: "log", text: `transcript: ${outcome.transcriptFile}` });
+  lines.push({ level: "log", text: `redacted:   ${outcome.redactions} match(es) scrubbed before writing` });
+  if (outcome.overflowed) {
+    lines.push({ level: "warn", text: `  NOTE: the session was cut short at the ${maxMb}MB capture limit, so this cast is `
+      + "not the whole session." });
+  }
+  // The expensive silent miss: a step waited its whole timeout, the session never produced what the
+  // recipe asked for, and the closing summary still read like a clean take. Say it here, where it
+  // cannot scroll away, because deciding to re-run is a lot cheaper than publishing the wrong clip.
+  for (const step of outcome.timedOutSteps) {
+    lines.push({ level: "warn", text: `  WARNING: ${stepGaveUpNotice(step)}` });
+  }
+  // The ENDING itself, for the same reason. An overflow and a failed script already have their own
+  // messages above, so only the two endings that would otherwise pass silently are named here.
+  if (outcome.ended === "interrupt" || outcome.ended === "no-exit") {
+    lines.push({ level: "warn", text: `  WARNING: ${stallNotice({ ended: outcome.ended, quietMs: outcome.quietMs, graceMs: exitGraceMs })}` });
+  }
+  if (outcome.leftover && outcome.leftover.length) {
+    lines.push({ level: "warn", text: `  WARNING: ${outcome.leftover.length} finding(s) survived scrubbing - render will refuse this cast` });
+  }
+  lines.push({ level: "log", text: "READ THE TRANSCRIPT before you render or publish: automated redaction is a net, not a gate." });
+  return lines;
+}
+
+// An ending that was not the session's own is a FAILED capture, whatever landed on disk - the cast
+// is kept, but a caller must be able to tell without parsing the summary.
+export function captureExitCode(outcome) {
+  if (outcome.ended === "interrupt") return 130;
+  if (outcome.driverError || outcome.overflowed || outcome.ended !== "exit") return 1;
+  return outcome.exitCode || 0;
+}
+
 async function captureTerminal(args) {
   const command = args.passthrough;
   if (!command.length) throw new Error("capture needs a command after --, e.g. -- copilot");
@@ -1348,11 +1414,11 @@ async function captureTerminal(args) {
   });
 
   const wasRaw = process.stdin.isRaw;
-  const onInput = (data) => {
-    // Ctrl+\ ends the CAPTURE and writes the cast; Ctrl+C belongs to the session (see QUIT_KEY).
-    if (process.stdin.isTTY && isQuitKey(data)) { onSignal(); return; }
-    try { child.write(data.toString("utf8")); } catch (e) { /* child is gone */ }
-  };
+  const onInput = (data) => handleCaptureInput(data, {
+    isTTY: process.stdin.isTTY,
+    onQuit: () => onSignal(),
+    write: (text) => child.write(text),
+  });
   const onResize = () => { try { child.resize(process.stdout.columns || cols, process.stdout.rows || rows); } catch (e) { /* child is gone */ } };
   // Raw mode belongs to the CALLER's terminal, so it must be handed back on every path - a throw, a
   // Ctrl+C, a child that dies badly - or the operator is left with an unusable shell.
@@ -1386,6 +1452,10 @@ async function captureTerminal(args) {
   };
   process.on("SIGINT", onSignal);
   process.on("SIGTERM", onSignal);
+  // Ctrl+\ is what the docs tell an interactive operator to press, and once the first one has put
+  // the terminal back out of raw mode a second one is a real SIGQUIT - which Node terminates on by
+  // default, mid-finalization, while the cast is still being scrubbed and serialised.
+  process.on("SIGQUIT", onSignal);
 
   let outcome;
   try {
@@ -1428,45 +1498,18 @@ async function captureTerminal(args) {
     if (!process.stdout.isTTY) { try { process.stdout.write(liveScrubber.end()); } catch (e) { /* closed */ } }
     process.off("SIGINT", onSignal);
     process.off("SIGTERM", onSignal);
+    process.off("SIGQUIT", onSignal);
   }
 
-  // A driver that could not finish means the session is NOT the one the script describes - a turn
-  // may never have been sent. The cast is still written, because a long capture is expensive and
-  // the partial recording may be worth keeping, but it must never look like a clean run.
-  if (outcome.driverError) {
-    console.error(`\nFAILED: the capture script did not complete: ${outcome.driverError.message}`);
-    console.error("The cast below is PARTIAL - it does not contain every turn the script asked for.");
-    process.exitCode = 1;
+  for (const line of captureSummaryLines(outcome, { maxMb, exitGraceMs })) {
+    if (line.level === "error") console.error(line.text);
+    else if (line.level === "warn") console.warn(line.text);
+    else console.log(line.text);
   }
-  console.log(`\ncast:       ${outcome.outFile}`);
-  console.log(`transcript: ${outcome.transcriptFile}`);
-  console.log(`redacted:   ${outcome.redactions} match(es) scrubbed before writing`);
-  if (outcome.overflowed) {
-    console.warn(`  NOTE: the session was cut short at the ${maxMb}MB capture limit, so this cast is `
-      + "not the whole session.");
-  }
-  // The expensive silent miss: a step waited its whole timeout, the session never produced what the
-  // recipe asked for, and the closing summary still read like a clean take. Say it here, where it
-  // cannot scroll away, because deciding to re-run is a lot cheaper than publishing the wrong clip.
-  for (const step of outcome.timedOutSteps) {
-    console.warn(`  WARNING: ${stepGaveUpNotice(step)}`);
-  }
-  // The ENDING itself is reported too: a capture the clock ended, or one the operator stopped, is
-  // not the take the recipe describes. An overflow and a failed script already have their own
-  // messages, so only the two endings that would otherwise pass silently are named here.
-  if (outcome.ended === "interrupt" || outcome.ended === "no-exit") {
-    console.warn(`  WARNING: ${stallNotice({ ended: outcome.ended, quietMs: outcome.quietMs, graceMs: exitGraceMs })}`);
-  }
-  const leftover = outcome.leftover;
-  if (leftover.length) console.warn(`  WARNING: ${leftover.length} finding(s) survived scrubbing - render will refuse this cast`);
-  console.log("READ THE TRANSCRIPT before you render or publish: automated redaction is a net, not a gate.");
   // node-pty keeps handles alive after the child exits, so the process would hang on its own - but
   // exiting outright can truncate a piped stdout, losing the paths just printed. Flush, then go.
   await new Promise((done) => process.stdout.write("", done));
-  if (outcome.ended === "interrupt") process.exit(130);
-  process.exit(outcome.driverError || outcome.overflowed || outcome.ended !== "exit"
-    ? 1
-    : (outcome.exitCode || 0));
+  process.exit(captureExitCode(outcome));
 }
 
 // A cast's COMMAND is shown in the clip's title bar, so the gate has to read it too - scanning only
