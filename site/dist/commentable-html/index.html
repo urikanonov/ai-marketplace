@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.499.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.509.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,15 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.509.0] - 2026-08-03</h3></div>
+            <div class="group-label">Security</div>
+            <ul>
+              <li>The offline export&#x27;s scripted-navigation strip - the one egress channel the offline Content-Security-Policy cannot close - now also recognizes a URL literal that is NORMALIZED into a network URL before anything resolves it, whether by the URL parser or by the JavaScript parser that produced the string. Five shapes reached a network host with no aliasing, no computed access and no runtime assembly, just the URL spelled with one extra character: leading C0-or-space padding (<code>&quot; https://host&quot;</code>), which the URL parser strips; an ASCII tab, LF or CR anywhere inside the scheme or between the authority slashes (<code>&quot;ht&lt;tab&gt;tps://host&quot;</code>), which the parser removes from its whole input; a backslash in place of either authority slash, which it treats exactly like a slash for a special scheme; a LineContinuation (a backslash followed by a line terminator), which evaluates to nothing at all; and an escaping backslash before any character of the literal (<code>&quot;\https://host&quot;</code>), because a backslash before a character that begins no escape sequence evaluates to that character. That last one was the cheapest of all and would have defeated the other four at once. Because the strict validator carries the same pattern byte for byte, <code>validate.py --strict</code> used to certify a hand-authored offline file that kept any of them as offline-clean; both copies now recognize all five.</li>
+              <li>U+0000 is deliberately NOT treated as padding: the HTML parser turns a NUL in script data into U+FFFD, so a NUL-padded literal cannot navigate, and matching it would only make the validator - which reads the raw text - reject a document the exporter, which reads the parsed text, preserves. What remains residual is the class raw source genuinely cannot read: a MULTI-character escape that ENCODES one of those characters (<code>\u0068</code>, <code>\x68</code>, an octal), which needs a string-literal decoder rather than a regex; and a <code>javascript:</code> wrapper, which is left out as a deliberate trade, since the URL is not in the source at all and a script able to write one already runs arbitrary code.</li>
+              <li>The widening cannot backtrack superlinearly: every added run is separated from its neighbour by a mandatory literal element, and each run&#x27;s two alternatives are told apart by their second character. It does not delete the benign scripts an author actually writes - a padded URL that is only displayed, a navigation to a local fragment, a single-backslash local path, a real backslash before a scheme and a shadowed <code>location</code> all still survive - and it keeps the over-match this strip has always chosen: a host-less <code>&quot;//&quot;</code> reference goes too, because requiring a host character would start preserving a protocol-relative prefix concatenated with a host at the sink.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.499.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -504,6 +513,8 @@
               <li>The vendored scanner folds the tag name ASCII-only, since it is now the code that names the element. <code>str.lower()</code> folds U+212A KELVIN SIGN to an ASCII &quot;k&quot;, so <code>&lt;scrip\u212a&gt;</code> would have opened a raw-text region that a browser - which builds an unknown element there - never opens.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.486.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -511,8 +522,6 @@
               <li>The offline export&#x27;s scripted-navigation check is now LINEAR on a long near-match, in both the exporter (JavaScript) and the strict validator (Python). It carried the global-prefix chain (<code>window</code>, <code>self</code>, <code>top</code>, <code>parent</code>, <code>globalThis</code>, <code>document</code>, <code>frames</code>) as an unbounded repetition in front of the sink, so the engine re-entered that chain at every position a prefix could follow and a near-match that never reaches a sink cost QUADRATIC time: <code>window . </code> repeated measured 2.3s at 18 KB, 9.4s at 36 KB, 36s at 72 KB and 174s at 144 KB - 4x the time for 2x the input. - Both callers feed it unbounded document-supplied text: the loader strip runs it over every runnable inline script, and the vendored-payload gate runs it over the payload&#x27;s INFLATED bytes, where a few hundred base64 bytes buy megabytes of near-match. The export runs in the reviewer&#x27;s own browser on a document whose own scripts already ran, so this was a stall of the Export Offline action rather than an escalation - but an export that appears to hang is indistinguishable from a broken feature. - Every shape it recognizes requires the literal <code>location</code> or <code>open</code>, so recognition is now a SCAN driven from those anchors: forward from an anchor the tail is a regex matched ANCHORED at that offset (every unbounded whitespace run is followed by a distinct non-whitespace literal, so no run can be split two ways), and backward from an anchor the prefix chain is walked once in code. Chains for two different anchors cannot overlap, because no sink name is a prefix name. The same input now costs 0.08s at 1.8 MB in Python and 2ms in node. - The recognized shapes are unchanged, pinned in both directions against the pattern the scan replaced over a crossed corpus of sinks and near-sinks, so no egress case stopped matching and no benign script started being stripped. The two implementations still agree literal for literal, and the walk that joins those literals is pinned by running the exporter&#x27;s own source in node. - The regression test measures the SCALING at 10x steps rather than one fixed size, which is why the quadratic term survived the earlier catastrophic-backtracking guard (it used ~200 repetitions, far below where the growth is visible).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.485.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -541,14 +550,7 @@
               <li>A NUMERIC character reference in an attribute value now resolves the way a BROWSER resolves it, not the way <code>html.unescape()</code> does. The validator&#x27;s vendored browser rule delegated the numeric case to <code>html.unescape()</code>, which is not the HTML tokenizer&#x27;s &quot;numeric character reference end state&quot; and disagrees with it identically on every interpreter (so this was a validator-vs-browser gap, not the 3.12/3.13 host drift the rule was written for). - <code>html.unescape()</code> DELETES the code points it deems invalid, so <code>&amp;#1;</code>, <code>&amp;#x7f;</code>, <code>&amp;#x8d;</code> and the noncharacters vanished where Chromium keeps U+0001, U+007F, U+008D and U+FFFE. A validator-visible <code>id</code>, <code>href</code>, <code>content</code> or <code>data-*</code> could therefore differ from the value the DOM actually carries - the very class of mismatch the rule exists to close. - The end state is now implemented directly: U+FFFD for the null character, for a surrogate and for anything past U+10FFFF, the C1 (0x80-0x9F) replacement table applied, and every other code point kept. - An OVERSIZED reference (more digits than Python&#x27;s integer conversion limit) resolves to U+FFFD instead of raising. The digit run is bounded before any integer conversion, and because the host decodes attribute values inside its own <code>parse_starttag()</code> and raised there first - which every parse entry point swallowed into a TRUNCATED parse, hiding every finding after that tag - such a start tag is now taken away from the host before it decodes anything and dispatched from its RAW text through the vendored tokenizer, leaving the rest of the document live. That recovery mirrors the host&#x27;s dispatch exactly (start-vs-self-closing decided by the tail attribute tokenization stopped at, and the host&#x27;s own raw-text / RCDATA / <code>plaintext</code> / <code>noscript</code> mode re-entered), so a recovered tag behaves like every other tag in the same parser. Attribute values only: an oversized reference in the document&#x27;s TEXT still fails the parse closed, as it always has, and the theme-contrast scan (which builds its own parser and degrades every failure to &quot;no findings&quot;) now REPORTS that one shape rather than letting a single attribute silently disable the whole check.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.432.0] - 2026-08-03</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The export intent toast now decides what is an export control by IDENTITY - the very buttons the layer&#x27;s own export handlers bound themselves to, resolved once at startup - instead of trusting the clicked button&#x27;s <code>id</code>. The annotated document is untrusted author content, so a document that merely contained <code>&lt;button id=&quot;btnPrint&quot;&gt;</code> used to make the layer announce <code>Exporting as PDF...</code> for a click that ran no export at all, telling a reviewer a document had been exported when nothing was. A borrowed id now raises no toast; every real control (both menus, all five formats) still announces.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">274 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">275 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

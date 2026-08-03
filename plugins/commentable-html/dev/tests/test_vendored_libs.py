@@ -1551,6 +1551,44 @@ class RuntimeParityTests(unittest.TestCase):
         'document.location.assign(`http:evil.example`)',
         'window.open("https:evil.example/popup")',
         'const location = {}; window.location.href = "https:evil.example";',
+        # A URL literal the BROWSER NORMALIZES before it resolves it. Every one of these is spelled
+        # with characters that are LITERALLY in the source - no string escape, no aliasing, no
+        # runtime assembly - so a raw scan can see them, and each resolves to the same network host
+        # the plain spelling would.
+        # (a) Leading C0-or-space padding, which the URL parser strips before it parses anything.
+        'location.href = " https://evil.example/steal";',
+        "window.location.href = '\u0001https://evil.example'",
+        'top.location.replace("  https:evil.example")',
+        # (b) ASCII tab / LF / CR, which the URL parser removes from ANYWHERE in the input. A real
+        # tab is legal inside an ordinary string literal and a real newline inside a template one,
+        # so splitting the scheme costs an attacker one keystroke.
+        'location.href = "ht\ttps://evil.example"',
+        'window.open("ht\ttps://evil.example/popup")',
+        'document.location.assign(`ht\ntps://evil.example`)',
+        'location.href = "/\t/evil.example"',
+        # (c) A backslash where a slash is expected: for a special scheme the URL parser treats the
+        # two alike, so either authority slash can be written as a slash, an escaped slash, or an
+        # escaped backslash.
+        r'location.href = "\\\\evil.example"',
+        r'window.location = "\//evil.example"',
+        r'top.location.replace("/\\evil.example")',
+        # (d) A JavaScript LineContinuation - a backslash followed by a line terminator - evaluates
+        # to NOTHING, so it pads the literal or splits the scheme without the URL parser having to
+        # remove anything. It is fully visible in raw source and needs no decoder, unlike the
+        # character escapes the CMH-OFFLINE-05 residual keeps.
+        'location.href = "\\\nhttps://evil.example/steal";',
+        'window.location.href = "ht\\\rtps://evil.example"',
+        'top.location.replace(`\\\u2028https:evil.example`)',
+        'location.href = "/\\\n/evil.example"',
+        # (e) A backslash before a character that starts no escape sequence is a
+        # NonEscapeCharacter: it evaluates to that character, so a single backslash anywhere in the
+        # scheme (or before the padding) is erased by the JS parser and the URL is unchanged. That
+        # is one keystroke and needs no decoder, so it is closed rather than left residual.
+        'location.href = "\\https://evil.example/steal";',
+        'window.location.href = "htt\\ps://evil.example"',
+        'top.location.replace("https\\://evil.example")',
+        'document.location.assign("\\ https://evil.example")',
+        'location.href = "\\htt\\ps\\://evil.example"',
     ]
     # Benign shapes that must SURVIVE. The strip deletes a whole script, so a false positive
     # silently breaks an author's document - the costlier direction of the two.
@@ -1605,6 +1643,31 @@ class RuntimeParityTests(unittest.TestCase):
         'const location = { href: "" }; location.href = "https:api.example";',
         # A relative path that merely CONTAINS a colon is not a scheme.
         'location.href = "./a:b.html"',
+        # The false-positive controls for the NORMALIZED-URL widening. A match DELETES the whole
+        # script, so padding, a tab or a backslash next to a URL must not be enough on its own.
+        'var TIP = "  https://docs.example.org/x"; if (location.hash) document.title = TIP;',
+        'location.href = " #section-2";',
+        'location.href = "\tabout.html"',
+        'location.assign("\t./other.html")',
+        r'location.href = "\n"',
+        r'location.href = "\\d+"',
+        'if (location.href === " https://evil.example") return;',
+        'const location = { href: "" }; location.href = " https://api.example";',
+        # A NUL is NOT padding a browser strips: the HTML parser replaces a U+0000 in script data
+        # with U+FFFD (verified in chromium), which the URL parser leaves in place, so neither of
+        # these navigates - and matching them would make this validator, which reads the RAW text,
+        # reject a document the exporter (which reads the parsed text) preserves.
+        'location.href = "\u0000https://evil.example"',
+        'location.href = "\ufffdhttps://evil.example"',
+        # Backslash PARITY is what decides local from network, and it is invisible to every other
+        # test: a JS string literal spends TWO source backslashes per runtime backslash, so three
+        # source backslashes leave ONE runtime backslash (a local path) where four leave two (an
+        # authority). A refactor to a naive `[\\/]{2}` would match this and delete the script.
+        r'location.href = "\\\evil.example"',
+        'location.href = "  /local/path.html"',
+        # An EVEN run of backslashes before the scheme is a real backslash at runtime, which a
+        # browser resolves as a local path - the escaping-backslash tolerance must not swallow it.
+        r'location.href = "\\https://evil.example"',
     ]
 
     # The regex literals and name lists the exporter's navigation SCAN is built from, each paired
@@ -1679,7 +1742,18 @@ class RuntimeParityTests(unittest.TestCase):
                       r"\ufeff]")
     _LEGACY_NAV_CHAIN = (r"(?:(?:window|self|top|parent|globalThis|document|frames)" + _LEGACY_NAV_WS
                          + r"*(?:\?" + _LEGACY_NAV_WS + r"*)?\." + _LEGACY_NAV_WS + r"*)")
-    _LEGACY_NAV_URL = _LEGACY_NAV_WS + r"""*["'`](?:https?:|\/\/)"""
+    # The URL tail moved with #914: it now also accepts the spellings a browser or the JavaScript
+    # parser NORMALIZES into a network URL (padding the URL parser strips, a tab/LF/CR inside the
+    # scheme or between the slashes, a backslash authority, a LineContinuation, and an escaping
+    # backslash before any literal element). The oracle carries the same tail so it keeps testing
+    # the SCAN's structure rather than re-testing the widening.
+    _LEGACY_NAV_URL = (_LEGACY_NAV_WS + r"""*["'`](?:\\?[\u0001-\u0020]|\\[\u2028\u2029])*"""
+                       r"(?:\\?h(?:\\?[\t\n\r]|\\[\u2028\u2029])*"
+                       r"\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*"
+                       r"\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*"
+                       r"\\?p(?:\\?[\t\n\r]|\\[\u2028\u2029])*"
+                       r"(?:\\?s(?:\\?[\t\n\r]|\\[\u2028\u2029])*)?\\?:"
+                       r"|(?:\\?\/|\\\\)(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?\/|\\\\))")
     _LEGACY_NAV_PROP = (r"location" + _LEGACY_NAV_WS + r"*(?:\?" + _LEGACY_NAV_WS + r"*)?\."
                         + _LEGACY_NAV_WS + r"*(?:href" + _LEGACY_NAV_WS + r"*=(?!=)"
                         r"|(?:assign|replace)" + _LEGACY_NAV_WS + r"*\()")
@@ -1930,6 +2004,67 @@ class RuntimeParityTests(unittest.TestCase):
                 "the REAL JS engine and the pattern the scan replaced disagree about the prefixed "
                 "sink in %r" % sample)
 
+    # The URL literals from the navigating corpus whose danger is a LANGUAGE claim rather than a
+    # regex one, paired with the value the JavaScript parser actually produces. Each is the URL
+    # LITERAL only (the sink around it is what the corpus above covers).
+    _NAV_LITERAL_VALUES = [
+        ('" https://evil.example/steal"', " https://evil.example/steal"),
+        ('"ht\ttps://evil.example"', "ht\ttps://evil.example"),
+        ('"\\\nhttps://evil.example/steal"', "https://evil.example/steal"),
+        ('"ht\\\rtps://evil.example"', "https://evil.example"),
+        ('`\\\u2028https:evil.example`', "https:evil.example"),
+        ('"/\\\n/evil.example"', "//evil.example"),
+        (r'"\\\\evil.example"', "\\\\evil.example"),
+        (r'"\//evil.example"', "//evil.example"),
+        (r'"\\\evil.example"', "\\evil.example"),
+        (r'"\https://evil.example/steal"', "https://evil.example/steal"),
+        (r'"htt\ps://evil.example"', "https://evil.example"),
+        (r'"https\://evil.example"', "https://evil.example"),
+        (r'"\ https://evil.example"', " https://evil.example"),
+        (r'"\htt\ps\://evil.example"', "https://evil.example"),
+        (r'"\\https://evil.example"', "\\https://evil.example"),
+    ]
+
+    def test_the_line_continuation_samples_really_are_the_urls_they_claim(self):
+        """Pin the JavaScript-LANGUAGE claim the widening rests on, not just the regex.
+
+        The tail now accepts a LineContinuation (a backslash followed by a line terminator) because
+        it evaluates to NOTHING, so `"\\<LF>https://evil"` IS the bare URL - and it accepts an
+        escaped slash and a doubled backslash because of how many source backslashes a string
+        literal spends per runtime one. Every one of those is a claim about the JS PARSER, and the
+        parity tests above only ever hand the engine a pre-built STRING, so a wrong claim would
+        sail through them: the corpus would still be "matched", it just would not be a beacon.
+        Evaluate the literals in node and compare against what each is asserted to mean.
+        """
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-parser check needs it")
+        payload = [src for src, _ in self._NAV_LITERAL_VALUES]
+        script = (
+            "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const lits=JSON.parse(raw);"
+            "const out=lits.map(s=>{try{return {ok:true,v:(0,eval)('('+s+')')};}"
+            "catch(e){return {ok:false,v:String(e&&e.message)};}});"
+            "process.stdout.write(JSON.stringify(out));});"
+        )
+        proc = subprocess.run([node, "-e", script], input=json.dumps(payload),
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0,
+                         "node could not evaluate the URL literals: %s" % proc.stderr)
+        got = json.loads(proc.stdout)
+        self.assertEqual(len(got), len(self._NAV_LITERAL_VALUES),
+                         "node returned %d values for %d literals"
+                         % (len(got), len(self._NAV_LITERAL_VALUES)))
+        for (src, expected), result in zip(self._NAV_LITERAL_VALUES, got):
+            self.assertTrue(result["ok"],
+                            "the JS parser rejects %r, so the corpus sample built from it is dead "
+                            "source and proves nothing: %s" % (src, result["v"]))
+            self.assertEqual(
+                result["v"], expected,
+                "the JS parser turns %r into %r, not the %r this change assumes - the sample is "
+                "not the beacon (or the benign value) it is filed as"
+                % (src, result["v"], expected))
+
     def test_the_navigation_pattern_cannot_be_made_to_backtrack(self):
         """The scan must stay linear on adversarial input, in BOTH engines.
 
@@ -1953,7 +2088,22 @@ class RuntimeParityTests(unittest.TestCase):
             # The URL literal now also accepts a SCHEME-ONLY spelling, so pin the near-miss that
             # arms that alternation at every sink and never completes it.
             'location.href = "https' * 2000,
+            # It also tolerates the padding a browser strips and a scheme split by an ASCII tab,
+            # which reintroduces unbounded runs exactly where the earlier ReDoS lived.
+            'location.href = "' + " " * 20000,
+            'location.href = "h' + "\t" * 20000,
+            # A LineContinuation run is an alternation next to the padding run, the shape that
+            # would reintroduce two ways to consume the same input if it were spelled loosely.
+            'location.href = "' + "\\\n" * 10000,
+            'location.href = "h' + "\\\r" * 10000,
+            'window.location.href = "' + "\\\n" * 10000,
+            ('location.href = "' + " " * 200) * 200,
+            # `_OFFLINE_NAV_PREFIXED_RE` carries the same widened tail, so arm it through a PREFIXED
+            # sink too rather than trusting the shared text alone.
+            'window.location.href = "' + " " * 20000,
         ]
+        # Both patterns are fuzzed: they share the tail byte for byte, but only one of them was
+        # ever driven with adversarial input, so a divergence in the prefixed copy could hide here.
         for evil in evils:
             start = time.monotonic()
             self.assertFalse(resources.offline_script_navigates_to_network(evil))

@@ -4,6 +4,40 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.509.0] - 2026-08-03
+
+### Security
+
+- The offline export's scripted-navigation strip - the one egress channel the offline
+  Content-Security-Policy cannot close - now also recognizes a URL literal that is NORMALIZED into a
+  network URL before anything resolves it, whether by the URL parser or by the JavaScript parser
+  that produced the string. Five shapes reached a network host with no aliasing, no computed access
+  and no runtime assembly, just the URL spelled with one extra character: leading C0-or-space
+  padding (`" https://host"`), which the URL parser strips; an ASCII tab, LF or CR anywhere inside
+  the scheme or between the authority slashes (`"ht<tab>tps://host"`), which the parser removes from
+  its whole input; a backslash in place of either authority slash, which it treats exactly like a
+  slash for a special scheme; a LineContinuation (a backslash followed by a line terminator), which
+  evaluates to nothing at all; and an escaping backslash before any character of the literal
+  (`"\https://host"`), because a backslash before a character that begins no escape sequence
+  evaluates to that character. That last one was the cheapest of all and would have defeated the
+  other four at once. Because the strict validator carries the same pattern byte for byte,
+  `validate.py --strict` used to certify a hand-authored offline file that kept any of them as
+  offline-clean; both copies now recognize all five.
+- U+0000 is deliberately NOT treated as padding: the HTML parser turns a NUL in script data into
+  U+FFFD, so a NUL-padded literal cannot navigate, and matching it would only make the validator -
+  which reads the raw text - reject a document the exporter, which reads the parsed text, preserves.
+  What remains residual is the class raw source genuinely cannot read: a MULTI-character escape that
+  ENCODES one of those characters (`\u0068`, `\x68`, an octal), which needs a string-literal decoder
+  rather than a regex; and a `javascript:` wrapper, which is left out as a deliberate trade, since
+  the URL is not in the source at all and a script able to write one already runs arbitrary code.
+- The widening cannot backtrack superlinearly: every added run is separated from its neighbour by a
+  mandatory literal element, and each run's two alternatives are told apart by their second
+  character. It does not delete the benign scripts an author actually writes - a padded URL that is
+  only displayed, a navigation to a local fragment, a single-backslash local path, a real backslash
+  before a scheme and a shadowed `location` all still survive - and it keeps the over-match this
+  strip has always chosen: a host-less `"//"` reference goes too, because requiring a host character
+  would start preserving a protocol-relative prefix concatenated with a host at the sink.
+
 ## [1.499.0] - 2026-08-03
 
 ### Fixed
