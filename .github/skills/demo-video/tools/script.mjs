@@ -14,6 +14,16 @@ import path from "node:path";
 
 export const DEFAULT_TIMEOUT_MS = 900000;
 export const DEFAULT_IDLE_MS = 4000;
+// How long a SCRIPTED capture waits for the session to end itself once the last turn has been sent,
+// before it stops waiting on the child and finalizes anyway. Two minutes is generous for a TUI
+// shutting down and trivial next to the ninety minutes a capture can cost.
+export const DEFAULT_EXIT_GRACE_MS = 120000;
+// And how long the kill it then sends is given to land before the capture stops waiting for the
+// child at all. A pty child that ignores a kill must not be able to hold the recording hostage.
+export const DEFAULT_KILL_GRACE_MS = 5000;
+// How often a running capture says where it is. A wedge is otherwise indistinguishable from a slow
+// agent, and the only way to tell them apart was watching a log file's mtime by eye.
+export const DEFAULT_PROGRESS_MS = 60000;
 
 // Every key a step is allowed to carry. Unknown keys are REFUSED rather than ignored, because the
 // failure they cause is silent and expensive: `expects` for `expect`, or `submitMS` for `submitMs`,
@@ -256,3 +266,78 @@ export function stepPayload(step) {
 export function stepSubmit(step) {
   return step.enter ? "\r" : "";
 }
+
+// WHEN A CAPTURE ENDS IS DECIDED BY THE WALL CLOCK, NEVER BY THE STREAM.
+//
+// The stream is not a dependable signal against a TUI: it repaints, it goes quiet mid-thought, and
+// after `/exit` it can simply stop while the child stays alive. A capture that only waited on
+// `child.onExit` therefore had no bound at all - one sat for seventeen hours holding a ninety minute
+// session in memory and never wrote a byte, because the cast is only produced at finalization.
+//
+// So the supervisor polls this instead. `driverDoneAt` is set once the script has sent its last turn
+// (an UNSCRIPTED capture never sets it - the operator is sitting there, and an interactive session
+// must not be killed for being quiet). `interruptedAt` is set by a signal, which kills at once
+// because the operator already decided to stop. Either way the kill gets `killGraceMs` to land, and
+// then the capture finalizes whether the child is gone or not.
+export function sessionEndState({
+  now,
+  driverDoneAt = null,
+  interruptedAt = null,
+  killedAt = null,
+  exitGraceMs = DEFAULT_EXIT_GRACE_MS,
+  killGraceMs = DEFAULT_KILL_GRACE_MS,
+} = {}) {
+  const stage = (since, graceMs, reason) => {
+    if (killedAt === null) {
+      return now - since >= graceMs ? { action: "kill", reason } : { action: "wait", reason };
+    }
+    return now - killedAt >= killGraceMs ? { action: "finalize", reason } : { action: "wait", reason };
+  };
+  if (interruptedAt !== null) return stage(interruptedAt, 0, "interrupt");
+  if (driverDoneAt !== null) return stage(driverDoneAt, exitGraceMs, "no-exit");
+  return { action: "wait", reason: "running" };
+}
+
+export function formatDuration(ms) {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours) return `${hours}h${String(minutes).padStart(2, "0")}m`;
+  if (minutes) return `${minutes}m${String(seconds).padStart(2, "0")}s`;
+  return `${seconds}s`;
+}
+
+export function formatBytes(bytes) {
+  const value = Math.max(0, Number(bytes) || 0);
+  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)}MB`;
+  if (value >= 1024) return `${Math.round(value / 1024)}KB`;
+  return `${Math.round(value)}B`;
+}
+
+// A wedged capture has to be detectable WITHOUT reading the log by eye. The only symptom was a log
+// file whose last write stopped advancing, which nobody notices for an hour, so the capture says
+// where it is on its own clock: how long it has run, how long the session has been silent, how much
+// it is holding, and what it is waiting for.
+export function progressLine({ now, startedAt, lastDataAt, bytes = 0, waiting = null }) {
+  return [
+    `capture: ${formatDuration(now - startedAt)} elapsed`,
+    `${formatDuration(now - lastDataAt)} since the last output`,
+    `${formatBytes(bytes)} captured`,
+    waiting || "no script; the operator is driving",
+  ].join(", ");
+}
+
+// What the capture says when it stops waiting. Both endings mean the same thing for the cast - it is
+// whatever had been recorded, not the ending the recipe asked for - so both say so plainly rather
+// than letting a closing summary read like a clean take.
+export function stallNotice({ ended, quietMs = 0, graceMs = DEFAULT_EXIT_GRACE_MS }) {
+  if (ended === "interrupt") {
+    return "the capture was interrupted; the cast holds what had been recorded, so it may not show "
+      + "the ending the recipe asked for.";
+  }
+  return `the session printed nothing for ${formatDuration(quietMs)} and never exited; ending it `
+    + `after the ${formatDuration(graceMs)} exit grace and keeping what was recorded, so this cast `
+    + "may not show the ending the recipe asked for.";
+}
+

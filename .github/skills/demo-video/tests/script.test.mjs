@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 
 import {
-  normalizeScript, readScript, stepReady, stepPayload, stepSubmit, fileReady, stepGaveUpNotice, makeSizeGuard, captureLimitBytes, DEFAULT_IDLE_MS,
+  normalizeScript, readScript, stepReady, stepPayload, stepSubmit, fileReady, stepGaveUpNotice, makeSizeGuard, captureLimitBytes, sessionEndState, progressLine, stallNotice, DEFAULT_IDLE_MS,
 } from "../tools/script.mjs";
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "demo-video-script-"));
@@ -303,4 +303,64 @@ test("a file-backed wait requires the file THIS run produced (DEMO-SCRIPT-10)", 
   // And it is really wired into the wait, not just exported: a stale file must not satisfy the step.
   const step = normalizeScript({ steps: [{ mark: "paste", expectFile: "review.md", send: "x" }] }).steps[0];
   assert.equal(stepReady(step, { now: startedAt, startedAt, fileExists: false }).ready, false);
+});
+
+test("the wall clock, not the stream, decides when a capture ends (DEMO-CAP-03)", () => {
+  const grace = { exitGraceMs: 120000, killGraceMs: 5000 };
+  // Nothing has finished, so nothing is ended - an interactive capture is never killed for quiet.
+  assert.deepEqual(
+    sessionEndState({ now: 10000000, ...grace }),
+    { action: "wait", reason: "running" },
+  );
+  // A scripted capture whose last turn has been sent: the child gets the grace, then it is killed,
+  // and a child that ignores the kill is abandoned rather than allowed to hold the recording.
+  const done = 1000;
+  assert.equal(sessionEndState({ now: done + 119000, driverDoneAt: done, ...grace }).action, "wait");
+  assert.deepEqual(
+    sessionEndState({ now: done + 120000, driverDoneAt: done, ...grace }),
+    { action: "kill", reason: "no-exit" },
+  );
+  const killed = done + 120000;
+  assert.equal(sessionEndState({ now: killed + 4999, driverDoneAt: done, killedAt: killed, ...grace }).action, "wait");
+  assert.deepEqual(
+    sessionEndState({ now: killed + 5000, driverDoneAt: done, killedAt: killed, ...grace }),
+    { action: "finalize", reason: "no-exit" },
+  );
+  // An interrupt kills AT ONCE - the operator already decided to stop - but still finalizes.
+  assert.deepEqual(
+    sessionEndState({ now: 5000, interruptedAt: 5000, ...grace }),
+    { action: "kill", reason: "interrupt" },
+  );
+  assert.deepEqual(
+    sessionEndState({ now: 10001, interruptedAt: 5000, killedAt: 5001, ...grace }),
+    { action: "finalize", reason: "interrupt" },
+  );
+});
+
+test("a progress line names what a capture is waiting on (DEMO-CAP-05)", () => {
+  const line = progressLine({
+    now: 3800000,
+    startedAt: 200000,
+    lastDataAt: 3700000,
+    bytes: 3 * 1024 * 1024,
+    waiting: 'step "quit" waiting for 30000ms of quiet',
+  });
+  assert.match(line, /^capture: 1h00m elapsed/);
+  assert.match(line, /1m40s since the last output/);
+  assert.match(line, /3\.0MB captured/);
+  assert.match(line, /step "quit" waiting for 30000ms of quiet/);
+  // With no script there is no step to name, and the operator is the one driving.
+  assert.match(
+    progressLine({ now: 1000, startedAt: 0, lastDataAt: 0, bytes: 12 }),
+    /12B captured, no script; the operator is driving$/,
+  );
+  // Both endings say the cast may not be the take the recipe asked for; the timed-out one also says
+  // how long the session had been silent, which is the evidence an operator needs to decide.
+  const stalled = stallNotice({ ended: "no-exit", quietMs: 3960000, graceMs: 120000 });
+  assert.match(stalled, /printed nothing for 1h06m/);
+  assert.match(stalled, /never exited/);
+  assert.match(stalled, /2m00s exit grace/);
+  assert.match(stalled, /may not show the ending the recipe asked for/);
+  assert.match(stallNotice({ ended: "interrupt" }), /interrupted/);
+  assert.match(stallNotice({ ended: "interrupt" }), /may not show the ending the recipe asked for/);
 });
