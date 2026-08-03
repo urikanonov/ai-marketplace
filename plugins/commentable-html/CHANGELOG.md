@@ -13,10 +13,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   (issue #884). The pane restores an in-progress inline reply/edit draft and its selection across
   a re-render, and re-focuses that editor when it owned focus beforehand; with an `aria-modal`
   dialog up, the pane is behind the overlay, so the editor's ownership is vetoed for the whole
-  rebuild and the deferred focus is dropped. A focus the rebuild ORPHANED (it destroyed the control
-  that held it, dropping `activeElement` to `<body>`) is handed back to the dialog rather than left
-  stranded, so its Tab trap keeps working. Without this, a keyboard or screen-reader reviewer could
-  be left typing into an invisible, unreachable textarea outside the modal.
+  rebuild and the deferred focus is dropped. The veto also applies at DELIVERY time - the editor's
+  deferred focus timer, the post-save hand-back, and an editor's close-restore all stand down while
+  a dialog is up - so a focus armed before the dialog opened cannot land behind it either. Focus
+  that is not inside the dialog (stranded on `<body>` by the rebuild, or moved out into the document
+  by a delete run FROM the dialog) is handed back to it, preferring the dialog's own declared safe
+  default over raw DOM order so a destructive confirm button is never made the Enter-default, and
+  skipping any candidate that cannot actually take focus; focus the reviewer genuinely holds inside
+  the dialog, or on a toast above the overlay, is left alone. Without this, a keyboard or
+  screen-reader reviewer could be left typing into an invisible, unreachable textarea outside the
+  modal.
 
 
 

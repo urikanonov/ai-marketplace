@@ -1153,11 +1153,11 @@ test("deleting a comment from the manager keeps focus in the dialog with an inli
 
 test("a re-render while a modal is up never hands focus to the pane behind it (CMH-THREAD-09)", async ({ page }) => {
   const { ta } = await stageDraftUnderModal(page, "cmh-store-modal-render");
-  // Model the state the modal veto exists for: the editor is recorded as OWNING focus while the
-  // dialog is up. The runtime records exactly that on its own whenever a queued editor focus is
-  // outstanding and activeElement has fallen to <body> (the `_pending` clause of the ownership
-  // snapshot), so this is a state the side pane can reach, not a synthetic one - and it is the state
-  // in which the pre-fix code delivered the caret into a textarea behind the overlay.
+  // Put the editor in the state the modal veto exists for: it OWNS focus while the dialog is up.
+  // This drives the `_del.contains(_act)` branch of the ownership snapshot directly (the deferred
+  // `_focus()` timer the runtime arms ends in the same `ta.focus()` call, and is covered on its own
+  // route below), and it is the state in which the pre-fix code delivered the caret into a textarea
+  // behind the overlay.
   await ta.evaluate((el) => el.focus());
   expect(await focusSurface(page)).toContain("sidebar");
 
@@ -1197,4 +1197,91 @@ test("a re-render while a modal is up never hands focus to the pane behind it (C
     if (!a || !a.classList.contains("cm-reply-input")) return "not-in-draft";
     return [a.selectionStart, a.selectionEnd].join(":");
   })).toBe("0:5");
+});
+
+test("a re-render while a modal is up leaves focus on the dialog control the reviewer is using (CMH-THREAD-09)", async ({ page }) => {
+  await stageDraftUnderModal(page, "cmh-store-modal-keep");
+  // Park focus on a control that is NOT the dialog's first: a hand-back that fired unconditionally
+  // would yank the reviewer to the header Close button mid-task.
+  const toggle = page.locator(".cm-storage-current").locator("button", { hasText: "Show comments" });
+  await toggle.focus();
+  const parked = await page.evaluate(() => document.activeElement.textContent.trim());
+  expect(parked).toContain("Show comments");
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-cmh-note="risk"] .cmh-note-input');
+    el.value = "a blocker appeared";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator(".cm-card-note")).toHaveCount(1);
+  await settleFocus(page);
+  expect(await page.evaluate(() => document.activeElement.textContent.trim())).toContain("Show comments");
+});
+
+test("a deferred editor focus armed before a modal opens is not delivered behind it (CMH-THREAD-09)", async ({ page }) => {
+  const { html } = stageContent(MODAL_FOCUS_DOC, { key: "cmh-store-modal-deferred", source: "modal-deferred.html" });
+  await page.goto(fileUrl(html));
+  await ready(page);
+  await addTextComment(page, "#commentRoot p:nth-of-type(1)", "the note that stays");
+  if (!(await page.evaluate(() => document.body.classList.contains("sidebar-open")))) {
+    await page.click("#btnToggleSidebar");
+  }
+  // Arm the editor's deferred focus and open the dialog in the SAME task, before the timer fires -
+  // the ordering the quota recovery produces, where the manager opens from a microtask that runs
+  // ahead of the editor's setTimeout(0). The caret must not land in the pane behind the overlay.
+  await page.evaluate(() => {
+    document.querySelector(".cm-card[data-cid] .cm-reply-btn").click();
+    document.getElementById("btnStorage").click();
+  });
+  await expect(page.locator(".cm-storage-manager")).toBeVisible();
+  await settleFocus(page);
+  expect(await focusSurface(page)).toBe("in-modal");
+});
+
+test("a stranded focus is handed to the confirm dialog's SAFE default, not its danger button (CMH-THREAD-09)", async ({ page }) => {
+  const { html } = stageContent(MODAL_FOCUS_DOC, { key: "cmh-store-modal-confirm", source: "modal-confirm.html" });
+  await page.goto(fileUrl(html));
+  await ready(page);
+  await addTextComment(page, "#commentRoot p:nth-of-type(1)", "a note to clear");
+  if (!(await page.evaluate(() => document.body.classList.contains("sidebar-open")))) {
+    await page.click("#btnToggleSidebar");
+  }
+  await clickSidebarMore(page, "#btnClearAll");
+  const modal = page.locator(".cm-modal-overlay .cm-modal");
+  await expect(modal).toBeVisible();
+  // Clicking the dialog's own non-focusable prose blurs to <body>; the next re-render must put the
+  // reviewer back on Cancel (the dialog's declared Enter-default), never on the destructive OK that
+  // precedes it in DOM order.
+  await page.evaluate(() => document.activeElement.blur());
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-cmh-note="risk"] .cmh-note-input');
+    el.value = "a blocker appeared";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await settleFocus(page);
+  await expect.poll(async () => page.evaluate(() => {
+    const a = document.activeElement;
+    if (!a || !a.closest(".cm-modal-overlay")) return "outside-modal";
+    return a.textContent.trim();
+  })).toBe("Cancel");
+});
+
+test("focus parked in the document behind an open dialog is pulled back into it (CMH-THREAD-09)", async ({ page }) => {
+  await stageDraftUnderModal(page, "cmh-store-modal-behind");
+  // A delete run FROM the dialog can restore focus to a composer's opener out in the document
+  // (closeComposerElement does exactly that) BEFORE the side pane re-renders, so focus can be
+  // outside the modal without ever passing through <body>. The re-render must still reclaim it.
+  await page.evaluate(() => {
+    const p = document.querySelector("#commentRoot p");
+    p.setAttribute("tabindex", "-1");
+    p.focus();
+  });
+  expect(await focusSurface(page)).toContain("elsewhere");
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-cmh-note="risk"] .cmh-note-input');
+    el.value = "a blocker appeared";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator(".cm-card-note")).toHaveCount(1);
+  await settleFocus(page);
+  expect(await focusSurface(page)).toBe("in-modal");
 });
