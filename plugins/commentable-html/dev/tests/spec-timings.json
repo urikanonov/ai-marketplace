@@ -102,7 +102,7 @@
   "80-shot-clip.spec.js": 32188,
   "81-shot-diff-image.spec.js": 1002,
   "82-highlight-inference.spec.js": 6544,
-  "90-section-review.spec.js": 25881,
+  "90-section-review.spec.js": 111181,
   "91-upgrade-review.spec.js": 2571,
   "92-threads.spec.js": 29602,
   "93-autogrow.spec.js": 27500,

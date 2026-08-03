@@ -135,6 +135,15 @@ JS_END_MARKER_TEXT = "END: commentable-html - JS"
 # JSON <script> ids owned by the commentable layer, not chart data.
 LAYER_JSON_IDS = {"handledCommentIds", "embeddedComments", LAYER_DESCRIPTOR_ID}
 
+# The optional section-review state block. It is not in LAYER_JSON_IDS (that set also decides which
+# blocks the content-JSON and chart checks skip, and this one is validated by its own shape check),
+# but the runtime resolves it by id just like the others, so it must be just as unique.
+REVIEW_STATE_ID = "reviewedSections"
+
+# Every reserved id whose element must be unique across the active DOM: a duplicate makes an
+# id lookup bind a decoy, silently reading or writing the wrong element.
+UNIQUE_JSON_IDS = LAYER_JSON_IDS | {REVIEW_STATE_ID}
+
 # HTML void elements never get pushed on the stack.
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input",
         "link", "meta", "param", "source", "track", "wbr"}

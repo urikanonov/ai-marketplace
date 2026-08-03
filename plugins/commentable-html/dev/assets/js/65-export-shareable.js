@@ -539,7 +539,8 @@ async function saveHtml() {
   baseHtml = _applyWidgetLayoutToHtml(baseHtml);
   baseHtml = _applyChecklistStateToHtml(baseHtml);
   baseHtml = _applyNoteStateToHtml(baseHtml);
-  baseHtml = _applyReviewStateToHtml(baseHtml);
+  const review = _applyReviewStateToHtml(baseHtml);
+  baseHtml = review.html;
   const exportComments = _exportableComments();
   let text;
   try { text = _buildSavedHtml(baseHtml, exportComments); }
@@ -548,5 +549,5 @@ async function saveHtml() {
   const n = exportComments.length;
   const noun = "comment" + (n === 1 ? "" : "s");
   _downloadHtml(text, filename);
-  showToast(`Downloaded ${filename} with ${n} embedded ${noun}. Replace the original on disk to make them stick.`, { center: true });
+  showToast(`Downloaded ${filename} with ${n} embedded ${noun}. Replace the original on disk to make them stick.` + review.note, { center: true });
 }

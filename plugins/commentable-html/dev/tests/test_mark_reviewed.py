@@ -160,5 +160,51 @@ class MarkReviewedTests(unittest.TestCase):
             self.assertEqual(json.loads(ec.strip()), [])
 
 
+    def test_a_block_outside_the_embedded_comments_region_is_refused(self):
+        # CMH-REVIEW-16: the runtime reads and writes only the block the region owns, so baking
+        # markers into one outside it would write state nobody ever loads.
+        p = os.path.join(self.tmp, "outside.html")
+        html = DOC_NO_BLOCK.replace(
+            '<script type="application/json" id="embeddedComments">\n[]\n</script>\n',
+            "<!-- BEGIN: commentable-html - EMBEDDED COMMENTS -->\n"
+            '<script type="application/json" id="embeddedComments">\n[]\n</script>\n'
+            "<!-- END: commentable-html - EMBEDDED COMMENTS -->\n"
+            '<script type="application/json" id="reviewedSections">\n{}\n</script>\n')
+        with open(p, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(html)
+        with self.assertRaises(ValueError) as ctx:
+            mark_reviewed.mark_reviewed(p, ["goals"], [], at="x")
+        self.assertIn("outside the EMBEDDED COMMENTS region", str(ctx.exception))
+
+    def test_malformed_region_markers_are_refused(self):
+        p = os.path.join(self.tmp, "malformed.html")
+        html = DOC.replace(
+            '<script type="application/json" id="embeddedComments">\n[]\n</script>\n',
+            "<!-- BEGIN: commentable-html - EMBEDDED COMMENTS -->\n"
+            "<!-- BEGIN: commentable-html - EMBEDDED COMMENTS -->\n"
+            '<script type="application/json" id="embeddedComments">\n[]\n</script>\n')
+        html = html.replace('<main id="commentRoot"',
+                            "<!-- END: commentable-html - EMBEDDED COMMENTS -->\n<main id=\"commentRoot\"")
+        with open(p, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(html)
+        with self.assertRaises(ValueError) as ctx:
+            mark_reviewed.mark_reviewed(p, ["goals"], [], at="x")
+        self.assertIn("not one ordered BEGIN/END pair", str(ctx.exception))
+
+    def test_a_block_inside_the_region_is_still_written(self):
+        p = os.path.join(self.tmp, "inside.html")
+        html = DOC.replace(
+            '<script type="application/json" id="embeddedComments">\n[]\n</script>\n'
+            '<script type="application/json" id="reviewedSections">\n{}\n</script>\n',
+            "<!-- BEGIN: commentable-html - EMBEDDED COMMENTS -->\n"
+            '<script type="application/json" id="embeddedComments">\n[]\n</script>\n'
+            '<script type="application/json" id="reviewedSections">\n{}\n</script>\n'
+            "<!-- END: commentable-html - EMBEDDED COMMENTS -->\n")
+        with open(p, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(html)
+        mark_reviewed.mark_reviewed(p, ["goals"], [], at="x")
+        self.assertIn("goals", _markers(p))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.399.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.403.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.403.0] - 2026-08-03</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Section-review state is now read from, and written to, the block the EMBEDDED COMMENTS region OWNS, instead of the first element the browser&#x27;s id lookup returns. A decoy element carrying the <code>reviewedSections</code> id earlier in a document (a hand-authored file, or one a botched edit left with two) used to shadow the real block completely: the reader&#x27;s Reviewed/Changed badges were computed from the decoy&#x27;s markers, and an export baked the current state INTO the decoy while the region-owned block kept its stale contents - silent loss of user data that nothing reported. The runtime now resolves the block by the region&#x27;s own BEGIN/END markers and document order, leaves a decoy with its own contents, and inserts a fresh region-owned block when the document owns none. Absent markers still let a lone block resolve, so a file upgraded from before the feature existed keeps working; markers that are present but not one ordered pair resolve nothing, only a <code>&lt;script&gt;</code> can carry the id (exactly what the validator accepts), and a <code>&lt;noscript&gt;</code> cannot hide a block from the reader while offering it to the export (<code>DOMParser</code> parses <code>&lt;noscript&gt;</code> contents as markup, a live browser does not). When nothing can be attributed to the region, the export declines and the download toast says why - a separate toast would simply be replaced by it - and the load warns the reader once, in a toast and in the console, rather than quietly showing every section unreviewed.</li>
+              <li><code>validate.py</code> now reports both shapes of the same problem as errors: a duplicated <code>reviewedSections</code> id (like the three other reserved state-block ids) and an id the EMBEDDED COMMENTS region does not own (a block outside it, or one that is not a <code>&lt;script&gt;</code>), and <code>mark_reviewed.py</code> refuses to write a block that region does not own. Its shape check only ever read the region-owned block, so either file used to pass <code>--strict</code> while the runtime ignored or mis-wrote the reader&#x27;s state.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.399.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -505,6 +513,8 @@
               <li>The Chart.js CDN exemption in shareable mode is bound to a <code>src</code> loader again. Widening the script-load set had extended it to <code>href</code> / <code>xlink:href</code>, where the version and SRI checks that justify the exemption never run, so a remote script whose path merely ends in <code>chart.min.js</code> would have passed validation unexamined.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.396.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -512,8 +522,6 @@
               <li>Every floating affordance now measures the VISUAL viewport instead of the layout viewport, so an on-screen keyboard or a pinch zoom can no longer hide one. <code>window.innerWidth</code> / <code>innerHeight</code> describe the LAYOUT viewport: it does not shrink when a soft keyboard opens (iOS Safari, and Chrome for Android with the default <code>interactive-widget=resizes-visual</code>) and does not move when a pinch-zoomed page is panned, and neither fires a <code>window</code> <code>resize</code>. A control the layer believed fitted could therefore sit behind the keyboard - and focusing a comment textarea is exactly what opens it. - One shared vocabulary (<code>cmhViewportBox()</code>, <code>cmhViewportRect()</code>, <code>cmhOnViewportChange()</code>) now prefers <code>window.visualViewport</code> (size plus <code>offsetLeft</code>/<code>offsetTop</code>, since a <code>position: fixed</code> control is placed in layout coordinates that a pan shifts under it) and falls back to <code>window.innerWidth</code>/<code>innerHeight</code> where that API is absent. - The hover bubble, every structural add button, the in-document comment dialog (placement, height cap, and unanchored re-fit), the floating composer (placement, drag clamp, centred document/slide anchor), the Add-comment selection menu, the heading add button, and the chart and chrome tooltips are all bounded by that box. An ANCHORED affordance whose anchor leaves the visible box (the hover bubble, the add buttons, a dialog being read) hides or closes rather than floating over the keyboard; a surface holding reviewer input (the composer, a dialog mid-edit) and the Add-comment menu are re-clamped into the visible box instead, so no draft is thrown away. - They react to <code>visualViewport</code> <code>resize</code> and <code>scroll</code> as well as the <code>window</code> events, through one shared listener set that every surface registers with exactly once, so repeatedly opening and closing surfaces cannot multiply listeners. The two hover tooltips are dismissed rather than moved (the next pointer move or focus raises them again), which is also the one visible change on a plain desktop window resize.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.395.0] - 2026-08-03</h3></div>
             <div class="group-label">Security</div>
@@ -544,15 +552,7 @@
               <li>A document with no layer descriptor at all now has one re-anchored to its version <code>&lt;meta&gt;</code> tag matched the way a parser sees it (a DOM-serialized <code>&lt;meta ...&gt;</code> carries neither the space nor the slash the old pattern required), and the export fails loudly if there is nothing to anchor to - instead of quietly downloading a document with no descriptor.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.371.0] - 2026-08-03</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A TRUNCATED document now validates the same way on every interpreter. CPython changed how <code>html.parser</code> resolves end of input in 3.12.11 / 3.13.5 (gh-135462), so until now the same file could read two different ways depending on which patch release ran it - and CI proved it, because its two runner images resolve different 3.12 patches. Each case is now decided by the skill&#x27;s own browser-accurate boundary layer instead of the host: - An UNCLOSED <code>&lt;style&gt;</code> or <code>&lt;script&gt;</code> contributes its whole body. A browser runs a raw-text element that never closes to end of document, so its content is live; on an older patch release that trailing text stayed in the parser&#x27;s buffer, the element&#x27;s body came back EMPTY, and a dangerous unscoped rule (for example <code>[hidden] { display: none !important; }</code>) could hide from the CSS checks behind a missing closing tag. - A TRUNCATED tag is discarded - a raw-text closer (<code>&lt;/script data-</code>), a start tag or an end tag - because end of input inside a tag drops the tag in a browser. An older host handed those characters back as element content, which was enough to plant CSS in a <code>&lt;style&gt;</code> body or to forge the layer&#x27;s ready token in a <code>&lt;script&gt;</code> body. - An unterminated <code>&lt;?</code> or <code>&lt;!</code> runs to the end of the document as comment data (as an unterminated <code>&lt;!--</code> already did) rather than reappearing as document prose, and <code>&lt;/</code> is read the way a browser reads it: text when nothing follows, a bogus comment when what follows is not a tag name. A document that is not truncated is unaffected, and an incremental caller still never loses a tag that was merely split across two chunks of input.</li>
-              <li>A raw-text element&#x27;s end tag is no longer mistaken for an unfinished one because of a bare quote. A quoted attribute value exists only after <code>=</code>, so <code>&lt;/script &quot; &gt;</code> really does close the script; it used to look unfinished, which ran the raw-text region on to the end of the document and hid the author&#x27;s real <code>&lt;pre&gt;&lt;code&gt;</code> block from the syntax-highlighting and KQL checks.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">260 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">261 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

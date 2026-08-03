@@ -69,6 +69,13 @@ def _check_state_json_blocks(html, parser, begin_idx, end_idx, nonshareable):
     #     documents); present-but-malformed is an error (mark_reviewed.py would refuse it and the
     #     runtime would drop it).
     review_script = _parser_script(parser, "reviewedSections", elo, ehi)
+    if review_script is None and Counter(parser.all_ids).get("reviewedSections", 0):
+        # The id is carried by something the region does not own - a block outside it, or an element
+        # that is not a <script>. The runtime resolves this block by the region that owns it, so such
+        # a document silently loses its baked review markers on load and declines to bake on export.
+        errors.append('the reviewedSections id is not on a <script> the EMBEDDED COMMENTS region '
+                      "owns (it is outside that region, or it is not a <script> block) - the runtime "
+                      "reads and writes only the block that region owns, so this one is ignored")
     if review_script is not None:
         if not _is_json_attrs(review_script["attrs"]):
             errors.append('the <script id="reviewedSections"> block must be type="application/json"')
