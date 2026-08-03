@@ -268,8 +268,10 @@ function mergeCommentSets(a, b) {
   return order.map(id => map.get(id));
 }
 function getEmbeddedComments() {
-  const el = document.getElementById("embeddedComments");
-  if (!el) return [];
+  // Resolved against the content-root boundary (cmhLayerBlock), the same way the exporter
+  // resolves the block it writes, so a document can never read one block and export another.
+  const el = cmhLayerBlock(document, "embeddedComments");
+  if (!el) { cmhWarnUnresolvedBlock("embeddedComments"); return []; }
   try {
     const arr = JSON.parse((el.textContent || "").trim() || "[]");
     return Array.isArray(arr) ? arr : [];

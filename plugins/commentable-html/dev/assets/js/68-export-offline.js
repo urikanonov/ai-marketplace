@@ -518,10 +518,11 @@ function _offlinePayloadBlocksWithAnchor(node, anchor) {
   return found;
 }
 function _offlineContentRoot(d) {
-  // An id SELECTOR (unlike getElementById) matches every element carrying the id, so a duplicate is
-  // visible here rather than silently resolved away.
-  const roots = d.querySelectorAll("#commentRoot");
-  return roots.length === 1 ? roots[0] : null;
+  // One boundary primitive for the whole layer (cmhContentRoot in 01-config.js): an id SELECTOR
+  // (unlike getElementById) matches every element carrying the id, so a duplicate is visible there
+  // rather than silently resolved away. The differing NULL POLICY stays here at the call site -
+  // this resolver treats "no single content root" as ambiguous and refuses.
+  return cmhContentRoot(d);
 }
 // Decide, ONCE and against the PRISTINE document, both which block is the payload and which blocks
 // are infrastructure to strip. Deciding either later would judge containment against a document this
@@ -988,7 +989,12 @@ async function _offlineInlineRichLibs(doc, referencesChartLib, inlinedLibs, payl
   _offlineRemoveVendoredBundleScript(payload);
 }
 async function _buildOfflineHtml(shareableHtml) {
-  const doc = _offlineDocFromHtml(shareableHtml);
+  // Declare the mode BEFORE the document is parsed and neutralized. The neutralizer retypes every
+  // reserved-id script that would RUN to inert JSON, so retargeting afterwards would see an
+  // author's runnable script as inert data and overwrite the very bytes the neutralizer promises
+  // to keep verbatim. Stamping first means the descriptor rule judges the document as authored.
+  const retargeted = _retargetLayerDescriptor(shareableHtml, "offline");
+  const doc = _offlineDocFromHtml(retargeted);
   // Make the layer's reserved-id data blocks inert BEFORE anything else reads or strips the
   // document, so every later pass exempts them on the ordinary runnable-type test and a decoy that
   // borrowed one of those ids cannot buy itself an exemption from either strip.
@@ -1008,7 +1014,7 @@ async function _buildOfflineHtml(shareableHtml) {
   _offlineHoistChartScripts(doc);
   await _offlineInlineRichLibs(doc, referencesChartLib, inlinedRichLibs, vendoredPayload);
   _ensureOfflineCsp(doc);
-  const html = _retargetLayerDescriptor(_serializeOfflineDoc(doc), "offline").replace(/\n{3,}/g, "\n\n");
+  const html = _serializeOfflineDoc(doc).replace(/\n{3,}/g, "\n\n");
   return {
     html: html,
     droppedScripts: droppedScripts,

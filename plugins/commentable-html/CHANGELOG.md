@@ -4,6 +4,51 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.416.0] - 2026-08-03
+
+### Fixed
+
+- The export no longer decides WHICH block is the layer's own by document position. The embedded
+  comments, the handled ids, and the `commentableHtmlLayer` descriptor are now resolved against
+  the content-root boundary: a script
+  that borrows one of those ids inside `#commentRoot` is authored content and is never the layer's
+  block, so it can neither receive the review state on export nor stand in for a block the document
+  has actually lost (that still fails loudly). The same boundary applies on the READ side - the
+  embedded comments, the handled ids that PRUNE live comments, and the descriptor read behind the
+  Offline badge - so an export always rewrites exactly the block a reload reads back. (The
+  review-state block answers to the stricter region-ownership rule instead.)
+- A document with more than one element carrying the content-root id now resolves NOTHING instead
+  of falling back to position. That duplicate is exactly how a planted wrapper would re-point the
+  boundary, so the export refuses with a message naming the duplicate id, and a reader admits no
+  block. A document that simply has no content root is unchanged: nothing delimits an untrusted
+  region there, so the plain tree-order answer still stands.
+- Every descriptor copy in the layer's own region is retargeted by every export that writes a copy
+  of the document (Save and Shareable as much as Standalone and Offline), not just the first one a
+  reader resolves. The mode a plain Save writes is the document's own, so a re-saved Offline copy
+  stays Offline. Rewriting only that one left any
+  other reserved-id copy stale, so an exported document could ship two descriptors disagreeing
+  about what it IS. Additional copies are only rewritten when they are inert data (no `src`, a
+  non-runnable type), so an author's runnable script that borrows the id keeps its code; a copy
+  inside the content root is returned byte-intact; and a document whose only owner of that id sits
+  in the content root is refused rather than given a freshly minted second descriptor.
+- Plain export's data-leak safety net judges what survived by the same boundary instead of a
+  document-wide text probe, so a document carrying an authored reserved-id script in its content no
+  longer aborts an otherwise clean plain export. An ambiguous (contested) boundary still counts
+  every owner as leaked, so that case fails closed.
+- When elements carry a reserved id but none resolve, the runtime now says so once per id on the
+  console, and each export names which state it hit ("the block is inside the content root", "the
+  content-root id is duplicated", "the region is absent"), so review state can never silently
+  vanish behind a misleading message.
+
+### Notes
+
+- Recorded as a deliberate scope boundary: Export as Shareable does NOT neutralize a script that
+  borrows a reserved commentable-html data id, the way Export Offline retypes one to inert JSON.
+  Offline does that because its zero-network promise requires the egress strips' reserved-id
+  exemption to be earned; Shareable makes no such promise and preserves author scripts by design,
+  so the decoy travels untouched. What protects a Shareable export is the boundary above, not a
+  rewrite of the author's script.
+
 ## [1.407.0] - 2026-08-03
 
 ### Fixed

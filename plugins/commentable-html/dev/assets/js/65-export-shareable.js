@@ -213,55 +213,128 @@ function _cmhProvenanceRootTag(html) {
   });
   return found || body;
 }
-// Resolve one of the layer's own data <script> blocks as INFRASTRUCTURE, never by scanning the
-// document text: the walk above finds the first script whose PARSED id matches, and the result
-// is then CROSS-CHECKED against the browser's own parser. A raw text scan cannot answer this
-// question honestly, because the layer's own source - part of every document - contains the very
-// markup being looked for: the missing-region guard could never fire, and a document that had
-// genuinely lost the block had its own runtime source overwritten with the comments JSON instead
-// of failing loudly. The cross-check means any residual tokenizer differential is a loud failure
-// rather than a splice into text no browser ever parsed as an element.
-// Returns { present, start, tagEnd, closeStart, end }: `present` is the browser's answer (the
-// element exists), and the offsets are null unless the walk agreed with it.
-function _cmhVerifiedScriptRange(html, id) {
-  const src = String(html == null ? "" : html);
-  const doc = new DOMParser().parseFromString(src, "text/html");
-  const owners = Array.prototype.filter.call(doc.querySelectorAll("[id]"), function (node) {
-    return node.getAttribute("id") === id;
-  });
-  const present = owners.length > 0;
-  // A document may legitimately carry more than one element with the id (a host decoy that
-  // borrowed a reserved one - CMH-OFFLINE-04 keeps such bytes rather than deleting them), and the
-  // runtime reads the FIRST in tree order, so that is the one to rewrite. It must be the script:
-  // a non-script shadowing the id means a reload would not read the block at all.
-  const first = owners.length ? owners[0] : null;
-  const scripts = owners.filter(function (node) {
-    return (node.tagName || "").toLowerCase() === "script";
-  });
-  const el = first && (first.tagName || "").toLowerCase() === "script" ? first : null;
-  const found = [];
-  if (el) {
-    _cmhForEachTag(src, function (tag) {
-      if (tag.name !== "script" || tag.closeEnd < 0) return null;
-      if (_cmhTagId(tag.tag).id !== id) return null;
-      // Collect every candidate rather than stopping at the first: the walk and the parse must
-      // agree on HOW MANY scripts own this id, or the source text is telling a different story
-      // than the document a browser builds from it and there is no safe range to splice.
-      found.push({ start: tag.start, tagEnd: tag.tagEnd, closeStart: tag.closeStart, end: tag.closeEnd });
-      return null;
-    });
+// Stamp each walked candidate with a unique probe attribute in a THROWAWAY copy of the source and
+// parse THAT, so every parsed element carries the index of the source range it came from. The walk
+// reports SOURCE order while a parsed document reports TREE order, and markup a browser rearranges
+// (an element foster-parented out of a table, say) makes the two disagree; equal counts do not rule
+// that out and equal bodies cannot tell a match from a swap, so the mapping is established by
+// IDENTITY rather than by position. The value carries a per-call random token, so an attribute the
+// DOCUMENT itself supplies can never be mistaken for one of ours. The copy decides identity and
+// containment only; the offsets spliced are always the original ones.
+const _CMH_PROBE_ATTR = "data-cmh-range-probe";
+function _cmhProbeToken() {
+  return "p" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+function _cmhProbeParse(src, found, token) {
+  // One forward pass joined once: rebuilding the whole source per candidate would be quadratic in
+  // a document that carries many same-id scripts, which authored content controls.
+  const parts = [];
+  let at = 0;
+  for (let i = 0; i < found.length; i += 1) {
+    // The walk only reports tags whose name is exactly "script", so the character after the name
+    // is at start + "<script".length whatever the tag's case - an attribute inserted there is
+    // separated from both the name and whatever followed. A duplicate attribute later in the same
+    // tag is ignored by the parser (the first one wins), so ours is the value that survives.
+    const cut = found[i].start + 7;
+    parts.push(src.slice(at, cut), " ", _CMH_PROBE_ATTR, '="', token, "-", String(i), '"');
+    at = cut;
   }
+  parts.push(src.slice(at));
+  const srcProbed = parts.join("");
+  return new DOMParser().parseFromString(srcProbed, "text/html");
+}
+// Resolve the layer's own data <script> blocks as INFRASTRUCTURE, never by scanning the document
+// text: the walk above finds the scripts whose PARSED id matches, and the result is then
+// CROSS-CHECKED against the browser's own parser. A raw text scan cannot answer this question
+// honestly, because the layer's own source - part of every document - contains the very markup
+// being looked for: the missing-region guard could never fire, and a document that had genuinely
+// lost the block had its own runtime source overwritten with the comments JSON instead of failing
+// loudly. The cross-check means any residual tokenizer differential is a loud failure rather than a
+// splice into text no browser ever parsed as an element.
+//
+// WHICH block, among several owning the id, is decided by the CONTENT-ROOT BOUNDARY
+// (cmhLayerBlocks in 01-config.js), not by document position: an element inside `#commentRoot` is
+// authored content and can never be one of the layer's blocks. The runtime reads them through the
+// same boundary, so the exporter always rewrites exactly the block a reload reads back. The
+// cross-check is likewise scoped to the blocks the boundary accepts: a decoy the walk and the
+// parse see differently is only a reason to refuse when it is one of the layer's OWN candidates,
+// or authored content could veto every future export of the document it sits in.
+// Returns { anyOwner, contested, present, ranges }: `anyOwner` is "some element carries the id
+// anywhere", `contested` is "the boundary itself is ambiguous", `present` is the browser's answer
+// for the layer's own region, and `ranges` (in TREE order, each carrying its parsed `el`) is empty
+// unless the walk agreed with the parse.
+function _cmhVerifiedScriptRanges(html, id) {
+  const src = String(html == null ? "" : html);
+  const isScript = function (node) { return node && (node.tagName || "").toLowerCase() === "script"; };
+  const found = [];
+  _cmhForEachTag(src, function (tag) {
+    if (tag.name !== "script" || tag.closeEnd < 0) return null;
+    if (_cmhTagId(tag.tag).id !== id) return null;
+    found.push({ start: tag.start, tagEnd: tag.tagEnd, closeStart: tag.closeStart, end: tag.closeEnd });
+    return null;
+  });
+  const token = _cmhProbeToken();
+  const doc = _cmhProbeParse(src, found, token);
+  const owners = cmhLayerIdOwners(doc, id);
+  const state = cmhContentRootState(doc);
+  // A document may legitimately carry more than one element with the id (a host decoy that
+  // borrowed a reserved one - CMH-OFFLINE-04 keeps such bytes rather than deleting them). The
+  // layer's own blocks are the ones the boundary accepts, and the first of those is what the
+  // runtime reads. It must be the script: a non-script shadowing the id means a reload would not
+  // read the block at all.
+  const outside = cmhLayerBlocks(doc, id);
+  const none = {
+    anyOwner: owners.length > 0, contested: state.contested,
+    present: outside.length > 0, ranges: [],
+  };
+  if (!outside.length || !isScript(outside[0])) return none;
   // The parser normalizes CRLF to LF in text, so compare newline-normalized bodies.
   const nl = function (s) { return String(s).replace(/\r\n?/g, "\n"); };
-  const only = found.length === scripts.length && found.length > 0 ? found[0] : null;
-  if (!only || nl(src.slice(only.tagEnd, only.closeStart)) !== nl(el.textContent)) {
-    return { present: present, start: null, tagEnd: null, closeStart: null, end: null };
+  const used = Object.create(null);
+  const rangeOf = function (el) {
+    const raw = el.getAttribute(_CMH_PROBE_ATTR);
+    // An absent or foreign probe means the walk never saw this element: there is no source range
+    // to splice, so refuse rather than fall back to a positional guess. The index is claimed at
+    // most once, so two elements can never map onto one range.
+    if (typeof raw !== "string" || raw.indexOf(token + "-") !== 0) return null;
+    const k = Number(raw.slice(token.length + 1));
+    if (!Number.isInteger(k) || k < 0 || k >= found.length || used[k]) return null;
+    used[k] = true;
+    return found[k];
+  };
+  const ranges = [];
+  for (let i = 0; i < outside.length; i += 1) {
+    const el = outside[i];
+    if (!isScript(el)) continue;
+    const range = rangeOf(el);
+    if (!range || nl(src.slice(range.tagEnd, range.closeStart)) !== nl(el.textContent)) return none;
+    ranges.push({
+      start: range.start, tagEnd: range.tagEnd,
+      closeStart: range.closeStart, end: range.end, el: el,
+    });
   }
+  if (!ranges.length) return none;
+  return { anyOwner: none.anyOwner, contested: none.contested, present: none.present, ranges: ranges };
+}
+// The single block the runtime reads back: { present, start, tagEnd, closeStart, end }, with null
+// offsets unless the walk and the parse agreed.
+function _cmhVerifiedScriptRange(html, id) {
+  const found = _cmhVerifiedScriptRanges(html, id);
+  const only = found.ranges.length ? found.ranges[0] : null;
   return {
-    present: present, start: only.start, tagEnd: only.tagEnd,
-    closeStart: only.closeStart, end: only.end,
+    anyOwner: found.anyOwner,
+    contested: found.contested,
+    present: found.present,
+    start: only ? only.start : null,
+    tagEnd: only ? only.tagEnd : null,
+    closeStart: only ? only.closeStart : null,
+    end: only ? only.end : null,
   };
 }
+// One wording for the state no lookup can resolve: the boundary itself is contested.
+const _CMH_CONTESTED_ROOT_ERROR = "Export aborted: this document has more than one element carrying "
+  + "the commentable-html content-root id, so the layer cannot tell its own blocks from authored "
+  + "content. Remove the duplicate id, then export again.";
 function _cmhEmbeddedCommentsRange(html) {
   const found = _cmhVerifiedScriptRange(html, "embeddedComments");
   return found.start == null ? null : { start: found.start, end: found.end };
@@ -452,11 +525,23 @@ function _buildSavedHtml(baseHtml, commentArr) {
   // `data-id="embeddedComments"` on another script never is. A document that genuinely lost the
   // region resolves to nothing and fails here instead of exporting a corrupted copy.
   const found = _cmhVerifiedScriptRange(baseHtml, "embeddedComments");
+  // The LIVE document's boundary is checked too, not just the export base's. The reader fails
+  // closed on a contested live boundary (it loaded no embedded comments), so writing a base whose
+  // own boundary is intact would bake that reduced set straight over the file's comments - the
+  // loss this whole rule exists to prevent, arriving through the back door.
+  if (found.contested || cmhContentRootState(document).contested) {
+    throw new Error(_CMH_CONTESTED_ROOT_ERROR);
+  }
   if (found.start == null) {
-    // Distinguish the two failures: the region is absent, or it is present but this document's
-    // markup could not be resolved to it reliably (never splice on a guess).
+    // Distinguish the remaining failures: the block is present in the layer's own region but this
+    // document's markup could not be resolved to it reliably, the only element carrying the id is
+    // authored content inside the content root, or the region is simply absent. Never splice on a
+    // guess, and never blame the wrong thing.
     if (found.present) {
       throw new Error('Found <scr' + 'ipt id="embeddedComments"> but could not locate it reliably in the source HTML. The document markup may be malformed; re-generate or repair it, then export again.');
+    }
+    if (found.anyOwner) {
+      throw new Error('The only <scr' + 'ipt id="embeddedComments"> in this document sits inside the content root, where authored content lives, so it is not the layer\'s block. Move the EMBEDDED COMMENTS region above the content root, then export again.');
     }
     throw new Error('Could not find <scr' + 'ipt id="embeddedComments"> in the source HTML. Make sure the EMBEDDED COMMENTS region is present.');
   }
@@ -504,20 +589,64 @@ function _downloadHtml(text, filename) {
 function _layerDescriptorJson(mode) {
   return JSON.stringify({ version: CMH_VERSION, mode, regions: CMH_REGION_NAMES });
 }
+// Inert DATA, as the browser would judge it: no `src` to fetch, and a type that does not run.
+// `_offlineIsRunnableScriptType` (declared in the later partial `68-export-offline.js`; the
+// partials share one hoisted IIFE scope, see MODULES.md) is the one HTML "JavaScript MIME type"
+// test in this layer, so the two never drift apart. Only such a block may be rewritten as a
+// descriptor copy.
+function _cmhIsInertDataScript(el) {
+  if (!el || el.getAttribute("src")) return false;
+  return !_offlineIsRunnableScriptType(el.getAttribute("type"));
+}
 function _retargetLayerDescriptor(html, mode) {
   // Resolve the descriptor block the same structural way as the comments block (see
-  // _cmhVerifiedScriptRange). A text scan could not: the layer's own source spells
+  // _cmhVerifiedScriptRanges). A text scan could not: the layer's own source spells
   // `<script type="application/json" id="commentableHtmlLayer">`, so a document that had lost
   // the real block still "matched" inside the inlined runtime and the replace overwrote a
   // quarter of a megabyte of runtime JS with the descriptor JSON.
   const src = String(html == null ? "" : html);
-  const found = _cmhVerifiedScriptRange(src, "commentableHtmlLayer");
-  if (found.start != null) {
-    // Replace only the BODY, so the block keeps whatever attributes it was authored with.
-    return src.slice(0, found.tagEnd) + _layerDescriptorJson(mode) + src.slice(found.closeStart);
+  const found = _cmhVerifiedScriptRanges(src, "commentableHtmlLayer");
+  if (found.ranges.length) {
+    // Retarget the block a reader resolves - it IS the descriptor - plus every ADDITIONAL copy in
+    // the layer's own region, but only while each is inert DATA. Rewriting just the first left any
+    // other reserved-id copy stale, so an exported document could ship two descriptors disagreeing
+    // about what it IS, and which one a tool believed came down to document order. The inert-data
+    // test is what keeps that from becoming a licence to clobber: overwriting an author's RUNNABLE
+    // script (or one with a `src`) would be exactly the silent, unrequested mutation CMH-EXP-19
+    // refuses to make, and would leave a classic script whose body is now JSON. That holds for the
+    // resolved block too - if the element the runtime reads as the descriptor is runnable, the
+    // document is broken in a way only its author can fix, so refuse instead of destroying code.
+    if (!_cmhIsInertDataScript(found.ranges[0].el)) {
+      throw new Error("Export aborted: the element this document exposes as its commentable-html layer descriptor is a runnable script, not an inert data block, so the export will not overwrite it. Give that script a different id (or restore the descriptor), then export again.");
+    }
+    const targets = found.ranges.filter(function (range) {
+      return _cmhIsInertDataScript(range.el);
+    });
+    // Splice last-first so the earlier ranges' offsets stay valid, and only ever backwards: a
+    // range that overlapped one already spliced would corrupt the output silently.
+    const ordered = targets.slice().sort(function (a, b) { return b.start - a.start; });
+    let out = src;
+    let limit = src.length;
+    for (let i = 0; i < ordered.length; i += 1) {
+      const range = ordered[i];
+      if (range.end > limit) {
+        throw new Error("Export aborted: the commentable-html layer descriptor could not be located reliably in the source HTML.");
+      }
+      // Replace only the BODY, so the block keeps whatever attributes it was authored with.
+      out = out.slice(0, range.tagEnd) + _layerDescriptorJson(mode) + out.slice(range.closeStart);
+      limit = range.start;
+    }
+    return out;
   }
+  if (found.contested) throw new Error(_CMH_CONTESTED_ROOT_ERROR);
   if (found.present) {
     throw new Error("Export aborted: the commentable-html layer descriptor could not be located reliably in the source HTML.");
+  }
+  if (found.anyOwner) {
+    // An element carries the descriptor id, but only inside the content root - authored content.
+    // Anchoring a fresh descriptor here would emit a document with two elements owning a
+    // reserved id that the strict validator requires to be unique, so fail loudly instead.
+    throw new Error("Export aborted: the only element carrying the commentable-html layer descriptor id sits inside the content root, where authored content lives. Move the descriptor above the content root (or re-generate the document), then export again.");
   }
   // No descriptor at all: anchor a fresh one to the version meta tag. Match that tag as a parser
   // would - a DOM-serialized document writes `<meta name="..." content="...">` with neither the
@@ -529,6 +658,13 @@ function _retargetLayerDescriptor(html, mode) {
     function (m) { return m + insert; });
   if (anchored === src) {
     throw new Error("Export aborted: this document has no commentable-html layer descriptor and no version meta tag to anchor one to.");
+  }
+  // The anchor was matched in TEXT, so confirm the freshly minted block really landed in the
+  // layer's own region: a document whose head meta is missing while its CONTENT quotes that meta
+  // would otherwise have the descriptor written into authored content, and every later export
+  // would then refuse it as content - a one-way brick caused by the layer itself.
+  if (!_cmhVerifiedScriptRanges(anchored, "commentableHtmlLayer").ranges.length) {
+    throw new Error("Export aborted: a commentable-html layer descriptor could not be re-created outside the content root. Re-generate the document, then export again.");
   }
   return anchored;
 }
@@ -543,8 +679,14 @@ async function saveHtml() {
   baseHtml = review.html;
   const exportComments = _exportableComments();
   let text;
-  try { text = _buildSavedHtml(baseHtml, exportComments); }
-  catch (e) { showToast(e.message); return; }
+  try {
+    text = _buildSavedHtml(baseHtml, exportComments);
+    // Restamp the descriptor on this path too, so "no surviving copy disagrees with the document
+    // it is in" (CMH-EXP-18) holds for a plain Save, not only for the paths that CHANGE the mode.
+    // The mode written is the document's own, so a re-saved Offline copy stays Offline
+    // (CMH-OFFLINE-03): this is a consistency pass, never a mode change.
+    text = _retargetLayerDescriptor(text, isOfflineDocument() ? "offline" : "shareable");
+  } catch (e) { showToast(e.message); return; }
   const filename = _suggestedFilename();
   const n = exportComments.length;
   const noun = "comment" + (n === 1 ? "" : "s");

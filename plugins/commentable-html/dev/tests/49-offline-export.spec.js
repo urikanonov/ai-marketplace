@@ -1740,9 +1740,19 @@ test("CMH-OFFLINE-08: payload resolution fails closed when it cannot be identifi
       name: "a planted duplicate content root leaves no verifiable boundary",
       // Discriminating on the BOUNDARY rule alone: there is exactly one payload block, so nothing
       // but "exactly one element carries the content-root id" can refuse this document. With a
-      // first-match lookup the export just proceeds against whichever root came first.
+      // first-match lookup the export just proceeds against whichever root came first. The refusal
+      // now comes from the shared boundary (CMH-EXP-17), which every reserved-block lookup
+      // consults, so it fires before this pipeline reaches the payload - earlier, same rule.
       content: DUPLICATE_ROOT_CONTENT,
       build: (html) => withPayloadAfterContent(html),
+      refusal: /content-root id/i,
+    },
+    {
+      name: "a document with no content root leaves no verifiable boundary",
+      // The other half of "missing or duplicated": with NO content root the shared boundary has
+      // nothing to be outside OF and stands aside, so this document reaches THIS resolver - which
+      // must still refuse rather than fall back to the library copies already in the file.
+      build: (html) => withPayloadAfterContent(html).replace('id="commentRoot"', 'id="commentRootRenamed"'),
     },
   ];
 
@@ -1751,7 +1761,7 @@ test("CMH-OFFLINE-08: payload resolution fails closed when it cannot be identifi
     const staged = stageContent(c.content || FORGERY_CONTENT, { key: "cmh-offline-ambiguous", source: "offline-ambiguous.html" });
     try {
       fs.writeFileSync(staged.html, c.build(fs.readFileSync(staged.html, "utf8")));
-      await expectExportRefused(page, staged, /cannot identify the vendored/i, c.name);
+      await expectExportRefused(page, staged, c.refusal || /cannot identify the vendored/i, c.name);
     } finally {
       fs.rmSync(staged.dir, { recursive: true, force: true });
     }

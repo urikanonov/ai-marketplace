@@ -16,16 +16,26 @@ Conventions for these partials (they share ONE closure scope after concatenation
 - The FIRST partial (`00-preamble.js`) must stay first: it captures `SNAPSHOT_HTML` and
   `document.currentScript` before any DOM access, and opens the IIFE. The LAST partial
   (`95-startup.js`) closes the IIFE and runs startup. Do not reorder these two.
-- Shared infrastructure used across modules: the rich-content selector vocabulary (`03-selectors.js`),
+- Shared infrastructure used across modules: the content-root boundary helpers `cmhContentRootState` /
+  `cmhContentRoot` / `cmhLayerIdOwners` / `cmhLayerBlocks` / `cmhLayerBlock` (`01-config.js`),
+  the rich-content selector vocabulary (`03-selectors.js`),
   the viewport vocabulary (`04-viewport.js`),
   `widgetStateChanges` (35-widgets), and the export
   primitives `SNAPSHOT_HTML` / `CMH_LAYER_SCRIPT` / `CMH_INJECTED_CHROME` / `_stripTransientBodyClasses`
   / `_snapshotWithTail` (65-export-shareable) are consumed by later export modules - move with care.
+  One dependency runs the OTHER way: `_cmhIsInertDataScript` (65-export-shareable) calls
+  `_offlineIsRunnableScriptType` (68-export-offline), the single HTML "JavaScript MIME type" test, so
+  the descriptor retarget and the offline strips can never disagree about what would run. It is legal
+  because the partials share one hoisted IIFE scope, but move either one with that pairing in mind.
+  One dependency runs the OTHER way: `_cmhIsInertDataScript` (65-export-shareable) calls
+  `_offlineIsRunnableScriptType` (68-export-offline), the single HTML "JavaScript MIME type" test, so
+  the descriptor retarget and the offline strips can never disagree about what would run. It is legal
+  because the partials share one hoisted IIFE scope, but move either one with that pairing in mind.
 
 | Module | SPEC areas | Purpose |
 | --- | --- | --- |
 | `00-preamble.js` | CMH-CORE, CMH-EXP | IIFE opener; captures `SNAPSHOT_HTML` and `document.currentScript` before any DOM access. |
-| `01-config.js` | CMH-CORE, CMH-FWDCOMPAT, CMH-DENSITY, CMH-SEC | Auto-discovered config; declares `CMH_VERSION` (build.py stamps it). |
+| `01-config.js` | CMH-CORE, CMH-FWDCOMPAT, CMH-DENSITY, CMH-SEC, CMH-EXP | Auto-discovered config; declares `CMH_VERSION` (build.py stamps it) and the content-root boundary helpers (`cmhContentRootState`, `cmhContentRoot`, `cmhLayerIdOwners`, `cmhLayerBlocks`, `cmhLayerBlock`, `cmhWarnUnresolvedBlock`) every reader and exporter resolves the layer's own reserved data blocks through. |
 | `02-lzstring.js` | CMH-STORE | Vendored lz-string (trimmed `compressToUTF16`/`decompressFromUTF16`, bounded decode) used to pack the comment store. |
 | `03-selectors.js` | CMH-CHART, CMH-MMD, CMH-OFFLINE, CMH-PRINT | The one shared rich-content selector vocabulary (`CMH_MERMAID_SEL`, `CMH_CHART_DATA_SEL`, `CMH_CHART_CANVAS_SEL`, `CMH_RICH_CONTENT_SEL`) the chart renderer, the image layer, the Offline exporter, the print/measure cap in `83-print.js`, and the author-time payload detector all derive from. |
 | `04-viewport.js` | CMH-CORE | The one shared VIEWPORT vocabulary (`cmhViewportBox`, `cmhViewportRect`, `cmhOnViewportChange`): every floating affordance measures the VISUAL viewport through these and subscribes to its `resize`/`scroll` here, so an on-screen keyboard or a pinch zoom cannot leave one of them off screen. |
