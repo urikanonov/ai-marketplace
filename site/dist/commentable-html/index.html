@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.427.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.428.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.428.0] - 2026-08-03</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A sidebar re-render no longer strands focus on <code>&lt;body&gt;</code>. Rendering replaces the whole comment list, so the checklist / note / board <code>reset</code> buttons and the comment and reply delete confirms destroyed the very control the reviewer was on and left <code>document.activeElement</code> on <code>&lt;body&gt;</code> - a keyboard or screen-reader user lost their place entirely and had to tab in from the top of the page. Every render now notes where focus was before it rebuilds and hands it to the equivalent rebuilt control, or to whichever control took its place, or - when the list is left empty - to the list container itself, which is now labelled and takes a focus ring. A control that cannot actually take focus (hidden by the comment filter, disabled, or inert) is skipped rather than silently swallowing the restore. Only focus that was inside the list is carried, so a re-render triggered from elsewhere (a note being typed, a checklist ticked in the document) still leaves focus exactly where it was.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.427.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The validator now keeps a HEADING that a document leaves unclosed at end of input. A file truncated inside a heading (<code>&lt;h2 id=&quot;sec&quot;&gt;Title</code> with no closer) dropped that heading from the parsed view entirely, even though a browser renders it - exactly as it runs an unclosed <code>&lt;style&gt;</code> to the end of the document. Every heading-derived check was blind to the last heading of such a file: the id scan, the TOC/anchor scan and the heading path a comment anchors to. The parser now finalizes an open heading at end of input through the same helper the end tag uses, so its text, id and top-level/lede flags read the same either way. The same helper now also ends a heading when an ANCESTOR closes, and when a NEW heading starts on it, as a browser does: text after <code>&lt;/section&gt;</code>, after the end of <code>#commentRoot</code>, or after a following <code>&lt;h2&gt;</code> is no longer glued onto the heading (which used to swallow the following prose - and the next heading, id and all - into one title).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.425.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -511,8 +520,6 @@
               <li>The tools outside the validator&#x27;s <code>checks</code> package - the deck validator, the contrast scanner, and the <code>doc_stats</code>, <code>fix_skip</code>, <code>generate_toc</code> and <code>wrap_sections</code> authoring tools - decode attribute values through that same shared browser rule instead of trusting the host <code>html.parser</code>. Each kept its own attribute dict, so the same document was read one way by the validator and another way by the tool beside it: a named character reference that is only a PREFIX of the value (<code>class=&quot;mermaid &amp;nbspcm-skip&quot;</code>) resolved on Python 3.12 and invented a <code>cm-skip</code> token the author never wrote, and a duplicated attribute kept the LAST occurrence where HTML5 keeps the first - which let a decoy <code>http-equiv</code> hide a <code>&lt;meta refresh&gt;</code> redirect from the deck&#x27;s active-content scan, a decoy <code>style=</code> hide the live declaration from the contrast scanner, and a decoy <code>id=&quot;commentRoot&quot;</code> scope the section wrapping to the wrong element.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.416.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -550,17 +557,7 @@
               <li><code>validate.py</code> now reports both shapes of the same problem as errors: a duplicated <code>reviewedSections</code> id (like the three other reserved state-block ids) and an id the EMBEDDED COMMENTS region does not own (a block outside it, or one that is not a <code>&lt;script&gt;</code>), and <code>mark_reviewed.py</code> refuses to write a block that region does not own. Its shape check only ever read the region-owned block, so either file used to pass <code>--strict</code> while the runtime ignored or mis-wrote the reader&#x27;s state.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.399.0] - 2026-08-03</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The Offline export&#x27;s loader strip and the strict validator both missed a script that loads through <code>href</code> / <code>xlink:href</code> instead of <code>src</code>. An SVG <code>&lt;script&gt;</code> never uses <code>src</code> - it loads through SVG2 <code>href</code> or the legacy <code>xlink:href</code> - and its body is empty, so the strip&#x27;s <code>script[src]</code> selector never saw it and the inline egress scan (which reads <code>textContent</code>) had nothing to read; <code>validate.py --strict</code> mirrored the same blind spot and certified such a file as offline-clean. The zero-network CSP was the only thing left between that element and the fetch, and the strip and the gate exist precisely so the guarantee does not rest on the CSP. Both now scan <code>src</code>, <code>href</code>, and <code>xlink:href</code>, and a parity test pins the two implementations&#x27; attribute sets together in both directions. Each script element is examined once, so one carrying two network attributes is removed - and counted in the download toast - once; a relative or <code>data:</code> reference is still left untouched. What counts as a load is namespace-blind on both sides, but what is done about it is not: an SVG script goes (SVG2 ignores its body while <code>href</code> is present, so clearing the attribute would start executing it), while on an HTML script the same attributes are inert and only the ATTRIBUTE is removed - so an author&#x27;s running code is never lost over a dead attribute, and the validator, whose flat tokenizer has no namespace to consult, still finds nothing to complain about.</li>
-              <li>The offline strip now also walks <code>&lt;template&gt;</code> content for its load passes - scripts, media, links, forms and styles - rather than scripts alone. A template&#x27;s children live in an inert fragment that <code>querySelectorAll</code> cannot reach, while the validator&#x27;s tokenizer reads those tags plainly, so a network-loading element parked in a template rode into an export that its own <code>--strict</code> gate then rejected. The inline-egress scan deliberately stays on the document&#x27;s own scripts, matching the validator&#x27;s script model: template content never executes, so scanning it would only cost an author a script body the gate is happy with.</li>
-              <li>The exporter&#x27;s and the validator&#x27;s network-URL predicates now allow exactly the leading characters a browser REMOVES before it parses a URL - C0 controls and spaces, U+0000 to U+0020 - instead of <code>String.trim()</code> on one side and nothing on the other. A padded value of that kind loads, and the validator used to bless exactly the file the strip had just cleaned; a value padded with NBSP or U+FEFF resolves as a relative reference and is now left alone by both. A parity test runs the runtime&#x27;s own pattern in node against the validator&#x27;s copy.</li>
-              <li>The Chart.js CDN exemption in shareable mode is bound to a <code>src</code> loader again. Widening the script-load set had extended it to <code>href</code> / <code>xlink:href</code>, where the version and SRI checks that justify the exemption never run, so a remote script whose path merely ends in <code>chart.min.js</code> would have passed validation unexamined.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">266 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">267 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

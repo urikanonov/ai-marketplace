@@ -87,6 +87,11 @@ function renderComments() {
   // note-typing path COALESCES a keystroke burst into a single render rather than one per key
   // (issue #505). Only counts when a test has pre-seeded the counter; production never creates it.
   if (typeof window !== "undefined" && window.__cmhPerf) window.__cmhPerf.renders = (window.__cmhPerf.renders || 0) + 1;
+  // The rebuild also destroys whatever LIST CONTROL the reviewer was on, which used to drop them on
+  // <body> (issue #897). Note where focus was before anything changes, and hand it back once the
+  // list is rebuilt. An editor's own focus is carried by the draft snapshot below, so it is
+  // excluded here, and focus outside the list is not this function's business at all.
+  const _listFocus = _captureListFocus();
   // A full re-render replaces the list DOM, wiping any open inline reply editor. Snapshot an in-progress
   // draft first (a re-render can be triggered by sorting, a note debounce, a checklist change, etc.) and
   // re-open the editor with the same text AND selection once the list is rebuilt, so the draft is
@@ -161,6 +166,7 @@ function renderComments() {
       </div>`;
     if (typeof applyCommentSearch === "function") applyCommentSearch();
     if (typeof refreshReviewUI === "function") refreshReviewUI();
+    _restoreListFocus(_listFocus);
     return;
   }
   const sortKey = _anchorSortKey;
@@ -298,6 +304,7 @@ function renderComments() {
   if (typeof applyCommentSearch === "function") applyCommentSearch();
   if (typeof refreshReviewUI === "function") refreshReviewUI();
   if (_inlineDraft) _reopenInlineDraft(_inlineDraft);
+  _restoreListFocus(_listFocus);
 }
 // Re-open an inline reply/edit editor after a re-render and restore the reviewer's in-progress text
 // AND selection, so a re-render (sort, note debounce, ...) never silently drops a draft or collapses
@@ -621,10 +628,90 @@ function cmhSidebarNoteEditor(cid) {
   };
 }
 function _focusInList(sel) {
-  const el = listEl.querySelector(sel);
-  // preventScroll: refocusing a rebuilt panel control must never scroll the DOCUMENT (inline
-  // editing deliberately leaves the reader's place in the page alone).
+  _focusListEl(listEl.querySelector(sel));
+}
+// preventScroll: refocusing a rebuilt panel control must never scroll the DOCUMENT (inline editing
+// and the panel's own housekeeping deliberately leave the reader's place in the page alone).
+function _focusListEl(el) {
   if (el) { try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (e2) {} } }
+}
+// ---- Focus across a re-render of the list (issue #897) ----
+// renderComments() replaces the whole list, destroying whatever control the reviewer was on. The
+// controls that re-render from INSIDE the list - the checklist/note/board Reset cards and the
+// comment/reply delete confirms - therefore used to leave document.activeElement on <body>, so a
+// keyboard or screen-reader user lost their place entirely. Every render captures where focus was
+// before it rebuilds and hands it back afterwards, so this holds however the render was reached
+// (synchronously from the click, a frame later through the board's mutation observer, or twice over
+// when two renders are queued) rather than depending on each handler to remember.
+const _LIST_FOCUSABLE = "button, a[href], input, select, textarea, [tabindex]";
+// The identity a rebuilt card is found by, most specific first: a reply entry, then the four card
+// kinds (comment, checklist, note, board).
+const _LIST_ID_ATTRS = ["data-reply-cid", "data-cid", "data-cmh-checklist-name", "data-cmh-note-name", "data-cm-widget-name"];
+function _captureListFocus() {
+  const a = document.activeElement;
+  // Only focus INSIDE the list is this function's business: a render triggered from a note the
+  // reviewer is typing into, a checklist ticked in the document, or the Sort button must leave the
+  // caret exactly where it is (the CMH-THREAD-09 rule). The container itself survives the rebuild,
+  // and an editor's focus is carried by the draft snapshot instead - including on the save paths,
+  // which null the editor before rendering and then focus the right rebuilt control themselves, so
+  // an intermediate landing here would only make focus move twice.
+  if (!a || a === listEl || !listEl.contains(a)) return null;
+  if (a.closest && a.closest(".cm-reply-compose")) return null;
+  if (_activeInlineEditor && _activeInlineEditor.el && _activeInlineEditor.el.contains(a)) return null;
+  const act = (a.dataset && a.dataset.act) || "";
+  const holder = a.closest("[data-reply-cid]") || a.closest(".cm-card");
+  let sel = "";
+  if (act && holder) {
+    for (let i = 0; i < _LIST_ID_ATTRS.length && !sel; i++) {
+      const v = holder.getAttribute(_LIST_ID_ATTRS[i]);
+      if (v) sel = "[" + _LIST_ID_ATTRS[i] + '="' + _cssEsc(v) + '"] [data-act="' + _cssEsc(act) + '"]';
+    }
+  }
+  // The index is taken over the SAME filtered sequence the restore searches, so a card the comment
+  // filter is hiding cannot shift the two apart and land the reviewer on a distant control.
+  return { sel: sel, idx: Array.prototype.indexOf.call(_listFocusables(), a) };
+}
+// A control the reviewer can actually land on. focus() is SILENT on a hidden, disabled, or inert
+// element, which would strand them on <body> after all - and the comment search hides non-matching
+// cards outright, so the rebuilt list routinely holds controls that cannot take focus.
+function _listCtlFocusable(el) {
+  if (!el || el.disabled || el.hidden) return false;
+  if (el.closest && el.closest("[inert]")) return false;
+  return typeof el.getClientRects !== "function" || el.getClientRects().length > 0;
+}
+function _listFocusables() {
+  return Array.prototype.filter.call(listEl.querySelectorAll(_LIST_FOCUSABLE), _listCtlFocusable);
+}
+function _restoreListFocus(plan) {
+  if (!plan) return;
+  // Step in only where the rebuild actually STRANDED the reviewer. Anything else holding focus - a
+  // control the render itself focused, an overlay, a re-opened inline editor (whose own focus is
+  // deferred, so its pending timer counts) - keeps it.
+  const a = document.activeElement;
+  if (a && a !== document.body) return;
+  const ed = _activeInlineEditor && _activeInlineEditor.el;
+  if (ed && ed.__focusTimer) return;
+  const ctls = _listFocusables();
+  let match = null;
+  if (plan.sel) { try { match = listEl.querySelector(plan.sel); } catch (e) { /* exotic identity */ } }
+  // The equivalent rebuilt control first; else whichever control took its index in the rebuilt list,
+  // then outwards from there, so a candidate that still refuses focus hands off to its NEIGHBOUR
+  // rather than to the top of a long list; and finally the list container itself (tabindex="-1"),
+  // so an emptied list still takes focus rather than <body>.
+  const order = [];
+  if (match && _listCtlFocusable(match)) order.push(match);
+  if (ctls.length) {
+    const at = Math.min(Math.max(plan.idx, 0), ctls.length - 1);
+    for (let d = 0; d < ctls.length; d++) {
+      if (at + d < ctls.length) order.push(ctls[at + d]);
+      if (d && at - d >= 0) order.push(ctls[at - d]);
+    }
+  }
+  order.push(listEl);
+  for (let i = 0; i < order.length; i++) {
+    _focusListEl(order[i]);
+    if (document.activeElement === order[i]) return;
+  }
 }
 // First-reply identity prompt (issue #645), tracked separately from the first-COMMENT nudge so that a
 // reviewer whose first attributable action is a reply is still prompted even if an earlier comment

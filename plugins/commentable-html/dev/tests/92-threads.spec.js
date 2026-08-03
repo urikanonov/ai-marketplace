@@ -6,7 +6,7 @@ import {
   openKitchenSink, addTextComment, storedComments, machineTrailerBody, expectNoteFenced,
   installClipboardCapture, ready, fileUrl, stageInline, lastCopied, openInline,
   clickSidebarExport, readDownload,
-  clickClearAll, stageContent,
+  clickClearAll, stageContent, openSearch,
 } from "./helpers.js";
 
 const IMG = "#commentRoot img.cm-img-commentable";
@@ -65,6 +65,61 @@ async function settleFocus(page) {
     requestAnimationFrame(() => setTimeout(() => setTimeout(resolve, 0), 0));
   }));
 }
+
+// A document whose sidebar grows Reset change cards (a note and a checklist) beside commentable
+// prose, so a test can drive a re-render FROM a panel list control that the render then destroys.
+const RESET_DOC = `
+  <h1>Reset focus</h1>
+  <p id="resetProse">Prose to comment on beside the change cards.</p>
+  <div class="cmh-note" data-cmh-note="risk" data-cmh-note-label="Reviewer risk summary">No blocking risks yet.</div>
+  <div class="cmh-checklist" data-cmh-checklist="release" data-cmh-checklist-label="Release readiness">
+    <ul><li data-cmh-item="rel" data-cmh-state="blank">Release notes</li></ul>
+  </div>`;
+
+// A draggable board, whose state card Reset re-renders the panel through a requestAnimationFrame
+// rather than synchronously.
+const BOARD_DOC = `
+  <h1>Board focus</h1>
+  <p id="boardProse">Prose to comment on beside the board.</p>
+  <div class="board cm-skip" data-cm-widget="triage" data-cm-draggable aria-label="Triage board" id="board">
+    <div class="col" data-cm-slot="Now" id="now"><div class="card" data-cm-part="a" data-cm-part-label="Card A">Card A</div></div>
+    <div class="col" data-cm-slot="Later" id="later"></div>
+  </div>`;
+
+// A board beside a checklist, so a test can land a SYNCHRONOUS re-render (the checklist tick)
+// between the board Reset click and the board's own frame-deferred render.
+const BOARD_CHECKLIST_DOC = `
+  <h1>Board and checklist</h1>
+  <div class="board cm-skip" data-cm-widget="triage" data-cm-draggable aria-label="Triage board" id="board">
+    <div class="col" data-cm-slot="Now" id="now"><div class="card" data-cm-part="a" data-cm-part-label="Card A">Card A</div></div>
+    <div class="col" data-cm-slot="Later" id="later"></div>
+  </div>
+  <div class="cmh-checklist" data-cmh-checklist="release" data-cmh-checklist-label="Release readiness">
+    <ul><li data-cmh-item="rel" data-cmh-state="blank">Release notes</li></ul>
+  </div>`;
+
+async function openDoc(page, content, key) {
+  await installClipboardCapture(page);
+  const { html } = stageContent(content, { key });
+  await page.goto(fileUrl(html));
+  await ready(page);
+  return html;
+}
+
+// Where the panel left focus after a re-render. `cid` names the surviving card that holds it, so a
+// test can assert focus landed on a specific rebuilt control rather than merely "somewhere".
+const focusedInPanel = (page) => page.evaluate(() => {
+  const list = document.getElementById("commentList");
+  const a = document.activeElement;
+  const card = (a && a.closest) ? a.closest(".cm-card") : null;
+  return {
+    tag: a ? a.tagName : null,
+    id: (a && a.id) || "",
+    act: (a && a.dataset && a.dataset.act) || "",
+    inList: !!(a && list && (a === list || list.contains(a))),
+    cid: card ? (card.getAttribute("data-cid") || "") : "",
+  };
+});
 
 // Drive the note-typing debounce (37-notes.js) WITHOUT moving focus, the way a re-render reaches
 // the sidebar from a control the reviewer is not currently in. `input` is the event typing fires.
@@ -673,5 +728,256 @@ test.describe("collaboration: author attribution and threads", () => {
     await expect(card.locator(".cm-entry-root .cm-author-pill")).toHaveText("Alice");
     await expect(card.locator(".cm-reply .cm-author-pill")).toHaveText("Bob");
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  // ---- CMH-THREAD-11: a re-render driven from a list control must not strand focus on <body> ----
+
+  test("a Reset change card that re-renders the panel hands focus to a rebuilt control (CMH-THREAD-11)", async ({ page }) => {
+    await openDoc(page, RESET_DOC, "cmh-thread-11-reset");
+    await addTextComment(page, "#resetProse", "survives the resets", 0);
+    await openSidebarPanel(page);
+    // A changed note and a ticked checklist each render their own card carrying a Reset button.
+    await page.locator('[data-cmh-note="risk"] .cmh-note-input').fill("One blocker after all.");
+    await expect(page.locator(".cm-card-note")).toHaveCount(1);
+    await page.locator('[data-cmh-item="rel"] .cmh-check').click();
+    await expect(page.locator(".cm-card-checklist")).toHaveCount(1);
+
+    // The note Reset destroys its own card by re-rendering the list it lives in.
+    await page.locator('.cm-card-note [data-act="note-reset"]').click();
+    await expect(page.locator(".cm-card-note")).toHaveCount(0);
+    await settleFocus(page);
+    let f = await focusedInPanel(page);
+    expect(f.tag).not.toBe("BODY");
+    expect(f.inList).toBe(true);
+
+    // Same for the checklist Reset.
+    await page.locator('.cm-card-checklist [data-act="cl-reset"]').click();
+    await expect(page.locator(".cm-card-checklist")).toHaveCount(0);
+    await settleFocus(page);
+    f = await focusedInPanel(page);
+    expect(f.tag).not.toBe("BODY");
+    expect(f.inList).toBe(true);
+  });
+
+  test("a board Reset card whose re-render lands a frame later still hands focus back (CMH-THREAD-11)", async ({ page }) => {
+    await openDoc(page, BOARD_DOC, "cmh-thread-11-board");
+    await addTextComment(page, "#boardProse", "survives the board reset", 0);
+    await openSidebarPanel(page);
+    await page.evaluate(() => {
+      document.getElementById("later").appendChild(document.querySelector('[data-cm-part="a"]'));
+    });
+    await expect(page.locator(".cm-card-state")).toHaveCount(1);
+
+    await page.locator('.cm-card-state [data-act="state-reset"]').click();
+    await expect(page.locator(".cm-card-state")).toHaveCount(0);
+    await settleFocus(page);
+    const f = await focusedInPanel(page);
+    expect(f.tag).not.toBe("BODY");
+    expect(f.inList).toBe(true);
+  });
+
+  test("deleting a comment hands focus to the card that took its place (CMH-THREAD-11)", async ({ page }) => {
+    page.on("dialog", (d) => d.accept());
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "delete this one", 0);
+    await addTextComment(page, "#commentRoot section p", "keep this one", 1);
+    await openSidebarPanel(page);
+    const keeperCid = await page.locator(".cm-card[data-cid]", { hasText: "keep this one" })
+      .getAttribute("data-cid");
+
+    await page.locator(".cm-card[data-cid]", { hasText: "delete this one" })
+      .locator('.cm-entry-root [data-act="del"]').click();
+    await expect(page.locator(".cm-card[data-cid]")).toHaveCount(1);
+    await settleFocus(page);
+    const f = await focusedInPanel(page);
+    expect(f.tag).not.toBe("BODY");
+    expect(f.inList).toBe(true);
+    expect(f.cid).toBe(keeperCid);
+    expect(f.act).toBe("del");
+  });
+
+  test("deleting a reply hands focus back into the surviving thread card (CMH-THREAD-11)", async ({ page }) => {
+    page.on("dialog", (d) => d.accept());
+    await openKitchenSink(page);
+    await setReviewerName(page, "Alice");
+    await addTextComment(page, "#commentRoot section p", "thread root for focus", 0);
+    await addReply(page, "reply one");
+    await addReply(page, "reply two");
+    const card = page.locator(".cm-card[data-cid]").first();
+    const cid = await card.getAttribute("data-cid");
+
+    await card.locator(".cm-reply", { hasText: "reply one" }).locator('[data-act="reply-del"]').click();
+    await expect(card.locator(".cm-reply")).toHaveCount(1);
+    await settleFocus(page);
+    const f = await focusedInPanel(page);
+    expect(f.tag).not.toBe("BODY");
+    expect(f.inList).toBe(true);
+    expect(f.cid).toBe(cid);
+  });
+
+  test("resetting the last change in an otherwise empty panel focuses the list itself (CMH-THREAD-11)", async ({ page }) => {
+    await openDoc(page, RESET_DOC, "cmh-thread-11-empty");
+    await openSidebarPanel(page);
+    await page.locator('[data-cmh-note="risk"] .cmh-note-input').fill("One blocker after all.");
+    await expect(page.locator(".cm-card-note")).toHaveCount(1);
+
+    // Nothing is left to hand focus back to, so the emptied list container takes it rather than
+    // dropping the reviewer on <body>.
+    await page.locator('.cm-card-note [data-act="note-reset"]').click();
+    await expect(page.locator("#commentList .cm-empty")).toHaveCount(1);
+    await settleFocus(page);
+    const f = await focusedInPanel(page);
+    expect(f.tag).not.toBe("BODY");
+    expect(f.id).toBe("commentList");
+  });
+
+  test("a re-render driven from a document control leaves focus there, not in the panel (CMH-THREAD-11)", async ({ page }) => {
+    await openDoc(page, RESET_DOC, "cmh-thread-11-elsewhere");
+    await addTextComment(page, "#resetProse", "a comment card to land on", 0);
+    await openSidebarPanel(page);
+    const field = page.locator('[data-cmh-note="risk"] .cmh-note-input');
+    await field.click();
+    await field.fill("One blocker after all.");
+    await expect(page.locator(".cm-card-note")).toHaveCount(1);
+    await settleFocus(page);
+    // The re-render came from the note field, so the panel must not pull the caret out of it.
+    const f = await focusedInPanel(page);
+    expect(f.inList).toBe(false);
+    expect(await page.evaluate(() => String(document.activeElement.className)))
+      .toContain("cmh-note-input");
+  });
+
+  test("a delete the reviewer sits on before confirming still hands focus back (CMH-THREAD-11)", async ({ page }) => {
+    test.slow();
+    // A reviewer can sit on the modal confirm for as long as they like - a screen-reader user
+    // hearing the prompt out easily takes seconds - and that wait must not cost them the restore.
+    page.on("dialog", async (d) => {
+      await new Promise((resolve) => setTimeout(resolve, 2600));
+      await d.accept();
+    });
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "slow delete", 0);
+    await addTextComment(page, "#commentRoot section p", "slow keeper", 1);
+    await openSidebarPanel(page);
+
+    await page.locator(".cm-card[data-cid]", { hasText: "slow delete" })
+      .locator('.cm-entry-root [data-act="del"]').click();
+    await expect(page.locator(".cm-card[data-cid]")).toHaveCount(1);
+    await settleFocus(page);
+    const f = await focusedInPanel(page);
+    expect(f.tag).not.toBe("BODY");
+    expect(f.inList).toBe(true);
+  });
+
+  test("a competing re-render does not swallow the board Reset's restore (CMH-THREAD-11)", async ({ page }) => {
+    await openDoc(page, BOARD_CHECKLIST_DOC, "cmh-thread-11-competing");
+    await openSidebarPanel(page);
+    await page.evaluate(() => {
+      document.getElementById("later").appendChild(document.querySelector('[data-cm-part="a"]'));
+    });
+    await expect(page.locator(".cm-card-state")).toHaveCount(1);
+
+    // The board Reset renders a FRAME later, while a checklist tick in the same task renders
+    // synchronously FIRST. That earlier render did not strand anyone (the Reset button is still
+    // there, still focused), so it must not consume the plan meant for the render that destroys it.
+    await page.evaluate(() => {
+      const reset = document.querySelector('.cm-card-state [data-act="state-reset"]');
+      reset.focus();
+      reset.click();
+      document.querySelector('[data-cmh-item="rel"] .cmh-check').click();
+    });
+    await expect(page.locator(".cm-card-state")).toHaveCount(0);
+    await expect(page.locator(".cm-card-checklist")).toHaveCount(1);
+    await settleFocus(page);
+    const f = await focusedInPanel(page);
+    expect(f.tag).not.toBe("BODY");
+    expect(f.inList).toBe(true);
+  });
+
+  test("with a filter hiding every survivor, focus lands on the list, not a hidden control (CMH-THREAD-11)", async ({ page }) => {
+    await openDoc(page, RESET_DOC, "cmh-thread-11-filtered");
+    await addTextComment(page, "#resetProse", "alpha comment", 0);
+    await openSidebarPanel(page);
+    await page.locator('[data-cmh-note="risk"] .cmh-note-input').fill("One blocker after all.");
+    await expect(page.locator(".cm-card-note")).toHaveCount(1);
+
+    // Filter down to the note card: the surviving comment card is hidden, and focus() is SILENT on
+    // a hidden control, so handing it the restore would strand the reviewer on <body> after all.
+    await openSearch(page);
+    await page.fill("#cmSearchInput", "blocker");
+    await expect(page.locator(".cm-card[data-cid]")).toHaveClass(/cm-hidden/);
+
+    await page.locator('.cm-card-note [data-act="note-reset"]').click();
+    await expect(page.locator(".cm-card-note")).toHaveCount(0);
+    await settleFocus(page);
+    const f = await focusedInPanel(page);
+    expect(f.tag).not.toBe("BODY");
+    expect(f.id).toBe("commentList");
+  });
+
+  test("an inline draft open elsewhere does not swallow the restore (CMH-THREAD-11)", async ({ page }) => {
+    page.on("dialog", (d) => d.accept());
+    await openKitchenSink(page);
+    await setReviewerName(page, "Alice");
+    await addTextComment(page, "#commentRoot section p", "draft host", 0);
+    await addTextComment(page, "#commentRoot section p", "doomed card", 1);
+    await openSidebarPanel(page);
+    const host = page.locator(".cm-card[data-cid]", { hasText: "draft host" });
+    await host.locator(".cm-reply-btn").click();
+    await host.locator(".cm-reply-compose textarea").fill("keep this draft");
+
+    // The draft is re-opened WITHOUT focus (it did not own it - CMH-THREAD-09), so the restore has
+    // to go to the list rather than being yielded to the editor's own deferred focus.
+    await page.locator(".cm-card[data-cid]", { hasText: "doomed card" })
+      .locator('.cm-entry-root [data-act="del"]').click();
+    await expect(page.locator(".cm-card[data-cid]")).toHaveCount(1);
+    await settleFocus(page);
+    const f = await focusedInPanel(page);
+    expect(f.tag).not.toBe("BODY");
+    expect(f.tag).not.toBe("TEXTAREA");
+    expect(f.inList).toBe(true);
+    await expect(host.locator(".cm-reply-compose textarea")).toHaveValue("keep this draft");
+  });
+
+  test("a control whose own card survives the render gets the focus back (CMH-THREAD-11)", async ({ page }) => {
+    await openDoc(page, RESET_DOC, "cmh-thread-11-identity");
+    await addTextComment(page, "#resetProse", "identity card", 0);
+    await openSidebarPanel(page);
+    const cid = await page.locator(".cm-card[data-cid]").first().getAttribute("data-cid");
+    await page.locator(`.cm-card[data-cid="${cid}"] [data-act="edit"]`).focus();
+
+    // A render from OUTSIDE the list (the note-typing debounce) rebuilds the card the reviewer is
+    // parked on. Its identity plus its action still exist, so focus goes back to that exact
+    // control - not merely "somewhere in the list".
+    await bumpNote(page, "One blocker after all.");
+    await expect(page.locator(".cm-card-note")).toHaveCount(1);
+    await settleFocus(page);
+    const f = await focusedInPanel(page);
+    expect(f.cid).toBe(cid);
+    expect(f.act).toBe("edit");
+  });
+
+  test("cards the filter hides do not push the restore onto a distant control (CMH-THREAD-11)", async ({ page }) => {
+    page.on("dialog", (d) => d.accept());
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "alpha out of scope", 0);
+    await addTextComment(page, "#commentRoot section p", "zeta delete me", 1);
+    await addTextComment(page, "#commentRoot section p", "zeta keeper", 2);
+    await openSidebarPanel(page);
+    await openSearch(page);
+    await page.fill("#cmSearchInput", "zeta");
+    await expect(page.locator(".cm-card[data-cid].cm-hidden")).toHaveCount(1);
+    const keeperCid = await page.locator(".cm-card[data-cid]", { hasText: "zeta keeper" })
+      .getAttribute("data-cid");
+
+    // The hidden card's controls still sit FIRST in the raw list, so counting them would push the
+    // restore past the survivor it should land on.
+    await page.locator(".cm-card[data-cid]", { hasText: "zeta delete me" })
+      .locator('.cm-entry-root [data-act="del"]').click();
+    await expect(page.locator(".cm-card[data-cid]")).toHaveCount(2);
+    await settleFocus(page);
+    const f = await focusedInPanel(page);
+    expect(f.cid).toBe(keeperCid);
+    expect(f.act).toBe("del");
   });
 });

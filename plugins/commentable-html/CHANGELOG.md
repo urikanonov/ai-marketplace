@@ -4,6 +4,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.428.0] - 2026-08-03
+
+### Fixed
+
+- A sidebar re-render no longer strands focus on `<body>`. Rendering replaces the whole comment list,
+  so the checklist / note / board `reset` buttons and the comment and reply delete confirms destroyed
+  the very control the reviewer was on and left `document.activeElement` on `<body>` - a keyboard or
+  screen-reader user lost their place entirely and had to tab in from the top of the page. Every
+  render now notes where focus was before it rebuilds and hands it to the equivalent rebuilt control,
+  or to whichever control took its place, or - when the list is left empty - to the list container
+  itself, which is now labelled and takes a focus ring. A control that cannot actually take focus
+  (hidden by the comment filter, disabled, or inert) is skipped rather than silently swallowing the
+  restore. Only focus that was inside the list is carried, so a re-render triggered from elsewhere (a
+  note being typed, a checklist ticked in the document) still leaves focus exactly where it was.
+
 ## [1.427.0] - 2026-08-03
 
 ### Fixed
