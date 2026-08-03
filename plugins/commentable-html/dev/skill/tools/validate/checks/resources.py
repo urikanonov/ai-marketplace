@@ -479,8 +479,9 @@ def meta_refresh_target(content):
 # or backslash is a path, not an authority, so it stays local.
 # `re.ASCII` is on so `re.IGNORECASE`
 # cannot fold U+017F onto `s` and report a relative `http<U+017F>:x.html` as a network URL.
-# Widening here introduces no exporter/validator drift: the offline strip removes EVERY
-# `meta[http-equiv=refresh]` whatever its URL, so this gate stays looser than the export it mirrors.
+# Widening here introduces no exporter/validator drift: offline mode rejects EVERY
+# `meta[http-equiv=refresh]` (as the strip removes every one), and this predicate only decides
+# WHICH of the two messages that rejection carries - the one that names a network beacon.
 # The NEIGHBOURING `(?:https?:)?//` gates deliberately keep the slashes (issue #961) - see the
 # CMH-VAL-08 spec row.
 META_REFRESH_NETWORK_URL_RE = re.compile(

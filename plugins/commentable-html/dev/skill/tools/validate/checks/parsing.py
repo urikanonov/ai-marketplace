@@ -1304,11 +1304,6 @@ class _DocParser(_BrowserBoundaries):
         self.template_scripts = []
         self.template_styles = []
         self.template_inline_styles = []
-        # Every `on*` attribute in the document, template content INCLUDED, as (tag, attr). The
-        # offline strip removes all of them, so the gate needs its own view to agree; the test is
-        # the exporter's literal `^on` one, which also catches `once` - matching it exactly is the
-        # point, since a validator that disagreed would reject the file the exporter just produced.
-        self.event_handler_attrs = []
         self.has_comment_root = False
         self.js_end_marker_pos = None
         self.all_ids = []        # every element id value, in document order
@@ -1510,9 +1505,6 @@ class _DocParser(_BrowserBoundaries):
                     and self._cur_heading_depth == len(self.stack) - 1):
                 self._truncate_stacks(self._cur_heading_depth)
         own_skip = "cm-skip" in set((ad.get("class") or "").split())
-        for _attr in ad:
-            if _attr[:2].lower() == "on":
-                self.event_handler_attrs.append({"tag": tag, "attr": _attr})
         before_mermaid = len(self.mermaid_blocks)
         self._record(tag, ad, own_skip)
         if tag == "svg" and self._mermaid_stack:
@@ -2402,6 +2394,44 @@ def _find_tag_attrs_egress(html, tag):
     key = _ascii_lower(tag)
     return ([dict(ad) for ad in found.get(key, ())]
             + [dict(ad) for ad in noscript_found.get(key, ())])
+
+
+def _is_event_handler_attr(name):
+    """Whether an attribute name is an inline event handler, by the EXPORTER's literal `^on` test.
+
+    Its own scrub is `/^on/i`, which also matches `once` and `onward`; matching it exactly is the
+    point, since a validator that drew the line anywhere else would bless an attribute the strip
+    takes away (or reject one it leaves alone). Kept as a named predicate so the parity test can
+    run the two spellings over one corpus.
+    """
+    return (name or "")[:2].lower() == "on"
+
+
+def _find_event_handler_attrs_egress(html):
+    """Every `on*` attribute in the document, as [{"tag", "attr"}] - the view the OFFLINE
+    event-handler gate needs, because the exporter's scrub walks `querySelectorAll("*")` on a
+    DOMParser document where scripting is OFF. That walk reaches two shapes the document parser's
+    start-tag scan did NOT: a self-closed FOREIGN element (`<svg><rect onload=.../>`, which returns
+    before any start-tag bookkeeping), and the markup inside a `<noscript>` (raw TEXT to a
+    scripting-ENABLED parse, and live for the reader who cannot run the layer at all).
+    `<template>` content was already covered by the scan this replaces and stays covered here,
+    since the shared index records every start tag. Reading that index rather than keeping a
+    second collection of the same attributes is what stops the gate and the strip from drifting
+    apart again.
+
+    Like every other egress lookup this reads the SHARED index, so a caller must already have
+    consulted `_tag_attrs_failed(html)`: on a parse that blew up the index is partial, and an
+    empty result here means "could not look", not "no handlers".
+    """
+    found, noscript_found, _failed = _tag_attr_index(html or "")
+    handlers = []
+    for source in (found, noscript_found):
+        for tag, ads in source.items():
+            for ad in ads:
+                for attr in ad:
+                    if _is_event_handler_attr(attr):
+                        handlers.append({"tag": tag, "attr": attr})
+    return handlers
 
 
 def _tag_attrs_failed(html):

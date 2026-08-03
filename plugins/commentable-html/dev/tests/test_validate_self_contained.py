@@ -105,6 +105,10 @@ class NewCheckTests(unittest.TestCase):
         doc = with_offline_mode(build(body=self._body(MAIN, '<meta http-equiv="refresh" content="0; url=https://example.com/out">')))
         errors, _ = self._errs_warns(doc)
         self.assertTrue(any("offline mode" in e and "meta refresh" in e for e in errors), errors)
+        # The BEACON wording specifically, not just any refresh rejection: every refresh is now an
+        # error, so without this the network branch could collapse into the generic message and the
+        # target parser CMH-VAL-08 keeps would stop being exercised in the positive direction.
+        self.assertTrue(any("points at a network URL" in e for e in errors), errors)
 
     def test_offline_mode_rejects_a_meta_refresh_that_omits_the_url_keyword(self):
         # The `url=` keyword is OPTIONAL in the HTML shared declarative refresh steps: once the
@@ -155,13 +159,29 @@ class NewCheckTests(unittest.TestCase):
             self.assertTrue(any("offline mode" in e and "meta refresh" in e for e in errors),
                             "expected an offline meta refresh error for %r, got %r" % (content, errors))
 
-    def test_offline_mode_accepts_a_local_meta_refresh(self):
-        # The false-positive controls for the widenings above: every one of these is a value a
-        # browser either resolves INSIDE the file or does not treat as a refresh at all, so the
-        # gate must stay quiet. `url=https:...` with no time is not a refresh (the algorithm
-        # returns when the time is empty), the quoted value is TRUNCATED at its closing quote so
-        # the `url=https:` inside it is ordinary path text, and the keyword's `=` may be preceded
-        # only by ASCII whitespace - an NBSP makes the whole tail a relative reference.
+    def test_offline_mode_rejects_a_local_meta_refresh_too(self):
+        # The exporter removes EVERY `meta[http-equiv=refresh]` whatever its target, so a file
+        # carrying a relative one is a file an export would change - and a refresh is a TOP-LEVEL
+        # NAVIGATION no meta-delivered CSP can restrict, which an injected `<base href>` rebases
+        # onto the network. The gate errored only on a network target, so both sides disagreed.
+        for content in ("5;url=./x.html", "0;url=#a", "30", "0;url=data:text/html,x"):
+            with self.subTest(content=content):
+                doc = with_offline_mode(build(body=self._body(
+                    MAIN, '<meta http-equiv="refresh" content="%s">' % content)))
+                errors, _ = self._errs_warns(doc)
+                # The GENERIC branch by its own wording, so an inverted branch selection (or a
+                # collapse of the two messages into one) cannot leave this green.
+                self.assertTrue(any("whatever its target" in e for e in errors), (content, errors))
+
+    def test_offline_mode_names_a_network_meta_refresh_target_only_when_there_is_one(self):
+        # Every refresh is rejected (above), but the two messages must stay distinguishable: only
+        # a target a browser resolves to a network host earns the beacon wording. These are the
+        # false-positive controls for the target parser: each is a value a browser either resolves
+        # INSIDE the file or does not treat as a refresh at all. `url=https:...` with no time is
+        # not a refresh (the algorithm returns when the time is empty), the quoted value is
+        # TRUNCATED at its closing quote so the `url=https:` inside it is ordinary path text, and
+        # the keyword's `=` may be preceded only by ASCII whitespace - an NBSP makes the whole
+        # tail a relative reference.
         for content in ("5;url=./x.html",
                         "0;url=#a",
                         "0;url=sub/page.html",
@@ -189,8 +209,10 @@ class NewCheckTests(unittest.TestCase):
             doc = with_offline_mode(build(body=self._body(
                 MAIN, '<meta http-equiv="refresh" content="%s">' % content)))
             errors, _ = self._errs_warns(doc)
-            self.assertFalse(any("meta refresh" in e for e in errors),
-                             "unexpected meta refresh error for %r: %r" % (content, errors))
+            self.assertFalse(any("points at a network URL" in e for e in errors),
+                             "unexpected network meta refresh error for %r: %r" % (content, errors))
+            self.assertTrue(any("meta refresh" in e for e in errors),
+                            "expected the generic meta refresh error for %r: %r" % (content, errors))
 
     def test_offline_mode_rejects_network_resources_inside_noscript(self):
         # A <noscript> body is raw TEXT only while scripting is enabled; with scripting off a
@@ -502,10 +524,41 @@ class NewCheckTests(unittest.TestCase):
                       '<template id="parked-handler"><button onclick="alert(1)">go</button></template>'):
             with self.subTest(block=block):
                 errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, block))))
-                self.assertTrue(any("inline event handler" in e for e in errors), (block, errors))
+                self.assertTrue(any("the export scrubs it" in e for e in errors), (block, errors))
+
+    def test_offline_mode_rejects_an_on_prefixed_attribute_that_is_not_a_handler(self):
+        # The gate's test is the exporter's literal `^on`, which also takes `once` and `onward` -
+        # the exporter really does `removeAttribute("once")`, so a validator that were cleverer
+        # than the strip would bless an attribute the export removes. The message must then claim
+        # only what the predicate decides, not assert that the attribute runs code.
+        block = '<div id="probe" once="1" onward="x">text</div>'
+        errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, block))))
+        for attr in ("once", "onward"):
+            # The FORMATTED head, which names one attribute, rather than a phrase the static
+            # message text carries anyway - otherwise both iterations assert the same thing and a
+            # drift that flagged only one of the two would stay green.
+            self.assertTrue(any('<div %s="...">' % attr in e for e in errors), (attr, errors))
+
+    def test_offline_mode_rejects_an_event_handler_only_a_dom_walk_reaches(self):
+        # The exporter scrubs `on*` off every element `querySelectorAll("*")` reaches on a
+        # DOMParser document, where scripting is OFF - so it reaches a self-closed FOREIGN
+        # element and the markup inside a `<noscript>`. The gate read the document parser's
+        # start-tag scan instead, which RETURNS before that scan for a self-closed foreign
+        # element and sees a `<noscript>` body as raw TEXT, so both shapes rode into a file
+        # `--strict` then certified as offline-clean.
+        for block in ('<svg viewBox="0 0 1 1"><rect width="1" height="1" '
+                      'onload="location.href=\'https://evil.example/x\'"/></svg>',
+                      '<noscript><button onclick="location.href=\'https://evil.example/x\'">'
+                      "go</button></noscript>",
+                      '<template id="parked-svg"><svg><rect onload="alert(1)"/></svg></template>'):
+            with self.subTest(block=block):
+                errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, block))))
+                self.assertTrue(any("the export scrubs it" in e for e in errors), (block, errors))
 
     def test_offline_mode_accepts_a_document_without_event_handlers(self):
-        block = '<button id="go" data-onclick="not a handler">go</button>'
+        block = ('<button id="go" data-onclick="not a handler">go</button>'
+                 '<svg viewBox="0 0 1 1"><rect width="1" height="1" fill="#123456"/></svg>'
+                 '<noscript><p data-only="text">enable scripting</p></noscript>')
         errors, warnings = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, block))))
         self.assertEqual(errors, [], errors)
         self.assertEqual(warnings, [], warnings)

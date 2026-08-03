@@ -37,6 +37,34 @@ def _anchors(html):
     return parsing._parse_document(html).anchors
 
 
+class DocParserTemplateRawTextTests(unittest.TestCase):
+    """A `<template>`-parked `<script>`/`<style>` body is recorded in the template-only views the
+    OFFLINE checks read, and reaches no view that treats it as authored content."""
+
+    CR = '<main id="commentRoot">'
+
+    def _doc(self, inner):
+        return parsing._parse_document(self.CR + inner + "<p>real prose</p></main>")
+
+    def test_a_template_parked_raw_text_body_is_not_commentroot_prose(self):
+        # `_cur_script`/`_cur_style` are deliberately not set inside a template (their bodies are
+        # not live script or live CSS), so the SOURCE TEXT of a parked block reaches `handle_data`
+        # with neither set. It must not fall through into `commentroot_prose`, which every prose
+        # reader treats as words the author wrote and a reader can see.
+        doc = self._doc('<template id="parked"><script>var LEAK = "not prose";</script>'
+                        "<style>.leak { color: #123456; }</style></template>")
+        prose = [t.strip() for t in doc.commentroot_prose if t.strip()]
+        self.assertEqual(prose, ["real prose"])
+
+    def test_a_template_parked_raw_text_body_lands_in_the_template_views_only(self):
+        doc = self._doc('<template id="parked"><script>var LEAK = 1;</script>'
+                        "<style>.leak { color: #123456; }</style></template>")
+        self.assertEqual([s["body"] for s in doc.template_scripts], ["var LEAK = 1;"])
+        self.assertEqual([s["body"] for s in doc.template_styles], [".leak { color: #123456; }"])
+        self.assertEqual(doc.scripts, [])
+        self.assertEqual(doc.styles, [])
+
+
 class DocParserRawTextTests(unittest.TestCase):
     """The raw-text / RCDATA set, applied explicitly so it does not drift with the host."""
 

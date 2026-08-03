@@ -86,6 +86,9 @@ def _check_self_contained(html, parser, nonshareable):
             for attr in attrs:
                 _check_network_attr(tag, el, attr)
     if offline_mode:
+        # A parse that could not be built was already reported at the top of this function, so the
+        # lookups below are best-effort on a PARTIAL index rather than gated on it - they can only
+        # add to a report that already says the document could not be read.
         errors.extend(_offline_csp_errors(html))
         media_attrs = (
             ("video", "src", False), ("video", "poster", False),
@@ -106,8 +109,24 @@ def _check_self_contained(html, parser, nonshareable):
             for el in _find_tag_attrs_egress(html, tag):
                 _check_network_attr(tag, el, "formaction")
         for el in _find_tag_attrs_egress(html, "meta"):
-            if (el.get("http-equiv") or "").lower() == "refresh" and meta_refresh_navigates_to_network(el.get("content", "")):
+            if (el.get("http-equiv") or "").lower() != "refresh":
+                continue
+            # EVERY refresh is rejected, not only one whose target is a network URL, because the
+            # exporter removes every `meta[http-equiv=refresh]` whatever its target: a file
+            # carrying a relative one is a file an export would change. It is also the fail-closed
+            # reading of the channel - a refresh is a TOP-LEVEL NAVIGATION no meta-delivered CSP
+            # can restrict, and an injected `<base href>` rebases a relative target onto the
+            # network (that rebasing is a WIDER, still-open gap, tracked as issue #924 - every
+            # other relative reference this file accepts is exposed to it too; rejecting the
+            # refresh outright is what takes this ONE channel out of its reach). The network
+            # wording is kept for a target that IS one, so the message still names the beacon when
+            # there is one to name.
+            if meta_refresh_navigates_to_network(el.get("content", "")):
                 errors.append("offline mode: meta refresh points at a network URL - remove it")
+            else:
+                errors.append("offline mode: a meta refresh declaration is removed by the export "
+                              "whatever its target, and one that does navigate is a top-level "
+                              "navigation no meta-delivered CSP can restrict - remove it")
         for tag in ("body", "table", "td", "th", "div"):
             for el in _find_tag_attrs_egress(html, tag):
                 _check_network_attr(tag, el, "background")
@@ -115,10 +134,15 @@ def _check_self_contained(html, parser, nonshareable):
         # not look would certify a hand-authored offline file the export would have changed - and an
         # inline handler is exactly the channel the CSP cannot close, since `script-src
         # 'unsafe-inline'` allows it and no meta-delivered policy restricts top-level navigation.
-        for handler in parser.event_handler_attrs:
-            errors.append('offline mode: <%s %s="..."> carries an inline event handler - it runs '
-                          "with the document's own privileges (the offline CSP allows inline script "
-                          "and cannot stop a navigation), so the export removes it; remove it here too"
+        # Read off the shared EGRESS index, the same view every resource check above asks, so the
+        # scrub's DOM walk and this gate see the same elements (a self-closed foreign element and a
+        # `<noscript>` fallback body included).
+        for handler in _find_event_handler_attrs_egress(html):
+            errors.append('offline mode: <%s %s="..."> begins with `on`, so the export scrubs it '
+                          "(its test is a literal `^on`, which also takes `once`/`onward`); a real "
+                          "inline handler runs with the document's own privileges, and the offline "
+                          "CSP allows inline script and cannot stop a navigation, so remove or "
+                          "rename the attribute here too"
                           % (handler.get("tag", "element"), handler.get("attr", "on...")))
         for style in parser.styles + parser.template_styles:
             # Slashes-required on purpose, and mirrored by the exporter's own `@import` strip: a

@@ -184,7 +184,8 @@ Clicking it:
 2. Preserves each rendered mermaid block's source and processed state in the exported copy so the reopened file can re-render it locally from a vendored mermaid runtime. The original mermaid source stays in `data-cmh-md-src`, so Markdown export still has source text and mermaid node/comment anchors remain structural.
 3. Preserves each chart canvas and its bootstrap script in the exported copy so the reopened file can recreate live Chart.js charts locally from a vendored runtime. The canvas keeps its accessible label and remains commentable as chart media.
 4. Removes automatic remote loaders such as the mermaid CDN module import, Chart.js CDN `<script src>`, external stylesheet/font preloads, and remote CSS `url(...)` references, then inlines the vendored mermaid / Chart.js bundles only if the document uses those features.
-5. Downloads the file with a `<stem>-offline.html` suffix.
+5. Removes the shapes an offline file must not carry at all, whatever they point at: EVERY `<meta http-equiv="refresh">` and EVERY `on*` attribute (the test is a literal `^on`, so `once`/`onward` go too), including inside `<template>` content and inside a `<noscript>` fallback body, plus remote form targets. It also adds a zero-network Content-Security-Policy meta. `validate.py --strict` rejects each of those in a document whose descriptor mode is `offline`, so a HAND-AUTHORED offline file must not carry them either - not even a refresh whose target is relative.
+6. Downloads the file with a `<stem>-offline.html` suffix.
 
 Mermaid diagrams must already be rendered when you click the button. If a mermaid block is still source text, the export aborts with a toast rather than producing a file that would fail offline. Because the exported file keeps the live chart bootstrap instead of rasterizing canvases, zero-network reopen still preserves Chart.js tooltips and other interactivity.
 
