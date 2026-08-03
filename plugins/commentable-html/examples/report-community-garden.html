@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.391.0" />
+<meta name="commentable-html-version" content="1.395.0" />
 <meta name="commentable-html-kind" content="plan" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.391.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.395.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Planning a Community Garden</title>
 
@@ -4459,7 +4459,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.391.0";
+const CMH_VERSION = "1.395.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -17474,6 +17474,12 @@ function _offlineRemoveVendoredBundleScript(payload) {
 // NAVIGATES the top-level document (CMH-OFFLINE-05), which is why the strips also drop a direct
 // scripted navigation to a network URL.
 const _OFFLINE_SCRIPT_DATA_ESCAPE_RE = /<\/?script|<\/style/i;
+// The two CONTENT gates every set of library bytes has to clear before this exporter appends them
+// as an executable script. Shared by the capture path and the payload path so the two can never
+// drift: whichever source `_offlineInlineRichLibs` chooses, the bytes face the same scan.
+function _offlineLibBytesUnsafe(code) {
+  return _offlineScriptHasNetworkEgress(code) || _OFFLINE_SCRIPT_DATA_ESCAPE_RE.test(code);
+}
 function _offlineAdjacentLibNotice(script, lib) {
   let n = script.previousSibling;
   while (n && n.nodeType === 3 && !String(n.nodeValue || "").trim()) n = n.previousSibling;
@@ -17500,8 +17506,7 @@ function _offlineCaptureInlinedRichLibs(doc) {
     // the user after a licence when the real problem was a tampered bundle.
     if (s.attributes.length !== 1) { found[lib + "Rejected"] = true; return; }
     const code = s.textContent || "";
-    if (!code.trim() || _offlineScriptHasNetworkEgress(code)) { found[lib + "Rejected"] = true; return; }
-    if (_OFFLINE_SCRIPT_DATA_ESCAPE_RE.test(code)) { found[lib + "Rejected"] = true; return; }
+    if (!code.trim() || _offlineLibBytesUnsafe(code)) { found[lib + "Rejected"] = true; return; }
     const license = _offlineAdjacentLibNotice(s, lib);
     // A blank notice would make `_offlineAppendLibNotice` a no-op, redistributing the library with
     // no MIT notice at all, so treat it as no notice. The marker was introduced before the notice
@@ -17533,6 +17538,28 @@ function _offlineMissingLibError(name, unlicensed) {
   }
   return new Error("Offline export is missing the vendored " + name + " bundle.");
 }
+// The payload's inflated bytes are appended as an EXECUTABLE script AFTER both offline strips have
+// run, so nothing downstream ever scans them. Position and uniqueness (CMH-OFFLINE-08) authenticate
+// the payload against an author of the CONTENT REGION and prove nothing against an author of the
+// WHOLE FILE - but "they can already run script in the document anyway" is only true of the SOURCE
+// document. The export exists to strip egress out of the file it PRODUCES: an authored script
+// carrying a remote dynamic import, or a direct scripted navigation to a network URL literal, is
+// deleted by `_stripOfflineNetworkLoads`, so routing the same code through the payload would grant
+// a capability the authored path does not have - egress inside a file whose whole promise is zero
+// network. So the bytes clear the same content gates the captured-copy path applies, and a refusal
+// says so: the bundle IS in the document, and the fix is refreshing the payload, which the generic
+// missing-bundle message would send the user away from. The wording claims only what each predicate
+// decides - that the bytes MATCH a pattern - for BOTH halves: the egress pattern is deliberately
+// literal and can match a comment or a string (CMH-OFFLINE-05), and the escape pattern is a
+// deliberate superset too (a start tag alone is inert until something has already escaped the
+// state, and a style end tag cannot close a script element at all). In practice only PAYLOAD bytes
+// can reach this, since a captured copy that failed the same scan was never recorded as a candidate.
+function _offlineUnsafeLibError(name) {
+  return new Error("Offline export refused the vendored " + name + " bundle: its bytes match the"
+    + " network-egress pattern the offline strips apply to every runnable inline script, or the"
+    + " script-data escape pattern, so they cannot be inlined safely. Re-run the authoring finalize"
+    + " step to refresh the vendored payload from the shipped libraries.");
+}
 async function _offlineInlineRichLibs(doc, referencesChartLib, inlinedLibs, payload) {
   const head = doc.head || doc.querySelector("head");
   if (!head) return;
@@ -17560,6 +17587,11 @@ async function _offlineInlineRichLibs(doc, referencesChartLib, inlinedLibs, payl
       // message rather than name a cause that may be wrong.
       throw _offlineMissingLibError(name, !!captured[key + "Unlicensed"] && !captured[key + "Rejected"]);
     }
+    // Every set of bytes this exporter is about to make executable clears the same content scan,
+    // whatever its source (see `_offlineUnsafeLibError`). Checked HERE, at the point of use, rather
+    // than at inflation: this is the last place before the bytes become a script, and it is after
+    // both strips have run.
+    if (_offlineLibBytesUnsafe(code)) throw _offlineUnsafeLibError(name);
     const license = String(source[key + "License"] || "");
     if (!license.trim()) {
       throw new Error("Offline export is missing the MIT notice for the vendored " + name

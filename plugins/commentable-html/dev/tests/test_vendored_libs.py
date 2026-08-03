@@ -1607,14 +1607,17 @@ class RuntimeParityTests(unittest.TestCase):
                                   (hit.end() if hit else 0) + 60]))
 
     def test_the_vendored_bundles_pass_the_offline_capture_gates(self):
-        """The re-export fallback runs the captured library through the same content gates it
-        applies to any other candidate, so the VENDORED bytes must satisfy them.
+        """Both paths that inline a library run its bytes through the same content gates, so the
+        VENDORED bytes must satisfy them.
 
-        Both gates are cheap today only because the bundles happen to be clean. That is a property
-        of the vendored files, not of the code, so a routine `mermaid` / `Chart.js` upgrade could
-        silently make a legitimate re-export fail with the exact "missing the vendored bundle"
-        toast this feature exists to remove. Pin it here, where a dependency bump trips it, rather
-        than in a browser test nobody connects to the upgrade.
+        This started as the re-export CAPTURE gate, but the PAYLOAD path now shares the predicate
+        (`_offlineLibBytesUnsafe`), so these bytes face the gates on the ORDINARY export too, not
+        only on a re-export. Both gates are cheap today only because the bundles happen to be clean.
+        That is a property of the vendored files, not of the code, so a routine `mermaid` /
+        `Chart.js` upgrade could silently make a legitimate export fail - and, because the refusal
+        is deliberately fail-closed with no fallback, it would fail for every already-finalized
+        document in the wild, not just here. Pin it where a dependency bump trips it, rather than in
+        a browser test nobody connects to the upgrade.
         """
         source = self._read("68-export-offline.js")
         start = source.find("function _offlineScriptHasNetworkImport")
@@ -1651,15 +1654,15 @@ class RuntimeParityTests(unittest.TestCase):
             for rx in blockers:
                 self.assertIsNone(
                     rx.search(code),
-                    "%s now contains %r, so it can trip the offline network-import check and the "
-                    "re-export capture gate would REJECT the genuine library - a re-export would "
-                    "fail loudly with 'missing the vendored bundle'. Re-check the bundle, or "
-                    "narrow that check." % (name, rx.pattern))
-            # `<script` (and an end tag) would open a script-data escape in the re-emitted element;
-            # a bare `<!--` is harmless on its own, and mermaid legitimately contains one.
+                    "%s now contains %r, so it can trip the offline network-egress check and BOTH "
+                    "inline paths would REJECT the genuine library - every export of a document "
+                    "needing it would fail loudly. Re-check the bundle, or narrow that check."
+                    % (name, rx.pattern))
+            # An end tag (or a start tag) would trip the script-data escape gate in the emitted
+            # element; a bare `<!--` is harmless on its own, and mermaid legitimately contains one.
             self.assertIsNone(
                 re.search(r"<\/?script|<\/style", code, re.IGNORECASE),
-                "%s now contains a script-data escape sequence, so the re-export capture gate "
+                "%s now contains a script-data escape sequence, so both offline inline paths "
                 "would reject the genuine library." % name)
 
 
