@@ -171,9 +171,9 @@ class RootScratchTest(unittest.TestCase):
                 self.assertFalse(cff.is_scratch_artifact(path), f"{path} should be allowed")
 
     def test_the_allowlist_is_the_escape_hatch(self):
-        """A real top-level file is allowed by naming it, whatever case it is written in."""
+        """A real top-level file is allowed by naming it exactly as git records it."""
         original = cff.ROOT_ALLOWED
-        cff.ROOT_ALLOWED = frozenset(name.lower() for name in ("CITATION.cff", "renovate.json"))
+        cff.ROOT_ALLOWED = frozenset(("CITATION.cff", "renovate.json"))
         try:
             self.assertFalse(cff.is_scratch_artifact("CITATION.cff"))
             self.assertFalse(cff.is_scratch_artifact("renovate.json"))
@@ -181,10 +181,15 @@ class RootScratchTest(unittest.TestCase):
         finally:
             cff.ROOT_ALLOWED = original
 
-    def test_the_allowlist_entries_are_lowercased(self):
-        """is_root_scratch compares a lowercased name, so a mixed-case entry would never match."""
-        for name in cff.ROOT_ALLOWED:
-            self.assertEqual(name, name.lower(), name)
+    def test_the_allowlist_is_case_exact(self):
+        """A lowercase `readme.md` is a DIFFERENT file on Linux, so folding case would let it in."""
+        for path in ["readme.md", "License", "AGENTS.MD", "Security.md"]:
+            with self.subTest(path=path):
+                self.assertTrue(cff.is_scratch_artifact(path), f"{path} should be refused")
+
+    def test_a_backslash_in_a_root_name_does_not_pose_as_a_subdirectory(self):
+        """`foo\\bar` at the root is one file whose NAME holds a backslash, not a nested path."""
+        self.assertTrue(cff.is_scratch_artifact("foo\\bar"))
 
     def test_every_tracked_root_file_is_allowed(self):
         files = cff.tracked_files()

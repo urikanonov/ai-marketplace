@@ -67,10 +67,11 @@ SCRATCH_GLOBS = (
 # stable, so anything else tracked HERE is scratch by definition. The rule is anchored to the
 # root, so a report under examples/, a page under site/, or anything in a plugin is untouched.
 # To add a real top-level file, add its name below (and, if the root-anchored .gitignore block
-# would hide it, a `!/name` line there). Names are compared case-insensitively.
+# would hide it, a `!/name` line there). Names are compared EXACTLY: on a case-sensitive
+# filesystem a lowercase `readme.md` is a DIFFERENT file from `README.md`, so folding case here
+# would widen the closed set instead of narrowing it.
 ROOT_ALLOWED = frozenset(
-    name.lower()
-    for name in (
+    (
         ".editorconfig",
         ".gitattributes",
         ".gitignore",
@@ -89,13 +90,18 @@ ROOT_ALLOWED = frozenset(
 
 
 def is_root_scratch(path: str) -> bool:
-    """Return True when `path` is a file at the repository root that does not belong there."""
-    norm = path.replace("\\", "/")
+    """Return True when `path` is a file at the repository root that does not belong there.
+
+    `path` is a git index path, so `/` is the only separator: a literal backslash is part of
+    the NAME on a case-sensitive filesystem, and translating it would let a root file called
+    `foo\\bar` pose as a nested one.
+    """
+    norm = path
     while norm.startswith("./"):
         norm = norm[2:]
     if "/" in norm or not norm:
         return False
-    return norm.lower() not in ROOT_ALLOWED
+    return norm not in ROOT_ALLOWED
 
 
 def is_scratch_artifact(path: str) -> bool:
@@ -135,9 +141,14 @@ def repo_root() -> "str | None":
     except FileNotFoundError:
         print("check_forbidden_files: git is not installed; skipping the tracked-file scan.")
         return None
-    except subprocess.CalledProcessError:
-        print("check_forbidden_files: not a git repository; skipping the tracked-file scan.")
-        return None
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or "").strip()
+        if "not a git repository" in stderr.lower():
+            print("check_forbidden_files: not a git repository; skipping the tracked-file scan.")
+            return None
+        # Same fail-closed rule as tracked_files(): only a genuine non-repo is a legitimate skip.
+        print(f"check_forbidden_files: 'git rev-parse' failed (exit {exc.returncode}): {stderr}")
+        raise SystemExit(1)
     return result.stdout.strip() or None
 
 
