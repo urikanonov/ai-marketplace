@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.428.0" />
+<meta name="commentable-html-version" content="1.432.0" />
 <meta name="commentable-html-kind" content="plan" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.428.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.432.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Planning a Community Garden</title>
 
@@ -4546,7 +4546,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.428.0";
+const CMH_VERSION = "1.432.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -20501,10 +20501,21 @@ function showToast(msg, opts) {
     btnSavePlain: "Plain HTML", btnSavePlainTop: "Plain HTML",
     btnPrint: "PDF", btnPrintTop: "PDF",
   };
+  // Resolve the controls by IDENTITY once at startup - the very elements the layer's own export
+  // handlers bound themselves to, resolved the same way (`getElementById`) at the same point in the
+  // bundle. The annotated document is untrusted author content, so keying the announcement on the
+  // clicked button's ID instead would let a content `<button id="btnPrint">` announce an export that
+  // never runs, telling a reviewer the document was exported when nothing was. An element that is
+  // not one of these is not an export control, whatever id it carries.
+  const EXPORT_CONTROLS = new Map();
+  Object.keys(EXPORT_LABELS).forEach(function (id) {
+    const el = document.getElementById(id);
+    if (el) EXPORT_CONTROLS.set(el, EXPORT_LABELS[id]);
+  });
   document.addEventListener("click", function (e) {
-    const btn = e.target && e.target.closest ? e.target.closest("button[id]") : null;
+    const btn = e.target && e.target.closest ? e.target.closest("button") : null;
     if (!btn) return;
-    const label = EXPORT_LABELS[btn.id];
+    const label = EXPORT_CONTROLS.get(btn);
     if (!label) return;
     // An open comment dialog swallows an outside pointer click to close itself, so the export
     // handler never runs. Ask the dialog's OWN predicate rather than re-deriving the condition

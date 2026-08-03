@@ -163,7 +163,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.428.0";
+const CMH_VERSION = "1.432.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -16118,10 +16118,21 @@ function showToast(msg, opts) {
     btnSavePlain: "Plain HTML", btnSavePlainTop: "Plain HTML",
     btnPrint: "PDF", btnPrintTop: "PDF",
   };
+  // Resolve the controls by IDENTITY once at startup - the very elements the layer's own export
+  // handlers bound themselves to, resolved the same way (`getElementById`) at the same point in the
+  // bundle. The annotated document is untrusted author content, so keying the announcement on the
+  // clicked button's ID instead would let a content `<button id="btnPrint">` announce an export that
+  // never runs, telling a reviewer the document was exported when nothing was. An element that is
+  // not one of these is not an export control, whatever id it carries.
+  const EXPORT_CONTROLS = new Map();
+  Object.keys(EXPORT_LABELS).forEach(function (id) {
+    const el = document.getElementById(id);
+    if (el) EXPORT_CONTROLS.set(el, EXPORT_LABELS[id]);
+  });
   document.addEventListener("click", function (e) {
-    const btn = e.target && e.target.closest ? e.target.closest("button[id]") : null;
+    const btn = e.target && e.target.closest ? e.target.closest("button") : null;
     if (!btn) return;
-    const label = EXPORT_LABELS[btn.id];
+    const label = EXPORT_CONTROLS.get(btn);
     if (!label) return;
     // An open comment dialog swallows an outside pointer click to close itself, so the export
     // handler never runs. Ask the dialog's OWN predicate rather than re-deriving the condition
