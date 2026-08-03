@@ -147,7 +147,7 @@ test.describe("floating affordances measure the visual viewport (CMH-CORE-19)", 
     await moveVisualViewport(page, visible, "resize");
     await expect.poll(async () => {
       const b = await pop.boundingBox();
-      return b ? Math.round(b.y + b.height) : -1;
+      return b ? Math.round(b.y + b.height) : Number.POSITIVE_INFINITY;
     }).toBeLessThanOrEqual(visible.top + visible.height + 1);
     const after = await boxOf(pop);
     expect(after.y).toBeGreaterThanOrEqual(visible.top - 1);
@@ -172,7 +172,7 @@ test.describe("floating affordances measure the visual viewport (CMH-CORE-19)", 
     await moveVisualViewport(page, zoomed, "resize");
     await expect.poll(async () => {
       const b = await pop.boundingBox();
-      return b ? Math.round(b.y + b.height) : -1;
+      return b ? Math.round(b.y + b.height) : Number.POSITIVE_INFINITY;
     }).toBeLessThanOrEqual(zoomed.top + zoomed.height + 1);
 
     // ...then pan upwards with the SAME size, firing only `scroll`.
@@ -180,7 +180,7 @@ test.describe("floating affordances measure the visual viewport (CMH-CORE-19)", 
     await moveVisualViewport(page, panned, "scroll");
     await expect.poll(async () => {
       const b = await pop.boundingBox();
-      return b ? Math.round(b.y + b.height) : -1;
+      return b ? Math.round(b.y + b.height) : Number.POSITIVE_INFINITY;
     }).toBeLessThanOrEqual(panned.top + zoomed.height + 1);
     expect((await boxOf(pop)).y).toBeGreaterThanOrEqual(panned.top - 1);
   });
@@ -207,7 +207,7 @@ test.describe("floating affordances measure the visual viewport (CMH-CORE-19)", 
     await moveVisualViewport(page, smaller, "resize");
     await expect.poll(async () => {
       const b = await menu.boundingBox();
-      return b ? Math.round(b.y + b.height) : -1;
+      return b ? Math.round(b.y + b.height) : Number.POSITIVE_INFINITY;
     }).toBeLessThanOrEqual(smaller.top + smaller.height + 1);
     const after = await boxOf(menu);
     expect(after.x).toBeGreaterThanOrEqual(smaller.left - 1);
@@ -228,7 +228,7 @@ test.describe("floating affordances measure the visual viewport (CMH-CORE-19)", 
     // with the shared viewport watcher, so it re-clamps on the `visualViewport` event.
     await expect.poll(async () => {
       const b = await composer.boundingBox();
-      return b ? Math.round(b.y + b.height) : -1;
+      return b ? Math.round(b.y + b.height) : Number.POSITIVE_INFINITY;
     }).toBeLessThanOrEqual(visible.top + visible.height + 1);
     const settled = await boxOf(composer);
     expect(settled.y).toBeGreaterThanOrEqual(visible.top - 1);
@@ -253,16 +253,18 @@ test.describe("floating affordances measure the visual viewport (CMH-CORE-19)", 
   test("opening and closing surfaces does not accumulate visualViewport listeners (CMH-CORE-19)", async ({ page }) => {
     await installFakeVisualViewport(page);
     await openInline(page);
+    const counts = () => page.evaluate(() => window.__cmhFakeVV.counts());
+    // Read the baseline BEFORE anything opens an editor: the layer subscribes to the visual
+    // viewport at load, so a runtime that only wired the autogrow watcher (which registers when the
+    // first editor opens) reports zero here.
+    const baseline = await counts();
+    expect(baseline.resize).toBeGreaterThan(0);
+    expect(baseline.scroll).toBeGreaterThan(0);
+
     await addTextComment(page, "#commentRoot p", "a note opened many times", 0);
     const cid = await firstCid(page);
     const mark = page.locator(`mark.cm-hl[data-cid="${cid}"]`).first();
     const pop = page.locator(".cm-comment-popover");
-
-    const counts = () => page.evaluate(() => window.__cmhFakeVV.counts());
-    // The layer listens on the visual viewport at all (this is the wiring the fix adds).
-    const baseline = await counts();
-    expect(baseline.resize).toBeGreaterThan(0);
-    expect(baseline.scroll).toBeGreaterThan(0);
 
     for (let i = 0; i < 4; i++) {
       await mark.hover();

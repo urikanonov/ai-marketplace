@@ -3515,14 +3515,14 @@ function setupInteractiveCharts() {
       root.querySelectorAll(CMH_CHART_DATA_SEL).forEach(function (canvas) {
         renderInteractiveChart(canvas, canvas._cmhChart ? canvas._cmhChart.activeIndex : -1);
       });
-      if (chartTooltipCanvas && chartTooltipCanvas._cmhChart && chartTooltipCanvas._cmhChart.activeIndex >= 0) {
-        const point = chartTooltipCanvas._cmhChart.points[chartTooltipCanvas._cmhChart.activeIndex];
-        if (point) _showChartTooltip(chartTooltipCanvas, point);
-      }
     });
     window.addEventListener("scroll", hideChartTooltip, true);
-    // A soft keyboard or a pinch zoom changes what is visible without a `window` event; the tooltip
-    // is hover-driven and re-shows on the next hover, so drop it rather than leave it stranded.
+    // A soft keyboard or a pinch zoom changes what is visible without a `window` event, so the
+    // tooltip is dropped rather than left stranded over the keyboard - the next pointer move over
+    // the chart raises it again. The shared watcher (04-viewport.js) is registered at layer
+    // evaluation, BEFORE the re-render above, so on a plain window resize the tip is dismissed
+    // first: this dismissal owns the tooltip on every viewport change, and the re-render owns only
+    // the bitmap.
     cmhOnViewportChange(hideChartTooltip);
   }
   // A chart drawn while its section was collapsed (display:none) read clientWidth 0 and fell back to
@@ -15684,14 +15684,22 @@ function _cmTipShow(el) {
   _cmTipEl.style.visibility = "hidden";
   _cmTipEl.classList.add("is-visible");
   const r = el.getBoundingClientRect();
+  const vp = cmhViewportRect(6);
+  // The tip belongs to its control: when the control itself is outside the visible box (a soft
+  // keyboard covering it, a pinch-panned page) there is nothing to point at, so hide rather than
+  // park a tip - with a `below` arrow aimed at nothing - over unrelated chrome.
+  if (!(r.bottom > vp.top && r.top < vp.bottom && r.right > vp.left && r.left < vp.right)) {
+    _cmTipHide();
+    return;
+  }
   const tw = _cmTipEl.offsetWidth, th = _cmTipEl.offsetHeight;
   let left = r.left + r.width / 2 - tw / 2;
   let top = r.top - th - 8;
-  const vp = cmhViewportRect(6);
   if (top < vp.top) { top = r.bottom + 8; _cmTipEl.classList.add("below"); }
   left = Math.max(vp.left, Math.min(left, vp.right - tw));
-  // Flipping below is not enough on a short visible viewport (a soft keyboard): bound the vertical
-  // axis too, so the tip cannot come to rest behind it.
+  // Flipping below is not enough when the space left below is shorter than the tip, so bound the
+  // vertical axis too. The anchor is on screen by the guard above, so this only ever nudges a tip
+  // that does not fit beside a visible control.
   top = Math.max(vp.top, Math.min(top, vp.bottom - th));
   _cmTipEl.style.left = left + "px";
   _cmTipEl.style.top = top + "px";

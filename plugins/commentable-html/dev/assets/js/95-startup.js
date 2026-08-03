@@ -183,14 +183,22 @@ function _cmTipShow(el) {
   _cmTipEl.style.visibility = "hidden";
   _cmTipEl.classList.add("is-visible");
   const r = el.getBoundingClientRect();
+  const vp = cmhViewportRect(6);
+  // The tip belongs to its control: when the control itself is outside the visible box (a soft
+  // keyboard covering it, a pinch-panned page) there is nothing to point at, so hide rather than
+  // park a tip - with a `below` arrow aimed at nothing - over unrelated chrome.
+  if (!(r.bottom > vp.top && r.top < vp.bottom && r.right > vp.left && r.left < vp.right)) {
+    _cmTipHide();
+    return;
+  }
   const tw = _cmTipEl.offsetWidth, th = _cmTipEl.offsetHeight;
   let left = r.left + r.width / 2 - tw / 2;
   let top = r.top - th - 8;
-  const vp = cmhViewportRect(6);
   if (top < vp.top) { top = r.bottom + 8; _cmTipEl.classList.add("below"); }
   left = Math.max(vp.left, Math.min(left, vp.right - tw));
-  // Flipping below is not enough on a short visible viewport (a soft keyboard): bound the vertical
-  // axis too, so the tip cannot come to rest behind it.
+  // Flipping below is not enough when the space left below is shorter than the tip, so bound the
+  // vertical axis too. The anchor is on screen by the guard above, so this only ever nudges a tip
+  // that does not fit beside a visible control.
   top = Math.max(vp.top, Math.min(top, vp.bottom - th));
   _cmTipEl.style.left = left + "px";
   _cmTipEl.style.top = top + "px";

@@ -327,14 +327,14 @@ function setupInteractiveCharts() {
       root.querySelectorAll(CMH_CHART_DATA_SEL).forEach(function (canvas) {
         renderInteractiveChart(canvas, canvas._cmhChart ? canvas._cmhChart.activeIndex : -1);
       });
-      if (chartTooltipCanvas && chartTooltipCanvas._cmhChart && chartTooltipCanvas._cmhChart.activeIndex >= 0) {
-        const point = chartTooltipCanvas._cmhChart.points[chartTooltipCanvas._cmhChart.activeIndex];
-        if (point) _showChartTooltip(chartTooltipCanvas, point);
-      }
     });
     window.addEventListener("scroll", hideChartTooltip, true);
-    // A soft keyboard or a pinch zoom changes what is visible without a `window` event; the tooltip
-    // is hover-driven and re-shows on the next hover, so drop it rather than leave it stranded.
+    // A soft keyboard or a pinch zoom changes what is visible without a `window` event, so the
+    // tooltip is dropped rather than left stranded over the keyboard - the next pointer move over
+    // the chart raises it again. The shared watcher (04-viewport.js) is registered at layer
+    // evaluation, BEFORE the re-render above, so on a plain window resize the tip is dismissed
+    // first: this dismissal owns the tooltip on every viewport change, and the re-render owns only
+    // the bitmap.
     cmhOnViewportChange(hideChartTooltip);
   }
   // A chart drawn while its section was collapsed (display:none) read clientWidth 0 and fell back to

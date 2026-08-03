@@ -22,11 +22,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   - The hover bubble, every structural add button, the in-document comment dialog (placement,
     height cap, and unanchored re-fit), the floating composer (placement, drag clamp, centred
     document/slide anchor), the Add-comment selection menu, the heading add button, and the chart
-    and chrome tooltips are all bounded by that box. An affordance whose anchor leaves the visible
-    box hides or closes rather than floating over the keyboard.
-  - They re-position on `visualViewport` `resize` and `scroll` as well as the `window` events,
-    through one shared listener set that hands each subscriber an unsubscribe, so repeatedly
-    opening and closing surfaces cannot multiply listeners.
+    and chrome tooltips are all bounded by that box. An ANCHORED affordance whose anchor leaves
+    the visible box (the hover bubble, the add buttons, a dialog being read) hides or closes
+    rather than floating over the keyboard; a surface holding reviewer input (the composer, a
+    dialog mid-edit) and the Add-comment menu are re-clamped into the visible box instead, so no
+    draft is thrown away.
+  - They react to `visualViewport` `resize` and `scroll` as well as the `window` events, through
+    one shared listener set that every surface registers with exactly once, so repeatedly opening
+    and closing surfaces cannot multiply listeners. The two hover tooltips are dismissed rather
+    than moved (the next pointer move or focus raises them again), which is also the one visible
+    change on a plain desktop window resize.
 ## [1.395.0] - 2026-08-03
 
 ### Security
