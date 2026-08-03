@@ -101,9 +101,11 @@ def select_shard(files: list[Path], index: int, total: int) -> list[Path]:
 
 
 #: Marker for a test module that carries Windows-only cases. Such a module's tests SKIP on Linux,
-#: so the Linux-only CI matrix cannot cover them; --windows-only selects exactly these files for a
-#: dedicated Windows job. Derived from the source rather than hard-coded so a new Windows-only
-#: suite is picked up automatically instead of silently going uncovered.
+#: so a Linux-only run cannot cover them; --windows-only selects exactly these files, which is how
+#: a maintainer (or a triage run) exercises just that set on a Windows box. CI no longer needs the
+#: selector - the plugin Python matrix runs the WHOLE suite on windows-latest as well - but the
+#: selection is still what proves those modules exist at all. Derived from the source rather than
+#: hard-coded so a new Windows-only suite is picked up automatically.
 _NT_ONLY_MARKERS = ('skipUnless(os.name == "nt"', "skipUnless(os.name == 'nt'")
 
 
@@ -365,7 +367,7 @@ def main(argv: list[str] | None = None) -> int:
         files = filter_windows_only(files)
         if not files:
             print("error: --windows-only matched no test modules; if the Windows-only suites "
-                  "were removed, drop the dedicated Windows job too", file=sys.stderr)
+                  "were removed, this selector has nothing left to run", file=sys.stderr)
             return 1
     if args.changed_only:
         changed = _git_changed_paths(args.base_ref, REPO_ROOT)

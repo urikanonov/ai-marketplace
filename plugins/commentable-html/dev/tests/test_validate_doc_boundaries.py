@@ -65,6 +65,97 @@ class DocParserRawTextTests(unittest.TestCase):
     def test_an_unclosed_raw_text_element_runs_to_the_end_of_the_document(self):
         self.assertEqual(_ids('<div id="wrap"></div><noscript><div id="quoted">'), ["wrap"])
 
+    def test_an_unclosed_raw_text_body_reaches_eof_on_every_host(self):
+        # An unclosed raw-text element runs to EOF in a browser, so its BODY is live text -
+        # a `<style>` with no closing tag really does hide host elements. html.parser only
+        # hands that tail to handle_data from CPython 3.12.11 / 3.13.5 (gh-135462); before
+        # that it leaves it unparsed in its own buffer, so the same document came back with an
+        # EMPTY style body on an older patch release and a full one on a newer one. CI proved
+        # the split: its two runner images resolved different 3.12 patches.
+        for elem, sink in (("style", "styles"), ("script", "scripts")):
+            with self.subTest(elem=elem):
+                html = "<html><head><%s>\n[hidden] { display: none !important; }" % elem
+                doc = parsing._parse_document(html)
+                bodies = getattr(doc, sink)
+                self.assertTrue(bodies, "an unclosed <%s> must still be captured" % elem)
+                self.assertIn("[hidden]", bodies[0]["body"],
+                              "the unclosed <%s> body must run to EOF" % elem)
+
+    def test_an_unclosed_raw_text_body_is_read_the_same_way_when_fed_incrementally(self):
+        # close() is the end of the document on the incremental path too, so the tail flush
+        # must not depend on parse_document() having been the entry point - and a body split
+        # across feed() chunks (each of which leaves the parser mid-raw-text) must land whole.
+        html = "<html><head><style>\n[hidden] { display: none !important; }"
+        p = parsing._DocParser(html)
+        for k in range(0, len(html), 7):
+            p.feed(html[k:k + 7])
+        p.close()
+        self.assertTrue(p.styles)
+        self.assertIn("[hidden]", p.styles[0]["body"])
+
+    def test_the_tail_of_an_unclosed_raw_text_body_is_flushed_exactly_once(self):
+        # The flush runs after the host's own close(), so on a FIXED host (3.12.11+/3.13.5+)
+        # the tail has already been handed to handle_data - flushing it again would duplicate
+        # the body and, worse, double-count the tokens the CSS checks read. close() is also
+        # idempotent: a second call must not re-flush a buffer it already drained.
+        css = "\n[hidden] { display: none !important; }"
+        html = "<html><head><style>" + css
+        p = parsing._DocParser(html)
+        p.parse_document(html)
+        p.close()
+        self.assertEqual([s["body"] for s in p.styles], [css])
+
+    def test_the_tail_is_flushed_even_when_the_host_leaves_it_buffered(self):
+        """The flush is pinned on EVERY interpreter, not only a pre-3.12.11 one.
+
+        The two tests above go red on a host that buffers the tail (pre-3.12.11 / pre-3.13.5),
+        which in CI is only whichever runner image happens to resolve such a patch - so on a
+        fixed host they would pass with the flush deleted and stop guarding it. Simulate the
+        buffering host directly instead: after feed(), EVERY host still holds the tail in
+        `rawdata` with cdata mode open (it cannot know more input is not coming), so neutering
+        the HOST's close() reproduces the old behavior exactly. Our close() must still flush.
+        """
+        html = "<html><head><style>\n[hidden] { display: none !important; }"
+        p = parsing._DocParser(html)
+        p.feed(html)
+        self.assertEqual(p.cdata_elem, "style")
+        self.assertIn("[hidden]", p.rawdata, "the host is expected to buffer the tail here")
+        with mock.patch.object(HTMLParser, "close", lambda _self: None):
+            p.close()
+        self.assertTrue(p.styles, "the buffered tail was dropped")
+        self.assertEqual(p.styles[0]["body"].count("[hidden]"), 1, p.styles[0]["body"])
+
+    def test_a_buffered_truncated_end_tag_is_not_flushed_as_body(self):
+        # Same simulated buffering host, but the buffer holds a closer that never finished.
+        # EOF discards the tag, so the flush must stop at it rather than hand its characters
+        # to the element body.
+        html = "<script>ok</script " + parsing.READY_TOKEN
+        p = parsing._DocParser(html)
+        p.feed(html)
+        self.assertTrue(p.rawdata.startswith("</script"), p.rawdata)
+        with mock.patch.object(HTMLParser, "close", lambda _self: None):
+            p.close()
+        self.assertEqual([s["body"] for s in p.scripts], ["ok"])
+        self.assertFalse(p.layer_ready_token)
+
+    def test_a_truncated_end_tag_at_eof_is_not_part_of_the_body(self):
+        """EOF inside an end TAG discards the tag; its text is not raw-text content.
+
+        Once `</script` is followed by whitespace or `/` a browser is tokenizing an end tag, so
+        an EOF there drops it. Flushing the buffered characters verbatim would let a document
+        inject its own trailing text into the script body - enough to forge the layer's ready
+        token - on exactly the hosts the flush exists for.
+        """
+        for tail in ("</script data-x", "</script\n", "</script/"):
+            with self.subTest(tail=tail):
+                doc = parsing._parse_document("<script>ok" + tail)
+                self.assertEqual([s["body"] for s in doc.scripts], ["ok"])
+
+    def test_a_truncated_end_tag_at_eof_cannot_forge_the_ready_token(self):
+        html = "<script>ok</script " + parsing.READY_TOKEN
+        self.assertFalse(parsing._parse_document(html).layer_ready_token,
+                         "a discarded end tag's text must not count as layer script body")
+
     def test_plaintext_swallows_the_rest_of_the_document(self):
         # A browser never leaves plaintext mode, not even for a `</plaintext>` that looks like a
         # closer, so everything after it is text - including the whole review layer.
@@ -122,6 +213,121 @@ class DocParserCommentTests(unittest.TestCase):
         # resumes tokenizing after the next `>`, resurrecting markup it never renders.
         html = '<div id="wrap"></div><!-- note <i> <div id="quoted"></div>'
         self.assertEqual(_ids(html), ["wrap"])
+
+
+class DocParserEofTests(unittest.TestCase):
+    """What a TRUNCATED document resolves to, decided here rather than by the host.
+
+    CPython's EOF handling changed in 3.12.11 / 3.13.5 (gh-135462): before it, an unfinished
+    construct's SOURCE is handed back as DATA at end of input; after it, tags are dropped and
+    comments/declarations are closed. That is the whole gh-135462 family, not just the raw-text
+    body the CI failure exposed, and CI now runs BOTH sides of the split (its two runner images
+    resolve different 3.12 patches), so each construct is resolved explicitly.
+
+    The parse hooks are exercised DIRECTLY, because the outcome is what a fixed host already
+    does: a black-box assertion would pass on a fixed host with these overrides deleted and
+    would therefore stop guarding them everywhere but the older runner.
+    """
+
+    CR = '<main id="commentRoot">'
+
+    class _Recorder(parsing._DocParser):
+        def __init__(self, html):
+            super().__init__(html)
+            self.comments_seen = []
+
+        def handle_comment(self, data):
+            self.comments_seen.append(data)
+            super().handle_comment(data)
+
+    def _at_eof(self, rawdata):
+        p = self._Recorder(rawdata)
+        p.rawdata = rawdata
+        p._final = True
+        return p
+
+    def test_a_truncated_start_tag_at_eof_is_dropped(self):
+        for tail in ('<div class="x', "<div", "<div data-a=1"):
+            with self.subTest(tail=tail):
+                p = self._at_eof(tail)
+                self.assertEqual(p.parse_starttag(0), len(tail),
+                                 "EOF inside a start tag must discard it, not emit its source")
+
+    def test_a_truncated_end_tag_at_eof_is_dropped(self):
+        for tail in ("</div", '</div class="x'):
+            with self.subTest(tail=tail):
+                p = self._at_eof(tail)
+                self.assertEqual(p.parse_endtag(0), len(tail))
+
+    def test_a_truncated_tag_still_waits_for_more_input_before_the_end(self):
+        # The drop is an END-OF-INPUT rule; mid-stream the parser must still ask for more data,
+        # or an incremental caller loses a tag that was merely split across two feed() chunks.
+        p = self._Recorder("<div")
+        p.rawdata = "<div"
+        self.assertEqual(p.parse_starttag(0), -1)
+        p.rawdata = "</div"
+        self.assertEqual(p.parse_endtag(0), -1)
+
+    def test_a_processing_instruction_is_a_bogus_comment(self):
+        # A browser has no PI: `<?` opens a bogus comment that ends at the FIRST `>`, so the
+        # markup after that `>` is live.
+        p = self._at_eof('<?php echo "x">rest')
+        self.assertEqual(p.parse_pi(0), len('<?php echo "x">'))
+        self.assertEqual(p.comments_seen, ['?php echo "x"'])
+
+    def test_an_unterminated_processing_instruction_runs_to_the_end(self):
+        p = self._at_eof('<?php echo "x"')
+        self.assertEqual(p.parse_pi(0), len(p.rawdata))
+        self.assertEqual(p.comments_seen, ['?php echo "x"'])
+
+    def test_an_unterminated_bogus_declaration_runs_to_the_end(self):
+        p = self._at_eof("<!BEGIN: commentable-html - CONTENT")
+        self.assertEqual(p.parse_html_declaration(0), len(p.rawdata))
+        self.assertEqual(p.comments_seen, ["BEGIN: commentable-html - CONTENT"])
+
+    def test_a_truncated_construct_contributes_no_prose(self):
+        # The browser-visible outcome of all of the above, through the public parse.
+        for tail in ('<div class="x', "</div id=", '<?php echo "x"',
+                     "<!BEGIN: commentable-html - CONTENT", "<!-- note"):
+            with self.subTest(tail=tail):
+                doc = parsing._parse_document(self.CR + "hi" + tail)
+                self.assertEqual([t.strip() for t in doc.commentroot_prose], ["hi"])
+
+    def test_a_bare_end_tag_open_at_eof_is_text(self):
+        # `</` with nothing after it is TEXT in a browser, not a dropped tag.
+        doc = parsing._parse_document(self.CR + "hi</")
+        self.assertEqual([t.strip() for t in doc.commentroot_prose], ["hi", "</"])
+
+    def test_an_invalid_end_tag_open_at_eof_is_a_bogus_comment(self):
+        # `</` followed by anything that is not a tag NAME opens a bogus comment, so its text is
+        # comment data - neither prose nor a dropped tag. Dropping it silently (or leaking it as
+        # prose, which an older host does) both misread the document.
+        for tail in ("</ junk", "<//", "</ BEGIN: commentable-html - CONTENT"):
+            with self.subTest(tail=tail):
+                p = self._Recorder(self.CR + "hi" + tail)
+                p.parse_document(self.CR + "hi" + tail)
+                self.assertEqual([t.strip() for t in p.commentroot_prose], ["hi"])
+                self.assertEqual(p.comments_seen, [tail[2:]])
+
+    def test_a_bare_quote_does_not_end_an_end_tag_early_or_late(self):
+        """A quoted value exists only AFTER `=`, so a bare quote is an (invalid) name character.
+
+        Treating any quote as opening a value made `</script " >` look unfinished, which ran the
+        raw-text region to the end of the document and hid the author's real code block from the
+        highlighting and KQL checks - the exact fail-open those checks exist to prevent.
+        """
+        html = ('<script>ok</script " >'
+                '<pre><code class="language-python">real</code></pre>')
+        doc = parsing._parse_document(html)
+        self.assertEqual([s["body"] for s in doc.scripts], ["ok"])
+        self.assertEqual(len(parsing.code_block_spans(html).pres), 1)
+
+    def test_a_gt_inside_a_quoted_attribute_value_still_does_not_end_the_tag(self):
+        # The other half of the same rule: after `=`, a quoted value really does hide a `>`.
+        html = '<script>ok</script data-x="a > b"><div id="live"></div>'
+        self.assertEqual(parsing._parse_document(html).all_ids, ["live"])
+        self.assertEqual(parsing._end_tag_close('</p a="x>y">z', 0), len('</p a="x>y">'))
+        self.assertEqual(parsing._end_tag_close('</p a="x', 0), -1)
 
 
 class DocParserCdataTests(unittest.TestCase):

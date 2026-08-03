@@ -28,6 +28,25 @@ TEMPLATE = os.path.join(ROOT, "dist", "SHAREABLE.html")
 CONTENT = '<section><h2 id="a">Hi</h2><p>x</p></section>'
 
 
+def _skill_drive_tmpdir():
+    """A scratch dir on the SAME DRIVE as the skill.
+
+    `--assets-relative` computes a path from --out's directory to the skill's dist/, and
+    Windows has no relative path across drives, so the tool correctly refuses there. The GitHub
+    Windows runner checks the repo out on `D:` while TEMP is on `C:`, so a plain mkdtemp() has
+    the test exercise that refusal by accident instead of the relative-ref behavior it names.
+    Fall back to the repo's gitignored `tmp/`, which is on the skill's drive by construction.
+    """
+    def drive(path):
+        return os.path.splitdrive(os.path.abspath(path))[0].lower()
+
+    if drive(tempfile.gettempdir()) == drive(_paths.DIST):
+        return tempfile.mkdtemp()
+    scratch = os.path.join(os.path.dirname(os.path.dirname(_paths.PLUGIN_ROOT)), "tmp")
+    os.makedirs(scratch, exist_ok=True)
+    return tempfile.mkdtemp(dir=scratch)
+
+
 def _template():
     with open(TEMPLATE, encoding="utf-8") as fh:
         return fh.read()
@@ -685,7 +704,10 @@ class NonShareableCliTests(unittest.TestCase):
                       "the REAL runtime reference must be the one repointed")
 
     def test_assets_relative_restores_relative_dist_refs(self):
-        d = self._tmpdir()
+        # The scratch dir must be on the skill's drive: Windows has no relative path across
+        # drives, and the GitHub runner's TEMP (C:) is not the checkout's drive (D:).
+        d = _skill_drive_tmpdir()
+        self.addCleanup(lambda: _rmtree(d))
         op = os.path.join(d, "r.html")
         code, _o, err = self._run(
             ["new_document.py", "--content", "-", "--key", "auto", "--label", "NP",
@@ -693,6 +715,34 @@ class NonShareableCliTests(unittest.TestCase):
         self.assertEqual(code, 0, err)
         html = open(op, encoding="utf-8").read()
         self.assertRegex(html, r'<link\b[^>]*href="[^"]*/dist/commentable-html\.css"')
+
+    def test_assets_relative_across_drives_exits_2_with_guidance(self):
+        """A cross-drive --out has NO relative path, so refusing is the correct answer.
+
+        Windows `os.path.relpath` raises ValueError when the two paths sit on different drives
+        (or UNC roots). Emitting a broken relative ref, or crashing with a bare traceback, would
+        both be worse than exiting 2 and naming the two flags that DO work from there. Simulated
+        rather than staged, so the branch is covered on every OS.
+        """
+        d = self._tmpdir()
+        op = os.path.join(d, "r.html")
+        real_relpath = os.path.relpath
+
+        def cross_drive(path, start=os.curdir):
+            # Only the companion computation is cross-drive; everything else keeps working.
+            if os.path.basename(path) == "dist":
+                raise ValueError("path is on mount 'D:', start on mount 'C:'")
+            return real_relpath(path, start)
+
+        with mock.patch.object(new_document.os.path, "relpath", side_effect=cross_drive):
+            code, _o, err = self._run(
+                ["new_document.py", "--content", "-", "--key", "auto", "--label", "NP",
+                 "--assets-relative", "--out", op])
+        self.assertEqual(code, 2, err)
+        self.assertIn("cannot compute a relative companion path", err)
+        self.assertIn("--assets-href", err)
+        self.assertIn("--copy-assets", err)
+        self.assertFalse(os.path.exists(op), "a refused run must write no document")
 
     def test_shareable_flag_inlines_layer(self):
         d = self._tmpdir()
