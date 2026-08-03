@@ -201,6 +201,18 @@ test.describe("floating affordances measure the visual viewport (CMH-CORE-19)", 
     expect(mb.y).toBeGreaterThanOrEqual(visible.top - 1);
     expect(mb.x + mb.width).toBeLessThanOrEqual(visible.left + visible.width + 1);
     expect(mb.y + mb.height).toBeLessThanOrEqual(visible.top + visible.height + 1);
+
+    // An ALREADY-OPEN menu follows a later change too - the keyboard opens after the selection.
+    const smaller = { left: 500, top: 500, width: 240, height: 160 };
+    await moveVisualViewport(page, smaller, "resize");
+    await expect.poll(async () => {
+      const b = await menu.boundingBox();
+      return b ? Math.round(b.y + b.height) : -1;
+    }).toBeLessThanOrEqual(smaller.top + smaller.height + 1);
+    const after = await boxOf(menu);
+    expect(after.x).toBeGreaterThanOrEqual(smaller.left - 1);
+    expect(after.y).toBeGreaterThanOrEqual(smaller.top - 1);
+    expect(after.x + after.width).toBeLessThanOrEqual(smaller.left + smaller.width + 1);
   });
 
   test("a dragged composer cannot be parked outside the visual viewport (CMH-CORE-19)", async ({ page }) => {
@@ -212,6 +224,16 @@ test.describe("floating affordances measure the visual viewport (CMH-CORE-19)", 
     const visible = { left: 120, top: 60, width: 520, height: 340 };
     await moveVisualViewport(page, visible, "resize");
 
+    // The shrink alone must pull the composer back in, before any drag: the surface is registered
+    // with the shared viewport watcher, so it re-clamps on the `visualViewport` event.
+    await expect.poll(async () => {
+      const b = await composer.boundingBox();
+      return b ? Math.round(b.y + b.height) : -1;
+    }).toBeLessThanOrEqual(visible.top + visible.height + 1);
+    const settled = await boxOf(composer);
+    expect(settled.y).toBeGreaterThanOrEqual(visible.top - 1);
+    expect(settled.x).toBeGreaterThanOrEqual(visible.left - 1);
+    expect(settled.x + settled.width).toBeLessThanOrEqual(visible.left + visible.width + 1);
     // Drag the composer by its handle towards the bottom-right of the LAYOUT viewport. The clamp
     // has to stop it at the edge of what is actually on screen.
     const handle = composer.locator(".cm-composer-handle");
