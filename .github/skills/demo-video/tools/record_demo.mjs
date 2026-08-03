@@ -1237,6 +1237,7 @@ export function publishedText(cast, args = {}) {
   return `${castText(cast)}\n${askFromCast(cast, args)}`;
 }
 
+// The tail of a real capture is dead air: the session keeps recording until the recipe's quit step
 // fires, so without this the clip spends its ending on an empty prompt and the exit screen. Says
 // what it dropped, because silently shortening someone's session is its own kind of surprise.
 function trimForRender(cast, args) {
