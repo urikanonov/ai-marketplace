@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.375.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.377.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.377.0] - 2026-08-03</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Media anchors: an unlabeled figure is no longer identified by its position alone. An image comment resolves by <code>imageIndex</code> and falls back to the stored <code>imageSrc</code>/<code>imageAlt</code>/<code>imageKind</code>, so media with NO label and no src - an unlabeled inline <code>&lt;svg&gt;</code>, an unlabeled chart <code>&lt;canvas&gt;</code> - had no identity at all beyond its index: inserting a figure ahead of it silently moved the comment to a DIFFERENT graphic, because the metadata check had nothing to disagree with. Such a comment now also stores <code>imageSig</code>, a short digest of an AUTHORED shape descriptor (the tag, an author <code>id</code>, the figure&#x27;s caption, an svg&#x27;s <code>viewBox</code> plus the shape it draws down to each descendant&#x27;s drawing attributes and its own text, a chart canvas&#x27;s <code>data-cmh-chart-*</code> attributes) that excludes everything the runtime writes, so a reload, a re-render, a device-pixel-ratio change and an export/reopen all recompute the same value. The comment now re-anchors to the figure it was left on, or stays unresolved when the shape is genuinely ambiguous, instead of attaching itself to another figure. The signature is the discriminator of last resort: it never overrides a label or a src (so redrawing a still-labelled figure keeps its comment), it is never shown to a reader (no card, <code>Copy all</code> line, Markdown export or printed sheet - it rides along only inside an export&#x27;s embedded comment record, so a reopened copy can re-anchor), and a comment saved before the field existed - or one carrying a value no signature this runtime writes could be - resolves exactly as it did.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.375.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -504,6 +511,8 @@
               <li>A document with no layer descriptor at all now has one re-anchored to its version <code>&lt;meta&gt;</code> tag matched the way a parser sees it (a DOM-serialized <code>&lt;meta ...&gt;</code> carries neither the space nor the slash the old pattern required), and the export fails loudly if there is nothing to anchor to - instead of quietly downloading a document with no descriptor.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.371.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -512,8 +521,6 @@
               <li>A raw-text element&#x27;s end tag is no longer mistaken for an unfinished one because of a bare quote. A quoted attribute value exists only after <code>=</code>, so <code>&lt;/script &quot; &gt;</code> really does close the script; it used to look unfinished, which ran the raw-text region on to the end of the document and hid the author&#x27;s real <code>&lt;pre&gt;&lt;code&gt;</code> block from the syntax-highlighting and KQL checks.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.370.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -543,16 +550,7 @@
               <li>The validator now decodes an attribute value&#x27;s character references the way a BROWSER decodes them, on every interpreter. Python 3.12 unescaped the whole value with <code>html.unescape()</code>, so a named reference with no trailing semicolon was resolved inside an attribute (<code>id=&quot;&amp;notit;&quot;</code> became <code>id=&quot;\u00acit;&quot;</code>), while Python 3.13 and a browser leave it literal. The same document could therefore carry different <code>id</code>, <code>class</code>, <code>href</code>, <code>src</code>, <code>content</code> and <code>data-*</code> values depending on which Python ran the validator - and with them a different duplicate-id, link, meta-handshake or companion-resource verdict. The browser rule for NAMED references, and the start-tag attribute tokenizer it runs over, are now vendored beside the shared <code>_BrowserBoundaries</code> layer and applied to the raw start tag, so the values the checks see never come from the host. (Numeric references still resolve through <code>html.unescape()</code>, which behaves the same on every interpreter.) Every attribute view in the validator&#x27;s <code>checks</code> package now shares that one helper - both tolerant document passes, the tag-attribute lookup, and the checklist, notes and density passes - so a real duplicate <code>data-cmh-item</code> id spelled two ways (<code>&amp;notit;</code> and <code>&amp;amp;notit;</code>) is no longer missed on Python 3.12. Because that vendors a small amount of CPython&#x27;s <code>Lib/html/parser.py</code>, the shipped <code>THIRD_PARTY_NOTICES.md</code> now also carries the PSF License, its copyright notice, and a summary of the changes made.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.360.0] - 2026-08-02</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Offline export: a decoy runnable script can no longer bypass both offline strips by borrowing one of the layer&#x27;s reserved DATA ids. The strips exempted <code>embeddedComments</code>, <code>handledCommentIds</code> and <code>commentableHtmlLayer</code> by ID ALONE, tested BEFORE they checked whether the script was runnable, so a script that merely carried one of those ids executed in the exported file untouched by the remote-dynamic-import strip and the top-level-navigation strip alike - no aliasing and no obfuscation needed. The exemption is now earned rather than claimed: a reserved-id script whose type would RUN is retyped to <code>type=&quot;application/json&quot;</code> before anything reads the document, so the strips exempt it on the ordinary runnable-type test, exactly as the strict validator&#x27;s own egress check already did (it never had an id skip, which is how the exporter could preserve a script <code>validate.py --strict</code> then rejected).</li>
-              <li>The repair keeps the bytes rather than deleting them, because these blocks hold review state and a reviewer legitimately quoting an egress shape must never lose their comment. A legacy or hand-authored document whose data block carries no <code>type</code> is therefore repaired into inert data instead of being executed or stripped - which also repairs the block&#x27;s TYPE for the strict validator (a duplicated reserved id, or a body that is not valid JSON, stays the source document&#x27;s own pre-existing invalidity) and shields it from the renderer strip, which never had an id skip. The download toast now names how many scripts were kept as inert data beside how many were removed, counted after the strips so one script can never be reported as both (a reserved-id block carrying a network <code>src</code> is still removed, because a remote load is what the strip exists to take away).</li>
-              <li>Two boundaries that go with it: <code>reviewedSections</code> was not in the old skip list, so a runnable one carrying egress used to be removed and is now kept as inert data instead; and the vendored payload id is deliberately NOT neutralized, because it is infrastructure resolved by position, so a script that merely borrows that id stays authored content and must clear the same egress scan as any other script.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">255 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">256 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

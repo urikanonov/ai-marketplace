@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.375.0" />
+<meta name="commentable-html-version" content="1.377.0" />
 <meta name="commentable-html-kind" content="board" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.375.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.377.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Incident Triage Board</title>
 
@@ -4019,7 +4019,7 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
      content, not a template-owned region.
 -->
 <div class="app">
-<main data-cmh-content-root id="commentRoot" data-comment-key="incident-triage-board-report" data-doc-label="Incident Triage Board" data-doc-source="report-triage.html" data-generated="2026-08-02">
+<main data-cmh-content-root id="commentRoot" data-comment-key="incident-triage-board-report" data-doc-label="Incident Triage Board" data-doc-source="report-triage.html" data-generated="2026-08-03">
 <nav class="cm-toc" aria-label="Table of contents">
   <div class="cm-toc-title">Contents</div>
   <ol>
@@ -4179,7 +4179,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.375.0";
+const CMH_VERSION = "1.377.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -7230,6 +7230,8 @@ function setupDiffLayer() {
    mermaid-node layer: images carry no text offsets, so image comments are
    excluded from backfillContext / restoreHighlights. */
 const imageEls = [];
+// Memoized structural signatures, keyed by media element; rebuilt with the media index.
+let imageSigCache = new WeakMap();
 const imageAddBtn = document.getElementById("imageAddBtn");
 // Every commentable media element that can carry an image ring. Shared by the clear and flash
 // paths so a canvas or svg anchor is never left ringed after its comment is deleted.
@@ -7684,6 +7686,7 @@ function _svgAuthorLabel(el) {
 }
 function indexImages() {
   imageEls.length = 0;
+  imageSigCache = new WeakMap();
   root.querySelectorAll("img, canvas, svg").forEach((el) => {
     const tag = (el.tagName || "").toLowerCase();
     const isChartMedia = _isChartMedia(el);
@@ -7730,7 +7733,7 @@ function _imageOneLine(value) {
     .replace(/\s+/g, " ")
     .trim();
 }
-function _imageElMeta(img) {
+function _imageElMeta(img, freshSig) {
   const tag = (img && img.tagName ? img.tagName : "").toLowerCase();
   const isCanvas = tag === "canvas";
   const isSvg = tag === "svg";
@@ -7739,7 +7742,151 @@ function _imageElMeta(img) {
     : _imageOneLine(img && (img.getAttribute("alt") || img.getAttribute("aria-label")));
   const src = _imageOneLine(img && img.getAttribute("src"));
   const kind = (isCanvas || _isChartMedia(img)) ? "chart" : "image";
-  return { alt, src, kind };
+  return { alt, src, kind, sig: _imageSig(img, freshSig) };
+}
+// A stable structural discriminator for media whose LABEL and SRC say nothing (an unlabeled inline
+// <svg>, an unlabeled chart <canvas>): without it such a figure has no identity beyond its position,
+// so shifting the document's media order silently moves the comment to a different figure.
+// Everything the descriptor reads is AUTHORED - the tag, the author's `id`, an svg's viewBox and the
+// shape of what it draws (each descendant's tag, its drawing attributes and its own short text), a
+// canvas's chart data attributes, and the figure's caption - so it survives a reload, a re-render
+// and a device-pixel-ratio change. Anything the RUNTIME writes is excluded, or the signature would
+// disagree with itself: the synthesized aria-label, the cm-* classes and index attribute, a chart
+// canvas's backing-store width/height, and any node this layer injects into authored markup (a
+// restored text highlight, a diff-line mark, a composer preview - see CMH_SIG_RUNTIME_CLASSES).
+// It is NOT a content hash of the document: outside the figure it reads only the caption (the one
+// authored thing that tells two otherwise identical blank figures apart), never the prose around it.
+// The parts are JSON-encoded rather than string-joined, so no value can impersonate a delimiter and
+// make two different figures hash alike.
+const CMH_SIG_MAX_NODES = 64;
+const CMH_SIG_MAX_CAPTION = 120;
+const CMH_SIG_MAX_TEXT = 40;
+const CMH_SIG_SHAPE_ATTRS = ["d", "points", "x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r",
+  "rx", "ry", "width", "height", "fill", "stroke", "stroke-width", "opacity", "transform", "offset",
+  "viewBox", "href"];
+// The EXACT classes this layer puts on a node it injects into authored markup. Matching a `cm-`
+// PREFIX instead would drop an author's own `cm-`-named shape from the signature, quietly making
+// the digest depend on their class naming.
+const CMH_SIG_RUNTIME_CLASSES = ["cm-hl", "cm-hl-gap", "cm-preview", "cmh-dl-mark"];
+function _sigRuntimeNode(el) {
+  if (!el || !el.getAttribute) return true;
+  if (el.hasAttribute("data-cid") || el.hasAttribute("data-cids")) return true;
+  const cls = _imageOneLine(el.getAttribute("class")).split(" ");
+  for (let i = 0; i < cls.length; i++) {
+    if (CMH_SIG_RUNTIME_CLASSES.indexOf(cls[i]) !== -1) return true;
+  }
+  return false;
+}
+// A node's OWN text (its direct text children only, so a parent never restates its subtree): two
+// otherwise identical charts whose <text> labels differ are different figures.
+function _sigOwnText(node) {
+  let text = "";
+  const kids = node.childNodes || [];
+  for (let i = 0; i < kids.length && text.length < CMH_SIG_MAX_TEXT; i++) {
+    if (kids[i].nodeType === 3) text += kids[i].nodeValue || "";
+  }
+  return _imageOneLine(text).slice(0, CMH_SIG_MAX_TEXT);
+}
+function _sigShape(el) {
+  const all = el.getElementsByTagName("*");
+  const drawn = [];
+  let count = 0;
+  for (let i = 0; i < all.length; i++) {
+    const node = all[i];
+    if (_sigRuntimeNode(node)) continue;
+    count++;
+    if (drawn.length >= CMH_SIG_MAX_NODES) continue;
+    const bits = [(node.tagName || "").toLowerCase(), _sigOwnText(node)];
+    for (let a = 0; a < CMH_SIG_SHAPE_ATTRS.length; a++) {
+      const name = CMH_SIG_SHAPE_ATTRS[a];
+      if (node.hasAttribute(name)) bits.push(name, _imageOneLine(node.getAttribute(name)));
+    }
+    drawn.push(bits);
+  }
+  return [count, drawn];
+}
+function _sigChartData(el) {
+  const attrs = el.attributes || [];
+  const named = [];
+  for (let i = 0; i < attrs.length; i++) {
+    if (attrs[i].name.indexOf("data-cmh-chart") === 0) {
+      named.push([attrs[i].name, _imageOneLine(attrs[i].value)]);
+    }
+  }
+  return named.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+}
+// The caption is the one AUTHORED thing that tells two otherwise identical unlabeled figures apart
+// (two blank chart canvases, say). UI chrome inside it is excluded so the runtime cannot move it.
+function _sigCaption(el) {
+  const fig = el.closest ? el.closest("figure") : null;
+  const cap = fig ? fig.querySelector("figcaption") : null;
+  if (!cap) return "";
+  let text = "";
+  const walker = document.createTreeWalker(cap, NodeFilter.SHOW_TEXT, {
+    acceptNode(n) {
+      return (n.parentElement && n.parentElement.closest(".cm-skip"))
+        ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  let n;
+  while ((n = walker.nextNode()) && text.length < CMH_SIG_MAX_CAPTION) text += n.nodeValue || "";
+  return _imageOneLine(text).slice(0, CMH_SIG_MAX_CAPTION);
+}
+function _imageSigParts(el) {
+  const tag = (el.tagName || "").toLowerCase();
+  const parts = [tag, _imageOneLine(el.getAttribute("id")), _sigCaption(el)];
+  if (tag === "svg") {
+    parts.push(_imageOneLine(el.getAttribute("viewBox")));
+    parts.push(_sigShape(el));
+  } else if (tag === "canvas") {
+    parts.push(_sigChartData(el));
+  }
+  return parts;
+}
+// Resolution walks every media element for every unresolved comment, so the digest is memoized per
+// element and dropped whenever the media index is rebuilt (see indexImages()). The WRITE path
+// passes fresh=true: a signature about to be STORED must never come from a cache, since the caption
+// it reads lives outside the element and a host script could have edited it since the index was
+// built. A resolve may use the memo, and a stale one can only fail safe (the anchor goes
+// unresolved), never re-attach the comment to a different figure.
+function _imageSig(el, fresh) {
+  if (!el || !el.tagName) return "";
+  if (!fresh) {
+    const cached = imageSigCache.get(el);
+    if (cached !== undefined) return cached;
+  }
+  const descriptor = JSON.stringify(_imageSigParts(el));
+  // FNV-1a, 32-bit: a short deterministic digest, not a security primitive.
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < descriptor.length; i++) {
+    hash ^= descriptor.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  const sig = hash.toString(36);
+  imageSigCache.set(el, sig);
+  return sig;
+}
+// A stored signature is only ever compared with one this runtime just computed, so anything that is
+// not in that format (a poisoned or oversized value in a shared report) is treated as absent - the
+// comment then resolves exactly like one saved before the field existed. A 32-bit FNV-1a digest is
+// at most 7 base-36 digits (0xffffffff is "1z141z3"), so nothing longer can be one of ours; a
+// well-formed but unreachable value simply matches no element and leaves the anchor unresolved.
+const CMH_SIG_RE = /^[0-9a-z]{1,7}$/;
+function _storedImageSig(comment) {
+  const raw = _imageOneLine(comment && comment.imageSig);
+  return CMH_SIG_RE.test(raw) ? raw : "";
+}
+// The signature only ever speaks when nothing else can: it BLOCKS the indexed anchor solely for a
+// comment stored with neither a label nor a src (the case that has no other identity), so redrawing
+// a still-labelled figure never orphans its comment.
+function _imageSigDecides(comment) {
+  if (!_storedImageSig(comment)) return false;
+  return !_imageOneLine(comment.imageAlt) && !_imageOneLine(comment.imageSrc);
+}
+function _imageSigMatches(img, comment) {
+  const sig = _storedImageSig(comment);
+  if (!sig) return false;
+  return _imageSig(img) === sig;
 }
 function _imageMismatch(img, comment) {
   if (!img) return true;
@@ -7752,8 +7899,10 @@ function _imageMismatch(img, comment) {
   // so an svg anchor must not silently match an <img> that does (the empty-src slot is what tells
   // the two media apart when neither carries a label).
   const hasSrc = !!(comment && Object.prototype.hasOwnProperty.call(comment, "imageSrc"));
+  if (_imageSigDecides(comment) && !_imageSigMatches(img, comment)) return true;
   return !!((kind && meta.kind !== kind) || (hasSrc && meta.src !== src) || (hasAlt && meta.alt !== alt));
 }
+
 function _imageMatchesMeta(img, comment) {
   const meta = _imageElMeta(img);
   const src = _imageOneLine(comment && comment.imageSrc);
@@ -7761,10 +7910,12 @@ function _imageMatchesMeta(img, comment) {
   const kind = comment && comment.imageKind;
   const hasAlt = !!(comment && Object.prototype.hasOwnProperty.call(comment, "imageAlt"));
   const hasSrc = !!(comment && Object.prototype.hasOwnProperty.call(comment, "imageSrc"));
+  const bySig = _imageSigDecides(comment);
+  if (bySig && meta.sig !== _storedImageSig(comment)) return false;
   if (kind && meta.kind !== kind) return false;
   if (hasSrc && meta.src !== src) return false;
   if (hasAlt && meta.alt !== alt) return false;
-  return !!(kind || hasSrc || hasAlt);
+  return !!(kind || hasSrc || hasAlt || bySig);
 }
 function resolveImageEl(comment) {
   let img = findImageEl(comment && comment.imageIndex);
@@ -7776,7 +7927,13 @@ function resolveImageEl(comment) {
     // rather than silently attach the note to a different figure.
     const byMeta = imageEls.filter(im => _imageMatchesMeta(im, comment));
     if (byMeta.length === 1) return byMeta[0];
-    if (byMeta.length > 1) return null;
+    // Otherwise-equal candidates (two figures sharing one label) are separated by the stored
+    // structural signature; it can only ever NARROW an already-ambiguous set, so a comment saved
+    // before the signature existed still resolves exactly as it did.
+    if (byMeta.length > 1) {
+      const bySig = byMeta.filter(im => _imageSigMatches(im, comment));
+      return bySig.length === 1 ? bySig[0] : null;
+    }
     const bySrc = src ? imageEls.filter(im => {
       const meta = _imageElMeta(im);
       return meta.src === src && (!kind || meta.kind === kind);
@@ -7787,7 +7944,8 @@ function resolveImageEl(comment) {
 }
 function imageInfo(img) {
   const i = parseInt(img.dataset.cmImageIndex, 10) || 0;
-  const meta = _imageElMeta(img);
+  // The write path recomputes the signature rather than trusting the memo (see _imageSig).
+  const meta = _imageElMeta(img, true);
   const isSvg = (img.tagName || "").toLowerCase() === "svg";
   const alt = meta.alt;
   const src = meta.src;
@@ -7799,7 +7957,7 @@ function imageInfo(img) {
     || (kind === "chart" ? ("chart " + (i + 1))
       : isSvg ? ("image " + (i + 1))
         : ("image: " + (shortSrc || "(no src)")));
-  return { imageIndex: i, src, alt, quote, kind };
+  return { imageIndex: i, src, alt, quote, kind, sig: meta.sig };
 }
 function applyImageHighlight(comment) {
   const img = resolveImageEl(comment);
@@ -11011,6 +11169,7 @@ function saveComposerElement(el) {
       imageSrc: info.src,
       imageAlt: info.alt,
       imageKind: info.kind || "image",
+      imageSig: info.sig || "",
       quote: info.quote,
       note,
       createdAt: new Date().toISOString(),

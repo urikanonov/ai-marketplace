@@ -417,6 +417,55 @@ async function addSvgComment(page, note) {
   return addMediaComment(page, SVG_FIGURE, note);
 }
 
+// Unlabeled figures: no author label and (being inline svg) no src, so the stored index and the
+// structural signature are the only things telling one from another.
+const UNLABELED_SHAPES = {
+  circle: '<circle cx="100" cy="45" r="40" fill="#dde"></circle>',
+  rect: '<rect width="200" height="90" fill="#eef"></rect>',
+  polygon: '<polygon points="10,80 100,10 190,80" fill="#edd"></polygon>',
+};
+
+function unlabeledFiguresContent(shapes) {
+  return "<h1>Unlabeled figures</h1>" + shapes.map((name) => `
+    <figure style="margin: 20px 0;">
+      <svg width="200" height="90" viewBox="0 0 200 90" style="display:block;border:2px solid #456;">${UNLABELED_SHAPES[name]}</svg>
+    </figure>`).join("\n");
+}
+
+async function addNthMediaComment(page, selector, nth, note) {
+  await page.evaluate(([sel, i]) => {
+    const el = document.querySelectorAll(sel)[i];
+    el.scrollIntoView({ block: "center" });
+    el.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+  }, [selector, nth]);
+  await expect(page.locator("#imageAddBtn")).toBeVisible();
+  await page.locator("#imageAddBtn").click();
+  const composer = page.locator(".cm-composer").last();
+  await composer.locator("textarea").fill(note);
+  await composer.locator('[data-act="save"]').click();
+  await expect(composer).toBeHidden();
+}
+
+async function seedComments(page, key, comments) {
+  await page.addInitScript(([k, list]) => {
+    localStorage.setItem(k, JSON.stringify(list));
+  }, [key, comments]);
+}
+
+// Comment on one unlabeled figure and hand back the stored record (the anchor metadata a later
+// document revision has to resolve) plus the Copy all bundle.
+async function stageUnlabeledFigures(page, shapes, { key, note, target }) {
+  const staged = stageContent(unlabeledFiguresContent(shapes), { key });
+  await installClipboardCapture(page);
+  await page.goto(fileUrl(staged.html));
+  await ready(page);
+  await addNthMediaComment(page, SVG_FIGURE, target, note);
+  const stored = (await storedComments(page))[0];
+  await page.click("#btnCopyAll");
+  const bundle = await copiedBundle(page);
+  return { dir: staged.dir, stored, bundle };
+}
+
 test.describe("inline svg figure comments (CMH-IMG-08)", () => {
   test("an inline <svg> figure is commentable media and reveals the + button on hover (CMH-IMG-08)", async ({ page }) => {
     const staged = stageContent(svgFigureContent(), { key: "cmh-svg-figure-hover" });
@@ -654,6 +703,290 @@ test.describe("inline svg figure comments (CMH-IMG-08)", () => {
       await expect(page.locator("img.cm-img-hl")).toHaveCount(0);
       // The comment itself is not lost - it is still listed, just not anchored.
       await expect(page.locator(".cm-card").filter({ hasText: "ambiguous svg" })).toHaveCount(1);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an unlabeled figure re-anchors by its structural signature after the media order shifts (CMH-IMG-11)", async ({ page }) => {
+    // Unlabeled media has no src and no label, so before the signature the stored index was its
+    // ONLY identity: inserting a figure ahead of it silently moved the comment to a different one.
+    const first = await stageUnlabeledFigures(page, ["circle", "rect"], {
+      key: "cmh-svg-sig-write", note: "signature note", target: 1,
+    });
+    try {
+      expect(typeof first.stored.imageSig).toBe("string");
+      expect(first.stored.imageSig.length).toBeGreaterThan(0);
+      // The discriminator is anchor plumbing, never reader-facing text.
+      expect(first.bundle).not.toContain(first.stored.imageSig);
+      expect(first.bundle).toMatch(/Anchor: image #2/);
+    } finally {
+      fs.rmSync(first.dir, { recursive: true, force: true });
+    }
+    // A figure is inserted ahead of the commented one, so the stored index now points at a
+    // DIFFERENT unlabeled figure that is identical in every other respect.
+    const staged = stageContent(unlabeledFiguresContent(["circle", "polygon", "rect"]),
+      { key: "cmh-svg-sig-shift" });
+    try {
+      await seedComments(page, "cmh-svg-sig-shift", [{ ...first.stored, id: "csvgsig01" }]);
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await expect(page.locator("svg.cm-img-hl")).toHaveCount(1);
+      await expect(page.locator("svg.cm-img-hl")).toHaveAttribute("data-cm-image-index", "2");
+      await expect(page.locator("svg.cm-img-hl > rect")).toHaveCount(1);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a stored comment that predates the structural signature resolves unchanged (CMH-IMG-11)", async ({ page }) => {
+    const staged = stageContent(unlabeledFiguresContent(["circle", "rect"]),
+      { key: "cmh-svg-sig-legacy" });
+    try {
+      // No imageSig field at all: the resolver must take neither the mismatch nor the
+      // tie-breaker path and anchor by the stored index exactly as it did before.
+      await seedComments(page, "cmh-svg-sig-legacy", [
+        { id: "csvgleg01", anchorType: "image", imageIndex: 1, imageSrc: "", imageAlt: "",
+          imageKind: "image", quote: "image 2", note: "legacy svg note",
+          createdAt: new Date().toISOString() },
+      ]);
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await expect(page.locator("svg.cm-img-hl")).toHaveCount(1);
+      await expect(page.locator("svg.cm-img-hl")).toHaveAttribute("data-cm-image-index", "1");
+      await expect(page.locator("svg.cm-img-hl > rect")).toHaveCount(1);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a labelled figure whose drawing changed keeps its anchor (CMH-IMG-11)", async ({ page }) => {
+    const content = `<h1>Redrawn figure</h1>
+      <figure><svg width="200" height="90" viewBox="0 0 200 90" aria-label="Capacity headroom"><rect width="200" height="90" fill="#eef"></rect><circle cx="40" cy="40" r="10" fill="#345"></circle></svg></figure>`;
+    const staged = stageContent(content, { key: "cmh-svg-sig-redrawn" });
+    try {
+      // The signature is the discriminator of LAST resort: a labelled graphic still resolves by
+      // its label, so redrawing it (a different shape signature) must not orphan the comment.
+      await seedComments(page, "cmh-svg-sig-redrawn", [
+        { id: "csvgred01", anchorType: "image", imageIndex: 0, imageSrc: "",
+          imageAlt: "Capacity headroom", imageKind: "image", imageSig: "stalesig",
+          quote: "Capacity headroom", note: "redrawn svg note",
+          createdAt: new Date().toISOString() },
+      ]);
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await expect(page.locator("svg.cm-img-hl")).toHaveCount(1);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("unlabeled figures that differ only in what they draw are told apart (CMH-IMG-11)", async ({ page }) => {
+    // A tag/child-shape digest alone would collide here: both figures are one <rect> in the same
+    // viewBox, so only the drawing attributes separate them.
+    const wide = '<rect x="0" y="0" width="200" height="90" fill="#eef"></rect>';
+    const narrow = '<rect x="20" y="20" width="60" height="50" fill="#dde"></rect>';
+    const shapes = (list) => "<h1>Same shape, different drawing</h1>" + list.map((inner) => `
+      <figure style="margin: 20px 0;">
+        <svg width="200" height="90" viewBox="0 0 200 90" style="display:block;border:2px solid #456;">${inner}</svg>
+      </figure>`).join("\n");
+    const first = stageContent(shapes([wide, narrow]), { key: "cmh-svg-sig-attrs-write" });
+    let stored;
+    try {
+      await page.goto(fileUrl(first.html));
+      await ready(page);
+      await addNthMediaComment(page, SVG_FIGURE, 1, "narrow rect note");
+      stored = (await storedComments(page))[0];
+    } finally {
+      fs.rmSync(first.dir, { recursive: true, force: true });
+    }
+    const staged = stageContent(shapes([wide, wide, narrow]), { key: "cmh-svg-sig-attrs" });
+    try {
+      await seedComments(page, "cmh-svg-sig-attrs", [{ ...stored, id: "csvgatt01" }]);
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await expect(page.locator("svg.cm-img-hl")).toHaveCount(1);
+      await expect(page.locator("svg.cm-img-hl")).toHaveAttribute("data-cm-image-index", "2");
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("unlabeled chart canvases are told apart by their authored caption (CMH-IMG-11)", async ({ page }) => {
+    // A bare <canvas class="cmh-chart"> carries nothing of its own - no label, no src, no chart data
+    // attributes - so the figure's caption is the only authored thing that identifies it.
+    const charts = (captions) => "<h1>Bare charts</h1>" + captions.map((caption) => `
+      <figure class="chart" style="margin: 20px 0;">
+        <canvas class="cmh-chart" width="220" height="120" style="display:block;border:2px solid #456;"></canvas>
+        <figcaption>${caption}</figcaption>
+      </figure>`).join("\n");
+    const first = stageContent(charts(["Latency by region", "Throughput by tier"]),
+      { key: "cmh-canvas-sig-write" });
+    let stored;
+    try {
+      await page.goto(fileUrl(first.html));
+      await ready(page);
+      await addNthMediaComment(page, "#commentRoot canvas.cm-img-commentable", 1, "throughput note");
+      stored = (await storedComments(page))[0];
+      expect(stored.imageAlt).toBe("");
+      expect(stored.imageKind).toBe("chart");
+    } finally {
+      fs.rmSync(first.dir, { recursive: true, force: true });
+    }
+    const staged = stageContent(charts(["Latency by region", "Queue depth", "Throughput by tier"]),
+      { key: "cmh-canvas-sig" });
+    try {
+      await seedComments(page, "cmh-canvas-sig", [{ ...stored, id: "ccanvsig01" }]);
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await expect(page.locator("canvas.cm-img-hl")).toHaveCount(1);
+      await expect(page.locator("canvas.cm-img-hl")).toHaveAttribute("data-cm-image-index", "2");
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a poisoned or oversized stored signature is treated as absent (CMH-IMG-11)", async ({ page }) => {
+    const staged = stageContent(unlabeledFiguresContent(["circle", "rect"]),
+      { key: "cmh-svg-sig-poison" });
+    try {
+      await installClipboardCapture(page);
+      // A shared report's stored payload is attacker-influenced: a value that is not a digest this
+      // runtime could have written must not steer resolution, it must simply not count.
+      await seedComments(page, "cmh-svg-sig-poison", [
+        { id: "csvgpsn01", anchorType: "image", imageIndex: 1, imageSrc: "", imageAlt: "",
+          imageKind: "image", imageSig: "<img src=x onerror=\"window.__xss=1\">".repeat(200),
+          quote: "image 2", note: "poisoned sig note", createdAt: new Date().toISOString() },
+      ]);
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await expect(page.locator("svg.cm-img-hl")).toHaveCount(1);
+      await expect(page.locator("svg.cm-img-hl")).toHaveAttribute("data-cm-image-index", "1");
+      expect(await page.evaluate(() => window.__xss)).toBeUndefined();
+      await page.click("#btnCopyAll");
+      expect(await copiedBundle(page)).not.toContain("onerror");
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an unlabeled figure whose own drawing changed fails safe instead of guessing (CMH-IMG-11)", async ({ page }) => {
+    const first = await stageUnlabeledFigures(page, ["circle", "rect"], {
+      key: "cmh-svg-sig-redraw-write", note: "redrawn unlabeled note", target: 1,
+    });
+    fs.rmSync(first.dir, { recursive: true, force: true });
+    // The commented figure is redrawn in place. There is nothing left that identifies it - a
+    // redrawn figure and a deleted one whose index another figure inherited look identical - so the
+    // anchor must go unresolved rather than ring the wrong graphic.
+    const staged = stageContent(unlabeledFiguresContent(["circle", "polygon"]),
+      { key: "cmh-svg-sig-redraw" });
+    try {
+      await seedComments(page, "cmh-svg-sig-redraw", [{ ...first.stored, id: "csvgrdw01" }]);
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await expect(page.locator("svg.cm-img-hl")).toHaveCount(0);
+      // The comment is not lost, only unanchored.
+      await expect(page.locator(".cm-card").filter({ hasText: "redrawn unlabeled note" })).toHaveCount(1);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("figures that draw the same shapes with different text are told apart (CMH-IMG-11)", async ({ page }) => {
+    // Same tags, same geometry, same caption-less figure: only the <text> label differs, which a
+    // shape-and-attributes-only digest would miss.
+    const labelled = (word) => `<rect width="200" height="90" fill="#eef"></rect><text x="20" y="50">${word}</text>`;
+    const shapes = (words) => "<h1>Same shapes, different text</h1>" + words.map((word) => `
+      <figure style="margin: 20px 0;">
+        <svg width="200" height="90" viewBox="0 0 200 90" style="display:block;border:2px solid #456;">${labelled(word)}</svg>
+      </figure>`).join("\n");
+    const first = stageContent(shapes(["Alpha", "Beta"]), { key: "cmh-svg-sig-text-write" });
+    let stored;
+    try {
+      await page.goto(fileUrl(first.html));
+      await ready(page);
+      await addNthMediaComment(page, SVG_FIGURE, 1, "beta note");
+      stored = (await storedComments(page))[0];
+      expect(stored.imageAlt).toBe("");
+    } finally {
+      fs.rmSync(first.dir, { recursive: true, force: true });
+    }
+    const staged = stageContent(shapes(["Alpha", "Gamma", "Beta"]), { key: "cmh-svg-sig-text" });
+    try {
+      await seedComments(page, "cmh-svg-sig-text", [{ ...stored, id: "csvgtxt01" }]);
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await expect(page.locator("svg.cm-img-hl")).toHaveCount(1);
+      await expect(page.locator("svg.cm-img-hl")).toHaveAttribute("data-cm-image-index", "2");
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the signature narrows duplicate LABELLED figures that metadata cannot separate (CMH-IMG-11)", async ({ page }) => {
+    // Two figures share one label, so the metadata fallback matches both and used to give up. The
+    // signature separates them - and because they carry a label, it is only ever a tie-breaker.
+    const shapes = (list) => "<h1>Duplicate labels</h1>" + list.map((inner) => `
+      <figure style="margin: 20px 0;">
+        <svg width="200" height="90" viewBox="0 0 200 90" aria-label="Capacity headroom" style="display:block;border:2px solid #456;">${inner}</svg>
+      </figure>`).join("\n");
+    const circle = '<circle cx="100" cy="45" r="40" fill="#dde"></circle>';
+    const rect = '<rect width="200" height="90" fill="#eef"></rect>';
+    const first = stageContent(shapes([circle, rect]), { key: "cmh-svg-sig-dup-write" });
+    let stored;
+    try {
+      await page.goto(fileUrl(first.html));
+      await ready(page);
+      await addNthMediaComment(page, SVG_FIGURE, 1, "duplicate label note");
+      stored = (await storedComments(page))[0];
+      expect(stored.imageAlt).toBe("Capacity headroom");
+    } finally {
+      fs.rmSync(first.dir, { recursive: true, force: true });
+    }
+    const staged = stageContent(shapes([circle, circle, rect]), { key: "cmh-svg-sig-dup" });
+    try {
+      await seedComments(page, "cmh-svg-sig-dup", [{ ...stored, id: "csvgdup01", imageIndex: 5 }]);
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await expect(page.locator("svg.cm-img-hl")).toHaveCount(1);
+      await expect(page.locator("svg.cm-img-hl")).toHaveAttribute("data-cm-image-index", "2");
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an unlabeled figure's signature survives Export as Shareable and re-anchors on reopen (CMH-IMG-11)", async ({ page, browser }) => {
+    const staged = stageContent(unlabeledFiguresContent(["circle", "rect"]),
+      { key: "cmh-svg-sig-export" });
+    try {
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await addNthMediaComment(page, SVG_FIGURE, 1, "exported unlabeled note");
+      const cid = await page.locator("svg.cm-img-hl").getAttribute("data-cid");
+      const sig = (await storedComments(page))[0].imageSig;
+      const [dl] = await Promise.all([
+        page.waitForEvent("download"),
+        clickSidebarExport(page, "#btnSaveHtml"),
+      ]);
+      const html = fs.readFileSync(await dl.path(), "utf8");
+      const arr = JSON.parse(html.match(/id="embeddedComments">([\s\S]*?)<\/script>/)[1].trim());
+      // The signature must ride along in the embedded record - it is the reopened copy's only way
+      // to tell this unlabeled figure from the other one.
+      expect(arr.find((c) => c.id === cid).imageSig).toBe(sig);
+      const saved = path.join(staged.dir, "svg-sig-shareable.html");
+      fs.writeFileSync(saved, html);
+      const ctx2 = await browser.newContext();
+      const page2 = await ctx2.newPage();
+      try {
+        await page2.goto(fileUrl(saved));
+        await ready(page2);
+        // The reopened copy recomputes the same digest from its own DOM, so the ring lands back on
+        // the same figure rather than the other unlabeled one.
+        await expect(page2.locator(`svg.cm-img-hl[data-cid="${cid}"]`)).toHaveCount(1);
+        await expect(page2.locator("svg.cm-img-hl")).toHaveAttribute("data-cm-image-index", "1");
+      } finally {
+        await ctx2.close();
+      }
     } finally {
       fs.rmSync(staged.dir, { recursive: true, force: true });
     }
