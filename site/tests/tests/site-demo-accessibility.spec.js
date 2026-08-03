@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { contrastRatio, compositedContrast, demoFrameReady, installNetworkBlock } = require("./site-helpers");
+const { contrastRatio, compositedContrast, demoFrameReady, installNetworkBlock, recordCopyFeedback } = require("./site-helpers");
 
 installNetworkBlock(test);
 
@@ -208,18 +208,59 @@ test("the Why section frames HTML as the de-facto standard for AI planning and r
 
 
 test("copy button restores its original label after a rapid double click", async ({ page, context }) => {
+  test.slow();
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const btn = page.locator("#install .copy-btn").first();
   const label = (await btn.textContent()).trim();
+  // Count the clipboard writes as they settle. Each click starts its own write and its own 1500ms
+  // revert, so without this the assertion could be satisfied by the FIRST click's cycle alone while
+  // the second write is still in flight - which is the single-click case SITE-COPY-01 already
+  // covers, not the double click this test is named for.
+  await page.evaluate(() => {
+    const write = navigator.clipboard.writeText.bind(navigator.clipboard);
+    window.__copyWrites = 0;
+    navigator.clipboard.writeText = (text) => write(text).then(
+      (value) => { window.__copyWrites += 1; return value; },
+      (error) => { window.__copyWrites += 1; throw error; },
+    );
+  });
+  const feedback = await recordCopyFeedback(btn);
   await btn.click();
   await btn.click();
-  // Wait for the copied state FIRST. The restore timer only starts once the clipboard write
-  // resolves, so asserting the final label straight after the clicks puts the write and the
-  // 1500ms restore on one deadline - and under a loaded machine that budget is what runs out,
-  // which made this the suite's flakiest test rather than a real regression.
-  await expect(btn).toHaveText("copied");
-  await expect(btn).toHaveText(label, { timeout: 4000 });
+  // Greater-than-or-equal, not exactly 2: the counter is page-wide, so a future third writer would
+  // make an equality check unsatisfiable and report the wrong problem.
+  try {
+    await expect
+      .poll(() => page.evaluate(() => window.__copyWrites), { timeout: 20000 })
+      .toBeGreaterThanOrEqual(2);
+  } catch (error) {
+    throw new Error(
+      "both clipboard writes never settled - recorded feedback: "
+        + JSON.stringify(await feedback.states()),
+      { cause: error },
+    );
+  }
+  // Both writes have settled, so the last revert is the only thing outstanding. Wait for the
+  // recorded log to be BOTH quiet and fully restored: quietness alone would be declared
+  // mid-transition on a runner that delays the revert timer past the quiet window.
+  const settled = await feedback.waitForSettled(
+    (states) => {
+      const last = states[states.length - 1];
+      return states.length > 1 && last.label === label && !last.copied && !last.failed
+        && last.status === "";
+    },
+    "the button coming to rest on its original label with its feedback cleared",
+  );
+  const labels = settled
+    .map((state) => state.label)
+    .filter((shown, index, all) => index === 0 || all[index - 1] !== shown);
+  // The number of feedback cycles is not fixed (a slow runner can show "copied" twice), but the
+  // button must only ever show those two labels and must come to rest on the original one.
+  expect(
+    { distinct: [...new Set(labels)].sort(), last: labels[labels.length - 1] },
+    `recorded labels: ${JSON.stringify(labels)}`,
+  ).toEqual({ distinct: [label, "copied"].sort(), last: label });
 });
 
 

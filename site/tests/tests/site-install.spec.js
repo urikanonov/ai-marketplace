@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { contrastRatio, compositedContrast, installNetworkBlock } = require("./site-helpers");
+const { contrastRatio, compositedContrast, installNetworkBlock, recordCopyFeedback } = require("./site-helpers");
 
 installNetworkBlock(test);
 
@@ -74,17 +74,25 @@ test("star widget degrades to a visible plain link when its script is blocked", 
 
 
 test("install command copy button copies the command and shows feedback", async ({ page, context }) => {
+  test.slow();
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const btn = page.locator("#install .copy-btn").first();
   const command = await btn.getAttribute("data-copy");
   expect(command).toContain("marketplace add");
-  await btn.click();
-  await expect(btn).toHaveText("copied");
   const status = btn.locator(":scope + .copy-status");
+  // The live region's ARIA contract is permanent, so it is read live; its TEXT is not.
   await expect(status).toHaveAttribute("aria-live", "polite");
   await expect(status).toHaveAttribute("aria-atomic", "true");
-  await expect(status).toHaveText("Copied to clipboard.");
+  const feedback = await recordCopyFeedback(btn);
+  await btn.click();
+  // One recorded snapshot carries the label and the announcement together, so neither assertion
+  // can spend the 1500ms revert window that the other one needs.
+  const copied = await feedback.waitForState((state) => state.copied, "the copied confirmation");
+  expect(copied.label).toBe("copied");
+  expect(copied.status).toBe("Copied to clipboard.");
+  expect(copied.failed).toBe(false);
+  // Read the clipboard only once the write has resolved (that is what set the copied state).
   const clip = await page.evaluate(() => navigator.clipboard.readText());
   expect(clip).toBe(command);
 });
@@ -115,6 +123,7 @@ test("the hub install block tabs between Copilot and Claude commands (SITE-INSTA
 
 
 test("the commentable-html install splits marketplace and plugin into copyable rows per agent (SITE-INSTALL-02)", async ({ page, context }) => {
+  test.slow();
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const block = page.locator("#install .install-tabs");
@@ -126,7 +135,11 @@ test("the commentable-html install splits marketplace and plugin into copyable r
   const btn = pluginRow.locator(".copy-btn");
   const command = await btn.getAttribute("data-copy");
   expect(command).toBe("copilot plugin install commentable-html@urikan-ai-marketplace");
+  const feedback = await recordCopyFeedback(btn);
   await btn.click();
+  // The copied state is the observable proof the write resolved, so the clipboard is read after
+  // it rather than racing the round trip.
+  await feedback.waitForState((state) => state.copied, "the copied confirmation");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(command);
   // The Claude tab exposes the claude plugin-install command for the same plugin.
   await block.locator(".install-tab", { hasText: "Claude Code" }).click();
@@ -221,6 +234,7 @@ test("the pages state dual-agent invocation from each agent's CLI and Desktop ap
 
 
 test("copy failure gives a platform-neutral manual hint", async ({ page }) => {
+  test.slow();
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -230,12 +244,15 @@ test("copy failure gives a platform-neutral manual hint", async ({ page }) => {
   });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const btn = page.locator("#install .copy-btn").first();
+  const feedback = await recordCopyFeedback(btn);
   await btn.click();
-  await expect(btn).toHaveText("copy manually");
-  await expect(btn).not.toContainText(/Ctrl|Cmd/);
-  await expect(btn.locator(":scope + .copy-status")).toHaveText(
-    "Copy unavailable. Copy the command manually."
-  );
-  await expect(btn).toHaveClass(/copy-failed/);
+  // The failed state lives for 2000ms after the rejection resolves. Asserting the label, the hint,
+  // and the class in turn spends that window on the first assertion and leaves the rest reading a
+  // reverted button, so all three are read from the one recorded snapshot instead.
+  const failed = await feedback.waitForState((state) => state.failed, "the copy-failed state");
+  expect(failed.label).toBe("copy manually");
+  expect(failed.label).not.toMatch(/Ctrl|Cmd/);
+  expect(failed.status).toBe("Copy unavailable. Copy the command manually.");
+  expect(failed.copied).toBe(false);
 });
 

@@ -32,6 +32,119 @@ async function demoFrameReady(page, selector, expectedFile, timeout = 30000) {
   return page.frameLocator(selector);
 }
 
+// A copy button's feedback is deliberately TRANSIENT: the runtime sets the label, the state class,
+// and the live-region text only when the clipboard call RESOLVES, then reverts all three 1500ms
+// (success) or 2000ms (failure) later. Asserting on the live DOM therefore races that revert twice
+// over - a poll can miss the window outright on a cold or loaded runner, and separate assertions
+// spread across it so the later ones read an already-reverted button. Both showed up as rare
+// full-suite flakes (#859). Record every state the button passes through instead, installed BEFORE
+// the click, so the assertions read a log that cannot expire rather than a live sample.
+async function recordCopyFeedback(btn) {
+  // The live region is created when the click handler is wired, so waiting for it also removes the
+  // separate race of clicking a button whose handler is not attached yet.
+  await btn.locator(":scope + .copy-status").waitFor({ state: "attached" });
+  await btn.evaluate((el) => {
+    const sibling = el.nextElementSibling;
+    const live = sibling && sibling.classList.contains("copy-status") ? sibling : null;
+    const snapshot = () => ({
+      label: (el.textContent || "").trim(),
+      copied: el.classList.contains("copied"),
+      failed: el.classList.contains("copy-failed"),
+      status: live ? (live.textContent || "").trim() : null,
+    });
+    const states = [snapshot()];
+    el.__copyFeedback = states;
+    const record = () => {
+      const next = snapshot();
+      const last = states[states.length - 1];
+      if (last.label !== next.label || last.copied !== next.copied
+        || last.failed !== next.failed || last.status !== next.status) {
+        states.push(next);
+      }
+    };
+    // The label, the state class, and the live-region text are set together in one task, so one
+    // observer delivery yields one snapshot carrying all three - which is what lets a spec assert
+    // on them atomically instead of sampling each in turn. A set-then-revert inside a SINGLE task
+    // would therefore be recorded as nothing; the runtime cannot do that (the revert is always a
+    // timer, i.e. a later task), but a future one that could would need this loosened.
+    const observer = new MutationObserver(record);
+    observer.observe(el, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    if (live) observer.observe(live, { childList: true, characterData: true, subtree: true });
+  });
+  const states = () => btn.evaluate((el) => {
+    if (!el.__copyFeedback) {
+      throw new Error(
+        "recordCopyFeedback's recorder is missing on this element - it was re-rendered or the page "
+          + "navigated since the recorder was installed",
+      );
+    }
+    return el.__copyFeedback;
+  });
+  return {
+    states,
+    // The distinct labels the button has shown, in order, so a transition can be asserted whole.
+    labels: async () => (await states())
+      .map((state) => state.label)
+      .filter((label, index, all) => index === 0 || all[index - 1] !== label),
+    // Resolves once the recorded log has been unchanged for `quietMs` AND satisfies `match`, so an
+    // assertion on the FINAL state cannot land while a revert timer (or a second, slower clipboard
+    // write) is still in flight. Quietness alone is not enough: a loaded runner can delay a revert
+    // past any fixed window, so a log that goes quiet mid-transition keeps being polled rather than
+    // being declared settled.
+    waitForSettled: async (match, what, quietMs = 2500, timeout = 30000) => {
+      const deadline = Date.now() + timeout;
+      const quietPolls = Math.ceil(quietMs / 100);
+      let recorded = await states();
+      let lastChange = Date.now();
+      let unchanged = 0;
+      for (;;) {
+        if (Date.now() >= deadline) {
+          throw new Error(
+            `copy-button feedback never settled on ${what} within ${timeout}ms - recorded: `
+              + JSON.stringify(recorded),
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const next = await states();
+        if (next.length !== recorded.length) {
+          recorded = next;
+          lastChange = Date.now();
+          unchanged = 0;
+          continue;
+        }
+        unchanged += 1;
+        // Count polls as well as wall time: a page starved for the whole quiet window would
+        // otherwise satisfy it in ONE blocked round trip, which is exactly the condition this
+        // helper exists to survive.
+        if (unchanged >= quietPolls && Date.now() - lastChange >= quietMs && match(next)) {
+          return next;
+        }
+      }
+    },
+    waitForState: async (match, what, timeout = 20000) => {
+      const deadline = Date.now() + timeout;
+      for (;;) {
+        const recorded = await states();
+        const hit = recorded.find(match);
+        if (hit) return hit;
+        if (Date.now() >= deadline) {
+          throw new Error(
+            `no recorded copy-button state matched ${what} within ${timeout}ms - recorded: `
+              + JSON.stringify(recorded),
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    },
+  };
+}
+
 function contrastRatio(foreground, background) {
   const channel = (value) => {
     const normalized = value / 255;
@@ -126,4 +239,10 @@ function installNetworkBlock(test) {
   });
 }
 
-module.exports = { contrastRatio, compositedContrast, demoFrameReady, installNetworkBlock };
+module.exports = {
+  contrastRatio,
+  compositedContrast,
+  demoFrameReady,
+  installNetworkBlock,
+  recordCopyFeedback,
+};

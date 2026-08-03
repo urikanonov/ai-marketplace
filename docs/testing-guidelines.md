@@ -90,6 +90,17 @@ spec-and-test rules in [../AGENTS.md](../AGENTS.md); where they overlap, AGENTS.
   load explicitly first - the site suite's `demoFrameReady` helper scrolls the lazy demo iframe in
   and waits for that document to reach `readyState === "complete"` - and give the test a real budget
   with `test.slow()`. `SITE-DEMO-14` is the guard that keeps both in place.
+- **Never assert live on state that reverts on a timer.** The site's copy buttons set their label,
+  their state class, and their live-region text only when the clipboard call RESOLVES, then revert
+  all three 1500ms (success) or 2000ms (failure) later. A live locator assertion therefore races
+  that revert three ways: a poll can miss the window when a cold clipboard round trip pushes the
+  state past the 5s expect default, consecutive assertions spend the window one after another so
+  the later ones read an already-reverted button, and a fixed budget shorter than the default is
+  shorter still than a loaded runner delays the timer by (#859). Install the site suite's
+  `recordCopyFeedback` helper BEFORE the click - it records every state the button passes through -
+  assert on the recorded snapshot, and give the test a real budget with `test.slow()`. Where the
+  FINAL state matters, wait for the recorded log to go quiet (`waitForSettled`) rather than sampling
+  a state that a second, slower round trip is about to change. `SITE-COPY-04` is the guard.
 - **Block every non-local host.** The site suite aborts all requests except `127.0.0.1`/`localhost`
   and `data:` in a `beforeEach`, so a flaky GitHub API, the star-widget CDN, or the mermaid CDN can
   never fail the deploy gate. Validate the built static output only; do not reach the network.
