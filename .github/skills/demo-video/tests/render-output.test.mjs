@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 
 import {
   windowLabel,
@@ -7,6 +9,7 @@ import {
   tokenizeCommand,
   joinCommand,
   askFromCast,
+  showCommandCardNotice,
   castText,
   publishedSurfaces,
   gateFindings,
@@ -605,4 +608,75 @@ test("a dirty ask is refused in its own words (DEMO-SAFE-42)", () => {
   const both = dirtyGateMessage(gateFindings(dirtyCast, { ask: `review ${TOKEN}` }), "probe.cast.json");
   assert.match(both, /this cast still scans dirty/i);
   assert.match(both, /--ask/);
+});
+
+// `--show-command` reads as a chrome control - that is how SKILL.md introduced it, and since the
+// chrome draws nothing by default an operator reaching for it is thinking about a title bar. But
+// `askFromCast`'s last fallback is `windowLabel(...)`, which the flag turns into the RAW command,
+// so for a cast with no ask mark and no `-p` prompt the flag paints the whole invocation across the
+// title card at up to 30px - the largest type in the clip. The reach is intended (the flag is an
+// explicit opt-in to publishing the command) but it was undocumented, so both halves are pinned:
+// the behavior, and the sentence in SKILL.md that warns about it.
+test("--show-command reaches the title card, not just the chrome (DEMO-SAFE-43)", () => {
+  const bare = { command: LEAKY };
+  assert.equal(askFromCast(bare, {}), "copilot",
+    "the safe fallback stopped applying without the flag");
+  // Both spellings: parseArgs produces the dashed one, a direct caller uses the camelCase alias.
+  assert.equal(askFromCast(bare, { "show-command": true }), LEAKY);
+  assert.equal(askFromCast(bare, { showCommand: true }), LEAKY);
+  // Only the FALLBACK is affected. A cast that has something to state still states it, so opting in
+  // never overwrites a real ask with the invocation.
+  assert.equal(
+    askFromCast({ command: LEAKY, marks: [{ label: "ask", text: "review the panel" }] },
+      { "show-command": true }),
+    "review the panel");
+  assert.equal(
+    askFromCast({ command: 'copilot -p "review this" --disable-mcp-server kusto' }, { "show-command": true }),
+    "review this");
+  assert.equal(askFromCast(bare, { "show-command": true, ask: "a short ask" }), "a short ask");
+
+  // The doc half. A flag introduced purely as chrome control hides its loudest effect, so the
+  // SENTENCE that introduces it must name the title card - a mention elsewhere in the paragraph is
+  // what the operator already had, and it read as a note about the chrome fallback.
+  const skill = fs.readFileSync(path.join(import.meta.dirname, "..", "SKILL.md"), "utf8");
+  // Emphasis markers are dropped BEFORE the split: a sentence that ends inside a bold lead-in
+  // ("... the title card.**") does not end at the period as far as the lookbehind is concerned, so
+  // leaving them in silently glues it to the next sentence and the assertion below passes on text
+  // that no longer states the coupling at all.
+  const sentences = skill.replace(/\s+/g, " ").replace(/\*+/g, "").split(/(?<=[.!?])\s+/)
+    .filter((s) => s.includes("--show-command"));
+  assert.ok(sentences.length, "SKILL.md no longer mentions --show-command at all");
+  // The FIRST mention is the introduction, and it is the one an operator reads before reaching for
+  // the flag. Accepting any sentence anywhere let a later paragraph carry the warning while the
+  // introduction still described a title-bar control - exactly the framing that hid the coupling.
+  assert.match(sentences[0], /title card/i,
+    "SKILL.md introduces --show-command without saying it also arms the title card");
+
+  // And the render-time half, because a document only reaches whoever read it. The notice fires
+  // exactly when the flag CHANGES the card, names what the card will read, and prescribes the fix.
+  const notice = showCommandCardNotice(bare, { "show-command": true });
+  assert.match(notice, /TITLE CARD/);
+  assert.match(notice, /--ask/);
+  assert.ok(notice.includes(JSON.stringify(LEAKY)),
+    "the notice does not show what the card will actually read");
+  assert.equal(showCommandCardNotice(bare, { showCommand: true }), notice,
+    "the camelCase spelling does not warn");
+  // The text is the CAST's, and this warning is printed to the operator's own terminal. The gate
+  // strips OSC/CSI before matching, so a foreign cast can carry a control sequence that scans clean
+  // and would then be executed by the terminal that prints it. It must be shown, not obeyed.
+  const escaped = showCommandCardNotice(
+    { command: "copilot \u001b]0;pwned\u0007 --banner \u001b[2J" }, { "show-command": true });
+  assert.doesNotMatch(escaped, /[\u0000-\u001f]/, "a control sequence reached the terminal raw");
+  assert.match(escaped, /\\u001b/, "the control sequence was dropped instead of shown");
+  // Silent when the flag is absent, and when it changes nothing: a warning that fires on a clip it
+  // does not apply to is the fastest way to teach an operator to ignore it.
+  assert.equal(showCommandCardNotice(bare, {}), null);
+  assert.equal(showCommandCardNotice(bare, { "show-command": true, ask: "a short ask" }), null);
+  assert.equal(
+    showCommandCardNotice({ command: LEAKY, marks: [{ label: "ask", text: "review the panel" }] },
+      { "show-command": true }),
+    null);
+  assert.equal(showCommandCardNotice({ command: "copilot -p write the docs" }, { "show-command": true }), null);
+  // A bare `copilot` publishes nothing the safe label was hiding, so there is nothing to warn about.
+  assert.equal(showCommandCardNotice({ command: "copilot" }, { "show-command": true }), null);
 });

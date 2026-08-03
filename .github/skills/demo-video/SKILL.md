@@ -202,6 +202,16 @@ to cut to, the clip spends its closing seconds on an empty terminal tearing the 
 the clip ends where the story does. `render` needs no `--ask` when the cast came from the committed
 recipe - its `ask` mark is already one readable sentence, and the card quotes that.
 
+**The published `demo-multi-duck.webm` quotes a LONGER ask than the recipe does, and that is
+accepted.** It was captured with a 215-character ask; `DEMO-SCRIPT-07` then capped a recipe's ask at
+200 characters (past that the card steps down to a smaller font), so `examples/duck-session.json`
+carries the 178-character trim of the same sentence - "with 4 fast ducks, and finish with a PANEL
+SUMMARY table of the findings" where the clip says "with 4 fast ducks at low reasoning effort, and
+finish with a PANEL SUMMARY table of the consolidated findings". Nothing else differs (same subject,
+same two rounds, same fast panel) and the shipped card is readable, so the clip was not re-recorded
+for wording alone. Expect the trimmed sentence on the next re-record; it is not a sign the recipe
+drifted from the clip.
+
 **Render every publishable clip at `--scale 0.6`.** It is not only a file-size lever: the required
 `site` gate (`scripts/check_clip_chrome.py`) reads the window chrome at fixed video pixels, which
 hold at that scale. Rendered larger, the traffic lights land inside the strip it inspects and every
@@ -351,7 +361,19 @@ before it could ship. Rendered empty, a clip is born publishable. The safe reduc
 computed - the PROGRAM NAME only (`copilot`), with the path, any leading `NAME=value` environment
 assignment, and every flag dropped, degrading to `session` for anything that is not a plausible bare
 program name - and it is what the title card falls back to. Pass `--show-command` when the
-invocation genuinely is the story, and expect to mask that clip by hand.
+invocation genuinely is the story: it publishes the whole command in the chrome, and on the title
+card too whenever the cast has no ask of its own to state. Expect to mask that clip by hand.
+
+**`--show-command` arms BOTH surfaces, and the louder one is the title card.** The flag reads like a
+title-bar control, but the card's last fallback IS the chrome label, so for a cast with no `ask` mark
+and no `-p` prompt the whole invocation is painted across the card at up to 30px - the largest type
+in the clip - as well as into the chrome. That is the flag doing what it says (it is an explicit
+opt-in to publishing the command), not a bug: use it only when you have read the command you are
+about to publish. A cast that has something to state is unaffected - an `--ask`, an `ask` mark, or a
+`-p` prompt still wins over the fallback, so the flag only ever fills a card that would otherwise
+carry the safe label - the program name, or `session` when the command's shape cannot be trusted.
+`render` and `loop` say so when it happens, quoting what the card will read, so the trap is caught
+even by an operator who never read this paragraph.
 
 **The title card is the loudest surface of all** - it is the largest type in the clip. It states the
 prompt that was actually typed, and it is bounded: a `-p` prompt ends at its closing quote (or at the

@@ -1916,8 +1916,29 @@ export function askFromCast(cast, args, preferredMark = "ask") {
   if (fromCommand) return fromCommand;
   // NOT the raw command. With no prompt to state there is nothing worth reading here, and the
   // invocation would be painted across the card in the largest type in the clip - a louder leak
-  // than the window chrome that prompted this.
+  // than the window chrome that prompted this. `--show-command` reaches this fallback too, so
+  // opting in publishes the command on the CARD as well as in the chrome (DEMO-SAFE-43).
   return windowLabel(castInvocation(cast), args);
+}
+
+// `--show-command` reads as a chrome control, and since the chrome stopped drawing anything the
+// operator reaching for it is picturing a title bar. Its loudest effect is the CARD: with nothing
+// else to state, the card falls back to the same label, so the flag paints the whole invocation in
+// the largest type in the clip. Say so at render time - documentation only reaches whoever read it.
+// Null when the flag changes nothing on the card, so the warning always names a real consequence.
+export function showCommandCardNotice(cast, args = {}) {
+  if (!(args.showCommand === true || args["show-command"] === true)) return null;
+  // Ask the real resolver both ways rather than restating its precedence here, which would drift.
+  const safe = askFromCast(cast, { ...args, showCommand: false, "show-command": false });
+  const published = askFromCast(cast, args);
+  if (published === safe) return null;
+  // The text is CAST-CONTROLLED and this goes to the operator's own terminal, so it is quoted
+  // through JSON: the gate strips OSC/CSI before matching, so a foreign cast can carry a control
+  // sequence that passes every scan and would then be EXECUTED by the terminal printing this
+  // warning. Escaped, it is shown rather than obeyed.
+  return "--show-command fills the TITLE CARD too, not just the window chrome: with no --ask, no "
+    + `"ask" mark and no -p prompt the card will read ${JSON.stringify(published)}. `
+    + 'Pass --ask "<the ask>" to keep the command off the card.';
 }
 
 // The card has to hold whatever the real prompt turned out to be, and a real prompt is often a
@@ -2152,6 +2173,8 @@ async function recordLoop(args) {
   const introMs = Math.round(numberOpt(args, "intro", 3.5) * 1000);
   const endHoldMs = Math.round(numberOpt(args, "end-hold", 3.5) * 1000);
   const ask = askFromCast(cast, args);
+  const cardNotice = showCommandCardNotice(cast, args);
+  if (cardNotice) console.warn(`  WARNING: ${cardNotice}`);
   const unsafe = findingsTotal > 0;
   const outFile = args.out
     ? path.resolve(String(args.out))
@@ -2390,6 +2413,8 @@ async function renderTerminal(args) {
     timeline.durationMs = timeline.events.length ? timeline.events[timeline.events.length - 1].t : 0;
   }
   const ask = askFromCast(cast, args);
+  const cardNotice = showCommandCardNotice(cast, args);
+  if (cardNotice) console.warn(`  WARNING: ${cardNotice}`);
   const width = Math.round(numberOpt(args, "width", Math.ceil(cols * fontSize * 0.605) + 56));
   const height = Math.round(numberOpt(args, "height", Math.ceil(rows * fontSize * 1.32) + 84));
   // A clip rendered over the gate's objection must be impossible to mistake for a clean one later,
@@ -2553,7 +2578,8 @@ const USAGE = `demo-video recorder
   node record_demo.mjs scan    --cast <file.cast.json> [--ask "<the ask you will render with>"]
   node record_demo.mjs frames  --clip <file.webm> [--count 12]
 
-The window chrome draws no title, so a clip is born flat; --show-command publishes the whole launch command.
+The window chrome draws no title, so a clip is born flat; --show-command publishes the whole launch
+command - in the chrome AND on the title card, which falls back to that label when a cast has no ask.
 
 Everything is written under tmp/demo-video (gitignored). Nothing is committed.`;
 
