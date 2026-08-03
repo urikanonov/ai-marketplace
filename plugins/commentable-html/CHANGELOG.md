@@ -4,7 +4,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.436.0] - 2026-08-03
+## [1.437.0] - 2026-08-03
 
 ### Fixed
 
@@ -17,8 +17,8 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   the heading the named-cross-reference and document-title checks read. Both now apply the same
   inertness rule as the element view, whether the template is closed or left open at end of input.
   `generate_toc.py` follows the same rule, so a generated table of contents no longer labels an
-  entry with text a reader cannot see: `<h2>Real<template>Hidden</template>Tail</h2>` is listed as
-  `RealTail`, and a heading whose text is entirely inside a template is dropped from the TOC (and
+  entry with text a reader cannot see: a heading that contains a template is listed by its visible
+  text only, and a heading whose text is entirely inside a template is dropped from the TOC (and
   gets no generated slug id) - which also means a `report`/`plan` whose only `<h1>` is parked in a
   template now correctly fails the top-level-title requirement instead of passing on an invisible
   title.

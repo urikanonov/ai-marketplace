@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.436.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.437.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,10 +496,10 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
-            <div class="rel-head"><h3>[1.436.0] - 2026-08-03</h3></div>
+            <div class="rel-head"><h3>[1.437.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
-              <li>The validator no longer reads inert <code>&lt;template&gt;</code> content as <code>#commentRoot</code> prose, nor as heading text. A template&#x27;s contents live in a DocumentFragment a browser never renders, and the parser&#x27;s element view already declined them, but the PROSE and HEADING views did not - so a document that merely SHOWED a section cross reference inside a template (a doc about authoring, or any parked markup fragment) raised an &quot;unlinked cross-reference&quot; warning its author could not clear by any edit to the rendered page, and a template nested inside a heading contributed invisible text to the heading the named-cross-reference and document-title checks read. Both now apply the same inertness rule as the element view, whether the template is closed or left open at end of input. <code>generate_toc.py</code> follows the same rule, so a generated table of contents no longer labels an entry with text a reader cannot see: <code>&lt;h2&gt;Real&lt;template&gt;Hidden&lt;/template&gt;Tail&lt;/h2&gt;</code> is listed as <code>RealTail</code>, and a heading whose text is entirely inside a template is dropped from the TOC (and gets no generated slug id) - which also means a <code>report</code>/<code>plan</code> whose only <code>&lt;h1&gt;</code> is parked in a template now correctly fails the top-level-title requirement instead of passing on an invisible title.</li>
+              <li>The validator no longer reads inert <code>&lt;template&gt;</code> content as <code>#commentRoot</code> prose, nor as heading text. A template&#x27;s contents live in a DocumentFragment a browser never renders, and the parser&#x27;s element view already declined them, but the PROSE and HEADING views did not - so a document that merely SHOWED a section cross reference inside a template (a doc about authoring, or any parked markup fragment) raised an &quot;unlinked cross-reference&quot; warning its author could not clear by any edit to the rendered page, and a template nested inside a heading contributed invisible text to the heading the named-cross-reference and document-title checks read. Both now apply the same inertness rule as the element view, whether the template is closed or left open at end of input. <code>generate_toc.py</code> follows the same rule, so a generated table of contents no longer labels an entry with text a reader cannot see: a heading that contains a template is listed by its visible text only, and a heading whose text is entirely inside a template is dropped from the TOC (and gets no generated slug id) - which also means a <code>report</code>/<code>plan</code> whose only <code>&lt;h1&gt;</code> is parked in a template now correctly fails the top-level-title requirement instead of passing on an invisible title.</li>
             </ul>
           </div>
           <div class="release">
