@@ -1251,7 +1251,9 @@ export function publishedSurfaces(cast, args = {}) {
 // across a line break, so a credential whose halves land at the end of the cast and the start of
 // the ask fired when the two were scanned as one string and fires in neither half alone - both
 // halves are still published, and both are still legible. A finding that belongs to neither
-// surface alone belongs to both.
+// surface alone belongs to both. The join is made from the STRIPPED surfaces so no OSC sequence
+// can span it: an unterminated one at the end of the cast would otherwise swallow the start of the
+// ask and hide exactly the finding this bucket exists to keep.
 export function gateFindings(cast, args = {}, rules = undefined) {
   const surfaces = publishedSurfaces(cast, args);
   const castFindings = scanText(surfaces.cast, rules);
@@ -1260,20 +1262,37 @@ export function gateFindings(cast, args = {}, rules = undefined) {
   // so the two must agree about what "the operator supplied it" means or the message names the
   // wrong surface.
   const supplied = Boolean(args.ask);
-  const castRules = new Set(castFindings.map((f) => f.rule));
-  const card = supplied ? [] : askFindings.filter((f) => !castRules.has(f.rule));
-  // Findings are indexed into the OSC-STRIPPED text, so the offset has to be measured there too:
+  // Findings are indexed into the OSC-STRIPPED text, so every coordinate here is measured there:
   // a cast carrying a shell title or a hyperlink is shorter to the scanner than it is on disk, and
   // a raw-length offset files an ordinary ask finding as a boundary one - handing the operator the
   // re-capture instruction this whole gate exists to stop giving them.
-  const offset = stripOsc(surfaces.cast).length + 1;
+  const castPlain = stripOsc(surfaces.cast);
+  const askPlain = stripOsc(surfaces.ask);
+  // A derived ask that is a literal SLICE of the cast reports the same findings twice, so it is
+  // dropped. A REBUILT one (quotes stripped from a `-p` value) is kept whole - deduping it by rule
+  // name would hide a second, different credential of a rule the cast already reported.
+  const card = supplied || castPlain.includes(askPlain) ? [] : askFindings;
+  const offset = castPlain.length + 1;
   const seen = new Set([
     ...castFindings.map((f) => `${f.rule}@${f.index}`),
     ...askFindings.map((f) => `${f.rule}@${f.index + offset}`),
   ]);
-  const boundary = scanText(`${surfaces.cast}\n${surfaces.ask}`, rules)
+  const boundary = scanText(joinSurfaces(castPlain, askPlain), rules)
     .filter((f) => !seen.has(`${f.rule}@${f.index}`));
-  return { cast: castFindings, ask: supplied ? askFindings : [], card, boundary };
+  return { cast: castFindings, ask: supplied ? askFindings : [], card, boundary, supplied };
+}
+
+// The two published surfaces, laid end to end for the boundary scan. Both are stripped FIRST so no
+// OSC sequence can span the join, and a dangling introducer left at the end of the cast (a capture
+// cut at the size limit ends mid-escape) is blanked: joined, the ask could supply the terminator it
+// is missing and the sequence would swallow the very text this join exists to examine. The blank is
+// the same width as the introducer, so every index the scanner reports still lines up.
+function joinSurfaces(castPlain, askPlain) {
+  const at = castPlain.lastIndexOf("\u001b]");
+  const closed = at < 0 || /\u0007|\u001b\\/.test(castPlain.slice(at))
+    ? castPlain
+    : `${castPlain.slice(0, at)}  ${castPlain.slice(at + 2)}`;
+  return `${closed}\n${askPlain}`;
 }
 
 // How many findings the gate has, across every surface. The clip is marked UNSAFE and the warning
@@ -1321,10 +1340,13 @@ export function dirtyGateMessage(found, file = "<file>") {
       + "re-capture or add a rule to tools/redact.mjs.");
   }
   if (found.boundary.length) {
+    const remedy = found.supplied
+      ? "Fix BOTH ends - retype the --ask and re-capture (or add a rule to tools/redact.mjs)."
+      : "Both ends come from this cast (its stream and the title card it rebuilds), so re-capture "
+        + "or add a rule to tools/redact.mjs.";
     parts.push(`${found.boundary.length} finding(s) (${ruleNames(found.boundary)}) span the cast and `
-      + "the ask: neither half matches alone, so both are published and together they read as one "
-      + "credential. Fix BOTH ends - retype the --ask and re-capture (or add a rule to "
-      + "tools/redact.mjs).");
+      + `the ask: neither half matches alone, so both are published and together they read as one `
+      + `credential. ${remedy}`);
   }
   return parts.join("\n");
 }
@@ -1403,7 +1425,7 @@ function scanCast(args) {
     cast: stripOsc(surfaces.cast),
     ask: stripOsc(surfaces.ask),
     card: stripOsc(surfaces.ask),
-    boundary: stripOsc(`${surfaces.cast}\n${surfaces.ask}`),
+    boundary: joinSurfaces(stripOsc(surfaces.cast), stripOsc(surfaces.ask)),
   };
   for (const surface of ["cast", "ask", "card", "boundary"]) {
     for (const finding of found[surface].slice(0, 25)) {
@@ -1424,7 +1446,7 @@ function scanCast(args) {
       + "the cast, so re-capture or add a rule to tools/redact.mjs.");
   }
   if (found.boundary.length) {
-    console.error("A finding spans the cast and the ask. Neither half matches alone, so fix BOTH ends.");
+    console.error(`A finding spans the cast and the ask. Neither half matches alone, so fix BOTH ends${found.supplied ? "" : " (both come from this cast)"}.`);
   }
   if (total) process.exitCode = 1;
   return found;
@@ -1971,6 +1993,12 @@ async function recordLoop(args) {
     console.log(`review bundle (${bundle.length} chars) also written to ${bundleFile}`);
   }
   for (const warning of warnings) console.warn(`  warning: ${warning}`);
+  // The same warning `render` prints: the UNSAFE filename says a clip is not publish-safe, but only
+  // to whoever reads the path. Say it in words too, where the operator is already looking.
+  if (unsafe) {
+    console.error(`\nWARNING: rendered despite ${findingsTotal} finding(s) because --allow-findings was passed.`);
+    console.error("This clip is NOT publish-safe. Run 'scan' and look at every finding before it goes anywhere.");
+  }
   if (failures.length) {
     console.error(`\nFAILED: required beat(s) showed nothing: ${failures.join(", ")}.`);
     process.exitCode = 1;

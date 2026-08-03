@@ -487,6 +487,18 @@ test("a credential split across the cast and the ask is still caught (DEMO-SAFE-
   const message = dirtyGateMessage(found, "probe.cast.json");
   assert.match(message, /span/i, "the refusal does not say the finding spans both surfaces");
   assert.match(message, /--ask/);
+
+  // The same split with a DERIVED ask: both halves come from the cast, so the remedy is the cast's
+  // and the refusal must not tell the operator to retype a flag they never passed.
+  const derived = {
+    ...cast,
+    marks: [{ label: "ask", text: "abcdefghijklmnopqrstuvwxyzAB now" }],
+    events: [{ t: 0, data: "trailing half: ghp_0123456789" }],
+  };
+  const fromCast = gateFindings(derived, {});
+  assert.ok(fromCast.boundary.length, "a derived split was let through");
+  assert.doesNotMatch(dirtyGateMessage(fromCast, "probe.cast.json"), /retype the --ask/,
+    "the refusal prescribes retyping a flag the operator never passed");
 });
 
 // A DERIVED ask is not a copy of cast text - it is REBUILT from it. `promptFromCommand` drops the
@@ -512,6 +524,23 @@ test("the title card is scanned even when nobody passed --ask (DEMO-SAFE-42)", (
   assert.match(message, /title card/i, "the refusal does not name the title card");
   assert.match(message, /re-capture or add a rule/i, "the refusal withholds the remedy that works");
   assert.doesNotMatch(message, /--ask you passed/, "the refusal blames a flag the operator never used");
+
+  // A card REBUILT from the cast is kept whole rather than deduped by rule: a cast that already
+  // leaks one token must not hide a SECOND, different one that only the card renders.
+  const other = `ghp_${"9".repeat(36)}`;
+  const two = {
+    ...cast,
+    command: `copilot -p ghp_"${TOKEN.slice(4)}"`,
+    events: [{ t: 0, data: `earlier: ${other}\r\n` }],
+  };
+  const bothTokens = gateFindings(two, {});
+  assert.ok(bothTokens.cast.length, "the cast's own token stopped matching");
+  assert.ok(bothTokens.card.length, "a second credential of the same rule was deduped away");
+
+  // A card the tool merely COPIES out of the cast (a mark) reports once, not twice.
+  const copied = gateFindings({ ...cast, command: "npm test", marks: [{ label: "ask", text: `review ${TOKEN}` }] }, {});
+  assert.ok(copied.cast.length, "mark text left the cast scan");
+  assert.deepEqual(copied.card, [], "a card copied verbatim from the cast was counted twice");
 });
 
 // Findings are indexed into the OSC-stripped text the rules ran over. A cast carrying a shell title
@@ -531,6 +560,16 @@ test("an OSC sequence in the cast does not misfile an ask finding (DEMO-SAFE-42)
   assert.equal(found.ask.length, 1, "the ask finding was lost");
   assert.deepEqual(found.boundary, [], "an ordinary ask finding was filed as a boundary finding");
   assert.equal(findingCount(found), 1, "the same finding was counted twice");
+
+  // An UNTERMINATED escape (a capture cut at the size limit ends mid-sequence) must not let the
+  // ask supply the terminator it is missing: joined, that sequence would swallow the ask and the
+  // one credential would be reported twice, with the boundary paragraph's re-capture prescribed
+  // for a string the operator typed.
+  const dangling = { ...cast, events: [{ t: 0, data: "ok\r\n\u001b]0;unterminated title" }] };
+  const straddled = gateFindings(dangling, { ask: `\u0007 review ${TOKEN}` });
+  assert.equal(straddled.ask.length, 1, "the ask finding was lost");
+  assert.deepEqual(straddled.boundary, [], "a dangling escape turned one finding into two");
+  assert.equal(findingCount(straddled), 1);
 });
 
 test("the reproduce command survives a path with spaces (DEMO-SAFE-42)", () => {
