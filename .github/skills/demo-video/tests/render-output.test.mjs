@@ -8,10 +8,14 @@ import {
   joinCommand,
   askFromCast,
   castText,
-  publishedText,
+  publishedSurfaces,
+  gateFindings,
+  findingCount,
+  dirtyGateMessage,
   terminalPage,
   stagePage,
 } from "../tools/record_demo.mjs";
+import { scanText } from "../tools/redact.mjs";
 
 // A realistic leaky invocation: the flags name internal MCP servers, and nothing in them is a
 // secret by any rule, so no redaction pass can catch them.
@@ -428,8 +432,177 @@ test("the credential scan reads the text the title card will publish (DEMO-SAFE-
 // render recipe, and it matters more now the chrome draws nothing and the card leads the clip.
 test("the render gate scans an operator-supplied --ask too (DEMO-SAFE-41)", () => {
   const clean = { cols: 80, rows: 24, command: "copilot", argv: ["copilot"], events: [], marks: [] };
-  assert.ok(!publishedText(clean, {}).includes("disable-mcp-server"),
+  const surfaces = (args) => Object.values(publishedSurfaces(clean, args)).join("\n");
+  assert.ok(!surfaces({}).includes("disable-mcp-server"),
     "a clean cast should not read dirty");
-  assert.ok(publishedText(clean, { ask: `please review ${LEAKY}` }).includes("disable-mcp-server"),
+  assert.ok(surfaces({ ask: `please review ${LEAKY}` }).includes("disable-mcp-server"),
     "--ask reaches the title card unscanned");
+});
+
+// A refusal that cannot be reproduced or acted on is worse than none: the operator is told the
+// publication is unsafe and every remedy offered applies to the surface that is clean. The two
+// surfaces are fixed by OPPOSITE actions, so the gate has to know which one fired.
+const TOKEN = "ghp_0123456789abcdefghijklmnopqrstuvwxyzAB";
+
+test("the safety gate tells the cast and the ask apart (DEMO-SAFE-42)", () => {
+  const clean = { cols: 80, rows: 24, command: "npm test", argv: ["npm", "test"], events: [], marks: [] };
+  const onlyAsk = gateFindings(clean, { ask: `review ${TOKEN}` });
+  assert.deepEqual(onlyAsk.cast, [], "a clean cast was reported dirty");
+  assert.ok(onlyAsk.ask.length, "the operator-supplied ask was not scanned");
+
+  const dirtyCast = { ...clean, events: [{ t: 0, data: `gh auth login --with-token ${TOKEN}\r\n` }] };
+  const onlyCast = gateFindings(dirtyCast, {});
+  assert.ok(onlyCast.cast.length, "the cast scan stopped catching its own stream");
+  assert.deepEqual(onlyCast.ask, [], "a cast finding was blamed on an ask the operator never passed");
+
+  // An ask the tool derives from the cast (a mark, or a `-p` prompt) IS cast text, so it stays the
+  // cast's finding - blaming an ask nobody typed would be the same dead end in the other direction.
+  const dirtyMark = { ...clean, marks: [{ label: "ask", text: `review ${TOKEN}` }] };
+  const fromMark = gateFindings(dirtyMark, {});
+  assert.ok(fromMark.cast.length, "mark text left the cast scan");
+  assert.deepEqual(fromMark.ask, [], "a mark-derived ask was reported as operator-supplied");
+});
+
+// Splitting one scan into two must not drop what only the JOIN caught: `scanText` rejoins a
+// hard-wrapped value across a line break, so a credential whose halves sit at the end of the cast
+// and the start of the ask matched when the two were one string and matches in neither alone. Both
+// halves are published, and together they read as one credential.
+test("a credential split across the cast and the ask is still caught (DEMO-SAFE-42)", () => {
+  const cast = {
+    cols: 80,
+    rows: 24,
+    command: "npm test",
+    argv: ["npm", "test"],
+    marks: [],
+    events: [{ t: 0, data: "run this: ghp_0123456789" }],
+  };
+  const found = gateFindings(cast, { ask: "abcdefghijklmnopqrstuvwxyzAB now" });
+  assert.deepEqual(found.cast, [], "half a token should not match on its own");
+  assert.deepEqual(found.ask, [], "the other half should not match on its own");
+  assert.ok(found.boundary.length, "a credential spanning the two surfaces was let through");
+  // The clip is marked UNSAFE from this count, so a bucket left out of it is a clip that ships
+  // looking clean.
+  assert.equal(findingCount(found), found.boundary.length);
+
+  const message = dirtyGateMessage(found, "probe.cast.json");
+  assert.match(message, /span/i, "the refusal does not say the finding spans both surfaces");
+  assert.match(message, /--ask/);
+
+  // The same split with a DERIVED ask: both halves come from the cast, so the remedy is the cast's
+  // and the refusal must not tell the operator to retype a flag they never passed.
+  const derived = {
+    ...cast,
+    marks: [{ label: "ask", text: "abcdefghijklmnopqrstuvwxyzAB now" }],
+    events: [{ t: 0, data: "trailing half: ghp_0123456789" }],
+  };
+  const fromCast = gateFindings(derived, {});
+  assert.ok(fromCast.boundary.length, "a derived split was let through");
+  assert.doesNotMatch(dirtyGateMessage(fromCast, "probe.cast.json"), /retype the --ask/,
+    "the refusal prescribes retyping a flag the operator never passed");
+});
+
+// A DERIVED ask is not a copy of cast text - it is REBUILT from it. `promptFromCommand` drops the
+// quotes around a `-p` value, so a command that scans clean on disk renders a contiguous credential
+// on the title card. The old single scan caught that because it scanned the resolved ask; a split
+// that skipped the derived half would publish it.
+test("the title card is scanned even when nobody passed --ask (DEMO-SAFE-42)", () => {
+  const cast = {
+    cols: 80,
+    rows: 24,
+    command: `copilot -p ghp_"${TOKEN.slice(4)}"`,
+    events: [],
+    marks: [],
+  };
+  assert.deepEqual(scanText(castText(cast)), [], "the quoted command should read clean as cast text");
+  assert.ok(askFromCast(cast, {}).includes(TOKEN), "the card no longer rebuilds the prompt");
+
+  const found = gateFindings(cast, {});
+  assert.ok(found.card.length, "the rebuilt title card was published unscanned");
+  assert.deepEqual(found.ask, [], "a card finding was blamed on an --ask nobody passed");
+
+  const message = dirtyGateMessage(found, "probe.cast.json");
+  assert.match(message, /title card/i, "the refusal does not name the title card");
+  assert.match(message, /re-capture or add a rule/i, "the refusal withholds the remedy that works");
+  assert.doesNotMatch(message, /--ask you passed/, "the refusal blames a flag the operator never used");
+
+  // A card REBUILT from the cast is kept whole rather than deduped by rule: a cast that already
+  // leaks one token must not hide a SECOND, different one that only the card renders.
+  const other = `ghp_${"9".repeat(36)}`;
+  const two = {
+    ...cast,
+    command: `copilot -p ghp_"${TOKEN.slice(4)}"`,
+    events: [{ t: 0, data: `earlier: ${other}\r\n` }],
+  };
+  const bothTokens = gateFindings(two, {});
+  assert.ok(bothTokens.cast.length, "the cast's own token stopped matching");
+  assert.ok(bothTokens.card.length, "a second credential of the same rule was deduped away");
+
+  // A card the tool merely COPIES out of the cast (a mark) reports once, not twice.
+  const copied = gateFindings({ ...cast, command: "npm test", marks: [{ label: "ask", text: `review ${TOKEN}` }] }, {});
+  assert.ok(copied.cast.length, "mark text left the cast scan");
+  assert.deepEqual(copied.card, [], "a card copied verbatim from the cast was counted twice");
+});
+
+// Findings are indexed into the OSC-stripped text the rules ran over. A cast carrying a shell title
+// or a hyperlink - which modern shells emit by default, so every imported recording has them - is
+// shorter there than on disk, and an offset measured on disk files an ordinary ask finding as a
+// boundary one, handing back the re-capture instruction this gate exists to stop giving.
+test("an OSC sequence in the cast does not misfile an ask finding (DEMO-SAFE-42)", () => {
+  const cast = {
+    cols: 80,
+    rows: 24,
+    command: "npm test",
+    argv: ["npm", "test"],
+    marks: [],
+    events: [{ t: 0, data: "\u001b]0;a long window title set by the shell\u0007ok\r\n" }],
+  };
+  const found = gateFindings(cast, { ask: `review ${TOKEN}` });
+  assert.equal(found.ask.length, 1, "the ask finding was lost");
+  assert.deepEqual(found.boundary, [], "an ordinary ask finding was filed as a boundary finding");
+  assert.equal(findingCount(found), 1, "the same finding was counted twice");
+
+  // An UNTERMINATED escape (a capture cut at the size limit ends mid-sequence) must not let the
+  // ask supply the terminator it is missing: joined, that sequence would swallow the ask and the
+  // one credential would be reported twice, with the boundary paragraph's re-capture prescribed
+  // for a string the operator typed.
+  const dangling = { ...cast, events: [{ t: 0, data: "ok\r\n\u001b]0;unterminated title" }] };
+  const straddled = gateFindings(dangling, { ask: `\u0007 review ${TOKEN}` });
+  assert.equal(straddled.ask.length, 1, "the ask finding was lost");
+  assert.deepEqual(straddled.boundary, [], "a dangling escape turned one finding into two");
+  assert.equal(findingCount(straddled), 1);
+});
+
+test("the reproduce command survives a path with spaces (DEMO-SAFE-42)", () => {
+  const clean = { cols: 80, rows: 24, command: "npm test", argv: ["npm", "test"], events: [], marks: [] };
+  const found = gateFindings(clean, { ask: `review ${TOKEN}` });
+  const spaced = "/tmp/demo video/probe.cast.json";
+  assert.match(dirtyGateMessage(found, spaced), /"\/tmp\/demo video\/probe\.cast\.json"/,
+    "the advertised command splits the path into two arguments");
+
+  // Quoting rules differ between shells, so a path that cannot be quoted the same way everywhere
+  // is advertised as a placeholder rather than as a command that would break where it is pasted.
+  const quoted = dirtyGateMessage(found, '/tmp/od"d/probe.cast.json');
+  assert.match(quoted, /<file>/, "an unquotable path was pasted into the command anyway");
+  assert.doesNotMatch(quoted, /od"d/);
+});
+
+test("a dirty ask is refused in its own words (DEMO-SAFE-42)", () => {
+  const clean = { cols: 80, rows: 24, command: "npm test", argv: ["npm", "test"], events: [], marks: [] };
+  const askOnly = dirtyGateMessage(gateFindings(clean, { ask: `review ${TOKEN}` }), "probe.cast.json");
+  assert.match(askOnly, /--ask/, "the refusal does not name the ask");
+  assert.doesNotMatch(askOnly, /this cast still scans dirty/i, "the refusal blames the clean cast");
+  assert.doesNotMatch(askOnly, /Re-capture or add a rule/, "the refusal prescribes a useless re-capture");
+  // The one command that CAN reproduce it, named with the file the operator actually passed.
+  assert.match(askOnly, /probe\.cast\.json/);
+
+  const dirtyCast = { ...clean, events: [{ t: 0, data: `gh auth login --with-token ${TOKEN}\r\n` }] };
+  const castOnly = dirtyGateMessage(gateFindings(dirtyCast, {}), "probe.cast.json");
+  assert.match(castOnly, /this cast still scans dirty/i);
+  assert.match(castOnly, /Re-capture or add a rule/);
+  assert.doesNotMatch(castOnly, /--ask/, "a clean ask was blamed for the cast's finding");
+
+  // Both dirty: each surface is named, so neither remedy is guessed at.
+  const both = dirtyGateMessage(gateFindings(dirtyCast, { ask: `review ${TOKEN}` }), "probe.cast.json");
+  assert.match(both, /this cast still scans dirty/i);
+  assert.match(both, /--ask/);
 });

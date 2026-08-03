@@ -15,9 +15,17 @@ import { launchSpec } from "../tools/record_demo.mjs";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TOOL = path.join(HERE, "..", "tools", "record_demo.mjs");
 
-function run(args) {
-  return spawnSync(process.execPath, [TOOL, ...args], { encoding: "utf8" });
+function run(args, env = {}) {
+  return spawnSync(process.execPath, [TOOL, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, ...env },
+  });
 }
+
+// Playwright is looked up on disk, so a render that gets PAST the gate must not be allowed to
+// launch a real browser from a unit suite. Pointing the browser path at nothing makes the launch
+// fail immediately and deterministically, wherever the suite runs.
+const NO_BROWSERS = { PLAYWRIGHT_BROWSERS_PATH: path.join(os.tmpdir(), "demo-video-no-browsers") };
 
 // Scratch casts go to the OS temp dir, never into the repo.
 function tempCast(cast) {
@@ -112,6 +120,58 @@ test("the safety gate refuses a dirty cast before any browser starts (DEMO-CLI-0
 
   const missing = run(["scan", "--cast", path.join(os.tmpdir(), "definitely-not-here.cast.json")]);
   assert.notEqual(missing.status, 0, "a missing cast was accepted");
+});
+
+// A refusal is only useful if it can be acted on. The cast and the `--ask` are fixed by OPPOSITE
+// actions - one by re-capturing or adding a redaction rule, the other by retyping the command line -
+// so a single undifferentiated count sent an operator whose ask was dirty to `scan --cast`, which
+// reports nothing, and to a re-capture that changes nothing.
+test("a dirty --ask is refused with instructions that can reproduce and fix it (DEMO-SAFE-42)", () => {
+  const clean = tempCast({
+    version: 1,
+    command: "npm test",
+    cols: 80,
+    rows: 24,
+    scrubbedBy: "demo-video",
+    events: [{ t: 0, data: "86 passing\r\n" }],
+  });
+  const dirtyAsk = "review gh auth login --with-token ghp_0123456789abcdefghijklmnopqrstuvwxyzAB";
+  try {
+    // The cast really is clean, which is the whole trap: every instruction the old refusal gave
+    // pointed at the one surface that has nothing wrong with it.
+    const bare = run(["scan", "--cast", clean.file]);
+    assert.equal(bare.status, 0, bare.stderr);
+    assert.match(bare.stdout, /findings:\s*0/);
+
+    const render = run(["render", "--cast", clean.file, "--ask", dirtyAsk]);
+    assert.notEqual(render.status, 0, "render filmed a dirty --ask");
+    assert.match(render.stderr, /--ask/, "the refusal does not name the ask");
+    assert.doesNotMatch(render.stderr, /this cast still scans dirty/i,
+      "the refusal blames the cast for a finding the cast does not contain");
+    assert.doesNotMatch(render.stderr, /Re-capture or add a rule/,
+      "the refusal prescribes a re-capture that cannot change the ask");
+
+    // ...and the finding can be REPRODUCED, which needs `scan` to accept the same flag.
+    const withAsk = run(["scan", "--cast", clean.file, "--ask", dirtyAsk]);
+    assert.notEqual(withAsk.status, 0, "scan passed a dirty --ask");
+    assert.match(withAsk.stdout, /findings:\s*[1-9]/);
+    assert.match(withAsk.stdout, /ask/, "scan does not say which surface the finding came from");
+
+    // The gate is the only thing between a clean cast and the renderer, so the path it hands over
+    // to has to work: splitting the scan left a dangling reference to the old single finding list,
+    // which fails AFTER the gate passes and therefore never on any dirty-cast test.
+    const rendered = run(["render", "--cast", clean.file, "--out", path.join(os.tmpdir(), "demo-video-probe.webm")],
+      NO_BROWSERS);
+    assert.doesNotMatch(rendered.stderr, /is not defined/,
+      "the clean render path broke after the gate passed");
+    // An empty --ask is an override that does nothing: it would fall back to the cast's own prompt
+    // and the operator would be told to re-capture, with no sign their flag was ignored.
+    const blank = run(["render", "--cast", clean.file, "--ask", ""]);
+    assert.notEqual(blank.status, 0, "an empty --ask was accepted and ignored");
+    assert.match(blank.stderr, /--ask needs text/);
+  } finally {
+    clean.cleanup();
+  }
 });
 
 test("a Windows shim is launched through its interpreter (DEMO-CLI-04)", () => {

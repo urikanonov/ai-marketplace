@@ -30,7 +30,7 @@
 //   node record_demo.mjs loop    --cast <file.cast.json> --example <report.html> [--split paste]
 //   node record_demo.mjs capture [--out <f.cast.json>] [--cols 120] [--rows 30] [--script <f.json>] [--max-mb 48] -- <cmd...>
 //   node record_demo.mjs render  --cast <file.cast.json> [--seconds 45] [--out <file.webm>]
-//   node record_demo.mjs scan    --cast <file.cast.json>
+//   node record_demo.mjs scan    --cast <file.cast.json> [--ask "<text>"]
 
 import { pathToFileURL, fileURLToPath } from "url";
 import { createRequire } from "module";
@@ -41,7 +41,7 @@ import http from "http";
 
 import { planBeats, fitTimeline, compressTimeline, coalesceEvents, applySpeedWindows, parseSpeedWindows, MIN_BEAT_MS } from "./timeline.mjs";
 import { REPORT_BEATS } from "./report-beats.mjs";
-import { DEFAULT_RULES, homeRules, scanText, scrubEvents, scrubText, createScrubber } from "./redact.mjs";
+import { DEFAULT_RULES, homeRules, scanText, stripOsc, scrubEvents, scrubText, createScrubber } from "./redact.mjs";
 import { readScript, stepReady, stepPayload, stepSubmit, fileReady, stepGaveUpNotice, makeSizeGuard, captureLimitBytes } from "./script.mjs";
 import { recordCapture, wasCapturedHere } from "./provenance.mjs";
 import { trimCast } from "./trim.mjs";
@@ -123,7 +123,7 @@ const SUBJECT_FLAGS = {
   capture: ["out", "cols", "rows", "script", "max-mb"],
   render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "head", "end-hold", "intro", "ask", "speed-windows", "allow-findings", "show-command", "until", "until-after", "until-gap"],
   loop: ["cast", "example", "example-after", "seconds-resolved", "out", "split", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "idle", "hold", "width", "height", "font", "scale", "dpr", "intro", "end-hold", "ask", "allow-findings", "show-command"],
-  scan: ["cast"],
+  scan: ["cast", "ask"],
   frames: ["clip", "out", "count", "frames-dir"],
 };
 
@@ -144,6 +144,12 @@ function checkSubjectFlags(args, subject) {
   const stray = used.filter((k) => !allowed.includes(k));
   if (stray.length) {
     throw new Error(`${subject} does not use ${stray.map((k) => `--${k}`).join(", ")}`);
+  }
+  // An EMPTY `--ask` is silently ignored downstream - `askFromCast` falls back to the cast's own
+  // prompt - so an operator blanking a dirty title card would be told to re-capture instead, with
+  // no sign their override did nothing. Say so rather than guessing which they meant.
+  if ("ask" in args && !String(args.ask).trim()) {
+    throw new Error("--ask needs text; omit it entirely to use the prompt the cast already carries");
   }
 }
 function parseArgs(argv) {
@@ -1228,13 +1234,127 @@ export function castText(cast) {
   return `${cast.command || ""}\n${argv}\n${marks}\n${cast.events.map((e) => e.data).join("")}`;
 }
 
-// Everything that will be RENDERED, which is what a render-time gate has to see: the cast plus the
-// ask as it actually resolves. `--ask` is operator-supplied and never touches the cast, so it
-// reached the title card - the largest type in the clip - completely unscanned, and it is the
-// documented render recipe. Same argument as the marks: scan what will be on screen, not just what
-// was captured.
-export function publishedText(cast, args = {}) {
-  return `${castText(cast)}\n${askFromCast(cast, args)}`;
+// Everything that will be RENDERED, kept as SEPARATE surfaces because that is how they are fixed.
+// The cast is fixed by re-capturing or by adding a redaction rule; the `--ask` is operator-supplied,
+// never touches the cast, and is fixed by retyping it. Scanning the two as one string could only
+// report an undifferentiated count, which sent an operator whose ask was dirty to `scan --cast`
+// (findings: 0) and to a re-capture that changes nothing.
+export function publishedSurfaces(cast, args = {}) {
+  return { cast: castText(cast), ask: askFromCast(cast, args) };
+}
+
+// The gate, per surface. The ask counts as its OWN surface only when the operator supplied it:
+// every other ask is drawn FROM the cast, so attributing it to `--ask` would be the same dead end
+// pointing the other way - telling the operator to edit a flag they never passed.
+//
+// A derived ask is still SCANNED, in its own `card` bucket. It is RECONSTRUCTED from the cast
+// rather than copied out of it - `promptFromCommand` drops the quotes around a `-p` value, so
+// `-p ghp_"0123..."` scans clean as cast text and dirty the moment the title card renders it - so
+// skipping it would publish a credential the old single scan caught. Its remedy is the cast's, and
+// a rule the cast scan already reported is not repeated.
+//
+// `boundary` keeps what only the JOINED text catches. `scanText` rejoins a hard-wrapped value
+// across a line break, so a credential whose halves land at the end of the cast and the start of
+// the ask fired when the two were scanned as one string and fires in neither half alone - both
+// halves are still published, and both are still legible. A finding that belongs to neither
+// surface alone belongs to both. The join is made from the STRIPPED surfaces so no OSC sequence
+// can span it: an unterminated one at the end of the cast would otherwise swallow the start of the
+// ask and hide exactly the finding this bucket exists to keep.
+export function gateFindings(cast, args = {}, rules = undefined) {
+  const surfaces = publishedSurfaces(cast, args);
+  const castFindings = scanText(surfaces.cast, rules);
+  const askFindings = scanText(surfaces.ask, rules);
+  // Truthiness, matching `askFromCast`: an empty `--ask` falls back to the cast-derived ask there,
+  // so the two must agree about what "the operator supplied it" means or the message names the
+  // wrong surface.
+  const supplied = Boolean(args.ask);
+  // Findings are indexed into the OSC-STRIPPED text, so every coordinate here is measured there:
+  // a cast carrying a shell title or a hyperlink is shorter to the scanner than it is on disk, and
+  // a raw-length offset files an ordinary ask finding as a boundary one - handing the operator the
+  // re-capture instruction this whole gate exists to stop giving them.
+  const castPlain = stripOsc(surfaces.cast);
+  const askPlain = stripOsc(surfaces.ask);
+  // A derived ask that is a literal SLICE of the cast reports the same findings twice, so it is
+  // dropped. A REBUILT one (quotes stripped from a `-p` value) is kept whole - deduping it by rule
+  // name would hide a second, different credential of a rule the cast already reported.
+  const card = supplied || castPlain.includes(askPlain) ? [] : askFindings;
+  const offset = castPlain.length + 1;
+  const seen = new Set([
+    ...castFindings.map((f) => `${f.rule}@${f.index}`),
+    ...askFindings.map((f) => `${f.rule}@${f.index + offset}`),
+  ]);
+  const boundary = scanText(joinSurfaces(castPlain, askPlain), rules)
+    .filter((f) => !seen.has(`${f.rule}@${f.index}`));
+  return { cast: castFindings, ask: supplied ? askFindings : [], card, boundary, supplied };
+}
+
+// The two published surfaces, laid end to end for the boundary scan. Both are stripped FIRST so no
+// OSC sequence can span the join, and a dangling introducer left at the end of the cast (a capture
+// cut at the size limit ends mid-escape) is blanked: joined, the ask could supply the terminator it
+// is missing and the sequence would swallow the very text this join exists to examine. The blank is
+// the same width as the introducer, so every index the scanner reports still lines up.
+function joinSurfaces(castPlain, askPlain) {
+  const at = castPlain.lastIndexOf("\u001b]");
+  const closed = at < 0 || /\u0007|\u001b\\/.test(castPlain.slice(at))
+    ? castPlain
+    : `${castPlain.slice(0, at)}  ${castPlain.slice(at + 2)}`;
+  return `${closed}\n${askPlain}`;
+}
+
+// How many findings the gate has, across every surface. The clip is marked UNSAFE and the warning
+// counts from this, so a surface added later cannot be left out of the count by accident.
+export function findingCount(found) {
+  return found.cast.length + found.ask.length + found.card.length + found.boundary.length;
+}
+
+function ruleNames(findings) {
+  return [...new Set(findings.map((f) => f.rule))].join(", ");
+}
+
+// A path with a space is one argument, not two: unquoted, the command the refusal tells the
+// operator to run is a command that cannot reproduce anything. Escaping is deliberately NOT
+// attempted - the quoting rules differ between cmd, PowerShell and a POSIX shell, and a
+// half-escaped string is worse than an honest placeholder - so a path carrying a quote or ending
+// in a backslash (neither of which a real cast path does) is advertised as `<file>` instead.
+function quoteArg(value) {
+  const text = String(value);
+  if (!/[\s"]/.test(text)) return text;
+  if (text.includes('"') || text.endsWith("\\")) return "<file>";
+  return `"${text}"`;
+}
+
+// What the refusal SAYS, per dirty surface. Each half names an action that can actually reproduce
+// and fix that surface, and neither prescribes the other's remedy.
+export function dirtyGateMessage(found, file = "<file>") {
+  const at = quoteArg(file);
+  const parts = [];
+  if (found.cast.length) {
+    parts.push(`this cast still scans dirty (${found.cast.length} finding(s): ${ruleNames(found.cast)}); `
+      + `run 'scan --cast ${at}' to see them. `
+      + "Re-capture or add a rule to tools/redact.mjs rather than publishing it.");
+  }
+  if (found.ask.length) {
+    parts.push(`the --ask you passed scans dirty (${found.ask.length} finding(s): ${ruleNames(found.ask)}); `
+      + "it is the text on your command line, not the cast, so re-capturing cannot change it and a "
+      + "bare 'scan --cast' cannot see it. Retype the --ask, or reproduce the finding with "
+      + `'scan --cast ${at} --ask "<text>"'.`);
+  }
+  if (found.card.length) {
+    parts.push(`the title card this cast renders scans dirty (${found.card.length} finding(s): `
+      + `${ruleNames(found.card)}); it is REBUILT from the cast (its ask mark, or the -p prompt in `
+      + `its command), so the raw stream can read clean. Run 'scan --cast ${at}' to see it, then `
+      + "re-capture or add a rule to tools/redact.mjs.");
+  }
+  if (found.boundary.length) {
+    const remedy = found.supplied
+      ? "Fix BOTH ends - retype the --ask and re-capture (or add a rule to tools/redact.mjs)."
+      : "Both ends come from this cast (its stream and the title card it rebuilds), so re-capture "
+        + "or add a rule to tools/redact.mjs.";
+    parts.push(`${found.boundary.length} finding(s) (${ruleNames(found.boundary)}) span the cast and `
+      + `the ask: neither half matches alone, so both are published and together they read as one `
+      + `credential. ${remedy}`);
+  }
+  return parts.join("\n");
 }
 
 // The tail of a real capture is dead air: the session keeps recording until the recipe's quit step
@@ -1295,20 +1415,47 @@ function readCast(args) {
 function scanCast(args) {
   const { file, cast, capturedHere } = readCast(args);
   warnForeignCast(capturedHere);
-  const text = castText(cast);
-  const findings = scanText(text, rulesForThisMachine());
+  const rules = rulesForThisMachine();
+  const surfaces = publishedSurfaces(cast, args);
+  const found = gateFindings(cast, args, rules);
+  const total = findingCount(found);
   console.log(`cast:     ${file}`);
   console.log(`events:   ${cast.events.length}`);
-  console.log(`findings: ${findings.length}`);
-  for (const finding of findings.slice(0, 25)) {
-    const start = Math.max(0, finding.index - 20);
-    console.log(`  ${finding.rule} @${finding.index}: ${JSON.stringify(text.slice(start, start + 70))}`);
+  console.log(`findings: ${total}${total
+    ? ` (cast ${found.cast.length}, ask ${found.ask.length}, card ${found.card.length}, `
+      + `boundary ${found.boundary.length})`
+    : ""}`);
+  // Every index is counted against the OSC-STRIPPED text the rules actually ran over, so the
+  // excerpt has to be sliced from that same projection or it quotes the wrong 70 characters.
+  const shown = {
+    cast: stripOsc(surfaces.cast),
+    ask: stripOsc(surfaces.ask),
+    card: stripOsc(surfaces.ask),
+    boundary: joinSurfaces(stripOsc(surfaces.cast), stripOsc(surfaces.ask)),
+  };
+  for (const surface of ["cast", "ask", "card", "boundary"]) {
+    for (const finding of found[surface].slice(0, 25)) {
+      const start = Math.max(0, finding.index - 20);
+      console.log(`  ${surface}: ${finding.rule} @${finding.index}: `
+        + `${JSON.stringify(shown[surface].slice(start, start + 70))}`);
+    }
   }
-  if (findings.length) {
+  if (found.cast.length) {
     console.error("This cast must not be filmed as-is. Re-capture, or add a rule to tools/redact.mjs.");
-    process.exitCode = 1;
   }
-  return findings;
+  if (found.ask.length) {
+    console.error("This --ask must not be published as-is. Retype it; it is not in the cast, so "
+      + "re-capturing cannot change it.");
+  }
+  if (found.card.length) {
+    console.error("The title card this cast renders must not be published as-is. It is rebuilt from "
+      + "the cast, so re-capture or add a rule to tools/redact.mjs.");
+  }
+  if (found.boundary.length) {
+    console.error(`A finding spans the cast and the ask. Neither half matches alone, so fix BOTH ends${found.supplied ? "" : " (both come from this cast)"}.`);
+  }
+  if (total) process.exitCode = 1;
+  return found;
 }
 
 // The invocation to reason about: `argv` when it is actually there, otherwise the flattened string.
@@ -1654,14 +1801,12 @@ function reviewPreamble() {
 // same runBeats, just scoped to the iframe, so a beat added to the standalone montage appears in
 // this clip too.
 async function recordLoop(args) {
-  const { cast, capturedHere } = readCast(args);
+  const { file: castFile, cast, capturedHere } = readCast(args);
   const rules = rulesForThisMachine();
-  const findings = scanText(publishedText(cast, args), rules);
-  if (findings.length && !args["allow-findings"]) {
-    throw new Error(
-      `this cast still scans dirty (${findings.length} finding(s)); run 'scan --cast <file>' to see them. `
-      + "Re-capture or add a rule to tools/redact.mjs rather than publishing it.",
-    );
+  const found = gateFindings(cast, args, rules);
+  const findingsTotal = findingCount(found);
+  if (findingsTotal && !args["allow-findings"]) {
+    throw new Error(dirtyGateMessage(found, castFile));
   }
   warnForeignCast(capturedHere);
 
@@ -1711,7 +1856,7 @@ async function recordLoop(args) {
   const introMs = Math.round(numberOpt(args, "intro", 3.5) * 1000);
   const endHoldMs = Math.round(numberOpt(args, "end-hold", 3.5) * 1000);
   const ask = askFromCast(cast, args);
-  const unsafe = findings.length > 0;
+  const unsafe = findingsTotal > 0;
   const outFile = args.out
     ? path.resolve(String(args.out))
     : path.join(OUT_ROOT, `loop-${unsafe ? "UNSAFE-" : ""}${stamp()}.webm`);
@@ -1854,6 +1999,12 @@ async function recordLoop(args) {
     console.log(`review bundle (${bundle.length} chars) also written to ${bundleFile}`);
   }
   for (const warning of warnings) console.warn(`  warning: ${warning}`);
+  // The same warning `render` prints: the UNSAFE filename says a clip is not publish-safe, but only
+  // to whoever reads the path. Say it in words too, where the operator is already looking.
+  if (unsafe) {
+    console.error(`\nWARNING: rendered despite ${findingsTotal} finding(s) because --allow-findings was passed.`);
+    console.error("This clip is NOT publish-safe. Run 'scan' and look at every finding before it goes anywhere.");
+  }
   if (failures.length) {
     console.error(`\nFAILED: required beat(s) showed nothing: ${failures.join(", ")}.`);
     process.exitCode = 1;
@@ -1884,16 +2035,14 @@ async function copyAllBundle(page, scope, warnings) {
 }
 
 async function renderTerminal(args) {
-  const { cast: fullCast, capturedHere } = readCast(args);
+  const { file: castFile, cast: fullCast, capturedHere } = readCast(args);
   const rules = rulesForThisMachine();
   // Scanned BEFORE any trim, deliberately. The gate exists to stop a secret reaching a published
   // clip, and scanning only the kept span would let a trim decide what the gate gets to see.
-  const findings = scanText(publishedText(fullCast, args), rules);
-  if (findings.length && !args["allow-findings"]) {
-    throw new Error(
-      `this cast still scans dirty (${findings.length} finding(s)); run 'scan --cast <file>' to see them. `
-      + "Re-capture or add a rule to tools/redact.mjs rather than publishing it.",
-    );
+  const found = gateFindings(fullCast, args, rules);
+  const findingsTotal = findingCount(found);
+  if (findingsTotal && !args["allow-findings"]) {
+    throw new Error(dirtyGateMessage(found, castFile));
   }
   // A cast this tool did not capture was never scrubbed at capture time, and the machine-specific
   // rules here cannot know another operator's home path or account name - so a clean scan says much
@@ -1949,7 +2098,7 @@ async function renderTerminal(args) {
   const height = Math.round(numberOpt(args, "height", Math.ceil(rows * fontSize * 1.32) + 84));
   // A clip rendered over the gate's objection must be impossible to mistake for a clean one later,
   // when nobody remembers which flag was passed - including when the caller named the file itself.
-  const unsafe = findings.length > 0;
+  const unsafe = findingsTotal > 0;
   const outFile = args.out
     ? path.resolve(String(args.out))
     : path.join(OUT_ROOT, `terminal-${unsafe ? "UNSAFE-" : ""}${stamp()}.webm`);
@@ -1990,7 +2139,7 @@ async function renderTerminal(args) {
     console.log(`speed:    the remaining output plays at ${timeline.speed.toFixed(1)}x`);
   }
   if (unsafe) {
-    console.error(`\nWARNING: rendered despite ${findings.length} finding(s) because --allow-findings was passed.`);
+    console.error(`\nWARNING: rendered despite ${findingsTotal} finding(s) because --allow-findings was passed.`);
     console.error("This clip is NOT publish-safe. Run 'scan' and look at every finding before it goes anywhere.");
   }
   console.log("WATCH THE CLIP before publishing it.");
@@ -2104,7 +2253,7 @@ const USAGE = `demo-video recorder
   node record_demo.mjs render  --cast <file.cast.json> [--seconds 45] [--idle 900] [--out <file.webm>]
                                [--until "<marker>"] [--until-after <mark>] [--until-gap <seconds>]
                                [--show-command]
-  node record_demo.mjs scan    --cast <file.cast.json>
+  node record_demo.mjs scan    --cast <file.cast.json> [--ask "<the ask you will render with>"]
   node record_demo.mjs frames  --clip <file.webm> [--count 12]
 
 The window chrome draws no title, so a clip is born flat; --show-command publishes the whole launch command.
