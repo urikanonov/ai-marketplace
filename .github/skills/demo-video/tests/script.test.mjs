@@ -216,17 +216,23 @@ test("every recipe's longest wait is a documented budget, not a bare number (DEM
     // normalizeScript gives every step a timeout, so this is the effective backstop - a wait nobody
     // declared is still a wait the capture can sit on.
     const longest = Math.max(...readScript(path.join(dir, name)).steps.map((s) => s.timeoutMs));
-    const row = rows.find((line) => line.split("|")[1]?.includes(name));
+    // The recipe cell has to BE the filename, not merely contain it, or a later `session.json` would
+    // answer for `duck-session.json` and the row nobody wrote would look present.
+    const row = rows.find((line) => line.split("|")[1]?.trim().replace(/`/g, "") === name);
     assert.ok(row,
       `SKILL.md needs a "Capture budgets" row for ${name}: its longest wait, and where that number came from`);
-    const [, , declared = "", why = ""] = row.split("|");
+    const cells = row.split("|");
+    const declared = cells[2] ?? "";
+    // The rationale is the REST of the row, rejoined: a pipe inside it (an inline command, say) is
+    // prose, not a column, and splitting on it would judge a full paragraph by its first fragment.
+    const why = cells.slice(3).join("|").replace(/\|\s*$/, "");
     // Match the budget CELL, not the line: the row's rationale names the numbers this budget
     // replaced ("its 90 minute quit timeout", "ran 36 minutes"), so a line-level match would let a
     // timeout drift back onto one of them and still report the doc as current.
     assert.equal(declared.trim(), spell(longest),
       `the "Capture budgets" row for ${name} records "${declared.trim()}", but its longest wait is ${spell(longest)}`);
     // A number with no provenance is the thing this test exists to prevent, so the row has to say
-    // where it came from rather than restating the timeout in words.
+    // where it came from in a sentence rather than restating the timeout in words.
     assert.ok(why.trim().length >= 40,
       `the "Capture budgets" row for ${name} needs to say where ${spell(longest)} came from`);
   }
