@@ -178,6 +178,14 @@ CLIP_SUFFIX = ".webm"
 # offsets do not describe, so the flatness it then measured would mean nothing. The published pairs
 # agree to within 0.0003 (1078/800 = 1.34750 against 620/460 = 1.34783), which is integer rounding
 # in the publish step rather than a shape difference.
+#
+# This does NOT catch a crop that happens to keep the clip's aspect ratio, and it does not need to:
+# the freshness match below is far more sensitive to a crop than to a frame choice, because a crop
+# misaligns every structure in the picture at once. Measured on the multi-duck clip, cropping just
+# 1% and rescaling drops the best match to 0.7624 (5%: 0.7517) - below anything a real pair reads -
+# while a poster cut from a DIFFERENT frame of its own clip still scores 0.978+. A centred crop
+# additionally drags the terminal's first row into the strip and reports THAT, and a large one moves
+# the lights off their probe and is refused as a scale mismatch. All three refuse; none passes.
 POSTER_ASPECT_TOLERANCE = 0.01
 # Structural similarity below which a poster no longer depicts any frame of the clip it ships beside.
 # Measured with ffmpeg's ssim filter over every frame of each published clip: the three real pairs
@@ -194,6 +202,24 @@ POSTER_MATCH_MIN = 0.95
 # fact matches at 0.99. A second of video is far below any published clip (the shortest is 769
 # frames) and far above that degenerate case.
 POSTER_MATCH_MIN_FRAMES = 25
+# What to do about an artifact this gate could not read, which is a different instruction for each
+# surface. A clip is RENDERED, so it is re-rendered or re-recorded; a poster is not rendered at all -
+# it is CUT from a clip - so telling its operator to "re-render it with --scale 0.6" names a knob
+# the poster does not have and points at the wrong file. The whole reason these messages exist is to
+# say which artifact to go and fix, so the two are kept apart rather than sharing clip-only wording.
+RENDER_ADVICE = {
+    "clip": "Re-render it with --scale %s (see the demo-video SKILL.md)." % PUBLISH_SCALE,
+    "poster": "Cut it again from a full frame of its clip, which must itself be rendered with "
+              "--scale %s (see the demo-video SKILL.md)." % PUBLISH_SCALE,
+}
+SETTLE_ADVICE = {
+    "clip": "Re-record it, or check that its transitions settle.",
+    "poster": "Cut it from a SETTLED frame of its clip - this one is mid-transition.",
+}
+RECORDER_ADVICE = {
+    "clip": "Re-scan a clip from the current recorder, or re-record this one.",
+    "poster": "Cut it from a settled frame of a clip filmed by the current recorder.",
+}
 
 
 class Unscannable(Exception):
@@ -214,6 +240,15 @@ class ChromeOccluded(Unscannable):
 
 class PosterUnpaired(Unscannable):
     """A poster with no clip beside it, so neither question this gate asks can be answered."""
+
+
+class ProbeFailed(Unscannable):
+    """A probe of ONE file that ffmpeg could not complete, so that file has no verdict.
+
+    An `Unscannable` rather than a `SystemExit` because it is a fact about the file, not about the
+    tool: a poster ffmpeg cannot read must not stop the run before a LATER poster - possibly a
+    leaking one - has been looked at. It still fails the run, exactly like every other Unscannable.
+    """
 
 
 class StalePoster(Unscannable):
@@ -285,12 +320,22 @@ def _measure(ffmpeg, clip, crop, keys, prefix=""):
     return frames
 
 
-def scan_clip(ffmpeg, clip, prefix=""):
+def scan_clip(ffmpeg, clip, prefix="", surface="clip"):
     """Return `(bad, judged, occluded)` - frames whose title strip is not flat, how many frames were
     judged, and how many showed the chrome with something painted over it.
 
     `prefix` is filter text applied before every probe (see `_measure`); the poster path uses it to
-    put a poster back at its clip's frame size, so both surfaces are read by one implementation."""
+    put a poster back on its clip's frame and luminance scale, so both surfaces are read by one
+    implementation. `surface` only chooses which instruction a refusal ends with - a poster is cut,
+    not rendered, so clip-only advice would name a knob it does not have.
+
+    On a POSTER there is exactly one frame, which sharpens two of the rules below: the coverage
+    floor (`MIN_CHROME_SHARE`) can never fire, since one frame is never under half of one, and the
+    occlusion floor becomes all-or-nothing - a single frame whose gutter is not clear is the whole
+    clip's worth of occlusion, so it is refused rather than averaged away. Both harden rather than
+    loosen, and the second is why a poster must be cut from a SETTLED frame."""
+    render_advice = RENDER_ADVICE[surface]
+    name = display_name(clip)
     strip = _measure(ffmpeg, clip, STRIP, ("YMIN", "YMAX", "SATMAX"), prefix)
     lights = _measure(ffmpeg, clip, LIGHTS, ("SATMAX",), prefix)
     gutter = _measure(ffmpeg, clip, GUTTER, ("YMIN", "YMAX"), prefix)
@@ -335,13 +380,13 @@ def scan_clip(ffmpeg, clip, prefix=""):
             # diagnosis for a clip that is all transition.
             raise ChromeOccluded(
                 "%s never shows its window chrome settled (its traffic lights peak at %.0f, under "
-                "the %.0f a drawn light reads), so no frame could be judged. Re-record it, or "
-                "check that its transitions settle." % (clip, brightest, LIGHTS_PRESENT))
+                "the %.0f a drawn light reads), so no frame could be judged. %s"
+                % (name, brightest, LIGHTS_PRESENT, SETTLE_ADVICE[surface]))
         raise ScaleMismatch(
             "%s shows a terminal on %d frame(s) but its window chrome never appears where these "
             "offsets expect it (lights peak at %.0f), so no frame could be judged: it was not "
-            "rendered at the publish scale. Re-render it with --scale %s (see the demo-video "
-            "SKILL.md)." % (clip, terminal_frames, brightest, PUBLISH_SCALE))
+            "rendered at the publish scale. %s"
+            % (name, terminal_frames, brightest, render_advice))
 
     bad = []
     suspect = []
@@ -385,8 +430,8 @@ def scan_clip(ffmpeg, clip, prefix=""):
         if row["SATMAX"] > LIGHTS_SATURATION:
             raise ScaleMismatch(
                 "%s has colour in its title strip at t=%.2fs, which means the traffic lights are "
-                "inside it: this clip was not rendered at the publish scale. Re-render it with "
-                "--scale %s (see the demo-video SKILL.md) and scan again." % (clip, row["t"], PUBLISH_SCALE))
+                "inside it: it was not rendered at the publish scale. %s Then scan it again."
+                % (name, row["t"], render_advice))
         judged += 1
         if spread > FLAT_TOLERANCE:
             bad.append((row["t"], spread))
@@ -422,9 +467,8 @@ def scan_clip(ffmpeg, clip, prefix=""):
             raise ScaleMismatch(
                 "%s has colour in its title strip at t=%.2fs and its chrome reads as painted over "
                 "on %d of %d frame(s): the probes are not landing on the chrome, which is what a "
-                "clip rendered at another scale looks like. Re-render it with --scale %s (see the "
-                "demo-video SKILL.md) and scan again.%s"
-                % (clip, coloured, occluded, chrome_frames, PUBLISH_SCALE, note))
+                "clip rendered at another scale looks like. %s Then scan it again.%s"
+                % (name, coloured, occluded, chrome_frames, render_advice, note))
         if chrome_frames < MIN_CHROME_SHARE * scannable:
             # The lights found the chrome, but on so few frames that judging them would report a
             # confident OK on a scan of almost nothing. Measured, the published clips show settled
@@ -434,17 +478,16 @@ def scan_clip(ffmpeg, clip, prefix=""):
             raise ScaleMismatch(
                 "%s could have shown its window chrome on %d frame(s) but it is only found settled "
                 "on %d of them, so almost nothing could be scanned: these offsets are not landing "
-                "on its chrome. Re-render it with --scale %s (see the demo-video SKILL.md).%s"
-                % (clip, scannable, chrome_frames, PUBLISH_SCALE, note))
+                "on its chrome. %s%s"
+                % (name, scannable, chrome_frames, render_advice, note))
         raise ChromeOccluded(
             "%s shows its window chrome on %d frame(s) but something is painted over it on %d of "
-            "them (worst gutter spread %.0f), so %s. Either the clip's chrome does not match the "
+            "them (worst gutter spread %.0f), so %s. Either the chrome does not match the "
             "geometry this gate measures - an older recorder, or a hand-applied mask whose box "
-            "crosses the chrome's bottom padding - or its transitions never settle. Re-scan a clip "
-            "from the current recorder, or re-record this one.%s"
-            % (clip, chrome_frames, occluded, worst_occluded,
+            "crosses the chrome's bottom padding - or its transitions never settle. %s%s"
+            % (name, chrome_frames, occluded, worst_occluded,
                "no frame could be judged" if not judged else "only %d could be judged" % judged,
-               note))
+               RECORDER_ADVICE[surface], note))
     return sorted(bad + suspect), judged, occluded
 
 
@@ -455,10 +498,36 @@ def is_poster(path):
 
 
 def poster_clip(poster):
-    """The clip a poster was cut from: `poster-X.jpg` pairs with `demo-X.webm` beside it."""
+    """The clip a poster was cut from: `poster-X.jpg` pairs with `demo-X.webm` beside it.
+
+    The stem is lower-cased, because `is_poster` matched the name that way: taking the stem in its
+    original case would resolve `Poster-X.JPG` to `demo-X.webm` and fail as unpaired on a
+    case-sensitive filesystem, which is the one place this runs in CI."""
     directory, name = os.path.split(poster)
-    stem = os.path.splitext(name)[0][len(POSTER_PREFIX):]
+    stem = os.path.splitext(name)[0].lower()[len(POSTER_PREFIX):]
     return os.path.join(directory, CLIP_PREFIX + stem + CLIP_SUFFIX)
+
+
+def poster_prefix(clip_width, clip_height):
+    """The filter text that puts a poster back on its clip's frame AND its clip's luminance scale.
+
+    The scale-back is the point of the poster path, but it is not enough on its own. A published
+    poster is a JPEG, so ffmpeg reads it as `yuvj420p` - FULL range, Y on 0-255 - while every
+    published clip is `yuv420p(tv)`, LIMITED range on 16-235, which is the scale every tolerance in
+    this file was measured against. Left alone, the poster is read 255/219 = 1.164x expanded:
+    measured, the multi-duck poster's title strip reads 13-17 where the very same frame of its clip
+    reads 28-31. That direction is safe for the flatness tolerance (it only makes it stricter) but
+    not for the gutter: a settled frame near the clip's measured ceiling of 19 would land at 22,
+    over `GUTTER_TOLERANCE`, and be refused as painted over - a false failure on a clean poster,
+    made sharp by the fact that a poster is ONE frame with no other frames to average it out.
+
+    `format=yuv420p` alone does NOT do it (measured: byte-identical readings), because it changes
+    the pixel layout and not the range. The second `scale` stage with an explicit `out_range` is
+    what converts, and it is written without an `in_range` so ffmpeg uses whatever the file itself
+    declares rather than this code assuming. Applied to a clip that is already limited it is a
+    no-op (verified: identical readings), so it says "measure on the clip's scale" rather than
+    "convert a JPEG"."""
+    return "scale=%d:%d,format=yuv420p,scale=out_range=limited," % (clip_width, clip_height)
 
 
 def _dimensions(ffmpeg, path):
@@ -466,7 +535,12 @@ def _dimensions(ffmpeg, path):
 
     Parsed from the INPUT header only: the output and stream-mapping lines repeat a size, and after
     a filter has run that size is the filter's, not the file's. A poster whose own size were read
-    off the scaled output would agree with its clip no matter what shape it really was."""
+    off the scaled output would agree with its clip no matter what shape it really was.
+
+    The FIRST video stream is the right one to read because it is the one every filter chain here
+    consumes - `[0:v]` and the default `-vf` mapping both take it - so this cannot disagree with
+    what was actually measured. (A clip carrying a second video stream, an attached cover image
+    say, is refused outright by `check_clip_codec.py`, which requires exactly one video track.)"""
     proc = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "info", "-i", path,
                            "-frames:v", "1", "-f", "null", "-"], capture_output=True, text=True)
     for line in proc.stderr.splitlines():
@@ -477,9 +551,11 @@ def _dimensions(ffmpeg, path):
             continue
         hit = re.search(r"[ ,](\d{2,5})x(\d{2,5})[ ,]", line)
         if hit:
-            return int(hit.group(1)), int(hit.group(2))
-    raise SystemExit("ffmpeg did not report a frame size for %s, so it cannot be measured: %s"
-                     % (path, proc.stderr.strip()[-400:]))
+            width, height = int(hit.group(1)), int(hit.group(2))
+            if width > 0 and height > 0:
+                return width, height
+    raise ProbeFailed("ffmpeg did not report a usable frame size for %s, so it cannot be measured: "
+                      "%s" % (display_name(path), proc.stderr.strip()[-400:]))
 
 
 def poster_similarity(ffmpeg, poster, clip, width, height):
@@ -502,23 +578,42 @@ def poster_similarity(ffmpeg, poster, clip, width, height):
     proc = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-i", clip,
                            "-i", poster, "-filter_complex", chain, "-f", "null", "-"],
                           capture_output=True, text=True)
+    if proc.returncode != 0:
+        # A run that failed PART WAY still printed the frames it got to, and a poster that matched
+        # one of them would be reported fresh on a comparison that never reached the rest of the
+        # clip. The frame floor below does not cover that: a decode that dies after a second is
+        # already past it. So the exit status is checked first and on its own.
+        raise ProbeFailed("ffmpeg failed comparing %s against %s (exit %d), so the poster's "
+                          "freshness was not measured: %s"
+                          % (display_name(poster), display_name(clip), proc.returncode,
+                             proc.stderr.strip()[-400:]))
     best = None
     compared = 0
     for line in proc.stdout.splitlines():
-        hit = re.search(r"\bAll:([\d.]+)", line)
-        if hit:
-            compared += 1
+        hit = re.search(r"\bAll:(\S+)", line)
+        if not hit:
+            continue
+        try:
             value = float(hit.group(1))
-            best = value if best is None else max(best, value)
+        except ValueError:
+            value = float("nan")
+        # `inf` and `nan` are not scores. Skipping them silently would let a run of unusable
+        # measurements still satisfy the frame floor below on whatever few rows did parse.
+        if not -1.0 <= value <= 1.0:
+            raise ProbeFailed("ffmpeg reported an unusable similarity (%s) comparing %s against "
+                              "%s, so the poster's freshness cannot be trusted"
+                              % (hit.group(1), display_name(poster), display_name(clip)))
+        compared += 1
+        best = value if best is None else max(best, value)
     if compared < POSTER_MATCH_MIN_FRAMES:
         # No verdict, or a verdict on almost nothing. Either way reporting a match would be the
-        # pass-having-checked-nothing this whole script is written against, so it is fatal rather
-        # than skipped - and it is not reported as a stale poster, which would send the operator
+        # pass-having-checked-nothing this whole script is written against, so it fails rather
+        # than passes - and it is not reported as a stale poster, which would send the operator
         # re-cutting a poster whose only problem is that ffmpeg was not understood.
-        raise SystemExit("ffmpeg compared %d frame(s) of %s against %s, under the %d a verdict on "
-                         "the poster's freshness needs: %s"
-                         % (compared, display_name(clip), display_name(poster),
-                            POSTER_MATCH_MIN_FRAMES, proc.stderr.strip()[-400:]))
+        raise ProbeFailed("ffmpeg compared %d frame(s) of %s against %s, under the %d a verdict on "
+                          "the poster's freshness needs: %s"
+                          % (compared, display_name(clip), display_name(poster),
+                             POSTER_MATCH_MIN_FRAMES, proc.stderr.strip()[-400:]))
     return best
 
 
@@ -548,8 +643,8 @@ def scan_poster(ffmpeg, poster):
             "poster from a full frame of %s."
             % (display_name(poster), poster_width, poster_height, clip_width, clip_height,
                by_width, by_height, display_name(clip)))
-    bad, judged, occluded = scan_clip(ffmpeg, poster,
-                                      prefix="scale=%d:%d," % (clip_width, clip_height))
+    bad, judged, occluded = scan_clip(ffmpeg, poster, prefix=poster_prefix(clip_width, clip_height),
+                                      surface="poster")
     if bad:
         return bad, judged, occluded, None
     similarity = poster_similarity(ffmpeg, poster, clip, poster_width, poster_height)
@@ -561,6 +656,14 @@ def scan_poster(ffmpeg, poster):
             "failing. Re-cut this poster from the current clip."
             % (display_name(poster), display_name(clip), similarity, POSTER_MATCH_MIN))
     return bad, judged, occluded, similarity
+
+
+def is_clip(path):
+    """Whether a path names a published clip. Case-insensitive, exactly like `is_poster`: the two
+    predicates decide the same question and are used on both the explicit-argument and the default
+    discovery paths, so a name matched by one and missed by the other would be a silent gap in
+    whichever path CI uses."""
+    return os.path.basename(path).lower().endswith(CLIP_SUFFIX)
 
 
 def main(argv):
@@ -575,16 +678,16 @@ def main(argv):
     ffmpeg = find_ffmpeg()
     directory = os.path.join(REPO_ROOT, CLIP_DIR)
     if args.files:
-        clips = [f for f in args.files if f.lower().endswith(CLIP_SUFFIX)]
+        clips = [f for f in args.files if is_clip(f)]
         posters = [f for f in args.files if is_poster(f)]
-        unknown = [f for f in args.files if f not in clips and f not in posters]
+        unknown = [f for f in args.files if not is_clip(f) and not is_poster(f)]
         if unknown:
             raise SystemExit("not a published clip or poster: %s (clips are %s files, posters are "
                              "%s*%s)" % (", ".join(unknown), CLIP_SUFFIX, POSTER_PREFIX,
                                          POSTER_SUFFIXES[0]))
     else:
         names = sorted(os.listdir(directory))
-        clips = [os.path.join(directory, n) for n in names if n.endswith(CLIP_SUFFIX)]
+        clips = [os.path.join(directory, n) for n in names if is_clip(n)]
         posters = [os.path.join(directory, n) for n in names if is_poster(n)]
         # Each surface is named separately, because "found nothing to scan" is indistinguishable
         # from "scanned it and it was clean" in the output, and the posters were the surface that

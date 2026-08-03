@@ -261,20 +261,24 @@ trusting a partial scan of it.
 **The posters are scanned too, and they are the surface a reader meets first.** `site/src/poster-*.jpg`
 loads on first paint, so whatever is in it is seen without anyone pressing play - and the launch
 command shipped in one once before. The scan reads a poster as what it is: a whole frame of its clip,
-scaled by one factor, so it is scaled BACK to the clip's frame and measured by the same probes at the
-same tolerances. It also checks that each poster still DEPICTS a frame of the clip beside it (ffmpeg's
+scaled by one factor, so it is scaled BACK to the clip's frame - and to the clip's LUMINANCE SCALE, a
+JPEG being full-range where a clip is limited - and measured by the same probes at the same
+tolerances. It also checks that each poster still DEPICTS a frame of the clip beside it (ffmpeg's
 `ssim`, best match over every frame), because a re-record keeps the clip's filename and used to leave
 the old poster published against the new recording with nothing failing. So re-cut each poster from
 its NEW clip - the gate will tell you if you forget - and still look at it, because "the strip is flat"
-is not "this is a good poster". Cut one from a settled frame of its clip - `scale=800:-2` is what the
-published posters are, and it reproduces both shapes (864x540 -> 800x500, 1078x620 -> 800x460):
+is not "this is a good poster". Cut one from a SETTLED frame (a poster is one frame, so a mid-fade
+still is refused rather than averaged away) of the RE-ENCODED clip, the same bytes you scanned above -
+`scale=800:-2` is what the published posters are, and it reproduces both shapes (864x540 -> 800x500,
+1078x620 -> 800x460):
 
 ```powershell
-ffmpeg -ss <seconds> -i "$repo\site\src\demo-<name>.webm" -frames:v 1 -vf "scale=800:-2" -q:v 3 `
-  "$repo\site\src\poster-<name>.jpg"
+ffmpeg -ss <seconds> -i "$repo\tmp\rerecord-publish\demo-<name>.webm" -frames:v 1 `
+  -vf "scale=800:-2" -q:v 3 "$repo\tmp\rerecord-publish\poster-<name>.jpg"
 ```
 
-Then scan it, passing it next to the clip it was cut from:
+Then scan it, passing it next to the clip it was cut from (both are in the same directory, which is
+what lets the gate pair them), and copy the pair into `site/src` together:
 
 ```powershell
 python "$repo\scripts\check_clip_chrome.py" --require-ffmpeg <the re-cut posters...>
