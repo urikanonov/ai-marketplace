@@ -49,9 +49,22 @@ def build_skill_zip_members(root, skill_dir_rel, skill_name):
         with open(full, "rb") as fh:
             members.append(("%s/%s" % (skill_name, rel), _normalize_zip_member(fh.read())))
     members.sort(key=lambda m: m[0])
+    _reject_duplicate_members(members)
     if not any(arcname == "%s/SKILL.md" % skill_name for arcname, _ in members):
         raise SystemExit("Claude Desktop skill ZIP: %s has no SKILL.md at the root of %s"
                          % (skill_name, skill_dir_rel))
+    return members
+
+
+def _reject_duplicate_members(members):
+    """Fail closed if two members share an arcname. A ZIP may legally carry a path twice, and both
+    the check comparison and the write path map members by name, so a duplicate would be silently
+    collapsed there while still bloating the shipped archive."""
+    seen = set()
+    for arcname, _ in members:
+        if arcname in seen:
+            raise SystemExit("Claude Desktop skill ZIP: duplicate member: %s" % arcname)
+        seen.add(arcname)
     return members
 
 
@@ -84,6 +97,16 @@ def _tracked_skill_files(root, skill_dir_rel):
         return None
     prefix = skill_dir_rel.rstrip("/") + "/"
     rels = [p[len(prefix):] for p in out.split("\0") if p and p.startswith(prefix)]
+    # `git ls-files` prints an UNMERGED path once per index stage (three times during a conflicted
+    # merge or rebase). Refuse rather than dedupe: the working-tree bytes of a half-resolved file
+    # may still carry conflict markers, and packaging them would smuggle a conflict into a binary
+    # artifact no text-scanning gate can see.
+    unmerged = sorted({rel for rel in rels if rels.count(rel) > 1})
+    if unmerged:
+        raise SystemExit(
+            "Claude Desktop skill ZIP: %s has unmerged (conflicted) index entries; resolve the "
+            "conflict and `git add` before rebuilding: %s"
+            % (skill_dir_rel, ", ".join(unmerged[:5])))
     return rels or None
 
 
@@ -106,7 +129,7 @@ def _skill_zip_bytes(members):
     stable member order, so a rebuild from the same skill files is reproducible across platforms."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
-        for arcname, data in members:
+        for arcname, data in _reject_duplicate_members(members):
             info = zipfile.ZipInfo(arcname, date_time=(1980, 1, 1, 0, 0, 0))
             info.external_attr = 0o644 << 16
             info.create_system = 3  # Unix, so the host OS never changes the archive bytes.
@@ -120,12 +143,17 @@ def _zip_logical_members(path):
     cannot be read. Comparing logical members (not raw archive bytes) makes the --check drift guard
     immune to zlib/platform differences in the compressed container. A malformed, encrypted, or
     unsupported-compression archive is treated as unreadable (None) so --check flags it as stale and
-    write mode repairs it, rather than crashing the build."""
+    write mode repairs it, rather than crashing the build. An archive that carries the same path
+    more than once is unreadable for the same reason: a name->bytes map would collapse the copies
+    and report a bloated archive as in sync, so a duplicated ZIP would survive every --check."""
     if not os.path.isfile(path):
         return None
     try:
         with zipfile.ZipFile(path, "r") as archive:
-            return {info.filename: archive.read(info.filename) for info in archive.infolist()}
+            names = [info.filename for info in archive.infolist()]
+            if len(names) != len(set(names)):
+                return None
+            return {name: archive.read(name) for name in names}
     except (OSError, zipfile.BadZipFile, NotImplementedError, RuntimeError):
         return None
 
