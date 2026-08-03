@@ -539,11 +539,16 @@ def worktree_state(repo_root, env=None):
 
 
 def split_sections(state):
-    """The `[probe]` blocks of a rendered snapshot, keyed by probe name and in snapshot order."""
+    """The `[probe]` blocks of a rendered snapshot, keyed by probe name and in snapshot order.
+
+    Only the line ENDING is trimmed, never leading whitespace: the `[diff]` body is `git diff`
+    output, whose context lines are indented by a space, so source that literally reads `[status]`
+    arrives as ` [status]` and must not be allowed to open a section.
+    """
     sections = {}
     name = "?"
     for line in (state or "").splitlines(keepends=True):
-        header = line.strip()
+        header = line.rstrip("\r\n")
         if header.startswith("[") and header.endswith("]") and header[1:-1] in _SECTIONS:
             name = header[1:-1]
             sections.setdefault(name, "")
@@ -569,9 +574,12 @@ def state_diff(before, after):
         was, now = old.get(name, ""), new.get(name, "")
         if was == now:
             continue
-        lines = [line for line in difflib.unified_diff(was.splitlines(True), now.splitlines(True),
-                                                       n=0, lineterm="\n")
-                 if not line.startswith(("---", "+++", "@@"))]
+        # The two file headers come first and only when something differs, so they are dropped by
+        # POSITION: a removed line whose content starts with `--` is emitted as `---...` and would
+        # otherwise be filtered out as a header - silently hiding the very change being reported.
+        lines = list(difflib.unified_diff(was.splitlines(True), now.splitlines(True),
+                                          n=0, lineterm="\n"))[2:]
+        lines = [line for line in lines if not line.startswith("@@")]
         dropped = len(lines) - _DIFF_LINES
         if dropped > 0:
             lines = lines[:_DIFF_LINES] + ["... and %d more line(s)\n" % dropped]

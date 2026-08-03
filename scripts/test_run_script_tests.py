@@ -139,6 +139,24 @@ class StateDiff(unittest.TestCase):
         self.assertIn("[status]", diff)
         self.assertNotIn("[nonsense]\n+", diff)
 
+    def test_a_diff_context_line_cannot_open_a_probe(self):
+        # `git diff` indents a context line by one space, so source that literally reads `[status]`
+        # arrives as ` [status]`. Trimming that leading space would hand the rest of the diff to the
+        # wrong probe and mislabel the change.
+        before = "[status]\n[diff]\n@@\n [status]\nkeep\n"
+        after = "[status]\n[diff]\n@@\n [status]\nmoved\n"
+        sections = rst.split_sections(before)
+        self.assertIn(" [status]\n", sections["diff"])
+        self.assertEqual(sections["status"], "")
+        self.assertIn("[diff]", rst.state_diff(before, after))
+
+    def test_a_changed_line_that_looks_like_a_diff_header_is_still_shown(self):
+        # A removed line whose content starts with `--` is emitted as `---...`, and an added one
+        # starting with `++` as `+++...`; dropping those by prefix would silently hide them.
+        diff = rst.state_diff("[diff]\n--- old\n", "[diff]\n++ new\n")
+        self.assertIn("--- old", diff)
+        self.assertIn("++ new", diff)
+
     def test_a_huge_difference_is_truncated_rather_than_burying_the_report(self):
         after = "[diff]\n" + "".join("line %d\n" % i for i in range(500))
         diff = rst.state_diff("[diff]\n", after)
