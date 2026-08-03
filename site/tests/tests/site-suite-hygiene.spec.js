@@ -33,29 +33,97 @@ const ACTIVATE =
 const COPY_FEEDBACK =
   /["']copied["']|copy-failed|copy-status|copy manually|Copied to clipboard|clipboard\s*\.\s*readText/;
 const USES_RECORDER = /\brecordCopyFeedback\s*\(/;
-// The recorded states have to be the thing the spec reads, or the recorder is decoration.
-const READS_RECORDED = /\.(?:waitForState|waitForQuiet|labels|states)\s*\(/;
-// The exact shapes that raced the revert before this guard existed.
+// The handle the recorder was assigned to, and the button it was installed on, so "the states are
+// read" and "the recorder came first" are judged against THOSE and not any same-named method or
+// any other element's click.
+const RECORDER_CALL = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+recordCopyFeedback\s*\(\s*([A-Za-z_$][\w$]*)/;
+const RECORDED_METHODS = "(?:waitForState|waitForSettled|labels|states)";
+// A binding for a copy button. Global and newline-tolerant: a test may bind more than one, and a
+// locator chain wraps across lines.
+const COPY_BINDING = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=[^;]{0,200}?\.copy-btn/g;
+const STATUS_BINDING = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=[^;]{0,200}?\.copy-status/g;
+// The racy shapes an unbound locator can still take.
 const LIVE_FEEDBACK_ASSERTION =
-  /toHaveText\s*\(\s*["'](?:copied|copy manually|Copied to clipboard\.|Copy unavailable\.[^"']*)["']|toHaveClass\s*\(\s*\/copy-failed/;
-// A binding for the copy button itself, so ordering is judged against ITS activation rather than
-// whichever element the test happens to click first (a tab, a consent prompt).
-const COPY_BINDING = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=[^;\n]*\.copy-btn/;
+  /(?:toHaveText|toContainText)\s*\(\s*["'\/](?:copied|copy manually|Copied to clipboard\.|Copy unavailable\.[^"'\/]*)["'\/]|toHaveClass\s*\(\s*\/copy-failed/;
+
+function allBindings(body, pattern) {
+  const names = [];
+  const re = new RegExp(pattern.source, "g");
+  let match = re.exec(body);
+  while (match) {
+    names.push(match[1]);
+    match = re.exec(body);
+  }
+  return names;
+}
+
+function copyBindings(body) {
+  const names = allBindings(body, COPY_BINDING);
+  const call = body.match(RECORDER_CALL);
+  // The recorder's own argument names the button even when its binding is shaped unusually.
+  if (call && !names.includes(call[2])) names.push(call[2]);
+  return names;
+}
+
+// Any read of the clicked button's own text or class is a feedback assertion, whatever value it
+// expects: waiting for the ORIGINAL label to come back races the revert exactly as waiting for
+// "copied" does, and keying only on the feedback strings would wave that shape through.
+function readsCopyButtonState(body) {
+  return copyBindings(body).some((name) =>
+    new RegExp("expect\\s*\\(\\s*" + name + "\\b").test(body)
+      || new RegExp("\\b" + name + "\\s*\\.\\s*(?:textContent|innerText|getAttribute)\\s*\\(").test(body));
+}
 
 function assertsCopyFeedback(body) {
-  return COPY_BUTTON.test(body) && ACTIVATE.test(body) && COPY_FEEDBACK.test(body);
+  return COPY_BUTTON.test(body) && ACTIVATE.test(body)
+    && (COPY_FEEDBACK.test(body) || readsCopyButtonState(body));
+}
+
+// The recorded states have to be the thing the spec reads, or the recorder is decoration - and the
+// read has to be on the recorder's OWN handle, not any object that happens to share a method name.
+function readsRecordedStates(body) {
+  const call = body.match(RECORDER_CALL);
+  if (!call) return false;
+  return new RegExp("\\b" + call[1] + "\\s*\\.\\s*" + RECORDED_METHODS + "\\s*\\(").test(body);
 }
 
 function copyActivationIndex(body) {
-  const binding = body.match(COPY_BINDING);
-  if (binding) {
-    const named = new RegExp("\\b" + binding[1] + "\\s*\\.\\s*(?:click|dblclick|press|dispatchEvent)\\s*\\(");
-    const index = body.search(named);
-    if (index >= 0) return index;
-  }
+  // The EARLIEST activation of any copy button in the block: the recorder must precede all of them.
+  const indexes = copyBindings(body)
+    // Allow a chained locator (`btn.first().click()`), or the fallback below would judge ordering
+    // against an unrelated element and read a compliant test as racy.
+    .map((name) => body.search(new RegExp(
+      "\\b" + name + "\\s*(?:\\.\\s*\\w+\\s*\\([^)]*\\)\\s*)*\\.\\s*(?:click|dblclick|press|dispatchEvent)\\s*\\(",
+    )))
+    .filter((index) => index >= 0);
+  if (indexes.length) return Math.min.apply(null, indexes);
   return body.search(ACTIVATE);
 }
 
+// Reading the button or its live region AFTER the activation is the race itself, whatever the
+// assertion expects and whichever matcher it uses; before the activation nothing has changed yet,
+// so reading the original label there is harmless.
+function hasLiveFeedbackAssertion(body) {
+  if (LIVE_FEEDBACK_ASSERTION.test(body)) return true;
+  const activation = copyActivationIndex(body);
+  if (activation < 0) return false;
+  const names = copyBindings(body).concat(allBindings(body, STATUS_BINDING));
+  return names.some((name) => {
+    // Every occurrence is checked, not just the first: reading the original label BEFORE the
+    // activation is legitimate and would otherwise mask a live read after it.
+    const live = new RegExp(
+      "expect\\s*\\(\\s*" + name + "\\b[^)]*\\)\\s*(?:\\.\\s*not)?\\s*\\.\\s*(?:toHaveText|toContainText|toHaveClass)\\s*\\("
+        + "|\\b" + name + "\\s*(?:\\.\\s*\\w+\\s*\\([^)]*\\)\\s*)*\\.\\s*(?:textContent|innerText|getAttribute)\\s*\\(",
+      "g",
+    );
+    let match = live.exec(body);
+    while (match) {
+      if (match.index > activation) return true;
+      match = live.exec(body);
+    }
+    return false;
+  });
+}
 // Installing the recorder after the click would miss the very transition it exists to capture, so
 // position is checked, not just presence.
 function recorderPrecedesClick(body) {
@@ -288,8 +356,8 @@ test("copy-button assertions read a recorded transition instead of racing the re
   const tabFirstBlock = testBlocks(tabFirst).find((block) => block.title === "tab first");
   expect(assertsCopyFeedback(tabFirstBlock.body)).toBe(true);
   expect(recorderPrecedesClick(tabFirstBlock.body)).toBe(true);
-  expect(READS_RECORDED.test(tabFirstBlock.body)).toBe(true);
-  expect(LIVE_FEEDBACK_ASSERTION.test(tabFirstBlock.body)).toBe(false);
+  expect(readsRecordedStates(tabFirstBlock.body)).toBe(true);
+  expect(hasLiveFeedbackAssertion(tabFirstBlock.body)).toBe(false);
   expect(HAS_BUDGET.test(tabFirstBlock.body)).toBe(true);
 
   // A keyboard activation copies just as a click does, so it must not make the block exempt.
@@ -317,8 +385,57 @@ test("copy-button assertions read a recorded transition instead of racing the re
   ].join("\n");
   const decorativeBlock = testBlocks(decorative).find((block) => block.title === "decorative");
   expect(recorderPrecedesClick(decorativeBlock.body)).toBe(true);
-  expect(READS_RECORDED.test(decorativeBlock.body)).toBe(false);
-  expect(LIVE_FEEDBACK_ASSERTION.test(decorativeBlock.body)).toBe(true);
+  expect(readsRecordedStates(decorativeBlock.body)).toBe(false);
+  expect(hasLiveFeedbackAssertion(decorativeBlock.body)).toBe(true);
+
+  // A test that waits for the ORIGINAL label to come back races the revert exactly as one waiting
+  // for "copied" does, and names none of the feedback strings - so it must still be caught.
+  const restoreOnly = [
+    'test("restore only", async ({ page }) => {',
+    '  const btn = page.locator("#install .copy-btn").first();',
+    "  const label = (await btn.textContent()).trim();",
+    "  await btn.click();",
+    "  await expect(btn).toHaveText(label, { timeout: 4000 });",
+    "});",
+  ].join("\n");
+  const restoreOnlyBlock = testBlocks(restoreOnly).find((block) => block.title === "restore only");
+  expect(COPY_FEEDBACK.test(restoreOnlyBlock.body)).toBe(false);
+  expect(assertsCopyFeedback(restoreOnlyBlock.body)).toBe(true);
+  expect(recorderPrecedesClick(restoreOnlyBlock.body)).toBe(false);
+  expect(hasLiveFeedbackAssertion(restoreOnlyBlock.body)).toBe(true);
+
+  // Bypass shapes the literal-string detector alone would miss: a different matcher, a regex
+  // expectation, a raw live read, and a copy button bound across a wrapped locator chain.
+  const bypass = [
+    'test("bypass", async ({ page }) => {',
+    "  test.slow();",
+    "  const btn = page",
+    '    .locator("#install .copy-btn")',
+    "    .first();",
+    "  const feedback = await recordCopyFeedback(btn);",
+    "  await btn.click();",
+    '  await feedback.waitForState((state) => state.copied, "copied");',
+    "  await expect.poll(() => btn.textContent()).toContain(\"copied\");",
+    "});",
+  ].join("\n");
+  const bypassBlock = testBlocks(bypass).find((block) => block.title === "bypass");
+  expect(copyBindings(bypassBlock.body)).toContain("btn");
+  expect(recorderPrecedesClick(bypassBlock.body)).toBe(true);
+  expect(readsRecordedStates(bypassBlock.body)).toBe(true);
+  expect(hasLiveFeedbackAssertion(bypassBlock.body)).toBe(true);
+
+  // A same-named method on another object is not a read of the recorded states.
+  const borrowed = [
+    'test("borrowed", async ({ page }) => {',
+    "  test.slow();",
+    '  const btn = page.locator("#install .copy-btn").first();',
+    "  const feedback = await recordCopyFeedback(btn);",
+    "  await btn.click();",
+    '  await page.waitForState("idle");',
+    "});",
+  ].join("\n");
+  const borrowedBlock = testBlocks(borrowed).find((block) => block.title === "borrowed");
+  expect(readsRecordedStates(borrowedBlock.body)).toBe(false);
 
   const dir = __dirname;
   const files = fs.readdirSync(dir).filter((name) => name.endsWith(".spec.js") && name !== SELF);
@@ -339,8 +456,8 @@ test("copy-button assertions read a recorded transition instead of racing the re
         continue;
       }
       if (!recorderPrecedesClick(block.body)
-        || !READS_RECORDED.test(block.body)
-        || LIVE_FEEDBACK_ASSERTION.test(block.body)) {
+        || !readsRecordedStates(block.body)
+        || hasLiveFeedbackAssertion(block.body)) {
         racyFeedback.push(where);
       }
       if (!HAS_BUDGET.test(block.body)) unbudgeted.push(where);

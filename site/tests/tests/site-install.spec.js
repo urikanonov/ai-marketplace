@@ -91,6 +91,7 @@ test("install command copy button copies the command and shows feedback", async 
   const copied = await feedback.waitForState((state) => state.copied, "the copied confirmation");
   expect(copied.label).toBe("copied");
   expect(copied.status).toBe("Copied to clipboard.");
+  expect(copied.failed).toBe(false);
   // Read the clipboard only once the write has resolved (that is what set the copied state).
   const clip = await page.evaluate(() => navigator.clipboard.readText());
   expect(clip).toBe(command);

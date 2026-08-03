@@ -64,7 +64,9 @@ async function recordCopyFeedback(btn) {
     };
     // The label, the state class, and the live-region text are set together in one task, so one
     // observer delivery yields one snapshot carrying all three - which is what lets a spec assert
-    // on them atomically instead of sampling each in turn.
+    // on them atomically instead of sampling each in turn. A set-then-revert inside a SINGLE task
+    // would therefore be recorded as nothing; the runtime cannot do that (the revert is always a
+    // timer, i.e. a later task), but a future one that could would need this loosened.
     const observer = new MutationObserver(record);
     observer.observe(el, {
       childList: true,
@@ -90,27 +92,38 @@ async function recordCopyFeedback(btn) {
     labels: async () => (await states())
       .map((state) => state.label)
       .filter((label, index, all) => index === 0 || all[index - 1] !== label),
-    // Resolves once no new state has been recorded for `quietMs`, so an assertion on the FINAL
-    // state cannot land while a revert timer (or a second, slower clipboard write) is still in
-    // flight. The default is comfortably past the 2000ms failure revert.
-    waitForQuiet: async (quietMs = 2500, timeout = 20000) => {
+    // Resolves once the recorded log has been unchanged for `quietMs` AND satisfies `match`, so an
+    // assertion on the FINAL state cannot land while a revert timer (or a second, slower clipboard
+    // write) is still in flight. Quietness alone is not enough: a loaded runner can delay a revert
+    // past any fixed window, so a log that goes quiet mid-transition keeps being polled rather than
+    // being declared settled.
+    waitForSettled: async (match, what, quietMs = 2500, timeout = 30000) => {
       const deadline = Date.now() + timeout;
+      const quietPolls = Math.ceil(quietMs / 100);
       let recorded = await states();
       let lastChange = Date.now();
+      let unchanged = 0;
       for (;;) {
+        if (Date.now() >= deadline) {
+          throw new Error(
+            `copy-button feedback never settled on ${what} within ${timeout}ms - recorded: `
+              + JSON.stringify(recorded),
+          );
+        }
         await new Promise((resolve) => setTimeout(resolve, 100));
         const next = await states();
         if (next.length !== recorded.length) {
           recorded = next;
           lastChange = Date.now();
-        } else if (Date.now() - lastChange >= quietMs) {
-          return next;
+          unchanged = 0;
+          continue;
         }
-        if (Date.now() >= deadline) {
-          throw new Error(
-            `copy-button feedback never went quiet for ${quietMs}ms within ${timeout}ms - recorded: `
-              + JSON.stringify(next),
-          );
+        unchanged += 1;
+        // Count polls as well as wall time: a page starved for the whole quiet window would
+        // otherwise satisfy it in ONE blocked round trip, which is exactly the condition this
+        // helper exists to survive.
+        if (unchanged >= quietPolls && Date.now() - lastChange >= quietMs && match(next)) {
+          return next;
         }
       }
     },

@@ -99,7 +99,7 @@ spec-and-test rules in [../AGENTS.md](../AGENTS.md); where they overlap, AGENTS.
   shorter still than a loaded runner delays the timer by (#859). Install the site suite's
   `recordCopyFeedback` helper BEFORE the click - it records every state the button passes through -
   assert on the recorded snapshot, and give the test a real budget with `test.slow()`. Where the
-  FINAL state matters, wait for the recorded log to go quiet (`waitForQuiet`) rather than sampling
+  FINAL state matters, wait for the recorded log to go quiet (`waitForSettled`) rather than sampling
   a state that a second, slower round trip is about to change. `SITE-COPY-04` is the guard.
 - **Block every non-local host.** The site suite aborts all requests except `127.0.0.1`/`localhost`
   and `data:` in a `beforeEach`, so a flaky GitHub API, the star-widget CDN, or the mermaid CDN can

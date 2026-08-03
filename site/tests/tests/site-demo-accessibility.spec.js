@@ -228,11 +228,33 @@ test("copy button restores its original label after a rapid double click", async
   const feedback = await recordCopyFeedback(btn);
   await btn.click();
   await btn.click();
-  await expect.poll(() => page.evaluate(() => window.__copyWrites), { timeout: 20000 }).toBe(2);
-  // Both writes have settled, so the last revert is now the only thing outstanding; wait for the
-  // recorded feedback to go quiet rather than sampling a state that is still mid-transition.
-  await feedback.waitForQuiet();
-  const labels = await feedback.labels();
+  // Greater-than-or-equal, not exactly 2: the counter is page-wide, so a future third writer would
+  // make an equality check unsatisfiable and report the wrong problem.
+  try {
+    await expect
+      .poll(() => page.evaluate(() => window.__copyWrites), { timeout: 20000 })
+      .toBeGreaterThanOrEqual(2);
+  } catch (error) {
+    throw new Error(
+      "both clipboard writes never settled - recorded feedback: "
+        + JSON.stringify(await feedback.states()),
+      { cause: error },
+    );
+  }
+  // Both writes have settled, so the last revert is the only thing outstanding. Wait for the
+  // recorded log to be BOTH quiet and fully restored: quietness alone would be declared
+  // mid-transition on a runner that delays the revert timer past the quiet window.
+  const settled = await feedback.waitForSettled(
+    (states) => {
+      const last = states[states.length - 1];
+      return states.length > 1 && last.label === label && !last.copied && !last.failed
+        && last.status === "";
+    },
+    "the button coming to rest on its original label with its feedback cleared",
+  );
+  const labels = settled
+    .map((state) => state.label)
+    .filter((shown, index, all) => index === 0 || all[index - 1] !== shown);
   // The number of feedback cycles is not fixed (a slow runner can show "copied" twice), but the
   // button must only ever show those two labels and must come to rest on the original one.
   expect(
