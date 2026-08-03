@@ -226,6 +226,145 @@ class SkillZipTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             bsd._skill_zip_bytes(members)
 
+    def test_builder_rejects_a_symlinked_input(self):
+        # A link must never be FOLLOWED out of the skill dir: the packaged bytes would depend on
+        # the build host, and a redirected input could smuggle host-local files into a published
+        # download. Fail closed like the commentable-html packager does (SITE-BUILD-20).
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as outside:
+            skill_rel = self._make_skill(root)
+            secret = os.path.join(outside, "secret.txt")
+            with open(secret, "w", encoding="utf-8") as fh:
+                fh.write("secret\n")
+            link = os.path.join(root, skill_rel.replace("/", os.sep), "leak.txt")
+            try:
+                os.symlink(secret, link)
+            except (OSError, NotImplementedError, AttributeError):
+                self.skipTest("symlinks not creatable in this environment")
+            with self.assertRaises(SystemExit) as caught:
+                bsd.build_skill_zip_members(root, skill_rel, "demo")
+            self.assertIn("leak.txt", str(caught.exception))
+
+    @unittest.skipUnless(os.name == "nt", "Windows directory junctions")
+    def test_builder_rejects_a_junction_input(self):
+        # os.path.islink misses a junction, so only realpath containment catches this one
+        # (SITE-BUILD-20).
+        import subprocess as sp
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as outside:
+            skill_rel = self._make_skill(root)
+            with open(os.path.join(outside, "secret.txt"), "w", encoding="utf-8") as fh:
+                fh.write("secret\n")
+            junction = os.path.join(root, skill_rel.replace("/", os.sep), "linked")
+            rc = sp.run(["cmd", "/c", "mklink", "/J", junction, outside],
+                        capture_output=True, text=True)
+            if rc.returncode != 0:
+                self.skipTest("could not create a junction: " + rc.stderr.strip())
+            with self.assertRaises(SystemExit) as caught:
+                bsd.build_skill_zip_members(root, skill_rel, "demo")
+            self.assertIn("linked", str(caught.exception))
+
+    def test_builder_rejects_a_redirected_skill_directory(self):
+        # The skill dir ITSELF may be the reparse point, which no per-file check inside it would
+        # notice: a whole tree from outside the repo would otherwise be published (SITE-BUILD-20).
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as outside:
+            real = os.path.join(outside, "demo")
+            os.makedirs(os.path.join(real, "tools"))
+            with open(os.path.join(real, "SKILL.md"), "w", encoding="utf-8") as fh:
+                fh.write("---\nname: demo\ndescription: d\n---\n")
+            with open(os.path.join(real, "tools", "x.py"), "w", encoding="utf-8") as fh:
+                fh.write("print('x')\n")
+            skill_rel = "plugins/demo/pkg/skills/demo"
+            skill_dir = os.path.join(root, skill_rel.replace("/", os.sep))
+            os.makedirs(os.path.dirname(skill_dir))
+            try:
+                os.symlink(real, skill_dir, target_is_directory=True)
+            except (OSError, NotImplementedError, AttributeError):
+                self.skipTest("directory symlinks not creatable in this environment")
+            with self.assertRaises(SystemExit) as caught:
+                bsd.build_skill_zip_members(root, skill_rel, "demo")
+            self.assertIn(skill_rel, str(caught.exception))
+
+    def test_a_link_resolving_inside_the_skill_dir_is_still_packaged(self):
+        # The guard is CONTAINMENT, not "no links": one that stays inside the skill dir packages
+        # the same bytes on every host, so rejecting it would be over-broad (SITE-BUILD-20).
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill(root)
+            skill_dir = os.path.join(root, skill_rel.replace("/", os.sep))
+            try:
+                os.symlink(os.path.join(skill_dir, "references", "a.md"),
+                           os.path.join(skill_dir, "alias.md"))
+            except (OSError, NotImplementedError, AttributeError):
+                self.skipTest("symlinks not creatable in this environment")
+            members = dict(bsd.build_skill_zip_members(root, skill_rel, "demo"))
+            self.assertEqual(members["demo/alias.md"], b"ref\n")
+
+    def test_duplicate_guard_rejects_a_case_insensitive_arcname_collision(self):
+        # `tools/X.py` and `tools/x.py` are distinct in git and in a ZIP on Linux, but extract to
+        # ONE file on Windows and macOS, where the second silently overwrites the first. Fail
+        # closed naming both paths rather than ship an archive that unpacks differently by OS
+        # (SITE-BUILD-21).
+        members = [("demo/tools/X.py", b"a"), ("demo/tools/x.py", b"b")]
+        for call in (lambda: bsd._reject_duplicate_members(members),
+                     lambda: bsd._skill_zip_bytes(members)):
+            with self.assertRaises(SystemExit) as caught:
+                call()
+            self.assertIn("demo/tools/X.py", str(caught.exception))
+            self.assertIn("demo/tools/x.py", str(caught.exception))
+
+    def test_duplicate_guard_rejects_a_unicode_normalization_collision(self):
+        # Same failure mode one step further out: macOS normalizes filenames, so a precomposed and
+        # a decomposed spelling of the same name are one file on extraction (SITE-BUILD-21).
+        members = [("demo/caf\u00e9.md", b"a"), ("demo/cafe\u0301.md", b"b")]
+        with self.assertRaises(SystemExit):
+            bsd._reject_duplicate_members(members)
+
+    def test_a_case_variant_arcname_pair_that_cannot_collide_is_allowed(self):
+        # The guard must not reject names that merely LOOK similar: different paths that fold to
+        # different keys stay packageable (SITE-BUILD-21).
+        members = [("demo/tools/x.py", b"a"), ("demo/tools/xx.py", b"b")]
+        self.assertEqual(bsd._reject_duplicate_members(members), members)
+
+    def test_a_zipfile_level_compresslevel_is_inert_for_zipinfo_members(self):
+        # Why the builder passes no compresslevel: zipfile applies the ZipFile-level one only to
+        # members written from a bare arcname, so with a manually constructed ZipInfo - what this
+        # builder writes - every level yields IDENTICAL bytes. Only the per-member argument has
+        # any effect, and it is deliberately not used (SITE-BUILD-22).
+        import io as _io
+        import zipfile as _zip
+        payload = b"deflate me, please. " * 500
+
+        def build(zipfile_level, member_level):
+            buf = _io.BytesIO()
+            with _zip.ZipFile(buf, "w", _zip.ZIP_DEFLATED, compresslevel=zipfile_level) as z:
+                z.writestr(bsd._zip_member_info("demo/notes.md"), payload,
+                           compresslevel=member_level)
+            return buf.getvalue()
+
+        self.assertEqual(build(1, None), build(9, None),
+                         "a ZipFile-level compresslevel must be provably inert here")
+        self.assertEqual(build(None, None), build(9, None))
+        self.assertNotEqual(build(None, None), build(None, 1),
+                            "only the PER-MEMBER level changes the bytes")
+
+    def test_the_builder_claims_no_inert_compresslevel(self):
+        # A level the writer cannot apply is a claim the code does not keep, and the --check
+        # comparison is logical (names, order, stamps, uncompressed bytes) so no level is even
+        # observable. Guard the source so the inert argument cannot come back (SITE-BUILD-22).
+        import ast
+        src = os.path.join(bsd.REPO_ROOT, "scripts", "build_site_data_parts",
+                           "40-tutorial-skill-zips.py")
+        with open(src, "r", encoding="utf-8") as fh:
+            tree = ast.parse(fh.read(), filename=src)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+            if name != "ZipFile":
+                continue
+            self.assertNotIn("compresslevel", [kw.arg for kw in node.keywords],
+                             "zipfile.ZipFile(..., compresslevel=...) is inert for the ZipInfo "
+                             "members this builder writes; pass it per member or not at all")
+
     def test_zip_logical_members_is_an_ordered_list_that_keeps_duplicates(self):
         # The reading of a committed ZIP is an ORDERED LIST taken from infolist(), not a name->bytes
         # map: a map collapses a repeated path to one key and reports a bloated archive as in sync,

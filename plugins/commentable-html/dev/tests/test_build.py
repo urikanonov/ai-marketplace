@@ -891,6 +891,72 @@ class PackageTests(unittest.TestCase):
             self.assertTrue(any("duplicate member" in x for x in drift),
                             "a duplicated zip member must be reported, not silently collapsed")
 
+    def test_packager_rejects_a_case_insensitive_member_collision(self):
+        # `tools/X.py` and `tools/x.py` are distinct in git and in a ZIP on Linux, but extract to
+        # ONE file on Windows and macOS, where the second silently overwrites the first. Fail
+        # closed naming both paths rather than ship an archive that unpacks differently by OS
+        # (CMH-PKG-15).
+        with self.assertRaises(SystemExit) as cm:
+            build._reject_duplicate_members([("tools/X.py", "a"), ("tools/x.py", "b")])
+        self.assertIn("tools/X.py", str(cm.exception))
+        self.assertIn("tools/x.py", str(cm.exception))
+
+    def test_packager_rejects_a_unicode_normalization_member_collision(self):
+        # Same failure mode one step further out: macOS normalizes filenames, so a precomposed and
+        # a decomposed spelling of the same name are one file on extraction (CMH-PKG-15).
+        with self.assertRaises(SystemExit):
+            build._reject_duplicate_members([("docs/caf\u00e9.md", "a"),
+                                             ("docs/cafe\u0301.md", "b")])
+
+    def test_packager_allows_member_paths_that_cannot_collide(self):
+        # The guard must not reject names that merely LOOK similar (CMH-PKG-15).
+        members = [("tools/x.py", "a"), ("tools/xx.py", "b")]
+        self.assertEqual(build._reject_duplicate_members(members), members)
+
+    def test_a_zipfile_level_compresslevel_is_inert_for_zipinfo_members(self):
+        # Why the packager passes no compresslevel: zipfile applies the ZipFile-level one only to
+        # members written from a bare arcname, so with a manually constructed ZipInfo - what this
+        # packager writes - every level yields IDENTICAL bytes. Only the per-member argument has
+        # any effect, and it is deliberately not used (CMH-PKG-15).
+        payload = b"deflate me, please. " * 500
+
+        def pack(zipfile_level, member_level):
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED,
+                                 compresslevel=zipfile_level) as zf:
+                info = zipfile.ZipInfo("tools/x.py", date_time=(1980, 1, 1, 0, 0, 0))
+                info.external_attr = 0o644 << 16
+                info.create_system = 3
+                info.compress_type = zipfile.ZIP_DEFLATED
+                zf.writestr(info, payload, compresslevel=member_level)
+            return buf.getvalue()
+
+        self.assertEqual(pack(1, None), pack(9, None),
+                         "a ZipFile-level compresslevel must be provably inert here")
+        self.assertEqual(pack(None, None), pack(9, None))
+        self.assertNotEqual(pack(None, None), pack(None, 1),
+                            "only the PER-MEMBER level changes the bytes")
+
+    def test_the_packager_claims_no_inert_compresslevel(self):
+        # A level the writer cannot apply is a claim the code does not keep, and --check compares
+        # the zip's LAYOUT and CONTENTS (never the compressed bytes, which vary with the host
+        # zlib) so no level is even observable. Guard the source so it cannot come back
+        # (CMH-PKG-15).
+        import ast
+        src = os.path.join(_paths.DEV_TOOLS, "build_parts", "40-package.py")
+        with open(src, "r", encoding="utf-8") as fh:
+            tree = ast.parse(fh.read(), filename=src)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+            if name != "ZipFile":
+                continue
+            self.assertNotIn("compresslevel", [kw.arg for kw in node.keywords],
+                             "zipfile.ZipFile(..., compresslevel=...) is inert for the ZipInfo "
+                             "members this packager writes; pass it per member or not at all")
+
     @unittest.skipUnless(os.name == "nt", "Windows directory junctions")
     def test_packager_rejects_a_junction_input(self):
         # os.path.islink misses junctions; the packager's realpath containment must still reject one.

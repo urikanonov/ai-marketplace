@@ -34,10 +34,19 @@ def build_skill_zip_members(root, skill_dir_rel, skill_name):
 
     Files are the git-TRACKED set (exactly what `plugin install` ships), so untracked developer
     noise (`.DS_Store`, `__pycache__`, editor temp files) can never leak into the committed ZIP and
-    break a clean-checkout `--check`. Outside a git checkout it falls back to a filtered walk."""
+    break a clean-checkout `--check`. Outside a git checkout it falls back to a filtered walk.
+
+    An input that redirects outside the skill directory (a symlink or a Windows junction, which
+    `os.path.isfile` + `open` would silently FOLLOW) is rejected, as is a redirected skill
+    directory: following one would package host-local bytes into a published download and make the
+    shipped ZIP depend on the build host."""
     skill_dir = os.path.join(root, skill_dir_rel.replace("/", os.sep))
     if not os.path.isdir(skill_dir):
         raise SystemExit("Claude Desktop skill ZIP: skill directory is missing: %s" % skill_dir_rel)
+    if not _contained(os.path.realpath(root), skill_dir):
+        raise SystemExit("Claude Desktop skill ZIP: refusing a redirected (symlink/junction) "
+                         "skill directory: %s" % skill_dir_rel)
+    skill_real = os.path.realpath(skill_dir)
     rels = _tracked_skill_files(root, skill_dir_rel)
     if rels is None:
         rels = _walk_skill_files(skill_dir)
@@ -46,6 +55,9 @@ def build_skill_zip_members(root, skill_dir_rel, skill_name):
         full = os.path.join(skill_dir, rel.replace("/", os.sep))
         if not os.path.isfile(full):
             continue
+        if not _contained(skill_real, full):
+            raise SystemExit("Claude Desktop skill ZIP: refusing a redirected (symlink/junction) "
+                             "input: %s/%s" % (skill_dir_rel, rel))
         with open(full, "rb") as fh:
             members.append(("%s/%s" % (skill_name, rel), _normalize_zip_member(fh.read())))
     members.sort(key=lambda m: m[0])
@@ -56,15 +68,41 @@ def build_skill_zip_members(root, skill_dir_rel, skill_name):
     return members
 
 
+def _contained(base_real, path):
+    """True if `path` resolves (through any symlink/junction/reparse point) to somewhere inside
+    `base_real`. Uses realpath + commonpath so it catches symlinks, Windows directory junctions,
+    and a redirected parent dir uniformly - unlike os.path.islink, which misses junctions."""
+    try:
+        return os.path.commonpath([base_real, os.path.realpath(path)]) == base_real
+    except ValueError:  # different drives on Windows
+        return False
+
+
+def _collision_key(arcname):
+    """The name two members would EXTRACT to on a case-insensitive or name-normalizing filesystem
+    (Windows, macOS). Case folding plus NFC normalization, so `tools/X.py` vs `tools/x.py` and a
+    precomposed vs decomposed spelling of the same name both map to one key."""
+    return unicodedata.normalize("NFC", arcname).casefold()
+
+
 def _reject_duplicate_members(members):
-    """Fail closed if two members share an arcname. A ZIP may legally carry a path twice, so a
-    duplicate in the member list means an upstream bug: it would bloat the shipped archive, and the
-    only reason --check would notice is the ordered comparison below."""
-    seen = set()
+    """Fail closed if two members share an arcname, or would share a FILE once extracted. A ZIP may
+    legally carry a path twice, so a duplicate in the member list means an upstream bug: it would
+    bloat the shipped archive, and the only reason --check would notice is the ordered comparison
+    below. Names that differ only by case or Unicode normalization are legal and distinct in git
+    and in a ZIP on Linux, but collide on extraction on Windows and macOS, where the second member
+    silently overwrites the first - so they are rejected too."""
+    seen = {}
     for arcname, _ in members:
-        if arcname in seen:
+        key = _collision_key(arcname)
+        prior = seen.get(key)
+        if prior == arcname:
             raise SystemExit("Claude Desktop skill ZIP: duplicate member: %s" % arcname)
-        seen.add(arcname)
+        if prior is not None:
+            raise SystemExit("Claude Desktop skill ZIP: members collide when extracted on a "
+                             "case-insensitive or name-normalizing filesystem: %s and %s"
+                             % (prior, arcname))
+        seen[key] = arcname
     return members
 
 
@@ -112,10 +150,23 @@ def _tracked_skill_files(root, skill_dir_rel):
 
 def _walk_skill_files(skill_dir):
     """Fallback file enumeration for a skill dir outside a git checkout: a filtered walk that skips
-    well-known untracked noise so the archive stays deterministic."""
+    well-known untracked noise so the archive stays deterministic. A subdirectory that redirects
+    outside the skill dir is rejected here rather than descended into (os.walk does not follow a
+    symlinked dir, but it does follow a Windows junction)."""
     rels = []
+    skill_real = os.path.realpath(skill_dir)
     for dirpath, dirs, names in os.walk(skill_dir):
-        dirs[:] = [d for d in dirs if d not in _SKILL_ZIP_SKIP_DIRS]
+        kept = []
+        for d in dirs:
+            if d in _SKILL_ZIP_SKIP_DIRS:
+                continue
+            full = os.path.join(dirpath, d)
+            if not _contained(skill_real, full):
+                raise SystemExit("Claude Desktop skill ZIP: refusing a redirected "
+                                 "(symlink/junction) directory: %s"
+                                 % os.path.relpath(full, skill_dir).replace(os.sep, "/"))
+            kept.append(d)
+        dirs[:] = kept
         for name in names:
             if name in _SKILL_ZIP_SKIP_NAMES or name.endswith(_SKILL_ZIP_SKIP_SUFFIXES):
                 continue
@@ -126,9 +177,16 @@ def _walk_skill_files(skill_dir):
 
 def _skill_zip_bytes(members):
     """A deterministic ZIP of `members`: fixed timestamps, permissions, and creator system, plus a
-    stable member order, so a rebuild from the same skill files is reproducible across platforms."""
+    stable member order, so a rebuild from the same skill files is reproducible across platforms.
+
+    No compression level is set: zipfile applies a ZipFile-level `compresslevel` only to members
+    written from a bare arcname, so it was inert for the ZipInfo members written below (an archive
+    built at 9 was byte-identical to one built at 1). Passing 9 PER member instead would shrink
+    these archives by 0.10% while rewriting ~3.5 MB of committed binary, and --check compares the
+    LOGICAL archive (names, order, stamps, uncompressed bytes) so the level is not observable
+    anyway. The zlib default it is."""
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
         for arcname, data in _reject_duplicate_members(members):
             archive.writestr(_zip_member_info(arcname), data)
     return buf.getvalue()

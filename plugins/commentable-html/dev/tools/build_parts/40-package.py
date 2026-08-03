@@ -10,6 +10,7 @@
 import io
 import os
 import re
+import unicodedata
 import zipfile
 
 PACKAGE_ZIP_NAME = "skill-resources.zip"
@@ -119,24 +120,47 @@ def _iter_zip_members(stage_dir):
     return _reject_duplicate_members(members)
 
 
+def _collision_key(rel):
+    """The name two members would EXTRACT to on a case-insensitive or name-normalizing filesystem
+    (Windows, macOS). Case folding plus NFC normalization, so `tools/X.py` vs `tools/x.py` and a
+    precomposed vs decomposed spelling of the same name both map to one key."""
+    return unicodedata.normalize("NFC", rel).casefold()
+
+
 def _reject_duplicate_members(members):
-    """Fail closed if two members share a path. A zip may legally carry a path twice, and both the
-    packaged archive and the --check comparison map members by name, so a duplicate would bloat the
-    shipped zip while comparing equal."""
-    seen = set()
+    """Fail closed if two members share a path, or would share a FILE once extracted. A zip may
+    legally carry a path twice, and both the packaged archive and the --check comparison map
+    members by name, so a duplicate would bloat the shipped zip while comparing equal. Names that
+    differ only by case or Unicode normalization are legal and distinct in git and in a zip on
+    Linux, but collide on extraction on Windows and macOS, where the second member silently
+    overwrites the first - so they are rejected too."""
+    seen = {}
     for rel, _ in members:
-        if rel in seen:
+        key = _collision_key(rel)
+        prior = seen.get(key)
+        if prior == rel:
             raise SystemExit("skill-resources.zip: duplicate member path: " + rel)
-        seen.add(rel)
+        if prior is not None:
+            raise SystemExit("skill-resources.zip: member paths collide when extracted on a "
+                             "case-insensitive or name-normalizing filesystem: %s and %s"
+                             % (prior, rel))
+        seen[key] = rel
     return members
 
 
 def build_resources_zip_bytes(stage_dir):
-    """Deterministic bytes for skill-resources.zip: sorted members, fixed timestamp/mode/system,
-    fixed deflate level. Byte-stable for a given content set on a given host; --check compares the
-    zip's CONTENTS (not raw container bytes) so a different zlib build cannot cause false drift."""
+    """Deterministic bytes for skill-resources.zip: sorted members, fixed timestamp/mode/system.
+    Byte-stable for a given content set on a given host; --check compares the zip's CONTENTS (not
+    raw container bytes) so a different zlib build cannot cause false drift.
+
+    No compression level is set: zipfile applies a ZipFile-level `compresslevel` only to members
+    written from a bare arcname, so it was inert for the ZipInfo members written below (an archive
+    built at 9 was byte-identical to one built at 1). Passing 9 PER member instead would shrink the
+    shipped zip by 0.10% while rewriting ~3.5 MB of committed binary, and --check compares the
+    LAYOUT and CONTENTS (never the compressed bytes, which vary with the host zlib) so the level is
+    not observable anyway. The zlib default it is."""
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for rel, full in _iter_zip_members(stage_dir):
             info = zipfile.ZipInfo(rel, date_time=(1980, 1, 1, 0, 0, 0))
             info.external_attr = 0o644 << 16

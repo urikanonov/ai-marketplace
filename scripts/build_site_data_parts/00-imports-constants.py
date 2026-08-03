@@ -24,6 +24,7 @@ import os
 import re
 import subprocess
 import sys
+import unicodedata
 import zipfile
 import zlib
 
