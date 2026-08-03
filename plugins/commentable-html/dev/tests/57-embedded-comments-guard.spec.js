@@ -9,7 +9,7 @@ import fs from "fs";
 import path from "path";
 import {
   addTextComment, clickSidebarExport, currentToast, fileUrl, openInline, readDownload,
-  ready, stageInline, startStaticServer,
+  ready, stageInline, stageNonShareable, startStaticServer,
 } from "./helpers.js";
 
 // Cut a block out by index (not a regex replace): the first `<script ... id="<id>">` and its
@@ -37,9 +37,55 @@ test("Export as Shareable fails loudly when the embedded-comments block is missi
     let gotDownload = false;
     page.once("download", () => { gotDownload = true; });
     await clickSidebarExport(page, "#btnSaveHtml");
-    await expect.poll(() => currentToast(page)).toContain("EMBEDDED COMMENTS region is present");
+    await expect.poll(() => currentToast(page), { timeout: 15000 })
+      .toContain("EMBEDDED COMMENTS region is present");
     // Nothing was downloaded: no export ever rewrites the layer's own source in place of the
     // missing block.
+    expect(gotDownload).toBe(false);
+  } finally {
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("Export as Shareable from a nonshareable document fails loudly too (CMH-EXP-16)", async ({ page }) => {
+  // The standalone path wraps the same builder (_buildStandaloneHtml -> _buildSavedHtml), so the
+  // guard must hold there as well - and must fire BEFORE the companion assets are inlined.
+  const staged = stageNonShareable({ mutate: removeEmbeddedBlock });
+  const server = await startStaticServer(staged.dir);
+  try {
+    await page.goto(server.url + "/NONSHAREABLE.html");
+    await ready(page);
+    await addTextComment(page, "#commentRoot p", "standalone note that must not be exported");
+    let gotDownload = false;
+    page.once("download", () => { gotDownload = true; });
+    await clickSidebarExport(page, "#btnSaveHtml");
+    await expect.poll(() => currentToast(page), { timeout: 15000 })
+      .toContain("EMBEDDED COMMENTS region is present");
+    expect(gotDownload).toBe(false);
+  } finally {
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("an ambiguous document is refused rather than spliced on a guess (CMH-EXP-16)", async ({ page }) => {
+  // A non-script element shadows the id, so a reload would not read the block at all: the source
+  // text and the document a browser builds from it disagree about what the block IS, and the
+  // export must refuse instead of picking one.
+  const shadow = (h) => h.replace('<script type="application/json" id="embeddedComments">',
+    '<div id="embeddedComments" hidden></div>\n<script type="application/json" id="embeddedComments">');
+  const staged = stageInline({ mutate: shadow });
+  const server = await startStaticServer(staged.dir);
+  try {
+    await page.goto(server.url + "/doc.html");
+    await ready(page);
+    await addTextComment(page, "#commentRoot p", "ambiguous note");
+    let gotDownload = false;
+    page.once("download", () => { gotDownload = true; });
+    await clickSidebarExport(page, "#btnSaveHtml");
+    await expect.poll(() => currentToast(page), { timeout: 15000 })
+      .toContain("could not locate it reliably");
     expect(gotDownload).toBe(false);
   } finally {
     await server.close();
@@ -58,7 +104,8 @@ test("Export Offline fails loudly too when the embedded-comments block is missin
     let gotDownload = false;
     page.once("download", () => { gotDownload = true; });
     await clickSidebarExport(page, "#btnExportOffline");
-    await expect.poll(() => currentToast(page)).toContain("EMBEDDED COMMENTS region is present");
+    await expect.poll(() => currentToast(page), { timeout: 15000 })
+      .toContain("EMBEDDED COMMENTS region is present");
     expect(gotDownload).toBe(false);
   } finally {
     await server.close();
@@ -123,9 +170,12 @@ test("the embedded-comments block is resolved structurally, never from text a br
       };
     });
     // Shapes that are NOT decoys: a legal empty comment and an unquoted attribute value holding
-    // an apostrophe both used to swallow the rest of the document.
+    // an apostrophe both used to swallow the rest of the document, a legal end tag may carry a
+    // space before its ">", and in <svg> a raw-text-named element really self-closes.
     result.emptyComment = slice(wrap("<!-->" + REAL));
     result.apostropheAttribute = slice(wrap("<div data-x=it's ok>host</div>" + REAL));
+    result.spacedEndTag = slice(wrap("<textarea>x</textarea >" + REAL));
+    result.foreignSelfClosed = slice(wrap("<svg><title/></svg>" + REAL));
     // A truncated block has no closing tag, so it cannot be spliced: resolve nothing.
     result.truncated = slice(wrap(OPEN + ' id="embeddedComments">REAL'));
     return result;
@@ -149,6 +199,8 @@ test("the embedded-comments block is resolved structurally, never from text a br
   });
   expect(out.emptyComment).toContain(">REAL<");
   expect(out.apostropheAttribute).toContain(">REAL<");
+  expect(out.spacedEndTag).toContain(">REAL<");
+  expect(out.foreignSelfClosed).toContain(">REAL<");
   expect(out.truncated).toBe(null);
 });
 
@@ -221,6 +273,12 @@ test("a document that lost its layer descriptor never has its runtime overwritte
     await page.goto(fileUrl(out));
     await ready(page);
     await expect(page.locator("#sidebar")).toContainText("descriptor note");
+    // And the descriptor was really re-created for the new mode, not just left out.
+    const descriptor = await page.evaluate(() => {
+      const el = document.getElementById("commentableHtmlLayer");
+      return el ? JSON.parse(el.textContent) : null;
+    });
+    expect(descriptor.mode).toBe("offline");
   } finally {
     await server.close();
     fs.rmSync(staged.dir, { recursive: true, force: true });

@@ -26,8 +26,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   included), the `<!--<script>` double-escape idiom is honored, and tag names and attributes are
   tokenized on ASCII whitespace only. Every result is cross-checked against the browser's own
   parse before anything is spliced, so a shape the two cannot agree on fails loudly instead of
-  being rewritten on a guess. An unquoted attribute value containing an apostrophe, and a legal
-  empty comment, no longer swallow the rest of the document.
+  being rewritten on a guess. Resolution now also requires exactly ONE owner of the id on each
+  side, so a duplicate block or an element shadowing the id is refused rather than guessed at. An
+  unquoted attribute value containing an apostrophe, and a legal empty comment, no longer swallow
+  the rest of the document.
+- A document with no layer descriptor at all now has one re-anchored to its version `<meta>` tag
+  matched the way a parser sees it (a DOM-serialized `<meta ...>` carries neither the space nor
+  the slash the old pattern required), and the export fails loudly if there is nothing to anchor
+  to - instead of quietly downloading a document with no descriptor.
 
 ## [1.371.0] - 2026-08-03
 

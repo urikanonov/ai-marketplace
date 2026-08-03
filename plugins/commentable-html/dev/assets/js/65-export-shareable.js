@@ -36,7 +36,11 @@ window.__cmhStripTransientBody = function (h) { return _stripTransientBodyClasse
 // Unicode spaces, which a browser does NOT treat as a delimiter, so `<script\u00a0id="...">`
 // (one bogus unknown element to a browser) would otherwise look like a real script tag here.
 const _CMH_SPACE_CH = /[\t\n\f\r ]/;
-const _CMH_NAME_END_CH = /[\t\n\f\r />]/;
+// One source of truth for "what ends a tag name" - a space belongs here, since an end tag may
+// carry a space before its ">" and still close the element. Spelling the class twice let the space go missing from
+// the close scanners, which made such a document impossible to export at all.
+const _CMH_NAME_END_SRC = "\\t\\n\\f\\r />";
+const _CMH_NAME_END_CH = new RegExp("[" + _CMH_NAME_END_SRC + "]");
 // Elements whose CONTENT a browser parses as TEXT, never as markup (noscript counts because the
 // layer only runs with scripting enabled). Nothing inside one of these is an element.
 const _CMH_RAW_TEXT = /^(?:script|style|textarea|title|xmp|iframe|noembed|noframes|noscript)$/;
@@ -87,8 +91,8 @@ function _cmhScriptDataClose(html, from) {
   // The tokenizer's script-data escaped states: inside a <script> body a `<!--` starts an
   // escaped run, and a nested `<script` within it starts a DOUBLE-escaped run in which the next
   // closing script tag only ends that run instead of closing the element (the classic
-  // `<!--<script>` idiom). Following it keeps this walk in step with the browser.
-  const rx = /<!--|--!?>|<\/?script(?=[\t\n\f\r/>])/gi;
+  // `<!--<script>` idiom). Only `-->` leaves those runs (`--!>` does not, unlike in a comment).
+  const rx = new RegExp("<!--|-->|</?script(?=[" + _CMH_NAME_END_SRC + "])", "gi");
   rx.lastIndex = from;
   let escaped = false;
   let doubled = false;
@@ -109,7 +113,7 @@ function _cmhRawTextClose(html, name, from) {
   // `>`; an end tag that merely PREFIXES the name (a "scriptfoo" close) is text. Matching a bare
   // prefix ended the element early and exposed its text to this walk as markup - the very
   // failure this resolver exists to prevent.
-  const rx = new RegExp("</" + name + "(?=[\\t\\n\\f\\r/>])", "gi");
+  const rx = new RegExp("</" + name + "(?=[" + _CMH_NAME_END_SRC + "])", "gi");
   rx.lastIndex = from;
   const m = rx.exec(html);
   return m ? m.index : -1;
@@ -122,6 +126,7 @@ function _cmhRawTextClose(html, name, from) {
 function _cmhForEachTag(html, visit) {
   const raw = String(html == null ? "" : html);
   let templateDepth = 0;
+  let foreignDepth = 0;
   for (let pos = 0; pos < raw.length;) {
     const start = raw.indexOf("<", pos);
     if (start < 0) break;
@@ -141,6 +146,7 @@ function _cmhForEachTag(html, visit) {
       const endName = _cmhTagName(raw, start + 2);
       const gt = _cmhTagEnd(raw, start);
       if (endName === "template" && templateDepth > 0) templateDepth -= 1;
+      if ((endName === "svg" || endName === "math") && foreignDepth > 0) foreignDepth -= 1;
       pos = gt < 0 ? raw.length : gt + 1;
       continue;
     }
@@ -156,7 +162,12 @@ function _cmhForEachTag(html, visit) {
     let closeEnd = -1;
     let next = end + 1;
     let stop = false;
-    if (name === "plaintext") {
+    // Inside <svg>/<math> a `/>` really self-closes, so a `<title/>` or `<style/>` there has no
+    // end tag to look for; in HTML the same spelling opens a raw-text element.
+    const selfClosed = foreignDepth > 0 && /\/\s*>$/.test(tag);
+    if (selfClosed) {
+      next = end + 1;
+    } else if (name === "plaintext") {
       stop = true;  // everything after <plaintext> is text, never markup
     } else if (_CMH_RAW_TEXT.test(name)) {
       const close = _cmhRawTextClose(raw, name, end + 1);
@@ -176,7 +187,10 @@ function _cmhForEachTag(html, visit) {
       if (found) return found;
     }
     if (stop) break;
-    if (name === "template") templateDepth += 1;
+    if (!selfClosed) {
+      if (name === "template") templateDepth += 1;
+      if (name === "svg" || name === "math") foreignDepth += 1;
+    }
     pos = next;
   }
   return null;
@@ -212,21 +226,40 @@ function _cmhProvenanceRootTag(html) {
 function _cmhVerifiedScriptRange(html, id) {
   const src = String(html == null ? "" : html);
   const doc = new DOMParser().parseFromString(src, "text/html");
-  const el = doc.getElementById(id);
-  const present = !!el && (el.tagName || "").toLowerCase() === "script";
-  const found = !present ? null : _cmhForEachTag(src, function (tag) {
-    if (tag.name !== "script" || tag.closeEnd < 0) return null;
-    if (_cmhTagId(tag.tag).id !== id) return null;
-    return { start: tag.start, tagEnd: tag.tagEnd, closeStart: tag.closeStart, end: tag.closeEnd };
+  const owners = Array.prototype.filter.call(doc.querySelectorAll("[id]"), function (node) {
+    return node.getAttribute("id") === id;
   });
+  const present = owners.length > 0;
+  // A document may legitimately carry more than one element with the id (a host decoy that
+  // borrowed a reserved one - CMH-OFFLINE-04 keeps such bytes rather than deleting them), and the
+  // runtime reads the FIRST in tree order, so that is the one to rewrite. It must be the script:
+  // a non-script shadowing the id means a reload would not read the block at all.
+  const first = owners.length ? owners[0] : null;
+  const scripts = owners.filter(function (node) {
+    return (node.tagName || "").toLowerCase() === "script";
+  });
+  const el = first && (first.tagName || "").toLowerCase() === "script" ? first : null;
+  const found = [];
+  if (el) {
+    _cmhForEachTag(src, function (tag) {
+      if (tag.name !== "script" || tag.closeEnd < 0) return null;
+      if (_cmhTagId(tag.tag).id !== id) return null;
+      // Collect every candidate rather than stopping at the first: the walk and the parse must
+      // agree on HOW MANY scripts own this id, or the source text is telling a different story
+      // than the document a browser builds from it and there is no safe range to splice.
+      found.push({ start: tag.start, tagEnd: tag.tagEnd, closeStart: tag.closeStart, end: tag.closeEnd });
+      return null;
+    });
+  }
   // The parser normalizes CRLF to LF in text, so compare newline-normalized bodies.
   const nl = function (s) { return String(s).replace(/\r\n?/g, "\n"); };
-  if (!found || nl(src.slice(found.tagEnd, found.closeStart)) !== nl(el.textContent)) {
+  const only = found.length === scripts.length && found.length > 0 ? found[0] : null;
+  if (!only || nl(src.slice(only.tagEnd, only.closeStart)) !== nl(el.textContent)) {
     return { present: present, start: null, tagEnd: null, closeStart: null, end: null };
   }
   return {
-    present: present, start: found.start, tagEnd: found.tagEnd,
-    closeStart: found.closeStart, end: found.end,
+    present: present, start: only.start, tagEnd: only.tagEnd,
+    closeStart: only.closeStart, end: only.end,
   };
 }
 function _cmhEmbeddedCommentsRange(html) {
@@ -486,8 +519,18 @@ function _retargetLayerDescriptor(html, mode) {
   if (found.present) {
     throw new Error("Export aborted: the commentable-html layer descriptor could not be located reliably in the source HTML.");
   }
-  return src.replace(/(<meta name="commentable-html-version" content="[^"]+" \/?>\s*)/i,
-    "$1" + '<script type="application/json" id="commentableHtmlLayer">' + _layerDescriptorJson(mode) + "</scr" + "ipt>\n");
+  // No descriptor at all: anchor a fresh one to the version meta tag. Match that tag as a parser
+  // would - a DOM-serialized document writes `<meta name="..." content="...">` with neither the
+  // space nor the slash - and fail loudly if there is nothing to anchor to, rather than
+  // downloading a document with no descriptor.
+  const insert = '<script type="application/json" id="commentableHtmlLayer">'
+    + _layerDescriptorJson(mode) + "</scr" + "ipt>\n";
+  const anchored = src.replace(/<meta name="commentable-html-version" content="[^"]*"\s*\/?>\s*/i,
+    function (m) { return m + insert; });
+  if (anchored === src) {
+    throw new Error("Export aborted: this document has no commentable-html layer descriptor and no version meta tag to anchor one to.");
+  }
+  return anchored;
 }
 async function saveHtml() {
   let baseHtml;
