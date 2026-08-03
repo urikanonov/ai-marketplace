@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.515.0" />
+<meta name="commentable-html-version" content="1.516.0" />
 <meta name="commentable-html-kind" content="slides" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.515.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.516.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML Showcase</title>
 
@@ -5199,7 +5199,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.515.0";
+const CMH_VERSION = "1.516.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -21016,7 +21016,10 @@ function computeSectionStates() {
 // by getElementById() (which binds the FIRST match in document order). A decoy element carrying the
 // same id ahead of the real one - in a hand-authored file, or after a botched edit - would otherwise
 // be read on load and written on export, while the region-owned block silently kept its stale
-// contents. validate.py rejects the duplicate id; this keeps the runtime correct on a document that
+// contents. The candidates the region chooses among are first narrowed to the ones the CONTENT-ROOT
+// BOUNDARY accepts (CMH-EXP-17), so authored content inside `#commentRoot` is out before ownership
+// is even asked - which is what closes the "absent markers resolve a lone block" concession below.
+// validate.py rejects the duplicate id; this keeps the runtime correct on a document that
 // never met the validator.
 const REVIEW_BLOCK_ID = "reviewedSections";
 const REVIEW_REGION = "EMBEDDED COMMENTS";
@@ -21070,6 +21073,16 @@ function _cmhElementsWithId(doc, id) {
   return Array.prototype.slice.call(doc.querySelectorAll('script[id="' + id + '"]'))
     .filter(function (el) { return !_cmhInInertHost(el); });
 }
+// The carriers the layer may call its OWN, by the CONTENT-ROOT BOUNDARY (CMH-EXP-17): a script
+// inside `#commentRoot` is authored content and is never one of the layer's blocks, and a CONTESTED
+// boundary (more than one element carrying the content-root id) accepts nothing at all. The region
+// rule below then picks which of those the EMBEDDED COMMENTS region owns, so the two rules compose
+// rather than compete - the boundary is what closes the region rule's one concession, that a LONE
+// block still resolves when the region markers are ABSENT.
+function _cmhLayerScriptsWithId(doc, id) {
+  const layer = cmhLayerBlocks(doc, id);
+  return _cmhElementsWithId(doc, id).filter(function (el) { return layer.indexOf(el) !== -1; });
+}
 // The element the region delimited by `bounds` owns for `id`, or null when it cannot be resolved
 // unambiguously. A LONE match still resolves when the region markers are ABSENT (a document
 // upgraded from before the feature existed keeps working); malformed markers never resolve. With
@@ -21077,7 +21090,7 @@ function _cmhElementsWithId(doc, id) {
 // long as exactly one block sits inside the region - that is the whole point, so do not "fix" this
 // into rejecting every document that carries a duplicate id.
 function _cmhOwnedById(doc, id, bounds) {
-  const all = _cmhElementsWithId(doc, id);
+  const all = _cmhLayerScriptsWithId(doc, id);
   if (!all.length) return null;
   if (!bounds || bounds.state === "malformed") return null;
   if (bounds.state === "absent") return all.length === 1 ? all[0] : null;
@@ -21114,7 +21127,8 @@ function _cmhWarnUnownedReviewBlock() {
   if (_reviewBlockWarned) return;
   _reviewBlockWarned = true;
   const msg = "This file carries a " + REVIEW_BLOCK_ID + " block that its " + REVIEW_REGION
-    + " region does not own (a duplicated id, a block outside the region, or broken region markers),"
+    + " region does not own (a duplicated id, a block inside the content root or otherwise outside"
+    + " the region, more than one element carrying the content-root id, or broken region markers),"
     + " so its saved section-review marks are ignored. Run validate.py on the file.";
   try { console.warn("commentable-html: " + msg); } catch (e) { /* console is optional */ }
   if (typeof showToast === "function") showToast(msg, { alert: true, duration: 8000 });
@@ -21320,7 +21334,9 @@ if (typeof window !== "undefined") {
 // round-tripped through DOMParser (not a string regex) so the reviewedSections id is matched only
 // as a real DOM element, never as tag text that appears inside the inlined layer JS (a self-
 // contained Shareable/Offline copy inlines this runtime, whose comments mention the block by name),
-// and the element written is the one the EMBEDDED COMMENTS region owns, never the first id match.
+// and the element written is the one the EMBEDDED COMMENTS region owns among the blocks the
+// content-root boundary accepts (CMH-EXP-17), never the first id match - so the export rewrites
+// exactly the block a reload reads back.
 // Returns {html, note}: when nothing can be attributed to the region the state is left out rather
 // than written to a guess, and `note` says why. showToast REPLACES the visible message, so the
 // caller (which owns the single "Downloaded ..." toast) appends the note to it rather than this
@@ -21352,8 +21368,13 @@ function _applyReviewStateToHtml(html) {
     // markers stay in localStorage, they just do not travel with this copy.
     const carriers = _cmhElementsWithId(doc, REVIEW_BLOCK_ID).length;
     if (carriers) {
+      const own = _cmhLayerScriptsWithId(doc, REVIEW_BLOCK_ID).length;
       const lead = " Section-review state was left out: this file ";
-      if (carriers > 1) kept.note = lead + "carries " + carriers + " " + REVIEW_BLOCK_ID + " blocks.";
+      if (cmhContentRootState(doc).contested) kept.note = lead + "has more than one element carrying the"
+        + " content-root id, so the layer cannot tell its own blocks from authored content.";
+      else if (!own) kept.note = lead + "keeps every " + REVIEW_BLOCK_ID
+        + " block inside the content root, where authored content lives.";
+      else if (own > 1) kept.note = lead + "carries " + own + " " + REVIEW_BLOCK_ID + " blocks.";
       else if (bounds.state === "malformed") kept.note = lead + "does not have exactly one ordered pair of "
         + REVIEW_REGION + " region markers.";
       else kept.note = lead + "keeps its " + REVIEW_BLOCK_ID + " block outside its " + REVIEW_REGION + " region.";
@@ -21362,10 +21383,12 @@ function _applyReviewStateToHtml(html) {
     }
     // No block at all (an older document): insert one right after the region-owned embeddedComments
     // block so it sits inside the EMBEDDED COMMENTS region and Plain export strips it for free. A
-    // document that carries MORE than one embeddedComments block is refused rather than anchored on
-    // a guess: the comments themselves are rewritten into the FIRST such block (65-export-shareable),
-    // so anchoring elsewhere would split the state of one file across two blocks.
-    const ec = _cmhElementsWithId(doc, "embeddedComments").length === 1
+    // document that carries MORE than one embeddedComments block the layer OWNS is refused rather
+    // than anchored on a guess: the comments themselves are rewritten into the FIRST such block
+    // (65-export-shareable), so anchoring elsewhere would split the state of one file across two
+    // blocks. The count is the layer's own, by the same boundary the exporter uses, so a decoy
+    // inside the content root cannot veto the insert.
+    const ec = _cmhLayerScriptsWithId(doc, "embeddedComments").length === 1
       ? _cmhOwnedById(doc, "embeddedComments", bounds) : null;
     if (!ec || !ec.parentNode) {
       kept.note = " Section-review state was left out: this file has no " + REVIEW_BLOCK_ID
