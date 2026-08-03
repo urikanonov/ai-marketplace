@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Tests for the content-scoped extract/replace tools.
 
-Covers CMH-CONTENT-01 (extract returns a de-highlighted source view of just the CONTENT
-region), CMH-CONTENT-02 (replace is one atomic, self-finalizing transaction with no
-partial states), and CMH-CONTENT-03 (a block the highlighter cannot round-trip is passed
+Covers CMH-CONTENT-IO-01 (extract returns a de-highlighted source view of just the CONTENT
+region), CMH-CONTENT-IO-02 (replace is one atomic, self-finalizing transaction with no
+partial states), and CMH-CONTENT-IO-03 (a block the highlighter cannot round-trip is passed
 through verbatim rather than mangled, and untouched blocks never churn).
 """
 import io
@@ -68,7 +68,7 @@ class _DocCase(unittest.TestCase):
 
 
 class ExtractTests(_DocCase):
-    """CMH-CONTENT-01."""
+    """CMH-CONTENT-IO-01."""
 
     def test_extract_returns_only_the_content_region(self):
         out = content_extract.extract(_read(self.doc))
@@ -100,7 +100,7 @@ class ExtractTests(_DocCase):
 
 
 class ReplaceAtomicityTests(_DocCase):
-    """CMH-CONTENT-02."""
+    """CMH-CONTENT-IO-02."""
 
     def test_no_op_round_trip_is_byte_identical(self):
         before = _read(self.doc)
@@ -160,7 +160,7 @@ class ReplaceAtomicityTests(_DocCase):
 
 
 class FidelityTests(_DocCase):
-    """CMH-CONTENT-03."""
+    """CMH-CONTENT-IO-03."""
 
     def test_a_code_block_with_a_bare_less_than_round_trips(self):
         # content_extract hands back de-highlighted SOURCE, so `if a < b:` carries a raw
@@ -299,7 +299,7 @@ class FidelityTests(_DocCase):
 
 
 class CommentExtractionTests(_DocCase):
-    """CMH-CONTENT-04: the peer-review path reads the embedded snapshot."""
+    """CMH-CONTENT-IO-04: the peer-review path reads the embedded snapshot."""
 
     def _seed(self, comments, handled=None):
         import mark_handled

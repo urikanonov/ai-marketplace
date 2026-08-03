@@ -1170,5 +1170,124 @@ class SpecTestReferenceTests(unittest.TestCase):
         self.assertEqual([], [issue.format() for issue in issues])
 
 
+class DuplicateSpecRowTests(unittest.TestCase):
+    """One feature id owns exactly ONE spec row (issue #904).
+
+    Two ids used to own two rows each (`CMH-BUILD-13`, `CMH-DECK-21`, plus `SITE-NAV-02` on the
+    site spec) and nothing failed: `_spec_rows` merges same-id rows, so a test cited by EITHER row
+    satisfied the other and a citation for those ids was ambiguous.
+    """
+
+    def setUp(self):
+        self.sandbox = Path(tempfile.mkdtemp(prefix="spec-refs-dup-rows-"))
+        self.addCleanup(shutil.rmtree, self.sandbox, ignore_errors=True)
+        self.base = self.sandbox / "base"
+        (self.base / "tests").mkdir(parents=True)
+        (self.base / "tests" / "demo.spec.js").write_text(
+            "test('real browser title (DEMO-01)', async () => {});\n"
+            "test('another real title (DEMO-02)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+
+    def _write(self, body, name="SPEC.md"):
+        spec = self.sandbox / name
+        spec.write_text(body, encoding="utf-8", newline="\n")
+        return spec
+
+    def _feature_table(self, rows):
+        return (
+            "# Spec\n\n"
+            "| Feature id | Behavior | Covering tests |\n"
+            "| --- | --- | --- |\n"
+            + "".join(
+                "| %s | Demo behavior. | `tests/demo.spec.js` - `%s` |\n" % (fid, title)
+                for fid, title in rows
+            )
+        )
+
+    def test_flags_a_feature_id_that_is_the_id_cell_of_two_rows(self):
+        spec = self._write(self._feature_table((
+            ("DEMO-01", "real browser title (DEMO-01)"),
+            ("DEMO-01", "another real title (DEMO-02)"),
+        )))
+
+        issues = refs.check_duplicate_spec_rows(((spec, self.base),))
+
+        self.assertEqual(1, len(issues), [issue.format() for issue in issues])
+        self.assertIn("`DEMO-01`", issues[0].message)
+        self.assertIn("2 spec rows", issues[0].message)
+        self.assertIn("lines 5, 6", issues[0].message)
+        self.assertIn("one feature id, one behavior", issues[0].message)
+
+    def test_a_spec_whose_ids_are_unique_passes(self):
+        spec = self._write(self._feature_table((
+            ("DEMO-01", "real browser title (DEMO-01)"),
+            ("DEMO-02", "another real title (DEMO-02)"),
+        )))
+
+        self.assertEqual([], refs.check_duplicate_spec_rows(((spec, self.base),)))
+
+    def test_the_doc_surface_registry_repeats_an_id_without_being_a_second_row(self):
+        # The registry table's rows also start with a feature id, so a duplicate gate that read
+        # every feature-id row would red every registered id in the real commentable-html spec.
+        spec = self._write(
+            self._feature_table((("DEMO-01", "real browser title (DEMO-01)"),))
+            + "\n### Doc-surface registry\n\n"
+            "| Feature id | Doc surface | Deck |\n"
+            "| --- | --- | --- |\n"
+            "| DEMO-01 | tutorial | deck |\n"
+        )
+
+        self.assertEqual([], refs.check_duplicate_spec_rows(((spec, self.base),)))
+
+    def test_a_sample_table_in_a_fenced_code_block_is_not_a_row(self):
+        spec = self._write(
+            self._feature_table((("DEMO-01", "real browser title (DEMO-01)"),))
+            + "\nHow to add a row:\n\n"
+            "```markdown\n"
+            "| Feature id | Behavior | Covering tests |\n"
+            "| --- | --- | --- |\n"
+            "| DEMO-01 | Sample. | `tests/demo.spec.js` - `real browser title (DEMO-01)` |\n"
+            "```\n"
+        )
+
+        self.assertEqual([], refs.check_duplicate_spec_rows(((spec, self.base),)))
+
+    def test_the_same_id_in_two_different_targets_is_not_a_duplicate(self):
+        first = self._write(
+            self._feature_table((("DEMO-01", "real browser title (DEMO-01)"),)), "FIRST.md")
+        second = self._write(
+            self._feature_table((("DEMO-01", "real browser title (DEMO-01)"),)), "SECOND.md")
+
+        self.assertEqual(
+            [], refs.check_duplicate_spec_rows(((first, self.base), (second, self.base))))
+
+    def test_three_rows_for_one_id_are_reported_once_naming_every_line(self):
+        spec = self._write(self._feature_table((
+            ("DEMO-01", "real browser title (DEMO-01)"),
+            ("DEMO-01", "another real title (DEMO-02)"),
+            ("DEMO-01", "real browser title (DEMO-01)"),
+        )))
+
+        issues = refs.check_duplicate_spec_rows(((spec, self.base),))
+
+        self.assertEqual(1, len(issues), [issue.format() for issue in issues])
+        self.assertIn("3 spec rows", issues[0].message)
+        self.assertIn("lines 5, 6, 7", issues[0].message)
+
+    def test_check_all_runs_the_duplicate_spec_row_check(self):
+        spec = self._write(self._feature_table((
+            ("DEMO-01", "real browser title (DEMO-01)"),
+            ("DEMO-01", "another real title (DEMO-02)"),
+        )))
+
+        issues = refs.check_all(((spec, self.base),))
+
+        self.assertEqual(
+            1, len([issue for issue in issues if "spec rows" in issue.message]),
+            [issue.format() for issue in issues])
+
+
 if __name__ == "__main__":
     unittest.main()

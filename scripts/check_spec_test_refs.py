@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verify spec rows point at real tests and exact test names.
 
-Three directions are checked:
+Four directions are checked:
 
 - FORWARD (`check_spec`): every test file and exact test name a spec row cites exists.
 - REVERSE (`check_test_id_mappings`): every test that CARRIES a feature id is owned by that id's
@@ -48,7 +48,12 @@ Three directions are checked:
     in a suite title is the obvious evasion, but only a `test(...)`/`it(...)` title is REPORTED
     here - a suite title cannot be cited by a row (issue #629), so demanding it be cited would be
     a demand no author could satisfy. The reverse direction still checks a suite title's id for
-    OWNERSHIP, which is satisfiable, so a suite-title borrow is not invisible.
+- DUPLICATE ROWS (`check_duplicate_spec_rows`): a feature id is the id cell of at most ONE feature
+  row per spec. The other three directions all assume "one feature id, one behavior", but nothing
+  enforced it (issue #904): `_spec_rows` merges same-id rows, so a test cited by EITHER row
+  satisfied the other. A row is attributed to the header of the table it sits in, so the
+  "Doc-surface registry" table (`Feature id | Doc surface | Deck`), whose rows also begin with a
+  feature id, is not read as a second row for every registered id. The reverse direction still checks a suite title's id for    OWNERSHIP, which is satisfiable, so a suite-title borrow is not invisible.
 
 The REVERSE direction reads only literal `test(...)` / `it(...)` / `describe(...)` calls that
 BEGIN a line (`_js_test_titles`), so `page.test(...)` is correctly ignored - but so is a
@@ -579,6 +584,59 @@ def _spec_rows(spec_path: Path) -> dict[str, list[str]]:
     return rows
 
 
+def _table_header_cells(line: str) -> list[str] | None:
+    """The cells of *line* when it is a `| Feature id | ... |` table HEADER, else None."""
+    stripped = line.strip()
+    if not stripped.startswith("|") or not stripped.endswith("|"):
+        return None
+    cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+    if cells and cells[0].lower() in {"feature id", "feature"}:
+        return cells
+    return None
+
+
+def _feature_row_lines(spec_path: Path) -> dict[str, list[int]]:
+    """Map each feature id to the line numbers of the FEATURE rows whose id cell it is.
+
+    A feature row is a table row under a `Feature id | Behavior | Covering tests` header. The
+    "Doc-surface registry" table (`Feature id | Doc surface | Deck`) also starts every row with a
+    feature id, so rows are attributed to the header of the table they are in rather than to their
+    shape - otherwise every registered id would look like a second row for itself. A table whose
+    header is missing or unrecognised still COUNTS (fail closed): only a header that is explicitly
+    a non-behavior table is excluded. Fenced code blocks are skipped so a sample table in a code
+    span is never parsed as a row.
+    """
+    lines: dict[str, list[int]] = {}
+    fence: str | None = None
+    header: list[str] | None = None
+    for line_no, line in enumerate(_read(spec_path).splitlines(), 1):
+        stripped = line.strip()
+        fence_match = re.match(r"(`{3,}|~{3,})", stripped)
+        if fence_match:
+            marker = fence_match.group(1)[0]
+            if fence is None:
+                fence = marker
+            elif fence == marker:
+                fence = None
+            continue
+        if fence is not None:
+            continue
+        if not stripped.startswith("|"):
+            header = None
+            continue
+        header_cells = _table_header_cells(line)
+        if header_cells is not None:
+            header = header_cells
+            continue
+        cells = _row_cells(line)
+        if cells is None or not _FEATURE_ID_RE.fullmatch(cells[0]):
+            continue
+        if header is not None and len(header) > 1 and header[1].lower() != "behavior":
+            continue
+        lines.setdefault(cells[0], []).append(line_no)
+    return lines
+
+
 def _coverage_rel(base_dir: Path, test_path: Path) -> str:
     """The path spelling a coverage cell uses for *test_path*."""
     resolved = test_path.resolve()
@@ -825,6 +883,34 @@ def check_duplicate_feature_ids(
 
 
 @_scoped
+def check_duplicate_spec_rows(
+    targets: tuple[tuple[Path, Path], ...] = SPEC_TARGETS,
+) -> list[SpecIssue]:
+    """Fail when one feature id is the id cell of more than one FEATURE row in the same spec.
+
+    "One feature id, one behavior" was unenforced (issue #904): `_spec_rows` merges same-id rows
+    by appending their coverage cells, so a test cited by EITHER row satisfied the other and a
+    citation for such an id was ambiguous - a future test carrying the id could be "cited" by the
+    unrelated row. Two ids owned two rows each in the commentable-html spec and one in the site
+    spec before this direction existed.
+    """
+    issues: list[SpecIssue] = []
+    for spec_path, _base_dir in targets:
+        for feature_id, line_numbers in sorted(_feature_row_lines(spec_path).items()):
+            if len(line_numbers) < 2:
+                continue
+            issues.append(SpecIssue(
+                spec_path,
+                line_numbers[0],
+                "feature id `%s` is the id cell of %d spec rows (lines %s); one feature id, one "
+                "behavior - give one row a free id and update its citations"
+                % (feature_id, len(line_numbers),
+                   ", ".join(str(number) for number in line_numbers)),
+            ))
+    return issues
+
+
+@_scoped
 def check_all(
     targets: tuple[tuple[Path, Path], ...] = SPEC_TARGETS,
     fully_reverse_mapped: frozenset[Path] = FULLY_REVERSE_MAPPED_SPECS,
@@ -859,6 +945,7 @@ def check_all(
                 issues.extend(check_test_id_mappings(
                     spec_path, base_dir, rest, ownership_only=True))
     issues.extend(check_duplicate_feature_ids(targets))
+    issues.extend(check_duplicate_spec_rows(targets))
     return issues
 
 

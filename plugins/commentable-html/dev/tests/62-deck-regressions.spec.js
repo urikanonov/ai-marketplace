@@ -424,13 +424,13 @@ test("CMH-DECK-20: showcase deck chart hover shows a clipped-safe tooltip with t
   }
 });
 
-test("CMH-DECK-21: showcase deck table cells gain a hover highlight without losing contrast", async ({ page }) => {
+test("CMH-DECK-43: showcase deck table cells gain a hover highlight without losing contrast", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
     await showSlideWith(page, ".showcase-chart-slide");
     await enterCommentMode(page);
     const cell = page.locator(".slide.active table.show-table tbody tr").nth(1).locator("td").nth(2);
-    // Perf (CMH-DECK-21): sweeping the mouse across cells felt laggy because each cell animated
+    // Perf (CMH-DECK-43): sweeping the mouse across cells felt laggy because each cell animated
     // box-shadow (a per-frame repaint) and a transform lift (which relayouts the table). The hover
     // now eases only the cheap background-color; the highlight ring snaps and no transform is applied.
     // Token-match the comma-separated transition-property list so a substring like transform-origin
