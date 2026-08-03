@@ -428,7 +428,11 @@ sharded job's matrix a complete `1..N` cover so an entry can never be silently d
   `git fetch`, no longer trips the guard (#830) and there is nothing to opt out of. The accepted
   cost is that a stray BRANCH, TAG or STASH a test leaves behind is no longer caught - those live in
   the shared store and cannot be told apart from a sibling's work - while a stray FILE, the leak the
-  guard exists for, still is.
+  guard exists for, still is. The two verdicts read differently on purpose (#930): a path left in
+  the sandbox names the file and the scratch-file fix, while a changed repository prints a per-probe
+  DIFF of the before/after snapshot and no scratch-file advice - `[status]`, `[diff]` and
+  `[untracked]` mean a file in the checkout moved, `[head]`, `[branch]` and `[refs]` mean this
+  worktree's git state did.
 - The `pre-push` hook and CI run the validators, the changelog/version gates, and the `--check` drift
   guards on every push. The TEST SUITES are opt-in in the hook (`PREPUSH_TESTS=1 git push`, which adds
   the Python script unit tests and the changed plugins' suites, run in parallel), because running them

@@ -99,6 +99,56 @@ class LeakDescription(unittest.TestCase):
     def test_a_worktree_that_was_already_dirty_is_not_blamed_on_the_suite(self):
         self.assertEqual(rst.describe_leak([], "?? scratch.txt\n", "?? scratch.txt\n"), [])
 
+    def test_a_repository_change_is_told_apart_from_a_file_left_behind(self):
+        # Issue #930: the two failures have different causes and different fixes, so the report for
+        # a repository change must not read like the scratch-file one - it says what changed, which
+        # probe saw it, and never carries the "write scratch under a temp dir" hint.
+        problems = rst.describe_leak([], "[status]\n", "[status]\n?? a.md\n")
+        self.assertEqual(len(problems), 1)
+        self.assertNotIn(rst.HINT, problems[0])
+        self.assertIn("changed underneath the run", problems[0])
+        self.assertIn("[status]", problems[0])
+        self.assertIn("+?? a.md", problems[0])
+
+    def test_a_file_left_behind_still_names_the_scratch_fix(self):
+        problems = rst.describe_leak(["a.md"], "", "")
+        self.assertIn("working directory", problems[0])
+
+
+class StateDiff(unittest.TestCase):
+    """Two full snapshots are unreadable side by side; only the difference is worth printing."""
+
+    def test_identical_snapshots_differ_in_nothing(self):
+        self.assertEqual(rst.state_diff("[status]\nx\n", "[status]\nx\n"), "")
+
+    def test_only_the_probe_that_moved_is_shown(self):
+        before = "[status]\n[head]\nabc\n[untracked]\nkeep.md 11\n"
+        after = "[status]\n[head]\nabc\n[untracked]\nkeep.md 22\n"
+        diff = rst.state_diff(before, after)
+        self.assertIn("[untracked]", diff)
+        self.assertNotIn("[head]", diff)
+        self.assertIn("-keep.md 11", diff)
+        self.assertIn("+keep.md 22", diff)
+
+    def test_a_body_line_that_looks_like_a_header_does_not_invent_a_probe(self):
+        # `git diff` and the untracked digest carry arbitrary file content and paths, so only the
+        # KNOWN probe names may open a section.
+        before = "[status]\n[nonsense]\none\n"
+        after = "[status]\n[nonsense]\ntwo\n"
+        diff = rst.state_diff(before, after)
+        self.assertIn("[status]", diff)
+        self.assertNotIn("[nonsense]\n+", diff)
+
+    def test_a_huge_difference_is_truncated_rather_than_burying_the_report(self):
+        after = "[diff]\n" + "".join("line %d\n" % i for i in range(500))
+        diff = rst.state_diff("[diff]\n", after)
+        self.assertLess(len(diff.splitlines()), 60)
+        self.assertIn("more line", diff)
+
+    def test_an_unreadable_side_is_explained_rather_than_diffed(self):
+        self.assertIn("before", rst.state_diff(None, "[status]\n"))
+        self.assertIn("after", rst.state_diff("[status]\n", None))
+
 
 class WorktreeState(unittest.TestCase):
     def test_no_repository_is_unknown_rather_than_clean(self):
@@ -596,6 +646,59 @@ class RunnerEndToEnd(unittest.TestCase):
             proc = self._run(tests, repo_root=repo)
             self.assertEqual(proc.returncode, 1, proc.stdout[-2000:] + proc.stderr[-2000:])
             self.assertIn("a.md", proc.stderr)
+
+    def test_a_repository_change_is_not_reported_as_a_scratch_file(self):
+        # Issue #930: the sandbox was clean here, so the scratch-file hint is the wrong diagnosis -
+        # it sent a reader hunting for a stray relative write that does not exist. The report must
+        # name the probe that moved instead.
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, tests = self._repo_and_dirtying_suite(tmp)
+            proc = self._run(tests, repo_root=repo)
+            self.assertEqual(proc.returncode, 1, proc.stdout[-2000:] + proc.stderr[-2000:])
+            self.assertNotIn(rst.HINT, proc.stderr)
+            self.assertIn("changed underneath the run", proc.stderr)
+            self.assertIn("[status]", proc.stderr)
+
+    def test_a_file_left_in_the_sandbox_still_gets_the_scratch_hint(self):
+        # The other side of the same coin: when the suite DID leave a relative write behind, the
+        # hint that names the fix is exactly what the reader needs.
+        with tempfile.TemporaryDirectory() as tmp:
+            _fake_suite(tmp, "test_leak.py", LEAKING_TEST)
+            proc = self._run(tmp)
+            self.assertEqual(proc.returncode, 1, proc.stdout[-2000:] + proc.stderr[-2000:])
+            self.assertIn(rst.HINT, proc.stderr)
+
+    def test_a_ref_moving_mid_run_leaves_the_run_green(self):
+        # Issue #930/#830 end to end: another agent's worktree commits on its own branch and a
+        # `git fetch` refreshes `refs/remotes/*` WHILE the suite runs. The shared `.git` store moves,
+        # this checkout does not, so the run must pass.
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            env = clean_git_env()
+            init = subprocess.run(["git", "-C", str(repo), "init", "-q", "-b", "main"],
+                                  capture_output=True, text=True, env=env)
+            if init.returncode != 0:
+                self.skipTest("git is not available")
+            (repo / "keep.md").write_bytes(b"keep\n")
+            for args in (["add", "keep.md"], ["commit", "-qm", "base"]):
+                subprocess.run(["git", "-C", str(repo)] + args, check=True,
+                               capture_output=True, text=True, env=env)
+            head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
+                                  capture_output=True, text=True, env=env).stdout.strip()
+            tests = Path(tmp) / "suite"
+            tests.mkdir()
+            _fake_suite(tests, "test_moves_a_ref.py",
+                        "import subprocess\nimport unittest\n\n\n"
+                        "class MovesARef(unittest.TestCase):\n"
+                        "    def test_a_sibling_moves_a_shared_ref(self):\n"
+                        "        for ref in ('refs/heads/sibling', 'refs/remotes/origin/main'):\n"
+                        "            proc = subprocess.run(['git', '-C', %r, 'update-ref', ref, %r],\n"
+                        "                                  capture_output=True, text=True)\n"
+                        "            self.assertEqual(proc.returncode, 0, proc.stderr)\n"
+                        % (str(repo), head))
+            proc = self._run(tests, repo_root=repo)
+            self.assertEqual(proc.returncode, 0, proc.stdout[-2000:] + proc.stderr[-2000:])
 
     def test_the_worktree_check_can_be_opted_out_of(self):
         # A long local run while the tree is being edited would otherwise fail on the edits rather
