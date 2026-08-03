@@ -478,6 +478,51 @@ test.describe("Save comments / Export plain", () => {
     await expect(page.locator("#toast")).toContainText("Exporting as PDF");
   });
 
+  test("a document-content button carrying an export control's id never announces an export (CMH-EXP-15)", async ({ page }) => {
+    // The annotated document is untrusted author content, so a content button that merely BORROWS an
+    // export control's id must not be able to tell a reviewer an export ran. The intent toast keys on
+    // the control's IDENTITY - the elements the layer's own export handlers are bound to - never on
+    // the clicked button's id.
+    const staged = stageContent(
+      "<section><p>Spoof probe.</p>"
+      + '<button id="btnPrint" type="button">Innocent looking</button>'
+      + '<button id="btnSaveHtmlTop" type="button">Also innocent</button></section>',
+      { key: "cmh-export-toast-spoof", source: "spoof.html" });
+    try {
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await page.evaluate(() => {
+        window.__printed = 0;
+        window.print = () => { window.__printed += 1; };
+      });
+      // Dispatch and read the toast state SYNCHRONOUSLY in one task: the intent toast auto-hides
+      // after 2.5s, so a retrying "not shown" assertion would also pass for a toast that DID show.
+      for (const id of ["btnPrint", "btnSaveHtmlTop"]) {
+        const spoofed = await page.evaluate((btnId) => {
+          const t = document.getElementById("toast");
+          t.classList.remove("show", "cm-toast-center");
+          t.textContent = "";
+          document.querySelector("#commentRoot button#" + btnId).dispatchEvent(
+            new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+          return { show: t.classList.contains("show"), text: t.textContent || "" };
+        }, id);
+        expect(spoofed, `content #${id} must not announce an export`).toEqual({ show: false, text: "" });
+      }
+      expect(await page.evaluate(() => window.__printed)).toBe(0);
+
+      // The real control - same id, different element - still announces, so the identity rule did not
+      // simply mute the toast.
+      await page.evaluate(() => {
+        document.querySelector("#sidebarExportMenu button#btnPrint").dispatchEvent(
+          new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+      });
+      expect(await page.evaluate(() => window.__printed)).toBe(1);
+      await expect(page.locator("#toast")).toHaveClass(/cm-toast-center/);
+      await expect(page.locator("#toast")).toContainText("Exporting as PDF");
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
 
   test("Save, Shareable, and Offline exports exclude comments already listed as handled", async ({ page }) => {
     const inline = stageContent("<section><p>Handled comments must stay gone.</p></section>", {

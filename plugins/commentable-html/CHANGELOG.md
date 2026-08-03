@@ -4,6 +4,18 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.432.0] - 2026-08-03
+
+### Fixed
+
+- The export intent toast now decides what is an export control by IDENTITY - the very buttons the
+  layer's own export handlers bound themselves to, resolved once at startup - instead of trusting
+  the clicked button's `id`. The annotated document is untrusted author content, so a document that
+  merely contained `<button id="btnPrint">` used to make the layer announce `Exporting as PDF...`
+  for a click that ran no export at all, telling a reviewer a document had been exported when
+  nothing was. A borrowed id now raises no toast; every real control (both menus, all five formats)
+  still announces.
+
 ## [1.428.0] - 2026-08-03
 
 ### Fixed
