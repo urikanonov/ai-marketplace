@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.363.0" />
+<meta name="commentable-html-version" content="1.364.0" />
 <meta name="commentable-html-kind" content="slides" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.363.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.364.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML Showcase</title>
 
@@ -5074,7 +5074,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.363.0";
+const CMH_VERSION = "1.364.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -12150,7 +12150,15 @@ function renderComments() {
   // preserved instead of dropped.
   let _inlineDraft = null;
   if (_activeInlineEditor) {
-    const _dta = _activeInlineEditor.el && _activeInlineEditor.el.querySelector("textarea");
+    const _del = _activeInlineEditor.el;
+    const _dta = _del && _del.querySelector("textarea");
+    const _act = document.activeElement;
+    // A deferred focus the open path has QUEUED but not yet delivered counts as ownership:
+    // openInlineReply hides the Reply button it was launched from (dropping activeElement to
+    // <body>) and only then queues _focus(), so a re-render landing in that window would otherwise
+    // cancel a focus the reviewer explicitly asked for. It counts only while nothing else holds
+    // focus, so a live timer can never outrank the control the reviewer is actually on.
+    const _pending = !!(_del && _del.__focusTimer && (!_act || _act === document.body));
     _inlineDraft = {
       kind: _activeInlineEditor.kind, targetId: _activeInlineEditor.targetId,
       value: _dta ? _dta.value : "",
@@ -12165,6 +12173,15 @@ function renderComments() {
       // filter is hiding, where it cannot measure itself.
       height: _dta ? (_dta.style.height || null) : null,
       manual: !!(_dta && cmhAutogrowManualHeight(_dta)),
+      // ...but FOCUS is not. A re-render is often triggered from somewhere the reviewer is not
+      // looking (a note-typing debounce, a checklist tick, the Sort button), so the re-opened editor
+      // is only re-focused when it owned focus beforehand; otherwise the caret would jump out of the
+      // control actually being used (issue #844).
+      hadFocus: !!(_del && (_del.contains(_act) || _pending)),
+      // Which of the editor's own controls held it, so a reviewer parked on the formatting toolbar
+      // or Save/Cancel is handed back to THAT control in the rebuilt editor instead of being dropped
+      // into the textarea - the same disorienting jump, one control over.
+      focusIdx: _editorFocusIndex(_del, _dta, _act),
     };
   }
   _activeInlineEditor = null;
@@ -12341,7 +12358,8 @@ function renderComments() {
 }
 // Re-open an inline reply/edit editor after a re-render and restore the reviewer's in-progress text
 // AND selection, so a re-render (sort, note debounce, ...) never silently drops a draft or collapses
-// the range the formatting toolbar is about to wrap.
+// the range the formatting toolbar is about to wrap. Focus follows the snapshot: it is only handed
+// back to the editor that already had it, never stolen from wherever the reviewer actually is.
 function _reopenInlineDraft(snap) {
   if (snap.kind === "reply") {
     const card = listEl.querySelector('.cm-card[data-cid="' + snap.targetId + '"]');
@@ -12354,7 +12372,9 @@ function _reopenInlineDraft(snap) {
     if (entry) openInlineNoteEdit(entry, snap.targetId);
   }
   if (_activeInlineEditor && _activeInlineEditor.el) {
-    const ta = _activeInlineEditor.el.querySelector("textarea");
+    const el = _activeInlineEditor.el;
+    const ta = el.querySelector("textarea");
+    let r = null;
     if (ta) {
       ta.value = snap.value;
       if (snap.height) {
@@ -12364,17 +12384,55 @@ function _reopenInlineDraft(snap) {
         if (snap.manual) ta._cmhAutogrowManual = true;
         else { ta._cmhAutogrowH = ta.style.height; cmhAutogrowResize(ta); }
       } else cmhAutogrowResize(ta);
-      const r = _clampSelRange(snap, ta.value.length);
+      r = _clampSelRange(snap, ta.value.length);
       // Set the range synchronously as well as through the deferred focus below: a toolbar click that
-      // lands before the timer runs reads the selection straight off the textarea.
+      // lands before the timer runs reads the selection straight off the textarea. setSelectionRange
+      // does not move focus, so this half of the restore is safe even for an unfocused editor.
       try { ta.setSelectionRange(r[0], r[1], snap.selDir || "none"); }
       catch (e) { try { ta.setSelectionRange(r[0], r[1]); } catch (e2) {} }
-      // openInlineReply/openInlineNoteEdit already queued a deferred focus that would put the caret
-      // back at the end; re-arm it with the restored range (_focus cancels its pending timer, so the
-      // restore replaces that one rather than racing it).
-      if (_activeInlineEditor.el._focus) _activeInlineEditor.el._focus(r[0], r[1], snap.selDir);
+    }
+    if (!snap.hadFocus) {
+      // The reviewer was working elsewhere when the re-render fired, so drop the focus the open
+      // path queued rather than pulling the caret into the sidebar (issue #844).
+      _cancelEditorFocus(el);
+      return;
+    }
+    const controls = (snap.focusIdx >= 0) ? el.querySelectorAll(_EDITOR_FOCUSABLE) : null;
+    const back = (controls && snap.focusIdx < controls.length && controls[snap.focusIdx] !== ta)
+      ? controls[snap.focusIdx] : null;
+    if (back) {
+      // Focus was on a toolbar or Save/Cancel control, whose element the re-render destroyed: hand
+      // it back to the rebuilt equivalent instead of jumping the caret into the text. preventScroll
+      // for the same reason _focusInList uses it - refocusing a rebuilt panel control must never
+      // scroll the document out from under the reader.
+      _cancelEditorFocus(el);
+      try { back.focus({ preventScroll: true }); } catch (e) { try { back.focus(); } catch (e2) {} }
+    }
+    // focus() is SILENT when its target cannot take focus (hidden, disabled, inert), which would
+    // strand the reviewer on <body> - worse than the bug being fixed - so the textarea is the
+    // fallback whenever the hand-back did not land, as well as the normal path for the textarea
+    // itself. openInlineReply/openInlineNoteEdit already queued a deferred focus that would put the
+    // caret at the end; re-arm it with the restored range (_focus cancels its pending timer, so the
+    // restore replaces that one rather than racing it).
+    if (!el.contains(document.activeElement) && el._focus) {
+      el._focus(r ? r[0] : null, r ? r[1] : null, snap.selDir);
     }
   }
+}
+// The editor's own focusable controls, in DOM order. The rebuilt editor is assembled by the same
+// builder and is therefore structurally identical, so an INDEX into this list survives a re-render -
+// and, unlike an allow-list of known selectors, it keeps handing focus back correctly when a control
+// is added to _buildInlineReplyEditor later.
+const _EDITOR_FOCUSABLE = "button, textarea, input, select, [tabindex]";
+// Where the focused control sits in that list. The textarea (and "focus is not in this editor")
+// report -1, since the textarea's restore carries the caret range instead.
+function _editorFocusIndex(el, ta, a) {
+  if (!el || !a || a === el || a === ta || !el.contains(a)) return -1;
+  return Array.prototype.indexOf.call(el.querySelectorAll(_EDITOR_FOCUSABLE), a);
+}
+// Drop an editor's pending deferred focus so it cannot fire against the rebuilt DOM.
+function _cancelEditorFocus(el) {
+  if (el && el.__focusTimer) { clearTimeout(el.__focusTimer); el.__focusTimer = 0; }
 }
 // Clamp a selection to a value of `len` characters and normalize its order. The two offsets are one
 // range, so a snapshot missing EITHER of them falls back to the end-of-text caret rather than
@@ -12600,7 +12658,7 @@ function _closeActiveInlineEditor() {
   _activeInlineEditor = null;
   // The editor is about to go away, so drop its pending deferred focus rather than leaving a timer
   // to fire against a detached textarea.
-  if (a && a.el && a.el.__focusTimer) { clearTimeout(a.el.__focusTimer); a.el.__focusTimer = 0; }
+  if (a) _cancelEditorFocus(a.el);
   if (a && typeof a.restore === "function") { try { a.restore(); } catch (e) {} }
 }
 // Cross-surface edit coordination: the in-document comment dialog can edit the same note in place,
