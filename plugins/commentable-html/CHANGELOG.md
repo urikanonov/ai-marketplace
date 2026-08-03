@@ -9,8 +9,8 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 ### Fixed
 
 - The offline export's scripted-navigation check is now LINEAR on a long near-match, in both the
-  exporter (JavaScript) and the strict validator (Python). It carried the
-  `window`/`self`/`top`/`parent`/`globalThis`/`document`/`frames` prefix chain as an unbounded
+  exporter (JavaScript) and the strict validator (Python). It carried the global-prefix chain
+  (`window`, `self`, `top`, `parent`, `globalThis`, `document`, `frames`) as an unbounded
   repetition in front of the sink, so the engine re-entered that chain at every position a prefix
   could follow and a near-match that never reaches a sink cost QUADRATIC time: `window . ` repeated
   measured 2.3s at 18 KB, 9.4s at 36 KB, 36s at 72 KB and 174s at 144 KB - 4x the time for 2x the
