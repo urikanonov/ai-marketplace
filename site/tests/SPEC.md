@@ -295,3 +295,15 @@ this. The two largest instances of the class are now closed structurally rather 
 with a longer timeout: SITE-DEMO-14 for the multi-megabyte demo documents, and SITE-COPY-04 for the
 copy buttons' transient feedback (issue 859). What remains is the ordinary residue - an assertion on
 a short CSS transition or a focus move - which no shared helper currently covers.
+
+## Renamed feature ids (the ledger)
+
+One feature id owns exactly ONE row (`scripts/check_spec_test_refs.py` enforces it; see
+`CMH-BUILD-21` in the commentable-html spec). When issue #904 found an id owning two rows, the row
+touching the least reader-facing surface was given a free id, and the mapping is recorded here so an
+older reference to the old id still leads somewhere. A bullet list, not a table, deliberately: a
+table row starting with a feature id would itself read as a second spec row for that id.
+
+- `SITE-NAV-02` -> `SITE-NAV-04` for the hub nav "Plugins" plugin-dropdown behavior.
+  `SITE-NAV-02` kept the standalone `data-anchor` sub-heading anchor behavior, which claimed the
+  id first and which `site/src/site.js` cites by that id.

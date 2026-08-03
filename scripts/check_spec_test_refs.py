@@ -48,12 +48,13 @@ Four directions are checked:
     in a suite title is the obvious evasion, but only a `test(...)`/`it(...)` title is REPORTED
     here - a suite title cannot be cited by a row (issue #629), so demanding it be cited would be
     a demand no author could satisfy. The reverse direction still checks a suite title's id for
+    OWNERSHIP, which is satisfiable, so a suite-title borrow is not invisible.
 - DUPLICATE ROWS (`check_duplicate_spec_rows`): a feature id is the id cell of at most ONE feature
   row per spec. The other three directions all assume "one feature id, one behavior", but nothing
   enforced it (issue #904): `_spec_rows` merges same-id rows, so a test cited by EITHER row
   satisfied the other. A row is attributed to the header of the table it sits in, so the
   "Doc-surface registry" table (`Feature id | Doc surface | Deck`), whose rows also begin with a
-  feature id, is not read as a second row for every registered id. The reverse direction still checks a suite title's id for    OWNERSHIP, which is satisfiable, so a suite-title borrow is not invisible.
+  feature id, is not read as a second row for every registered id.
 
 The REVERSE direction reads only literal `test(...)` / `it(...)` / `describe(...)` calls that
 BEGIN a line (`_js_test_titles`), so `page.test(...)` is correctly ignored - but so is a
@@ -114,6 +115,12 @@ _BACKTICK_PATH_RE = re.compile(r"`([^`]+\.(?:py|%s|tsx))`" % _JS_TEST_SUFFIX)
 _QUOTED_RE = re.compile(r"`([^`]+)`")
 _FEATURE_ID_RE = re.compile(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)*-\d+[a-z]?\b")
 _PY_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?")
+# Duplicate-row parsing (`_feature_row_lines`): a CommonMark fence, a blockquote prefix, the inline
+# decoration a table cell may carry, and the tables whose feature-id rows are NOT feature rows.
+_FENCE_RE = re.compile(r" {0,3}(`{3,}|~{3,})(.*)$")
+_BLOCKQUOTE_RE = re.compile(r"^(?: {0,3}>[ \t]?)+")
+_MD_DECORATION_RE = re.compile(r"[*_`]")
+_NON_FEATURE_TABLE_HEADERS = frozenset({"doc surface"})
 _JS_TITLE_RE = re.compile(
     r'(?:test\.describe(?:\.(?:only|skip|fixme|fail|serial|parallel))*|'
     r'(?:test|it|describe)(?:\.(?:only|skip|fixme|fail|serial|parallel))*)\s*\(\s*'
@@ -576,64 +583,111 @@ def _test_corpus(spec_path: Path, base_dir: Path) -> tuple[Path, ...]:
 
 
 def _spec_rows(spec_path: Path) -> dict[str, list[str]]:
+    """Map each feature id to the coverage cell of every FEATURE row it owns.
+
+    Reads the same rows the duplicate-row direction enforces over (`_feature_rows`), so the
+    invariant that is CHECKED is the one that is CONSUMED. Sharing the enumerator is what keeps a
+    "Doc-surface registry" row or a row inside a fenced sample table from becoming a coverage cell
+    an id could be cited from: either would let a citation be satisfied by a line that is not a
+    spec row at all, which is the very borrow this module exists to catch.
+    """
     rows: dict[str, list[str]] = {}
-    for line in _read(spec_path).splitlines():
-        cells = _row_cells(line)
-        if cells and _FEATURE_ID_RE.fullmatch(cells[0]):
-            rows.setdefault(cells[0], []).append(cells[-1])
+    for _line_no, feature_id, cells in _feature_rows(spec_path)[0]:
+        rows.setdefault(feature_id, []).append(cells[-1])
     return rows
 
 
-def _table_header_cells(line: str) -> list[str] | None:
-    """The cells of *line* when it is a `| Feature id | ... |` table HEADER, else None."""
-    stripped = line.strip()
-    if not stripped.startswith("|") or not stripped.endswith("|"):
+def _table_cells(line: str) -> list[str] | None:
+    """The cells of a markdown table row, or None when *line* is not one.
+
+    Deliberately more permissive than `_row_cells`: it accepts a row with a missing trailing pipe,
+    a row inside a blockquote, and a two-cell row, because this gate must SEE a malformed
+    duplicate row rather than skip it.
+    """
+    stripped = _BLOCKQUOTE_RE.sub("", line).strip()
+    if not stripped.startswith("|"):
         return None
-    cells = [cell.strip() for cell in stripped.strip("|").split("|")]
-    if cells and cells[0].lower() in {"feature id", "feature"}:
-        return cells
-    return None
+    body = stripped[1:]
+    if body.endswith("|"):
+        body = body[:-1]
+    cells = [cell.strip() for cell in body.split("|")]
+    if len(cells) < 2:
+        return None
+    return cells
+
+
+def _undecorated(cell: str) -> str:
+    """*cell* without the inline markdown that decorates it (`**bold**`, `` `code` ``)."""
+    return _MD_DECORATION_RE.sub("", cell).strip()
+
+
+def _feature_rows(
+    spec_path: Path,
+) -> tuple[tuple[tuple[int, str, tuple[str, ...]], ...], int | None]:
+    """Every FEATURE row of *spec_path* as `(line_no, feature_id, cells)`, plus an open fence line.
+
+    The single definition of "a spec row" for this module. The "Doc-surface registry" table
+    (`Feature id | Doc surface | Deck`) also starts every row with a feature id, so rows are
+    attributed to the header of the table they are in rather than to their shape - otherwise every
+    registered id would look like a second row for itself. The rule is deliberately inverted so it
+    FAILS CLOSED: a row counts unless its governing header is one of the explicitly recognised
+    non-feature tables (`_NON_FEATURE_TABLE_HEADERS`). Excluding everything that is not spelled
+    exactly `Behavior` was the opposite, and hid a real duplicate behind a header this parser
+    merely failed to recognise (`**Behavior**`, `Behaviour`, or a cell split apart by a pipe inside
+    a code span). Inline decoration is stripped from both the header cell and the id cell for the
+    same reason, and a blockquoted, two-cell, or trailing-pipe-less row still counts - this parser
+    is deliberately stricter than `_row_cells`, so a malformed duplicate is seen rather than
+    skipped.
+
+    Fenced code blocks are skipped per CommonMark (a fence opens on a run of 3+ backticks or tildes
+    indented at most 3 spaces and closes only on a run of the SAME character that is at least as
+    long and carries no other text), so a sample table in a code block is never read as a row and a
+    tilde line inside a backtick fence does not end it. A fence indented 4+ spaces is indented CODE
+    and never opens one. The second return value is the line where a fence was opened and never
+    closed: an unterminated fence would otherwise silently blank every row after it, and because
+    `dev/SPEC.md` is a concatenation of `dev/spec/NN-*.md` partials, one imbalance in an early
+    partial would un-check every later section.
+    """
+    rows: list[tuple[int, str, tuple[str, ...]]] = []
+    fence: tuple[str, int] | None = None
+    fence_line: int | None = None
+    header: list[str] | None = None
+    for line_no, line in enumerate(_read(spec_path).splitlines(), 1):
+        fence_match = _FENCE_RE.match(_BLOCKQUOTE_RE.sub("", line))
+        if fence_match:
+            marker, rest = fence_match.group(1), fence_match.group(2)
+            if fence is None:
+                fence, fence_line = (marker[0], len(marker)), line_no
+                continue
+            if fence[0] == marker[0] and len(marker) >= fence[1] and not rest.strip():
+                fence, fence_line = None, None
+                continue
+        if fence is not None:
+            continue
+        cells = _table_cells(line)
+        if cells is None:
+            header = None
+            continue
+        if all(set(cell) <= {"-", ":", " "} and cell for cell in cells):
+            continue
+        if _undecorated(cells[0]).lower() in {"feature id", "feature"}:
+            header = cells
+            continue
+        feature_id = _undecorated(cells[0])
+        if not _FEATURE_ID_RE.fullmatch(feature_id):
+            continue
+        if (header is not None and len(header) > 1
+                and _undecorated(header[1]).lower() in _NON_FEATURE_TABLE_HEADERS):
+            continue
+        rows.append((line_no, feature_id, tuple(cells)))
+    return tuple(rows), fence_line
 
 
 def _feature_row_lines(spec_path: Path) -> dict[str, list[int]]:
-    """Map each feature id to the line numbers of the FEATURE rows whose id cell it is.
-
-    A feature row is a table row under a `Feature id | Behavior | Covering tests` header. The
-    "Doc-surface registry" table (`Feature id | Doc surface | Deck`) also starts every row with a
-    feature id, so rows are attributed to the header of the table they are in rather than to their
-    shape - otherwise every registered id would look like a second row for itself. A table whose
-    header is missing or unrecognised still COUNTS (fail closed): only a header that is explicitly
-    a non-behavior table is excluded. Fenced code blocks are skipped so a sample table in a code
-    span is never parsed as a row.
-    """
+    """Map each feature id to the line numbers of the FEATURE rows whose id cell it is."""
     lines: dict[str, list[int]] = {}
-    fence: str | None = None
-    header: list[str] | None = None
-    for line_no, line in enumerate(_read(spec_path).splitlines(), 1):
-        stripped = line.strip()
-        fence_match = re.match(r"(`{3,}|~{3,})", stripped)
-        if fence_match:
-            marker = fence_match.group(1)[0]
-            if fence is None:
-                fence = marker
-            elif fence == marker:
-                fence = None
-            continue
-        if fence is not None:
-            continue
-        if not stripped.startswith("|"):
-            header = None
-            continue
-        header_cells = _table_header_cells(line)
-        if header_cells is not None:
-            header = header_cells
-            continue
-        cells = _row_cells(line)
-        if cells is None or not _FEATURE_ID_RE.fullmatch(cells[0]):
-            continue
-        if header is not None and len(header) > 1 and header[1].lower() != "behavior":
-            continue
-        lines.setdefault(cells[0], []).append(line_no)
+    for line_no, feature_id, _cells in _feature_rows(spec_path)[0]:
+        lines.setdefault(feature_id, []).append(line_no)
     return lines
 
 
@@ -891,12 +945,31 @@ def check_duplicate_spec_rows(
     "One feature id, one behavior" was unenforced (issue #904): `_spec_rows` merges same-id rows
     by appending their coverage cells, so a test cited by EITHER row satisfied the other and a
     citation for such an id was ambiguous - a future test carrying the id could be "cited" by the
-    unrelated row. Two ids owned two rows each in the commentable-html spec and one in the site
-    spec before this direction existed.
+    unrelated row. Seven ids owned two rows each before this direction existed: `CMH-BUILD-13`,
+    `CMH-CONTENT-01` through `CMH-CONTENT-04`, and `CMH-DECK-21` in the commentable-html spec, plus
+    `SITE-NAV-02` in the site spec. Each spec's "Renamed feature ids" section records where a
+    renamed behavior went, since released `CHANGELOG.md` history still cites the old id.
+
+    Scope note: this is enforced over `SPEC_TARGETS` (commentable-html, the site, and demo-video),
+    not over every `SPEC.md` in the repository; a new target joins by being registered there.
     """
     issues: list[SpecIssue] = []
     for spec_path, _base_dir in targets:
-        for feature_id, line_numbers in sorted(_feature_row_lines(spec_path).items()):
+        rows, open_fence_line = _feature_rows(spec_path)
+        if open_fence_line is not None:
+            # A fence that never closes swallows every row after it, so the direction would go
+            # quietly green over an unchecked spec. `dev/SPEC.md` is a concatenation of partials,
+            # so one imbalance early on would un-check every later section.
+            issues.append(SpecIssue(
+                spec_path,
+                open_fence_line,
+                "code fence opened here is never closed, so the spec rows after it cannot be "
+                "read; close the fence",
+            ))
+        lines: dict[str, list[int]] = {}
+        for line_no, feature_id, _cells in rows:
+            lines.setdefault(feature_id, []).append(line_no)
+        for feature_id, line_numbers in sorted(lines.items()):
             if len(line_numbers) < 2:
                 continue
             issues.append(SpecIssue(

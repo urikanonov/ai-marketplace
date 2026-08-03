@@ -31,8 +31,9 @@ spec-and-test rules in [../AGENTS.md](../AGENTS.md); where they overlap, AGENTS.
   the id in parentheses so the two stay searchable together. One id also owns exactly ONE spec row:
   `check_spec_test_refs.py` fails when an id is the id cell of two rows in the same target, because the
   other directions all merge same-id rows, so a test cited by either row would satisfy the other (issue
-  #904 found five such pairs). If a behavior needs a row of its own, give it a free id; a renamed row
-  records its old id in the row text so the history stays traceable.
+  #904 found seven such ids). If a behavior needs a row of its own, give it a free id; a renamed row
+  records its old id in the row text AND in the spec's "Renamed feature ids" ledger, so an older
+  reference to the old id (a released `CHANGELOG.md` entry, say) still leads somewhere.
 - **Do not borrow another file's feature id.** `scripts/check_spec_test_refs.py` fails when one id is
   carried by test titles in MORE THAN ONE file and a spec row that owns the id does not cite every
   one of them. Two tests in the SAME spec file may share an id (a single behavior asserted from
