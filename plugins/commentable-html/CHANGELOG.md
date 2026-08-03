@@ -18,7 +18,8 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   A CONTESTED content root (more than one element carrying the content-root id) now resolves
   nothing at all rather than falling back to document position, matching how the embedded-comments
   and descriptor blocks already behave, and the reader is told once, in a toast and on the console,
-  which state the document is in.
+  which ONE state the document is in - the load warning and the export's download toast now come
+  from a single shared diagnosis, so they name the same cause instead of listing every possible one.
 - A document with no `reviewedSections` block at all gets one inserted again when its content
   carries an `embeddedComments` decoy. The insert anchors on the `embeddedComments` block the
   region owns and refused to anchor when more than one element carried that id anywhere - counting

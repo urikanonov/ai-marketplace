@@ -20202,8 +20202,23 @@ function _cmhOwnedById(doc, id, bounds) {
   const owned = all.filter(function (el) { return _cmhNodeInRegion(el, bounds); });
   return owned.length === 1 ? owned[0] : null;
 }
-function _cmhOwnedStateBlock(doc, id) {
-  return _cmhOwnedById(doc, id, _cmhRegionCommentBounds(doc, REVIEW_REGION));
+// The ONE reason `id` could not be attributed, as a sentence fragment. The load path and the export
+// path both diagnose through this, so the reader's toast and the download toast never disagree
+// about what is wrong with the file - and neither makes the reader read a list of every cause to
+// work out which one they hit. Order matters: a contested boundary makes every other question
+// unanswerable, and a block the boundary rejected is not one the region could have owned.
+function _cmhUnownedReason(doc, id, bounds) {
+  if (cmhContentRootState(doc).contested) {
+    return "the document has more than one element carrying the content-root id, so the layer"
+      + " cannot tell its own blocks from authored content";
+  }
+  const own = _cmhLayerScriptsWithId(doc, id).length;
+  if (!own) return "every " + id + " block sits inside the content root, where authored content lives";
+  if (own > 1) return "the document carries " + own + " " + id + " blocks";
+  if (!bounds || bounds.state === "malformed") {
+    return "the document does not have exactly one ordered pair of " + REVIEW_REGION + " region markers";
+  }
+  return "the " + id + " block sits outside the " + REVIEW_REGION + " region";
 }
 // A null-prototype object so a heading id like "__proto__" or "constructor" becomes an ordinary
 // own key instead of mutating a real prototype (which would silently drop that section's marker).
@@ -20223,25 +20238,26 @@ function _sanitizeMarkers(obj) {
   });
   return clean;
 }
-// A document whose reviewedSections block cannot be attributed to its region is reported ONCE, in
-// the console and to the reader: every section shows as unreviewed on a file that plainly carries
-// baked markers, and a reader who opened a shared HTML has no console to look at. The export path
-// reports the same condition in its own download toast.
+// A document whose reviewedSections block cannot be attributed is reported ONCE, in the console and
+// to the reader, naming the state it is in: every section shows as unreviewed on a file that
+// plainly carries baked markers, and a reader who opened a shared HTML has no console to look at.
+// The export path reports the same condition, from the same diagnosis, in its own download toast.
 let _reviewBlockWarned = false;
-function _cmhWarnUnownedReviewBlock() {
+function _cmhWarnUnownedReviewBlock(reason) {
   if (_reviewBlockWarned) return;
   _reviewBlockWarned = true;
-  const msg = "This file carries a " + REVIEW_BLOCK_ID + " block that its " + REVIEW_REGION
-    + " region does not own (a duplicated id, a block inside the content root or otherwise outside"
-    + " the region, more than one element carrying the content-root id, or broken region markers),"
-    + " so its saved section-review marks are ignored. Run validate.py on the file.";
+  const msg = "This file's " + REVIEW_BLOCK_ID + " block could not be attributed to the layer: "
+    + reason + ". Its saved section-review marks are ignored. Run validate.py on the file.";
   try { console.warn("commentable-html: " + msg); } catch (e) { /* console is optional */ }
   if (typeof showToast === "function") showToast(msg, { alert: true, duration: 8000 });
 }
 function getEmbeddedReviewMarkers() {
-  const el = _cmhOwnedStateBlock(document, REVIEW_BLOCK_ID);
+  const bounds = _cmhRegionCommentBounds(document, REVIEW_REGION);
+  const el = _cmhOwnedById(document, REVIEW_BLOCK_ID, bounds);
   if (!el) {
-    if (_cmhElementsWithId(document, REVIEW_BLOCK_ID).length) _cmhWarnUnownedReviewBlock();
+    if (_cmhElementsWithId(document, REVIEW_BLOCK_ID).length) {
+      _cmhWarnUnownedReviewBlock(_cmhUnownedReason(document, REVIEW_BLOCK_ID, bounds));
+    }
     return Object.create(null);
   }
   try {
@@ -20473,17 +20489,8 @@ function _applyReviewStateToHtml(html) {
     // markers stay in localStorage, they just do not travel with this copy.
     const carriers = _cmhElementsWithId(doc, REVIEW_BLOCK_ID).length;
     if (carriers) {
-      const own = _cmhLayerScriptsWithId(doc, REVIEW_BLOCK_ID).length;
-      const lead = " Section-review state was left out: this file ";
-      if (cmhContentRootState(doc).contested) kept.note = lead + "has more than one element carrying the"
-        + " content-root id, so the layer cannot tell its own blocks from authored content.";
-      else if (!own) kept.note = lead + "keeps every " + REVIEW_BLOCK_ID
-        + " block inside the content root, where authored content lives.";
-      else if (own > 1) kept.note = lead + "carries " + own + " " + REVIEW_BLOCK_ID + " blocks.";
-      else if (bounds.state === "malformed") kept.note = lead + "does not have exactly one ordered pair of "
-        + REVIEW_REGION + " region markers.";
-      else kept.note = lead + "keeps its " + REVIEW_BLOCK_ID + " block outside its " + REVIEW_REGION + " region.";
-      kept.note += " Run validate.py.";
+      kept.note = " Section-review state was left out: "
+        + _cmhUnownedReason(doc, REVIEW_BLOCK_ID, bounds) + ". Run validate.py.";
       return kept;
     }
     // No block at all (an older document): insert one right after the region-owned embeddedComments

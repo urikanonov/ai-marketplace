@@ -477,7 +477,8 @@ test.describe("section review tracking", () => {
     await page.goto(fileUrl(badPath));
     await ready(page);
     expect(await stateOf(page, "rv-alpha")).toBe("unreviewed");
-    await expect(page.locator("#toast")).toContainText("region does not own");
+    await expect(page.locator("#toast")).toContainText(
+      "does not have exactly one ordered pair of EMBEDDED COMMENTS region markers");
     await page.locator("#rv-gamma").hover();
     await page.locator("#rv-gamma .cmh-review-badge").click();
     await openToolbarMenu(page);
@@ -566,7 +567,8 @@ test.describe("section review tracking", () => {
     await page.goto(fileUrl(html));
     await ready(page);
     expect(await stateOf(page, "rv-beta")).toBe("unreviewed"); // the decoy's marker is not read
-    await expect(page.locator("#toast")).toContainText("does not own");
+    await expect(page.locator("#toast")).toContainText(
+      "every reviewedSections block sits inside the content root");
   });
 
   test("a contested content root leaves the review block unresolved (CMH-EXP-17)", async ({ page }) => {
@@ -586,7 +588,8 @@ test.describe("section review tracking", () => {
     await page.goto(fileUrl(html));
     await ready(page);
     expect(await stateOf(page, "rv-alpha")).toBe("unreviewed");
-    await expect(page.locator("#toast")).toContainText("does not own");
+    await expect(page.locator("#toast")).toContainText(
+      "more than one element carrying the content-root id");
   });
 
   test("a content-region embeddedComments decoy does not veto the review-state insert (CMH-EXP-17)", async ({ page }) => {
@@ -643,7 +646,8 @@ test.describe("section review tracking", () => {
     await openToolbarMenu(page);
     const [download] = await Promise.all([page.waitForEvent("download"), page.click("#btnSaveHtmlTop")]);
     const saved = await readDownload(download);
-    await expect(page.locator("#toast")).toContainText("inside the content root");
+    await expect(page.locator("#toast")).toContainText(
+      "Section-review state was left out: every reviewedSections block sits inside the content root");
     const blocks = [...saved.matchAll(/<script[^>]*type="application\/json"[^>]*id="reviewedSections"[^>]*>([\s\S]*?)<\/script>/g)]
       .map((m) => JSON.parse(m[1].trim() || "{}"));
     expect(blocks.length).toBe(1);                      // no second block was invented
