@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.512.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.514.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,22 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.514.0] - 2026-08-03</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Sorting a table no longer changes the document&#x27;s text. Rows are now permuted through their existing slots instead of being appended to the table body, so the whitespace an author leaves BETWEEN rows stays where it is. Previously one sort stranded all of that whitespace ahead of the rows, making them textually adjacent - a change unsorting could not undo - so the document and section content hashes drifted permanently. Because a sort is remembered per browser profile, the same file then showed the amber &quot;This document was not validated in its current form&quot; banner on the computer where a table had been sorted and not on another, and a sorted table could flip an already-reviewed section to &quot;changed&quot;.</li>
+              <li>Section review state now hashes the same canonical (authored source-order) content the validation banner does, so a reader&#x27;s persisted table sort can no longer flip an already-reviewed section to &quot;changed&quot; (and a section marked reviewed while a table was sorted no longer flips when the sort is cleared). The canonical order is read from the stamped row indices rather than restored by moving rows, so a badge refresh never disturbs the reader&#x27;s sorted view, focus, or text selection. One upgrade note: a section marked reviewed by an older build WHILE a table was sorted was recorded against the sorted order, so it shows &quot;changed&quot; once after this upgrade; re-marking it stores the canonical hash and it stays reviewed from then on.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.512.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The strict validator now decides an offline-mode <code>&lt;meta http-equiv=&quot;refresh&quot;&gt;</code> target by applying the HTML refresh algorithm instead of matching <code>url=</code> in the raw attribute text, which was wrong in both directions. A browser resolves <code>content=&quot;0;url=https:evil.example&quot;</code> in a <code>file://</code> document to <code>https://evil.example/</code> and navigates the whole document - every reviewer comment with it - there, but the gate required a <code>//</code> after the scheme, so a hand-authored offline file carrying that meta passed <code>validate.py --strict</code> unflagged. The <code>url=</code> keyword is optional in that algorithm as well, so simply dropping it (<code>content=&quot;0;https://evil.example&quot;</code>) was an even cheaper bypass, and a remote authority reached the same beacon through <code>\\host</code> or an explicit <code>file://host</code> UNC target. A meta refresh is a TOP-LEVEL NAVIGATION, the one egress channel no meta-delivered CSP can close, so the gate was the only thing that would have caught any of them. In the other direction, a refresh with no time is not a refresh at all, a quoted value is truncated at its closing quote, a near miss on the <code>url</code> keyword is an ordinary relative reference, only ASCII whitespace separates the keyword from its <code>=</code>, and a bare <code>https:</code> with no host navigates nowhere - all of those used to be reported as network egress and now pass. The export was never affected (it removes every refresh meta whatever its URL), so this closes a validator-only false negative and the gate stays looser than the strip it mirrors. The neighbouring CSS and attribute network-literal gates deliberately keep their slashes-required shape - those are fetch channels the offline CSP closes, and each is byte-mirrored in the exporter, so gate and strip have to move together (tracked separately).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.509.0] - 2026-08-03</h3></div>
             <div class="group-label">Security</div>
@@ -511,8 +521,6 @@
               <li>The widening cannot backtrack superlinearly: every added run is separated from its neighbour by a mandatory literal element, and each run&#x27;s two alternatives are told apart by their second character. It does not delete the benign scripts an author actually writes - a padded URL that is only displayed, a navigation to a local fragment, a single-backslash local path, a real backslash before a scheme and a shadowed <code>location</code> all still survive - and it keeps the over-match this strip has always chosen: a host-less <code>&quot;//&quot;</code> reference goes too, because requiring a host character would start preserving a protocol-relative prefix concatenated with a host at the sink.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.499.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -543,14 +551,7 @@
               <li>A sidebar re-render that lands while a modal dialog is open (Manage storage, the clear-all confirm, Help) no longer hands keyboard focus to the side pane BEHIND that dialog&#x27;s overlay (issue #884). The pane restores an in-progress inline reply/edit draft and its selection across a re-render, and re-focuses that editor when it owned focus beforehand; with an <code>aria-modal</code> dialog up, the pane is behind the overlay, so the editor&#x27;s ownership is vetoed for the whole rebuild and the deferred focus stands down. The veto also applies at DELIVERY time - the editor&#x27;s deferred focus timer, the post-save hand-back, and an editor&#x27;s close-restore all stand down while a dialog is up - so a focus armed before the dialog opened cannot land behind it either, and that focus is HELD rather than dropped, so closing the dialog leaves the reviewer on a real control instead of stranded. Focus found BEHIND the overlay (stranded on <code>&lt;body&gt;</code>, in the side pane, or moved out into the document by a delete run FROM the dialog) is handed back to it, preferring the dialog&#x27;s own declared safe default over raw DOM order so a destructive confirm button is never made the Enter-default, skipping any candidate that cannot actually take focus; focus the reviewer genuinely holds inside the dialog, or on chrome that paints above the overlay, is left alone. The rule is keyed on the rendered <code>aria-modal</code> overlay, so it covers Manage storage, the clear-all confirm, and Help alike. Without this, a keyboard or screen-reader reviewer could be left typing into an invisible, unreachable textarea outside the modal.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.437.0] - 2026-08-03</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The validator no longer reads inert <code>&lt;template&gt;</code> content as <code>#commentRoot</code> prose, nor as heading text. A template&#x27;s contents live in a DocumentFragment a browser never renders, and the parser&#x27;s element view already declined them, but the PROSE and HEADING views did not - so a document that merely SHOWED a section cross reference inside a template (a doc about authoring, or any parked markup fragment) raised an &quot;unlinked cross-reference&quot; warning its author could not clear by any edit to the rendered page, and a template nested inside a heading contributed invisible text to the heading the named-cross-reference and document-title checks read. Both now apply the same inertness rule as the element view, whether the template is closed or left open at end of input. <code>generate_toc.py</code> follows the same rule, so a generated table of contents no longer labels an entry with text a reader cannot see: a heading that contains a template is listed by its visible text only, and a heading whose text is entirely inside a template is dropped from the TOC (and gets no generated slug id) - which also means a <code>report</code>/<code>plan</code> whose only <code>&lt;h1&gt;</code> is parked in a template now correctly fails the top-level-title requirement instead of passing on an invisible title.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">276 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">277 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

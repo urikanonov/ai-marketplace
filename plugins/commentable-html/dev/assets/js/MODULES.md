@@ -69,7 +69,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `57-storage-manager.js` | CMH-STORE | Cross-document storage manager dialog: document registry, grouping, per-document delete, quota auto-open + retry. |
 | `60-export-markdown.js` | CMH-MD, CMH-CODE | Export to Markdown; per-code-block Copy button, language pill, and optional caption. |
 | `61-table-scroll.js` | CMH-RESP | Wraps each table in a `.cmh-table-scroll` box so a too-wide table scrolls instead of pushing the page sideways. |
-| `62-sortable-tables.js` | CMH-CONTENT, CMH-PERSIST | Sortable tables and durable embedded-delete persistence from Clear. |
+| `62-sortable-tables.js` | CMH-CONTENT, CMH-PERSIST | Sortable tables (reordering is text-neutral: rows are permuted through their existing slots by `_reorderBody`) and durable embedded-delete persistence from Clear. |
 | `65-export-shareable.js` | CMH-EXP, CMH-SEC | Export as Shareable + shared export snapshot primitives. |
 | `66-export-plain.js` | CMH-EXP | Save as plain HTML (strip the comment layer). |
 | `67-export-standalone.js` | CMH-MODE | Export standalone (nonshareable -> single file). |
@@ -79,6 +79,6 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `80-sort-comments.js` | CMH-SIDE | Sort comments by time. |
 | `82-toc.js` | CMH-TOC, CMH-REVIEW, CMH-A11Y | Table-of-contents side menu; also hosts the section-review TOC filter + per-entry state dots. |
 | `83-print.js` | CMH-PRINT, CMH-RICH | Print/PDF comment appendix materializer for flat documents, the single continuous no-break page sizer, the deck slide display-pin, and the "Save as PDF" buttons that call native `window.print()`; renders each note rich. Derives its tall-media diagram cap from `03-selectors.js`'s `CMH_MERMAID_SEL`, so it must stay ordered after that partial. |
-| `84-section-review.js` | CMH-REVIEW | Section review tracking: content hashing, marker store, four-state badges, and TOC-filter helpers. |
+| `84-section-review.js` | CMH-REVIEW | Section review tracking: content hashing, marker store, four-state badges, and TOC-filter helpers. Every content hash goes through `_cmhScanSections`, which reads the CANONICAL (authored source-order) rows via `_cmhCanonicalChildNodes` - any new hash-sensitive feature must hash through it, never the raw DOM order. |
 | `90-toast.js` | CMH-A11Y | Toast notifications. |
 | `95-startup.js` | CMH-HANDLED, CMH-EXP, CMH-FOOT | Handled-id pruning; startup; runtime footer (incl. session-id copy); closes the IIFE. |

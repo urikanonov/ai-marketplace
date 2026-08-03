@@ -47,10 +47,33 @@ function _parseNum(s) {
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
 }
+// Permute the rows through their EXISTING SLOTS instead of appending them. A tbody authored with
+// newlines carries whitespace text nodes BETWEEN its rows; appending every row to the end strands
+// that whitespace ahead of them and leaves the rows textually adjacent - a text change no later
+// unsort can undo (unsorting restores row ORDER, not the stranded whitespace). That silently drifted
+// the document/section content hashes the moment a reader sorted a table, and because the sort is
+// persisted per browser profile the same file then showed the "not validated" banner on one machine
+// and not another (#952). Swapping through placeholders keeps every non-row node exactly where the
+// author put it, so a sort (and its unsort) is text-neutral.
+//
+// The slots come from `body.rows` - the same collection every caller derives `rows` from - so the
+// two are the same set by construction. A caller that ever breaks that (a different length, or a
+// row that is not currently a child of this body) gets a no-op rather than the append that caused
+// #952: leaving the DOM untouched is always text-neutral, while re-appending would silently revive
+// the bug. The identity fast path matters because the canonical-hash and export passes unsort EVERY
+// sortable table, including ones the reader never sorted.
 function _reorderBody(body, rows) {
-  const frag = document.createDocumentFragment();
-  rows.forEach(r => frag.appendChild(r));
-  body.appendChild(frag);
+  const slots = Array.prototype.slice.call(body.rows);
+  if (slots.length !== rows.length) return;
+  let same = true;
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].parentNode !== body) return;
+    if (rows[i] !== slots[i]) same = false;
+  }
+  if (same) return;
+  const marks = slots.map(function () { return document.createComment(""); });
+  slots.forEach(function (r, i) { body.replaceChild(marks[i], r); });
+  marks.forEach(function (m, i) { body.replaceChild(rows[i], m); });
 }
 // A cell's sortable text, EXCLUDING cm-skip UI (e.g. a code-block Copy button) so layer
 // chrome never pollutes the sort key or flips numeric detection to lexicographic.
@@ -94,10 +117,14 @@ function _unsortRows(body) {
   rows.sort((a, b) => (parseInt(a.dataset.cmhRow, 10) || 0) - (parseInt(b.dataset.cmhRow, 10) || 0));
   _reorderBody(body, rows);
 }
+// The runtime OWNS this index: every sortable row is stamped with its position in the FILE, before
+// any persisted sort is applied, and re-stamped on every pass. An authored (or stale) data-cmh-row
+// must not be able to define a different "canonical" order, because the hashers read that order back
+// as the authored one while the Python side reads the source file (#952).
 function _indexTableRows() {
   _sortableTables().forEach(function (t) {
     const body = _tableBody(t);
-    [...body.rows].forEach(function (r, ri) { if (r.dataset.cmhRow == null) r.dataset.cmhRow = String(ri); });
+    [...body.rows].forEach(function (r, ri) { r.dataset.cmhRow = String(ri); });
   });
 }
 function recomputeTextOffsets(persist) {

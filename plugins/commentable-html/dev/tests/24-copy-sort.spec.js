@@ -10,6 +10,52 @@ async function serviceOrder(page) {
 }
 
 test.describe("copy buttons + sortable tables", () => {
+  test("sorting and unsorting a whitespace-formatted table leaves the document text unchanged (CMH-CONTENT-20)", async ({ page }) => {
+    // A real authored table has newlines between its rows, so the tbody holds whitespace text nodes
+    // BETWEEN the rows. Reordering must permute the rows through their existing slots: appending
+    // them stranded that whitespace ahead of the rows, permanently changing the document text (and
+    // therefore its content hash) even after the sort was cleared (#952).
+    const staged = stageContent([
+      "<h1>Rows</h1>",
+      "<table>",
+      "  <thead>",
+      "    <tr><th>Name</th><th>Count</th></tr>",
+      "  </thead>",
+      "  <tbody>",
+      "    <tr><td>Bravo</td><td>2</td></tr>",
+      "    <tr><td>Alpha</td><td>1</td></tr>",
+      "    <tr><td>Charlie</td><td>3</td></tr>",
+      "  </tbody>",
+      "</table>",
+    ].join("\n"), { key: "cmh-sort-ws-neutral" });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    const shape = () => page.$eval("#commentRoot table tbody", (b) =>
+      [...b.childNodes].map((n) => (n.nodeType === 1 ? n.tagName : JSON.stringify(n.nodeValue))).join(","));
+    const text = () => page.$eval("#commentRoot", (el) => el.textContent);
+    const shapeBefore = await shape();
+    const textBefore = await text();
+    expect(shapeBefore).toMatch(/^"[^"]*",TR,/);   // whitespace really does sit between the rows
+
+    const btn = page.locator("#commentRoot table.cmh-sortable th .cmh-sort-ctrl").first();
+    await btn.click();                              // asc
+    await expect(page.locator("#commentRoot table tbody tr td:first-child"))
+      .toHaveText(["Alpha", "Bravo", "Charlie"]);
+    // Rows moved, but every non-row node kept its slot: the shape is unchanged.
+    expect(await shape()).toBe(shapeBefore);
+
+    await btn.click();                              // desc
+    await expect(page.locator("#commentRoot table tbody tr td:first-child"))
+      .toHaveText(["Charlie", "Bravo", "Alpha"]);
+    expect(await shape()).toBe(shapeBefore);
+
+    await btn.click();                              // cleared: back to source order AND source text
+    await expect(page.locator("#commentRoot table tbody tr td:first-child"))
+      .toHaveText(["Bravo", "Alpha", "Charlie"]);
+    expect(await shape()).toBe(shapeBefore);
+    expect(await text()).toBe(textBefore);
+  });
+
   test("each code block has an always-visible Copy button that copies its exact text", async ({ page }) => {
     await openInline(page);
     const wrap = page.locator('#commentRoot .cmh-code-wrap:has(code.language-python)').first();
