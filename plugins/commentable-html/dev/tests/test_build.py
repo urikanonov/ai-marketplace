@@ -644,6 +644,64 @@ class PackageTests(unittest.TestCase):
         b = build.build_resources_zip_bytes(_paths.PKG)
         self.assertEqual(a, b, "the zip must be byte-identical for an unchanged source tree")
 
+    def test_resources_zip_carries_each_path_exactly_once(self):
+        # A freshly built zip and the COMMITTED shipped one must both carry every path once: a
+        # duplicated member bloats the shipped artifact while a name->bytes map compares it equal.
+        with zipfile.ZipFile(io.BytesIO(build.build_resources_zip_bytes(_paths.PKG))) as zf:
+            fresh = [info.filename for info in zf.infolist()]
+        self.assertEqual(len(fresh), len(set(fresh)),
+                         sorted(n for n in set(fresh) if fresh.count(n) > 1))
+        shipped = os.path.join(_paths.PKG_SHIPPED, build.PACKAGE_ZIP_NAME)
+        if not os.path.isfile(shipped):
+            self.skipTest("shipped skill-resources.zip not built yet")
+        with zipfile.ZipFile(shipped) as zf:
+            names = [info.filename for info in zf.infolist()]
+        self.assertEqual(len(names), len(set(names)),
+                         sorted(n for n in set(names) if names.count(n) > 1))
+
+    def test_packager_rejects_duplicate_member_paths(self):
+        # Fail closed rather than write a path twice, whatever produced the member list.
+        with self.assertRaises(SystemExit):
+            build._reject_duplicate_members([("dist/manifest.json", "a"), ("dist/manifest.json", "b")])
+
+    def test_write_package_keeps_an_unchanged_zip_and_replaces_a_duplicated_one(self):
+        # DEFLATE bytes are not identical across zlib builds, so an unchanged archive must be left
+        # alone (no multi-MB churn on a host switch); a duplicated or corrupt one is replaced.
+        v = build.read_version()
+        with tempfile.TemporaryDirectory() as d:
+            pkg = os.path.join(d, "pkg", "skills", "commentable-html")
+            os.makedirs(pkg)
+            build.write_package(_paths.PKG, pkg, v)
+            zip_path = build.resources_zip_path(pkg)
+            # A byte-different but logically identical archive (weaker per-member compression, which
+            # is how another host's zlib would differ) is left as is.
+            members = build._iter_zip_members(_paths.PKG)
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for rel, full in members:
+                    info = zipfile.ZipInfo(rel, date_time=(1980, 1, 1, 0, 0, 0))
+                    info.external_attr = 0o644 << 16
+                    info.create_system = 3
+                    info.compress_type = zipfile.ZIP_DEFLATED
+                    zf.writestr(info, build._member_bytes(full), compresslevel=1)
+            other = buf.getvalue()
+            self.assertNotEqual(other, build.build_resources_zip_bytes(_paths.PKG),
+                                "the fixture must differ in BYTES to prove no rewrite happened")
+            with open(zip_path, "wb") as fh:
+                fh.write(other)
+            build.write_package(_paths.PKG, pkg, v)
+            with open(zip_path, "rb") as fh:
+                self.assertEqual(fh.read(), other, "an unchanged zip must not be rewritten")
+            self.assertEqual(build.check_package(_paths.PKG, pkg, v), [])
+            # A duplicated archive is not "current": it is replaced with a fresh, clean one.
+            with open(zip_path, "wb") as fh:
+                fh.write(other[:-1])  # truncated central directory: unreadable
+            build.write_package(_paths.PKG, pkg, v)
+            with zipfile.ZipFile(zip_path) as zf:
+                names = [info.filename for info in zf.infolist()]
+            self.assertEqual(len(names), len(set(names)))
+            self.assertEqual(build.check_package(_paths.PKG, pkg, v), [])
+
     def test_package_check_detects_zip_drift(self):
         v = build.read_version()
         with tempfile.TemporaryDirectory() as d:

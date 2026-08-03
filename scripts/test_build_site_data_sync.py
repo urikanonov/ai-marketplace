@@ -173,6 +173,117 @@ class SkillZipTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 bsd.build_skill_zip_members(root, skill_rel, "demo")
 
+    def test_tracked_skill_files_refuses_an_unmerged_index(self):
+        # `git ls-files` prints an UNMERGED path once per index stage, so a rebuild run during a
+        # conflicted merge/rebase repeats it. Fail closed rather than package a half-resolved file
+        # (its working-tree bytes may still carry conflict markers) (SITE-BUILD-19).
+        out = "\0".join(["plugins/demo/pkg/skills/demo/SKILL.md"] * 3
+                        + ["plugins/demo/pkg/skills/demo/tools/x.py"]) + "\0"
+        completed = mock.Mock(stdout=out.encode("utf-8"))
+        with mock.patch("subprocess.run", return_value=completed):
+            with self.assertRaises(SystemExit) as caught:
+                bsd._tracked_skill_files("/repo", "plugins/demo/pkg/skills/demo")
+        self.assertIn("SKILL.md", str(caught.exception))
+
+    def test_a_conflicted_index_aborts_the_build(self):
+        # End-to-end reproduction: an unmerged index entry (three stages) with conflict markers left
+        # in the working tree must abort the build, so neither a duplicated member nor the markers
+        # can reach the committed ZIP (SITE-BUILD-19).
+        import shutil as _shutil
+        import subprocess as sp
+        if _shutil.which("git") is None:
+            self.skipTest("git not available")
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill(root)
+            env = clean_git_env()
+            sp.run(["git", "init", "-q"], cwd=root, env=env, check=True)
+            sp.run(["git", "add", "-A"], cwd=root, env=env, check=True)
+            sp.run(["git", "commit", "-qm", "init"], cwd=root, env=env, check=True)
+            path = skill_rel + "/SKILL.md"
+            sha = sp.run(["git", "hash-object", "-w", "--stdin"], input=b"conflicted\n",
+                         cwd=root, env=env, capture_output=True, check=True).stdout.decode().strip()
+            sp.run(["git", "rm", "--cached", "-q", "--", path], cwd=root, env=env, check=True)
+            stages = "".join("100644 %s %d\t%s\n" % (sha, stage, path) for stage in (1, 2, 3))
+            sp.run(["git", "update-index", "--index-info"], input=stages.encode("utf-8"),
+                   cwd=root, env=env, check=True)
+            unmerged = sp.run(["git", "ls-files", "-u", "--", path], cwd=root, env=env,
+                              capture_output=True, check=True).stdout.decode()
+            self.assertEqual(len(unmerged.strip().splitlines()), 3, unmerged)
+            with open(os.path.join(root, path.replace("/", os.sep)), "w", encoding="utf-8") as fh:
+                fh.write("<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> other\n")
+            skills = self._descriptor(skill_rel)
+            # Clear inherited git location vars so the builder's own `git` call targets this repo.
+            with mock.patch.dict(os.environ, clean_git_env(), clear=True):
+                with self.assertRaises(SystemExit):
+                    bsd.build_skill_zip_members(root, skill_rel, "demo")
+                with self.assertRaises(SystemExit):
+                    bsd.sync_skill_zips(root, False, skills=skills)
+            self.assertFalse(os.path.exists(os.path.join(root, bsd.SITE_OUT, "skills", "demo.zip")))
+
+    def test_zip_writer_rejects_duplicate_members(self):
+        # Fail closed rather than write a path twice, whatever produced the member list.
+        members = [("demo/SKILL.md", b"a"), ("demo/SKILL.md", b"b")]
+        with self.assertRaises(SystemExit):
+            bsd._skill_zip_bytes(members)
+
+    def test_zip_logical_members_treats_duplicate_members_as_unreadable(self):
+        # A committed ZIP carrying the same path twice must be reported as stale (None) rather than
+        # silently collapsed by a name->bytes map, which is what let a duplicated archive survive
+        # every --check run (SITE-BUILD-19).
+        import zipfile as _zip
+        with tempfile.TemporaryDirectory() as root:
+            dup = os.path.join(root, "dup.zip")
+            import warnings
+            with warnings.catch_warnings():  # zipfile warns on the intentional duplicate
+                warnings.simplefilter("ignore", UserWarning)
+                with _zip.ZipFile(dup, "w") as z:
+                    z.writestr("demo/SKILL.md", "a")
+                    z.writestr("demo/SKILL.md", "a")
+            self.assertIsNone(bsd._zip_logical_members(dup))
+
+    def test_check_flags_a_duplicated_committed_zip_and_write_repairs_it(self):
+        import zipfile as _zip
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill(root)
+            skills = self._descriptor(skill_rel)
+            bsd.sync_skill_zips(root, False, skills=skills)
+            zip_path = os.path.join(root, bsd.SITE_OUT, "skills", "demo.zip")
+            members = bsd.build_skill_zip_members(root, skill_rel, "demo")
+            import warnings
+            with warnings.catch_warnings():  # zipfile warns on each intentional duplicate
+                warnings.simplefilter("ignore", UserWarning)
+                with _zip.ZipFile(zip_path, "w") as z:  # every member written twice
+                    for arcname, data in members + members:
+                        z.writestr(arcname, data)
+            self.assertTrue(bsd.sync_skill_zips(root, True, skills=skills),
+                            "a duplicated committed zip must be reported as drift")
+            bsd.sync_skill_zips(root, False, skills=skills)
+            with _zip.ZipFile(zip_path) as z:
+                names = [info.filename for info in z.infolist()]
+            self.assertEqual(len(names), len(set(names)), names)
+            self.assertEqual(bsd.sync_skill_zips(root, True, skills=skills), [])
+
+    def test_committed_site_zips_carry_each_path_exactly_once(self):
+        # The shipped artifacts themselves: member count must equal unique-name count, so a
+        # duplicated archive can never sit in main unnoticed (SITE-BUILD-19).
+        import zipfile as _zip
+        for name in ("commentable-html.zip", "multi-duck.zip"):
+            zip_path = os.path.join(bsd.REPO_ROOT, bsd.SITE_OUT, "skills", name)
+            if not os.path.isfile(zip_path):
+                self.skipTest("committed skill zip not generated yet")
+            with _zip.ZipFile(zip_path) as z:
+                names = [info.filename for info in z.infolist()]
+            self.assertEqual(len(names), len(set(names)),
+                             "%s carries duplicate members: %s" % (name, sorted(
+                                 n for n in set(names) if names.count(n) > 1)))
+
+    def test_rebuilding_twice_from_unchanged_sources_is_byte_identical(self):
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill(root)
+            first = bsd._skill_zip_bytes(bsd.build_skill_zip_members(root, skill_rel, "demo"))
+            second = bsd._skill_zip_bytes(bsd.build_skill_zip_members(root, skill_rel, "demo"))
+            self.assertEqual(first, second)
+
     def test_zip_logical_members_treats_a_corrupt_archive_as_unreadable(self):
         # A malformed archive must be treated as stale (None), not crash --check.
         with tempfile.TemporaryDirectory() as root:

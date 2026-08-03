@@ -112,6 +112,18 @@ def _iter_zip_members(stage_dir):
             raise SystemExit(
                 "skill-resources.zip: required runtime directory is empty in the stage: " + d)
     members.sort(key=lambda pair: pair[0])
+    return _reject_duplicate_members(members)
+
+
+def _reject_duplicate_members(members):
+    """Fail closed if two members share a path. A zip may legally carry a path twice, and both the
+    packaged archive and the --check comparison map members by name, so a duplicate would bloat the
+    shipped zip while comparing equal."""
+    seen = set()
+    for rel, _ in members:
+        if rel in seen:
+            raise SystemExit("skill-resources.zip: duplicate member path: " + rel)
+        seen.add(rel)
     return members
 
 
@@ -179,13 +191,28 @@ def write_package(stage_dir, pkg_dir, version):
     os.makedirs(pkg_dir, exist_ok=True)
     written = []
     zip_path = resources_zip_path(pkg_dir)
-    with open(zip_path, "wb") as fh:
-        fh.write(build_resources_zip_bytes(stage_dir))
+    data = build_resources_zip_bytes(stage_dir)
+    if not _resources_zip_is_current(zip_path, data):
+        with open(zip_path, "wb") as fh:
+            fh.write(data)
     written.append(zip_path)
     for path, text in package_text_stamps(stage_dir, pkg_dir, version).items():
         write(path, text)
         written.append(path)
     return written
+
+
+def _resources_zip_is_current(zip_path, fresh_bytes):
+    """True when the committed zip already carries exactly the fresh CONTENTS. DEFLATE output is not
+    identical across zlib builds, so rewriting an unchanged archive would churn multi-MB of binary
+    diff on every host switch; an unreadable, duplicated (ValueError), or drifted archive is not
+    current and is replaced."""
+    if not os.path.exists(zip_path):
+        return False
+    try:
+        return _zip_content_map(zip_path) == _zip_content_map(fresh_bytes)
+    except (zipfile.BadZipFile, OSError, ValueError):
+        return False
 
 
 def check_package(stage_dir, pkg_dir, version):
