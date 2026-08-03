@@ -40,6 +40,11 @@ OFFLINE_CSP_REQUIRED = {
     "frame-ancestors": ("'none'",),
 }
 
+# A network URL in a CSS `url(...)`. This keeps the slashes-required `(?:https?:)?//` shape on
+# purpose, unlike the meta-refresh gate below: a CSS fetch is closed by the offline CSP, and the
+# pattern is mirrored by the exporter's own CSS strip in `assets/js/68-export-offline.js`, so
+# widening this copy ALONE would make the gate reject a file the exporter just produced. Issue #961
+# widens both sides together; see the CMH-VAL-08 spec row.
 CSS_NETWORK_URL_RE = re.compile(r"url\(\s*(['\"]?)(?:https?:)?//", re.IGNORECASE)
 
 # A network URL in an attribute value, allowing the leading characters a browser REMOVES before it
@@ -54,6 +59,10 @@ CSS_NETWORK_URL_RE = re.compile(r"url\(\s*(['\"]?)(?:https?:)?//", re.IGNORECASE
 # `re.IGNORECASE` case-folds across the whole of Unicode, so `s` also matches U+017F (LATIN SMALL
 # LETTER LONG S) and `http<U+017F>://host` would be a network URL to the gate but not to a JS `/i`
 # regex, which never folds a non-ASCII character onto an ASCII one.
+# That mirroring is also why this pattern keeps requiring the `//` while the meta-refresh gate
+# below no longer does: an attribute fetch is closed by the offline CSP, and widening only this
+# copy would reject a file the exporter just produced. Issues #961 and #923/#924 move both sides
+# together; see the CMH-VAL-08 spec row.
 NETWORK_URL_RE = re.compile(r"[\x00-\x20]*(?:https?:)?//", re.IGNORECASE | re.ASCII)
 
 # Every attribute through which a <script> can LOAD its code. An SVG <script> uses none of the
@@ -276,7 +285,125 @@ def offline_script_navigates_to_network(body):
     return True
 
 
-META_REFRESH_NETWORK_RE = re.compile(r"(?:^|[;,\s])url\s*=\s*(['\"]?)(?:https?:)?//", re.IGNORECASE)
+# The URL a `<meta http-equiv="refresh">` navigates to, decided by APPLYING the HTML "shared
+# declarative refresh steps" rather than by matching `url=` in the raw attribute text. A meta
+# refresh is a TOP-LEVEL NAVIGATION, so no policy delivered in a `<meta>` can close it (the same
+# reason CMH-OFFLINE-05 gives for the scripted sinks above), which makes this gate the only thing
+# standing between a hand-authored offline file and the beacon - and a regex over the raw text was
+# wrong in BOTH directions. The keyword and its `=` are OPTIONAL: after the time and its `;`, `,`
+# or whitespace separator, anything that is not `url` is taken as the URL itself, so
+# `content="0;https://evil.example"` navigates while a `url=`-anchored pattern saw nothing. In the
+# other direction, a value with NO time (`url=https://evil`) is not a refresh at all, and a QUOTED
+# value is truncated at its closing quote, so `url='./x;url=https://evil'` is a local path a text
+# scan read as egress. Only ASCII whitespace is skipped, as the algorithm says: `url<NBSP>=...`
+# makes the whole tail a relative reference.
+_META_REFRESH_ASCII_WS = " \t\n\f\r"
+_META_REFRESH_DIGITS = "0123456789"
+
+
+def meta_refresh_target(content):
+    """The URL string a browser would resolve from a refresh meta's `content`, or "" for none.
+
+    Implements the HTML shared declarative refresh steps up to the point the URL is extracted; the
+    caller decides what the literal means. An empty return covers both "not a refresh" and "a
+    reload with no URL".
+    """
+    s = content or ""
+    n = len(s)
+    i = 0
+    while i < n and s[i] in _META_REFRESH_ASCII_WS:
+        i += 1
+    start = i
+    while i < n and s[i] in _META_REFRESH_DIGITS:
+        i += 1
+    if i == start and (i >= n or s[i] != "."):
+        return ""
+    while i < n and (s[i] in _META_REFRESH_DIGITS or s[i] == "."):
+        i += 1
+    if i < n:
+        if s[i] not in ";," and s[i] not in _META_REFRESH_ASCII_WS:
+            return ""
+        while i < n and s[i] in _META_REFRESH_ASCII_WS:
+            i += 1
+        if i < n and s[i] in ";,":
+            i += 1
+        while i < n and s[i] in _META_REFRESH_ASCII_WS:
+            i += 1
+    if i >= n:
+        return ""
+    # Step 1 of the URL branch: the target is the WHOLE remainder, captured BEFORE the `url`
+    # keyword is probed. Only a `u`/`U` mismatch falls through to the quote step; a later mismatch
+    # (`r`, `l`, or the `=`) jumps straight to PARSE with that untouched remainder, which is why a
+    # near miss like `0;urhttps://host` is the relative reference `urhttps://host` and not the
+    # network URL the consumed prefix would suggest.
+    url = s[i:]
+    if s[i] in "Uu":
+        i += 1
+        if not (i < n and s[i] in "Rr"):
+            return url
+        i += 1
+        if not (i < n and s[i] in "Ll"):
+            return url
+        i += 1
+        while i < n and s[i] in _META_REFRESH_ASCII_WS:
+            i += 1
+        if not (i < n and s[i] == "="):
+            return url
+        i += 1
+        while i < n and s[i] in _META_REFRESH_ASCII_WS:
+            i += 1
+    quote = ""
+    if i < n and s[i] in "'\"":
+        quote = s[i]
+        i += 1
+    url = s[i:]
+    if quote:
+        cut = url.find(quote)
+        if cut >= 0:
+            url = url[:cut]
+    return url
+
+
+# The refresh TARGET as a network literal, read after the URL parser's own input cleanup (ASCII
+# tab and newline removed anywhere, leading AND trailing C0-or-space removed) so neither a padded
+# nor a tab-split spelling passes as relative, and a value that is only `https:` plus padding is
+# still the host-less parse failure a browser makes of it. The literal is recognized in the
+# prefixes a browser resolves to a network host: scheme plus slashes, protocol-relative (slashes
+# only), and SCHEME-ONLY - `https:evil.example` with NO slashes after the colon, which the URL
+# parser sends through the special-authority states and resolves to the same host as
+# `https://evil.example`. Requiring the slashes left the channel open to a one-token spelling
+# change. Those states IGNORE any run of `/` or `\` after the scheme, which is why the slash run is
+# consumed rather than counted, and they need a non-empty HOST, which is why one host character is
+# required: `url=https:` and `url=https://` are parse FAILURES a browser does not navigate on, and
+# reporting them as network URLs would reject an offline file that has no egress at all. That host
+# test is a one-character approximation of the URL parser's, so a MALFORMED authority
+# (`https://:80`) is still reported - the fail-CLOSED direction, and the right one for a gate whose
+# miss is a beacon. An authority written with BACKSLASHES counts too (`\\host`, `/\host`): a
+# special scheme's relative-slash state treats the two alike, so on a `file://` document those
+# resolve to `file://host/...` - a UNC fetch off the machine, and a top-level navigation the CSP
+# cannot stop either. The same host reached through an EXPLICIT `file:` scheme counts for the same
+# reason, with the two spellings that stay on the machine excluded: a third slash means an empty
+# host (`file:///C:/x`) and `localhost` is the local machine by definition. A SINGLE leading slash
+# or backslash is a path, not an authority, so it stays local.
+# `re.ASCII` is on so `re.IGNORECASE`
+# cannot fold U+017F onto `s` and report a relative `http<U+017F>:x.html` as a network URL.
+# Widening here introduces no exporter/validator drift: the offline strip removes EVERY
+# `meta[http-equiv=refresh]` whatever its URL, so this gate stays looser than the export it mirrors.
+# The NEIGHBOURING `(?:https?:)?//` gates deliberately keep the slashes (issue #961) - see the
+# CMH-VAL-08 spec row.
+META_REFRESH_NETWORK_URL_RE = re.compile(
+    r"(?:https?:[/\\]*"
+    r"|file:[/\\]{2}(?![/\\])(?!localhost(?:[/\\?#]|$))"
+    r"|[/\\][/\\])[^/\\?#]",
+    re.IGNORECASE | re.ASCII)
+
+_URL_LEADING_TRAILING_STRIP = "".join(chr(c) for c in range(0x21))
+
+
+def meta_refresh_navigates_to_network(content):
+    """True when a refresh meta's `content` names a network URL a browser would navigate to."""
+    url = re.sub(r"[\t\n\r]", "", meta_refresh_target(content))
+    return bool(META_REFRESH_NETWORK_URL_RE.match(url.strip(_URL_LEADING_TRAILING_STRIP)))
 
 # Script types that are ACTIVE without being JavaScript, so `_is_executable_js` never looked at
 # them. They get different rules, mirroring `_offlineActiveDataScriptType` /
