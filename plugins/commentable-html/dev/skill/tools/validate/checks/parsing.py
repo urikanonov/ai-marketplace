@@ -287,8 +287,8 @@ _COMMENT_ABRUPT_CLOSE_RE = re.compile(r"-?>")
 # set_cdata_mode (the scan boundary) and parse_endtag (the closer itself) - overriding only the
 # latter would leave a pre-3.13 parser consuming `</script data-x>` as raw data and running the
 # region on to the document's next canonical closer, swallowing the authored markup between.
-_RAW_TEXT_CLOSE_RES = {}
-_END_TAG_ATTRS = r'(?:[^>"\']|"[^"]*"|\'[^\']*\')*'
+# `</` opens an end TAG only when a tag NAME follows; `</ junk` opens a bogus comment instead.
+_TAG_NAME_START_RE = re.compile(r"[a-zA-Z]")
 
 # `<![CDATA[ ... ]]>` is a CDATA section only when the CURRENT NODE is a foreign (SVG/MathML)
 # element; when it is an HTML element a browser treats `<!` + junk as a BOGUS COMMENT that ends
@@ -426,15 +426,33 @@ def _browser_attrs_dict(parser, tag, attrs):
     return d
 
 
-def _raw_text_close_re(elem):
-    rx = _RAW_TEXT_CLOSE_RES.get(elem)
-    if rx is None:
-        # ASCII case-insensitivity only: a browser matches the tag name ASCII-case-insensitively,
-        # so `</\u017fcript>` is NOT a `<script>` closer (full Unicode folding would match it).
-        rx = re.compile(r"</%s(?=[\t\n\r\f />])%s>" % (re.escape(elem), _END_TAG_ATTRS),
-                        re.IGNORECASE | re.ASCII)
-        _RAW_TEXT_CLOSE_RES[elem] = rx
-    return rx
+def _end_tag_close(rawdata, i):
+    """Index just past the `>` that ends the tag starting at `i`, or -1 if it never closes.
+
+    A browser ends a tag at the first `>` that is not inside a QUOTED ATTRIBUTE VALUE, and a
+    quoted value only begins AFTER `=` - so a bare `"` sitting where an attribute NAME belongs
+    (`</script " >`) is just an invalid name character and does not swallow the `>`. Scanned
+    rather than matched with one regex: expressing "quoted only after =" as nested alternation
+    backtracks exponentially on a hostile document, and this parser reads untrusted input.
+    """
+    n = len(rawdata)
+    j = i
+    while j < n:
+        c = rawdata[j]
+        if c == ">":
+            return j + 1
+        if c == "=":
+            j += 1
+            while j < n and rawdata[j] in " \t\n\r\f":
+                j += 1
+            if j < n and rawdata[j] in "\"'":
+                k = rawdata.find(rawdata[j], j + 1)
+                if k < 0:
+                    return -1
+                j = k + 1
+            continue
+        j += 1
+    return -1
 
 
 class _BrowserBoundaries(HTMLParser):
@@ -530,7 +548,8 @@ class _BrowserBoundaries(HTMLParser):
             # plaintext mode at all, and installing the usual closer would end it early.
             self.interesting = re.compile(r"\Z")
             return
-        # ASCII-only folding, as a browser matches a tag name (see _raw_text_close_re).
+        # ASCII-only folding, as a browser matches a tag name (so `</\u017fcript>`
+        # is not a `<script>` closer, which full Unicode folding would make it).
         self.interesting = re.compile(r"</%s(?=[\t\n\r\f />])" % re.escape(self.cdata_elem),
                                       re.IGNORECASE | re.ASCII)
 
@@ -540,16 +559,87 @@ class _BrowserBoundaries(HTMLParser):
         # that fed incrementally gets the same result as `parse_document()`.
         self._final = True
         super().close()
+        # An UNCLOSED raw-text element runs to EOF in a browser, so its remaining body is live
+        # text. html.parser only hands that tail to handle_data from CPython 3.12.11 / 3.13.5
+        # (gh-135462); older hosts stall in cdata mode and leave it unparsed in `rawdata`, which
+        # silently emptied the body of an unclosed `<style>`/`<script>` and hid a real unscoped
+        # rule from CMH-VAL-20. Flush it here so the body reads the same on every interpreter -
+        # after the host's own close(), and only while still IN cdata mode, so a host that has
+        # already flushed it (and cleared the buffer) cannot double-count it.
+        #
+        # The tail stops at a TRUNCATED closer: once `</name` + whitespace/`/` has been seen, a
+        # browser is tokenizing an end TAG, and EOF inside a tag discards it - the characters are
+        # NOT part of the body. Flushing them verbatim would let `<script>x</script data-` inject
+        # its own trailing text into the script body (enough to forge the layer's ready token) on
+        # exactly the hosts this flush exists for.
+        if self.cdata_elem is not None and self.rawdata:
+            tail = self.rawdata
+            truncated = self.interesting.search(tail)
+            body = tail[:truncated.start()] if truncated else tail
+            if body:
+                self.handle_data(body)
+                self.updatepos(0, len(body))
+            self.rawdata = ""
+        self.clear_cdata_mode()
 
     def parse_endtag(self, i):
         elem = self.cdata_elem
-        if elem is not None and elem != _PLAINTEXT:
-            m = _raw_text_close_re(elem).match(self.rawdata, i)
-            if m:
+        rawdata = self.rawdata
+        if elem is not None and elem != _PLAINTEXT and self.interesting.match(rawdata, i):
+            # `</name` followed by whitespace, `/` or `>` ends the raw-text region; the rest of
+            # the END TAG is then consumed (its own quoted attribute values cannot end it early).
+            close = _end_tag_close(rawdata, i)
+            if close >= 0:
                 self.handle_endtag(elem)
                 self.clear_cdata_mode()
-                return m.end()
-        return super().parse_endtag(i)
+                return close
+            if self._final:
+                # A closer that never finishes: `<script>x</script data-<EOF>`. `</name` plus
+                # whitespace or `/` has already moved a browser into the end-TAG states, and EOF
+                # inside a tag DISCARDS the tag - those characters are not raw-text content.
+                # Before 3.12.11 / 3.13.5 html.parser hands them to handle_data as element BODY
+                # (enough to plant CSS in a `<style>` or forge the layer's ready token), while a
+                # fixed host drops them, so the same document read two ways.
+                return len(rawdata)
+            return -1   # more input may still finish the tag
+        k = super().parse_endtag(i)
+        if k >= 0 or not self._final:
+            return k
+        if _TAG_NAME_START_RE.match(rawdata, i + 2):
+            return len(rawdata)         # EOF inside a real end tag: the tag is discarded
+        if i + 2 >= len(rawdata):
+            self.handle_data(rawdata[i:])       # a bare `</` at EOF is TEXT
+            return len(rawdata)
+        self.handle_comment(rawdata[i + 2:])    # `</` + junk opens a BOGUS COMMENT
+        return len(rawdata)
+
+    def parse_starttag(self, i):
+        return self._drop_if_truncated(super().parse_starttag(i))
+
+    def _drop_if_truncated(self, k):
+        """EOF inside a TAG discards the tag, as a browser does (the HTML5 eof-in-tag error).
+
+        The host signals "incomplete" with -1 and then resolves it its own way at end of input:
+        before 3.12.11 / 3.13.5 the unfinished tag's SOURCE is handed to handle_data (so
+        `<p>hi<div class="x` leaves `hi<div class="x` as prose, and inside raw text it lands in
+        the element body), while a fixed host drops it. Resolve it here instead of inheriting
+        whichever the host does.
+        """
+        if k < 0 and self._final:
+            return len(self.rawdata)
+        return k
+
+    def parse_pi(self, i):
+        # A browser has no processing instructions: `<?` opens a BOGUS COMMENT that ends at the
+        # first `>`, and an unterminated one runs to the end of the document. html.parser calls
+        # handle_pi instead and, before the EOF fix, leaks an unterminated one back out as DATA,
+        # so the same truncated document read two ways.
+        rawdata = self.rawdata
+        j = rawdata.find(">", i + 2)
+        if j < 0:
+            return self._unterminated(i + 1, self.handle_comment)
+        self.handle_comment(rawdata[i + 1:j])
+        return j + 1
 
     def parse_html_declaration(self, i):
         # Replaced wholesale so `<!...>` is resolved identically on every interpreter. Only
@@ -573,7 +663,13 @@ class _BrowserBoundaries(HTMLParser):
                 return self._unterminated(i + 3, self.unknown_decl)
             self.unknown_decl(rawdata[i + 3:j])
             return j + 3
-        return self.parse_bogus_comment(i)
+        # A bogus comment that never closes runs to the end of the document, as a browser does;
+        # before the host's EOF fix an unterminated one leaks back out as DATA instead, so a
+        # truncated `<!BEGIN: ...` read as a comment on one interpreter and as prose on another.
+        k = self.parse_bogus_comment(i)
+        if k < 0 and self._final:
+            return self._unterminated(i + 2, self.handle_comment)
+        return k
 
     def _unterminated(self, start, handler):
         """A construct with no closer: a browser consumes the rest of the document."""

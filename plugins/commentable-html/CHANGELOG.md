@@ -4,6 +4,34 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.371.0] - 2026-08-03
+
+### Fixed
+
+- A TRUNCATED document now validates the same way on every interpreter. CPython changed how
+  `html.parser` resolves end of input in 3.12.11 / 3.13.5 (gh-135462), so until now the same file
+  could read two different ways depending on which patch release ran it - and CI proved it, because
+  its two runner images resolve different 3.12 patches. Each case is now decided by the skill's own
+  browser-accurate boundary layer instead of the host:
+  - An UNCLOSED `<style>` or `<script>` contributes its whole body. A browser runs a raw-text
+    element that never closes to end of document, so its content is live; on an older patch release
+    that trailing text stayed in the parser's buffer, the element's body came back EMPTY, and a
+    dangerous unscoped rule (for example `[hidden] { display: none !important; }`) could hide from
+    the CSS checks behind a missing closing tag.
+  - A TRUNCATED tag is discarded - a raw-text closer (`</script data-`), a start tag or an end tag -
+    because end of input inside a tag drops the tag in a browser. An older host handed those
+    characters back as element content, which was enough to plant CSS in a `<style>` body or to
+    forge the layer's ready token in a `<script>` body.
+  - An unterminated `<?` or `<!` runs to the end of the document as comment data (as an unterminated
+    `<!--` already did) rather than reappearing as document prose, and `</` is read the way a browser
+    reads it: text when nothing follows, a bogus comment when what follows is not a tag name.
+  A document that is not truncated is unaffected, and an incremental caller still never loses a tag
+  that was merely split across two chunks of input.
+- A raw-text element's end tag is no longer mistaken for an unfinished one because of a bare quote.
+  A quoted attribute value exists only after `=`, so `</script " >` really does close the script; it
+  used to look unfinished, which ran the raw-text region on to the end of the document and hid the
+  author's real `<pre><code>` block from the syntax-highlighting and KQL checks.
+
 ## [1.370.0] - 2026-08-02
 
 ### Fixed
