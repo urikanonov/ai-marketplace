@@ -151,30 +151,43 @@ def _zip_member_entry(info, data):
             info.compress_type, data)
 
 
+try:
+    import lzma as _lzma
+    _LZMA_ERRORS = (_lzma.LZMAError,)
+except ImportError:  # a Python built without liblzma can never raise it
+    _LZMA_ERRORS = ()
+
+# What "this committed archive cannot be read" looks like. Every one of these must yield None so
+# --check reports the archive as stale and a write run replaces it, rather than crashing the
+# required site gate: a bad container or an unsupported/encrypted member (BadZipFile,
+# NotImplementedError, RuntimeError), a garbage compressed payload (zlib.error, lzma.LZMAError -
+# bz2 raises OSError), a member name flagged UTF-8 that is not valid UTF-8 (UnicodeDecodeError), or
+# member data that ends early (EOFError, which CPython's overlapped-entry check currently pre-empts
+# with BadZipFile, so it is carried as a fail-safe rather than a reachable path).
+# MemoryError and bare ValueError are deliberately NOT swallowed: those are resource exhaustion or
+# a bug here, not a stale artifact.
+_UNREADABLE_ZIP_ERRORS = (OSError, zipfile.BadZipFile, NotImplementedError, RuntimeError,
+                          UnicodeDecodeError, EOFError, zlib.error) + _LZMA_ERRORS
+
+
 def _zip_logical_members(path):
     """The ORDERED list of logical members of a committed ZIP - one `_zip_member_entry` per
-    `infolist()` entry, in archive order - or None when it is missing or cannot be read. Comparing
-    logical members (not raw archive bytes) makes the --check drift guard immune to zlib/platform
-    differences in the compressed container. A malformed, encrypted, or unsupported-compression
-    archive is treated as unreadable (None) so --check flags it as stale and write mode repairs it,
-    rather than crashing the build.
+    `infolist()` entry, in archive order - or None when it is missing or cannot be read (see
+    `_UNREADABLE_ZIP_ERRORS`). Comparing logical members (not raw archive bytes) makes the --check
+    drift guard immune to zlib/platform differences in the compressed container.
 
     The list is ordered, and each member's bytes are read by its ZipInfo rather than by name, so a
     REPEATED or REORDERED path registers as drift instead of being collapsed: a name->bytes map
     reported a bloated archive carrying every path three times (what a rebuild during a conflicted
     rebase used to produce) as in sync, so it survived every --check and write mode never rewrote
-    it. Carrying the stamps too means a noncanonical repack (host timestamps/modes, stored members)
-    is likewise replaced.
-
-    A member whose compressed payload is garbage raises `zlib.error` out of the decompressor rather
-    than `BadZipFile`, so that is caught too: a corrupt committed archive must be reported as stale,
-    never crash the required site `--check`."""
+    it. Carrying the stamps too means an archive repacked with host timestamps/modes or stored
+    members is likewise replaced."""
     if not os.path.isfile(path):
         return None
     try:
         with zipfile.ZipFile(path, "r") as archive:
             return [_zip_member_entry(info, archive.read(info)) for info in archive.infolist()]
-    except (OSError, zipfile.BadZipFile, NotImplementedError, RuntimeError, zlib.error):
+    except _UNREADABLE_ZIP_ERRORS:
         return None
 
 

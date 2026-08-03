@@ -274,6 +274,34 @@ class SkillZipTests(unittest.TestCase):
             self.assertEqual(names, sorted(names), names)
             self.assertEqual(bsd.sync_skill_zips(root, True, skills=skills), [])
 
+    def _zip_member_payload_span(self, path):
+        """The (offset, length) of the first member's compressed payload in the archive file."""
+        import zipfile as _zip
+        with _zip.ZipFile(path) as z:
+            info = z.infolist()[0]
+            start = (info.header_offset + 30 + len(info.filename.encode("utf-8"))
+                     + len(info.extra or b""))
+            return start, info.compress_size
+
+    def test_unreadable_zip_errors_covers_every_read_failure_but_swallows_no_bug(self):
+        # The fail-safe policy itself: a read failure must become drift, never a traceback out of
+        # the required site gate, and never a swallowed bug. EOFError is carried here as a
+        # fail-safe even though CPython's overlapped-entry check currently reports that case as
+        # BadZipFile, so no crafted archive can pin it (SITE-BUILD-19).
+        import zipfile as _zip
+        import zlib as _zlib
+        expected = {OSError, _zip.BadZipFile, NotImplementedError, RuntimeError,
+                    UnicodeDecodeError, EOFError, _zlib.error}
+        try:
+            import lzma
+            expected.add(lzma.LZMAError)
+        except ImportError:
+            pass
+        self.assertEqual(set(bsd._UNREADABLE_ZIP_ERRORS), expected)
+        # Neither resource exhaustion nor a bug in this builder may be reported as a stale archive.
+        for never in (MemoryError, ValueError, TypeError, KeyError, SystemExit):
+            self.assertNotIn(never, bsd._UNREADABLE_ZIP_ERRORS)
+
     def test_zip_logical_members_treats_a_corrupt_member_payload_as_unreadable(self):
         # A member whose COMPRESSED payload is garbage raises zlib.error out of the decompressor -
         # not BadZipFile - so an unguarded read would crash the required site --check instead of
@@ -283,16 +311,47 @@ class SkillZipTests(unittest.TestCase):
             path = os.path.join(root, "corrupt-member.zip")
             with _zip.ZipFile(path, "w", _zip.ZIP_DEFLATED) as z:
                 z.writestr("demo/SKILL.md", b"hello world " * 50)
-            with _zip.ZipFile(path) as z:
-                info = z.infolist()[0]
-                start = (info.header_offset + 30 + len(info.filename.encode("utf-8"))
-                         + len(info.extra or b""))
-                size = info.compress_size
+            start, size = self._zip_member_payload_span(path)
             with open(path, "rb") as fh:
                 raw = bytearray(fh.read())
             raw[start:start + size] = b"\xff" * size
             with open(path, "wb") as fh:
                 fh.write(bytes(raw))
+            self.assertIsNone(bsd._zip_logical_members(path))
+
+    def test_zip_logical_members_treats_a_corrupt_lzma_member_as_unreadable(self):
+        # An LZMA member (a repacked archive may use one) corrupted mid-stream raises
+        # lzma.LZMAError, another decompressor error the gate must survive (SITE-BUILD-19).
+        import zipfile as _zip
+        try:
+            import lzma  # noqa: F401 - a Python built without liblzma cannot hit this path
+        except ImportError:
+            self.skipTest("this Python has no lzma module")
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "corrupt-lzma.zip")
+            with _zip.ZipFile(path, "w", _zip.ZIP_LZMA) as z:
+                z.writestr("demo/SKILL.md", b"hello world " * 400)
+            start, size = self._zip_member_payload_span(path)
+            with open(path, "rb") as fh:
+                raw = bytearray(fh.read())
+            # Leave the LZMA stream header intact so the failure lands in the decompressor.
+            raw[start + 20:start + size] = b"\xff" * (size - 20)
+            with open(path, "wb") as fh:
+                fh.write(bytes(raw))
+            self.assertIsNone(bsd._zip_logical_members(path))
+
+    def test_zip_logical_members_treats_an_undecodable_member_name_as_unreadable(self):
+        # A member name flagged UTF-8 but carrying invalid UTF-8 raises UnicodeDecodeError while
+        # the central directory is being read, before any member is decompressed (SITE-BUILD-19).
+        import zipfile as _zip
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "bad-name.zip")
+            with _zip.ZipFile(path, "w") as z:
+                z.writestr("demo/na\u00efve.md", b"x")  # non-ASCII, so the UTF-8 flag is set
+            with open(path, "rb") as fh:
+                raw = fh.read()
+            with open(path, "wb") as fh:
+                fh.write(raw.replace(b"na\xc3\xafve", b"na\xff\xffve"))
             self.assertIsNone(bsd._zip_logical_members(path))
 
     def test_check_flags_a_committed_zip_with_directory_entries_and_write_repairs_it(self):
