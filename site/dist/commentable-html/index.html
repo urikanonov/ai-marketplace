@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.485.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.486.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.486.0] - 2026-08-03</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The offline export&#x27;s scripted-navigation check is now LINEAR on a long near-match, in both the exporter (JavaScript) and the strict validator (Python). It carried the global-prefix chain (<code>window</code>, <code>self</code>, <code>top</code>, <code>parent</code>, <code>globalThis</code>, <code>document</code>, <code>frames</code>) as an unbounded repetition in front of the sink, so the engine re-entered that chain at every position a prefix could follow and a near-match that never reaches a sink cost QUADRATIC time: <code>window . </code> repeated measured 2.3s at 18 KB, 9.4s at 36 KB, 36s at 72 KB and 174s at 144 KB - 4x the time for 2x the input. - Both callers feed it unbounded document-supplied text: the loader strip runs it over every runnable inline script, and the vendored-payload gate runs it over the payload&#x27;s INFLATED bytes, where a few hundred base64 bytes buy megabytes of near-match. The export runs in the reviewer&#x27;s own browser on a document whose own scripts already ran, so this was a stall of the Export Offline action rather than an escalation - but an export that appears to hang is indistinguishable from a broken feature. - Every shape it recognizes requires the literal <code>location</code> or <code>open</code>, so recognition is now a SCAN driven from those anchors: forward from an anchor the tail is a regex matched ANCHORED at that offset (every unbounded whitespace run is followed by a distinct non-whitespace literal, so no run can be split two ways), and backward from an anchor the prefix chain is walked once in code. Chains for two different anchors cannot overlap, because no sink name is a prefix name. The same input now costs 0.08s at 1.8 MB in Python and 2ms in node. - The recognized shapes are unchanged, pinned in both directions against the pattern the scan replaced over a crossed corpus of sinks and near-sinks, so no egress case stopped matching and no benign script started being stripped. The two implementations still agree literal for literal, and the walk that joins those literals is pinned by running the exporter&#x27;s own source in node. - The regression test measures the SCALING at 10x steps rather than one fixed size, which is why the quadratic term survived the earlier catastrophic-backtracking guard (it used ~200 repetitions, far below where the growth is visible).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.485.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The validator no longer lets a comment the marker COUNT views do not see forge a <code>commentable-html</code> region marker. A browser turns <code>&lt;!BEGIN: commentable-html - CONTENT ...&gt;</code>, <code>&lt;?END: commentable-html - JS&gt;</code> and <code>&lt;/ END: commentable-html - JS&gt;</code> into bogus COMMENT nodes, and the parser correctly routed each to its comment handler - but the handler then treated any comment whose TEXT matched a marker as that marker, while the counting views match the exact source the authoring tools emit. So a forged declaration, or a real but uncounted <code>&lt;!--BEGIN: ...--&gt;</code> / <code>&lt;!-- BEGIN: ... --!&gt;</code>, could open or close the CONTENT region (letting a document whose counted <code>BEGIN</code> marker sits outside <code>#commentRoot</code> validate completely clean) or set the <code>END: commentable-html - JS</code> boundary early (silencing the chart-init guard for every <code>new Chart(</code> between the forged marker and the counted one). A comment now carries its own SOURCE through the shared boundary layer, recorded only on the real <code>&lt;!--</code> path - so every other route, including the end-of-input fallbacks, is bogus by default and fails closed - and a marker must be a comment those views count.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.470.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -509,8 +518,6 @@
               <li>A sidebar re-render that lands while a modal dialog is open (Manage storage, the clear-all confirm, Help) no longer hands keyboard focus to the side pane BEHIND that dialog&#x27;s overlay (issue #884). The pane restores an in-progress inline reply/edit draft and its selection across a re-render, and re-focuses that editor when it owned focus beforehand; with an <code>aria-modal</code> dialog up, the pane is behind the overlay, so the editor&#x27;s ownership is vetoed for the whole rebuild and the deferred focus stands down. The veto also applies at DELIVERY time - the editor&#x27;s deferred focus timer, the post-save hand-back, and an editor&#x27;s close-restore all stand down while a dialog is up - so a focus armed before the dialog opened cannot land behind it either, and that focus is HELD rather than dropped, so closing the dialog leaves the reviewer on a real control instead of stranded. Focus found BEHIND the overlay (stranded on <code>&lt;body&gt;</code>, in the side pane, or moved out into the document by a delete run FROM the dialog) is handed back to it, preferring the dialog&#x27;s own declared safe default over raw DOM order so a destructive confirm button is never made the Enter-default, skipping any candidate that cannot actually take focus; focus the reviewer genuinely holds inside the dialog, or on chrome that paints above the overlay, is left alone. The rule is keyed on the rendered <code>aria-modal</code> overlay, so it covers Manage storage, the clear-all confirm, and Help alike. Without this, a keyboard or screen-reader reviewer could be left typing into an invisible, unreachable textarea outside the modal.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.437.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -539,14 +546,7 @@
               <li>A sidebar re-render no longer strands focus on <code>&lt;body&gt;</code>. Rendering replaces the whole comment list, so the checklist / note / board <code>reset</code> buttons and the comment and reply delete confirms destroyed the very control the reviewer was on and left <code>document.activeElement</code> on <code>&lt;body&gt;</code> - a keyboard or screen-reader user lost their place entirely and had to tab in from the top of the page. Every render now notes where focus was before it rebuilds and hands it to the equivalent rebuilt control, or to whichever control took its place, or - when the list is left empty - to the list container itself, which is now labelled and takes a focus ring. A control that cannot actually take focus (hidden by the comment filter, disabled, or inert) is skipped rather than silently swallowing the restore. Only focus that was inside the list is carried, so a re-render triggered from elsewhere (a note being typed, a checklist ticked in the document) still leaves focus exactly where it was.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.427.0] - 2026-08-03</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The validator now keeps a HEADING that a document leaves unclosed at end of input. A file truncated inside a heading (<code>&lt;h2 id=&quot;sec&quot;&gt;Title</code> with no closer) dropped that heading from the parsed view entirely, even though a browser renders it - exactly as it runs an unclosed <code>&lt;style&gt;</code> to the end of the document. Every heading-derived check was blind to the last heading of such a file: the id scan, the TOC/anchor scan and the heading path a comment anchors to. The parser now finalizes an open heading at end of input through the same helper the end tag uses, so its text, id and top-level/lede flags read the same either way. The same helper now also ends a heading when an ANCESTOR closes, and when a NEW heading starts on it, as a browser does: text after <code>&lt;/section&gt;</code>, after the end of <code>#commentRoot</code>, or after a following <code>&lt;h2&gt;</code> is no longer glued onto the heading (which used to swallow the following prose - and the next heading, id and all - into one title).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">272 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">273 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

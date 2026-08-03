@@ -4,6 +4,37 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.486.0] - 2026-08-03
+
+### Fixed
+
+- The offline export's scripted-navigation check is now LINEAR on a long near-match, in both the
+  exporter (JavaScript) and the strict validator (Python). It carried the global-prefix chain
+  (`window`, `self`, `top`, `parent`, `globalThis`, `document`, `frames`) as an unbounded
+  repetition in front of the sink, so the engine re-entered that chain at every position a prefix
+  could follow and a near-match that never reaches a sink cost QUADRATIC time: `window . ` repeated
+  measured 2.3s at 18 KB, 9.4s at 36 KB, 36s at 72 KB and 174s at 144 KB - 4x the time for 2x the
+  input.
+  - Both callers feed it unbounded document-supplied text: the loader strip runs it over every
+    runnable inline script, and the vendored-payload gate runs it over the payload's INFLATED
+    bytes, where a few hundred base64 bytes buy megabytes of near-match. The export runs in the
+    reviewer's own browser on a document whose own scripts already ran, so this was a stall of the
+    Export Offline action rather than an escalation - but an export that appears to hang is
+    indistinguishable from a broken feature.
+  - Every shape it recognizes requires the literal `location` or `open`, so recognition is now a
+    SCAN driven from those anchors: forward from an anchor the tail is a regex matched ANCHORED at
+    that offset (every unbounded whitespace run is followed by a distinct non-whitespace literal,
+    so no run can be split two ways), and backward from an anchor the prefix chain is walked once
+    in code. Chains for two different anchors cannot overlap, because no sink name is a prefix
+    name. The same input now costs 0.08s at 1.8 MB in Python and 2ms in node.
+  - The recognized shapes are unchanged, pinned in both directions against the pattern the scan
+    replaced over a crossed corpus of sinks and near-sinks, so no egress case stopped matching and
+    no benign script started being stripped. The two implementations still agree literal for
+    literal, and the walk that joins those literals is pinned by running the exporter's own source
+    in node.
+  - The regression test measures the SCALING at 10x steps rather than one fixed size, which is why
+    the quadratic term survived the earlier catastrophic-backtracking guard (it used ~200
+    repetitions, far below where the growth is visible).
 ## [1.485.0] - 2026-08-03
 
 ### Fixed
