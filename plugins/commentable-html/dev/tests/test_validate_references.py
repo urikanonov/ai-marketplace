@@ -1,5 +1,7 @@
 from _validate_helpers import *
 
+from checks import parsing  # noqa: E402
+
 
 class SectionReferenceLinkTests(unittest.TestCase):
     """Deterministic detection of section cross-references in prose that are NOT links."""
@@ -53,11 +55,70 @@ class SectionReferenceLinkTests(unittest.TestCase):
         self.assertEqual(errors, [], errors)
         self.assertFalse(any("cross-reference" in w for w in warnings), warnings)
 
+    def test_reference_inside_a_template_ignored(self):
+        # A <template> body is inert - a browser never renders it - so a cross reference a
+        # document merely SHOWS there is not prose its author could be asked to link.
+        self.assertFalse(self._warns(
+            self.HEADS + "<template><p>See the section below for details.</p></template>"
+            "<p>Body text.</p>"))
+
     def test_named_reference_to_nonexistent_heading_not_flagged(self):
         self.assertFalse(self._warns(self.HEADS + "<p>Refer to Gamma plan for details.</p>"))
 
     def test_single_heading_document_skips_named_check(self):
         self.assertFalse(self._warns('<h2 id="a">Overview</h2><p>The overview covers scope.</p>'))
+
+
+class TemplateProseTests(unittest.TestCase):
+    """Inert `<template>` content is not `#commentRoot` prose (CMH-CONTENT-16).
+
+    A template's contents live in a DocumentFragment a browser never renders, which is why
+    `_record()` and the heading capture already decline them. The prose view must agree, or
+    the same markup is content to one check and not to another.
+    """
+
+    ROOT = '<main id="commentRoot">'
+
+    def _prose(self, inner):
+        doc = parsing._parse_document(self.ROOT + inner)
+        return [t.strip() for t in doc.commentroot_prose if t.strip()]
+
+    def test_prose_inside_a_template_is_not_collected(self):
+        self.assertEqual(
+            self._prose("<p>live</p><template><p>See Section 4</p></template></main>"),
+            ["live"])
+
+    def test_prose_inside_an_unclosed_template_is_not_collected(self):
+        # A <template> still open at end of input holds its content inert all the way to EOF,
+        # so the text after the parked paragraph is not prose either.
+        self.assertEqual(
+            self._prose("<p>live</p><template><p>See Section 4</p><p>Also parked</p>"),
+            ["live"])
+
+    def test_prose_after_a_template_closes_is_still_collected(self):
+        self.assertEqual(
+            self._prose("<template><p>See Section 4</p></template><p>live</p></main>"),
+            ["live"])
+
+    def _headings(self, inner):
+        return [h["text"] for h in parsing._parse_document(self.ROOT + inner).headings]
+
+    def test_heading_text_excludes_template_content(self):
+        # A template nested INSIDE an open heading is inert too: a reader sees "Real", so the
+        # named cross-reference and document-title checks must not read "RealHidden".
+        self.assertEqual(
+            self._headings("<h2>Real<template>Hidden</template>Tail</h2></main>"),
+            ["RealTail"])
+
+    def test_a_title_that_exists_only_in_a_template_does_not_satisfy_the_report_kind(self):
+        # The one place the emptied heading flips a BLOCKING verdict: a reader sees no title at
+        # all, so the report/plan title requirement must error rather than accept an invisible one.
+        main = ('<main id="commentRoot" data-cmh-content-root data-comment-key="k" '
+                'data-doc-label="l" data-doc-source="s">\n'
+                "<h1><template>Parked Title</template></h1><p>content</p>\n</main>")
+        errors, _ = _validate_text(build(
+            body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION], kind="report"))
+        self.assertTrue(any("requires a top-level <h1>" in e for e in errors), errors)
 
 
 if __name__ == "__main__":

@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.434.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.436.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.436.0] - 2026-08-03</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The validator no longer reads inert <code>&lt;template&gt;</code> content as <code>#commentRoot</code> prose, nor as heading text. A template&#x27;s contents live in a DocumentFragment a browser never renders, and the parser&#x27;s element view already declined them, but the PROSE and HEADING views did not - so a document that merely SHOWED a section cross reference inside a template (a doc about authoring, or any parked markup fragment) raised an &quot;unlinked cross-reference&quot; warning its author could not clear by any edit to the rendered page, and a template nested inside a heading contributed invisible text to the heading the named-cross-reference and document-title checks read. Both now apply the same inertness rule as the element view, whether the template is closed or left open at end of input. <code>generate_toc.py</code> follows the same rule, so a generated table of contents no longer labels an entry with text a reader cannot see: <code>&lt;h2&gt;Real&lt;template&gt;Hidden&lt;/template&gt;Tail&lt;/h2&gt;</code> is listed as <code>RealTail</code>, and a heading whose text is entirely inside a template is dropped from the TOC (and gets no generated slug id) - which also means a <code>report</code>/<code>plan</code> whose only <code>&lt;h1&gt;</code> is parked in a template now correctly fails the top-level-title requirement instead of passing on an invisible title.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.434.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>A NUMERIC character reference in an attribute value now resolves the way a BROWSER resolves it, not the way <code>html.unescape()</code> does. The validator&#x27;s vendored browser rule delegated the numeric case to <code>html.unescape()</code>, which is not the HTML tokenizer&#x27;s &quot;numeric character reference end state&quot; and disagrees with it identically on every interpreter (so this was a validator-vs-browser gap, not the 3.12/3.13 host drift the rule was written for). - <code>html.unescape()</code> DELETES the code points it deems invalid, so <code>&amp;#1;</code>, <code>&amp;#x7f;</code>, <code>&amp;#x8d;</code> and the noncharacters vanished where Chromium keeps U+0001, U+007F, U+008D and U+FFFE. A validator-visible <code>id</code>, <code>href</code>, <code>content</code> or <code>data-*</code> could therefore differ from the value the DOM actually carries - the very class of mismatch the rule exists to close. - The end state is now implemented directly: U+FFFD for the null character, for a surrogate and for anything past U+10FFFF, the C1 (0x80-0x9F) replacement table applied, and every other code point kept. - An OVERSIZED reference (more digits than Python&#x27;s integer conversion limit) resolves to U+FFFD instead of raising. The digit run is bounded before any integer conversion, and because the host decodes attribute values inside its own <code>parse_starttag()</code> and raised there first - which every parse entry point swallowed into a TRUNCATED parse, hiding every finding after that tag - such a start tag is now taken away from the host before it decodes anything and dispatched from its RAW text through the vendored tokenizer, leaving the rest of the document live. That recovery mirrors the host&#x27;s dispatch exactly (start-vs-self-closing decided by the tail attribute tokenization stopped at, and the host&#x27;s own raw-text / RCDATA / <code>plaintext</code> / <code>noscript</code> mode re-entered), so a recovered tag behaves like every other tag in the same parser. Attribute values only: an oversized reference in the document&#x27;s TEXT still fails the parse closed, as it always has, and the theme-contrast scan (which builds its own parser and degrades every failure to &quot;no findings&quot;) now REPORTS that one shape rather than letting a single attribute silently disable the whole check.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.432.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -509,8 +518,6 @@
               <li>The export intent toast now decides what is an export control by IDENTITY - the very buttons the layer&#x27;s own export handlers bound themselves to, resolved once at startup - instead of trusting the clicked button&#x27;s <code>id</code>. The annotated document is untrusted author content, so a document that merely contained <code>&lt;button id=&quot;btnPrint&quot;&gt;</code> used to make the layer announce <code>Exporting as PDF...</code> for a click that ran no export at all, telling a reviewer a document had been exported when nothing was. A borrowed id now raises no toast; every real control (both menus, all five formats) still announces.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.428.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -549,14 +556,7 @@
               <li>Recorded as a deliberate scope boundary: Export as Shareable does NOT neutralize a script that borrows a reserved commentable-html data id, the way Export Offline retypes one to inert JSON. Offline does that because its zero-network promise requires the egress strips&#x27; reserved-id exemption to be earned; Shareable makes no such promise and preserves author scripts by design, so the decoy travels untouched. What protects a Shareable export is the boundary above, not a rewrite of the author&#x27;s script.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.407.0] - 2026-08-03</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The Offline export&#x27;s strips now inspect two shapes they used to walk straight past. A <code>&lt;script type=&quot;speculationrules&quot;&gt;</code> or <code>&lt;script type=&quot;importmap&quot;&gt;</code> block is ACTIVE without being JavaScript - a speculation ruleset makes the browser prefetch or prerender by itself, and an import map re-points where a bare module specifier resolves, which the remote-import scan cannot see because the importing script names no URL - so the JavaScript-MIME predicate never looked at either. A speculation ruleset is now removed outright (it can prefetch the document&#x27;s own links through <code>&quot;source&quot;: &quot;document&quot;</code> without naming a URL at all, and it has nothing to offer a single-file offline export), and an import map is removed unless every reference in it, key and value alike, is relative - which is decided by parsing the JSON rather than scanning its text, so a <code>\u002f</code>-escaped, whitespace-padded, tab-split, backslash-authority or <code>data:</code>/<code>blob:</code>-scheme target cannot slip through. An external (<code>src</code>-bearing) or unparseable block is removed too, and a parameterized spelling such as <code>importmap;charset=utf-8</code> is left alone because a browser treats it as inert data. And <code>&lt;template&gt;</code> content, which <code>querySelectorAll</code> never descends into but serialization preserves verbatim, is now walked recursively at any depth by the reserved-id neutralize pass, the loader strip and the event-handler/URL scrub, so a script parked in a template for a later adopter to insert can no longer carry a remote import, a navigation beacon, a network image, a network <code>url(...)</code> or an inline event handler into an offline file. The strict validator applies both rules too - from a mirrored type list and pattern, and from separate template-content views that only the offline checks read - so it can neither bless a file the exporter would strip nor reject one it just produced.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">269 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">270 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

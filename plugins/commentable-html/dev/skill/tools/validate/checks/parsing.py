@@ -1372,12 +1372,19 @@ class _DocParser(_BrowserBoundaries):
             self._cur_body.append(data)
             return
         if self._cur_heading is not None:
-            self._cur_heading[2].append(data)
+            # Same inertness rule as the prose branch below: a browser renders none of a
+            # template's text, so it is not part of the heading a reader sees (which feeds the
+            # named cross-reference and document-title checks).
+            if not self._in_template():
+                self._cur_heading[2].append(data)
             return  # heading text is captured separately, not treated as cross-ref prose
-        # Prose inside #commentRoot but NOT inside a link or a cm-skip element. A cross
+        # Prose inside #commentRoot but NOT inside a link or a cm-skip element, and NOT inside
+        # an inert <template> (a browser never renders a template's contents, so text there is
+        # not authored prose - `_record()` and the heading capture already decline it). A cross
         # reference that IS a link never lands here, so only UNLINKED references remain.
         if (self._cr_depth is not None and not self._cr_closed and len(self.stack) > self._cr_depth
                 and not self._skip_ancestor()
+                and not self._in_template()
                 and not any(t == "a" for (t, _s) in self.stack)):
             self.commentroot_prose.append(data)
 
