@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.499.0" />
+<meta name="commentable-html-version" content="1.509.0" />
 <meta name="commentable-html-kind" content="plan" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.499.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.509.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Planning a Community Garden</title>
 
@@ -4546,7 +4546,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.499.0";
+const CMH_VERSION = "1.509.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -17544,14 +17544,49 @@ function _offlineScriptHasNetworkImport(body) {
 // prefix chain, a bare assignment to `location` in statement position, and a prefixed `open` call.
 // The prefix chain is repeatable and tolerates optional chaining, so `window.top.location...` and
 // `window?.location...` are covered, not just a single prefix.
-// The URL literal is recognized in the three literal prefixes a browser resolves to a network host:
-// scheme plus slashes, protocol-relative (slashes only), and SCHEME-ONLY - a quoted `https:`/`http:`
-// with NO slashes after it, which a browser resolves to the same host and which needs no indirection
-// at all to write, so requiring the slashes left the whole channel open to a one-token spelling
-// change. The tail is a bare alternation of literals, so widening it cannot backtrack. It is still
-// read RAW, so a URL the BROWSER normalizes before resolving - leading or embedded ASCII whitespace,
-// a scheme spelled with a JS string escape, a `javascript:` wrapper - is missed; that class is as
-// cheap as this one and is listed in the CMH-OFFLINE-05 residual.
+// The URL literal is recognized in the literal prefixes a browser resolves to a network host, and
+// in the spellings that NORMALIZE into one of those before anything resolves them - by the URL
+// parser, or by the JavaScript parser that produced the string. The prefixes are scheme plus
+// slashes, protocol-relative (slashes only), and SCHEME-ONLY - a quoted `https:`/`http:` with NO
+// slashes after it, which resolves to the same host and needs no indirection at all to write, so
+// requiring the slashes left the whole channel open to a one-token spelling change. On top of any
+// of them the literal may carry:
+//   (a) leading C0-or-space padding, which the URL parser strips before it parses. U+0000 is
+//       EXCLUDED: the HTML parser replaces a NUL in script data with U+FFFD, which the URL parser
+//       does not strip, so a NUL-padded literal can never navigate and matching it would only make
+//       the validator - which reads the RAW text - reject a file this strip preserves.
+//   (b) an ASCII tab, LF or CR anywhere inside the scheme or between the two slashes, which the URL
+//       parser removes from its whole input and which an ordinary string literal can carry as a
+//       real character.
+//   (c) a backslash in place of either slash (for a special scheme the parser treats the two
+//       alike), written as a slash, an escaped slash, or - since a literal spends TWO source
+//       backslashes per runtime one - four source backslashes.
+//   (d) a LineContinuation, a backslash followed by a line terminator, which evaluates to NOTHING
+//       in an ordinary and a template literal alike, so it pads or splits with no parser help.
+//   (e) an escaping backslash before any literal element, because a backslash before a character
+//       that begins no escape sequence is a NonEscapeCharacter and evaluates to that character.
+//       That is the cheapest spelling of all - one keystroke, no decoder - so `\\?` sits in front
+//       of every literal the tail requires.
+// What stays out is the class raw source genuinely cannot READ: a MULTI-character escape that
+// stands for one of those characters (`\u0068`, `\x68`, an octal), which needs a string-literal
+// decoder rather than a regex - it can sit at any position, in several spellings, and only the
+// literal's own quoting context says whether a backslash starts one. (The single-character cases
+// are exactly what (d) and (e) close, so the residual is escapes that ENCODE a character rather
+// than erase one.) A `javascript:` wrapper that assigns the real URL at runtime is left out for a
+// DIFFERENT reason: the prefix is perfectly visible, but the URL is not in the source at all and
+// matching the wrapper would buy nothing, since a script able to write it already runs arbitrary
+// code in that document - a deliberate trade, not a visibility limit. Both are in the
+// CMH-OFFLINE-05 residual.
+// Each added run's two alternatives are told apart by their SECOND character (the line-terminator
+// branch keeps only U+2028/U+2029, because a backslash before LF or CR already falls inside the
+// class beside it), so no input has two parses of a run. The two AUTHORITY alternatives can both
+// begin with a backslash, but both are fixed-width, so choosing between them costs a bounded retry
+// rather than a split - the tail cannot backtrack superlinearly.
+// The authority branch deliberately does NOT require a host character after the two slashes: a
+// sink assigned a quoted protocol-relative prefix CONCATENATED with a host variable assembles a
+// real beacon, and the tail fails CLOSED on it, at the cost of also removing a host-less two-slash
+// reference a browser would resolve locally - the over-match direction the CMH-OFFLINE-05 row
+// already owns.
 // Every metacharacter whose meaning DIFFERS between JavaScript and Python is spelled out instead:
 // `\w` is ASCII-only in JS but Unicode-aware in Python, and JS whitespace includes U+FEFF while
 // Python's does not, so a shared `\s`/`\w` made the two copies disagree on real inputs (the
@@ -17590,9 +17625,9 @@ function _offlineScriptHasNetworkImport(body) {
 // every offline export (it did, once - the whole suite went red at "JS region has no closing
 // script tag"). `test_the_layer_script_survives_its_own_offline_strips` guards it.
 const _OFFLINE_NAV_ANCHOR_RE = /location|open/gi;
-const _OFFLINE_NAV_PROP_TAIL_RE = /[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:href[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)|(?:assign|replace)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\()[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*["'`](?:https?:|\/\/)/iy;
-const _OFFLINE_NAV_ASSIGN_TAIL_RE = /[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*["'`](?:https?:|\/\/)/iy;
-const _OFFLINE_NAV_OPEN_TAIL_RE = /[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\([ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*["'`](?:https?:|\/\/)/iy;
+const _OFFLINE_NAV_PROP_TAIL_RE = /[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:href[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)|(?:assign|replace)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\()[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*["'`](?:\\?[\u0001-\u0020]|\\[\u2028\u2029])*(?:\\?h(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?p(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?s(?:\\?[\t\n\r]|\\[\u2028\u2029])*)?\\?:|(?:\\?\/|\\\\)(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?\/|\\\\))/iy;
+const _OFFLINE_NAV_ASSIGN_TAIL_RE = /[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*["'`](?:\\?[\u0001-\u0020]|\\[\u2028\u2029])*(?:\\?h(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?p(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?s(?:\\?[\t\n\r]|\\[\u2028\u2029])*)?\\?:|(?:\\?\/|\\\\)(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?\/|\\\\))/iy;
+const _OFFLINE_NAV_OPEN_TAIL_RE = /[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\([ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*["'`](?:\\?[\u0001-\u0020]|\\[\u2028\u2029])*(?:\\?h(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?p(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?s(?:\\?[\t\n\r]|\\[\u2028\u2029])*)?\\?:|(?:\\?\/|\\\\)(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?\/|\\\\))/iy;
 const _OFFLINE_NAV_WS_RE = /[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]/;
 const _OFFLINE_NAV_IDENT_RE = /[.A-Za-z0-9_$]/;
 const _OFFLINE_NAV_STATEMENT_RE = /[;})>\n\r\u2028\u2029]/;

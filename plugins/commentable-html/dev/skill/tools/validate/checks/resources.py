@@ -95,22 +95,35 @@ SCRIPT_LOAD_ATTRS = ("src", "href", "xlink:href")
 # not a real `location` - would be rejected here. The prefix-name comparison is ASCII-folded in
 # code for the same reason. That is the false-rejection direction of the same drift the spelled-out
 # classes close, and the parity test asserts the flag is set.
-# The URL literal is recognized in the three literal prefixes a browser resolves to a network host:
-# scheme plus slashes, protocol-relative (slashes only), and SCHEME-ONLY - a quoted `https:`/`http:`
-# with NO slashes after it, which a browser resolves to the same host, so requiring the slashes left
-# the whole channel open to a one-token spelling change. It is still read RAW, so a URL the browser
-# NORMALIZES first (leading or embedded ASCII whitespace, a scheme spelled with a JS string escape)
-# is missed; that class is listed in the CMH-OFFLINE-05 residual.
+# The URL literal is recognized in the literal prefixes a browser resolves to a network host, and in
+# the spellings that NORMALIZE into one of those first - by the URL parser, or by the JavaScript
+# parser that produced the string: scheme plus slashes, protocol-relative (slashes only), and
+# SCHEME-ONLY - a quoted `https:`/`http:` with NO slashes after it, which a browser resolves to the
+# same host, so requiring the slashes left the whole channel open to a one-token spelling change. On
+# top of any of those the literal may carry the leading C0-or-space padding the URL parser strips
+# (U+0001 to U+0020, NOT U+0000, because the HTML parser replaces a NUL in script data with U+FFFD,
+# which the URL parser does not strip, so a NUL-padded literal can never navigate and matching it
+# here would reject a file the exporter - which reads the PARSED text - preserves), an ASCII tab, LF
+# or CR anywhere inside the scheme or between the two slashes, a backslash in place of either slash
+# (for a special scheme the parser treats the two alike; a literal spends two source backslashes per
+# runtime one), a LineContinuation - a backslash followed by a line terminator, which evaluates to
+# nothing at all - and an escaping backslash before any literal element, since a backslash before a
+# character that begins no escape sequence evaluates to that character. What is still missed is the
+# class raw source cannot READ: a MULTI-character escape that ENCODES one of those characters
+# (a `u0068` / `x68` / octal escape), which needs a string-literal decoder rather than a regex, and
+# a `javascript:` wrapper that assigns the real URL at runtime - the latter a deliberate trade
+# rather than a visibility limit, since a script able to write it already runs arbitrary code. Both
+# are listed in the CMH-OFFLINE-05 residual.
 OFFLINE_NAV_ANCHOR_RE = re.compile(r"location|open", re.IGNORECASE | re.ASCII)
 OFFLINE_NAV_PROP_TAIL_RE = re.compile(
     r"[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
     r"(?:href[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)|(?:assign|replace)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\()[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"""["'`](?:https?:|\/\/)""",
+    r"""["'`](?:\\?[\u0001-\u0020]|\\[\u2028\u2029])*(?:\\?h(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?p(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?s(?:\\?[\t\n\r]|\\[\u2028\u2029])*)?\\?:|(?:\\?\/|\\\\)(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?\/|\\\\))""",
     re.IGNORECASE | re.ASCII)
 OFFLINE_NAV_ASSIGN_TAIL_RE = re.compile(r"[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"""["'`](?:https?:|\/\/)""", re.IGNORECASE | re.ASCII)
+    r"""["'`](?:\\?[\u0001-\u0020]|\\[\u2028\u2029])*(?:\\?h(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?p(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?s(?:\\?[\t\n\r]|\\[\u2028\u2029])*)?\\?:|(?:\\?\/|\\\\)(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?\/|\\\\))""", re.IGNORECASE | re.ASCII)
 OFFLINE_NAV_OPEN_TAIL_RE = re.compile(r"[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\([ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"""["'`](?:https?:|\/\/)""", re.IGNORECASE | re.ASCII)
+    r"""["'`](?:\\?[\u0001-\u0020]|\\[\u2028\u2029])*(?:\\?h(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?p(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?s(?:\\?[\t\n\r]|\\[\u2028\u2029])*)?\\?:|(?:\\?\/|\\\\)(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?\/|\\\\))""", re.IGNORECASE | re.ASCII)
 OFFLINE_NAV_WS_RE = re.compile(r"[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]", re.ASCII)
 OFFLINE_NAV_IDENT_RE = re.compile(r"[.A-Za-z0-9_$]", re.ASCII)
 OFFLINE_NAV_STATEMENT_RE = re.compile(r"[;})>\n\r\u2028\u2029]", re.ASCII)
