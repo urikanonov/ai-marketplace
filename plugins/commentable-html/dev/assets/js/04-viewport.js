@@ -32,9 +32,11 @@ function cmhViewportRect(margin) {
   };
 }
 
-// Every subscriber shares ONE set of listeners, so a layer that re-subscribes per open surface
-// cannot multiply them; the returned function unsubscribes. A subscriber that throws must not stop
-// the others (a stale surface should never freeze the live ones).
+// Every subscriber shares ONE set of native listeners, so the layer never registers them more than
+// once; the returned function unsubscribes. (The Set holds whatever callbacks it is given - a caller
+// that passed a FRESH closure per open surface would still have to unsubscribe it; every caller here
+// subscribes once.) A subscriber that throws must not stop the others (a stale surface should never
+// freeze the live ones).
 var _cmhViewportSubs = null;
 function cmhOnViewportChange(fn) {
   if (typeof fn !== "function") return function () {};

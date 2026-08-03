@@ -333,6 +333,9 @@ function setupInteractiveCharts() {
       }
     });
     window.addEventListener("scroll", hideChartTooltip, true);
+    // A soft keyboard or a pinch zoom changes what is visible without a `window` event; the tooltip
+    // is hover-driven and re-shows on the next hover, so drop it rather than leave it stranded.
+    cmhOnViewportChange(hideChartTooltip);
   }
   // A chart drawn while its section was collapsed (display:none) read clientWidth 0 and fell back to
   // the width attribute (760), so its bitmap is wrong for the real column width and looks blurry once

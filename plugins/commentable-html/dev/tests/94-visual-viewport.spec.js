@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { openInline, addTextComment, openComposerFor, storedComments } from "./helpers.js";
+import { openInline, addTextComment, openComposerFor, selectText, storedComments } from "./helpers.js";
 
 // Issue #880: every floating affordance used to measure the LAYOUT viewport
 // (`window.innerWidth`/`innerHeight`) and to listen only on `window`. An on-screen keyboard and a
@@ -25,7 +25,7 @@ async function installFakeVisualViewport(page, initial) {
       pageTop: box.top,
       width: box.width,
       height: box.height,
-      scale: 1,
+      scale: box.scale || 1,
       onresize: null,
       onscroll: null,
       addEventListener(type, fn) { if (listeners[type] && fn) listeners[type].add(fn); },
@@ -38,6 +38,7 @@ async function installFakeVisualViewport(page, initial) {
         if (next.top != null) { vv.offsetTop = next.top; vv.pageTop = next.top; }
         if (next.width != null) vv.width = next.width;
         if (next.height != null) vv.height = next.height;
+        if (next.scale != null) vv.scale = next.scale;
       },
       fire(type) {
         listeners[type].forEach((fn) => {
@@ -164,14 +165,42 @@ test.describe("floating affordances measure the visual viewport (CMH-CORE-19)", 
     const pop = page.locator(".cm-comment-popover");
     await expect(pop).toBeVisible();
 
-    // The visible box moves without changing size (a pan), so only `scroll` fires on it.
+    // A pinch zoom shrinks the visible box (`scale > 1`); the reader then PANS it, which changes
+    // only the offsets and fires `scroll` alone. Zoom first...
     const dh = Math.round((await boxOf(pop)).height);
-    const visible = { left: 0, top: Math.max(0, Math.round(anchor.y) - 30), width: VW, height: dh + 20 };
-    await moveVisualViewport(page, visible, "scroll");
+    const zoomed = { left: 0, top: Math.max(0, Math.round(anchor.y) - 30), width: VW / 2, height: dh + 20, scale: 2 };
+    await moveVisualViewport(page, zoomed, "resize");
     await expect.poll(async () => {
       const b = await pop.boundingBox();
       return b ? Math.round(b.y + b.height) : -1;
-    }).toBeLessThanOrEqual(visible.top + visible.height + 1);
+    }).toBeLessThanOrEqual(zoomed.top + zoomed.height + 1);
+
+    // ...then pan upwards with the SAME size, firing only `scroll`.
+    const panned = { top: Math.max(0, Math.round(anchor.y) - 100) };
+    await moveVisualViewport(page, panned, "scroll");
+    await expect.poll(async () => {
+      const b = await pop.boundingBox();
+      return b ? Math.round(b.y + b.height) : -1;
+    }).toBeLessThanOrEqual(panned.top + zoomed.height + 1);
+    expect((await boxOf(pop)).y).toBeGreaterThanOrEqual(panned.top - 1);
+  });
+
+  test("the Add-comment menu is clamped into the visual viewport (CMH-CORE-19)", async ({ page }) => {
+    await installFakeVisualViewport(page);
+    await openInline(page);
+    await addTextComment(page, "#commentRoot p", "seed so the paragraph is anchored", 0);
+
+    // Only a narrow band near the bottom-right of the layout viewport is actually on screen.
+    const visible = { left: 400, top: 420, width: 420, height: 300 };
+    await moveVisualViewport(page, visible, "resize");
+    await selectText(page, "#commentRoot p", { index: 1 });
+    const menu = page.locator("#contextMenu");
+    await expect(menu).toBeVisible();
+    const mb = await boxOf(menu);
+    expect(mb.x).toBeGreaterThanOrEqual(visible.left - 1);
+    expect(mb.y).toBeGreaterThanOrEqual(visible.top - 1);
+    expect(mb.x + mb.width).toBeLessThanOrEqual(visible.left + visible.width + 1);
+    expect(mb.y + mb.height).toBeLessThanOrEqual(visible.top + visible.height + 1);
   });
 
   test("a dragged composer cannot be parked outside the visual viewport (CMH-CORE-19)", async ({ page }) => {

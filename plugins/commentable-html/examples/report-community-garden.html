@@ -4912,9 +4912,11 @@ function cmhViewportRect(margin) {
   };
 }
 
-// Every subscriber shares ONE set of listeners, so a layer that re-subscribes per open surface
-// cannot multiply them; the returned function unsubscribes. A subscriber that throws must not stop
-// the others (a stale surface should never freeze the live ones).
+// Every subscriber shares ONE set of native listeners, so the layer never registers them more than
+// once; the returned function unsubscribes. (The Set holds whatever callbacks it is given - a caller
+// that passed a FRESH closure per open surface would still have to unsubscribe it; every caller here
+// subscribes once.) A subscriber that throws must not stop the others (a stale surface should never
+// freeze the live ones).
 var _cmhViewportSubs = null;
 function cmhOnViewportChange(fn) {
   if (typeof fn !== "function") return function () {};
@@ -7894,6 +7896,9 @@ function setupInteractiveCharts() {
       }
     });
     window.addEventListener("scroll", hideChartTooltip, true);
+    // A soft keyboard or a pinch zoom changes what is visible without a `window` event; the tooltip
+    // is hover-driven and re-shows on the next hover, so drop it rather than leave it stranded.
+    cmhOnViewportChange(hideChartTooltip);
   }
   // A chart drawn while its section was collapsed (display:none) read clientWidth 0 and fell back to
   // the width attribute (760), so its bitmap is wrong for the real column width and looks blurry once
@@ -20045,6 +20050,9 @@ function _cmTipShow(el) {
   const vp = cmhViewportRect(6);
   if (top < vp.top) { top = r.bottom + 8; _cmTipEl.classList.add("below"); }
   left = Math.max(vp.left, Math.min(left, vp.right - tw));
+  // Flipping below is not enough on a short visible viewport (a soft keyboard): bound the vertical
+  // axis too, so the tip cannot come to rest behind it.
+  top = Math.max(vp.top, Math.min(top, vp.bottom - th));
   _cmTipEl.style.left = left + "px";
   _cmTipEl.style.top = top + "px";
   const cx = r.left + r.width / 2 - left;
@@ -20096,6 +20104,7 @@ function setupTooltips() {
   }, true);
   document.addEventListener("focusout", _cmTipHide, true);
   window.addEventListener("scroll", _cmTipHide, true);
+  cmhOnViewportChange(_cmTipHide);
   document.addEventListener("mousedown", _cmTipHide, true);
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") _cmTipHide(); }, true);
 }

@@ -189,6 +189,9 @@ function _cmTipShow(el) {
   const vp = cmhViewportRect(6);
   if (top < vp.top) { top = r.bottom + 8; _cmTipEl.classList.add("below"); }
   left = Math.max(vp.left, Math.min(left, vp.right - tw));
+  // Flipping below is not enough on a short visible viewport (a soft keyboard): bound the vertical
+  // axis too, so the tip cannot come to rest behind it.
+  top = Math.max(vp.top, Math.min(top, vp.bottom - th));
   _cmTipEl.style.left = left + "px";
   _cmTipEl.style.top = top + "px";
   const cx = r.left + r.width / 2 - left;
@@ -240,6 +243,7 @@ function setupTooltips() {
   }, true);
   document.addEventListener("focusout", _cmTipHide, true);
   window.addEventListener("scroll", _cmTipHide, true);
+  cmhOnViewportChange(_cmTipHide);
   document.addEventListener("mousedown", _cmTipHide, true);
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") _cmTipHide(); }, true);
 }
