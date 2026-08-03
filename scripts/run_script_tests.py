@@ -35,6 +35,7 @@ import concurrent.futures
 import contextlib
 import difflib
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -423,10 +424,12 @@ _REFRESH = ["update-index", "-q", "--refresh"]
 
 
 def untracked_digest(repo_root, env=None):
-    """`path sha256` for every untracked, non-ignored file, or None when it cannot be listed.
+    """`"path" sha256` for every untracked, non-ignored file, or None when it cannot be listed.
 
     `git status` names an untracked file but says nothing about its CONTENT, so a suite that
-    overwrote one would otherwise look like no change at all.
+    overwrote one would otherwise look like no change at all. The name is JSON-encoded because a
+    path may legally contain a newline on POSIX, and a raw one would let a file name forge a
+    `[probe]` header in the snapshot and misdirect the diff that reports the change (#930).
     """
     if not repo_root:
         return None
@@ -446,7 +449,7 @@ def untracked_digest(repo_root, env=None):
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
         except OSError:
             digest = "<unreadable>"
-        lines.append("%s %s\n" % (name, digest))
+        lines.append("%s %s\n" % (json.dumps(name), digest))
     return "".join(lines)
 
 
@@ -582,7 +585,11 @@ def state_diff(before, after):
         lines = [line for line in lines if not line.startswith("@@")]
         dropped = len(lines) - _DIFF_LINES
         if dropped > 0:
-            lines = lines[:_DIFF_LINES] + ["... and %d more line(s)\n" % dropped]
+            # Head AND tail: a unified diff lists every deletion before the additions, so keeping
+            # only the head of a large rewrite would show what went and never what replaced it.
+            half = _DIFF_LINES // 2
+            lines = (lines[:half] + ["... and %d more line(s)\n" % (len(lines) - 2 * half)]
+                     + lines[-half:])
         chunks.append("[%s]\n%s" % (name, "".join(
             line if line.endswith("\n") else line + "\n" for line in lines)))
     return "".join(chunks)
@@ -613,8 +620,10 @@ def describe_leak(leftovers, before, after):
             "[status], [diff] and [untracked] mean a file in the checkout was created, modified "
             "or deleted - a test writing an ABSOLUTE path into the repository looks like this; "
             "[head], [branch] and [refs] mean this worktree's git state moved. A sibling "
-            "worktree's branch and any concurrent fetch are excluded already, so they are never "
-            "the cause. If you were editing during the run, rerun on a quiet tree; ONLY if you "
+            "worktree's branch, and a fetch that only writes remote-tracking refs, are excluded "
+            "already, so neither is the cause (a fetch that fast-forwards THIS branch is not "
+            "excluded, and shows up under [head]/[refs]). If you were editing during the run, "
+            "rerun on a quiet tree; ONLY if you "
             "must keep editing, pass --no-worktree-check (from the pre-push hook: "
             "PREPUSH_ALLOW_TREE_EDITS=1 git push). Never use it to silence a real leak - this is "
             "the only check that catches a test writing an ABSOLUTE path into the repository."

@@ -158,10 +158,15 @@ class StateDiff(unittest.TestCase):
         self.assertIn("++ new", diff)
 
     def test_a_huge_difference_is_truncated_rather_than_burying_the_report(self):
-        after = "[diff]\n" + "".join("line %d\n" % i for i in range(500))
-        diff = rst.state_diff("[diff]\n", after)
+        # Both ends survive: a unified diff lists every deletion before the additions, so keeping
+        # only the head of a large rewrite would show what went and never what replaced it.
+        before = "[diff]\n" + "".join("old %d\n" % i for i in range(500))
+        after = "[diff]\n" + "".join("new %d\n" % i for i in range(500))
+        diff = rst.state_diff(before, after)
         self.assertLess(len(diff.splitlines()), 60)
         self.assertIn("more line", diff)
+        self.assertIn("-old 0", diff)
+        self.assertIn("+new 499", diff)
 
     def test_an_unreadable_side_is_explained_rather_than_diffed(self):
         self.assertIn("before", rst.state_diff(None, "[status]\n"))
@@ -169,6 +174,27 @@ class StateDiff(unittest.TestCase):
 
 
 class WorktreeState(unittest.TestCase):
+    def test_an_untracked_path_is_one_line_of_the_snapshot(self):
+        # A path may legally contain a newline on POSIX, which would otherwise let a file name
+        # forge a `[probe]` header inside the snapshot and send the diff's reader to the wrong
+        # probe. Encoding the name keeps one file to exactly one line.
+        with tempfile.TemporaryDirectory() as tmp:
+            env = clean_git_env()
+            init = subprocess.run(["git", "-C", tmp, "init", "-q", "-b", "main"],
+                                  capture_output=True, text=True, env=env)
+            if init.returncode != 0:
+                self.skipTest("git is not available")
+            names = ["plain.md"]
+            try:
+                (Path(tmp) / "odd\n[head]\nx.md").write_bytes(b"x\n")
+                names.append("odd\n[head]\nx.md")
+            except OSError:
+                pass  # Windows refuses a newline in a file name; the plain case still pins it.
+            (Path(tmp) / "plain.md").write_bytes(b"x\n")
+            digest = rst.untracked_digest(tmp, env)
+            self.assertEqual(len(digest.splitlines()), len(names), digest)
+            self.assertTrue(all(line.startswith('"') for line in digest.splitlines()), digest)
+
     def test_no_repository_is_unknown_rather_than_clean(self):
         self.assertIsNone(rst.worktree_state(""))
         with tempfile.TemporaryDirectory() as tmp:
