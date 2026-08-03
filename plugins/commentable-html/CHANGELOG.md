@@ -4,6 +4,31 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.470.0] - 2026-08-03
+
+### Fixed
+
+- A sidebar re-render that lands while a modal dialog is open (Manage storage, the clear-all
+  confirm, Help) no longer hands keyboard focus to the side pane BEHIND that dialog's overlay
+  (issue #884). The pane restores an in-progress inline reply/edit draft and its selection across
+  a re-render, and re-focuses that editor when it owned focus beforehand; with an `aria-modal`
+  dialog up, the pane is behind the overlay, so the editor's ownership is vetoed for the whole
+  rebuild and the deferred focus stands down. The veto also applies at DELIVERY time - the editor's
+  deferred focus timer, the post-save hand-back, and an editor's close-restore all stand down while
+  a dialog is up - so a focus armed before the dialog opened cannot land behind it either, and that
+  focus is HELD rather than dropped, so closing the dialog leaves the reviewer on a real control
+  instead of stranded. Focus found BEHIND the overlay (stranded on `<body>`, in the side pane, or
+  moved out into the document by a delete run FROM the dialog) is handed back to it, preferring the
+  dialog's own declared safe default over raw DOM order so a destructive confirm button is never
+  made the Enter-default, skipping any candidate that cannot actually take focus; focus the reviewer
+  genuinely holds inside the dialog, or on chrome that paints above the overlay, is left alone. The
+  rule is keyed on the rendered `aria-modal` overlay, so it covers Manage storage, the clear-all
+  confirm, and Help alike. Without this, a keyboard or screen-reader reviewer could be left typing
+  into an invisible, unreachable textarea outside the modal.
+
+
+
+
 ## [1.437.0] - 2026-08-03
 
 ### Fixed

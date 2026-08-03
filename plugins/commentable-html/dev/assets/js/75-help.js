@@ -26,7 +26,7 @@ function showHelp(restoreEl) {
     '</div>' +
     '<div class="cm-help-search">' +
       _cmIco("search", 15) +
-      '<input type="search" class="cm-help-search-input" placeholder="Search help (e.g. export, diff, shortcuts)..." aria-label="Search help" autocomplete="off" spellcheck="false">' +
+      '<input type="search" class="cm-help-search-input cm-modal-default" placeholder="Search help (e.g. export, diff, shortcuts)..." aria-label="Search help" autocomplete="off" spellcheck="false">' +
     '</div>' +
     '<div class="cm-help-body">' +
       T('Getting started',

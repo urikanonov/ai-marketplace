@@ -859,7 +859,7 @@ function openStorageManager(opts) {
     yes.setAttribute("aria-describedby", msgId); // announce the full warning alongside the label
     const trigLabel = triggerBtn.getAttribute("aria-label");
     if (trigLabel) yes.setAttribute("aria-label", "Confirm - " + trigLabel);
-    const no = el("button", "cm-storage-btn", "Cancel");
+    const no = el("button", "cm-storage-btn cm-modal-default", "Cancel");
     no.type = "button";
     if (trigLabel) no.setAttribute("aria-label", "Cancel - " + trigLabel);
     wrap.appendChild(yes);

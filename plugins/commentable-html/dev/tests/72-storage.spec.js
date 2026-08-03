@@ -1082,3 +1082,268 @@ test("the dialog has a footer Close button that closes it and restores focus (CM
   await expect(page.locator(".cm-storage-manager")).toHaveCount(0);
   expect(await page.evaluate(() => document.activeElement && document.activeElement.id)).toBe("btnToolbarMenu");
 });
+
+// A document that carries BOTH commentable prose and a reviewer note field: typing in the note is
+// the re-render trigger that lands from somewhere the reviewer is not looking (37-notes.js debounce).
+const MODAL_FOCUS_DOC = "<section><p>First paragraph the reviewer deletes from the manager.</p>"
+  + "<p>Second paragraph carrying the open inline reply draft.</p>"
+  + '<div class="cmh-note" data-cmh-note="risk" data-cmh-note-label="Reviewer risk">No blocking risks yet.</div>'
+  + "</section>";
+
+// Let the page's macrotask queue drain, so a deferred focus that WOULD have fired has fired before
+// a "focus did not move" assertion reads document.activeElement.
+async function settleFocus(page) {
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => setTimeout(() => setTimeout(resolve, 0), 0));
+  }));
+}
+
+// Where focus actually is, named rather than compared by element, so a failure says which surface
+// stole it instead of just "not equal".
+function focusSurface(page) {
+  return page.evaluate(() => {
+    const a = document.activeElement;
+    if (!a || a === document.body || a === document.documentElement) return "stranded";
+    if (a.closest(".cm-modal-overlay")) return "in-modal";
+    if (a.closest(".cm-sidebar")) return "sidebar-behind-modal:" + (a.className || a.tagName);
+    return "elsewhere:" + (a.className || a.tagName);
+  });
+}
+
+// Stage the shared setup: two comments, an inline reply draft open on the SECOND one, and the
+// Manage storage dialog open over the side pane.
+async function stageDraftUnderModal(page, key, { manager = true } = {}) {
+  const { html } = stageContent(MODAL_FOCUS_DOC, { key, source: key + ".html" });
+  await page.goto(fileUrl(html));
+  await ready(page);
+  await addTextComment(page, "#commentRoot p:nth-of-type(1)", "the note that gets deleted");
+  await addTextComment(page, "#commentRoot p:nth-of-type(2)", "the note that stays");
+  if (!(await page.evaluate(() => document.body.classList.contains("sidebar-open")))) {
+    await page.click("#btnToggleSidebar");
+  }
+  const keepCid = await page.locator(".cm-card[data-cid]").nth(1).getAttribute("data-cid");
+  const keeper = page.locator('.cm-card[data-cid="' + keepCid + '"]');
+  await keeper.locator(".cm-reply-btn").click();
+  const ta = keeper.locator(".cm-reply-compose textarea");
+  await ta.fill("a reply draft left open");
+  await ta.evaluate((el) => el.setSelectionRange(2, 7, "backward"));
+  if (manager) await openManager(page);
+  return { keeper, ta };
+}
+
+test("deleting a comment from the manager keeps focus in the dialog with an inline draft open (CMH-THREAD-09)", async ({ page }) => {
+  const { ta } = await stageDraftUnderModal(page, "cmh-store-modal-delete");
+  await page.locator(".cm-storage-current").locator("button", { hasText: "Show comments" }).click();
+  const items = page.locator(".cm-storage-comment");
+  await expect(items).toHaveCount(2);
+  // Delete the OTHER comment: the side pane re-renders and re-opens the draft on the surviving card.
+  await items.first().locator(".cm-storage-danger").click();
+  await items.first().locator(".cm-storage-danger", { hasText: "Confirm" }).click();
+  await expect(page.locator(".cm-storage-comment")).toHaveCount(1);
+
+  // The manager is aria-modal, so the re-render must not schedule focus into the pane behind it.
+  await settleFocus(page);
+  expect(await focusSurface(page)).toBe("in-modal");
+  // The draft and its selection survive the rebuild regardless.
+  await expect(ta).toHaveValue("a reply draft left open");
+  expect(await ta.evaluate((el) => [
+    el.selectionStart, el.selectionEnd, el.selectionDirection,
+  ].join(":"))).toBe("2:7:backward");
+});
+
+// Defense in depth, NOT the bug reproduction. The bug's own routes are driven entirely by supported
+// interactions in the tests above and below - a per-comment delete from the dialog, a Reply click
+// whose queued focus outlives the dialog opening, a delete that leaves focus out in the document,
+// and a stranded focus under the clear-all confirm - and each of those was confirmed RED first.
+// This one forces the remaining branch of the ownership snapshot (the editor holding focus outright
+// while a dialog is up) so the render-time veto cannot regress unnoticed behind the delivery-time
+// one; every modal takes focus on open, so that branch has no supported route of its own.
+test("a re-render while a modal is up never hands focus to the pane behind it (CMH-THREAD-09)", async ({ page }) => {
+  const { ta } = await stageDraftUnderModal(page, "cmh-store-modal-render");
+  await ta.evaluate((el) => el.focus());
+  expect(await focusSurface(page)).toContain("sidebar");
+
+  // Typing in a document note field is a real re-render trigger that moves no focus of its own: the
+  // 37-notes.js debounce calls renderComments() from a surface the reviewer is not on.
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-cmh-note="risk"] .cmh-note-input');
+    el.value = "a blocker appeared";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  // The note change card proves the debounced re-render actually ran.
+  await expect(page.locator(".cm-card-note")).toHaveCount(1);
+  await settleFocus(page);
+
+  // Focus belongs to the dialog: it is neither delivered back into the pane nor left stranded on
+  // <body> (which would silently break the dialog's Tab trap).
+  expect(await focusSurface(page)).toBe("in-modal");
+  await expect(ta).toHaveValue("a reply draft left open");
+  expect(await ta.evaluate((el) => [
+    el.selectionStart, el.selectionEnd, el.selectionDirection,
+  ].join(":"))).toBe("2:7:backward");
+
+  // Closing the dialog restores the pre-modal behavior: a re-render still hands focus back to an
+  // editor that genuinely owns it, so the veto is scoped to "a modal is up" and nothing more.
+  await page.locator(".cm-storage-foot").locator("button", { hasText: "Close" }).click();
+  await expect(page.locator(".cm-storage-manager")).toHaveCount(0);
+  await ta.click();
+  await ta.evaluate((el) => el.setSelectionRange(0, 5));
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-cmh-note="risk"] .cmh-note-input');
+    el.value = "a second blocker appeared";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator(".cm-card-note .cmh-note-diff")).toContainText("a second blocker");
+  await expect.poll(async () => page.evaluate(() => {
+    const a = document.activeElement;
+    if (!a || !a.classList.contains("cm-reply-input")) return "not-in-draft";
+    return [a.selectionStart, a.selectionEnd].join(":");
+  })).toBe("0:5");
+});
+
+test("a re-render while a modal is up leaves focus on the dialog control the reviewer is using (CMH-THREAD-09)", async ({ page }) => {
+  await stageDraftUnderModal(page, "cmh-store-modal-keep");
+  // Park focus on a control that is NOT the dialog's first: a hand-back that fired unconditionally
+  // would yank the reviewer to the header Close button mid-task.
+  const toggle = page.locator(".cm-storage-current").locator("button", { hasText: "Show comments" });
+  await toggle.focus();
+  const parked = await page.evaluate(() => document.activeElement.textContent.trim());
+  expect(parked).toContain("Show comments");
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-cmh-note="risk"] .cmh-note-input');
+    el.value = "a blocker appeared";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator(".cm-card-note")).toHaveCount(1);
+  await settleFocus(page);
+  expect(await page.evaluate(() => document.activeElement.textContent.trim())).toContain("Show comments");
+});
+
+test("a deferred editor focus armed before a modal opens is not delivered behind it (CMH-THREAD-09)", async ({ page }) => {
+  const { html } = stageContent(MODAL_FOCUS_DOC, { key: "cmh-store-modal-deferred", source: "modal-deferred.html" });
+  await page.goto(fileUrl(html));
+  await ready(page);
+  await addTextComment(page, "#commentRoot p:nth-of-type(1)", "the note that stays");
+  if (!(await page.evaluate(() => document.body.classList.contains("sidebar-open")))) {
+    await page.click("#btnToggleSidebar");
+  }
+  // Arm the editor's deferred focus and open the dialog in the SAME task, before the timer fires -
+  // the ordering the quota recovery produces, where the manager opens from a microtask that runs
+  // ahead of the editor's setTimeout(0). The caret must not land in the pane behind the overlay.
+  await page.evaluate(() => {
+    document.querySelector(".cm-card[data-cid] .cm-reply-btn").click();
+    document.getElementById("btnStorage").click();
+  });
+  await expect(page.locator(".cm-storage-manager")).toBeVisible();
+  await settleFocus(page);
+  expect(await focusSurface(page)).toBe("in-modal");
+});
+
+test("a stranded focus is handed to the confirm dialog's SAFE default, not its danger button (CMH-THREAD-09)", async ({ page }) => {
+  const { html } = stageContent(MODAL_FOCUS_DOC, { key: "cmh-store-modal-confirm", source: "modal-confirm.html" });
+  await page.goto(fileUrl(html));
+  await ready(page);
+  await addTextComment(page, "#commentRoot p:nth-of-type(1)", "a note to clear");
+  if (!(await page.evaluate(() => document.body.classList.contains("sidebar-open")))) {
+    await page.click("#btnToggleSidebar");
+  }
+  await clickSidebarMore(page, "#btnClearAll");
+  const modal = page.locator(".cm-modal-overlay .cm-modal");
+  await expect(modal).toBeVisible();
+  // Clicking the dialog's own non-focusable prose blurs to <body>; the next re-render must put the
+  // reviewer back on Cancel (the dialog's declared Enter-default), never on the destructive OK that
+  // precedes it in DOM order.
+  await page.evaluate(() => document.activeElement.blur());
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-cmh-note="risk"] .cmh-note-input');
+    el.value = "a blocker appeared";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator(".cm-card-note")).toHaveCount(1);
+  await settleFocus(page);
+  await expect.poll(async () => page.evaluate(() => {
+    const a = document.activeElement;
+    if (!a || !a.closest(".cm-modal-overlay")) return "outside-modal";
+    return a.textContent.trim();
+  })).toBe("Cancel");
+});
+
+test("focus parked in the document behind an open dialog is pulled back into it (CMH-THREAD-09)", async ({ page }) => {
+  await stageDraftUnderModal(page, "cmh-store-modal-behind");
+  // A delete run FROM the dialog can restore focus to a composer's opener out in the document
+  // (closeComposerElement does exactly that) BEFORE the side pane re-renders, so focus can be
+  // outside the modal without ever passing through <body>. The re-render must still reclaim it.
+  await page.evaluate(() => {
+    const p = document.querySelector("#commentRoot p");
+    p.setAttribute("tabindex", "-1");
+    p.focus();
+  });
+  expect(await focusSurface(page)).toContain("elsewhere");
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-cmh-note="risk"] .cmh-note-input');
+    el.value = "a blocker appeared";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator(".cm-card-note")).toHaveCount(1);
+  await settleFocus(page);
+  expect(await focusSurface(page)).toBe("in-modal");
+});
+
+test("the Help dialog gets the same modal focus veto as the storage manager (CMH-THREAD-09)", async ({ page }) => {
+  const { ta } = await stageDraftUnderModal(page, "cmh-store-modal-help", { manager: false });
+  await page.click("#btnHelp");
+  await expect(page.locator(".cm-help-overlay")).toBeVisible();
+  await ta.evaluate((el) => el.focus());
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-cmh-note="risk"] .cmh-note-input');
+    el.value = "a blocker appeared";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator(".cm-card-note")).toHaveCount(1);
+  await settleFocus(page);
+  // Help declares its search field the safe default, the same control it focuses on open.
+  expect(await focusSurface(page)).toBe("in-modal");
+  expect(await page.evaluate(() => document.activeElement.className)).toContain("cm-help-search-input");
+  await expect(ta).toHaveValue("a reply draft left open");
+});
+
+test("closing an inline editor while a modal is up hands focus to the dialog, not the pane (CMH-THREAD-09)", async ({ page }) => {
+  const { ta } = await stageDraftUnderModal(page, "cmh-store-modal-restore");
+  // Cancelling the editor from behind the overlay would normally focus the card's Reply button -
+  // a control the reviewer cannot see. The focus the closing editor releases belongs to the dialog.
+  await ta.evaluate((el) => el.focus());
+  await page.evaluate(() => {
+    document.querySelector(".cm-reply-compose .cm-reply-cancel").click();
+  });
+  await settleFocus(page);
+  expect(await focusSurface(page)).toBe("in-modal");
+});
+
+test("a deferred editor focus held behind a modal is delivered once the dialog closes (CMH-THREAD-09)", async ({ page }) => {
+  const { html } = stageContent(MODAL_FOCUS_DOC, { key: "cmh-store-modal-held", source: "modal-held.html" });
+  await page.goto(fileUrl(html));
+  await ready(page);
+  await addTextComment(page, "#commentRoot p:nth-of-type(1)", "the note that stays");
+  if (!(await page.evaluate(() => document.body.classList.contains("sidebar-open")))) {
+    await page.click("#btnToggleSidebar");
+  }
+  await page.evaluate(() => {
+    document.querySelector(".cm-card[data-cid] .cm-reply-btn").click();
+    document.getElementById("btnStorage").click();
+  });
+  await expect(page.locator(".cm-storage-manager")).toBeVisible();
+  await settleFocus(page);
+  expect(await focusSurface(page)).toBe("in-modal");
+  // The reviewer asked for that caret, so the intent is HELD rather than dropped: once the dialog
+  // closes the focus lands somewhere real - the dialog's own restore target when it has one, and
+  // the waiting editor otherwise - instead of leaving the reviewer stranded on <body> with an open
+  // editor and no focus ring.
+  await page.locator(".cm-storage-foot").locator("button", { hasText: "Close" }).click();
+  await expect(page.locator(".cm-storage-manager")).toHaveCount(0);
+  await expect.poll(async () => page.evaluate(() => {
+    const a = document.activeElement;
+    if (!a || a === document.body || a === document.documentElement) return "stranded";
+    return "on:" + (a.className || a.tagName);
+  })).not.toBe("stranded");
+  await expect(page.locator(".cm-reply-compose textarea")).toHaveCount(1);
+});
