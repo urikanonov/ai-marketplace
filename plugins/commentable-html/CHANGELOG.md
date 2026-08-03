@@ -4,6 +4,30 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.516.0] - 2026-08-03
+
+### Fixed
+
+- The `reviewedSections` block is now resolved against the CONTENT-ROOT BOUNDARY as well as the
+  EMBEDDED COMMENTS region that owns it, on the load side and the export side alike, so a
+  `<script id="reviewedSections">` a document author put INSIDE `#commentRoot` can never answer for
+  the layer's own review state. The region rule already ignored such a decoy in a document that
+  carries its region markers, but it deliberately let a LONE block resolve when the markers are
+  ABSENT (so a file upgraded from before the regions existed keeps working) - and in that shape the
+  only block left could be the authored one, which was then read back as the reader's review marks.
+  A CONTESTED content root (more than one element carrying the content-root id) now resolves
+  nothing at all rather than falling back to document position, matching how the embedded-comments
+  and descriptor blocks already behave, and the reader is told once, in a toast and on the console,
+  which ONE state the document is in - the load warning and the export's download toast now come
+  from a single shared diagnosis, so they name the same cause instead of listing every possible one.
+- A document with no `reviewedSections` block at all gets one inserted again when its content
+  carries an `embeddedComments` decoy. The insert anchors on the `embeddedComments` block the
+  region owns and refused to anchor when more than one element carried that id anywhere - counting
+  authored content the exporter itself ignores, so a single decoy inside the content root
+  permanently stopped the reader's review state from travelling with an exported copy. It now
+  counts only the blocks the layer owns, which is the same set the exporter writes the comments
+  into.
+
 ## [1.515.0] - 2026-08-03
 
 ### Fixed

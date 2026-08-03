@@ -1,0 +1,291 @@
+commit dce37fb857e44c8d538441e1057a705a78e642e0
+Author: t <t@example.com>
+Date:   Mon Aug 3 19:28:52 2026 +0300
+
+    commentable-html: resolve the review-state block against the content-root boundary
+    
+    The reviewedSections lookup answered to the EMBEDDED COMMENTS region alone, and
+    that rule deliberately lets a LONE block resolve when the region markers are
+    ABSENT so an upgraded document keeps working. In that shape an authored
+    <script id="reviewedSections"> inside #commentRoot could be the only candidate
+    left, and it was read back as the reader's review marks. Narrow the candidates
+    to the blocks the content-root boundary accepts (CMH-EXP-17) before the region
+    picks among them, on the load path and the export path alike, so reader and
+    writer keep agreeing; a contested content root now resolves nothing.
+    
+    The fresh-insert anchor now counts only the embeddedComments blocks the layer
+    OWNS, the same set the exporter writes the comments into, so a content-region
+    decoy no longer vetoes the insert for good.
+    
+    Closes #921
+    
+    Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+diff --git a/plugins/commentable-html/CHANGELOG.md b/plugins/commentable-html/CHANGELOG.md
+index 23d674701..034ff0acf 100644
+--- a/plugins/commentable-html/CHANGELOG.md
++++ b/plugins/commentable-html/CHANGELOG.md
+@@ -4,6 +4,29 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
+ [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
+ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
++## [1.516.0] - 2026-08-03
++
++### Fixed
++
++- The `reviewedSections` block is now resolved against the CONTENT-ROOT BOUNDARY as well as the
++  EMBEDDED COMMENTS region that owns it, on the load side and the export side alike, so a
++  `<script id="reviewedSections">` a document author put INSIDE `#commentRoot` can never answer for
++  the layer's own review state. The region rule already ignored such a decoy in a document that
++  carries its region markers, but it deliberately let a LONE block resolve when the markers are
++  ABSENT (so a file upgraded from before the regions existed keeps working) - and in that shape the
++  only block left could be the authored one, which was then read back as the reader's review marks.
++  A CONTESTED content root (more than one element carrying the content-root id) now resolves
++  nothing at all rather than falling back to document position, matching how the embedded-comments
++  and descriptor blocks already behave, and the reader is told once, in a toast and on the console,
++  which state the document is in.
++- A document with no `reviewedSections` block at all gets one inserted again when its content
++  carries an `embeddedComments` decoy. The insert anchors on the `embeddedComments` block the
++  region owns and refused to anchor when more than one element carried that id anywhere - counting
++  authored content the exporter itself ignores, so a single decoy inside the content root
++  permanently stopped the reader's review state from travelling with an exported copy. It now
++  counts only the blocks the layer owns, which is the same set the exporter writes the comments
++  into.
++
+ ## [1.515.0] - 2026-08-03
+ 
+ ### Fixed
+diff --git a/plugins/commentable-html/dev/assets/js/01-config.js b/plugins/commentable-html/dev/assets/js/01-config.js
+index 843053224..7cb87b11b 100644
+--- a/plugins/commentable-html/dev/assets/js/01-config.js
++++ b/plugins/commentable-html/dev/assets/js/01-config.js
+@@ -131,7 +131,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
+ 
+ // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
+ // bump dev/VERSION and rebuild.
+-const CMH_VERSION = "1.515.0";
++const CMH_VERSION = "1.516.0";
+ const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
+ // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
+ // Help About section. Uses the accent color so it matches the theme.
+diff --git a/plugins/commentable-html/dev/assets/js/84-section-review.js b/plugins/commentable-html/dev/assets/js/84-section-review.js
+index e60b59cfb..246ff152c 100644
+--- a/plugins/commentable-html/dev/assets/js/84-section-review.js
++++ b/plugins/commentable-html/dev/assets/js/84-section-review.js
+@@ -199,7 +199,10 @@ function computeSectionStates() {
+ // by getElementById() (which binds the FIRST match in document order). A decoy element carrying the
+ // same id ahead of the real one - in a hand-authored file, or after a botched edit - would otherwise
+ // be read on load and written on export, while the region-owned block silently kept its stale
+-// contents. validate.py rejects the duplicate id; this keeps the runtime correct on a document that
++// contents. The candidates the region chooses among are first narrowed to the ones the CONTENT-ROOT
++// BOUNDARY accepts (CMH-EXP-17), so authored content inside `#commentRoot` is out before ownership
++// is even asked - which is what closes the "absent markers resolve a lone block" concession below.
++// validate.py rejects the duplicate id; this keeps the runtime correct on a document that
+ // never met the validator.
+ const REVIEW_BLOCK_ID = "reviewedSections";
+ const REVIEW_REGION = "EMBEDDED COMMENTS";
+@@ -253,6 +256,16 @@ function _cmhElementsWithId(doc, id) {
+   return Array.prototype.slice.call(doc.querySelectorAll('script[id="' + id + '"]'))
+     .filter(function (el) { return !_cmhInInertHost(el); });
+ }
++// The carriers the layer may call its OWN, by the CONTENT-ROOT BOUNDARY (CMH-EXP-17): a script
++// inside `#commentRoot` is authored content and is never one of the layer's blocks, and a CONTESTED
++// boundary (more than one element carrying the content-root id) accepts nothing at all. The region
++// rule below then picks which of those the EMBEDDED COMMENTS region owns, so the two rules compose
++// rather than compete - the boundary is what closes the region rule's one concession, that a LONE
++// block still resolves when the region markers are ABSENT.
++function _cmhLayerScriptsWithId(doc, id) {
++  const layer = cmhLayerBlocks(doc, id);
++  return _cmhElementsWithId(doc, id).filter(function (el) { return layer.indexOf(el) !== -1; });
++}
+ // The element the region delimited by `bounds` owns for `id`, or null when it cannot be resolved
+ // unambiguously. A LONE match still resolves when the region markers are ABSENT (a document
+ // upgraded from before the feature existed keeps working); malformed markers never resolve. With
+@@ -260,7 +273,7 @@ function _cmhElementsWithId(doc, id) {
+ // long as exactly one block sits inside the region - that is the whole point, so do not "fix" this
+ // into rejecting every document that carries a duplicate id.
+ function _cmhOwnedById(doc, id, bounds) {
+-  const all = _cmhElementsWithId(doc, id);
++  const all = _cmhLayerScriptsWithId(doc, id);
+   if (!all.length) return null;
+   if (!bounds || bounds.state === "malformed") return null;
+   if (bounds.state === "absent") return all.length === 1 ? all[0] : null;
+@@ -297,7 +310,8 @@ function _cmhWarnUnownedReviewBlock() {
+   if (_reviewBlockWarned) return;
+   _reviewBlockWarned = true;
+   const msg = "This file carries a " + REVIEW_BLOCK_ID + " block that its " + REVIEW_REGION
+-    + " region does not own (a duplicated id, a block outside the region, or broken region markers),"
++    + " region does not own (a duplicated id, a block inside the content root or otherwise outside"
++    + " the region, more than one element carrying the content-root id, or broken region markers),"
+     + " so its saved section-review marks are ignored. Run validate.py on the file.";
+   try { console.warn("commentable-html: " + msg); } catch (e) { /* console is optional */ }
+   if (typeof showToast === "function") showToast(msg, { alert: true, duration: 8000 });
+@@ -503,7 +517,9 @@ if (typeof window !== "undefined") {
+ // round-tripped through DOMParser (not a string regex) so the reviewedSections id is matched only
+ // as a real DOM element, never as tag text that appears inside the inlined layer JS (a self-
+ // contained Shareable/Offline copy inlines this runtime, whose comments mention the block by name),
+-// and the element written is the one the EMBEDDED COMMENTS region owns, never the first id match.
++// and the element written is the one the EMBEDDED COMMENTS region owns among the blocks the
++// content-root boundary accepts (CMH-EXP-17), never the first id match - so the export rewrites
++// exactly the block a reload reads back.
+ // Returns {html, note}: when nothing can be attributed to the region the state is left out rather
+ // than written to a guess, and `note` says why. showToast REPLACES the visible message, so the
+ // caller (which owns the single "Downloaded ..." toast) appends the note to it rather than this
+@@ -535,8 +551,13 @@ function _applyReviewStateToHtml(html) {
+     // markers stay in localStorage, they just do not travel with this copy.
+     const carriers = _cmhElementsWithId(doc, REVIEW_BLOCK_ID).length;
+     if (carriers) {
++      const own = _cmhLayerScriptsWithId(doc, REVIEW_BLOCK_ID).length;
+       const lead = " Section-review state was left out: this file ";
+-      if (carriers > 1) kept.note = lead + "carries " + carriers + " " + REVIEW_BLOCK_ID + " blocks.";
++      if (cmhContentRootState(doc).contested) kept.note = lead + "has more than one element carrying the"
++        + " content-root id, so the layer cannot tell its own blocks from authored content.";
++      else if (!own) kept.note = lead + "keeps every " + REVIEW_BLOCK_ID
++        + " block inside the content root, where authored content lives.";
++      else if (own > 1) kept.note = lead + "carries " + own + " " + REVIEW_BLOCK_ID + " blocks.";
+       else if (bounds.state === "malformed") kept.note = lead + "does not have exactly one ordered pair of "
+         + REVIEW_REGION + " region markers.";
+       else kept.note = lead + "keeps its " + REVIEW_BLOCK_ID + " block outside its " + REVIEW_REGION + " region.";
+@@ -545,10 +566,12 @@ function _applyReviewStateToHtml(html) {
+     }
+     // No block at all (an older document): insert one right after the region-owned embeddedComments
+     // block so it sits inside the EMBEDDED COMMENTS region and Plain export strips it for free. A
+-    // document that carries MORE than one embeddedComments block is refused rather than anchored on
+-    // a guess: the comments themselves are rewritten into the FIRST such block (65-export-shareable),
+-    // so anchoring elsewhere would split the state of one file across two blocks.
+-    const ec = _cmhElementsWithId(doc, "embeddedComments").length === 1
++    // document that carries MORE than one embeddedComments block the layer OWNS is refused rather
++    // than anchored on a guess: the comments themselves are rewritten into the FIRST such block
++    // (65-export-shareable), so anchoring elsewhere would split the state of one file across two
++    // blocks. The count is the layer's own, by the same boundary the exporter uses, so a decoy
++    // inside the content root cannot veto the insert.
++    const ec = _cmhLayerScriptsWithId(doc, "embeddedComments").length === 1
+       ? _cmhOwnedById(doc, "embeddedComments", bounds) : null;
+     if (!ec || !ec.parentNode) {
+       kept.note = " Section-review state was left out: this file has no " + REVIEW_BLOCK_ID
+diff --git a/plugins/commentable-html/dev/spec/20-exports.md b/plugins/commentable-html/dev/spec/20-exports.md
+index b2d49b0a6..1f5337e77 100644
+--- a/plugins/commentable-html/dev/spec/20-exports.md
++++ b/plugins/commentable-html/dev/spec/20-exports.md
+@@ -68,7 +68,7 @@
+ | --- | --- | --- |
+ | CMH-EXP-14 | The whole-document `DOMParser -> doc.documentElement.outerHTML` round-trip used in the export/apply paths (`36-checklist.js`, `37-notes.js`, `65-export-shareable.js`, `66-export-plain.js`, `68-export-offline.js`, `84-section-review.js`) is safe only because comment/state data never enters it as markup and host HTML is a trusted, unsanitized boundary (CMH-SEC-01). Every `parseFromString()` call site feeds only the trusted document `html` string, never a comment `note`, `quote`, `author`, or any other user-supplied field. If host-HTML sanitization is ever added upstream, this round-trip must be re-audited for serialization-differential stored XSS before landing. | `tests/test_export_domparser_guard.py` - `test_domparser_call_sites_never_take_comment_fields`, `test_domparser_call_sites_use_the_trusted_html_variable`, `test_domparser_present_only_in_expected_partials`; source: `assets/js/36-checklist.js` - `_applyChecklistStateToHtml()`, `assets/js/37-notes.js` - `_applyNoteStateToHtml()`, `assets/js/65-export-shareable.js` - `_applyWidgetLayoutToHtml()`, `assets/js/68-export-offline.js` - `_offlineDocFromHtml()` |
+ | CMH-EXP-16 | The embedded-comments block and the layer descriptor beside it are resolved as INFRASTRUCTURE, never by scanning document text: a tag walk that follows the HTML tokenizer (it consumes comments - including the empty `<!-->` form and a `--!>` terminator - DOCTYPEs, bogus declarations and processing instructions; skips the TEXT content of raw-text elements, ends one only on an exact end tag, and follows the script-data escaped and double-escaped states behind the `<!--<script>` idiom; treats `<template>` content as the inert fragment `getElementById` cannot see, nesting included; and tokenizes tag names and attributes on ASCII whitespace only) finds the `<script>` whose PARSED `id` matches, and the result is CROSS-CHECKED against the browser's own parse of the same source before anything is spliced by offsets. Resolution requires the walk and the parsed document to AGREE on how many scripts own the id - and the block a reader resolves must be one of those scripts - so a non-script element shadowing the id, or any walk/parser disagreement, resolves to nothing instead of being spliced on a guess; WHICH of several owners is the layer's own block is decided by the content-root boundary (CMH-EXP-17), never by document position. The layer's own source is part of every document and necessarily spells that markup, so a text scan was answered by the runtime itself - the "make sure the EMBEDDED COMMENTS region is present" guard could never fire, a document that had genuinely lost the region silently exported a copy whose runtime source had been overwritten mid-function with the comments JSON, and the same defect in the descriptor path overwrote a quarter of a megabyte of runtime on every Offline export of such a document. A document missing the block now fails loudly (Save, Shareable, Standalone, and Offline alike) and downloads nothing, with a distinct message for "region absent" and "present but could not be located reliably"; a mention that exists only inside content a browser parses as text never resolves; and `_getBaseHtml` accepts a fetched on-disk copy only when a real block resolves in it, falling back to the DOM snapshot otherwise. A document with no descriptor block at all has one re-anchored to its version `<meta>` (matched as a parser would, so a DOM-serialized tag still matches) and fails loudly if there is nothing to anchor to. | `tests/57-embedded-comments-guard.spec.js` - `Export as Shareable fails loudly when the embedded-comments block is missing (CMH-EXP-16)`, `Export as Shareable from a nonshareable document fails loudly too (CMH-EXP-16)`, `an ambiguous document is refused rather than spliced on a guess (CMH-EXP-16)`, `Export Offline fails loudly too when the embedded-comments block is missing (CMH-EXP-16)`, `the embedded-comments block is resolved structurally, never from text a browser parses as content (CMH-EXP-16)`, `a fetched copy is accepted only when it really carries the block (CMH-EXP-16)`, `a document that lost its layer descriptor never has its runtime overwritten (CMH-EXP-16)`; source: `assets/js/65-export-shareable.js` - `_cmhForEachTag()`, `_cmhVerifiedScriptRange()`, `_buildSavedHtml()`, `_getBaseHtml()`, `_retargetLayerDescriptor()` |
+-| CMH-EXP-17 | The layer's own data blocks - the embedded-comments and handled-ids blocks and the `commentableHtmlLayer` descriptor - are resolved against the CONTENT-ROOT BOUNDARY rather than by document position: an element owning one of those reserved ids INSIDE `#commentRoot` is authored content and is never the layer's block, so the first owner OUTSIDE it is the one the layer means. The same boundary is applied on the READ side (the embedded comments, the handled ids that PRUNE live comments, and the descriptor read behind the Offline badge) and on the WRITE side (the export's block resolution). The review-state block answers to the STRICTER region-ownership rule instead (CMH-REVIEW-16), which is the same principle carried further: authored content can never be mistaken for the layer's own state, so an export always rewrites exactly the block a reload reads back; scoping only the writes would be worse than either alone, leaving the runtime reading a decoy the export no longer updates. The boundary has three states and the difference is load-bearing: exactly one content root resolves normally; NO content root means nothing delimits an untrusted region, so the plain tree-order answer stands; and a CONTESTED boundary - more than one element carrying the content-root id, which is how a planted wrapper would re-point it - resolves NOTHING, so the export refuses loudly and a reader admits no block rather than falling back to position. When elements carry a reserved id but none resolve, the runtime says so once per id on the console and the export names which of those states it hit, so review state can never silently vanish. A content-region decoy is therefore never written to, never read from, and never a substitute for a block the document has LOST. This is a RUNTIME rule: the Python authoring tools (`extract_comments.py`, `mark_handled.py`, `mark_reviewed.py`) and `validate.py --strict` still require the reserved ids to be unique across the whole document, so a document carrying a content-region decoy round-trips in the browser but is rejected by those tools - a deliberate, recorded divergence rather than an accident. ONE scripting model answers everywhere: a `<noscript>` descendant is excluded from both the boundary and the owner set, because the layer only runs with scripting ENABLED - where a `<noscript>` body is text that holds no elements - while `DOMParser` parses with scripting DISABLED and does build them; counting them would let one inert block make the export disagree with the runtime that reads the file back, and would let authored content veto every future export. The walk-to-parse mapping behind the write side is established by IDENTITY (a probe attribute stamped into a throwaway copy of the source) whenever more than one script owns the id, because the walk reports SOURCE order while a parsed document reports TREE order and equal bodies cannot tell a match from a swap. | `tests/58-reserved-block-region.spec.js` - `a content-region decoy that precedes the real block never receives the comments (CMH-EXP-17)`, `a content-region decoy is not a substitute for a missing block (CMH-EXP-17)`, `a contested content root resolves nothing rather than falling back to position (CMH-EXP-17)`, `a content-region descriptor decoy cannot declare the document offline (CMH-EXP-17)`, `a descriptor decoy that PRECEDES the real block loses on both sides (CMH-EXP-17)`, `a content-region handled-ids decoy cannot delete a reviewer's comment (CMH-EXP-17)`, `two blocks with identical bodies are told apart by identity, not position (CMH-EXP-17)`; `tests/57-embedded-comments-guard.spec.js` - `the embedded-comments block is resolved structurally, never from text a browser parses as content (CMH-EXP-16)`; source: `assets/js/01-config.js` - `cmhContentRootState()`, `cmhLayerBlocks()`, `cmhLayerBlock()`, `cmhWarnUnresolvedBlock()`; `assets/js/65-export-shareable.js` - `_cmhVerifiedScriptRanges()` |
++| CMH-EXP-17 | The layer's own data blocks - the embedded-comments, handled-ids and review-state blocks and the `commentableHtmlLayer` descriptor - are resolved against the CONTENT-ROOT BOUNDARY rather than by document position: an element owning one of those reserved ids INSIDE `#commentRoot` is authored content and is never the layer's block, so the first owner OUTSIDE it is the one the layer means. The same boundary is applied on the READ side (the embedded comments, the handled ids that PRUNE live comments, the review markers baked into a shared copy, and the descriptor read behind the Offline badge) and on the WRITE side (the export's block resolution, including the review-state write and the block a fresh review-state insert is anchored on). The review-state block answers to the region-ownership rule (CMH-REVIEW-16) on TOP of this boundary rather than instead of it: the boundary narrows the candidates to the layer's own blocks and the region then says which of those it owns, which is what closes that rule's one concession - a LONE block still resolves when the region markers are ABSENT, and without the boundary an authored decoy could be that lone block. Authored content can never be mistaken for the layer's own state, so an export always rewrites exactly the block a reload reads back; scoping only the writes would be worse than either alone, leaving the runtime reading a decoy the export no longer updates. The boundary has three states and the difference is load-bearing: exactly one content root resolves normally; NO content root means nothing delimits an untrusted region, so the plain tree-order answer stands; and a CONTESTED boundary - more than one element carrying the content-root id, which is how a planted wrapper would re-point it - resolves NOTHING, so the export refuses loudly and a reader admits no block rather than falling back to position. When elements carry a reserved id but none resolve, the runtime says so once per id on the console and the export names which of those states it hit, so review state can never silently vanish. A content-region decoy is therefore never written to, never read from, and never a substitute for a block the document has LOST. This is a RUNTIME rule: the Python authoring tools (`extract_comments.py`, `mark_handled.py`, `mark_reviewed.py`) and `validate.py --strict` still require the reserved ids to be unique across the whole document, so a document carrying a content-region decoy round-trips in the browser but is rejected by those tools - a deliberate, recorded divergence rather than an accident. ONE scripting model answers everywhere: a `<noscript>` descendant is excluded from both the boundary and the owner set, because the layer only runs with scripting ENABLED - where a `<noscript>` body is text that holds no elements - while `DOMParser` parses with scripting DISABLED and does build them; counting them would let one inert block make the export disagree with the runtime that reads the file back, and would let authored content veto every future export. The walk-to-parse mapping behind the write side is established by IDENTITY (a probe attribute stamped into a throwaway copy of the source) whenever more than one script owns the id, because the walk reports SOURCE order while a parsed document reports TREE order and equal bodies cannot tell a match from a swap. | `tests/58-reserved-block-region.spec.js` - `a content-region decoy that precedes the real block never receives the comments (CMH-EXP-17)`, `a content-region decoy is not a substitute for a missing block (CMH-EXP-17)`, `a contested content root resolves nothing rather than falling back to position (CMH-EXP-17)`, `a content-region descriptor decoy cannot declare the document offline (CMH-EXP-17)`, `a descriptor decoy that PRECEDES the real block loses on both sides (CMH-EXP-17)`, `a content-region handled-ids decoy cannot delete a reviewer's comment (CMH-EXP-17)`, `two blocks with identical bodies are told apart by identity, not position (CMH-EXP-17)`; `tests/90-section-review.spec.js` - `a content-region reviewedSections decoy is never read as the layer's block (CMH-EXP-17)`, `a contested content root leaves the review block unresolved (CMH-EXP-17)`, `a content-region embeddedComments decoy does not veto the review-state insert (CMH-EXP-17)`; `tests/57-embedded-comments-guard.spec.js` - `the embedded-comments block is resolved structurally, never from text a browser parses as content (CMH-EXP-16)`; source: `assets/js/01-config.js` - `cmhContentRootState()`, `cmhLayerBlocks()`, `cmhLayerBlock()`, `cmhWarnUnresolvedBlock()`; `assets/js/65-export-shareable.js` - `_cmhVerifiedScriptRanges()`; `assets/js/84-section-review.js` - `_cmhLayerScriptsWithId()`, `_cmhOwnedById()`, `_applyReviewStateToHtml()` |
+ | CMH-EXP-18 | EVERY export that writes a copy of the document - Save and Shareable as much as Standalone and Offline - retargets the block a reader resolves plus every ADDITIONAL descriptor copy in the layer's own region, while each is inert data, so no reserved-id copy survives declaring a mode that disagrees with the document it is in - rewriting only the first left the other stale, and which one a tool believed came down to document order. The inert-data test (no `src`, a non-runnable type) is what keeps that from becoming a licence to clobber: an author's RUNNABLE script that borrows the id is left alone - and when the block a reader resolves is itself runnable the export REFUSES rather than replacing the author's code with JSON, since overwriting it would be the same unrequested mutation CMH-EXP-19 refuses to make and would leave a classic script whose body is now JSON. Each retargeted block keeps the attributes it was authored with (only its body is replaced), copies are spliced last-first and only ever backwards, and a copy inside the content root is authored content and is returned byte-intact. The mode written on the Save path is the document's OWN (a re-saved Offline copy stays Offline, CMH-OFFLINE-03): the restamp is a consistency pass, never a mode change. A document whose only owner of the descriptor id sits inside the content root is REFUSED rather than given a freshly minted second descriptor, which would violate the uniqueness the strict validator requires. | `tests/58-reserved-block-region.spec.js` - `no surviving descriptor copy disagrees with the exported mode, and author scripts are left alone (CMH-EXP-18)`, `a document whose only descriptor id sits in content is refused, not given a second one (CMH-EXP-18)`, `a runnable author script is never overwritten with descriptor JSON (CMH-EXP-18)`, `a contested content root refuses the descriptor restamp too (CMH-EXP-18)`, `a plain Save leaves no stale descriptor copy behind either (CMH-EXP-18)`; source: `assets/js/65-export-shareable.js` - `_retargetLayerDescriptor()`, `_cmhIsInertDataScript()` |
+ | CMH-EXP-19 | Shareable (and the Save and Standalone paths that share its builder) deliberately does NOT neutralize a script that borrows a reserved commentable-html data id, unlike Offline - which retypes such a script to inert JSON (CMH-OFFLINE-04) precisely because its zero-network promise requires the egress strips' reserved-id exemption to be EARNED. Shareable makes no such promise and preserves author scripts by design, so retyping one would be a silent, unrequested mutation of the author's document: the decoy travels untouched and still runnable. What protects a Shareable export is the CMH-EXP-17 boundary - the decoy cannot displace the layer's own blocks - not a rewrite of the author's script. Plain export honors the same decision: its data-leak safety net makes the leak DECISION by that boundary (a document-wide text probe survives only as a fast skip for a document that mentions none of the reserved ids), so authored content carrying a reserved id cannot abort an otherwise clean plain export, and it removes EVERY descriptor copy the layer owns (an export that declares a mode may maintain more than one) rather than the first text match, so a plain copy never still declares itself a commentable-html document (a contested boundary still counts every owner as leaked, so an ambiguous document fails closed). | `tests/58-reserved-block-region.spec.js` - `Shareable keeps a reserved-id decoy runnable rather than neutralizing it (CMH-EXP-19)`, `Plain export removes every descriptor copy the layer owns (CMH-EXP-19)`; source: `assets/js/65-export-shareable.js` - `_buildSavedHtml()`; `assets/js/66-export-plain.js` - `_cmhPlainLeakedBlocks()`; `assets/js/68-export-offline.js` - `_neutralizeOfflineReservedDataScripts()` |
+ 
+diff --git a/plugins/commentable-html/dev/spec/35-review.md b/plugins/commentable-html/dev/spec/35-review.md
+index ebf255ec3..17d0a7efc 100644
+--- a/plugins/commentable-html/dev/spec/35-review.md
++++ b/plugins/commentable-html/dev/spec/35-review.md
+@@ -17,5 +17,5 @@
+ | CMH-REVIEW-13 | Export bakes only markers whose heading still exists in the current document: a marker orphaned because its heading was removed is pruned from the `reviewedSections` block, so a shared Shareable/Offline copy never leaks stale review metadata (headingText, reviewedAt, hash) for a section that no longer exists. | `tests/90-section-review.spec.js` - `export prunes orphan markers whose heading no longer exists (CMH-REVIEW-13)` |
+ | CMH-REVIEW-14 | Each side-TOC review-filter button carries a live per-state count rendered as an inline `(N)` beside its label (`All` shows the total section count; the four states partition it, so reviewed+unreviewed+commented+changed equals All); the count updates on every `refreshReviewUI` as sections are marked reviewed, commented, or changed. The count span is `aria-hidden` and the number is folded into each button's `aria-label` so it is announced once. The label and count stay on one line per button (`white-space: nowrap`) and the group wraps into rows without horizontal overflow even with two-digit counts. | `tests/90-section-review.spec.js` - `each review-filter button shows a live per-state count that stays on one line (CMH-REVIEW-14)` |
+ | CMH-REVIEW-15 | Marking a section reviewed checks that the marker actually persisted; if the write fails (localStorage full or blocked) it warns the reader with an assertive toast ("Could not persist reviewing this section ... Use Export as Shareable to keep the change") instead of silently painting `Reviewed` and letting it revert on reload - symmetric with the un-review warning in `clearSectionReviewed()`. | `tests/90-section-review.spec.js` - `marking a section reviewed warns when the mark cannot be persisted (CMH-REVIEW-15)` |
+-| CMH-REVIEW-16 | The `reviewedSections` block is resolved by the EMBEDDED COMMENTS region that OWNS it - the region's own BEGIN/END comment markers plus document order - not by the first `getElementById` match, on BOTH the load and the export path, and only a `<script>` can carry it (exactly what the validator's shape check accepts, so the two cannot disagree about what the block is). A decoy block carrying the same id elsewhere is ignored on load and left with its own contents on export, while the region-owned block keeps taking the state; a document that owns no such block (an older file) still gets a fresh one inserted after its region-owned `embeddedComments` block. Resolution is deliberately conservative: markers that are ABSENT still let a LONE block resolve (a file upgraded from before the feature existed keeps working), MALFORMED markers (not exactly one ordered pair document-wide, which is also a validator error, so a stray authored comment that quotes a marker line disables review rather than corrupting it) resolve nothing, and `<noscript>` contents are skipped on both paths because `DOMParser` (scripting disabled) parses them as real nodes while the live document does not - so the export can never write into a block the reader's browser treats as text. When nothing can be attributed to the region the export declines - it neither overwrites the decoy nor invents a third block, and it also declines to anchor a new block when more than one `embeddedComments` block exists, since the comments themselves are written into the first one - and the reason travels back to the caller so the single download toast carries it (a separate toast would be replaced by it); the load path warns the reader once, in a toast and in the console, instead of silently showing every section unreviewed. `validate.py` reports both failure shapes - a duplicated `reviewedSections` id (like the other reserved state-block ids, CMH-VAL-01) and an id the region does not own (outside it, or not on a `<script>`) - and `mark_reviewed.py` refuses to write a block the region does not own. | `tests/90-section-review.spec.js` - `a decoy reviewedSections block cannot shadow the region-owned review state (CMH-REVIEW-16)`, `a noscript decoy is invisible to both the load and the export (CMH-REVIEW-16)`, `absent region markers still resolve a lone block, malformed ones resolve nothing (CMH-REVIEW-16)`, `a document with no block gets one inserted inside the region (CMH-REVIEW-16)`, `export declines to bake review state when no block can be attributed to the region (CMH-REVIEW-16)`; `tests/test_validate_layer.py` - `ReviewedSectionsTests.test_duplicate_reviewed_sections_block_flagged`, `ReviewedSectionsTests.test_reviewed_sections_block_outside_the_region_flagged`; `tests/test_mark_reviewed.py` - `MarkReviewedTests.test_a_block_outside_the_embedded_comments_region_is_refused`, `MarkReviewedTests.test_malformed_region_markers_are_refused`, `MarkReviewedTests.test_a_block_inside_the_region_is_still_written` |
++| CMH-REVIEW-16 | The `reviewedSections` block is resolved by the EMBEDDED COMMENTS region that OWNS it - the region's own BEGIN/END comment markers plus document order - among the blocks the CONTENT-ROOT BOUNDARY accepts (CMH-EXP-17), not by the first `getElementById` match, on BOTH the load and the export path, and only a `<script>` can carry it (exactly what the validator's shape check accepts, so the two cannot disagree about what the block is). A decoy block carrying the same id elsewhere is ignored on load and left with its own contents on export, while the region-owned block keeps taking the state; a document that owns no such block (an older file) still gets a fresh one inserted after its region-owned `embeddedComments` block. Resolution is deliberately conservative: markers that are ABSENT still let a LONE block resolve (a file upgraded from before the feature existed keeps working) - safe only because the boundary already dropped every candidate inside the content root, so an authored decoy can never BE that lone block, and a CONTESTED content root drops them all and resolves nothing, MALFORMED markers (not exactly one ordered pair document-wide, which is also a validator error, so a stray authored comment that quotes a marker line disables review rather than corrupting it) resolve nothing, and `<noscript>` contents are skipped on both paths because `DOMParser` (scripting disabled) parses them as real nodes while the live document does not - so the export can never write into a block the reader's browser treats as text. When nothing can be attributed to the region the export declines - it neither overwrites the decoy nor invents a third block, and it also declines to anchor a new block when more than one `embeddedComments` block the layer OWNS exists (a decoy inside the content root is not one of them, so it cannot veto the insert), since the comments themselves are written into the first one - and the reason travels back to the caller so the single download toast carries it, naming which state it hit (blocks kept inside the content root, a contested content root, several owned blocks, malformed markers, or a block outside the region) (a separate toast would be replaced by it); the load path warns the reader once, in a toast and in the console, instead of silently showing every section unreviewed. `validate.py` reports both failure shapes - a duplicated `reviewedSections` id (like the other reserved state-block ids, CMH-VAL-01) and an id the region does not own (outside it, or not on a `<script>`) - and `mark_reviewed.py` refuses to write a block the region does not own. | `tests/90-section-review.spec.js` - `a decoy reviewedSections block cannot shadow the region-owned review state (CMH-REVIEW-16)`, `a content-region reviewedSections decoy is never read as the layer's block (CMH-EXP-17)`, `a contested content root leaves the review block unresolved (CMH-EXP-17)`, `a content-region embeddedComments decoy does not veto the review-state insert (CMH-EXP-17)`, `a noscript decoy is invisible to both the load and the export (CMH-REVIEW-16)`, `absent region markers still resolve a lone block, malformed ones resolve nothing (CMH-REVIEW-16)`, `a document with no block gets one inserted inside the region (CMH-REVIEW-16)`, `export declines to bake review state when no block can be attributed to the region (CMH-REVIEW-16)`; `tests/test_validate_layer.py` - `ReviewedSectionsTests.test_duplicate_reviewed_sections_block_flagged`, `ReviewedSectionsTests.test_reviewed_sections_block_outside_the_region_flagged`; `tests/test_mark_reviewed.py` - `MarkReviewedTests.test_a_block_outside_the_embedded_comments_region_is_refused`, `MarkReviewedTests.test_malformed_region_markers_are_refused`, `MarkReviewedTests.test_a_block_inside_the_region_is_still_written` |
+ | CMH-REVIEW-17 | Section hashes are taken over the CANONICAL (authored source-order) content, exactly like the whole-document hash, so a reader's persisted table sort can neither flip an already-reviewed section to "changed" nor store a sorted-order hash when a section is marked reviewed while a table is sorted (which would then flip when the sort is cleared). The canonical order is READ, never restored by moving live rows: `_cmhScanSections()` walks the content root itself and, while a sort is active, visits a `<tbody>`'s rows in stamped `data-cmh-row` order permuted through their existing slots (so the authored inter-row whitespace still counts exactly once), leaving the DOM untouched. That matters because the scan runs on every sidebar/badge refresh: mutating the rows there would blur a focused control, collapse a live text selection mid-comment, and churn the table-scroll and widget observers. The runtime OWNS that index - `_indexTableRows()` re-stamps every sortable row with its position in the FILE before any persisted sort is applied - and only a body whose rows all carry the stamp is reordered, so an authored or stale `data-cmh-row` cannot silently re-order a table away from the source the Python hasher reads. | `tests/90-section-review.spec.js` - `a persisted table sort does not flip a reviewed section to changed (CMH-REVIEW-17)`, `computing review state never reorders the reader's rows or steals focus (CMH-REVIEW-17)`; source: `assets/js/84-section-review.js` - `_cmhScanSections()`, `_cmhCanonicalChildNodes()`, `computeSectionStates()` |
+diff --git a/plugins/commentable-html/dev/tests/90-section-review.spec.js b/plugins/commentable-html/dev/tests/90-section-review.spec.js
+index 4cfff184b..f39b02749 100644
+--- a/plugins/commentable-html/dev/tests/90-section-review.spec.js
++++ b/plugins/commentable-html/dev/tests/90-section-review.spec.js
+@@ -31,6 +31,16 @@ async function openReviewDoc(page) {
+ const stateOf = (page, id) => page.evaluate((i) => window.__cmhReview.stateOf(i), id);
+ const refresh = (page) => page.evaluate(() => window.__cmhReview.refresh());
+ 
++const REVIEW_SCRIPT_OPEN = '<script type="application/json" id="reviewedSections">';
++const REVIEW_BLOCK_RE = /<script[^>]*type="application\/json"[^>]*id="reviewedSections"[^>]*>[\s\S]*?<\/script>/;
++// A baked marker whose hash cannot match the live section: reading it at all shows as "changed",
++// so "unreviewed" means the block it came from was not read.
++function reviewMarkerJson(id) {
++  return JSON.stringify({
++    [id]: { hash: "deadbeef", headingText: "Baked", level: 2, reviewedAt: "2020-01-01T00:00:00.000Z" },
++  });
++}
++
+ test.describe("section review tracking", () => {
+   test("marking a heading reviewed shows the badge and toggling clears it (CMH-REVIEW-01)", async ({ page }) => {
+     await openReviewDoc(page);
+@@ -535,6 +545,80 @@ test.describe("section review tracking", () => {
+     expect(Object.keys(blocks[0])).toEqual(["rv-beta"]); // the decoy's bytes are untouched
+   });
+ 
++  test("a content-region reviewedSections decoy is never read as the layer's block (CMH-EXP-17)", async ({ page }) => {
++    await installClipboardCapture(page);
++    await denyExternalNetwork(page);
++    await page.setViewportSize({ width: 1400, height: 900 });
++    // The decoy is authored CONTENT: it sits inside #commentRoot, where the layer's own state
++    // blocks never live. Strip the layer's own block AND the region markers, because ABSENT markers
++    // still let a LONE block resolve (an upgraded document keeps working) - so the content-root
++    // boundary is the only thing left between authored content and the reader's review state.
++    const decoy = REVIEW_SCRIPT_OPEN + reviewMarkerJson("rv-beta") + "</script>";
++    const { html } = stageContent(CONTENT + decoy, { key: "cmh-review-root-decoy", source: "root-decoy.html" });
++    const staged = fs.readFileSync(html, "utf8");
++    const owned = staged.match(REVIEW_BLOCK_RE);
++    expect(owned).toBeTruthy();
++    const stripped = staged.replace(owned[0], "")
++      .replace(/<!--[^>]*?BEGIN: commentable-html - EMBEDDED COMMENTS[\s\S]*?-->/, "")
++      .replace(/<!--\s*END: commentable-html - EMBEDDED COMMENTS\s*-->/, "");
++    expect(stripped, "the decoy is the only remaining carrier").toContain("rv-beta");
++    fs.writeFileSync(html, stripped);
++    await page.goto(fileUrl(html));
++    await ready(page);
++    expect(await stateOf(page, "rv-beta")).toBe("unreviewed"); // the decoy's marker is not read
++    await expect(page.locator("#toast")).toContainText("does not own");
++  });
++
++  test("a contested content root leaves the review block unresolved (CMH-EXP-17)", async ({ page }) => {
++    await installClipboardCapture(page);
++    await denyExternalNetwork(page);
++    await page.setViewportSize({ width: 1400, height: 900 });
++    // A second element carrying the content-root id is how a planted wrapper would re-point the
++    // boundary, so there is no safe answer: the layer cannot tell its own block from authored
++    // content and admits none, rather than falling back to the position rule the boundary replaces.
++    const { html } = stageContent(CONTENT + '<div id="commentRoot" hidden></div>',
++      { key: "cmh-review-contested", source: "contested.html" });
++    const staged = fs.readFileSync(html, "utf8");
++    const owned = staged.match(REVIEW_BLOCK_RE);
++    expect(owned).toBeTruthy();
++    fs.writeFileSync(html, staged.replace(owned[0],
++      REVIEW_SCRIPT_OPEN + reviewMarkerJson("rv-alpha") + "</script>"));
++    await page.goto(fileUrl(html));
++    await ready(page);
++    expect(await stateOf(page, "rv-alpha")).toBe("unreviewed");
++    await expect(page.locator("#toast")).toContainText("does not own");
++  });
++
++  test("a content-region embeddedComments decoy does not veto the review-state insert (CMH-EXP-17)", async ({ page }) => {
++    await installClipboardCapture(page);
++    await denyExternalNetwork(page);
++    await page.setViewportSize({ width: 1400, height: 900 });
++    // A document with no reviewedSections block gets one inserted after the embeddedComments block
++    // the layer owns. Counting every carrier of that id let a decoy inside the content root -
++    // authored content the exporter already ignores - stop the insert for good, so the reader's
++    // review state could never travel with the file.
++    const decoy = '<script type="application/json" id="embeddedComments">"DECOY_SENTINEL"</script>';
++    const { html } = stageContent(CONTENT + decoy, { key: "cmh-review-anchor-decoy", source: "anchor-decoy.html" });
++    const staged = fs.readFileSync(html, "utf8");
++    const owned = staged.match(REVIEW_BLOCK_RE);
++    expect(owned).toBeTruthy();
++    fs.writeFileSync(html, staged.replace(owned[0], ""));
++    await page.goto(fileUrl(html));
++    await ready(page);
++    await page.locator("#rv-alpha").hover();
++    await page.locator("#rv-alpha .cmh-review-badge").click();
++    await openToolbarMenu(page);
++    const [download] = await Promise.all([page.waitForEvent("download"), page.click("#btnSaveHtmlTop")]);
++    const saved = await readDownload(download);
++    await expect(page.locator("#toast")).not.toContainText("Section-review state was left out");
++    const region = saved.match(/BEGIN: commentable-html - EMBEDDED COMMENTS[\s\S]*?END: commentable-html - EMBEDDED COMMENTS/);
++    expect(region).toBeTruthy();
++    const inRegion = [...region[0].matchAll(/<script[^>]*id="reviewedSections"[^>]*>([\s\S]*?)<\/script>/g)];
++    expect(inRegion.length).toBe(1);                                   // inserted inside the region
++    expect(Object.keys(JSON.parse(inRegion[0][1].trim()))).toEqual(["rv-alpha"]);
++    expect(saved).toContain("DECOY_SENTINEL");                         // the decoy keeps its bytes
++  });
++
+   test("the runtime section hash matches the JS/Python golden (CMH-REVIEW-08)", async ({ page }) => {
+     await openReviewDoc(page);
+     const goldenPath = path.join(DEV, "tests", "fixtures", "section_hash", "golden.json");
