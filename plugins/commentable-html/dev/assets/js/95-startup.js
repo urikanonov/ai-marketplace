@@ -186,8 +186,9 @@ function _cmTipShow(el) {
   const tw = _cmTipEl.offsetWidth, th = _cmTipEl.offsetHeight;
   let left = r.left + r.width / 2 - tw / 2;
   let top = r.top - th - 8;
-  if (top < 6) { top = r.bottom + 8; _cmTipEl.classList.add("below"); }
-  left = Math.max(6, Math.min(left, window.innerWidth - tw - 6));
+  const vp = cmhViewportRect(6);
+  if (top < vp.top) { top = r.bottom + 8; _cmTipEl.classList.add("below"); }
+  left = Math.max(vp.left, Math.min(left, vp.right - tw));
   _cmTipEl.style.left = left + "px";
   _cmTipEl.style.top = top + "px";
   const cx = r.left + r.width / 2 - left;

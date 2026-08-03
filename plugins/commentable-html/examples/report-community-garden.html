@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.395.0" />
+<meta name="commentable-html-version" content="1.396.0" />
 <meta name="commentable-html-kind" content="plan" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.395.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.396.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Planning a Community Garden</title>
 
@@ -4459,7 +4459,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.395.0";
+const CMH_VERSION = "1.396.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -4878,6 +4878,64 @@ const CMH_CHART_DATA_SEL = "canvas[data-cmh-chart-points], canvas[data-cmh-chart
 const CMH_CHART_CANVAS_SEL =
   CMH_CHART_FIGURE_SEL + " canvas, canvas" + CMH_CHART_MARK_SEL + ", " + CMH_CHART_DATA_SEL;
 const CMH_RICH_CONTENT_SEL = CMH_MERMAID_SEL + ", " + CMH_CHART_CANVAS_SEL;
+/* ---------- The one shared viewport vocabulary (issue #880) ----------
+   `window.innerWidth` / `innerHeight` describe the LAYOUT viewport. On mobile that is not what the
+   reader can see: an on-screen keyboard (iOS Safari, and Chrome for Android with the default
+   `interactive-widget=resizes-visual`) and a pinch zoom shrink and MOVE the VISUAL viewport while
+   leaving the layout viewport untouched, and they fire `resize` / `scroll` on
+   `window.visualViewport` rather than on `window`. A `position: fixed` control placed from layout
+   measurements can therefore sit behind the keyboard - and focusing a comment textarea is exactly
+   what opens it. Every floating affordance in this layer measures through these helpers and
+   subscribes through `cmhOnViewportChange`, so the surfaces can never disagree about which
+   viewport they mean. */
+
+// The VISIBLE viewport box, in the client coordinates `getBoundingClientRect()` and
+// `position: fixed` both use. `offsetLeft` / `offsetTop` are the visible box's origin within the
+// layout viewport, so they are as load-bearing as the size while a pinch-zoomed page is panned.
+function cmhViewportBox() {
+  const vv = window.visualViewport;
+  if (vv && vv.width && vv.height) {
+    return { left: vv.offsetLeft || 0, top: vv.offsetTop || 0, width: vv.width, height: vv.height };
+  }
+  return { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+}
+
+// The same box as edges, inset by `margin`, for the clamp helpers.
+function cmhViewportRect(margin) {
+  const b = cmhViewportBox();
+  const m = margin || 0;
+  return {
+    left: b.left + m,
+    top: b.top + m,
+    right: b.left + b.width - m,
+    bottom: b.top + b.height - m,
+  };
+}
+
+// Every subscriber shares ONE set of listeners, so a layer that re-subscribes per open surface
+// cannot multiply them; the returned function unsubscribes. A subscriber that throws must not stop
+// the others (a stale surface should never freeze the live ones).
+var _cmhViewportSubs = null;
+function cmhOnViewportChange(fn) {
+  if (typeof fn !== "function") return function () {};
+  if (!_cmhViewportSubs) {
+    _cmhViewportSubs = new Set();
+    const fire = function (e) {
+      _cmhViewportSubs.forEach(function (sub) {
+        try { sub(e); } catch (err) { /* one bad subscriber must not stop the rest */ }
+      });
+    };
+    window.addEventListener("resize", fire);
+    const vv = window.visualViewport;
+    if (vv && vv.addEventListener) {
+      vv.addEventListener("resize", fire);
+      // Panning a pinch-zoomed page moves the visible box without resizing it.
+      vv.addEventListener("scroll", fire);
+    }
+  }
+  _cmhViewportSubs.add(fn);
+  return function () { if (_cmhViewportSubs) _cmhViewportSubs.delete(fn); };
+}
 /* ---------- Persistence ---------- */
 // True for a storage-quota error across browsers (Chrome/Safari "QuotaExceededError", Firefox
 // "NS_ERROR_DOM_QUOTA_REACHED"; legacy numeric codes 22 / 1014). A DOMException raised via the
@@ -5559,17 +5617,19 @@ function clearActiveAdd(btn) {
 // scroll reposition hides a button whose target scrolled (partly) out of view rather
 // than clamping it to a viewport edge, where it would look detached from its target.
 function _addFits(left, top, w, h) {
-  return left >= 8 && left <= window.innerWidth - w - 8 &&
-         top >= 8 && top <= window.innerHeight - h - 8;
+  const vp = cmhViewportRect(8);
+  return left >= vp.left && left <= vp.right - w &&
+         top >= vp.top && top <= vp.bottom - h;
 }
 // Whether an anchor rect is at least partially within the viewport. Used to decide
 // whether a floating add button should stay (anchor visible) or hide (anchor scrolled
 // away). The button position itself is clamped on-screen separately, so an anchor near
 // a viewport edge must NOT be treated as "gone".
 function _rectInViewport(r) {
+  const vp = cmhViewportRect(4);
   return r.width > 0 && r.height > 0 &&
-    r.bottom > 4 && r.top < window.innerHeight - 4 &&
-    r.right > 4 && r.left < window.innerWidth - 4;
+    r.bottom > vp.top && r.top < vp.bottom &&
+    r.right > vp.left && r.left < vp.right;
 }
 // The diagram-host shapes, normalized ONCE from the shared vocabulary (CMH_MERMAID_SEL,
 // 03-selectors.js) rather than re-typed, so the clip layer cannot drift from the vocabulary the rest
@@ -5651,9 +5711,7 @@ function _intersectRects(a, b) {
   return { left, right, top, bottom, width: right - left, height: bottom - top };
 }
 function _clipAwareRect(node, rect) {
-  let visible = _intersectRects(rect, {
-    left: 4, right: window.innerWidth - 4, top: 4, bottom: window.innerHeight - 4,
-  });
+  let visible = _intersectRects(rect, cmhViewportRect(4));
   if (!visible) return null;
   const clips = _clipContainersFor(node);
   for (let i = 0; i < clips.length && visible; i++) {
@@ -5662,7 +5720,7 @@ function _clipAwareRect(node, rect) {
   return visible;
 }
 function _floatingBounds(node) {
-  const viewport = { left: 8, right: window.innerWidth - 8, top: 8, bottom: window.innerHeight - 8 };
+  const viewport = cmhViewportRect(8);
   let bounds = viewport;
   const clips = _clipContainersFor(node);
   for (let i = 0; i < clips.length; i++) {
@@ -7623,12 +7681,13 @@ function _showChartTooltip(canvas, point) {
   const tipHeight = tip.offsetHeight;
   let left = leftAtPoint - tipWidth / 2;
   let top = topAtPoint - tipHeight - 12;
-  if (top < 8) {
+  const vp = cmhViewportRect(8);
+  if (top < vp.top) {
     top = rect.top + point.bottom + 12;
     tip.classList.add("below");
   }
-  left = Math.max(8, Math.min(left, window.innerWidth - tipWidth - 8));
-  top = Math.max(8, Math.min(top, window.innerHeight - tipHeight - 8));
+  left = Math.max(vp.left, Math.min(left, vp.right - tipWidth));
+  top = Math.max(vp.top, Math.min(top, vp.bottom - tipHeight));
   tip.style.left = left + "px";
   tip.style.top = top + "px";
   tip.style.setProperty("--cm-tip-arrow", Math.max(10, Math.min(tipWidth - 10, leftAtPoint - left)) + "px");
@@ -10001,8 +10060,9 @@ function showMenu(x, y) {
   // a hardcoded size, so the clamp keeps it snug to the selection near viewport edges.
   const w = menu.offsetWidth || 120;
   const h = menu.offsetHeight || 32;
-  menu.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + "px";
-  menu.style.top  = Math.max(8, Math.min(y, window.innerHeight - h - 8)) + "px";
+  const vp = cmhViewportRect(8);
+  menu.style.left = Math.max(vp.left, Math.min(x, vp.right - w)) + "px";
+  menu.style.top  = Math.max(vp.top, Math.min(y, vp.bottom - h)) + "px";
   // Move focus to the first visible menuitem so a keyboard-only reviewer lands on the
   // primary action and can rove with the Arrow keys.
   const first = _menuItems()[0];
@@ -10261,17 +10321,6 @@ function cmhAutogrowCap(cs) {
   return Math.min(px, Math.max(120, vh - 16));
 }
 
-// The visible viewport box. `visualViewport` accounts for pinch zoom, panning, retractable mobile
-// toolbars, and the soft keyboard, and its origin is NOT (0, 0) while the user is panning a
-// pinch-zoomed page, so its offsets matter as much as its size.
-function cmhViewportBox() {
-  const vv = window.visualViewport;
-  if (vv && vv.width && vv.height) {
-    return { left: vv.offsetLeft || 0, top: vv.offsetTop || 0, width: vv.width, height: vv.height };
-  }
-  return { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
-}
-
 // The nearest scrolling ancestor (the comments list, for a side-pane editor), falling back to the
 // document scroller. An editor's ancestry does not change while it is open, so resolve it once.
 function cmhScrollParent(el) {
@@ -10319,13 +10368,13 @@ function cmhForgetClampedSurface(el) {
 
 // A rotation, a window resize, a browser zoom, or the mobile keyboard changes both the wrap width
 // and the viewport-relative cap with no `input` event, so every live editor is re-measured (and
-// every floating surface re-clamped) when the viewport changes. `visualViewport` is what actually
-// fires when a soft keyboard opens on iOS, so listen there too when it exists.
+// every floating surface re-clamped) when the viewport changes. `cmhOnViewportChange` (04-viewport)
+// covers the `visualViewport` events a soft keyboard fires as well as the `window` ones.
 var cmhAutogrowLive = null;
 function cmhAutogrowWatchViewport(ta) {
   if (!cmhAutogrowLive) {
     cmhAutogrowLive = new Set();
-    const onViewportChange = function () {
+    cmhOnViewportChange(function () {
       cmhAutogrowLive.forEach(function (t) {
         if (!t.isConnected) cmhAutogrowLive.delete(t);
         else cmhAutogrowResize(t);
@@ -10336,14 +10385,7 @@ function cmhAutogrowWatchViewport(ta) {
           else cmhClampIntoViewport(s);
         });
       }
-    };
-    window.addEventListener("resize", onViewportChange);
-    const vv = window.visualViewport;
-    if (vv && vv.addEventListener) {
-      vv.addEventListener("resize", onViewportChange);
-      // Panning a pinch-zoomed page moves the visible box without resizing it.
-      vv.addEventListener("scroll", onViewportChange);
-    }
+    });
   }
   // Prune here as well as from the teardown paths, so an editor removed by a route that does not
   // unregister (a sidebar re-render, say) cannot accumulate in the Set.
@@ -10965,9 +11007,10 @@ function positionComposerNear(el, anchorRect) {
   const w = el.offsetWidth || 380;
   const h = el.offsetHeight || 220;
   const margin = 8;
-  let left = Math.min(anchorRect.left, window.innerWidth - w - margin);
+  const vp = cmhViewportRect(margin);
+  let left = Math.min(anchorRect.left, vp.right - w);
   let top  = anchorRect.bottom + margin;
-  if (top + h > window.innerHeight) top = Math.max(margin, anchorRect.top - h - margin);
+  if (top + h > vp.bottom + margin) top = Math.max(vp.top, anchorRect.top - h - margin);
   const step = 28;
   for (let i = 0; i < 8; i++) {
     const collision = [...openComposers].some(other => {
@@ -10977,16 +11020,16 @@ function positionComposerNear(el, anchorRect) {
     });
     if (!collision) break;
     left += step; top += step;
-    if (left + w > window.innerWidth - margin || top + h > window.innerHeight - margin) {
-      left = margin; top = margin;
+    if (left + w > vp.right || top + h > vp.bottom) {
+      left = vp.left; top = vp.top;
       break;
     }
   }
-  // Final clamp: keep the whole composer within the viewport even when the anchor
-  // itself is off-screen (e.g. a selection below the fold), so its Save button is
-  // always reachable.
-  left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - w - margin));
-  top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - h - margin));
+  // Final clamp: keep the whole composer within the VISIBLE viewport even when the anchor
+  // itself is off-screen (e.g. a selection below the fold, or content behind an on-screen
+  // keyboard), so its Save button is always reachable.
+  left = Math.min(Math.max(vp.left, left), Math.max(vp.left, vp.right - w));
+  top = Math.min(Math.max(vp.top, top), Math.max(vp.top, vp.bottom - h));
   el.style.left = left + "px";
   el.style.top  = top + "px";
 }
@@ -11110,11 +11153,13 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
     const p = findWidgetPart(widget.widget, widget.part);
     anchorRect = p ? p.getBoundingClientRect() : { left: 120, top: 100, bottom: 130, right: 320 };
   } else if (mode === "new-document") {
-    const cx = Math.max(20, Math.round(window.innerWidth / 2) - 190);
-    anchorRect = { left: cx, top: 90, bottom: 120, right: cx + 380 };
+    const vp = cmhViewportBox();
+    const cx = Math.max(vp.left + 20, Math.round(vp.left + vp.width / 2) - 190);
+    anchorRect = { left: cx, top: vp.top + 90, bottom: vp.top + 120, right: cx + 380 };
   } else if (mode === "new-slide") {
-    const cx = Math.max(20, Math.round(window.innerWidth / 2) - 190);
-    anchorRect = { left: cx, top: 90, bottom: 120, right: cx + 380 };
+    const vp = cmhViewportBox();
+    const cx = Math.max(vp.left + 20, Math.round(vp.left + vp.width / 2) - 190);
+    anchorRect = { left: cx, top: vp.top + 90, bottom: vp.top + 120, right: cx + 380 };
   } else {
     // A reply inherits its thread root's anchor (it has no anchorType of its own), so resolve
     // the root and dispatch on ITS anchor type; a text root still resolves by the mark cid.
@@ -11186,13 +11231,14 @@ function attachDrag(el, handle, cleanups) {
   let dragging = false, offX = 0, offY = 0;
   function clamp() {
     const margin = 4;
+    const vp = cmhViewportRect(margin);
     const rect = el.getBoundingClientRect();
-    const maxLeft = window.innerWidth - rect.width - margin;
-    const maxTop = window.innerHeight - rect.height - margin;
+    const maxLeft = vp.right - rect.width;
+    const maxTop = vp.bottom - rect.height;
     let left = parseFloat(el.style.left) || rect.left;
     let top = parseFloat(el.style.top) || rect.top;
-    left = Math.max(margin, Math.min(left, Math.max(margin, maxLeft)));
-    top = Math.max(margin, Math.min(top, Math.max(margin, maxTop)));
+    left = Math.max(vp.left, Math.min(left, Math.max(vp.left, maxLeft)));
+    top = Math.max(vp.top, Math.min(top, Math.max(vp.top, maxTop)));
     el.style.left = left + "px";
     el.style.top = top + "px";
   }
@@ -11305,7 +11351,9 @@ function openComposerForEdit(comment) {
     bringToFront(existing);
     flashComposer(existing);
     const r = existing.getBoundingClientRect();
-    const outOfView = r.bottom < 0 || r.top > window.innerHeight || r.right < 0 || r.left > window.innerWidth;
+    const vp = cmhViewportBox();
+    const outOfView = r.bottom < vp.top || r.top > vp.top + vp.height
+      || r.right < vp.left || r.left > vp.left + vp.width;
     if (outOfView) {
       const anchorSrc = comment.parentId
         ? (comments.find((x) => x.id === comment.parentId) || comment)
@@ -12735,8 +12783,10 @@ function scheduleRepositionActiveAdd() {
   _repositionAddRaf = requestAnimationFrame(() => { _repositionAddRaf = 0; repositionActiveAdd(); });
 }
 window.addEventListener("scroll", scheduleRepositionActiveAdd, true);
-window.addEventListener("resize", scheduleRepositionActiveAdd);
-window.addEventListener("resize", () => {
+cmhOnViewportChange(scheduleRepositionActiveAdd);
+// A soft keyboard or a pinch zoom changes what is visible without a `window` resize, so the bubble
+// re-fits on the visual-viewport events too (04-viewport.js).
+cmhOnViewportChange(() => {
   if (hlBubble.hidden) return;
   if (hlBubbleMark && root.contains(hlBubbleMark)) positionHlBubble(hlBubbleMark);
   else { hlBubble.hidden = true; hlBubbleCid = null; hlBubbleMark = null; }
@@ -12931,12 +12981,12 @@ const _POPOVER_MARGIN = 8;
 
 // Nothing else constrains the dialog's height, so on a short viewport the edit form's Save/Cancel
 // row could sit past the bottom edge with no way to scroll to it (issue #825). Cap it to the
-// MEASURED viewport - which follows a dynamic mobile browser toolbar, unlike a `vh` unit - and let
-// the content scroll inside. No floor: a cap that exceeded the viewport would reintroduce the very
-// overflow this prevents.
+// MEASURED VISIBLE viewport - which follows a dynamic mobile browser toolbar and an on-screen
+// keyboard, unlike a `vh` unit - and let the content scroll inside. No floor: a cap that exceeded
+// the viewport would reintroduce the very overflow this prevents.
 function _capCommentPopoverToViewport() {
   if (!commentPopover) return;
-  commentPopover.style.maxHeight = Math.max(0, window.innerHeight - _POPOVER_MARGIN * 2) + "px";
+  commentPopover.style.maxHeight = Math.max(0, cmhViewportBox().height - _POPOVER_MARGIN * 2) + "px";
 }
 
 // Re-fit the dialog to the viewport WITHOUT re-anchoring it. An in-progress edit deliberately
@@ -12945,14 +12995,14 @@ function _capCommentPopoverToViewport() {
 function _clampCommentPopoverIntoViewport() {
   if (!commentPopover) return;
   _capCommentPopoverToViewport();
-  const margin = _POPOVER_MARGIN;
+  const vp = cmhViewportRect(_POPOVER_MARGIN);
   const w = commentPopover.offsetWidth || 320;
   const h = commentPopover.offsetHeight || 160;
   const cur = (_popoverLeft == null || _popoverTop == null)
     ? commentPopover.getBoundingClientRect()
     : { left: _popoverLeft, top: _popoverTop };
-  const left = Math.min(Math.max(margin, cur.left), Math.max(margin, window.innerWidth - w - margin));
-  const top = Math.min(Math.max(margin, cur.top), Math.max(margin, window.innerHeight - h - margin));
+  const left = Math.min(Math.max(vp.left, cur.left), Math.max(vp.left, vp.right - w));
+  const top = Math.min(Math.max(vp.top, cur.top), Math.max(vp.top, vp.bottom - h));
   _writeCommentPopoverPosition(left, top);
 }
 
@@ -12982,13 +13032,14 @@ function _positionCommentPopover(mark) {
   const visible = (typeof _clipAwareRect === "function") ? _clipAwareRect(mark, rect) : rect;
   if (!visible) return false;
   const margin = _POPOVER_MARGIN;
+  const vp = cmhViewportRect(margin);
   const w = commentPopover.offsetWidth || 320;
   const h = commentPopover.offsetHeight || 160;
   let left = visible.left;
   let top = visible.bottom + margin;
-  if (top + h > window.innerHeight) top = Math.max(margin, visible.top - h - margin);
-  left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - w - margin));
-  top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - h - margin));
+  if (top + h > vp.bottom + margin) top = Math.max(vp.top, visible.top - h - margin);
+  left = Math.min(Math.max(vp.left, left), Math.max(vp.left, vp.right - w));
+  top = Math.min(Math.max(vp.top, top), Math.max(vp.top, vp.bottom - h));
   _writeCommentPopoverPosition(left, top);
   return true;
 }
@@ -13401,7 +13452,9 @@ function _syncCommentPopoverToAnchor() {
   if (!pinned) _clampCommentPopoverIntoViewport();
 }
 window.addEventListener("scroll", _syncCommentPopoverToAnchor, true);
-window.addEventListener("resize", _syncCommentPopoverToAnchor);
+// A window resize is not the only thing that changes what is on screen: an on-screen keyboard and
+// a pinch zoom only move the VISUAL viewport, and only it fires (04-viewport.js).
+cmhOnViewportChange(_syncCommentPopoverToAnchor);
 /* ---------- Sidebar open/close ---------- */
 function updateSidebarToggle() {
   const btn = document.getElementById("btnToggleSidebar");
@@ -18247,9 +18300,10 @@ function setupHeadingAnchors() {
     let left = anchorRight + gap;
     let top = anchorTop + (anchorH - bh) / 2;
     // If the label would run off the right edge, tuck it back against the block right.
-    if (left + bw + 8 > window.innerWidth) left = r.right - bw - 6;
-    headingAddBtn.style.left = Math.max(8, Math.min(left, window.innerWidth - bw - 8)) + "px";
-    headingAddBtn.style.top = Math.max(8, Math.min(top, window.innerHeight - bh - 8)) + "px";
+    const vp = cmhViewportRect(8);
+    if (left + bw > vp.right) left = r.right - bw - 6;
+    headingAddBtn.style.left = Math.max(vp.left, Math.min(left, vp.right - bw)) + "px";
+    headingAddBtn.style.top = Math.max(vp.top, Math.min(top, vp.bottom - bh)) + "px";
     // Return anchor visibility (not button fit) so repositionActiveAdd only hides the
     // button when the heading scrolls out of view, not when it sits near an edge.
     return _rectInViewport(r);
@@ -19988,8 +20042,9 @@ function _cmTipShow(el) {
   const tw = _cmTipEl.offsetWidth, th = _cmTipEl.offsetHeight;
   let left = r.left + r.width / 2 - tw / 2;
   let top = r.top - th - 8;
-  if (top < 6) { top = r.bottom + 8; _cmTipEl.classList.add("below"); }
-  left = Math.max(6, Math.min(left, window.innerWidth - tw - 6));
+  const vp = cmhViewportRect(6);
+  if (top < vp.top) { top = r.bottom + 8; _cmTipEl.classList.add("below"); }
+  left = Math.max(vp.left, Math.min(left, vp.right - tw));
   _cmTipEl.style.left = left + "px";
   _cmTipEl.style.top = top + "px";
   const cx = r.left + r.width / 2 - left;

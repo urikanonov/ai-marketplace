@@ -230,8 +230,9 @@ function showMenu(x, y) {
   // a hardcoded size, so the clamp keeps it snug to the selection near viewport edges.
   const w = menu.offsetWidth || 120;
   const h = menu.offsetHeight || 32;
-  menu.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + "px";
-  menu.style.top  = Math.max(8, Math.min(y, window.innerHeight - h - 8)) + "px";
+  const vp = cmhViewportRect(8);
+  menu.style.left = Math.max(vp.left, Math.min(x, vp.right - w)) + "px";
+  menu.style.top  = Math.max(vp.top, Math.min(y, vp.bottom - h)) + "px";
   // Move focus to the first visible menuitem so a keyboard-only reviewer lands on the
   // primary action and can rove with the Arrow keys.
   const first = _menuItems()[0];

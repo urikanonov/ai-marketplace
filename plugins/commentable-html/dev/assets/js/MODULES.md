@@ -17,6 +17,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
   `document.currentScript` before any DOM access, and opens the IIFE. The LAST partial
   (`95-startup.js`) closes the IIFE and runs startup. Do not reorder these two.
 - Shared infrastructure used across modules: the rich-content selector vocabulary (`03-selectors.js`),
+  the viewport vocabulary (`04-viewport.js`),
   `widgetStateChanges` (35-widgets), and the export
   primitives `SNAPSHOT_HTML` / `CMH_LAYER_SCRIPT` / `CMH_INJECTED_CHROME` / `_stripTransientBodyClasses`
   / `_snapshotWithTail` (65-export-shareable) are consumed by later export modules - move with care.
@@ -27,6 +28,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `01-config.js` | CMH-CORE, CMH-FWDCOMPAT, CMH-DENSITY, CMH-SEC | Auto-discovered config; declares `CMH_VERSION` (build.py stamps it). |
 | `02-lzstring.js` | CMH-STORE | Vendored lz-string (trimmed `compressToUTF16`/`decompressFromUTF16`, bounded decode) used to pack the comment store. |
 | `03-selectors.js` | CMH-CHART, CMH-MMD, CMH-OFFLINE, CMH-PRINT | The one shared rich-content selector vocabulary (`CMH_MERMAID_SEL`, `CMH_CHART_DATA_SEL`, `CMH_CHART_CANVAS_SEL`, `CMH_RICH_CONTENT_SEL`) the chart renderer, the image layer, the Offline exporter, the print/measure cap in `83-print.js`, and the author-time payload detector all derive from. |
+| `04-viewport.js` | CMH-CORE | The one shared VIEWPORT vocabulary (`cmhViewportBox`, `cmhViewportRect`, `cmhOnViewportChange`): every floating affordance measures the VISUAL viewport through these and subscribes to its `resize`/`scroll` here, so an on-screen keyboard or a pinch zoom cannot leave one of them off screen. |
 | `05-persistence.js` | CMH-PERSIST, CMH-STORE, CMH-EXP | localStorage load/merge/save of the comments array; sync compression codec + quota-aware write helpers. |
 | `10-offsets.js` | CMH-CORE, CMH-TEXT | Text-offset anchoring helpers. |
 | `15-context.js` | CMH-CORE, CMH-COPY, CMH-CTX | Section + surrounding-text context capture. |

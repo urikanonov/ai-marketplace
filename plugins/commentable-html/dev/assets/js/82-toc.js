@@ -36,9 +36,10 @@ function setupHeadingAnchors() {
     let left = anchorRight + gap;
     let top = anchorTop + (anchorH - bh) / 2;
     // If the label would run off the right edge, tuck it back against the block right.
-    if (left + bw + 8 > window.innerWidth) left = r.right - bw - 6;
-    headingAddBtn.style.left = Math.max(8, Math.min(left, window.innerWidth - bw - 8)) + "px";
-    headingAddBtn.style.top = Math.max(8, Math.min(top, window.innerHeight - bh - 8)) + "px";
+    const vp = cmhViewportRect(8);
+    if (left + bw > vp.right) left = r.right - bw - 6;
+    headingAddBtn.style.left = Math.max(vp.left, Math.min(left, vp.right - bw)) + "px";
+    headingAddBtn.style.top = Math.max(vp.top, Math.min(top, vp.bottom - bh)) + "px";
     // Return anchor visibility (not button fit) so repositionActiveAdd only hides the
     // button when the heading scrolls out of view, not when it sits near an edge.
     return _rectInViewport(r);

@@ -106,5 +106,6 @@
   "91-upgrade-review.spec.js": 2571,
   "92-threads.spec.js": 29602,
   "93-autogrow.spec.js": 27500,
-  "93-chart-bare-canvas.spec.js": 8561
+  "93-chart-bare-canvas.spec.js": 8561,
+  "94-visual-viewport.spec.js": 10900
 }

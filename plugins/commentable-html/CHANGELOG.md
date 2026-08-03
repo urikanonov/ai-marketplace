@@ -4,6 +4,29 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.396.0] - 2026-08-03
+
+### Fixed
+
+- Every floating affordance now measures the VISUAL viewport instead of the layout viewport, so an
+  on-screen keyboard or a pinch zoom can no longer hide one. `window.innerWidth` / `innerHeight`
+  describe the LAYOUT viewport: it does not shrink when a soft keyboard opens (iOS Safari, and
+  Chrome for Android with the default `interactive-widget=resizes-visual`) and does not move when a
+  pinch-zoomed page is panned, and neither fires a `window` `resize`. A control the layer believed
+  fitted could therefore sit behind the keyboard - and focusing a comment textarea is exactly what
+  opens it.
+  - One shared vocabulary (`cmhViewportBox()`, `cmhViewportRect()`, `cmhOnViewportChange()`) now
+    prefers `window.visualViewport` (size plus `offsetLeft`/`offsetTop`, since a `position: fixed`
+    control is placed in layout coordinates that a pan shifts under it) and falls back to
+    `window.innerWidth`/`innerHeight` where that API is absent.
+  - The hover bubble, every structural add button, the in-document comment dialog (placement,
+    height cap, and unanchored re-fit), the floating composer (placement, drag clamp, centred
+    document/slide anchor), the Add-comment selection menu, the heading add button, and the chart
+    and chrome tooltips are all bounded by that box. An affordance whose anchor leaves the visible
+    box hides or closes rather than floating over the keyboard.
+  - They re-position on `visualViewport` `resize` and `scroll` as well as the `window` events,
+    through one shared listener set that hands each subscriber an unsubscribe, so repeatedly
+    opening and closing surfaces cannot multiply listeners.
 ## [1.395.0] - 2026-08-03
 
 ### Security

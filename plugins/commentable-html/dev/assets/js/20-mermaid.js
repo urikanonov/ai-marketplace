@@ -59,17 +59,19 @@ function clearActiveAdd(btn) {
 // scroll reposition hides a button whose target scrolled (partly) out of view rather
 // than clamping it to a viewport edge, where it would look detached from its target.
 function _addFits(left, top, w, h) {
-  return left >= 8 && left <= window.innerWidth - w - 8 &&
-         top >= 8 && top <= window.innerHeight - h - 8;
+  const vp = cmhViewportRect(8);
+  return left >= vp.left && left <= vp.right - w &&
+         top >= vp.top && top <= vp.bottom - h;
 }
 // Whether an anchor rect is at least partially within the viewport. Used to decide
 // whether a floating add button should stay (anchor visible) or hide (anchor scrolled
 // away). The button position itself is clamped on-screen separately, so an anchor near
 // a viewport edge must NOT be treated as "gone".
 function _rectInViewport(r) {
+  const vp = cmhViewportRect(4);
   return r.width > 0 && r.height > 0 &&
-    r.bottom > 4 && r.top < window.innerHeight - 4 &&
-    r.right > 4 && r.left < window.innerWidth - 4;
+    r.bottom > vp.top && r.top < vp.bottom &&
+    r.right > vp.left && r.left < vp.right;
 }
 // The diagram-host shapes, normalized ONCE from the shared vocabulary (CMH_MERMAID_SEL,
 // 03-selectors.js) rather than re-typed, so the clip layer cannot drift from the vocabulary the rest
@@ -151,9 +153,7 @@ function _intersectRects(a, b) {
   return { left, right, top, bottom, width: right - left, height: bottom - top };
 }
 function _clipAwareRect(node, rect) {
-  let visible = _intersectRects(rect, {
-    left: 4, right: window.innerWidth - 4, top: 4, bottom: window.innerHeight - 4,
-  });
+  let visible = _intersectRects(rect, cmhViewportRect(4));
   if (!visible) return null;
   const clips = _clipContainersFor(node);
   for (let i = 0; i < clips.length && visible; i++) {
@@ -162,7 +162,7 @@ function _clipAwareRect(node, rect) {
   return visible;
 }
 function _floatingBounds(node) {
-  const viewport = { left: 8, right: window.innerWidth - 8, top: 8, bottom: window.innerHeight - 8 };
+  const viewport = cmhViewportRect(8);
   let bounds = viewport;
   const clips = _clipContainersFor(node);
   for (let i = 0; i < clips.length; i++) {

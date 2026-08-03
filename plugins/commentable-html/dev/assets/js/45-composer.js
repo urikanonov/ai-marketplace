@@ -5,9 +5,10 @@ function positionComposerNear(el, anchorRect) {
   const w = el.offsetWidth || 380;
   const h = el.offsetHeight || 220;
   const margin = 8;
-  let left = Math.min(anchorRect.left, window.innerWidth - w - margin);
+  const vp = cmhViewportRect(margin);
+  let left = Math.min(anchorRect.left, vp.right - w);
   let top  = anchorRect.bottom + margin;
-  if (top + h > window.innerHeight) top = Math.max(margin, anchorRect.top - h - margin);
+  if (top + h > vp.bottom + margin) top = Math.max(vp.top, anchorRect.top - h - margin);
   const step = 28;
   for (let i = 0; i < 8; i++) {
     const collision = [...openComposers].some(other => {
@@ -17,16 +18,16 @@ function positionComposerNear(el, anchorRect) {
     });
     if (!collision) break;
     left += step; top += step;
-    if (left + w > window.innerWidth - margin || top + h > window.innerHeight - margin) {
-      left = margin; top = margin;
+    if (left + w > vp.right || top + h > vp.bottom) {
+      left = vp.left; top = vp.top;
       break;
     }
   }
-  // Final clamp: keep the whole composer within the viewport even when the anchor
-  // itself is off-screen (e.g. a selection below the fold), so its Save button is
-  // always reachable.
-  left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - w - margin));
-  top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - h - margin));
+  // Final clamp: keep the whole composer within the VISIBLE viewport even when the anchor
+  // itself is off-screen (e.g. a selection below the fold, or content behind an on-screen
+  // keyboard), so its Save button is always reachable.
+  left = Math.min(Math.max(vp.left, left), Math.max(vp.left, vp.right - w));
+  top = Math.min(Math.max(vp.top, top), Math.max(vp.top, vp.bottom - h));
   el.style.left = left + "px";
   el.style.top  = top + "px";
 }
@@ -150,11 +151,13 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
     const p = findWidgetPart(widget.widget, widget.part);
     anchorRect = p ? p.getBoundingClientRect() : { left: 120, top: 100, bottom: 130, right: 320 };
   } else if (mode === "new-document") {
-    const cx = Math.max(20, Math.round(window.innerWidth / 2) - 190);
-    anchorRect = { left: cx, top: 90, bottom: 120, right: cx + 380 };
+    const vp = cmhViewportBox();
+    const cx = Math.max(vp.left + 20, Math.round(vp.left + vp.width / 2) - 190);
+    anchorRect = { left: cx, top: vp.top + 90, bottom: vp.top + 120, right: cx + 380 };
   } else if (mode === "new-slide") {
-    const cx = Math.max(20, Math.round(window.innerWidth / 2) - 190);
-    anchorRect = { left: cx, top: 90, bottom: 120, right: cx + 380 };
+    const vp = cmhViewportBox();
+    const cx = Math.max(vp.left + 20, Math.round(vp.left + vp.width / 2) - 190);
+    anchorRect = { left: cx, top: vp.top + 90, bottom: vp.top + 120, right: cx + 380 };
   } else {
     // A reply inherits its thread root's anchor (it has no anchorType of its own), so resolve
     // the root and dispatch on ITS anchor type; a text root still resolves by the mark cid.
@@ -226,13 +229,14 @@ function attachDrag(el, handle, cleanups) {
   let dragging = false, offX = 0, offY = 0;
   function clamp() {
     const margin = 4;
+    const vp = cmhViewportRect(margin);
     const rect = el.getBoundingClientRect();
-    const maxLeft = window.innerWidth - rect.width - margin;
-    const maxTop = window.innerHeight - rect.height - margin;
+    const maxLeft = vp.right - rect.width;
+    const maxTop = vp.bottom - rect.height;
     let left = parseFloat(el.style.left) || rect.left;
     let top = parseFloat(el.style.top) || rect.top;
-    left = Math.max(margin, Math.min(left, Math.max(margin, maxLeft)));
-    top = Math.max(margin, Math.min(top, Math.max(margin, maxTop)));
+    left = Math.max(vp.left, Math.min(left, Math.max(vp.left, maxLeft)));
+    top = Math.max(vp.top, Math.min(top, Math.max(vp.top, maxTop)));
     el.style.left = left + "px";
     el.style.top = top + "px";
   }
@@ -345,7 +349,9 @@ function openComposerForEdit(comment) {
     bringToFront(existing);
     flashComposer(existing);
     const r = existing.getBoundingClientRect();
-    const outOfView = r.bottom < 0 || r.top > window.innerHeight || r.right < 0 || r.left > window.innerWidth;
+    const vp = cmhViewportBox();
+    const outOfView = r.bottom < vp.top || r.top > vp.top + vp.height
+      || r.right < vp.left || r.left > vp.left + vp.width;
     if (outOfView) {
       const anchorSrc = comment.parentId
         ? (comments.find((x) => x.id === comment.parentId) || comment)

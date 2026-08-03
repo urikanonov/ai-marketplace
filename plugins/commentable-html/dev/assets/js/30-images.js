@@ -120,12 +120,13 @@ function _showChartTooltip(canvas, point) {
   const tipHeight = tip.offsetHeight;
   let left = leftAtPoint - tipWidth / 2;
   let top = topAtPoint - tipHeight - 12;
-  if (top < 8) {
+  const vp = cmhViewportRect(8);
+  if (top < vp.top) {
     top = rect.top + point.bottom + 12;
     tip.classList.add("below");
   }
-  left = Math.max(8, Math.min(left, window.innerWidth - tipWidth - 8));
-  top = Math.max(8, Math.min(top, window.innerHeight - tipHeight - 8));
+  left = Math.max(vp.left, Math.min(left, vp.right - tipWidth));
+  top = Math.max(vp.top, Math.min(top, vp.bottom - tipHeight));
   tip.style.left = left + "px";
   tip.style.top = top + "px";
   tip.style.setProperty("--cm-tip-arrow", Math.max(10, Math.min(tipWidth - 10, leftAtPoint - left)) + "px");
