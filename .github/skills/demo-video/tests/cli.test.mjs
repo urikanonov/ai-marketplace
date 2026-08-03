@@ -335,3 +335,39 @@ test("--help says --show-command reaches the title card (DEMO-SAFE-43)", () => {
   assert.match(help.stdout, /title card/i,
     "the usage text explains --show-command without naming the title card");
 });
+
+// The notice is a pure function, but a pure function nobody calls warns nobody: deleting either
+// call site left every unit test green. Both filming subjects are driven for real here - the cast
+// is clean, so the gate passes and the warning is printed on the way to a browser that cannot
+// start (the launch is pointed at nothing), which also pins that it comes BEFORE that launch.
+test("render and loop warn that --show-command will fill the title card (DEMO-SAFE-43)", () => {
+  const cast = tempCast({
+    version: 1,
+    command: "copilot --banner --disable-mcp-server kusto",
+    argv: ["copilot", "--banner", "--disable-mcp-server", "kusto"],
+    cols: 80,
+    rows: 24,
+    scrubbedBy: "demo-video",
+    // `loop` splits the session at a mark, so the cast needs one - but NOT an "ask" mark, which
+    // would give the card something to state and leave the flag with nothing to warn about.
+    marks: [{ label: "paste", t: 500, eventIndex: 1 }],
+    events: [{ t: 0, data: "working\r\n" }, { t: 1000, data: "DONE\r\n" }],
+  });
+  try {
+    for (const argv of [
+      ["render", "--cast", cast.file, "--seconds", "5", "--show-command"],
+      ["loop", "--cast", cast.file, "--example", cast.file, "--show-command"],
+    ]) {
+      const res = run(argv, NO_BROWSERS);
+      const out = res.stderr + res.stdout;
+      assert.match(out, /TITLE CARD/, `${argv[0]} did not warn that the card will carry the command`);
+      assert.match(out, /--disable-mcp-server kusto/,
+        `${argv[0]} warned without saying what the card will read`);
+    }
+    // And it stays quiet without the flag, so the warning always means something.
+    const quiet = run(["render", "--cast", cast.file, "--seconds", "5"], NO_BROWSERS);
+    assert.doesNotMatch(quiet.stderr + quiet.stdout, /TITLE CARD/);
+  } finally {
+    cast.cleanup();
+  }
+});

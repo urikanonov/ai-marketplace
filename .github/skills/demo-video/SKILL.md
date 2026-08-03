@@ -361,7 +361,8 @@ before it could ship. Rendered empty, a clip is born publishable. The safe reduc
 computed - the PROGRAM NAME only (`copilot`), with the path, any leading `NAME=value` environment
 assignment, and every flag dropped, degrading to `session` for anything that is not a plausible bare
 program name - and it is what the title card falls back to. Pass `--show-command` when the
-invocation genuinely is the story, and expect to mask that clip by hand.
+invocation genuinely is the story: it publishes the whole command in the chrome AND on the title
+card, and expect to mask that clip by hand.
 
 **`--show-command` arms BOTH surfaces, and the louder one is the title card.** The flag reads like a
 title-bar control, but the card's last fallback IS the chrome label, so for a cast with no `ask` mark
@@ -370,8 +371,9 @@ in the clip - as well as into the chrome. That is the flag doing what it says (i
 opt-in to publishing the command), not a bug: use it only when you have read the command you are
 about to publish. A cast that has something to state is unaffected - an `--ask`, an `ask` mark, or a
 `-p` prompt still wins over the fallback, so the flag only ever fills a card that would otherwise
-carry the bare program name. `render` and `loop` say so when it happens, quoting what the card will
-read, so the trap is caught even by an operator who never read this paragraph.
+carry the safe label - the program name, or `session` when the command's shape cannot be trusted.
+`render` and `loop` say so when it happens, quoting what the card will read, so the trap is caught
+even by an operator who never read this paragraph.
 
 **The title card is the loudest surface of all** - it is the largest type in the clip. It states the
 prompt that was actually typed, and it is bounded: a `-p` prompt ends at its closing quote (or at the

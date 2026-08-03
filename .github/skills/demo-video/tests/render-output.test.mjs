@@ -646,8 +646,10 @@ test("--show-command reaches the title card, not just the chrome (DEMO-SAFE-43)"
   const sentences = skill.replace(/\s+/g, " ").replace(/\*+/g, "").split(/(?<=[.!?])\s+/)
     .filter((s) => s.includes("--show-command"));
   assert.ok(sentences.length, "SKILL.md no longer mentions --show-command at all");
-  assert.ok(
-    sentences.some((s) => /title card/i.test(s)),
+  // The FIRST mention is the introduction, and it is the one an operator reads before reaching for
+  // the flag. Accepting any sentence anywhere let a later paragraph carry the warning while the
+  // introduction still described a title-bar control - exactly the framing that hid the coupling.
+  assert.match(sentences[0], /title card/i,
     "SKILL.md introduces --show-command without saying it also arms the title card");
 
   // And the render-time half, because a document only reaches whoever read it. The notice fires
