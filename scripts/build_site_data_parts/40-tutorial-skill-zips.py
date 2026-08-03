@@ -164,8 +164,9 @@ except ImportError:  # a Python built without liblzma can never raise it
 # bz2 raises OSError), a member name flagged UTF-8 that is not valid UTF-8 (UnicodeDecodeError), or
 # member data that ends early (EOFError, which CPython's overlapped-entry check currently pre-empts
 # with BadZipFile, so it is carried as a fail-safe rather than a reachable path).
-# MemoryError and bare ValueError are deliberately NOT swallowed: those are resource exhaustion or
-# a bug here, not a stale artifact.
+# MemoryError, and any bug in this builder, are deliberately NOT swallowed: those are resource
+# exhaustion or a defect here, not a stale artifact. UnicodeDecodeError is listed by name rather
+# than catching its ValueError base, which would swallow exactly such a defect.
 _UNREADABLE_ZIP_ERRORS = (OSError, zipfile.BadZipFile, NotImplementedError, RuntimeError,
                           UnicodeDecodeError, EOFError, zlib.error) + _LZMA_ERRORS
 

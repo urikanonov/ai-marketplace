@@ -261,11 +261,7 @@ class SkillZipTests(unittest.TestCase):
             self.assertGreater(len(members), 1, "need at least two members to reorder")
             with _zip.ZipFile(zip_path, "w") as z:
                 for arcname, data in reversed(members):
-                    info = _zip.ZipInfo(arcname, date_time=(1980, 1, 1, 0, 0, 0))
-                    info.external_attr = 0o644 << 16
-                    info.create_system = 3
-                    info.compress_type = _zip.ZIP_DEFLATED
-                    z.writestr(info, data)
+                    z.writestr(bsd._zip_member_info(arcname), data)
             self.assertTrue(bsd.sync_skill_zips(root, True, skills=skills),
                             "a reordered committed zip must be reported as drift")
             bsd.sync_skill_zips(root, False, skills=skills)
@@ -275,38 +271,44 @@ class SkillZipTests(unittest.TestCase):
             self.assertEqual(bsd.sync_skill_zips(root, True, skills=skills), [])
 
     def _zip_member_payload_span(self, path):
-        """The (offset, length) of the first member's compressed payload in the archive file."""
+        """The (offset, length) of the first member's compressed payload. The name/extra lengths
+        come from the LOCAL header, which can carry a different extra field from the central
+        directory entry, so the offset stays right even for an archive that uses one."""
+        import struct
         import zipfile as _zip
         with _zip.ZipFile(path) as z:
             info = z.infolist()[0]
-            start = (info.header_offset + 30 + len(info.filename.encode("utf-8"))
-                     + len(info.extra or b""))
-            return start, info.compress_size
+            offset, size = info.header_offset, info.compress_size
+        with open(path, "rb") as fh:
+            raw = fh.read()
+        name_len, extra_len = struct.unpack_from("<HH", raw, offset + 26)
+        return offset + 30 + name_len + extra_len, size
 
     def test_unreadable_zip_errors_covers_every_read_failure_but_swallows_no_bug(self):
-        # The fail-safe policy itself: a read failure must become drift, never a traceback out of
-        # the required site gate, and never a swallowed bug. EOFError is carried here as a
-        # fail-safe even though CPython's overlapped-entry check currently reports that case as
-        # BadZipFile, so no crafted archive can pin it (SITE-BUILD-19).
-        import zipfile as _zip
-        import zlib as _zlib
-        expected = {OSError, _zip.BadZipFile, NotImplementedError, RuntimeError,
-                    UnicodeDecodeError, EOFError, _zlib.error}
-        try:
-            import lzma
-            expected.add(lzma.LZMAError)
-        except ImportError:
-            pass
-        self.assertEqual(set(bsd._UNREADABLE_ZIP_ERRORS), expected)
-        # Neither resource exhaustion nor a bug in this builder may be reported as a stale archive.
-        for never in (MemoryError, ValueError, TypeError, KeyError, SystemExit):
-            self.assertNotIn(never, bsd._UNREADABLE_ZIP_ERRORS)
+        # The guard exists to turn a broken ARCHIVE into drift. A bug in this builder, or genuine
+        # resource exhaustion, must still propagate: laundering it into "stale artifact" would make
+        # every write run silently rewrite a healthy ZIP forever (SITE-BUILD-19).
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill(root)
+            skills = self._descriptor(skill_rel)
+            bsd.sync_skill_zips(root, False, skills=skills)
+            zip_path = os.path.join(root, bsd.SITE_OUT, "skills", "demo.zip")
+            self.assertIsNotNone(bsd._zip_logical_members(zip_path))
+            for boom in (TypeError, MemoryError):
+                with self.subTest(error=boom.__name__):
+                    with mock.patch.object(bsd, "_zip_member_entry", side_effect=boom("boom")):
+                        with self.assertRaises(boom):
+                            bsd._zip_logical_members(zip_path)
+        # EOFError is the one caught class no archive here can produce (CPython's overlapped-entry
+        # check reports that case as BadZipFile), so its membership is asserted directly.
+        self.assertIn(EOFError, bsd._UNREADABLE_ZIP_ERRORS)
 
     def test_zip_logical_members_treats_a_corrupt_member_payload_as_unreadable(self):
         # A member whose COMPRESSED payload is garbage raises zlib.error out of the decompressor -
         # not BadZipFile - so an unguarded read would crash the required site --check instead of
         # reporting the archive as stale (SITE-BUILD-19).
         import zipfile as _zip
+        import zlib as _zlib
         with tempfile.TemporaryDirectory() as root:
             path = os.path.join(root, "corrupt-member.zip")
             with _zip.ZipFile(path, "w", _zip.ZIP_DEFLATED) as z:
@@ -317,6 +319,9 @@ class SkillZipTests(unittest.TestCase):
             raw[start:start + size] = b"\xff" * size
             with open(path, "wb") as fh:
                 fh.write(bytes(raw))
+            with self.assertRaises(_zlib.error):  # the exact failure the guard exists for
+                with _zip.ZipFile(path) as z:
+                    z.read(z.infolist()[0])
             self.assertIsNone(bsd._zip_logical_members(path))
 
     def test_zip_logical_members_treats_a_corrupt_lzma_member_as_unreadable(self):
@@ -324,7 +329,7 @@ class SkillZipTests(unittest.TestCase):
         # lzma.LZMAError, another decompressor error the gate must survive (SITE-BUILD-19).
         import zipfile as _zip
         try:
-            import lzma  # noqa: F401 - a Python built without liblzma cannot hit this path
+            import lzma
         except ImportError:
             self.skipTest("this Python has no lzma module")
         with tempfile.TemporaryDirectory() as root:
@@ -338,6 +343,9 @@ class SkillZipTests(unittest.TestCase):
             raw[start + 20:start + size] = b"\xff" * (size - 20)
             with open(path, "wb") as fh:
                 fh.write(bytes(raw))
+            with self.assertRaises(lzma.LZMAError):  # the exact failure the guard exists for
+                with _zip.ZipFile(path) as z:
+                    z.read(z.infolist()[0])
             self.assertIsNone(bsd._zip_logical_members(path))
 
     def test_zip_logical_members_treats_an_undecodable_member_name_as_unreadable(self):
@@ -352,6 +360,8 @@ class SkillZipTests(unittest.TestCase):
                 raw = fh.read()
             with open(path, "wb") as fh:
                 fh.write(raw.replace(b"na\xc3\xafve", b"na\xff\xffve"))
+            with self.assertRaises(UnicodeDecodeError):  # raised while reading the directory
+                _zip.ZipFile(path).infolist()
             self.assertIsNone(bsd._zip_logical_members(path))
 
     def test_check_flags_a_committed_zip_with_directory_entries_and_write_repairs_it(self):
