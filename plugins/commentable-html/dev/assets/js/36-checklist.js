@@ -178,6 +178,7 @@ function _clMakeBtn(item) {
   const b = document.createElement("button");
   b.type = "button";
   b.className = "cmh-check cm-skip";
+  cmhMarkLayerChrome(b);
   b.setAttribute("data-cmh-check-btn", "");
   b.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); _clCycleItem(item); });
   b.addEventListener("keydown", (e) => {

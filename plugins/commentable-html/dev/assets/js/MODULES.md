@@ -20,6 +20,9 @@ Conventions for these partials (they share ONE closure scope after concatenation
   `cmhContentRoot` / `cmhLayerIdOwners` / `cmhLayerBlocks` / `cmhLayerBlock` (`01-config.js`),
   the rich-content selector vocabulary (`03-selectors.js`),
   the viewport vocabulary (`04-viewport.js`),
+  the layer-chrome identity registry `cmhMarkLayerChrome` / `cmhClickHitsLayerChrome` (`00-preamble.js`),
+  which every module that injects an interactive control INSIDE the content root registers its
+  control with, and the comment dialog's outside-click swallow reads,
   `widgetStateChanges` (35-widgets), and the export
   primitives `SNAPSHOT_HTML` / `CMH_LAYER_SCRIPT` / `CMH_INJECTED_CHROME` / `_stripTransientBodyClasses`
   / `_snapshotWithTail` (65-export-shareable) are consumed by later export modules - move with care.
@@ -34,7 +37,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 
 | Module | SPEC areas | Purpose |
 | --- | --- | --- |
-| `00-preamble.js` | CMH-CORE, CMH-EXP | IIFE opener; captures `SNAPSHOT_HTML` and `document.currentScript` before any DOM access. |
+| `00-preamble.js` | CMH-CORE, CMH-EXP | IIFE opener; captures `SNAPSHOT_HTML` and `document.currentScript` before any DOM access, and declares the layer-chrome identity registry (`cmhMarkLayerChrome` / `cmhClickHitsLayerChrome`). |
 | `01-config.js` | CMH-CORE, CMH-FWDCOMPAT, CMH-DENSITY, CMH-SEC, CMH-EXP | Auto-discovered config; declares `CMH_VERSION` (build.py stamps it) and the content-root boundary helpers (`cmhContentRootState`, `cmhContentRoot`, `cmhLayerIdOwners`, `cmhLayerBlocks`, `cmhLayerBlock`, `cmhWarnUnresolvedBlock`) every reader and exporter resolves the layer's own reserved data blocks through. |
 | `02-lzstring.js` | CMH-STORE | Vendored lz-string (trimmed `compressToUTF16`/`decompressFromUTF16`, bounded decode) used to pack the comment store. |
 | `03-selectors.js` | CMH-CHART, CMH-MMD, CMH-OFFLINE, CMH-PRINT | The one shared rich-content selector vocabulary (`CMH_MERMAID_SEL`, `CMH_CHART_DATA_SEL`, `CMH_CHART_CANVAS_SEL`, `CMH_RICH_CONTENT_SEL`) the chart renderer, the image layer, the Offline exporter, the print/measure cap in `83-print.js`, and the author-time payload detector all derive from. |
@@ -62,7 +65,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `50-sidebar.js` | CMH-SIDE, CMH-PERSIST, CMH-RICH | Sidebar rendering and durable embedded-delete persistence from per-card deletes; renders the reviewer note rich, carries the hidden raw-source element, and gives the inline reply/edit editors the shared formatting toolbar + shortcuts. |
 | `51-comment-search.js` | CMH-SEARCH, CMH-RICH | Comment search / filter row: case-insensitive filter of the rendered cards (matching the hidden raw note source so markers/URLs stay searchable), shown/total count, clear button. |
 | `52-hover-bubble.js` | CMH-CORE | Hover bubble to open a comment. |
-| `53-comment-popover.js` | CMH-CORE, CMH-RICH | Inline on-screen comment dialog opened from the hover bubble (renders the note rich; note + Edit button, whose in-place editor carries the shared formatting toolbar and shortcuts; an outside pointer click closes it and is swallowed, a keyboard-activated one is not). |
+| `53-comment-popover.js` | CMH-CORE, CMH-RICH | Inline on-screen comment dialog opened from the hover bubble (renders the note rich; note + Edit button, whose in-place editor carries the shared formatting toolbar and shortcuts; an outside pointer click closes it, and is swallowed when it lands in the annotated document unless it hits one of the layer's identity-resolved surfaces - an open editor, or a control registered through `cmhMarkLayerChrome` - while a keyboard-activated one is never swallowed). |
 | `54-sidebar-toggle.js` | CMH-SIDE, CMH-A11Y | Sidebar open/close. |
 | `55-toolbar-menu.js` | CMH-MENU-ICON, CMH-UI | Toolbar overflow menu; renders the menu header's brand icon and running-version text. |
 | `56-copy-clear.js` | CMH-COPY | Copy all + Clear all. |

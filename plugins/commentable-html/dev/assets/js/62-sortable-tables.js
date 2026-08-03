@@ -240,6 +240,7 @@ function setupSortableTables() {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "cmh-sort-ctrl cm-skip";
+      cmhMarkLayerChrome(btn);
       btn.title = "Sort by this column";
       btn.setAttribute("aria-label", "Sort by " + ((th.textContent || "").trim() || ("column " + (ci + 1))));
       btn.innerHTML = '<span class="cmh-sort-up" aria-hidden="true"></span><span class="cmh-sort-dn" aria-hidden="true"></span>';

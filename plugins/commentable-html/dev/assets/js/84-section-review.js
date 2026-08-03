@@ -417,6 +417,7 @@ function _ensureBadge(heading) {
     badge = document.createElement("button");
     badge.type = "button";
     badge.className = "cmh-review-badge cm-skip";
+    cmhMarkLayerChrome(badge);
     heading.appendChild(badge);
     badge.addEventListener("click", function (e) {
       e.stopPropagation();

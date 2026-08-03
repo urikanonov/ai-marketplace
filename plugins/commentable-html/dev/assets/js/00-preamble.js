@@ -18,6 +18,44 @@ const CMH_LAYER_SCRIPT = document.currentScript;
 // host content (which may itself be cm-skip, e.g. a chart <canvas>). See _snapshotWithTail.
 const CMH_INJECTED_CHROME = new Set();
 
+// The layer's OWN interactive chrome, held by IDENTITY. Some of it is injected INSIDE the content
+// root (a sortable-table sort control, a widget "Reset moves", a checklist box), where containment
+// cannot tell it from author content and a class match would let author content spoof its way past
+// a guard. Registering each control where the layer CREATES it is the only test a document cannot
+// fake. Register the interactive CONTROL itself, never a container that also holds inert or author
+// content (a toolbar's label, the code wrap around an author `<pre>`, an author `[data-cmh-note]`
+// container): membership below covers the whole subtree, so a container registration hands away the
+// dismiss click on dead space for no functional gain. Consumed by the comment dialog's
+// outside-click swallow (53-comment-popover.js).
+const CMH_LAYER_CHROME = new WeakSet();
+function cmhMarkLayerChrome(el) {
+  if (!el || el.nodeType !== 1) return el;
+  // Enforce the invariant rather than only documenting it: registering a node that IS or CONTAINS
+  // the annotated document would exempt the whole document from the swallow, which is the one
+  // mistake a future call site could make that silently disables the guard entirely.
+  try {
+    if (el === document.documentElement || el === document.body) return el;
+    if (root && el.contains(root)) return el;
+  } catch (e) { return el; }
+  CMH_LAYER_CHROME.add(el);
+  return el;
+}
+// True when a click landed on, or inside, a registered chrome subtree. Prefers the EVENT's
+// propagation path (fixed at dispatch) so a control another listener detaches mid-dispatch is still
+// recognized, and falls back to the live ancestor chain where `composedPath` is unavailable.
+function cmhClickHitsLayerChrome(target, path) {
+  if (path) {
+    for (let i = 0; i < path.length; i++) if (CMH_LAYER_CHROME.has(path[i])) return true;
+    return false;
+  }
+  let el = target && target.nodeType === 1 ? target : (target && target.parentElement) || null;
+  while (el) {
+    if (CMH_LAYER_CHROME.has(el)) return true;
+    el = el.parentElement;
+  }
+  return false;
+}
+
 // Scroll behavior that respects prefers-reduced-motion: JS scrollIntoView/scrollTo take a
 // `behavior` option that OVERRIDES the CSS `scroll-behavior` reset, so every programmatic
 // smooth scroll must consult this so motion-sensitive readers get an instant jump instead.

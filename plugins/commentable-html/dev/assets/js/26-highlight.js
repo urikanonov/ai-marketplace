@@ -711,6 +711,7 @@ function renderDiffBlock(block) {
     toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = "cmh-diff-toggle";
+    cmhMarkLayerChrome(toggle);
     toggle.textContent = layout === "split" ? "To inline view" : "To side-by-side view";
     toggle.title = "Switch between side-by-side and inline diff";
     bar.appendChild(toggle);
@@ -720,6 +721,7 @@ function renderDiffBlock(block) {
     hlToggle = document.createElement("button");
     hlToggle.type = "button";
     hlToggle.className = "cmh-diff-hltoggle";
+    cmhMarkLayerChrome(hlToggle);
     const on = diffSyntaxOn();
     hlToggle.textContent = on ? "Syntax: on" : "Syntax: off";
     hlToggle.title = "Toggle syntax highlighting in diffs";

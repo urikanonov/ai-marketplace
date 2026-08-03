@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.514.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.515.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.515.0] - 2026-08-03</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The layer&#x27;s OWN controls injected INSIDE the content root no longer lose the reviewer&#x27;s first click to an open comment dialog. Inverting the dismiss to swallow only clicks in the annotated document gave every surface OUTSIDE the content root its first click back, but a sortable-table sort control, a widget &quot;Reset moves&quot;, a checklist box, an editable note, a code-block Copy, a section caret or review badge, and a rendered diff&#x27;s view toolbar all live inside that root, where containment cannot tell them from author content - so with a dialog open the first click on one of them was spent closing the dialog and the control did nothing. The layer now registers each control it creates in an identity set and carves that set out of the swallow, so the control acts on the FIRST click (in the <code>&lt;body&gt;</code>-fallback mode too). Identity, not class: document content carrying <code>cmh-sort-ctrl</code> or <code>cm-widget-reset</code> is still author content and is still swallowed, so the anti-spoofing property is unchanged. A spared click then behaves exactly as it does with no dialog open - the carve-out restores the normal click rather than making the control modal - and a behavior the runtime attaches to AUTHOR content (clicking a commented image to jump to its card, clicking a collapsed section&#x27;s heading rather than its caret) is not an injected control and is still swallowed.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.514.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -503,6 +510,8 @@
               <li>Section review state now hashes the same canonical (authored source-order) content the validation banner does, so a reader&#x27;s persisted table sort can no longer flip an already-reviewed section to &quot;changed&quot; (and a section marked reviewed while a table was sorted no longer flips when the sort is cleared). The canonical order is read from the stamped row indices rather than restored by moving rows, so a badge refresh never disturbs the reader&#x27;s sorted view, focus, or text selection. One upgrade note: a section marked reviewed by an older build WHILE a table was sorted was recorded against the sorted order, so it shows &quot;changed&quot; once after this upgrade; re-marking it stores the canonical hash and it stays reviewed from then on.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.512.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -510,8 +519,6 @@
               <li>The strict validator now decides an offline-mode <code>&lt;meta http-equiv=&quot;refresh&quot;&gt;</code> target by applying the HTML refresh algorithm instead of matching <code>url=</code> in the raw attribute text, which was wrong in both directions. A browser resolves <code>content=&quot;0;url=https:evil.example&quot;</code> in a <code>file://</code> document to <code>https://evil.example/</code> and navigates the whole document - every reviewer comment with it - there, but the gate required a <code>//</code> after the scheme, so a hand-authored offline file carrying that meta passed <code>validate.py --strict</code> unflagged. The <code>url=</code> keyword is optional in that algorithm as well, so simply dropping it (<code>content=&quot;0;https://evil.example&quot;</code>) was an even cheaper bypass, and a remote authority reached the same beacon through <code>\\host</code> or an explicit <code>file://host</code> UNC target. A meta refresh is a TOP-LEVEL NAVIGATION, the one egress channel no meta-delivered CSP can close, so the gate was the only thing that would have caught any of them. In the other direction, a refresh with no time is not a refresh at all, a quoted value is truncated at its closing quote, a near miss on the <code>url</code> keyword is an ordinary relative reference, only ASCII whitespace separates the keyword from its <code>=</code>, and a bare <code>https:</code> with no host navigates nowhere - all of those used to be reported as network egress and now pass. The export was never affected (it removes every refresh meta whatever its URL), so this closes a validator-only false negative and the gate stays looser than the strip it mirrors. The neighbouring CSS and attribute network-literal gates deliberately keep their slashes-required shape - those are fetch channels the offline CSP closes, and each is byte-mirrored in the exporter, so gate and strip have to move together (tracked separately).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.509.0] - 2026-08-03</h3></div>
             <div class="group-label">Security</div>
@@ -544,14 +551,7 @@
               <li>The validator no longer lets a comment the marker COUNT views do not see forge a <code>commentable-html</code> region marker. A browser turns <code>&lt;!BEGIN: commentable-html - CONTENT ...&gt;</code>, <code>&lt;?END: commentable-html - JS&gt;</code> and <code>&lt;/ END: commentable-html - JS&gt;</code> into bogus COMMENT nodes, and the parser correctly routed each to its comment handler - but the handler then treated any comment whose TEXT matched a marker as that marker, while the counting views match the exact source the authoring tools emit. So a forged declaration, or a real but uncounted <code>&lt;!--BEGIN: ...--&gt;</code> / <code>&lt;!-- BEGIN: ... --!&gt;</code>, could open or close the CONTENT region (letting a document whose counted <code>BEGIN</code> marker sits outside <code>#commentRoot</code> validate completely clean) or set the <code>END: commentable-html - JS</code> boundary early (silencing the chart-init guard for every <code>new Chart(</code> between the forged marker and the counted one). A comment now carries its own SOURCE through the shared boundary layer, recorded only on the real <code>&lt;!--</code> path - so every other route, including the end-of-input fallbacks, is bogus by default and fails closed - and a marker must be a comment those views count.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.470.0] - 2026-08-03</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A sidebar re-render that lands while a modal dialog is open (Manage storage, the clear-all confirm, Help) no longer hands keyboard focus to the side pane BEHIND that dialog&#x27;s overlay (issue #884). The pane restores an in-progress inline reply/edit draft and its selection across a re-render, and re-focuses that editor when it owned focus beforehand; with an <code>aria-modal</code> dialog up, the pane is behind the overlay, so the editor&#x27;s ownership is vetoed for the whole rebuild and the deferred focus stands down. The veto also applies at DELIVERY time - the editor&#x27;s deferred focus timer, the post-save hand-back, and an editor&#x27;s close-restore all stand down while a dialog is up - so a focus armed before the dialog opened cannot land behind it either, and that focus is HELD rather than dropped, so closing the dialog leaves the reviewer on a real control instead of stranded. Focus found BEHIND the overlay (stranded on <code>&lt;body&gt;</code>, in the side pane, or moved out into the document by a delete run FROM the dialog) is handed back to it, preferring the dialog&#x27;s own declared safe default over raw DOM order so a destructive confirm button is never made the Enter-default, skipping any candidate that cannot actually take focus; focus the reviewer genuinely holds inside the dialog, or on chrome that paints above the overlay, is left alone. The rule is keyed on the rendered <code>aria-modal</code> overlay, so it covers Manage storage, the clear-all confirm, and Help alike. Without this, a keyboard or screen-reader reviewer could be left typing into an invisible, unreachable textarea outside the modal.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">277 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">278 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

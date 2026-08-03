@@ -504,6 +504,7 @@ function setupCodeCopy() {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "cm-code-copy cm-skip";
+    cmhMarkLayerChrome(btn);
     btn.textContent = "Copy";
     btn.title = "Copy this code block to the clipboard";
     btn.addEventListener("click", function () {
