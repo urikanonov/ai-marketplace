@@ -4,6 +4,31 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.407.0] - 2026-08-03
+
+### Fixed
+
+- The Offline export's strips now inspect two shapes they used to walk straight past. A
+  `<script type="speculationrules">` or `<script type="importmap">` block is ACTIVE without being
+  JavaScript - a speculation ruleset makes the browser prefetch or prerender by itself, and an
+  import map re-points where a bare module specifier resolves, which the remote-import scan cannot
+  see because the importing script names no URL - so the JavaScript-MIME predicate never looked at
+  either. A speculation ruleset is now removed outright (it can prefetch the document's own links
+  through `"source": "document"` without naming a URL at all, and it has nothing to offer a
+  single-file offline export), and an import map is removed unless every reference in it, key and
+  value alike, is relative - which is decided by parsing the JSON rather than scanning its text, so
+  a `\u002f`-escaped, whitespace-padded, tab-split, backslash-authority or `data:`/`blob:`-scheme
+  target cannot slip through. An external (`src`-bearing) or unparseable block is removed too, and
+  a parameterized spelling such as `importmap;charset=utf-8` is left alone because a browser treats
+  it as inert data. And `<template>` content, which `querySelectorAll` never descends into but
+  serialization preserves verbatim, is now walked recursively at any depth by the reserved-id
+  neutralize pass, the loader strip and the event-handler/URL scrub, so a script parked in a
+  template for a later adopter to insert can no longer carry a remote import, a navigation beacon,
+  a network image, a network `url(...)` or an inline event handler into an offline file. The strict
+  validator applies both rules too - from a mirrored type list and pattern, and from separate
+  template-content views that only the offline checks read - so it can neither bless a file the
+  exporter would strip nor reject one it just produced.
+
 ## [1.404.0] - 2026-08-03
 
 ### Fixed

