@@ -197,6 +197,31 @@ test("every committed capture recipe parses and is documented (DEMO-SCRIPT-07)",
   }
 });
 
+// A recipe's longest wait is a COST decision, not a detail: it is what an unattended capture bills
+// when the ending never arrives, and picking one from memory is how a 90 minute budget outlived a
+// two hour run. The budget therefore has to be written down next to the number it was derived from.
+test("every recipe's longest wait is a documented budget, not a bare number (DEMO-SCRIPT-12)", () => {
+  const dir = path.join(import.meta.dirname, "..", "examples");
+  const recipes = fs.readdirSync(dir).filter((f) => f.endsWith("-session.json"));
+  assert.ok(recipes.length, "examples/ should ship at least one capture recipe");
+
+  const skill = fs.readFileSync(path.join(import.meta.dirname, "..", "SKILL.md"), "utf8");
+  for (const name of recipes) {
+    const script = readScript(path.join(dir, name));
+    const longest = Math.max(...script.steps.map((s) => s.timeoutMs ?? 0));
+    assert.ok(longest > 0, `${name} needs a timeout on its longest wait; the backstop is the budget`);
+    // Whole minutes, so the committed number and the documented one are the same number rather than
+    // two roundings of it - there is nothing to gain from a budget measured to the second.
+    assert.equal(longest % 60_000, 0,
+      `${name} longest wait is ${longest}ms; make a capture budget a whole number of minutes`);
+    const minutes = longest / 60_000;
+    const documented = skill.split("\n").some((line) => line.includes(name)
+      && new RegExp(`\\b${minutes}\\b\\s*minute`).test(line));
+    assert.ok(documented,
+      `SKILL.md should record ${name} as a ${minutes} minute capture budget, and where that number came from`);
+  }
+});
+
 test("a marker the recipe types itself is refused, not silently demoted to an idle wait (DEMO-SCRIPT-08)", () => {
   // The terminal paints the submitted turn back into the transcript, so an expect that appears in an
   // earlier send is satisfied by the echo. The step then rests entirely on idleMs - measured against

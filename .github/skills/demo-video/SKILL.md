@@ -87,8 +87,8 @@ layout to cut the file size.
 
 ## Re-record a published clip
 
-A published clip is an unattended capture that can run for an hour and a half, so the ask is not
-retyped from memory - it is committed. `--script` drives the session from a recipe, and each step
+A published clip is an unattended capture that can run for the better part of an hour, so the ask is
+not retyped from memory - it is committed. `--script` drives the session from a recipe, and each step
 waits for its cue (a file that this run produced, a marker in the output, or a window of quiet)
 before sending, so the capture survives an agent that pauses mid-thought.
 
@@ -132,6 +132,17 @@ node "$skill\tools\record_demo.mjs" report --example "C:\demo\report.html" `
 load-bearing for this clip: a different directory works for the duck recipe but silently breaks the
 round trip. `--snapshot-out` keeps the report AS REVIEWED, because the agent edits it in place and
 without the copy the "before" side of the round trip is gone.
+
+### Capture budgets (what each recipe is allowed to cost)
+
+A recipe's longest wait is what an unattended capture bills when the ending never arrives, so it is
+derived from a MEASURED run rather than picked from memory. Change a timeout and change the row -
+`DEMO-SCRIPT-12` fails a budget that is only in the JSON:
+
+| Recipe | Longest wait | Where that number came from |
+| --- | --- | --- |
+| `duck-session.json` | 60 minutes | The cast the published clip is rendered from ran 36 minutes and reached its PANEL SUMMARY, so 60 leaves two thirds again as long before the backstop fires. The subject is deliberately cheap - one `slugify.mjs` with a few tests, reviewed by 4 fast ducks - because the earlier subject (`md2html.mjs` plus a `PLAN.md`, on an unconstrained panel) ran past two hours and hit its 90 minute `quit` timeout rather than finishing, and two further attempts died around twenty minutes in with no cast at all. A panel is the thing being demonstrated, not the code it reviews, so the clip still shows both rounds and ends on the consolidated table. |
+| `loop-session.json` | 40 minutes | The `paste` step is idle until the BROWSER phase in the second shell writes `C:\demo\review.md`, so this budget covers a human driving that phase as well as the agent writing the report - it is a handover window, not an agent's working time. The `quit` step then allows 25 more minutes for the fix-up the clip ends on. |
 
 Capturing is only half the job - the three clips are then RENDERED from what those phases produced,
 and each takes different flags:
