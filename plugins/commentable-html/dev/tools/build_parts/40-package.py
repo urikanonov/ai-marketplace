@@ -10,6 +10,7 @@
 import io
 import os
 import re
+import unicodedata
 import zipfile
 
 PACKAGE_ZIP_NAME = "skill-resources.zip"
@@ -76,7 +77,9 @@ def _iter_zip_members(stage_dir):
     Machine-specific and junk paths (__pycache__, *.pyc, .DS_Store, marker files) are excluded so
     the zip is deterministic and clean across build hosts. A build input that redirects outside the
     stage tree (a symlink or Windows junction, which could smuggle host-local files into the shipped
-    zip) is rejected - fail closed rather than follow it."""
+    zip) is rejected - fail closed rather than follow it - and so is a directory reached TWICE, which
+    means a junction pointing at its own ancestor (os.walk follows a junction, so it would otherwise
+    loop until the build dies on the path length)."""
     members = []
     stage_real = os.path.realpath(stage_dir)
     for d in PACKAGE_BULKY_DIRS:
@@ -88,7 +91,17 @@ def _iter_zip_members(stage_dir):
             raise SystemExit(
                 "skill-resources.zip: refusing a redirected build-input directory: " + d)
         before = len(members)
+        # Scoped to ONE base's walk: a cycle always recurs within the walk that entered it, while
+        # two bases legitimately reaching the same directory package it under two different member
+        # prefixes - a DAG, not a loop.
+        seen_dirs = set()
         for root, dirs, files in os.walk(base):
+            real = os.path.realpath(root)
+            if real in seen_dirs:
+                raise SystemExit(
+                    "skill-resources.zip: refusing a directory reached twice (a symlink/junction "
+                    "cycle): " + os.path.relpath(root, stage_dir).replace(os.sep, "/"))
+            seen_dirs.add(real)
             kept = []
             for x in dirs:
                 if x in _PACKAGE_SKIP_DIRS:
@@ -119,24 +132,52 @@ def _iter_zip_members(stage_dir):
     return _reject_duplicate_members(members)
 
 
+def _collision_key(rel):
+    """The name two members would EXTRACT to on a case-insensitive or name-normalizing filesystem
+    (Windows, macOS): the Unicode canonical caseless form (NFD, casefold, NFD again). Folding must
+    be sandwiched between normalizations, not applied after one: `casefold()` can itself emit a
+    decomposed sequence, so `NFC(name).casefold()` gave `\u015a` and `\u017f\u0301` - canonically
+    equivalent once folded - different keys and let them through. The key is deliberately at least
+    as aggressive as any real filesystem (full case folding also folds `\u00df` to `ss`, which
+    NTFS and APFS keep apart), because the cost of an over-strict key is a build that fails loudly
+    and one rename, while an under-strict one ships an archive that unpacks differently by OS."""
+    return unicodedata.normalize("NFD", unicodedata.normalize("NFD", rel).casefold())
+
+
 def _reject_duplicate_members(members):
-    """Fail closed if two members share a path. A zip may legally carry a path twice, and both the
-    packaged archive and the --check comparison map members by name, so a duplicate would bloat the
-    shipped zip while comparing equal."""
-    seen = set()
+    """Fail closed if two members share a path, or would share a FILE once extracted. A zip may
+    legally carry a path twice, and both the packaged archive and the --check comparison map
+    members by name, so a duplicate would bloat the shipped zip while comparing equal. Names that
+    differ only by case or Unicode normalization are legal and distinct in git and in a zip on
+    Linux, but collide on extraction on Windows and macOS, where the second member silently
+    overwrites the first - so they are rejected too."""
+    seen = {}
     for rel, _ in members:
-        if rel in seen:
+        key = _collision_key(rel)
+        prior = seen.get(key)
+        if prior == rel:
             raise SystemExit("skill-resources.zip: duplicate member path: " + rel)
-        seen.add(rel)
+        if prior is not None:
+            raise SystemExit("skill-resources.zip: member paths collide when extracted on a "
+                             "case-insensitive or name-normalizing filesystem: %s and %s"
+                             % (prior, rel))
+        seen[key] = rel
     return members
 
 
 def build_resources_zip_bytes(stage_dir):
-    """Deterministic bytes for skill-resources.zip: sorted members, fixed timestamp/mode/system,
-    fixed deflate level. Byte-stable for a given content set on a given host; --check compares the
-    zip's CONTENTS (not raw container bytes) so a different zlib build cannot cause false drift."""
+    """Deterministic bytes for skill-resources.zip: sorted members, fixed timestamp/mode/system.
+    Byte-stable for a given content set on a given host; --check compares the zip's CONTENTS (not
+    raw container bytes) so a different zlib build cannot cause false drift.
+
+    No compression level is set: zipfile applies a ZipFile-level `compresslevel` only to members
+    written from a bare arcname, so it was inert for the ZipInfo members written below (an archive
+    built at 9 was byte-identical to one built at 1). Passing 9 PER member instead would shrink the
+    shipped zip by 0.10% while rewriting ~3.5 MB of committed binary, and --check compares the
+    LAYOUT and CONTENTS (never the compressed bytes, which vary with the host zlib) so the level is
+    not observable anyway. The zlib default it is."""
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for rel, full in _iter_zip_members(stage_dir):
             info = zipfile.ZipInfo(rel, date_time=(1980, 1, 1, 0, 0, 0))
             info.external_attr = 0o644 << 16
