@@ -270,10 +270,12 @@ its NEW clip - the gate will tell you if you forget - and still look at it, beca
 is not "this is a good poster". Cut one from a SETTLED frame (a poster is one frame, so a mid-fade
 still is refused rather than averaged away) of the RE-ENCODED clip, the same bytes you scanned above -
 `scale=800:-2` is what the published posters are, and it reproduces both shapes (864x540 -> 800x500,
-1078x620 -> 800x460):
+1078x620 -> 800x460). `-q:v 3` is load-bearing, not decoration: a poster is a JPEG, and 4:2:0
+quantization costs the traffic lights their saturation (measured on the published poster: 84 at
+`-q:v 3`, 68 at 6, 55 at 15), which is what the scan finds the chrome by.
 
 ```powershell
-ffmpeg -ss <seconds> -i "$repo\tmp\rerecord-publish\demo-<name>.webm" -frames:v 1 `
+ffmpeg -y -ss <seconds> -i "$repo\tmp\rerecord-publish\demo-<name>.webm" -frames:v 1 `
   -vf "scale=800:-2" -q:v 3 "$repo\tmp\rerecord-publish\poster-<name>.jpg"
 ```
 

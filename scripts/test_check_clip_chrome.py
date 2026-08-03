@@ -365,7 +365,13 @@ class ScanDecisionTests(unittest.TestCase):
 
 
 class UntrustworthyInputTests(unittest.TestCase):
-    """The scan must never report a pass it did not earn."""
+    """The scan must never report a pass it did not earn.
+
+    Every refusal here is a `ProbeFailed`, an `Unscannable`: it is a fact about the ONE file being
+    probed, so `main` reports it and carries on to the next. A `SystemExit` would end the run, and
+    an unreadable clip must not stop a LATER one - possibly a leaking one - being looked at, which
+    is the rule the rest of this file already follows.
+    """
 
     def _measure_returning(self, *results):
         calls = iter(results)
@@ -376,7 +382,7 @@ class UntrustworthyInputTests(unittest.TestCase):
         original = ccc._measure
         ccc._measure = self._measure_returning(strip, lights, gutter, kind[:-1])
         try:
-            with self.assertRaises(SystemExit):
+            with self.assertRaises(ccc.Unscannable):
                 ccc.scan_clip("ffmpeg", "clip.webm")
         finally:
             ccc._measure = original
@@ -390,7 +396,7 @@ class UntrustworthyInputTests(unittest.TestCase):
         original = ccc._measure
         ccc._measure = self._measure_returning(strip, lights, gutter, kind)
         try:
-            with self.assertRaises(SystemExit) as caught:
+            with self.assertRaises(ccc.Unscannable) as caught:
                 ccc.scan_clip("ffmpeg", "clip.webm")
             self.assertIn("timestamps", str(caught.exception))
         finally:
@@ -400,12 +406,12 @@ class UntrustworthyInputTests(unittest.TestCase):
         original = ccc._measure
         ccc._measure = self._measure_returning([], [], [], [])
         try:
-            with self.assertRaises(SystemExit):
+            with self.assertRaises(ccc.Unscannable):
                 ccc.scan_clip("ffmpeg", "clip.webm")
         finally:
             ccc._measure = original
 
-    def test_a_frame_missing_its_measurements_is_fatal(self):
+    def test_a_frame_missing_its_measurements_is_refused(self):
         # A parse that finds frames but not their numbers would sail through everything downstream:
         # a missing YAVG reads as "browser, skip" and a missing YMAX as "perfectly flat". That is
         # the silent-failure mode this script exists to replace.
@@ -414,11 +420,33 @@ class UntrustworthyInputTests(unittest.TestCase):
         original = ccc.subprocess.run
         ccc.subprocess.run = lambda *a, **k: proc
         try:
-            with self.assertRaises(SystemExit) as caught:
+            with self.assertRaises(ccc.Unscannable) as caught:
                 ccc._measure("ffmpeg", "clip.webm", "crop=1:1:0:0", ("YMIN", "YMAX"))
             self.assertIn("YMIN", str(caught.exception))
         finally:
             ccc.subprocess.run = original
+
+    def test_an_unreadable_file_does_not_end_the_run(self):
+        # The reason all of the above are Unscannable rather than SystemExit: a probe failure on
+        # one artifact must not stop a LATER one being scanned. Reproduced against `main` with a
+        # `_measure` that fails on the first clip - the run used to exit immediately, printing
+        # nothing, so a leak on the second was never reported.
+        leaky = iter(_frames("t" * 5, [246.0] * 5))
+
+        def measure(ffmpeg, path, crop, keys, prefix=""):
+            if path.endswith("bad.webm"):
+                raise ccc.ProbeFailed("ffmpeg could not read bad.webm")
+            return next(leaky)
+
+        out = io.StringIO()
+        with mock.patch.object(ccc, "_measure", measure), \
+                mock.patch.object(ccc, "find_ffmpeg", lambda: "ffmpeg"), \
+                contextlib.redirect_stdout(out):
+            code = ccc.main(["bad.webm", "leaky.webm"])
+        printed = out.getvalue()
+        self.assertNotEqual(code, 0)
+        self.assertIn("bad.webm", printed)
+        self.assertIn("showing its launch command", printed)
 
 
 class FfmpegAvailabilityTests(unittest.TestCase):
@@ -442,12 +470,13 @@ class FfmpegAvailabilityTests(unittest.TestCase):
             ccc.find_ffmpeg = original
 
 
-def _poster_frames(strip_spread, lights=96.0, gutter=9.0, mid=30.0, strip_sat=5.0):
+def _poster_frames(strip_spread, lights=84.0, gutter=9.0, mid=41.9, strip_sat=5.0):
     """The four probes for a SINGLE frame - which is all a poster is.
 
-    The defaults are the published multi-duck poster measured at its clip's frame size: its chrome
-    is drawn (lights 96), its title strip is flat (spread 4), its gutter is clear (9) and its
-    middle is a terminal (mean 30).
+    The defaults are the published multi-duck poster measured at its clip's frame AND luminance
+    scale: its chrome is drawn (lights 84 - the clip's own frame reads 93, the difference being
+    JPEG chroma quantization on the small dots), its title strip is flat (spread 4), its gutter is
+    clear (8) and its middle reads 41.9 where the clip's frame reads 42.0.
     """
     strip = [{"t": 0.0, "YMIN": 0.0, "YMAX": strip_spread, "SATMAX": strip_sat}]
     return (strip,
@@ -527,9 +556,12 @@ class PosterTests(unittest.TestCase):
         # keep in step - the poster is measured by the very probes the clip is.
         seen = {}
 
-        def fake_scan(ffmpeg, path, prefix="", surface="clip"):
+        def fake_scan(ffmpeg, path, prefix="", surface="clip", min_lights=None,
+                      browser_min_mean=None):
             seen["prefix"] = prefix
             seen["surface"] = surface
+            seen["min_lights"] = min_lights
+            seen["browser_min_mean"] = browser_min_mean
             return [], 1, 0
 
         with mock.patch.object(ccc, "scan_clip", fake_scan), \
@@ -538,8 +570,10 @@ class PosterTests(unittest.TestCase):
                 mock.patch.object(ccc, "poster_similarity", lambda *a, **k: 0.99), \
                 mock.patch("os.path.isfile", lambda path: True):
             ccc.scan_poster("ffmpeg", os.path.join("assets", "poster-x.jpg"))
-        self.assertTrue(seen["prefix"].startswith("scale=1078:620,"))
+        self.assertEqual(seen["prefix"], ccc.poster_prefix(1078, 620))
         self.assertEqual(seen["surface"], "poster")
+        self.assertEqual(seen["min_lights"], ccc.POSTER_LIGHTS_PRESENT)
+        self.assertEqual(seen["browser_min_mean"], ccc.POSTER_BROWSER_MIN_MEAN)
 
     def test_a_poster_is_measured_on_its_clips_luminance_scale_too(self):
         # A published poster is a JPEG, which ffmpeg reads as FULL-range yuvj420p, while every
@@ -550,6 +584,7 @@ class PosterTests(unittest.TestCase):
         # `format=yuv420p` alone is a no-op (measured), so the conversion has to be an explicit
         # out_range; with it the poster reads 27-31, back on the clip's scale.
         prefix = ccc.poster_prefix(1078, 620)
+        self.assertIn("scale=1078:620,", prefix)
         self.assertIn("out_range=limited", prefix)
         self.assertTrue(prefix.endswith(","), "the prefix is concatenated onto a crop")
         # No in_range: whatever the file declares is what it is converted FROM, so this cannot
@@ -574,13 +609,58 @@ class PosterTests(unittest.TestCase):
 
     def test_a_browser_frame_poster_has_no_chrome_to_check(self):
         # Two of the three published posters are frames of the report in a browser: no window
-        # chrome, so no title bar to read. Measured, their lights read 2 and their middle 234-245 -
-        # and their STRIP reads a spread of 217, because with no chrome on screen that offset lands
-        # on the report page's own content. That is exactly why "no chrome" must not be read as
-        # "the strip must be flat": checking flatness here would fail both real posters, and there
-        # is no title bar in the picture for a title to leak into.
-        bad, judged, occluded, _ = self._scan(_poster_frames(217.0, lights=2.0, mid=234.0))
+        # chrome, so no title bar to read. Measured under the shipped prefix, their lights read 2
+        # and their middle 217 and 227 - and their STRIP reads a spread of 217, because with no
+        # chrome on screen that offset lands on the report page's own content. That is exactly why
+        # "no chrome" must not be read as "the strip must be flat": checking flatness here would
+        # fail both real posters, and there is no title bar in the picture for a title to leak into.
+        bad, judged, occluded, _ = self._scan(_poster_frames(217.0, lights=2.0, mid=217.0))
         self.assertEqual((bad, judged, occluded), ([], 0, 0))
+
+    def test_a_poster_whose_lights_are_painted_out_is_refused_not_passed(self):
+        # The reproduction that made the poster path ask a POSITIVE question. A poster is one
+        # frame, so "there is no terminal here" cannot be answered by finding no dark frame among
+        # hundreds - and the luminance conversion pushes a terminal poster's middle to 41.9, just
+        # past the 38 a terminal reads. On the clip's question this poster - lights painted out,
+        # title strip full of text - printed OK at exit 0. It must not be innocent: it is nowhere
+        # near the 217-227 a browser frame reads.
+        with self.assertRaises(ccc.Unscannable):
+            self._scan(_poster_frames(219.0, lights=0.0, mid=41.9))
+
+    def test_a_poster_cut_at_the_documented_quality_is_judged(self):
+        # The other half of the same finding. Cutting a poster is a JPEG encode, and 4:2:0
+        # quantization costs those three 11px dots their peak chroma: measured, posters cut from
+        # settled frames read 75-86 where the clip's own frames read 82-93, so five of nine settled
+        # cuts fell under the clip's threshold of 80 and were refused as mid-transition.
+        bad, judged, occluded, _ = self._scan(_poster_frames(4.0, lights=75.0))
+        self.assertEqual((bad, judged, occluded), ([], 1, 0))
+
+    def test_the_poster_lights_floor_sits_between_a_faded_and_a_settled_cut(self):
+        # Measured on cut posters: settled 75-86, part-faded 22/43/55/58/70/70. Erring LOW is the
+        # safe direction - admitting a faded frame does not admit a leak, because a frame with
+        # something painted over it is excluded by the gutter, which is what actually answers "is
+        # this the title bar".
+        self.assertGreater(ccc.POSTER_LIGHTS_PRESENT, 70.0)
+        self.assertLessEqual(ccc.POSTER_LIGHTS_PRESENT, 75.0)
+        self.assertGreater(ccc.POSTER_LIGHTS_PRESENT, ccc.LIGHTS_ABSENT)
+        # The CLIP keeps its own, measured on frames that were never JPEG-encoded.
+        self.assertEqual(ccc.LIGHTS_PRESENT, 80.0)
+
+    def test_the_browser_floor_sits_between_a_terminal_and_a_browser_poster(self):
+        # Measured under the shipped prefix: the terminal poster's middle reads 41.9, the two
+        # browser posters 217.0 and 226.6.
+        self.assertGreater(ccc.POSTER_BROWSER_MIN_MEAN, 41.9)
+        self.assertLess(ccc.POSTER_BROWSER_MIN_MEAN, 217.0)
+        # And it is well clear of the darkness test it replaces on this path, which the conversion
+        # moved a terminal poster past.
+        self.assertGreater(ccc.POSTER_BROWSER_MIN_MEAN, ccc.TERMINAL_MAX_MEAN)
+
+    def test_a_clip_still_answers_the_clips_question(self):
+        # The poster's positive test must not leak into the clip path: a browser-only CLIP has no
+        # dark frame and no lights, and passes on exactly the rule it always did.
+        calls = iter(_frames("b" * 20, [200.0] * 20))
+        with mock.patch.object(ccc, "_measure", lambda *a, **k: next(calls)):
+            self.assertEqual(ccc.scan_clip("ffmpeg", "demo-x.webm"), ([], 0, 0))
 
     def test_a_poster_that_is_not_a_whole_frame_of_its_clip_is_refused(self):
         # Scaling back only works because a poster is the WHOLE frame, scaled by one factor. A
@@ -618,6 +698,7 @@ class PosterTests(unittest.TestCase):
         with mock.patch.object(ccc, "_measure", lambda *a, **k: next(frames)):
             with self.assertRaises(ccc.ScaleMismatch) as caught:
                 ccc.scan_clip("ffmpeg", "demo-x.webm")
+        self.assertIn("Re-render it with --scale 0.6", str(caught.exception))
     def test_the_similarity_floor_sits_between_a_matched_and_a_mismatched_poster(self):
         self.assertGreater(ccc.POSTER_MATCH_MIN, 0.80)
         self.assertLess(ccc.POSTER_MATCH_MIN, 0.9894)
@@ -687,6 +768,11 @@ class PosterTests(unittest.TestCase):
         chain = args[args.index("-filter_complex") + 1]
         self.assertIn("scale=800:460", chain)
         self.assertIn("ssim", chain)
+        # The frame sync is spelled out rather than left to a build's defaults: `shortest=1` here
+        # compared exactly ONE frame, and the whole verdict rests on the clip driving the timeline
+        # while the single-frame poster repeats.
+        self.assertIn("shortest=0", chain)
+        self.assertIn("repeatlast=1", chain)
 
     def test_a_leaking_poster_is_reported_before_its_freshness_is_even_asked(self):
         # A leak outranks staleness: both replace the poster, but only one says there is a command

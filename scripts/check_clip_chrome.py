@@ -202,6 +202,35 @@ POSTER_MATCH_MIN = 0.95
 # fact matches at 0.99. A second of video is far below any published clip (the shortest is 769
 # frames) and far above that degenerate case.
 POSTER_MATCH_MIN_FRAMES = 25
+# The saturation at which a POSTER's traffic lights count as drawn. It is not the clip's
+# `LIGHTS_PRESENT`, and the difference is JPEG: a poster is 4:2:0-quantized, which measurably costs
+# those three 11px dots their peak chroma. Measured by cutting posters from the multi-duck clip with
+# the documented recipe (`scale=800:-2 -q:v 3`) at nine timestamps and reading them back through
+# `poster_prefix`: the clip's own frames read 82-93 while the posters cut from them read 75-86, and
+# FIVE of the nine landed under the clip's threshold of 80. So a poster cut from a perfectly settled
+# frame was being refused about half the time - the operator following the documented recipe would
+# be told to re-render a clip that is not the problem.
+#
+# The population this must stay clear of is the NOT-settled one, measured the same way on the loop
+# clip's own part-faded frames: 22, 43, 55, 58, 70, 70. This sits above all of them and below every
+# settled cut, and erring low is the safe direction anyway - admitting a faded frame does not admit
+# a leak, because a frame with something painted over it is excluded by the GUTTER, which is what
+# actually answers "is this the title bar". Quality is load-bearing at the bottom end (a sweep of
+# the published poster reads 84 at `-q:v 3`, 68 at 6, 55 at 15), which is why the recipe pins it.
+POSTER_LIGHTS_PRESENT = 72.0
+# How bright a POSTER's middle must be before "no window chrome here" is innocent rather than a
+# refusal. On a clip that question is answered by `TERMINAL_MAX_MEAN` over hundreds of frames, but a
+# poster is ONE frame and that test does not survive the range conversion: mapping full range into
+# 16-235 RAISES a dark value (16 + 0.859x), so the published terminal poster's middle reads 41.9
+# where the unconverted file read 30.1 - just past the 38 a terminal reads. Left that way,
+# "terminal_frames == 0" was true for a plainly-terminal poster, and a poster with its lights
+# painted out and its title bar full of text reached a printed OK (reproduced: exit 0).
+#
+# So the poster path does not ask "is this NOT a terminal"; it asks the positive question, "is this
+# plainly a BROWSER frame", which is the only case where having no chrome is innocent. Measured
+# under the shipped prefix: the two browser posters read 217.0 and 226.6, the terminal poster 41.9.
+# This sits between them with a factor of 3.5 to the terminal side and 1.4 to the browser side.
+POSTER_BROWSER_MIN_MEAN = 150.0
 # What to do about an artifact this gate could not read, which is a different instruction for each
 # surface. A clip is RENDERED, so it is re-rendered or re-recorded; a poster is not rendered at all -
 # it is CUT from a clip - so telling its operator to "re-render it with --scale 0.6" names a knob
@@ -214,7 +243,9 @@ RENDER_ADVICE = {
 }
 SETTLE_ADVICE = {
     "clip": "Re-record it, or check that its transitions settle.",
-    "poster": "Cut it from a SETTLED frame of its clip - this one is mid-transition.",
+    "poster": "Cut it from a SETTLED frame of its clip - this one is mid-transition - and cut it "
+              "at -q:v 3, since a softer JPEG costs the traffic lights the saturation this is "
+              "measured by.",
 }
 RECORDER_ADVICE = {
     "clip": "Re-scan a clip from the current recorder, or re-record this one.",
@@ -290,13 +321,18 @@ def _measure(ffmpeg, clip, crop, keys, prefix=""):
     clip's own offsets: scaled back to the clip's frame, the poster is a one-frame clip.
 
     Read from ffmpeg's stderr rather than `metadata=print:file=`: a Windows path needs escaping
-    inside a filter description, which is a portability trap for no benefit here."""
+    inside a filter description, which is a portability trap for no benefit here.
+
+    Every failure here is a `ProbeFailed`, which is an `Unscannable`: it is a fact about THIS file,
+    and a file ffmpeg cannot read must not end the run before a later one - possibly a leaking one -
+    has been looked at. It still fails the run, exactly like every other Unscannable."""
     chain = "%s%s,signalstats,metadata=print" % (prefix, crop)
     proc = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "info", "-i", clip,
                            "-vf", chain, "-f", "null", "-"],
                           capture_output=True, text=True)
     if proc.returncode != 0:
-        raise SystemExit("ffmpeg could not read %s: %s" % (clip, proc.stderr.strip()[-400:]))
+        raise ProbeFailed("ffmpeg could not read %s: %s"
+                          % (display_name(clip), proc.stderr.strip()[-400:]))
     frames = []
     current = None
     for line in proc.stderr.splitlines():
@@ -310,17 +346,18 @@ def _measure(ffmpeg, clip, crop, keys, prefix=""):
             current[hit.group(1)] = float(hit.group(2))
     # A parse that finds frames but not their measurements would sail through every later check:
     # a missing YAVG would read as "browser, skip" and a missing YMIN/YMAX as "perfectly flat".
-    # That is the silent-failure mode this whole script exists to replace, so it is fatal here.
+    # That is the silent-failure mode this whole script exists to replace, so it refuses here.
     for index, frame in enumerate(frames):
         missing = [k for k in keys if k not in frame]
         if missing:
-            raise SystemExit("ffmpeg produced no %s for frame %d of %s; the signalstats output was "
-                             "not understood, so the scan cannot be trusted"
-                             % (", ".join(missing), index, clip))
+            raise ProbeFailed("ffmpeg produced no %s for frame %d of %s; the signalstats output was "
+                              "not understood, so the scan cannot be trusted"
+                              % (", ".join(missing), index, display_name(clip)))
     return frames
 
 
-def scan_clip(ffmpeg, clip, prefix="", surface="clip"):
+def scan_clip(ffmpeg, clip, prefix="", surface="clip", min_lights=LIGHTS_PRESENT,
+              browser_min_mean=None):
     """Return `(bad, judged, occluded)` - frames whose title strip is not flat, how many frames were
     judged, and how many showed the chrome with something painted over it.
 
@@ -328,6 +365,11 @@ def scan_clip(ffmpeg, clip, prefix="", surface="clip"):
     put a poster back on its clip's frame and luminance scale, so both surfaces are read by one
     implementation. `surface` only chooses which instruction a refusal ends with - a poster is cut,
     not rendered, so clip-only advice would name a knob it does not have.
+
+    `min_lights` and `browser_min_mean` are the two places where a poster genuinely cannot be judged
+    by a clip's numbers, and both are measured rather than guessed (see `POSTER_LIGHTS_PRESENT` and
+    `POSTER_BROWSER_MIN_MEAN`). Everything else - the crops, the flatness tolerance, the gutter, the
+    coarse leak sweep - is shared, which is the point.
 
     On a POSTER there is exactly one frame, which sharpens two of the rules below: the coverage
     floor (`MIN_CHROME_SHARE`) can never fire, since one frame is never under half of one, and the
@@ -342,10 +384,10 @@ def scan_clip(ffmpeg, clip, prefix="", surface="clip"):
     kind = _measure(ffmpeg, clip, KIND, ("YAVG",), prefix)
 
     if not strip:
-        raise SystemExit("no frames decoded from %s" % clip)
+        raise ProbeFailed("no frames decoded from %s" % name)
     if not len(strip) == len(lights) == len(gutter) == len(kind):
-        raise SystemExit("frame count mismatch reading %s (%d, %d, %d, %d)"
-                         % (clip, len(strip), len(lights), len(gutter), len(kind)))
+        raise ProbeFailed("frame count mismatch reading %s (%d, %d, %d, %d)"
+                          % (name, len(strip), len(lights), len(gutter), len(kind)))
     # Equal lengths are not alignment. The four probes are four independent decodes, and they are
     # combined BY INDEX, so a run that dropped one frame and duplicated another would line the
     # gutter of one frame up with the strip of its neighbour - and judge the wrong pair with no
@@ -353,11 +395,11 @@ def scan_clip(ffmpeg, clip, prefix="", surface="clip"):
     for i, row in enumerate(strip):
         for other in (lights, gutter, kind):
             if abs(other[i]["t"] - row["t"]) > 1e-6:
-                raise SystemExit("frame %d of %s carries different timestamps across the probes "
-                                 "(%.3f vs %.3f), so the measurements cannot be matched up"
-                                 % (i, clip, row["t"], other[i]["t"]))
+                raise ProbeFailed("frame %d of %s carries different timestamps across the probes "
+                                  "(%.3f vs %.3f), so the measurements cannot be matched up"
+                                  % (i, name, row["t"], other[i]["t"]))
 
-    drawn = [row["SATMAX"] >= LIGHTS_PRESENT for row in lights]
+    drawn = [row["SATMAX"] >= min_lights for row in lights]
     brightest = max(row["SATMAX"] for row in lights)
     # Frames where the chrome is at least PARTLY lit. A frame whose lights fall just under
     # LIGHTS_PRESENT is not judged and not counted as occluded either, so without this the coverage
@@ -367,13 +409,25 @@ def scan_clip(ffmpeg, clip, prefix="", surface="clip"):
     lit_frames = sum(1 for row in lights if row["SATMAX"] >= LIGHTS_ABSENT)
     terminal_frames = sum(1 for row in kind if row["YAVG"] <= TERMINAL_MAX_MEAN)
     if not any(drawn):
-        # The chrome was never found where these offsets expect it. That is only innocent when there
-        # is no terminal in the clip at all - the browser-only demo, whose lights region peaks at 2.
-        # Otherwise every measurement above was taken somewhere meaningless, and passing would be a
-        # gate that checked nothing while reporting OK. Note this catches a clip rendered SMALLER
-        # than the publish scale, where the lights fall outside the crop entirely and the leaked
-        # title falls left of the strip - the mirror of the over-scaled case below.
-        if terminal_frames == 0 and brightest < LIGHTS_ABSENT:
+        # The chrome was never found where these offsets expect it. That is only innocent when the
+        # surface plainly has no terminal on it - the browser-only demo, whose lights region peaks
+        # at 2. Otherwise every measurement above was taken somewhere meaningless, and passing
+        # would be a gate that checked nothing while reporting OK. Note this catches a clip
+        # rendered SMALLER than the publish scale, where the lights fall outside the crop entirely
+        # and the leaked title falls left of the strip - the mirror of the over-scaled case below.
+        #
+        # A CLIP answers "no terminal here" by finding no dark frame among hundreds. A POSTER is one
+        # frame, so it is asked the POSITIVE question instead - is this plainly a browser frame -
+        # because "not dark" is a frame-by-frame accident there, and the range conversion pushes a
+        # terminal poster's middle just past the darkness test (measured: 41.9 against 38). Left on
+        # the clip's question, a poster with its lights painted out and text across its title bar
+        # printed OK.
+        if browser_min_mean is None:
+            innocent = terminal_frames == 0 and brightest < LIGHTS_ABSENT
+        else:
+            innocent = (brightest < LIGHTS_ABSENT
+                        and min(row["YAVG"] for row in kind) >= browser_min_mean)
+        if innocent:
             return [], 0, 0
         if terminal_frames == 0:
             # Chrome is on screen but never settles: naming the scale here would be the wrong
@@ -381,7 +435,7 @@ def scan_clip(ffmpeg, clip, prefix="", surface="clip"):
             raise ChromeOccluded(
                 "%s never shows its window chrome settled (its traffic lights peak at %.0f, under "
                 "the %.0f a drawn light reads), so no frame could be judged. %s"
-                % (name, brightest, LIGHTS_PRESENT, SETTLE_ADVICE[surface]))
+                % (name, brightest, min_lights, SETTLE_ADVICE[surface]))
         raise ScaleMismatch(
             "%s shows a terminal on %d frame(s) but its window chrome never appears where these "
             "offsets expect it (lights peak at %.0f), so no frame could be judged: it was not "
@@ -570,11 +624,14 @@ def poster_similarity(ffmpeg, poster, clip, width, height):
 
     The poster is a single-frame input and the CLIP drives the timeline: ssim's frame sync repeats
     the last frame of an input that has ended, so the comparison runs to the clip's last frame and
-    stops there. `-loop 1` with `shortest=1` measures the same thing (verified: identical best match
-    over 1600 frames) but takes three times as long and leans on two more options, one of which - a
-    demuxer loop - runs forever if the other is not honoured."""
+    stops there. Those are framesync's DEFAULTS, but they are written out anyway - the whole verdict
+    depends on them, and a build that defaulted differently would compare one frame instead of
+    every frame. (That is not a silent failure: it lands under `POSTER_MATCH_MIN_FRAMES` and is
+    reported. Saying it explicitly means it does not happen at all.) `-loop 1` with `shortest=1`
+    measures the same thing (verified: identical best match over 1600 frames) but takes three times
+    as long and leans on a demuxer loop that runs forever if the other option is not honoured."""
     chain = ("[0:v]scale=%d:%d,format=yuv420p[a];[1:v]format=yuv420p[b];"
-             "[a][b]ssim=stats_file=-" % (width, height))
+             "[a][b]ssim=shortest=0:repeatlast=1:stats_file=-" % (width, height))
     proc = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-i", clip,
                            "-i", poster, "-filter_complex", chain, "-f", "null", "-"],
                           capture_output=True, text=True)
@@ -584,7 +641,8 @@ def poster_similarity(ffmpeg, poster, clip, width, height):
         # clip. The frame floor below does not cover that: a decode that dies after a second is
         # already past it. So the exit status is checked first and on its own.
         raise ProbeFailed("ffmpeg failed comparing %s against %s (exit %d), so the poster's "
-                          "freshness was not measured: %s"
+                          "freshness was not measured - this is a TOOLING failure, not a verdict "
+                          "on the poster, so check the ffmpeg build before touching the assets: %s"
                           % (display_name(poster), display_name(clip), proc.returncode,
                              proc.stderr.strip()[-400:]))
     best = None
@@ -611,7 +669,8 @@ def poster_similarity(ffmpeg, poster, clip, width, height):
         # than passes - and it is not reported as a stale poster, which would send the operator
         # re-cutting a poster whose only problem is that ffmpeg was not understood.
         raise ProbeFailed("ffmpeg compared %d frame(s) of %s against %s, under the %d a verdict on "
-                          "the poster's freshness needs: %s"
+                          "the poster's freshness needs - this is a TOOLING failure, not a stale "
+                          "poster, so check the ffmpeg build before re-cutting anything: %s"
                           % (compared, display_name(clip), display_name(poster),
                              POSTER_MATCH_MIN_FRAMES, proc.stderr.strip()[-400:]))
     return best
@@ -644,7 +703,8 @@ def scan_poster(ffmpeg, poster):
             % (display_name(poster), poster_width, poster_height, clip_width, clip_height,
                by_width, by_height, display_name(clip)))
     bad, judged, occluded = scan_clip(ffmpeg, poster, prefix=poster_prefix(clip_width, clip_height),
-                                      surface="poster")
+                                      surface="poster", min_lights=POSTER_LIGHTS_PRESENT,
+                                      browser_min_mean=POSTER_BROWSER_MIN_MEAN)
     if bad:
         return bad, judged, occluded, None
     similarity = poster_similarity(ffmpeg, poster, clip, poster_width, poster_height)
