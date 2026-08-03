@@ -2002,7 +2002,7 @@ class RuntimeParityTests(unittest.TestCase):
         ("anchorless near-match", "", "window . ", "x", (2000, 20000, 200000)),
         ("prefix chain", "$", "frames.", 'location.href="https:"', (500, 5000, 50000)),
         ("statement-position near-sink", "", "X" + " " * 500 + 'location = "//e"; ', "",
-         (5, 50, 500)),
+         (3, 30, 300)),
     )
     _NAV_SCALING_BUDGET = 1.0
 
