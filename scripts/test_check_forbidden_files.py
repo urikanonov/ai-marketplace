@@ -430,9 +430,20 @@ class SpecCoverageTest(unittest.TestCase):
         self.assertTrue(rows, "the spec declares no REPO-GUARD feature ids")
         for line in rows:
             feature_id = line.split("|")[1].strip()
-            named = re.findall(r"`([A-Za-z_]\w*Test\.test_\w+)`", line)
+            coverage = line.split("|")[3]
+            named = re.findall(r"`([A-Za-z_]\w*Test\.test_\w+)`", coverage)
             with self.subTest(feature_id=feature_id):
                 self.assertTrue(named, f"{feature_id} names no covering test")
+                # A citation this suite cannot resolve is a FAILURE, not something to skip:
+                # silently ignoring a foreign reference is exactly how a spec row starts
+                # promising coverage nobody checks.
+                foreign = re.findall(r"`(scripts/[\w./-]+\.py)`", coverage)
+                self.assertEqual(
+                    [ref for ref in foreign if ref != "scripts/test_check_forbidden_files.py"],
+                    [],
+                    f"{feature_id} cites a suite this test cannot verify; register the spec in "
+                    "check_spec_test_refs.py before citing another file",
+                )
                 for ref in named:
                     cls_name, method = ref.split(".", 1)
                     cls = getattr(module, cls_name, None)

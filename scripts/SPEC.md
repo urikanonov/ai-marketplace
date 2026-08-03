@@ -12,13 +12,14 @@ changed. Every row's test runs under `python scripts/run_script_tests.py` (the r
 and `cross-platform` jobs, and the opt-in `PREPUSH_TESTS=1` hook path).
 
 The rows below are self-enforcing: `SpecCoverageTest` in `scripts/test_check_forbidden_files.py`
-fails if a row names no covering test, names one that does not exist, or repeats a feature id.
-That is local rather than an entry in the `SPEC_TARGETS` registry of
-`scripts/check_spec_test_refs.py` for a structural reason, not a coverage one: that checker
-locates a target's tests as `<spec dir>/tests` or `<base>/tests` and builds its reverse corpus
-from `*.spec.*` / `*.test.*` files, neither of which fits a flat Python suite living beside the
-scripts it covers. Registering this spec means teaching the checker that shape first; until then
-the rows are held to the same standard here.
+fails if a row names no covering test, names one that does not exist, repeats a feature id, or
+cites a suite it cannot resolve. That is local rather than an entry in the `SPEC_TARGETS` registry
+of `scripts/check_spec_test_refs.py` for a structural reason, not a coverage one: that checker
+locates a target's tests as `<spec dir>/tests` or `<base>/tests` and builds its reverse corpus from
+`*.spec.*` / `*.test.*` files, neither of which fits a flat Python suite living beside the scripts
+it covers, so registering this spec today would fail closed with "no tests directory found".
+Teaching the checker that shape is tracked separately; until then the rows are held to the same
+standard here, and a row that reaches outside this suite fails rather than going unchecked.
 
 Coverage notation: each row names the covering test class and method in
 `scripts/test_check_forbidden_files.py`.
@@ -32,7 +33,7 @@ Coverage notation: each row names the covering test class and method in
 | REPO-GUARD-05 | The scan is anchored to the repository this script lives in, not the ambient cwd: run from a subdirectory `git ls-files` would strip the directory from every path and make it look root-level, and run from the throwaway sandbox the script suite uses it would find no repository and scan nothing. | `TrackedFilesTest.test_paths_are_repo_root_relative_from_any_cwd`, `TrackedFilesTest.test_survives_being_run_from_an_unrelated_directory` |
 | REPO-GUARD-06 | A non-ASCII path survives both hops that would otherwise corrupt it, each of which is a silent allowlist miss: `-z` changes only the delimiter, so `core.quotePath=false` is what stops git C-quoting the name, and an explicit UTF-8 decode is what stops Python reading git's path bytes with the locale codec (cp1252 on Windows). | `TrackedFilesEncodingTest.test_a_non_ascii_name_is_reported_literally` |
 | REPO-GUARD-07 | The guard EXITS non-zero and names the offender, rather than merely classifying it. That is the behavior the required `validate` job and the pre-commit hook depend on, and it is what the classifier unit tests above cannot observe. An offender is named once even when git reports it several times (an unmerged path is listed once per stage), and a name that is not valid UTF-8 is rendered so it can always be printed - a `UnicodeEncodeError` on a narrow console would replace the refusal with a traceback at the one moment the message matters most. | `GuardExitStatusTest.test_a_root_scratch_dump_fails_the_guard`, `GuardExitStatusTest.test_a_dump_in_an_unapproved_directory_fails_the_guard`, `GuardExitStatusTest.test_an_offender_is_named_once`, `GuardExitStatusTest.test_a_clean_tree_passes`, `DisplayPathTest.test_a_surrogate_bearing_name_survives_a_narrow_console`, `DisplayPathTest.test_an_ordinary_name_is_unchanged` |
-| REPO-GUARD-08 | Every row in this spec names at least one covering test that really exists in the suite, and no feature id is declared twice, so a row cannot promise coverage that was never written. | `SpecCoverageTest.test_every_named_test_exists`, `SpecCoverageTest.test_every_feature_id_is_declared_once` |
+| REPO-GUARD-08 | Every row in this spec names at least one covering test that really exists in the suite, no feature id is declared twice, and a row that cites a suite this check cannot resolve fails rather than going unverified. | `SpecCoverageTest.test_every_named_test_exists`, `SpecCoverageTest.test_every_feature_id_is_declared_once` |
 
 ## Coverage gaps
 

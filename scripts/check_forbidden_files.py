@@ -6,11 +6,14 @@ a public, user-owned repository. GitHub push rulesets are only available on
 organization-owned repos, so this check runs in the required `validate` CI job
 and in the `.githooks/pre-commit` hook instead, ensuring a private key, keystore,
 or dotenv file cannot be committed even by the owner. It also refuses a scratch
-diff/patch dump anywhere in the tree, and anything that does not belong at the
-repository ROOT, which is an allowlisted set.
+diff/patch dump anywhere in the tree, and anything whose top-level entry is not
+one of the repository's allowlisted top-level files or directories.
 
-Run from anywhere inside the repo:
+The SCAN is cwd-independent (it anchors on this script's own repository), but the
+command below is not - it names the script relative to the repo root:
     python scripts/check_forbidden_files.py
+From a subdirectory, give the script's own path instead, for example
+`python ../scripts/check_forbidden_files.py`.
 """
 
 from __future__ import annotations
