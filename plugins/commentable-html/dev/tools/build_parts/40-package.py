@@ -77,9 +77,12 @@ def _iter_zip_members(stage_dir):
     Machine-specific and junk paths (__pycache__, *.pyc, .DS_Store, marker files) are excluded so
     the zip is deterministic and clean across build hosts. A build input that redirects outside the
     stage tree (a symlink or Windows junction, which could smuggle host-local files into the shipped
-    zip) is rejected - fail closed rather than follow it."""
+    zip) is rejected - fail closed rather than follow it - and so is a directory reached TWICE, which
+    means a junction pointing at its own ancestor (os.walk follows a junction, so it would otherwise
+    loop until the build dies on the path length)."""
     members = []
     stage_real = os.path.realpath(stage_dir)
+    seen_dirs = set()
     for d in PACKAGE_BULKY_DIRS:
         base = os.path.join(stage_dir, d)
         if not os.path.isdir(base):
@@ -90,6 +93,12 @@ def _iter_zip_members(stage_dir):
                 "skill-resources.zip: refusing a redirected build-input directory: " + d)
         before = len(members)
         for root, dirs, files in os.walk(base):
+            real = os.path.realpath(root)
+            if real in seen_dirs:
+                raise SystemExit(
+                    "skill-resources.zip: refusing a directory reached twice (a symlink/junction "
+                    "cycle): " + os.path.relpath(root, stage_dir).replace(os.sep, "/"))
+            seen_dirs.add(real)
             kept = []
             for x in dirs:
                 if x in _PACKAGE_SKIP_DIRS:
@@ -122,9 +131,14 @@ def _iter_zip_members(stage_dir):
 
 def _collision_key(rel):
     """The name two members would EXTRACT to on a case-insensitive or name-normalizing filesystem
-    (Windows, macOS). Case folding plus NFC normalization, so `tools/X.py` vs `tools/x.py` and a
-    precomposed vs decomposed spelling of the same name both map to one key."""
-    return unicodedata.normalize("NFC", rel).casefold()
+    (Windows, macOS): the Unicode canonical caseless form (NFD, casefold, NFD again). Folding must
+    be sandwiched between normalizations, not applied after one: `casefold()` can itself emit a
+    decomposed sequence, so `NFC(name).casefold()` gave `\u015a` and `\u017f\u0301` - canonically
+    equivalent once folded - different keys and let them through. The key is deliberately at least
+    as aggressive as any real filesystem (full case folding also folds `\u00df` to `ss`, which
+    NTFS and APFS keep apart), because the cost of an over-strict key is a build that fails loudly
+    and one rename, while an under-strict one ships an archive that unpacks differently by OS."""
+    return unicodedata.normalize("NFD", unicodedata.normalize("NFD", rel).casefold())
 
 
 def _reject_duplicate_members(members):

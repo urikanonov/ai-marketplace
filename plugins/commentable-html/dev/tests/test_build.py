@@ -957,6 +957,30 @@ class PackageTests(unittest.TestCase):
                              "zipfile.ZipFile(..., compresslevel=...) is inert for the ZipInfo "
                              "members this packager writes; pass it per member or not at all")
 
+    def test_packager_rejects_a_collision_that_only_case_folding_decomposes(self):
+        # Folding must be sandwiched between normalizations: casefold() can itself emit a
+        # decomposed sequence, so NFC(name).casefold() gave these two canonically equivalent names
+        # different keys and let the pair through (CMH-PKG-15).
+        with self.assertRaises(SystemExit):
+            build._reject_duplicate_members([("tools/\u015a.py", "a"),
+                                             ("tools/\u017f\u0301.py", "b")])
+
+    @unittest.skipUnless(os.name == "nt", "Windows directory junctions")
+    def test_packager_rejects_a_junction_cycle(self):
+        # A junction pointing at its own ancestor passes containment (it resolves INSIDE the stage)
+        # but os.walk follows it, so the walk would recurse until the build died on the path
+        # length. Reject a directory reached twice instead (CMH-PKG-15).
+        with tempfile.TemporaryDirectory() as d:
+            stage = self._minimal_stage(d)
+            rc = subprocess.run(["cmd", "/c", "mklink", "/J",
+                                 os.path.join(stage, "tools", "loop"), stage],
+                                capture_output=True, text=True)
+            if rc.returncode != 0:
+                self.skipTest("could not create a junction: " + rc.stderr.strip())
+            with self.assertRaises(SystemExit) as cm:
+                build.build_resources_zip_bytes(stage)
+            self.assertIn("cycle", str(cm.exception))
+
     @unittest.skipUnless(os.name == "nt", "Windows directory junctions")
     def test_packager_rejects_a_junction_input(self):
         # os.path.islink misses junctions; the packager's realpath containment must still reject one.

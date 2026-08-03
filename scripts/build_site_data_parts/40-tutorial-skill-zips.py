@@ -80,9 +80,14 @@ def _contained(base_real, path):
 
 def _collision_key(arcname):
     """The name two members would EXTRACT to on a case-insensitive or name-normalizing filesystem
-    (Windows, macOS). Case folding plus NFC normalization, so `tools/X.py` vs `tools/x.py` and a
-    precomposed vs decomposed spelling of the same name both map to one key."""
-    return unicodedata.normalize("NFC", arcname).casefold()
+    (Windows, macOS): the Unicode canonical caseless form (NFD, casefold, NFD again). Folding must
+    be sandwiched between normalizations, not applied after one: `casefold()` can itself emit a
+    decomposed sequence, so `NFC(name).casefold()` gave `\u015a` and `\u017f\u0301` - canonically
+    equivalent once folded - different keys and let them through. The key is deliberately at least
+    as aggressive as any real filesystem (full case folding also folds `\u00df` to `ss`, which
+    NTFS and APFS keep apart), because the cost of an over-strict key is a build that fails loudly
+    and one rename, while an under-strict one ships an archive that unpacks differently by OS."""
+    return unicodedata.normalize("NFD", unicodedata.normalize("NFD", arcname).casefold())
 
 
 def _reject_duplicate_members(members):
@@ -123,18 +128,37 @@ _SKILL_ZIP_SKIP_DIRS = {"__pycache__", ".git", "node_modules", ".idea", ".vscode
                         ".pytest_cache", ".mypy_cache"}
 _SKILL_ZIP_SKIP_NAMES = {".DS_Store", "Thumbs.db"}
 _SKILL_ZIP_SKIP_SUFFIXES = (".pyc", ".pyo")
+# Index modes a skill ZIP may package: a regular file, executable or not. A symlink (120000) or a
+# gitlink/submodule (160000) is refused - see _tracked_skill_files.
+_TRACKED_REGULAR_MODES = ("100644", "100755")
 
 
 def _tracked_skill_files(root, skill_dir_rel):
     """The git-tracked files under the skill dir, relative to the skill dir (forward slashes), or
-    None when git is unavailable or this is not a git checkout so the caller can fall back."""
+    None when git is unavailable or this is not a git checkout so the caller can fall back.
+
+    Entries are read WITH their index mode (`ls-files -s`), because the mode is the only
+    host-independent way to see a symlink: git materializes a mode-120000 entry as a real symlink
+    where the platform supports one and as a REGULAR FILE holding the link text where it does not
+    (`core.symlinks=false`, the Windows default without developer mode). Realpath containment
+    cannot see the second form at all, so the same commit would publish target bytes from one host
+    and link text from another. A non-regular entry - a symlink or a gitlink (submodule) - is
+    therefore refused outright, whatever it points at."""
     try:
-        out = subprocess.run(["git", "-C", root, "ls-files", "-z", "--", skill_dir_rel],
+        out = subprocess.run(["git", "-C", root, "ls-files", "-s", "-z", "--", skill_dir_rel],
                              capture_output=True, check=True).stdout.decode("utf-8")
     except (FileNotFoundError, subprocess.CalledProcessError, OSError):
         return None
     prefix = skill_dir_rel.rstrip("/") + "/"
-    rels = [p[len(prefix):] for p in out.split("\0") if p and p.startswith(prefix)]
+    entries = []
+    for record in out.split("\0"):
+        if not record:
+            continue
+        meta, tab, path = record.partition("\t")
+        if not tab or not path.startswith(prefix):
+            continue
+        entries.append((meta.split(" ", 1)[0], path[len(prefix):]))
+    rels = [rel for _, rel in entries]
     # `git ls-files` prints an UNMERGED path once per index stage (three times during a conflicted
     # merge or rebase). Refuse rather than dedupe: the working-tree bytes of a half-resolved file
     # may still carry conflict markers, and packaging them would smuggle a conflict into a binary
@@ -145,17 +169,32 @@ def _tracked_skill_files(root, skill_dir_rel):
             "Claude Desktop skill ZIP: %s has unmerged (conflicted) index entries; resolve the "
             "conflict and `git add` before rebuilding: %s"
             % (skill_dir_rel, ", ".join(unmerged[:5])))
+    nonregular = sorted({rel for mode, rel in entries if mode not in _TRACKED_REGULAR_MODES})
+    if nonregular:
+        raise SystemExit(
+            "Claude Desktop skill ZIP: %s tracks a symlink or submodule, whose packaged bytes "
+            "would depend on the build host; replace it with a regular file: %s"
+            % (skill_dir_rel, ", ".join(nonregular[:5])))
     return rels or None
 
 
 def _walk_skill_files(skill_dir):
     """Fallback file enumeration for a skill dir outside a git checkout: a filtered walk that skips
     well-known untracked noise so the archive stays deterministic. A subdirectory that redirects
-    outside the skill dir is rejected here rather than descended into (os.walk does not follow a
-    symlinked dir, but it does follow a Windows junction)."""
+    outside the skill dir is rejected here rather than descended into, and a directory reached
+    TWICE is rejected as a cycle: os.walk does not follow a symlinked dir, but it does follow a
+    Windows junction, so one pointing at its own ancestor would otherwise loop until the build
+    dies on the path length."""
     rels = []
     skill_real = os.path.realpath(skill_dir)
+    seen_dirs = set()
     for dirpath, dirs, names in os.walk(skill_dir):
+        real = os.path.realpath(dirpath)
+        if real in seen_dirs:
+            raise SystemExit("Claude Desktop skill ZIP: refusing a directory reached twice "
+                             "(a symlink/junction cycle): %s"
+                             % os.path.relpath(dirpath, skill_dir).replace(os.sep, "/"))
+        seen_dirs.add(real)
         kept = []
         for d in dirs:
             if d in _SKILL_ZIP_SKIP_DIRS:

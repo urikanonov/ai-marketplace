@@ -177,13 +177,89 @@ class SkillZipTests(unittest.TestCase):
         # `git ls-files` prints an UNMERGED path once per index stage, so a rebuild run during a
         # conflicted merge/rebase repeats it. Fail closed rather than package a half-resolved file
         # (its working-tree bytes may still carry conflict markers) (SITE-BUILD-19).
-        out = "\0".join(["plugins/demo/pkg/skills/demo/SKILL.md"] * 3
-                        + ["plugins/demo/pkg/skills/demo/tools/x.py"]) + "\0"
+        path = "plugins/demo/pkg/skills/demo/SKILL.md"
+        out = "".join("100644 %040d %d\t%s\0" % (0, stage, path) for stage in (1, 2, 3))
+        out += "100644 %040d 0\tplugins/demo/pkg/skills/demo/tools/x.py\0" % 0
         completed = mock.Mock(stdout=out.encode("utf-8"))
         with mock.patch("subprocess.run", return_value=completed):
             with self.assertRaises(SystemExit) as caught:
                 bsd._tracked_skill_files("/repo", "plugins/demo/pkg/skills/demo")
         self.assertIn("SKILL.md", str(caught.exception))
+
+    def test_tracked_skill_files_refuses_a_tracked_symlink_by_index_mode(self):
+        # A mode-120000 entry is checked out as a real symlink where the platform supports one and
+        # as a REGULAR FILE holding the link text where it does not (core.symlinks=false, the
+        # Windows default), so realpath containment cannot see the second form at all and the same
+        # commit would publish different bytes per host. The INDEX MODE is the host-independent
+        # signal, so a tracked symlink is refused whatever it points at (SITE-BUILD-20).
+        rel = "plugins/demo/pkg/skills/demo"
+        out = ("100644 %040d 0\t%s/SKILL.md\0" % (0, rel)
+               + "120000 %040d 0\t%s/leak.txt\0" % (0, rel))
+        with mock.patch("subprocess.run", return_value=mock.Mock(stdout=out.encode("utf-8"))):
+            with self.assertRaises(SystemExit) as caught:
+                bsd._tracked_skill_files("/repo", rel)
+        self.assertIn("leak.txt", str(caught.exception))
+
+    def test_tracked_skill_files_refuses_a_submodule_entry(self):
+        # A gitlink (160000) has no bytes to package at all; fail closed rather than skip it
+        # silently and ship an archive missing a whole subtree (SITE-BUILD-20).
+        rel = "plugins/demo/pkg/skills/demo"
+        out = ("100644 %040d 0\t%s/SKILL.md\0" % (0, rel)
+               + "160000 %040d 0\t%s/vendor\0" % (0, rel))
+        with mock.patch("subprocess.run", return_value=mock.Mock(stdout=out.encode("utf-8"))):
+            with self.assertRaises(SystemExit) as caught:
+                bsd._tracked_skill_files("/repo", rel)
+        self.assertIn("vendor", str(caught.exception))
+
+    def test_a_tracked_symlink_aborts_the_build_even_when_it_points_inside(self):
+        # End-to-end in a real git repo: containment alone would allow this link (it resolves
+        # inside the skill dir), but its PACKAGED BYTES still depend on whether the host
+        # materialized it, so the build must fail closed (SITE-BUILD-20).
+        import subprocess as sp
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill(root)
+            env = clean_git_env()
+            try:
+                sp.run(["git", "init", "-q"], cwd=root, env=env, check=True)
+                sp.run(["git", "add", "-A"], cwd=root, env=env, check=True)
+            except (FileNotFoundError, sp.CalledProcessError):
+                self.skipTest("git not available")
+            # Add the symlink through the INDEX, so the test is identical on a host that cannot
+            # create one in the working tree.
+            blob = sp.run(["git", "hash-object", "-w", "--stdin"], input=b"references/a.md",
+                          cwd=root, env=env, capture_output=True, check=True).stdout.decode().strip()
+            sp.run(["git", "update-index", "--add", "--cacheinfo",
+                    "120000,%s,%s/alias.md" % (blob, skill_rel)],
+                   cwd=root, env=env, check=True)
+            with mock.patch.dict(os.environ, clean_git_env(), clear=True):
+                with self.assertRaises(SystemExit) as caught:
+                    bsd.build_skill_zip_members(root, skill_rel, "demo")
+            self.assertIn("alias.md", str(caught.exception))
+
+    @unittest.skipUnless(os.name == "nt", "Windows directory junctions")
+    def test_builder_rejects_a_junction_cycle(self):
+        # A junction pointing at its own ancestor passes containment (it resolves INSIDE the skill
+        # dir) but os.walk follows it, so the walk would recurse until the build died on the path
+        # length. Reject a directory reached twice instead (SITE-BUILD-20).
+        import subprocess as sp
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill(root)
+            skill_dir = os.path.join(root, skill_rel.replace("/", os.sep))
+            rc = sp.run(["cmd", "/c", "mklink", "/J", os.path.join(skill_dir, "tools", "loop"),
+                         skill_dir], capture_output=True, text=True)
+            if rc.returncode != 0:
+                self.skipTest("could not create a junction: " + rc.stderr.strip())
+            with self.assertRaises(SystemExit) as caught:
+                bsd.build_skill_zip_members(root, skill_rel, "demo")
+            self.assertIn("cycle", str(caught.exception))
+
+    def test_duplicate_guard_rejects_a_collision_that_only_case_folding_decomposes(self):
+        # Folding must be sandwiched between normalizations: casefold() can itself emit a
+        # decomposed sequence, so NFC(name).casefold() gave these two canonically equivalent names
+        # different keys and let the pair through (SITE-BUILD-21).
+        members = [("demo/\u015a.md", b"a"), ("demo/\u017f\u0301.md", b"b")]
+        with self.assertRaises(SystemExit):
+            bsd._reject_duplicate_members(members)
 
     def test_a_conflicted_index_aborts_the_build(self):
         # End-to-end reproduction: an unmerged index entry (three stages) with conflict markers left
