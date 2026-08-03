@@ -645,13 +645,16 @@ function _imageSig(el, fresh) {
 }
 // A stored signature is only ever compared with one this runtime just computed, so anything that is
 // not in that format (a poisoned or oversized value in a shared report) is treated as absent - the
-// comment then resolves exactly like one saved before the field existed. A 32-bit FNV-1a digest is
-// at most 7 base-36 digits (0xffffffff is "1z141z3"), so nothing longer can be one of ours; a
-// well-formed but unreachable value simply matches no element and leaves the anchor unresolved.
+// comment then resolves exactly like one saved before the field existed. Ours is a 32-bit FNV-1a
+// digest rendered with toString(36), so only a CANONICAL uint32 base-36 value can be one of ours:
+// too long, out of range, or carrying a leading zero all mean "not a digest we wrote".
 const CMH_SIG_RE = /^[0-9a-z]{1,7}$/;
 function _storedImageSig(comment) {
   const raw = _imageOneLine(comment && comment.imageSig);
-  return CMH_SIG_RE.test(raw) ? raw : "";
+  if (!CMH_SIG_RE.test(raw)) return "";
+  const value = parseInt(raw, 36);
+  if (!Number.isFinite(value) || value > 0xffffffff) return "";
+  return value.toString(36) === raw ? raw : "";
 }
 // The signature only ever speaks when nothing else can: it BLOCKS the indexed anchor solely for a
 // comment stored with neither a label nor a src (the case that has no other identity), so redrawing

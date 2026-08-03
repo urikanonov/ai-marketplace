@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.377.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.390.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,7 +496,7 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
-            <div class="rel-head"><h3>[1.377.0] - 2026-08-03</h3></div>
+            <div class="rel-head"><h3>[1.390.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>Media anchors: an unlabeled figure is no longer identified by its position alone. An image comment resolves by <code>imageIndex</code> and falls back to the stored <code>imageSrc</code>/<code>imageAlt</code>/<code>imageKind</code>, so media with NO label and no src - an unlabeled inline <code>&lt;svg&gt;</code>, an unlabeled chart <code>&lt;canvas&gt;</code> - had no identity at all beyond its index: inserting a figure ahead of it silently moved the comment to a DIFFERENT graphic, because the metadata check had nothing to disagree with. Such a comment now also stores <code>imageSig</code>, a short digest of an AUTHORED shape descriptor (the tag, an author <code>id</code>, the figure&#x27;s caption, an svg&#x27;s <code>viewBox</code> plus the shape it draws down to each descendant&#x27;s drawing attributes and its own text, a chart canvas&#x27;s <code>data-cmh-chart-*</code> attributes) that excludes everything the runtime writes, so a reload, a re-render, a device-pixel-ratio change and an export/reopen all recompute the same value. The comment now re-anchors to the figure it was left on, or stays unresolved when the shape is genuinely ambiguous, instead of attaching itself to another figure. The signature is the discriminator of last resort: it never overrides a label or a src (so redrawing a still-labelled figure keeps its comment), it is never shown to a reader (no card, <code>Copy all</code> line, Markdown export or printed sheet - it rides along only inside an export&#x27;s embedded comment record, so a reopened copy can re-anchor), and a comment saved before the field existed - or one carrying a value no signature this runtime writes could be - resolves exactly as it did.</li>

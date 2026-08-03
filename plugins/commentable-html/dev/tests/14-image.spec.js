@@ -870,6 +870,35 @@ test.describe("inline svg figure comments (CMH-IMG-08)", () => {
     }
   });
 
+  test("a well-formed but unreachable stored signature is treated as absent (CMH-IMG-11)", async ({ page }) => {
+    // Every one of these is well-FORMED base 36 but unreachable for a 32-bit digest rendered with
+    // toString(36): too long, out of uint32 range, and a non-canonical leading zero. None may steer
+    // resolution - each comment must anchor by its index exactly like a pre-signature one.
+    const cases = [
+      { id: "csvglong01", imageSig: "1z141z30", index: 0 },
+      { id: "csvgover01", imageSig: "zzzzzzz", index: 1 },
+      { id: "csvgzero01", imageSig: "01z141z", index: 2 },
+    ];
+    const staged = stageContent(unlabeledFiguresContent(["circle", "rect", "polygon"]),
+      { key: "cmh-svg-sig-unreachable" });
+    try {
+      await seedComments(page, "cmh-svg-sig-unreachable", cases.map((c) => ({
+        id: c.id, anchorType: "image", imageIndex: c.index, imageSrc: "", imageAlt: "",
+        imageKind: "image", imageSig: c.imageSig, quote: "image " + (c.index + 1),
+        note: "unreachable sig " + c.id, createdAt: new Date().toISOString(),
+      })));
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await expect(page.locator("svg.cm-img-hl")).toHaveCount(3);
+      for (const c of cases) {
+        await expect(page.locator(`svg.cm-img-hl[data-cids~="${c.id}"]`))
+          .toHaveAttribute("data-cm-image-index", String(c.index));
+      }
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
   test("an unlabeled figure whose own drawing changed fails safe instead of guessing (CMH-IMG-11)", async ({ page }) => {
     const first = await stageUnlabeledFigures(page, ["circle", "rect"], {
       key: "cmh-svg-sig-redraw-write", note: "redrawn unlabeled note", target: 1,
