@@ -114,6 +114,45 @@ test("the safety gate refuses a dirty cast before any browser starts (DEMO-CLI-0
   assert.notEqual(missing.status, 0, "a missing cast was accepted");
 });
 
+// A refusal is only useful if it can be acted on. The cast and the `--ask` are fixed by OPPOSITE
+// actions - one by re-capturing or adding a redaction rule, the other by retyping the command line -
+// so a single undifferentiated count sent an operator whose ask was dirty to `scan --cast`, which
+// reports nothing, and to a re-capture that changes nothing.
+test("a dirty --ask is refused with instructions that can reproduce and fix it (DEMO-SAFE-42)", () => {
+  const clean = tempCast({
+    version: 1,
+    command: "npm test",
+    cols: 80,
+    rows: 24,
+    scrubbedBy: "demo-video",
+    events: [{ t: 0, data: "86 passing\r\n" }],
+  });
+  const dirtyAsk = "review gh auth login --with-token ghp_0123456789abcdefghijklmnopqrstuvwxyzAB";
+  try {
+    // The cast really is clean, which is the whole trap: every instruction the old refusal gave
+    // pointed at the one surface that has nothing wrong with it.
+    const bare = run(["scan", "--cast", clean.file]);
+    assert.equal(bare.status, 0, bare.stderr);
+    assert.match(bare.stdout, /findings:\s*0/);
+
+    const render = run(["render", "--cast", clean.file, "--ask", dirtyAsk]);
+    assert.notEqual(render.status, 0, "render filmed a dirty --ask");
+    assert.match(render.stderr, /--ask/, "the refusal does not name the ask");
+    assert.doesNotMatch(render.stderr, /this cast still scans dirty/i,
+      "the refusal blames the cast for a finding the cast does not contain");
+    assert.doesNotMatch(render.stderr, /Re-capture or add a rule/,
+      "the refusal prescribes a re-capture that cannot change the ask");
+
+    // ...and the finding can be REPRODUCED, which needs `scan` to accept the same flag.
+    const withAsk = run(["scan", "--cast", clean.file, "--ask", dirtyAsk]);
+    assert.notEqual(withAsk.status, 0, "scan passed a dirty --ask");
+    assert.match(withAsk.stdout, /findings:\s*[1-9]/);
+    assert.match(withAsk.stdout, /ask/, "scan does not say which surface the finding came from");
+  } finally {
+    clean.cleanup();
+  }
+});
+
 test("a Windows shim is launched through its interpreter (DEMO-CLI-04)", () => {
   // resolveExecutable finds `copilot.cmd` on PATH, but node-pty cannot spawn a .cmd or .ps1
   // directly - so the documented `capture -- copilot` flow failed for every CLI that installs as a

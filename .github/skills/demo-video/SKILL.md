@@ -280,7 +280,12 @@ A real session is full of things a published clip must not carry, so:
   painted with ANSI colour codes mid-token, or hard-wrapped across two lines by the application.
 - A redaction keeps the column width it replaced, so a boxed or aligned TUI frame is not shifted.
 - `render` REFUSES a cast that still scans dirty, and says so loudly if a cast was not captured by
-  this tool (it was never scrubbed at source, and the home/account rules are per-machine).
+  this tool (it was never scrubbed at source, and the home/account rules are per-machine). The gate
+  scans TWO surfaces - the cast, and the `--ask` you passed, which is published on the title card
+  but never touches the cast - and names the one that fired, because they are fixed by opposite
+  actions: a dirty cast is re-captured or gets a new redaction rule, a dirty `--ask` is retyped.
+  Reproduce an ask finding with `scan --cast <file> --ask "<text>"`; a bare `scan --cast` cannot
+  see it.
 - The browser subject records comments as "Demo Reviewer" rather than the identity in your install.
 
 **None of that is the gate. You are.** Pattern matching cannot understand a session. In particular

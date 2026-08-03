@@ -30,7 +30,7 @@
 //   node record_demo.mjs loop    --cast <file.cast.json> --example <report.html> [--split paste]
 //   node record_demo.mjs capture [--out <f.cast.json>] [--cols 120] [--rows 30] [--script <f.json>] [--max-mb 48] -- <cmd...>
 //   node record_demo.mjs render  --cast <file.cast.json> [--seconds 45] [--out <file.webm>]
-//   node record_demo.mjs scan    --cast <file.cast.json>
+//   node record_demo.mjs scan    --cast <file.cast.json> [--ask "<text>"]
 
 import { pathToFileURL, fileURLToPath } from "url";
 import { createRequire } from "module";
@@ -123,7 +123,7 @@ const SUBJECT_FLAGS = {
   capture: ["out", "cols", "rows", "script", "max-mb"],
   render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "head", "end-hold", "intro", "ask", "speed-windows", "allow-findings", "show-command", "until", "until-after", "until-gap"],
   loop: ["cast", "example", "example-after", "seconds-resolved", "out", "split", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "idle", "hold", "width", "height", "font", "scale", "dpr", "intro", "end-hold", "ask", "allow-findings", "show-command"],
-  scan: ["cast"],
+  scan: ["cast", "ask"],
   frames: ["clip", "out", "count", "frames-dir"],
 };
 
@@ -1228,13 +1228,47 @@ export function castText(cast) {
   return `${cast.command || ""}\n${argv}\n${marks}\n${cast.events.map((e) => e.data).join("")}`;
 }
 
-// Everything that will be RENDERED, which is what a render-time gate has to see: the cast plus the
-// ask as it actually resolves. `--ask` is operator-supplied and never touches the cast, so it
-// reached the title card - the largest type in the clip - completely unscanned, and it is the
-// documented render recipe. Same argument as the marks: scan what will be on screen, not just what
-// was captured.
-export function publishedText(cast, args = {}) {
-  return `${castText(cast)}\n${askFromCast(cast, args)}`;
+// Everything that will be RENDERED, kept as SEPARATE surfaces because that is how they are fixed.
+// The cast is fixed by re-capturing or by adding a redaction rule; the `--ask` is operator-supplied,
+// never touches the cast, and is fixed by retyping it. Scanning the two as one string could only
+// report an undifferentiated count, which sent an operator whose ask was dirty to `scan --cast`
+// (findings: 0) and to a re-capture that changes nothing.
+export function publishedSurfaces(cast, args = {}) {
+  return { cast: castText(cast), ask: askFromCast(cast, args) };
+}
+
+// The gate, per surface. The ask counts as its OWN surface only when the operator supplied it:
+// every other ask (a mark's text, a `-p` prompt, the program name) is drawn FROM the cast and is
+// already in `castText`, so attributing it to `--ask` would be the same dead end pointing the other
+// way - telling the operator to edit a flag they never passed.
+export function gateFindings(cast, args = {}, rules = undefined) {
+  const surfaces = publishedSurfaces(cast, args);
+  return {
+    cast: scanText(surfaces.cast, rules),
+    ask: args.ask ? scanText(surfaces.ask, rules) : [],
+  };
+}
+
+function ruleNames(findings) {
+  return [...new Set(findings.map((f) => f.rule))].join(", ");
+}
+
+// What the refusal SAYS, per dirty surface. Each half names an action that can actually reproduce
+// and fix that surface, and neither prescribes the other's remedy.
+export function dirtyGateMessage(found, file = "<file>") {
+  const parts = [];
+  if (found.cast.length) {
+    parts.push(`this cast still scans dirty (${found.cast.length} finding(s): ${ruleNames(found.cast)}); `
+      + `run 'scan --cast ${file}' to see them. `
+      + "Re-capture or add a rule to tools/redact.mjs rather than publishing it.");
+  }
+  if (found.ask.length) {
+    parts.push(`the --ask you passed scans dirty (${found.ask.length} finding(s): ${ruleNames(found.ask)}); `
+      + "it is the text on your command line, not the cast, so re-capturing cannot change it and a "
+      + "bare 'scan --cast' cannot see it. Retype the --ask, or reproduce the finding with "
+      + `'scan --cast ${file} --ask "<text>"'.`);
+  }
+  return parts.join("\n");
 }
 
 // The tail of a real capture is dead air: the session keeps recording until the recipe's quit step
@@ -1295,20 +1329,31 @@ function readCast(args) {
 function scanCast(args) {
   const { file, cast, capturedHere } = readCast(args);
   warnForeignCast(capturedHere);
-  const text = castText(cast);
-  const findings = scanText(text, rulesForThisMachine());
+  const rules = rulesForThisMachine();
+  const surfaces = publishedSurfaces(cast, args);
+  const found = gateFindings(cast, args, rules);
+  const total = found.cast.length + found.ask.length;
   console.log(`cast:     ${file}`);
   console.log(`events:   ${cast.events.length}`);
-  console.log(`findings: ${findings.length}`);
-  for (const finding of findings.slice(0, 25)) {
-    const start = Math.max(0, finding.index - 20);
-    console.log(`  ${finding.rule} @${finding.index}: ${JSON.stringify(text.slice(start, start + 70))}`);
+  // The ask is only ITS OWN surface when the operator passed one, so the breakdown appears only
+  // when there are two surfaces to tell apart.
+  console.log(`findings: ${total}${args.ask ? ` (cast ${found.cast.length}, ask ${found.ask.length})` : ""}`);
+  for (const surface of ["cast", "ask"]) {
+    for (const finding of found[surface].slice(0, 25)) {
+      const text = surfaces[surface];
+      const start = Math.max(0, finding.index - 20);
+      console.log(`  ${surface}: ${finding.rule} @${finding.index}: ${JSON.stringify(text.slice(start, start + 70))}`);
+    }
   }
-  if (findings.length) {
+  if (found.cast.length) {
     console.error("This cast must not be filmed as-is. Re-capture, or add a rule to tools/redact.mjs.");
-    process.exitCode = 1;
   }
-  return findings;
+  if (found.ask.length) {
+    console.error("This --ask must not be published as-is. Retype it; it is not in the cast, so "
+      + "re-capturing cannot change it.");
+  }
+  if (total) process.exitCode = 1;
+  return found;
 }
 
 // The invocation to reason about: `argv` when it is actually there, otherwise the flattened string.
@@ -1654,14 +1699,11 @@ function reviewPreamble() {
 // same runBeats, just scoped to the iframe, so a beat added to the standalone montage appears in
 // this clip too.
 async function recordLoop(args) {
-  const { cast, capturedHere } = readCast(args);
+  const { file: castFile, cast, capturedHere } = readCast(args);
   const rules = rulesForThisMachine();
-  const findings = scanText(publishedText(cast, args), rules);
-  if (findings.length && !args["allow-findings"]) {
-    throw new Error(
-      `this cast still scans dirty (${findings.length} finding(s)); run 'scan --cast <file>' to see them. `
-      + "Re-capture or add a rule to tools/redact.mjs rather than publishing it.",
-    );
+  const found = gateFindings(cast, args, rules);
+  if ((found.cast.length || found.ask.length) && !args["allow-findings"]) {
+    throw new Error(dirtyGateMessage(found, castFile));
   }
   warnForeignCast(capturedHere);
 
@@ -1884,16 +1926,13 @@ async function copyAllBundle(page, scope, warnings) {
 }
 
 async function renderTerminal(args) {
-  const { cast: fullCast, capturedHere } = readCast(args);
+  const { file: castFile, cast: fullCast, capturedHere } = readCast(args);
   const rules = rulesForThisMachine();
   // Scanned BEFORE any trim, deliberately. The gate exists to stop a secret reaching a published
   // clip, and scanning only the kept span would let a trim decide what the gate gets to see.
-  const findings = scanText(publishedText(fullCast, args), rules);
-  if (findings.length && !args["allow-findings"]) {
-    throw new Error(
-      `this cast still scans dirty (${findings.length} finding(s)); run 'scan --cast <file>' to see them. `
-      + "Re-capture or add a rule to tools/redact.mjs rather than publishing it.",
-    );
+  const found = gateFindings(fullCast, args, rules);
+  if ((found.cast.length || found.ask.length) && !args["allow-findings"]) {
+    throw new Error(dirtyGateMessage(found, castFile));
   }
   // A cast this tool did not capture was never scrubbed at capture time, and the machine-specific
   // rules here cannot know another operator's home path or account name - so a clean scan says much
@@ -2104,7 +2143,7 @@ const USAGE = `demo-video recorder
   node record_demo.mjs render  --cast <file.cast.json> [--seconds 45] [--idle 900] [--out <file.webm>]
                                [--until "<marker>"] [--until-after <mark>] [--until-gap <seconds>]
                                [--show-command]
-  node record_demo.mjs scan    --cast <file.cast.json>
+  node record_demo.mjs scan    --cast <file.cast.json> [--ask "<the ask you will render with>"]
   node record_demo.mjs frames  --clip <file.webm> [--count 12]
 
 The window chrome draws no title, so a clip is born flat; --show-command publishes the whole launch command.

@@ -8,7 +8,9 @@ import {
   joinCommand,
   askFromCast,
   castText,
-  publishedText,
+  publishedSurfaces,
+  gateFindings,
+  dirtyGateMessage,
   terminalPage,
   stagePage,
 } from "../tools/record_demo.mjs";
@@ -428,8 +430,54 @@ test("the credential scan reads the text the title card will publish (DEMO-SAFE-
 // render recipe, and it matters more now the chrome draws nothing and the card leads the clip.
 test("the render gate scans an operator-supplied --ask too (DEMO-SAFE-41)", () => {
   const clean = { cols: 80, rows: 24, command: "copilot", argv: ["copilot"], events: [], marks: [] };
-  assert.ok(!publishedText(clean, {}).includes("disable-mcp-server"),
+  const surfaces = (args) => Object.values(publishedSurfaces(clean, args)).join("\n");
+  assert.ok(!surfaces({}).includes("disable-mcp-server"),
     "a clean cast should not read dirty");
-  assert.ok(publishedText(clean, { ask: `please review ${LEAKY}` }).includes("disable-mcp-server"),
+  assert.ok(surfaces({ ask: `please review ${LEAKY}` }).includes("disable-mcp-server"),
     "--ask reaches the title card unscanned");
+});
+
+// A refusal that cannot be reproduced or acted on is worse than none: the operator is told the
+// publication is unsafe and every remedy offered applies to the surface that is clean. The two
+// surfaces are fixed by OPPOSITE actions, so the gate has to know which one fired.
+const TOKEN = "ghp_0123456789abcdefghijklmnopqrstuvwxyzAB";
+
+test("the safety gate tells the cast and the ask apart (DEMO-SAFE-42)", () => {
+  const clean = { cols: 80, rows: 24, command: "npm test", argv: ["npm", "test"], events: [], marks: [] };
+  const onlyAsk = gateFindings(clean, { ask: `review ${TOKEN}` });
+  assert.deepEqual(onlyAsk.cast, [], "a clean cast was reported dirty");
+  assert.ok(onlyAsk.ask.length, "the operator-supplied ask was not scanned");
+
+  const dirtyCast = { ...clean, events: [{ t: 0, data: `gh auth login --with-token ${TOKEN}\r\n` }] };
+  const onlyCast = gateFindings(dirtyCast, {});
+  assert.ok(onlyCast.cast.length, "the cast scan stopped catching its own stream");
+  assert.deepEqual(onlyCast.ask, [], "a cast finding was blamed on an ask the operator never passed");
+
+  // An ask the tool derives from the cast (a mark, or a `-p` prompt) IS cast text, so it stays the
+  // cast's finding - blaming an ask nobody typed would be the same dead end in the other direction.
+  const dirtyMark = { ...clean, marks: [{ label: "ask", text: `review ${TOKEN}` }] };
+  const fromMark = gateFindings(dirtyMark, {});
+  assert.ok(fromMark.cast.length, "mark text left the cast scan");
+  assert.deepEqual(fromMark.ask, [], "a mark-derived ask was reported as operator-supplied");
+});
+
+test("a dirty ask is refused in its own words (DEMO-SAFE-42)", () => {
+  const clean = { cols: 80, rows: 24, command: "npm test", argv: ["npm", "test"], events: [], marks: [] };
+  const askOnly = dirtyGateMessage(gateFindings(clean, { ask: `review ${TOKEN}` }), "probe.cast.json");
+  assert.match(askOnly, /--ask/, "the refusal does not name the ask");
+  assert.doesNotMatch(askOnly, /this cast still scans dirty/i, "the refusal blames the clean cast");
+  assert.doesNotMatch(askOnly, /Re-capture or add a rule/, "the refusal prescribes a useless re-capture");
+  // The one command that CAN reproduce it, named with the file the operator actually passed.
+  assert.match(askOnly, /probe\.cast\.json/);
+
+  const dirtyCast = { ...clean, events: [{ t: 0, data: `gh auth login --with-token ${TOKEN}\r\n` }] };
+  const castOnly = dirtyGateMessage(gateFindings(dirtyCast, {}), "probe.cast.json");
+  assert.match(castOnly, /this cast still scans dirty/i);
+  assert.match(castOnly, /Re-capture or add a rule/);
+  assert.doesNotMatch(castOnly, /--ask/, "a clean ask was blamed for the cast's finding");
+
+  // Both dirty: each surface is named, so neither remedy is guessed at.
+  const both = dirtyGateMessage(gateFindings(dirtyCast, { ask: `review ${TOKEN}` }), "probe.cast.json");
+  assert.match(both, /this cast still scans dirty/i);
+  assert.match(both, /--ask/);
 });
