@@ -15,6 +15,7 @@ import {
   terminalPage,
   stagePage,
 } from "../tools/record_demo.mjs";
+import { scanText } from "../tools/redact.mjs";
 
 // A realistic leaky invocation: the flags name internal MCP servers, and nothing in them is a
 // secret by any rule, so no redaction pass can catch them.
@@ -486,6 +487,58 @@ test("a credential split across the cast and the ask is still caught (DEMO-SAFE-
   const message = dirtyGateMessage(found, "probe.cast.json");
   assert.match(message, /span/i, "the refusal does not say the finding spans both surfaces");
   assert.match(message, /--ask/);
+});
+
+// A DERIVED ask is not a copy of cast text - it is REBUILT from it. `promptFromCommand` drops the
+// quotes around a `-p` value, so a command that scans clean on disk renders a contiguous credential
+// on the title card. The old single scan caught that because it scanned the resolved ask; a split
+// that skipped the derived half would publish it.
+test("the title card is scanned even when nobody passed --ask (DEMO-SAFE-42)", () => {
+  const cast = {
+    cols: 80,
+    rows: 24,
+    command: `copilot -p ghp_"${TOKEN.slice(4)}"`,
+    events: [],
+    marks: [],
+  };
+  assert.deepEqual(scanText(castText(cast)), [], "the quoted command should read clean as cast text");
+  assert.ok(askFromCast(cast, {}).includes(TOKEN), "the card no longer rebuilds the prompt");
+
+  const found = gateFindings(cast, {});
+  assert.ok(found.card.length, "the rebuilt title card was published unscanned");
+  assert.deepEqual(found.ask, [], "a card finding was blamed on an --ask nobody passed");
+
+  const message = dirtyGateMessage(found, "probe.cast.json");
+  assert.match(message, /title card/i, "the refusal does not name the title card");
+  assert.match(message, /re-capture or add a rule/i, "the refusal withholds the remedy that works");
+  assert.doesNotMatch(message, /--ask you passed/, "the refusal blames a flag the operator never used");
+});
+
+// Findings are indexed into the OSC-stripped text the rules ran over. A cast carrying a shell title
+// or a hyperlink - which modern shells emit by default, so every imported recording has them - is
+// shorter there than on disk, and an offset measured on disk files an ordinary ask finding as a
+// boundary one, handing back the re-capture instruction this gate exists to stop giving.
+test("an OSC sequence in the cast does not misfile an ask finding (DEMO-SAFE-42)", () => {
+  const cast = {
+    cols: 80,
+    rows: 24,
+    command: "npm test",
+    argv: ["npm", "test"],
+    marks: [],
+    events: [{ t: 0, data: "\u001b]0;a long window title set by the shell\u0007ok\r\n" }],
+  };
+  const found = gateFindings(cast, { ask: `review ${TOKEN}` });
+  assert.equal(found.ask.length, 1, "the ask finding was lost");
+  assert.deepEqual(found.boundary, [], "an ordinary ask finding was filed as a boundary finding");
+  assert.equal(findingCount(found), 1, "the same finding was counted twice");
+});
+
+test("the reproduce command survives a path with spaces (DEMO-SAFE-42)", () => {
+  const clean = { cols: 80, rows: 24, command: "npm test", argv: ["npm", "test"], events: [], marks: [] };
+  const spaced = "/tmp/demo video/probe.cast.json";
+  const message = dirtyGateMessage(gateFindings(clean, { ask: `review ${TOKEN}` }), spaced);
+  assert.match(message, /"\/tmp\/demo video\/probe\.cast\.json"/,
+    "the advertised command splits the path into two arguments");
 });
 
 test("a dirty ask is refused in its own words (DEMO-SAFE-42)", () => {

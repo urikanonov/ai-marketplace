@@ -470,6 +470,13 @@ function mergeSpans(spans) {
 // invisible to the gate. The replay has no use for any of them.
 const OSC_ANY = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g;
 
+// The coordinate system every `scanText` finding is indexed in: OSC sequences are removed BEFORE a
+// rule ever runs, so an index counted against the raw text lands in the wrong place the moment a
+// cast carries a shell title or a hyperlink - which modern shells emit by default.
+export function stripOsc(text) {
+  return String(text).replace(OSC_ANY, "");
+}
+
 export function scrubText(text, rules = DEFAULT_RULES) {
   const raw = String(text).replace(OSC_ANY, "");
   // Two passes, both mapped back onto the raw bytes: the VISIBLE text (escapes handled, line

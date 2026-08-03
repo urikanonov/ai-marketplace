@@ -41,7 +41,7 @@ import http from "http";
 
 import { planBeats, fitTimeline, compressTimeline, coalesceEvents, applySpeedWindows, parseSpeedWindows, MIN_BEAT_MS } from "./timeline.mjs";
 import { REPORT_BEATS } from "./report-beats.mjs";
-import { DEFAULT_RULES, homeRules, scanText, scrubEvents, scrubText, createScrubber } from "./redact.mjs";
+import { DEFAULT_RULES, homeRules, scanText, stripOsc, scrubEvents, scrubText, createScrubber } from "./redact.mjs";
 import { readScript, stepReady, stepPayload, stepSubmit, fileReady, stepGaveUpNotice, makeSizeGuard, captureLimitBytes } from "./script.mjs";
 import { recordCapture, wasCapturedHere } from "./provenance.mjs";
 import { trimCast } from "./trim.mjs";
@@ -1238,61 +1238,86 @@ export function publishedSurfaces(cast, args = {}) {
 }
 
 // The gate, per surface. The ask counts as its OWN surface only when the operator supplied it:
-// every other ask (a mark's text, a `-p` prompt, the program name) is drawn FROM the cast and is
-// already in `castText`, so attributing it to `--ask` would be the same dead end pointing the other
-// way - telling the operator to edit a flag they never passed.
+// every other ask is drawn FROM the cast, so attributing it to `--ask` would be the same dead end
+// pointing the other way - telling the operator to edit a flag they never passed.
+//
+// A derived ask is still SCANNED, in its own `card` bucket. It is RECONSTRUCTED from the cast
+// rather than copied out of it - `promptFromCommand` drops the quotes around a `-p` value, so
+// `-p ghp_"0123..."` scans clean as cast text and dirty the moment the title card renders it - so
+// skipping it would publish a credential the old single scan caught. Its remedy is the cast's, and
+// a rule the cast scan already reported is not repeated.
 //
 // `boundary` keeps what only the JOINED text catches. `scanText` rejoins a hard-wrapped value
 // across a line break, so a credential whose halves land at the end of the cast and the start of
 // the ask fired when the two were scanned as one string and fires in neither half alone - both
-// halves are still published, and both are still legible. Splitting the scan must not drop that
-// catch, and a finding that belongs to neither surface alone belongs to both.
+// halves are still published, and both are still legible. A finding that belongs to neither
+// surface alone belongs to both.
 export function gateFindings(cast, args = {}, rules = undefined) {
   const surfaces = publishedSurfaces(cast, args);
   const castFindings = scanText(surfaces.cast, rules);
-  // Truthiness, matching `askFromCast`: an empty `--ask` falls back to the cast-derived ask there,
-  // so treating it as operator-supplied here would attribute a cast finding to a flag that is not
-  // being published. The two must agree, or the message names the wrong surface.
-  if (!args.ask) return { cast: castFindings, ask: [], boundary: [] };
   const askFindings = scanText(surfaces.ask, rules);
-  const offset = surfaces.cast.length + 1;
+  // Truthiness, matching `askFromCast`: an empty `--ask` falls back to the cast-derived ask there,
+  // so the two must agree about what "the operator supplied it" means or the message names the
+  // wrong surface.
+  const supplied = Boolean(args.ask);
+  const castRules = new Set(castFindings.map((f) => f.rule));
+  const card = supplied ? [] : askFindings.filter((f) => !castRules.has(f.rule));
+  // Findings are indexed into the OSC-STRIPPED text, so the offset has to be measured there too:
+  // a cast carrying a shell title or a hyperlink is shorter to the scanner than it is on disk, and
+  // a raw-length offset files an ordinary ask finding as a boundary one - handing the operator the
+  // re-capture instruction this whole gate exists to stop giving them.
+  const offset = stripOsc(surfaces.cast).length + 1;
   const seen = new Set([
     ...castFindings.map((f) => `${f.rule}@${f.index}`),
     ...askFindings.map((f) => `${f.rule}@${f.index + offset}`),
   ]);
   const boundary = scanText(`${surfaces.cast}\n${surfaces.ask}`, rules)
     .filter((f) => !seen.has(`${f.rule}@${f.index}`));
-  return { cast: castFindings, ask: askFindings, boundary };
+  return { cast: castFindings, ask: supplied ? askFindings : [], card, boundary };
 }
 
 // How many findings the gate has, across every surface. The clip is marked UNSAFE and the warning
 // counts from this, so a surface added later cannot be left out of the count by accident.
 export function findingCount(found) {
-  return found.cast.length + found.ask.length + found.boundary.length;
+  return found.cast.length + found.ask.length + found.card.length + found.boundary.length;
 }
 
 function ruleNames(findings) {
   return [...new Set(findings.map((f) => f.rule))].join(", ");
 }
 
+// A path with a space is one argument, not two: unquoted, the command the refusal tells the
+// operator to run is a command that cannot reproduce anything.
+function quoteArg(value) {
+  const text = String(value);
+  return /[\s"]/.test(text) ? `"${text.replace(/"/g, '\\"')}"` : text;
+}
+
 // What the refusal SAYS, per dirty surface. Each half names an action that can actually reproduce
 // and fix that surface, and neither prescribes the other's remedy.
 export function dirtyGateMessage(found, file = "<file>") {
+  const at = quoteArg(file);
   const parts = [];
   if (found.cast.length) {
     parts.push(`this cast still scans dirty (${found.cast.length} finding(s): ${ruleNames(found.cast)}); `
-      + `run 'scan --cast ${file}' to see them. `
+      + `run 'scan --cast ${at}' to see them. `
       + "Re-capture or add a rule to tools/redact.mjs rather than publishing it.");
   }
   if (found.ask.length) {
     parts.push(`the --ask you passed scans dirty (${found.ask.length} finding(s): ${ruleNames(found.ask)}); `
       + "it is the text on your command line, not the cast, so re-capturing cannot change it and a "
       + "bare 'scan --cast' cannot see it. Retype the --ask, or reproduce the finding with "
-      + `'scan --cast ${file} --ask "<text>"'.`);
+      + `'scan --cast ${at} --ask "<text>"'.`);
+  }
+  if (found.card.length) {
+    parts.push(`the title card this cast renders scans dirty (${found.card.length} finding(s): `
+      + `${ruleNames(found.card)}); it is REBUILT from the cast (its ask mark, or the -p prompt in `
+      + `its command), so the raw stream can read clean. Run 'scan --cast ${at}' to see it, then `
+      + "re-capture or add a rule to tools/redact.mjs.");
   }
   if (found.boundary.length) {
     parts.push(`${found.boundary.length} finding(s) (${ruleNames(found.boundary)}) span the cast and `
-      + "the --ask: neither half matches alone, so both are published and together they read as one "
+      + "the ask: neither half matches alone, so both are published and together they read as one "
       + "credential. Fix BOTH ends - retype the --ask and re-capture (or add a rule to "
       + "tools/redact.mjs).");
   }
@@ -1363,18 +1388,23 @@ function scanCast(args) {
   const total = findingCount(found);
   console.log(`cast:     ${file}`);
   console.log(`events:   ${cast.events.length}`);
-  // The ask is only ITS OWN surface when the operator passed one, so the breakdown appears only
-  // when there are two surfaces to tell apart.
-  console.log(`findings: ${total}${args.ask
-    ? ` (cast ${found.cast.length}, ask ${found.ask.length}, boundary ${found.boundary.length})`
+  console.log(`findings: ${total}${total
+    ? ` (cast ${found.cast.length}, ask ${found.ask.length}, card ${found.card.length}, `
+      + `boundary ${found.boundary.length})`
     : ""}`);
-  const joined = `${surfaces.cast}\n${surfaces.ask}`;
-  for (const surface of ["cast", "ask", "boundary"]) {
+  // Every index is counted against the OSC-STRIPPED text the rules actually ran over, so the
+  // excerpt has to be sliced from that same projection or it quotes the wrong 70 characters.
+  const shown = {
+    cast: stripOsc(surfaces.cast),
+    ask: stripOsc(surfaces.ask),
+    card: stripOsc(surfaces.ask),
+    boundary: stripOsc(`${surfaces.cast}\n${surfaces.ask}`),
+  };
+  for (const surface of ["cast", "ask", "card", "boundary"]) {
     for (const finding of found[surface].slice(0, 25)) {
-      // A boundary finding is indexed into the JOINED text, which is the only place it exists.
-      const text = surface === "boundary" ? joined : surfaces[surface];
       const start = Math.max(0, finding.index - 20);
-      console.log(`  ${surface}: ${finding.rule} @${finding.index}: ${JSON.stringify(text.slice(start, start + 70))}`);
+      console.log(`  ${surface}: ${finding.rule} @${finding.index}: `
+        + `${JSON.stringify(shown[surface].slice(start, start + 70))}`);
     }
   }
   if (found.cast.length) {
@@ -1384,8 +1414,12 @@ function scanCast(args) {
     console.error("This --ask must not be published as-is. Retype it; it is not in the cast, so "
       + "re-capturing cannot change it.");
   }
+  if (found.card.length) {
+    console.error("The title card this cast renders must not be published as-is. It is rebuilt from "
+      + "the cast, so re-capture or add a rule to tools/redact.mjs.");
+  }
   if (found.boundary.length) {
-    console.error("A finding spans the cast and the --ask. Neither half matches alone, so fix BOTH ends.");
+    console.error("A finding spans the cast and the ask. Neither half matches alone, so fix BOTH ends.");
   }
   if (total) process.exitCode = 1;
   return found;
