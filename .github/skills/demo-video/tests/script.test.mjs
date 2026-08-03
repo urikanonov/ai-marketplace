@@ -197,6 +197,47 @@ test("every committed capture recipe parses and is documented (DEMO-SCRIPT-07)",
   }
 });
 
+// A recipe's longest wait is a COST decision, not a detail: it is what an unattended capture bills
+// when the ending never arrives, and picking one from memory is how a 90 minute budget outlived a
+// two hour run. The budget therefore has to be written down next to the number it was derived from.
+test("every recipe's longest wait is a documented budget, not a bare number (DEMO-SCRIPT-12)", () => {
+  const dir = path.join(import.meta.dirname, "..", "examples");
+  const recipes = fs.readdirSync(dir).filter((f) => f.endsWith("-session.json"));
+  assert.ok(recipes.length, "examples/ should ship at least one capture recipe");
+
+  // Written the way the budgets table writes it, so the committed number and the documented one are
+  // the same number rather than two roundings of it.
+  const plural = (n, unit) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+  const spell = (ms) => (ms % 60_000 === 0 ? plural(ms / 60_000, "minute") : plural(ms / 1000, "second"));
+
+  const skill = fs.readFileSync(path.join(import.meta.dirname, "..", "SKILL.md"), "utf8");
+  const rows = skill.split("\n").filter((line) => line.trim().startsWith("|"));
+  for (const name of recipes) {
+    // normalizeScript gives every step a timeout, so this is the effective backstop - a wait nobody
+    // declared is still a wait the capture can sit on.
+    const longest = Math.max(...readScript(path.join(dir, name)).steps.map((s) => s.timeoutMs));
+    // The recipe cell has to BE the filename, not merely contain it, or a later `session.json` would
+    // answer for `duck-session.json` and the row nobody wrote would look present.
+    const row = rows.find((line) => line.split("|")[1]?.trim().replace(/`/g, "") === name);
+    assert.ok(row,
+      `SKILL.md needs a "Capture budgets" row for ${name}: its longest wait, and where that number came from`);
+    const cells = row.split("|");
+    const declared = cells[2] ?? "";
+    // The rationale is the REST of the row, rejoined: a pipe inside it (an inline command, say) is
+    // prose, not a column, and splitting on it would judge a full paragraph by its first fragment.
+    const why = cells.slice(3).join("|").replace(/\|\s*$/, "");
+    // Match the budget CELL, not the line: the row's rationale names the numbers this budget
+    // replaced ("its 90 minute quit timeout", "ran 36 minutes"), so a line-level match would let a
+    // timeout drift back onto one of them and still report the doc as current.
+    assert.equal(declared.trim(), spell(longest),
+      `the "Capture budgets" row for ${name} records "${declared.trim()}", but its longest wait is ${spell(longest)}`);
+    // A number with no provenance is the thing this test exists to prevent, so the row has to say
+    // where it came from in a sentence rather than restating the timeout in words.
+    assert.ok(why.trim().length >= 40,
+      `the "Capture budgets" row for ${name} needs to say where ${spell(longest)} came from`);
+  }
+});
+
 test("a marker the recipe types itself is refused, not silently demoted to an idle wait (DEMO-SCRIPT-08)", () => {
   // The terminal paints the submitted turn back into the transcript, so an expect that appears in an
   // earlier send is satisfied by the echo. The step then rests entirely on idleMs - measured against
