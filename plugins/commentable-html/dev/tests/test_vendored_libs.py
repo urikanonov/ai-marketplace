@@ -1523,6 +1523,103 @@ class RuntimeParityTests(unittest.TestCase):
                 % (value, js_tokens, resources.srcset_candidate_urls(value)))
 
 
+    # Attribute-name spellings the two `^on` predicates must agree about. `once`/`onward` are
+    # deliberately in the MATCHED set: the exporter's test is literally `/^on/i`, so an attribute
+    # merely starting with those two letters is stripped, and a validator that were cleverer than
+    # the strip would BLESS an attribute the export takes away.
+    _EVENT_HANDLER_ATTR_CORPUS = [
+        "onclick", "ONLOAD", "OnClick", "on", "onerror", "onbeforeunload",
+        "once", "onward", "o", "n", "", "click", "data-onclick", "xlink:onload",
+        " onload", "onload ", "\ton", "o n", "0n", "ON", "oN",
+        # Unicode near-misses: Python's str.lower() is Unicode-aware and JS `/i` folds by its own
+        # table, so a fullwidth or dotted spelling must be a MISS on both sides, not just one.
+        "\uff2f\uff2eclick", "\u0130Nclick", "\u212ao", "\u017fn",
+    ]
+
+    def test_the_python_and_js_event_handler_predicates_agree(self):
+        """The offline strip (JS) and the strict validator (Python) must call the SAME attribute an
+        inline event handler.
+
+        The gap this closes is the CMH-OFFLINE-04 drift shape: the exporter scrubs every `on*`
+        attribute, and the validator's offline mode rejects one, so an attribute only ONE of them
+        calls a handler is either a live handler the gate blesses or an exported file its own
+        `--strict` run rejects. The two are independent spellings (`/^on/i` versus a `[:2].lower()`
+        test), and Python's `str.lower()` is Unicode-aware where a JS `/i` regex folds by its own
+        table, so the comparison runs the RUNTIME's regex in the real engine rather than
+        re-implementing it here. Skipped when node is absent, like the other node-gated checks.
+        """
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine parity check needs it")
+        source = self._read("68-export-offline.js")
+        scrub = re.search(r"function _stripOfflineEventHandlers\(doc\) \{(.*?)\n\}", source, re.S)
+        self.assertIsNotNone(scrub, "the runtime no longer declares _stripOfflineEventHandlers; "
+                                    "the parity check is stale and must be re-pointed at whatever "
+                                    "replaced it")
+        m = re.search(r"if \(/(.+?)/i\.test\(attr\.name", scrub.group(1))
+        self.assertIsNotNone(m, "the event-handler scrub no longer tests attribute names with an "
+                                "inline /^on/i regex; the parity check is stale and must be "
+                                "re-pointed at whatever replaced it")
+        # The pattern is only half the decision: a scrub that kept `/^on/i` but guarded the removal
+        # (the shape someone reaches for when they decide `once` should survive after all) would
+        # leave both parity tests green while the strip and the gate disagreed - and the exporter's
+        # own `--strict` run would then reject the file it had just produced.
+        self.assertRegex(scrub.group(1),
+                         r'if \(/[^\n/]*/i\.test\(attr\.name \|\| ""\)\) el\.removeAttribute\(attr\.name\);',
+                         "the scrub no longer removes the attribute unconditionally on a name "
+                         "match; this check compares only the NAME test, so re-point it at "
+                         "whatever now decides removal")
+        payload = {"pattern": m.group(1), "corpus": self._EVENT_HANDLER_ATTR_CORPUS}
+        script = (
+            "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);const re=new RegExp(p.pattern,'i');"
+            "process.stdout.write(JSON.stringify(p.corpus.map(s=>re.test(String(s||'')))));});"
+        )
+        proc = subprocess.run([node, "-e", script], input=json.dumps(payload),
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0,
+                         "node could not evaluate the event-handler pattern: %s" % proc.stderr)
+        verdicts = json.loads(proc.stdout)
+        self.assertEqual(len(verdicts), len(self._EVENT_HANDLER_ATTR_CORPUS),
+                         "node returned %d verdicts for %d samples"
+                         % (len(verdicts), len(self._EVENT_HANDLER_ATTR_CORPUS)))
+        for name, js_says in zip(self._EVENT_HANDLER_ATTR_CORPUS, verdicts):
+            self.assertEqual(
+                js_says, parsing._is_event_handler_attr(name),
+                "the runtime's event-handler scrub and the validator's "
+                "_is_event_handler_attr disagree about %r. An attribute only one of them calls a "
+                "handler is either a live handler the gate blesses, or an exported file its own "
+                "--strict run rejects." % name)
+
+    def test_the_validator_handler_view_reaches_what_the_scrub_walk_reaches(self):
+        """The two sides must also LOOK in the same places, not just agree on the attribute name.
+
+        This pins the PYTHON half exactly - the validator's view really does reach a self-closed
+        foreign element, a `<noscript>` body and a nested-template element - and pins the JS half
+        only to the extent a source read can: that the scrub still walks
+        `_offlineQueryAll(doc, "*")`, the helper whose own recursion into `<template>` content is
+        covered by the offline Playwright spec. It deliberately does NOT claim to execute the
+        scrub's walk; a rewrite that keeps that call but changes what it descends would pass here
+        and be caught by `tests/49-offline-export.spec.js`, which round-trips these shapes through
+        the real exporter in a browser.
+        """
+        source = self._read("68-export-offline.js")
+        m = re.search(r"function _stripOfflineEventHandlers\(doc\) \{(.*?)\n\}", source, re.S)
+        self.assertIsNotNone(m, "the runtime no longer declares _stripOfflineEventHandlers")
+        self.assertIn("_offlineQueryAll(doc, \"*\")", m.group(1),
+                      "the event-handler scrub no longer walks _offlineQueryAll(doc, \"*\"); the "
+                      "validator's egress-index view is pinned to that walk, so update both "
+                      "together")
+        html = ('<div id="commentRoot">'
+                '<svg><rect onload="x()"/></svg>'
+                '<noscript><button onclick="x()">go</button></noscript>'
+                '<template><template><img onerror="x()"></template></template>'
+                "</div>")
+        seen = {(h["tag"], h["attr"]) for h in parsing._find_event_handler_attrs_egress(html)}
+        self.assertEqual(seen, {("rect", "onload"), ("button", "onclick"), ("img", "onerror")},
+                         "the validator's handler view no longer reaches every element the "
+                         "exporter's DOM walk does: %r" % sorted(seen))
+
     # (type, attrs, body) tuples the exporter REMOVES and the validator rejects.
     _ACTIVE_DATA_REMOVED = [
         # A ruleset goes whatever it says: `"source": "document"` prefetches the document's own

@@ -4,6 +4,31 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.519.0] - 2026-08-03
+
+### Fixed
+
+- The strict validator's OFFLINE mode now closes three parity gaps against the offline export, so a
+  hand-authored offline file cannot pass `--strict` in a shape an export would have changed.
+  (1) Inline event handlers are read off the shared EGRESS tag index instead of a second collection
+  of the same attributes in the document parser, so the gate now sees the two shapes the exporter's
+  `querySelectorAll("*")` walk reaches and that scan did not: an `on*` on a self-closed FOREIGN
+  element (an `onload` on an SVG `<rect/>`) and one on any
+  element inside a `<noscript>` fallback body, which is raw TEXT to a scripting-enabled parse but
+  live markup for the reader who cannot run the layer at all. Both used to be certified as
+  offline-clean, and an inline handler is exactly the channel the offline CSP cannot close.
+  (2) The meta-refresh rule now agrees in BOTH directions: offline mode rejects EVERY
+  refresh meta, matching the export, which removes every one whatever its target.
+  A relative refresh is still a top-level navigation no meta-delivered policy can restrict, and an
+  injected `<base href>` rebases it onto the network, so it was never safe on the strength of being
+  relative; the network-target parser is kept and now decides only which of the two messages the
+  rejection carries.
+  (3) A `<template>`-parked `<script>`/`<style>` body is now regression-locked on the parser as
+  never reaching the `#commentRoot` prose view (it lands only in the template-only views the
+  offline checks read). The exclusion itself shipped in 1.514.x; what is new here is the pin, so
+  the raw-text fall-through the prose rule has to cover cannot come back unnoticed. The mermaid
+  SOURCE view is the known remainder of the same family and is tracked separately.
+
 ## [1.518.0] - 2026-08-03
 
 ### Fixed

