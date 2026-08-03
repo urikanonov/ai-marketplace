@@ -3545,6 +3545,29 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
     height: auto !important;
   }
 
+  /* A TALL-NARROW diagram is the one shape that cap mis-scales. Because the cap binds on HEIGHT
+     alone, a diagram at least twice as tall as it is wide prints at `8.4in * aspect` - under half the
+     column, with the rest of the row left empty - even though the same diagram fills the column on
+     screen. Bind such a diagram on WIDTH instead so it fills the printable column, and let its host
+     fragment so a diagram taller than a page flows across pages rather than reserving one whole.
+     (On a paginating driver a diagram taller than a whole page still starts at the top of a page, so
+     a partial page can precede it; no CSS can both fit it on one page AND print it at column width.
+     On the single continuous page - the Save-as-PDF path - nothing is stranded at all.) The runtime
+     marks the host `.cmh-diagram-tall` from the rendered SVG's intrinsic viewBox aspect
+     (assets/js/20-mermaid.js). Naming that marker together with `.cm-mermaid-host` (which every
+     diagram host also carries) is what lets this rule out-specify the cap above WITHOUT re-typing
+     the diagram-host vocabulary the cap is pinned to (CMH-PRINT-07). */
+  #commentRoot:not([data-cmh-mode="deck"]) .cm-mermaid-host.cmh-diagram-tall svg {
+    max-height: none !important;
+    width: 100% !important;
+    height: auto !important;
+  }
+
+  #commentRoot:not([data-cmh-mode="deck"]) .cm-mermaid-host.cmh-diagram-tall {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
   a {
     color: var(--cp-link) !important;
   }

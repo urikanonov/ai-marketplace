@@ -283,6 +283,13 @@ function setupSinglePagePrint() {
       + _printMermaidCapSel()
       + "#commentRoot figure svg,#commentRoot figure img,#commentRoot img{"
       + "max-height:8.4in !important;max-width:100% !important;width:auto !important;height:auto !important}"
+      // A TALL-NARROW diagram is bound on WIDTH rather than by the height cap above, so it fills the
+      // printable column instead of printing as a sliver beside an empty band (#937). Mirrors the
+      // same override in 92-print.css, keyed off the `.cmh-diagram-tall` marker the mermaid layer
+      // sets from the rendered SVG's viewBox aspect - without which the measured single page would
+      // reserve the SHRUNKEN height the print never produces.
+      + "#commentRoot .cm-mermaid-host.cmh-diagram-tall svg{"
+      + "max-height:none !important;width:100% !important;height:auto !important}"
       // Chart canvases (and any inline SVG) scale to fit the column too, so a narrowed measurement
       // matches print instead of overflowing the capped page width. Mirrors 92-print.css.
       + "#commentRoot img,#commentRoot svg,#commentRoot canvas{max-width:100% !important;height:auto !important}"

@@ -223,6 +223,18 @@ function mermaidIntrinsicWidth(host) {
   } catch (e) {}
   return svg.getBoundingClientRect().width || 0;
 }
+// A TALL-NARROW diagram (intrinsic aspect w/h <= TALL_ASPECT, i.e. at least twice as tall as it is
+// wide) is the one shape the printable-height cap mis-scales: capping by HEIGHT alone sets the
+// printed WIDTH to `cap * aspect`, so the diagram prints as a sliver beside an empty band (#937).
+// Mark the host so the print stylesheet (92-print.css) and the print-measurement mirror
+// (measureCss in 83-print.js) can bind it on WIDTH instead. The aspect comes from the rendered SVG's
+// viewBox, so the marker is intrinsic - independent of the container width and of the on-screen
+// scale-up below - and it changes nothing on screen.
+const TALL_ASPECT = 0.5;
+function updateMermaidTallClass(host) {
+  const dims = mermaidViewBoxDims(host && host.querySelector && host.querySelector("svg"));
+  host.classList.toggle("cmh-diagram-tall", !!dims && dims.w / dims.h <= TALL_ASPECT);
+}
 // Narrow-diagram scale-up thresholds (#516). Only a diagram whose intrinsic width is BELOW
 // NARROW_ENTER of the column is scaled up; once narrow it stays narrow until it exceeds NARROW_EXIT
 // (hysteresis) so that scaling a diagram taller - which can toggle a document scrollbar and shrink
@@ -231,6 +243,9 @@ function mermaidIntrinsicWidth(host) {
 const NARROW_ENTER = 0.82, NARROW_EXIT = 0.90, NARROW_CAP = 1.4;
 function updateMermaidWidthClass(host) {
   if (!host) return;
+  // Print-only marker, kept in sync on every pass (including for the gallery/deck hosts that return
+  // early below) so it can never go stale against the rendered SVG.
+  updateMermaidTallClass(host);
   // A diagram inside a .cmh-diagram-gallery card is sized by CSS (fixed height + aspect-derived width;
   // the card hugs it). Match the EXACT card hosts the CSS sizes (a direct-child mermaid, or a mermaid
   // inside a direct-child figure), not any descendant, so a mermaid in a stray wrapper keeps normal

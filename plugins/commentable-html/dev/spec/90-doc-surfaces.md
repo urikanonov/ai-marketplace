@@ -160,6 +160,7 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-PORT-08 | opt-out: build/authoring tooling detail (how a tool locates its template); not reader-facing | opt-out: a tooling detail with nothing to demonstrate on a slide |
 | CMH-PORT-09 | opt-out: a deprecated-alias guarantee for the agent-facing CLI; the reader-facing docs name only the current spelling | opt-out: a CLI alias with nothing to demonstrate on a slide |
 | CMH-PRINT-08 | opt-out: a print-fidelity invariant - the printed diagram simply looks right; the on-screen scroll cue is unchanged, so there is nothing new for a reader to learn or do | opt-out: print/PDF fidelity, not something a viewer needs shown on a slide |
+| CMH-PRINT-09 | opt-out: a print-layout correctness fix - a tall-narrow diagram simply prints at the size the reader already sees on screen; there is nothing new to learn or do | opt-out: print/PDF page-fit correctness, not something a viewer needs shown on a slide |
 | CMH-GROW-01 | help | opt-out: the editors simply size themselves to the draft; every commenting slide already shows the editors, and growth is felt while typing rather than shown on a slide |
 | CMH-GROW-02 | help | opt-out: a sizing bound and a manual-override invariant for an editor the deck already demonstrates |
 | CMH-GROW-03 | opt-out: a readability fix - the reply box is simply rendered at the same size as everything around it; there is no new capability to document | opt-out: a font-size parity fix, not something a viewer needs shown on a slide |

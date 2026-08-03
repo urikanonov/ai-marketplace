@@ -245,8 +245,12 @@ test("CMH-PRINT-07: print caps a div.mermaid diagram exactly like a pre.mermaid 
   // "pre.mermaid, div.mermaid"), so a document that authors its diagrams as div.mermaid must get the
   // same printable-height cap. Capping only pre.mermaid leaves the div.mermaid SVG unconstrained, so
   // a tall diagram overflows the printed page or splits across a break.
-  const svg = '<svg viewBox="0 0 400 4000" width="400" height="4000" role="img" aria-label="tall diagram">'
-    + '<rect width="400" height="4000" fill="#cccccc"></rect></svg>';
+  //
+  // The fixture is tall but NOT tall-narrow (aspect w/h 0.75, above the 0.5 threshold): a tall-NARROW
+  // diagram deliberately leaves the height cap for a width-bound print (CMH-PRINT-09), so it would
+  // not exercise the cap this test is about.
+  const svg = '<svg viewBox="0 0 3000 4000" width="3000" height="4000" role="img" aria-label="tall diagram">'
+    + '<rect width="3000" height="4000" fill="#cccccc"></rect></svg>';
   const content = `
     <section>
       <h2>Diagrams</h2>
@@ -289,9 +293,11 @@ test("CMH-PRINT-07: the measure CSS caps both mermaid hosts, so the measured pag
   //
   // Exercise measureCss() for real rather than reading the source for selector text: a substring
   // check would pass on a selector sitting in a comment or a dead rule. Measure the SAME tall
-  // diagram authored both ways and require the injected @page to come out the same height.
-  const svg = '<svg viewBox="0 0 400 4000" width="400" height="4000" role="img" aria-label="tall diagram">'
-    + '<rect width="400" height="4000" fill="#cccccc"></rect></svg>';
+  // diagram authored both ways and require the injected @page to come out the same height. The
+  // fixture is tall but NOT tall-narrow (aspect w/h 0.75), because a tall-narrow diagram is measured
+  // on the width-bound path instead (CMH-PRINT-09) and so would not exercise this cap.
+  const svg = '<svg viewBox="0 0 3000 4000" width="3000" height="4000" role="img" aria-label="tall diagram">'
+    + '<rect width="3000" height="4000" fill="#cccccc"></rect></svg>';
   const pageHeightFor = async (hostHtml, key) => {
     const staged = stagePrintContent(`<section><h2>Diagram</h2>${hostHtml}</section>`, {
       key,
@@ -317,14 +323,15 @@ test("CMH-PRINT-07: the measure CSS caps both mermaid hosts, so the measured pag
   expect(preHeight, "the pre.mermaid document measured a single page").not.toBeNull();
   expect(divHeight, "the div.mermaid document measured a single page").not.toBeNull();
   // The cap must actually be APPLIED, not merely applied equally: if measureCss stopped capping
-  // BOTH hosts the two heights would still match, so bound each one absolutely. The 4000px-tall
-  // SVG is capped to 8.4in (806px), so a capped page is ~1000px; an uncapped one measured ~5800px.
-  expect(preHeight, "the pre.mermaid diagram is capped during measurement").toBeLessThan(2500);
-  expect(divHeight, "the div.mermaid diagram is capped during measurement").toBeLessThan(2500);
+  // BOTH hosts the two heights would still match, so bound each one absolutely. The 4000-unit-tall
+  // SVG is capped to 8.4in (806px), so a capped page is ~1000px; uncapped it fills the column width
+  // and measures ~1900px at this viewport.
+  expect(preHeight, "the pre.mermaid diagram is capped during measurement").toBeLessThan(1500);
+  expect(divHeight, "the div.mermaid diagram is capped during measurement").toBeLessThan(1500);
   // A `pre` carries a default 1em block margin that a `div` does not, so the two documents differ
   // by a small constant (~16px) even when both diagrams are capped identically. What matters is
-  // that the difference is nowhere near the ~4800px an UNCAPPED 4000px-tall SVG adds - which is
-  // exactly what an uncapped div.mermaid measured before this fix.
+  // that the difference is nowhere near the ~900px an UNCAPPED SVG adds - which is exactly what an
+  // uncapped div.mermaid measured before this fix.
   expect(Math.abs(divHeight - preHeight),
     "a div.mermaid document measures essentially the same page height as the identical pre.mermaid one")
     .toBeLessThan(200);

@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.522.0] - 2026-08-03
+
+### Fixed
+
+- A TALL-NARROW diagram (at least twice as tall as it is wide) now prints at the full printable
+  COLUMN WIDTH instead of a sliver beside a large empty band. The tall-media print cap scaled by
+  HEIGHT only (`max-height: 8.4in; width: auto`), so a `769 x 2197` flowchart printed at 42% of the
+  column - with 58% of every row it occupied left blank - even though the same diagram filled the
+  column on screen. The runtime now marks such a host from the rendered SVG's intrinsic viewBox
+  aspect, and both print surfaces (the `@media print` stylesheet and the screen-media measurement
+  the single continuous page is sized from) bind it on WIDTH and let it flow across pages instead of
+  reserving one whole. Wide and normal-aspect diagrams, figures, and images keep the 8.4in
+  fit-one-page cap unchanged, and nothing changes on screen.
+
 ## [1.516.0] - 2026-08-03
 
 ### Fixed
