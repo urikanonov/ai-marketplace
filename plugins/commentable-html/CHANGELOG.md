@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.427.0] - 2026-08-03
+
+### Fixed
+
+- The validator now keeps a HEADING that a document leaves unclosed at end of input. A file
+  truncated inside a heading (`<h2 id="sec">Title` with no closer) dropped that heading from the
+  parsed view entirely, even though a browser renders it - exactly as it runs an unclosed
+  `<style>` to the end of the document. Every heading-derived check was blind to the last heading
+  of such a file: the id scan, the TOC/anchor scan and the heading path a comment anchors to. The
+  parser now finalizes an open heading at end of input through the same helper the end tag uses,
+  so its text, id and top-level/lede flags read the same either way. The same helper now also
+  ends a heading when an ANCESTOR closes, and when a NEW heading starts on it, as a browser does:
+  text after `</section>`, after the end of `#commentRoot`, or after a following `<h2>` is no
+  longer glued onto the heading (which used to swallow the following prose - and the next
+  heading, id and all - into one title).
+
 ## [1.425.0] - 2026-08-03
 
 ### Fixed

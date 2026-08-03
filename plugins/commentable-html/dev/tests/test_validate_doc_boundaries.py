@@ -335,6 +335,120 @@ class DocParserEofTests(unittest.TestCase):
         self.assertEqual(parsing._end_tag_close('</p a="x', 0), -1)
 
 
+class DocParserHeadingEofTests(unittest.TestCase):
+    """When a heading ENDS: its own end tag, an ancestor closing, or end of input.
+
+    A browser renders `<h2 id="sec">Title` at the end of a truncated document as that heading,
+    so `close()` must finalize it the way an end tag does. Dropping it blinded every
+    heading-derived check (the id and TOC/anchor scans, and the heading path a comment anchors
+    to) to the LAST heading of such a document - the adjacent half of the raw-text flush above.
+    An ancestor's end tag ends the heading for the same reason: a browser closes it there, so
+    the text after it belongs to no heading.
+    """
+
+    CR = '<main id="commentRoot">'
+
+    def test_a_heading_left_open_at_eof_is_still_collected(self):
+        closed = parsing._parse_document(self.CR + '<h2 id="sec">Title text</h2>').headings
+        self.assertEqual(closed, [{"tag": "h2", "id": "sec", "text": "Title text",
+                                   "top_level": True, "in_lede": False}])
+        truncated = parsing._parse_document(self.CR + '<h2 id="sec">Title text').headings
+        self.assertEqual(truncated, closed,
+                         "a document truncated inside a heading must keep that heading")
+
+    def test_an_open_heading_at_eof_keeps_its_id_and_flags(self):
+        # The whole record, not just the text: a nested (non-top-level) heading inside the
+        # document's cmh-lede header, whose text is whitespace-collapsed the same way.
+        html = self.CR + '<header class="cmh-lede"><h1 id="title">The  title\n  text'
+        self.assertEqual(parsing._parse_document(html).headings,
+                         [{"tag": "h1", "id": "title", "text": "The title text",
+                           "top_level": False, "in_lede": True}])
+
+    def test_an_empty_heading_at_eof_contributes_nothing(self):
+        # The closed path drops a text-less heading, so the EOF path must drop it too.
+        for tail in ('<h2 id="sec">', '<h2 id="sec">   \n '):
+            with self.subTest(tail=tail):
+                self.assertEqual(parsing._parse_document(self.CR + tail).headings, [])
+
+    def test_an_open_heading_is_collected_on_the_incremental_path_too(self):
+        # close() is the end of the document however the caller fed it, and heading text split
+        # across feed() chunks must still land whole.
+        html = self.CR + '<h2 id="sec">Title text'
+        p = parsing._DocParser(html)
+        for k in range(0, len(html), 5):
+            p.feed(html[k:k + 5])
+        p.close()
+        self.assertEqual([h["text"] for h in p.headings], ["Title text"])
+
+    def test_an_open_heading_is_flushed_exactly_once(self):
+        # close() is idempotent everywhere else; a second call must not duplicate the heading.
+        html = self.CR + '<h2 id="sec">Title text'
+        p = parsing._DocParser(html)
+        p.parse_document(html)
+        p.close()
+        self.assertEqual(len(p.headings), 1)
+
+    def test_heading_text_the_host_only_emits_at_eof_is_kept(self):
+        # A host can hold trailing text back while a character reference may still be unfinished
+        # and hand it over during ITS close(), so the heading has to be finalized AFTER
+        # super().close() or the last run of text is silently missing. Simulated directly, so the
+        # ordering is pinned on every interpreter rather than on one host's buffering.
+        html = self.CR + '<h2 id="sec">Title'
+        p = parsing._DocParser(html)
+        p.feed(html)
+        with mock.patch.object(HTMLParser, "close", lambda _self: _self.handle_data("&")):
+            p.close()
+        self.assertEqual([h["text"] for h in p.headings], ["Title&"])
+
+    def test_a_heading_quoted_in_a_raw_text_body_at_eof_is_still_not_collected(self):
+        # The flush must not resurrect a heading a reader only SEES: an unclosed raw-text
+        # element runs to EOF, so the markup inside it is text, not an open heading.
+        html = self.CR + '<h2 id="real">Live</h2><script>var s = "<h2 id=\'quoted\'>Quoted";'
+        self.assertEqual([h["id"] for h in parsing._parse_document(html).headings], ["real"])
+
+    def test_an_ancestors_end_tag_ends_the_heading(self):
+        # A browser closes an open heading when its ancestor closes, so the prose after that
+        # ancestor is NOT heading text - and the next heading is a heading of its own. Left
+        # capturing, one stale heading swallowed the rest of the document as its own text.
+        html = (self.CR + "<section><h2 id=\"sec\">Title</section>"
+                "<p>Prose after the section</p><h3 id=\"next\">Next</h3>")
+        headings = parsing._parse_document(html).headings
+        self.assertEqual([(h["id"], h["text"]) for h in headings],
+                         [("sec", "Title"), ("next", "Next")])
+
+    def test_a_heading_the_comment_root_closed_over_stops_there(self):
+        # The same rule at the root boundary, in a TRUNCATED document: what close() flushes must
+        # be the heading's OWN text, not everything a browser puts outside #commentRoot.
+        html = self.CR + '<h2 id="sec">Title</main><p>Prose outside the root'
+        self.assertEqual(parsing._parse_document(html).headings,
+                         [{"tag": "h2", "id": "sec", "text": "Title",
+                           "top_level": True, "in_lede": False}])
+
+    def test_a_new_heading_ends_the_open_one(self):
+        # HTML5's h1-h6 start tag pops an open heading that is the CURRENT node, so
+        # `<h2 id="a">A<h2 id="b">B` is TWO headings. Left capturing, the first swallowed the
+        # second's text and the second's id was never collected at all - and the truncated form
+        # is the shape this whole class is about.
+        for tail, want in ((self.CR + '<h2 id="a">A<h2 id="b">B',
+                            [("a", "A"), ("b", "B")]),
+                           (self.CR + '<h2 id="a">A<p>prose</p><h2 id="b">B</h2>',
+                            [("a", "Aprose"), ("b", "B")])):
+            with self.subTest(tail=tail):
+                headings = parsing._parse_document(tail).headings
+                self.assertEqual([(h["id"], h["text"]) for h in headings], want)
+
+    def test_a_child_element_inside_a_heading_does_not_end_it(self):
+        # The other side of the boundary: only the heading's OWN level (or above) ends it, so an
+        # inline child's end tag, and a void child that is never pushed, keep the text whole.
+        for html, want in ((self.CR + '<h2 id="a">Ti<em>t</em>le</h2>', "Title"),
+                           (self.CR + '<h2 id="a">Ti<em>t</em>le', "Title"),
+                           (self.CR + '<h2 id="a">A<img>B</h2>', "AB"),
+                           (self.CR + '<h2 id="a">A<img>B', "AB")):
+            with self.subTest(html=html):
+                self.assertEqual([h["text"] for h in parsing._parse_document(html).headings],
+                                 [want])
+
+
 class DocParserCdataTests(unittest.TestCase):
     """`<![CDATA[` opens a section only inside foreign content."""
 

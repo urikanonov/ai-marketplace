@@ -937,6 +937,7 @@ class _DocParser(_BrowserBoundaries):
         self._in_content_region = False
         self.headings = []           # [{"id": str|None, "text": str, "top_level": bool}] in #commentRoot
         self._cur_heading = None     # (tag, id, [parts], top_level) while capturing a heading's text
+        self._cur_heading_depth = None   # stack depth of that heading, so an ancestor's close ends it
         self.has_top_level_lede = False  # a direct child of #commentRoot carries class cmh-lede
         self._lede_depth = None      # stack depth of the current top-level cmh-lede (for title h1)
         self._figure_chart = []      # stack of bool: is each open <figure> a chart figure
@@ -1000,6 +1001,13 @@ class _DocParser(_BrowserBoundaries):
             self._in_content_region = False
         if self._lede_depth is not None and depth <= self._lede_depth:
             self._lede_depth = None
+        # A browser ends an open heading when an ANCESTOR closes, so its text stops there. Left
+        # capturing, it went on swallowing prose - and the next heading's text - as one heading.
+        # (This follows the stack as parsed, so an end tag a browser would IGNORE rather than pop
+        # - `</span>` around a heading, which is invalid markup anyway - ends the heading here a
+        # little early. A known, chosen approximation: the pop itself predates this.)
+        if self._cur_heading_depth is not None and depth <= self._cur_heading_depth:
+            self._flush_heading()
         super()._truncate_stacks(depth)
         del self.stack[depth:]
         del self._mermaid_stack[depth:]
@@ -1085,6 +1093,12 @@ class _DocParser(_BrowserBoundaries):
         ns = self._child_namespace(tag, ad)
         if ns == "html":
             self._implicit_close(tag)
+            # HTML5's h1-h6 start tag POPS an open heading that is the current node, so
+            # `<h2 id="a">A<h2 id="b">B` is two headings: without this the first one ran on and
+            # swallowed the second's text, and the second's id was never collected at all.
+            if (tag in _HEADING_TAGS and self._cur_heading is not None
+                    and self._cur_heading_depth == len(self.stack) - 1):
+                self._truncate_stacks(self._cur_heading_depth)
         own_skip = "cm-skip" in set((ad.get("class") or "").split())
         for _attr in ad:
             if _attr[:2].lower() == "on":
@@ -1113,6 +1127,7 @@ class _DocParser(_BrowserBoundaries):
             top_level = (len(self.stack) == self._cr_depth + 1)
             in_lede = self._lede_depth is not None and len(self.stack) > self._lede_depth
             self._cur_heading = (tag, ad.get("id"), [], top_level, in_lede)
+            self._cur_heading_depth = len(self.stack)
         # A VOID element has no content and no end tag, so it is never pushed. (A foreign
         # element is never void: `<svg><rect/>` is self-closing markup, handled below.)
         if tag not in VOID or ns != "html":
@@ -1185,13 +1200,31 @@ class _DocParser(_BrowserBoundaries):
                 and not any(t == "a" for (t, _s) in self.stack)):
             self.commentroot_prose.append(data)
 
+    def _flush_heading(self):
+        """Finalize the heading being captured: its whitespace-collapsed text, its id, and the
+        top_level / in_lede flags. Shared by the end tag, by an ancestor's close and by `close()`
+        so the paths cannot drift - a heading with no text is dropped by all of them."""
+        if self._cur_heading is None:
+            self._cur_heading_depth = None
+            return
+        text = re.sub(r"\s+", " ", "".join(self._cur_heading[2])).strip()
+        if text:
+            self.headings.append({"tag": self._cur_heading[0],
+                                  "id": self._cur_heading[1], "text": text,
+                                  "top_level": self._cur_heading[3],
+                                  "in_lede": self._cur_heading[4]})
+        self._cur_heading = None
+        self._cur_heading_depth = None
+
     def close(self):
-        """Flush a `<script>`/`<style>` still open at end of input.
+        """Flush a `<script>`/`<style>`, and a heading, still open at end of input.
 
         A browser treats an unclosed raw-text element as running to EOF, so its body is LIVE.
         Dropping it here would let a `<style>` with no closing tag hide a real rule from every
-        check that reads `parser.styles` (the unscoped-`[hidden]` rule, CMH-VAL-20). The base
-        close() runs FIRST so any buffered trailing data reaches `handle_data` before the flush.
+        check that reads `parser.styles` (the unscoped-`[hidden]` rule, CMH-VAL-20). A heading
+        left open at EOF is live the same way - a browser renders it - so dropping it hid the
+        last heading of a truncated document from every heading-derived check. The base close()
+        runs FIRST so any buffered trailing data reaches `handle_data` before either flush.
         """
         super().close()
         for cur, sink in ((self._cur_script, self.scripts), (self._cur_style, self.styles)):
@@ -1202,6 +1235,7 @@ class _DocParser(_BrowserBoundaries):
         self._cur_style = None
         self._cur_body = []
         self._flush_template_raw()
+        self._flush_heading()
 
     def handle_endtag(self, tag):
         tag = self._browser_tag(tag)
@@ -1220,13 +1254,7 @@ class _DocParser(_BrowserBoundaries):
         if self._cur_tpl_raw is not None and tag == self._cur_tpl_raw[0]:
             self._flush_template_raw()
         if self._cur_heading is not None and tag == self._cur_heading[0]:
-            text = re.sub(r"\s+", " ", "".join(self._cur_heading[2])).strip()
-            if text:
-                self.headings.append({"tag": self._cur_heading[0],
-                                      "id": self._cur_heading[1], "text": text,
-                                      "top_level": self._cur_heading[3],
-                                      "in_lede": self._cur_heading[4]})
-            self._cur_heading = None
+            self._flush_heading()
         for i in range(len(self.stack) - 1, -1, -1):
             if self.stack[i][0] == tag:
                 self._truncate_stacks(i)
