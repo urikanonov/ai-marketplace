@@ -57,9 +57,9 @@ def build_skill_zip_members(root, skill_dir_rel, skill_name):
 
 
 def _reject_duplicate_members(members):
-    """Fail closed if two members share an arcname. A ZIP may legally carry a path twice, and both
-    the check comparison and the write path map members by name, so a duplicate would be silently
-    collapsed there while still bloating the shipped archive."""
+    """Fail closed if two members share an arcname. A ZIP may legally carry a path twice, so a
+    duplicate in the member list means an upstream bug: it would bloat the shipped archive, and the
+    only reason --check would notice is the ordered comparison below."""
     seen = set()
     for arcname, _ in members:
         if arcname in seen:
@@ -130,31 +130,65 @@ def _skill_zip_bytes(members):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for arcname, data in _reject_duplicate_members(members):
-            info = zipfile.ZipInfo(arcname, date_time=(1980, 1, 1, 0, 0, 0))
-            info.external_attr = 0o644 << 16
-            info.create_system = 3  # Unix, so the host OS never changes the archive bytes.
-            info.compress_type = zipfile.ZIP_DEFLATED
-            archive.writestr(info, data)
+            archive.writestr(_zip_member_info(arcname), data)
     return buf.getvalue()
 
 
+def _zip_member_info(arcname):
+    """The canonical ZipInfo the writer stamps on every member. The single source of truth for that
+    stamping, so the writer and the --check comparison below cannot drift apart."""
+    info = zipfile.ZipInfo(arcname, date_time=(1980, 1, 1, 0, 0, 0))
+    info.external_attr = 0o644 << 16
+    info.create_system = 3  # Unix, so the host OS never changes the archive bytes.
+    info.compress_type = zipfile.ZIP_DEFLATED
+    return info
+
+
+def _zip_member_entry(info, data):
+    """One comparable entry: the member's name and canonical stamps alongside its uncompressed
+    bytes. The compressed bytes are deliberately excluded, since they vary with the host zlib."""
+    return (info.filename, info.date_time, info.external_attr, info.create_system,
+            info.compress_type, data)
+
+
+try:
+    import lzma as _lzma
+    _LZMA_ERRORS = (_lzma.LZMAError,)
+except ImportError:  # a Python built without liblzma can never raise it
+    _LZMA_ERRORS = ()
+
+# What "this committed archive cannot be read" looks like. Every one of these must yield None so
+# --check reports the archive as stale and a write run replaces it, rather than crashing the
+# required site gate: a bad container or an unsupported/encrypted member (BadZipFile,
+# NotImplementedError, RuntimeError), a garbage compressed payload (zlib.error, lzma.LZMAError -
+# bz2 raises OSError), a member name flagged UTF-8 that is not valid UTF-8 (UnicodeDecodeError), or
+# member data that ends early (EOFError, which CPython's overlapped-entry check currently pre-empts
+# with BadZipFile, so it is carried as a fail-safe rather than a reachable path).
+# MemoryError, and any bug in this builder, are deliberately NOT swallowed: those are resource
+# exhaustion or a defect here, not a stale artifact. UnicodeDecodeError is listed by name rather
+# than catching its ValueError base, which would swallow exactly such a defect.
+_UNREADABLE_ZIP_ERRORS = (OSError, zipfile.BadZipFile, NotImplementedError, RuntimeError,
+                          UnicodeDecodeError, EOFError, zlib.error) + _LZMA_ERRORS
+
+
 def _zip_logical_members(path):
-    """The logical {arcname -> uncompressed bytes} of a committed ZIP, or None when it is missing or
-    cannot be read. Comparing logical members (not raw archive bytes) makes the --check drift guard
-    immune to zlib/platform differences in the compressed container. A malformed, encrypted, or
-    unsupported-compression archive is treated as unreadable (None) so --check flags it as stale and
-    write mode repairs it, rather than crashing the build. An archive that carries the same path
-    more than once is unreadable for the same reason: a name->bytes map would collapse the copies
-    and report a bloated archive as in sync, so a duplicated ZIP would survive every --check."""
+    """The ORDERED list of logical members of a committed ZIP - one `_zip_member_entry` per
+    `infolist()` entry, in archive order - or None when it is missing or cannot be read (see
+    `_UNREADABLE_ZIP_ERRORS`). Comparing logical members (not raw archive bytes) makes the --check
+    drift guard immune to zlib/platform differences in the compressed container.
+
+    The list is ordered, and each member's bytes are read by its ZipInfo rather than by name, so a
+    REPEATED or REORDERED path registers as drift instead of being collapsed: a name->bytes map
+    reported a bloated archive carrying every path three times (what a rebuild during a conflicted
+    rebase used to produce) as in sync, so it survived every --check and write mode never rewrote
+    it. Carrying the stamps too means an archive repacked with host timestamps/modes or stored
+    members is likewise replaced."""
     if not os.path.isfile(path):
         return None
     try:
         with zipfile.ZipFile(path, "r") as archive:
-            names = [info.filename for info in archive.infolist()]
-            if len(names) != len(set(names)):
-                return None
-            return {name: archive.read(name) for name in names}
-    except (OSError, zipfile.BadZipFile, NotImplementedError, RuntimeError):
+            return [_zip_member_entry(info, archive.read(info)) for info in archive.infolist()]
+    except _UNREADABLE_ZIP_ERRORS:
         return None
 
 
@@ -173,7 +207,8 @@ def sync_skill_zips(root, check, skills=None):
         written.append(zip_name)
         dst = os.path.join(dst_dir, zip_name)
         members = build_skill_zip_members(root, descriptor["skill_dir"], descriptor["skill"])
-        expected = {arcname: data for arcname, data in members}
+        expected = [_zip_member_entry(_zip_member_info(arcname), data)
+                    for arcname, data in members]
         if check:
             if _zip_logical_members(dst) != expected:
                 drift.append(zip_name)
