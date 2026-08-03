@@ -1287,10 +1287,15 @@ function ruleNames(findings) {
 }
 
 // A path with a space is one argument, not two: unquoted, the command the refusal tells the
-// operator to run is a command that cannot reproduce anything.
+// operator to run is a command that cannot reproduce anything. Escaping is deliberately NOT
+// attempted - the quoting rules differ between cmd, PowerShell and a POSIX shell, and a
+// half-escaped string is worse than an honest placeholder - so a path carrying a quote or ending
+// in a backslash (neither of which a real cast path does) is advertised as `<file>` instead.
 function quoteArg(value) {
   const text = String(value);
-  return /[\s"]/.test(text) ? `"${text.replace(/"/g, '\\"')}"` : text;
+  if (!/[\s"]/.test(text)) return text;
+  if (text.includes('"') || text.endsWith("\\")) return "<file>";
+  return `"${text}"`;
 }
 
 // What the refusal SAYS, per dirty surface. Each half names an action that can actually reproduce

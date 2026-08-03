@@ -535,10 +535,16 @@ test("an OSC sequence in the cast does not misfile an ask finding (DEMO-SAFE-42)
 
 test("the reproduce command survives a path with spaces (DEMO-SAFE-42)", () => {
   const clean = { cols: 80, rows: 24, command: "npm test", argv: ["npm", "test"], events: [], marks: [] };
+  const found = gateFindings(clean, { ask: `review ${TOKEN}` });
   const spaced = "/tmp/demo video/probe.cast.json";
-  const message = dirtyGateMessage(gateFindings(clean, { ask: `review ${TOKEN}` }), spaced);
-  assert.match(message, /"\/tmp\/demo video\/probe\.cast\.json"/,
+  assert.match(dirtyGateMessage(found, spaced), /"\/tmp\/demo video\/probe\.cast\.json"/,
     "the advertised command splits the path into two arguments");
+
+  // Quoting rules differ between shells, so a path that cannot be quoted the same way everywhere
+  // is advertised as a placeholder rather than as a command that would break where it is pasted.
+  const quoted = dirtyGateMessage(found, '/tmp/od"d/probe.cast.json');
+  assert.match(quoted, /<file>/, "an unquotable path was pasted into the command anyway");
+  assert.doesNotMatch(quoted, /od"d/);
 });
 
 test("a dirty ask is refused in its own words (DEMO-SAFE-42)", () => {

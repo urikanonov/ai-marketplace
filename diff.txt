@@ -1,0 +1,558 @@
+diff --git a/.github/skills/demo-video/SKILL.md b/.github/skills/demo-video/SKILL.md
+index 0b4502a8..57800310 100644
+--- a/.github/skills/demo-video/SKILL.md
++++ b/.github/skills/demo-video/SKILL.md
+@@ -255,7 +255,12 @@ A real session is full of things a published clip must not carry, so:
+   painted with ANSI colour codes mid-token, or hard-wrapped across two lines by the application.
+ - A redaction keeps the column width it replaced, so a boxed or aligned TUI frame is not shifted.
+ - `render` REFUSES a cast that still scans dirty, and says so loudly if a cast was not captured by
+-  this tool (it was never scrubbed at source, and the home/account rules are per-machine).
++  this tool (it was never scrubbed at source, and the home/account rules are per-machine). The gate
++  scans TWO surfaces - the cast, and the `--ask` you passed, which is published on the title card
++  but never touches the cast - and names the one that fired, because they are fixed by opposite
++  actions: a dirty cast is re-captured or gets a new redaction rule, a dirty `--ask` is retyped.
++  Reproduce an ask finding with `scan --cast <file> --ask "<text>"`; a bare `scan --cast` cannot
++  see it.
+ - The browser subject records comments as "Demo Reviewer" rather than the identity in your install.
+ 
+ **None of that is the gate. You are.** Pattern matching cannot understand a session. In particular
+diff --git a/.github/skills/demo-video/SPEC.md b/.github/skills/demo-video/SPEC.md
+index 49950552..a6cc1872 100644
+--- a/.github/skills/demo-video/SPEC.md
++++ b/.github/skills/demo-video/SPEC.md
+@@ -111,7 +111,8 @@ browser phase in between. So the turns are declared in a file rather than typed
+ | DEMO-SAFE-38 | The window chrome DRAWS nothing by default. A safe label is still text, and `scripts/check_clip_chrome.py` fails a published clip whose terminal title strip is not FLAT - that check is deliberately not a text recogniser, because "the strip is not flat" is the one property that cannot be argued with. So a clip rendered with any title needed a hand-applied ffmpeg mask before it could ship, and that mask is exactly what published ten leaking frames when it stopped 0.44s before its segment ended. Rendering the strip empty makes a clip born publishable, so re-recording needs no manual patching. `windowLabel` still decides what the chrome MAY say and still backs the title card, so none of its leak defenses go slack; `--show-command` still restores the whole command. | `tests/render-output.test.mjs` - `the window chrome carries no text unless the operator opts in (DEMO-SAFE-38)` |
+ | DEMO-SAFE-39 | The loop clip's phase caption never reaches into the window chrome. It was pinned 26px from the top, so its rounded border - and, once moved, its drop SHADOW - crossed the title strip and failed the flatness check on a clip with no text in the chrome at all. The invariant covers everything the caption draws, not just its box, and it is measured against the RENDERER's reach rather than the CSS length: a blur radius is a Gaussian parameter, not a hard painted edge, so Chromium maps it to a sigma of half the radius and the mask is allocated out to about three sigma - roughly 1.5 blur radii beyond the shadow's own box. Reading the declaration as `blur - offset` claimed 26px where the renderer can reach 46px, and it happened to clear by ONE pixel; the shadow is now kept tight enough that even the pessimistic bound clears the chrome with room. The test derives the chrome's height and that reach from the page's own CSS, and parses the `box-shadow` strictly so an added spread or a second layer fails here rather than in a published clip. It was a visual defect too, the pill sitting across the traffic lights. | `tests/render-output.test.mjs` - `the phase caption never overlaps the window chrome (DEMO-SAFE-39)` |
+ | DEMO-SAFE-40 | The credential scan reads everything a cast can put ON SCREEN, including its marks. `askFromCast` fills the title card - the largest type in the clip - from a mark's text, but the scan read only `command`, `argv` and the event stream, so a foreign, legacy or hand-edited cast whose mark carried the launch command (or a host, a home path, a token) passed every gate and would be published in the opening frames. For a cast this tool captured the ask was typed into the terminal and therefore also in `events`, which is exactly why the omission was invisible; it became load-bearing once the chrome stopped drawing anything, making the card the primary text surface. Related: an invocation is read from `argv` only when it is a non-empty array - `[]` is truthy in JavaScript, so the old `argv \|\| command` let an empty argv shadow a usable command and silently report `session`. | `tests/render-output.test.mjs` - `the credential scan reads the text the title card will publish (DEMO-SAFE-40)`, `the window chrome carries no text unless the operator opts in (DEMO-SAFE-38)` |
+-| DEMO-SAFE-41 | The render-time gate scans the ask as it RESOLVES, not just the cast. `--ask` is operator-supplied and never touches the cast, so scanning `castText` alone left it unchecked all the way onto the title card at up to 30px - and it is the documented render recipe, so the unscanned path was the normal one. `publishedText` joins the cast to the resolved ask and both `render` and `loop` gate on it, which closes the half of DEMO-SAFE-40 that the tool fills for itself but a human can fill by hand. | `tests/render-output.test.mjs` - `the render gate scans an operator-supplied --ask too (DEMO-SAFE-41)` |
++| DEMO-SAFE-41 | The render-time gate scans the ask as it RESOLVES, not just the cast. `--ask` is operator-supplied and never touches the cast, so scanning `castText` alone left it unchecked all the way onto the title card at up to 30px - and it is the documented render recipe, so the unscanned path was the normal one. `publishedSurfaces` states everything that will be published (the cast plus the resolved ask) and both `render` and `loop` gate on it, which closes the half of DEMO-SAFE-40 that the tool fills for itself but a human can fill by hand. | `tests/render-output.test.mjs` - `the render gate scans an operator-supplied --ask too (DEMO-SAFE-41)` |
++| DEMO-SAFE-42 | The gate scans those surfaces SEPARATELY, so a refusal names the one that is dirty and prescribes a remedy that exists. Reporting a single undifferentiated count was a dead end for an ask finding: `scan --cast` reads only the cast and answers `findings: 0`, `scan` would not even accept `--ask` to reproduce it, and "re-capture" cannot change a string typed on the command line - so the operator was refused for the one input they could fix instantly, with three instructions that all pointed at the clean surface. The cast half keeps its own wording; the ask half says the text is the operator's, names the rules that fired, and gives the command that reproduces it. An ask the tool DERIVES from the cast (a mark, a `-p` prompt, the program name) stays the cast's finding, so the blame never travels the other way either, and `scan --cast <file> --ask "<text>"` reports both surfaces with a per-surface breakdown. Splitting one scan into two does not drop anything the single scan caught: a DERIVED ask is still scanned in its own `card` bucket, because it is REBUILT from the cast rather than copied out of it (`promptFromCommand` drops the quotes around a `-p` value, so `-p ghp_"0123..."` reads clean on disk and renders a contiguous credential on the card), and its remedy is the cast's; and a credential whose halves sit at the end of the cast and the start of the ask - matching in neither half alone, because `scanText` rejoins a hard-wrapped value across a line break - is kept in a `boundary` bucket whose refusal names both ends. Findings are indexed into the OSC-STRIPPED text, so the offset that reconciles the surfaces with the joined scan is measured there too; a raw-length offset would misfile an ordinary ask finding as a boundary one on any cast carrying a shell title. Every bucket feeds one `findingCount`, which is what marks a clip UNSAFE, and the advertised reproduce command quotes a path with spaces. | `tests/render-output.test.mjs` - `the safety gate tells the cast and the ask apart (DEMO-SAFE-42)`, `a credential split across the cast and the ask is still caught (DEMO-SAFE-42)`, `the title card is scanned even when nobody passed --ask (DEMO-SAFE-42)`, `an OSC sequence in the cast does not misfile an ask finding (DEMO-SAFE-42)`, `the reproduce command survives a path with spaces (DEMO-SAFE-42)`, `a dirty ask is refused in its own words (DEMO-SAFE-42)`; `tests/cli.test.mjs` - `a dirty --ask is refused with instructions that can reproduce and fix it (DEMO-SAFE-42)` |
+ ## Capture limits
+ 
+ | Feature id | Behavior | Covering tests |
+diff --git a/.github/skills/demo-video/tests/cli.test.mjs b/.github/skills/demo-video/tests/cli.test.mjs
+index 81a7a3c0..2576d202 100644
+--- a/.github/skills/demo-video/tests/cli.test.mjs
++++ b/.github/skills/demo-video/tests/cli.test.mjs
+@@ -15,10 +15,18 @@ import { launchSpec } from "../tools/record_demo.mjs";
+ const HERE = path.dirname(fileURLToPath(import.meta.url));
+ const TOOL = path.join(HERE, "..", "tools", "record_demo.mjs");
+ 
+-function run(args) {
+-  return spawnSync(process.execPath, [TOOL, ...args], { encoding: "utf8" });
++function run(args, env = {}) {
++  return spawnSync(process.execPath, [TOOL, ...args], {
++    encoding: "utf8",
++    env: { ...process.env, ...env },
++  });
+ }
+ 
++// Playwright is looked up on disk, so a render that gets PAST the gate must not be allowed to
++// launch a real browser from a unit suite. Pointing the browser path at nothing makes the launch
++// fail immediately and deterministically, wherever the suite runs.
++const NO_BROWSERS = { PLAYWRIGHT_BROWSERS_PATH: path.join(os.tmpdir(), "demo-video-no-browsers") };
++
+ // Scratch casts go to the OS temp dir, never into the repo.
+ function tempCast(cast) {
+   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "demo-video-cli-"));
+@@ -114,6 +122,53 @@ test("the safety gate refuses a dirty cast before any browser starts (DEMO-CLI-0
+   assert.notEqual(missing.status, 0, "a missing cast was accepted");
+ });
+ 
++// A refusal is only useful if it can be acted on. The cast and the `--ask` are fixed by OPPOSITE
++// actions - one by re-capturing or adding a redaction rule, the other by retyping the command line -
++// so a single undifferentiated count sent an operator whose ask was dirty to `scan --cast`, which
++// reports nothing, and to a re-capture that changes nothing.
++test("a dirty --ask is refused with instructions that can reproduce and fix it (DEMO-SAFE-42)", () => {
++  const clean = tempCast({
++    version: 1,
++    command: "npm test",
++    cols: 80,
++    rows: 24,
++    scrubbedBy: "demo-video",
++    events: [{ t: 0, data: "86 passing\r\n" }],
++  });
++  const dirtyAsk = "review gh auth login --with-token ghp_0123456789abcdefghijklmnopqrstuvwxyzAB";
++  try {
++    // The cast really is clean, which is the whole trap: every instruction the old refusal gave
++    // pointed at the one surface that has nothing wrong with it.
++    const bare = run(["scan", "--cast", clean.file]);
++    assert.equal(bare.status, 0, bare.stderr);
++    assert.match(bare.stdout, /findings:\s*0/);
++
++    const render = run(["render", "--cast", clean.file, "--ask", dirtyAsk]);
++    assert.notEqual(render.status, 0, "render filmed a dirty --ask");
++    assert.match(render.stderr, /--ask/, "the refusal does not name the ask");
++    assert.doesNotMatch(render.stderr, /this cast still scans dirty/i,
++      "the refusal blames the cast for a finding the cast does not contain");
++    assert.doesNotMatch(render.stderr, /Re-capture or add a rule/,
++      "the refusal prescribes a re-capture that cannot change the ask");
++
++    // ...and the finding can be REPRODUCED, which needs `scan` to accept the same flag.
++    const withAsk = run(["scan", "--cast", clean.file, "--ask", dirtyAsk]);
++    assert.notEqual(withAsk.status, 0, "scan passed a dirty --ask");
++    assert.match(withAsk.stdout, /findings:\s*[1-9]/);
++    assert.match(withAsk.stdout, /ask/, "scan does not say which surface the finding came from");
++
++    // The gate is the only thing between a clean cast and the renderer, so the path it hands over
++    // to has to work: splitting the scan left a dangling reference to the old single finding list,
++    // which fails AFTER the gate passes and therefore never on any dirty-cast test.
++    const rendered = run(["render", "--cast", clean.file, "--out", path.join(os.tmpdir(), "demo-video-probe.webm")],
++      NO_BROWSERS);
++    assert.doesNotMatch(rendered.stderr, /is not defined/,
++      "the clean render path broke after the gate passed");
++  } finally {
++    clean.cleanup();
++  }
++});
++
+ test("a Windows shim is launched through its interpreter (DEMO-CLI-04)", () => {
+   // resolveExecutable finds `copilot.cmd` on PATH, but node-pty cannot spawn a .cmd or .ps1
+   // directly - so the documented `capture -- copilot` flow failed for every CLI that installs as a
+diff --git a/.github/skills/demo-video/tests/render-output.test.mjs b/.github/skills/demo-video/tests/render-output.test.mjs
+index 872cadf8..9212fed7 100644
+--- a/.github/skills/demo-video/tests/render-output.test.mjs
++++ b/.github/skills/demo-video/tests/render-output.test.mjs
+@@ -8,10 +8,14 @@ import {
+   joinCommand,
+   askFromCast,
+   castText,
+-  publishedText,
++  publishedSurfaces,
++  gateFindings,
++  findingCount,
++  dirtyGateMessage,
+   terminalPage,
+   stagePage,
+ } from "../tools/record_demo.mjs";
++import { scanText } from "../tools/redact.mjs";
+ 
+ // A realistic leaky invocation: the flags name internal MCP servers, and nothing in them is a
+ // secret by any rule, so no redaction pass can catch them.
+@@ -428,8 +432,132 @@ test("the credential scan reads the text the title card will publish (DEMO-SAFE-
+ // render recipe, and it matters more now the chrome draws nothing and the card leads the clip.
+ test("the render gate scans an operator-supplied --ask too (DEMO-SAFE-41)", () => {
+   const clean = { cols: 80, rows: 24, command: "copilot", argv: ["copilot"], events: [], marks: [] };
+-  assert.ok(!publishedText(clean, {}).includes("disable-mcp-server"),
++  const surfaces = (args) => Object.values(publishedSurfaces(clean, args)).join("\n");
++  assert.ok(!surfaces({}).includes("disable-mcp-server"),
+     "a clean cast should not read dirty");
+-  assert.ok(publishedText(clean, { ask: `please review ${LEAKY}` }).includes("disable-mcp-server"),
++  assert.ok(surfaces({ ask: `please review ${LEAKY}` }).includes("disable-mcp-server"),
+     "--ask reaches the title card unscanned");
+ });
++
++// A refusal that cannot be reproduced or acted on is worse than none: the operator is told the
++// publication is unsafe and every remedy offered applies to the surface that is clean. The two
++// surfaces are fixed by OPPOSITE actions, so the gate has to know which one fired.
++const TOKEN = "ghp_0123456789abcdefghijklmnopqrstuvwxyzAB";
++
++test("the safety gate tells the cast and the ask apart (DEMO-SAFE-42)", () => {
++  const clean = { cols: 80, rows: 24, command: "npm test", argv: ["npm", "test"], events: [], marks: [] };
++  const onlyAsk = gateFindings(clean, { ask: `review ${TOKEN}` });
++  assert.deepEqual(onlyAsk.cast, [], "a clean cast was reported dirty");
++  assert.ok(onlyAsk.ask.length, "the operator-supplied ask was not scanned");
++
++  const dirtyCast = { ...clean, events: [{ t: 0, data: `gh auth login --with-token ${TOKEN}\r\n` }] };
++  const onlyCast = gateFindings(dirtyCast, {});
++  assert.ok(onlyCast.cast.length, "the cast scan stopped catching its own stream");
++  assert.deepEqual(onlyCast.ask, [], "a cast finding was blamed on an ask the operator never passed");
++
++  // An ask the tool derives from the cast (a mark, or a `-p` prompt) IS cast text, so it stays the
++  // cast's finding - blaming an ask nobody typed would be the same dead end in the other direction.
++  const dirtyMark = { ...clean, marks: [{ label: "ask", text: `review ${TOKEN}` }] };
++  const fromMark = gateFindings(dirtyMark, {});
++  assert.ok(fromMark.cast.length, "mark text left the cast scan");
++  assert.deepEqual(fromMark.ask, [], "a mark-derived ask was reported as operator-supplied");
++});
++
++// Splitting one scan into two must not drop what only the JOIN caught: `scanText` rejoins a
++// hard-wrapped value across a line break, so a credential whose halves sit at the end of the cast
++// and the start of the ask matched when the two were one string and matches in neither alone. Both
++// halves are published, and together they read as one credential.
++test("a credential split across the cast and the ask is still caught (DEMO-SAFE-42)", () => {
++  const cast = {
++    cols: 80,
++    rows: 24,
++    command: "npm test",
++    argv: ["npm", "test"],
++    marks: [],
++    events: [{ t: 0, data: "run this: ghp_0123456789" }],
++  };
++  const found = gateFindings(cast, { ask: "abcdefghijklmnopqrstuvwxyzAB now" });
++  assert.deepEqual(found.cast, [], "half a token should not match on its own");
++  assert.deepEqual(found.ask, [], "the other half should not match on its own");
++  assert.ok(found.boundary.length, "a credential spanning the two surfaces was let through");
++  // The clip is marked UNSAFE from this count, so a bucket left out of it is a clip that ships
++  // looking clean.
++  assert.equal(findingCount(found), found.boundary.length);
++
++  const message = dirtyGateMessage(found, "probe.cast.json");
++  assert.match(message, /span/i, "the refusal does not say the finding spans both surfaces");
++  assert.match(message, /--ask/);
++});
++
++// A DERIVED ask is not a copy of cast text - it is REBUILT from it. `promptFromCommand` drops the
++// quotes around a `-p` value, so a command that scans clean on disk renders a contiguous credential
++// on the title card. The old single scan caught that because it scanned the resolved ask; a split
++// that skipped the derived half would publish it.
++test("the title card is scanned even when nobody passed --ask (DEMO-SAFE-42)", () => {
++  const cast = {
++    cols: 80,
++    rows: 24,
++    command: `copilot -p ghp_"${TOKEN.slice(4)}"`,
++    events: [],
++    marks: [],
++  };
++  assert.deepEqual(scanText(castText(cast)), [], "the quoted command should read clean as cast text");
++  assert.ok(askFromCast(cast, {}).includes(TOKEN), "the card no longer rebuilds the prompt");
++
++  const found = gateFindings(cast, {});
++  assert.ok(found.card.length, "the rebuilt title card was published unscanned");
++  assert.deepEqual(found.ask, [], "a card finding was blamed on an --ask nobody passed");
++
++  const message = dirtyGateMessage(found, "probe.cast.json");
++  assert.match(message, /title card/i, "the refusal does not name the title card");
++  assert.match(message, /re-capture or add a rule/i, "the refusal withholds the remedy that works");
++  assert.doesNotMatch(message, /--ask you passed/, "the refusal blames a flag the operator never used");
++});
++
++// Findings are indexed into the OSC-stripped text the rules ran over. A cast carrying a shell title
++// or a hyperlink - which modern shells emit by default, so every imported recording has them - is
++// shorter there than on disk, and an offset measured on disk files an ordinary ask finding as a
++// boundary one, handing back the re-capture instruction this gate exists to stop giving.
++test("an OSC sequence in the cast does not misfile an ask finding (DEMO-SAFE-42)", () => {
++  const cast = {
++    cols: 80,
++    rows: 24,
++    command: "npm test",
++    argv: ["npm", "test"],
++    marks: [],
++    events: [{ t: 0, data: "\u001b]0;a long window title set by the shell\u0007ok\r\n" }],
++  };
++  const found = gateFindings(cast, { ask: `review ${TOKEN}` });
++  assert.equal(found.ask.length, 1, "the ask finding was lost");
++  assert.deepEqual(found.boundary, [], "an ordinary ask finding was filed as a boundary finding");
++  assert.equal(findingCount(found), 1, "the same finding was counted twice");
++});
++
++test("the reproduce command survives a path with spaces (DEMO-SAFE-42)", () => {
++  const clean = { cols: 80, rows: 24, command: "npm test", argv: ["npm", "test"], events: [], marks: [] };
++  const spaced = "/tmp/demo video/probe.cast.json";
++  const message = dirtyGateMessage(gateFindings(clean, { ask: `review ${TOKEN}` }), spaced);
++  assert.match(message, /"\/tmp\/demo video\/probe\.cast\.json"/,
++    "the advertised command splits the path into two arguments");
++});
++
++test("a dirty ask is refused in its own words (DEMO-SAFE-42)", () => {
++  const clean = { cols: 80, rows: 24, command: "npm test", argv: ["npm", "test"], events: [], marks: [] };
++  const askOnly = dirtyGateMessage(gateFindings(clean, { ask: `review ${TOKEN}` }), "probe.cast.json");
++  assert.match(askOnly, /--ask/, "the refusal does not name the ask");
++  assert.doesNotMatch(askOnly, /this cast still scans dirty/i, "the refusal blames the clean cast");
++  assert.doesNotMatch(askOnly, /Re-capture or add a rule/, "the refusal prescribes a useless re-capture");
++  // The one command that CAN reproduce it, named with the file the operator actually passed.
++  assert.match(askOnly, /probe\.cast\.json/);
++
++  const dirtyCast = { ...clean, events: [{ t: 0, data: `gh auth login --with-token ${TOKEN}\r\n` }] };
++  const castOnly = dirtyGateMessage(gateFindings(dirtyCast, {}), "probe.cast.json");
++  assert.match(castOnly, /this cast still scans dirty/i);
++  assert.match(castOnly, /Re-capture or add a rule/);
++  assert.doesNotMatch(castOnly, /--ask/, "a clean ask was blamed for the cast's finding");
++
++  // Both dirty: each surface is named, so neither remedy is guessed at.
++  const both = dirtyGateMessage(gateFindings(dirtyCast, { ask: `review ${TOKEN}` }), "probe.cast.json");
++  assert.match(both, /this cast still scans dirty/i);
++  assert.match(both, /--ask/);
++});
+diff --git a/.github/skills/demo-video/tools/record_demo.mjs b/.github/skills/demo-video/tools/record_demo.mjs
+index 80aae841..f49c920c 100644
+--- a/.github/skills/demo-video/tools/record_demo.mjs
++++ b/.github/skills/demo-video/tools/record_demo.mjs
+@@ -30,7 +30,7 @@
+ //   node record_demo.mjs loop    --cast <file.cast.json> --example <report.html> [--split paste]
+ //   node record_demo.mjs capture [--out <f.cast.json>] [--cols 120] [--rows 30] [--script <f.json>] [--max-mb 48] -- <cmd...>
+ //   node record_demo.mjs render  --cast <file.cast.json> [--seconds 45] [--out <file.webm>]
+-//   node record_demo.mjs scan    --cast <file.cast.json>
++//   node record_demo.mjs scan    --cast <file.cast.json> [--ask "<text>"]
+ 
+ import { pathToFileURL, fileURLToPath } from "url";
+ import { createRequire } from "module";
+@@ -41,7 +41,7 @@ import http from "http";
+ 
+ import { planBeats, fitTimeline, compressTimeline, coalesceEvents, applySpeedWindows, parseSpeedWindows, MIN_BEAT_MS } from "./timeline.mjs";
+ import { REPORT_BEATS } from "./report-beats.mjs";
+-import { DEFAULT_RULES, homeRules, scanText, scrubEvents, scrubText, createScrubber } from "./redact.mjs";
++import { DEFAULT_RULES, homeRules, scanText, stripOsc, scrubEvents, scrubText, createScrubber } from "./redact.mjs";
+ import { readScript, stepReady, stepPayload, stepSubmit, fileReady, stepGaveUpNotice, makeSizeGuard, captureLimitBytes } from "./script.mjs";
+ import { recordCapture, wasCapturedHere } from "./provenance.mjs";
+ import { trimCast } from "./trim.mjs";
+@@ -123,7 +123,7 @@ const SUBJECT_FLAGS = {
+   capture: ["out", "cols", "rows", "script", "max-mb"],
+   render: ["cast", "out", "seconds", "idle", "hold", "width", "height", "font", "scale", "tail", "head", "end-hold", "intro", "ask", "speed-windows", "allow-findings", "show-command", "until", "until-after", "until-gap"],
+   loop: ["cast", "example", "example-after", "seconds-resolved", "out", "split", "seconds-gen", "seconds-apply", "seconds-review", "tail-gen", "tail-apply", "idle", "hold", "width", "height", "font", "scale", "dpr", "intro", "end-hold", "ask", "allow-findings", "show-command"],
+-  scan: ["cast"],
++  scan: ["cast", "ask"],
+   frames: ["clip", "out", "count", "frames-dir"],
+ };
+ 
+@@ -1228,13 +1228,100 @@ export function castText(cast) {
+   return `${cast.command || ""}\n${argv}\n${marks}\n${cast.events.map((e) => e.data).join("")}`;
+ }
+ 
+-// Everything that will be RENDERED, which is what a render-time gate has to see: the cast plus the
+-// ask as it actually resolves. `--ask` is operator-supplied and never touches the cast, so it
+-// reached the title card - the largest type in the clip - completely unscanned, and it is the
+-// documented render recipe. Same argument as the marks: scan what will be on screen, not just what
+-// was captured.
+-export function publishedText(cast, args = {}) {
+-  return `${castText(cast)}\n${askFromCast(cast, args)}`;
++// Everything that will be RENDERED, kept as SEPARATE surfaces because that is how they are fixed.
++// The cast is fixed by re-capturing or by adding a redaction rule; the `--ask` is operator-supplied,
++// never touches the cast, and is fixed by retyping it. Scanning the two as one string could only
++// report an undifferentiated count, which sent an operator whose ask was dirty to `scan --cast`
++// (findings: 0) and to a re-capture that changes nothing.
++export function publishedSurfaces(cast, args = {}) {
++  return { cast: castText(cast), ask: askFromCast(cast, args) };
++}
++
++// The gate, per surface. The ask counts as its OWN surface only when the operator supplied it:
++// every other ask is drawn FROM the cast, so attributing it to `--ask` would be the same dead end
++// pointing the other way - telling the operator to edit a flag they never passed.
++//
++// A derived ask is still SCANNED, in its own `card` bucket. It is RECONSTRUCTED from the cast
++// rather than copied out of it - `promptFromCommand` drops the quotes around a `-p` value, so
++// `-p ghp_"0123..."` scans clean as cast text and dirty the moment the title card renders it - so
++// skipping it would publish a credential the old single scan caught. Its remedy is the cast's, and
++// a rule the cast scan already reported is not repeated.
++//
++// `boundary` keeps what only the JOINED text catches. `scanText` rejoins a hard-wrapped value
++// across a line break, so a credential whose halves land at the end of the cast and the start of
++// the ask fired when the two were scanned as one string and fires in neither half alone - both
++// halves are still published, and both are still legible. A finding that belongs to neither
++// surface alone belongs to both.
++export function gateFindings(cast, args = {}, rules = undefined) {
++  const surfaces = publishedSurfaces(cast, args);
++  const castFindings = scanText(surfaces.cast, rules);
++  const askFindings = scanText(surfaces.ask, rules);
++  // Truthiness, matching `askFromCast`: an empty `--ask` falls back to the cast-derived ask there,
++  // so the two must agree about what "the operator supplied it" means or the message names the
++  // wrong surface.
++  const supplied = Boolean(args.ask);
++  const castRules = new Set(castFindings.map((f) => f.rule));
++  const card = supplied ? [] : askFindings.filter((f) => !castRules.has(f.rule));
++  // Findings are indexed into the OSC-STRIPPED text, so the offset has to be measured there too:
++  // a cast carrying a shell title or a hyperlink is shorter to the scanner than it is on disk, and
++  // a raw-length offset files an ordinary ask finding as a boundary one - handing the operator the
++  // re-capture instruction this whole gate exists to stop giving them.
++  const offset = stripOsc(surfaces.cast).length + 1;
++  const seen = new Set([
++    ...castFindings.map((f) => `${f.rule}@${f.index}`),
++    ...askFindings.map((f) => `${f.rule}@${f.index + offset}`),
++  ]);
++  const boundary = scanText(`${surfaces.cast}\n${surfaces.ask}`, rules)
++    .filter((f) => !seen.has(`${f.rule}@${f.index}`));
++  return { cast: castFindings, ask: supplied ? askFindings : [], card, boundary };
++}
++
++// How many findings the gate has, across every surface. The clip is marked UNSAFE and the warning
++// counts from this, so a surface added later cannot be left out of the count by accident.
++export function findingCount(found) {
++  return found.cast.length + found.ask.length + found.card.length + found.boundary.length;
++}
++
++function ruleNames(findings) {
++  return [...new Set(findings.map((f) => f.rule))].join(", ");
++}
++
++// A path with a space is one argument, not two: unquoted, the command the refusal tells the
++// operator to run is a command that cannot reproduce anything.
++function quoteArg(value) {
++  const text = String(value);
++  return /[\s"]/.test(text) ? `"${text.replace(/"/g, '\\"')}"` : text;
++}
++
++// What the refusal SAYS, per dirty surface. Each half names an action that can actually reproduce
++// and fix that surface, and neither prescribes the other's remedy.
++export function dirtyGateMessage(found, file = "<file>") {
++  const at = quoteArg(file);
++  const parts = [];
++  if (found.cast.length) {
++    parts.push(`this cast still scans dirty (${found.cast.length} finding(s): ${ruleNames(found.cast)}); `
++      + `run 'scan --cast ${at}' to see them. `
++      + "Re-capture or add a rule to tools/redact.mjs rather than publishing it.");
++  }
++  if (found.ask.length) {
++    parts.push(`the --ask you passed scans dirty (${found.ask.length} finding(s): ${ruleNames(found.ask)}); `
++      + "it is the text on your command line, not the cast, so re-capturing cannot change it and a "
++      + "bare 'scan --cast' cannot see it. Retype the --ask, or reproduce the finding with "
++      + `'scan --cast ${at} --ask "<text>"'.`);
++  }
++  if (found.card.length) {
++    parts.push(`the title card this cast renders scans dirty (${found.card.length} finding(s): `
++      + `${ruleNames(found.card)}); it is REBUILT from the cast (its ask mark, or the -p prompt in `
++      + `its command), so the raw stream can read clean. Run 'scan --cast ${at}' to see it, then `
++      + "re-capture or add a rule to tools/redact.mjs.");
++  }
++  if (found.boundary.length) {
++    parts.push(`${found.boundary.length} finding(s) (${ruleNames(found.boundary)}) span the cast and `
++      + "the ask: neither half matches alone, so both are published and together they read as one "
++      + "credential. Fix BOTH ends - retype the --ask and re-capture (or add a rule to "
++      + "tools/redact.mjs).");
++  }
++  return parts.join("\n");
+ }
+ 
+ // fires, so without this the clip spends its ending on an empty prompt and the exit screen. Says
+@@ -1294,20 +1381,47 @@ function readCast(args) {
+ function scanCast(args) {
+   const { file, cast, capturedHere } = readCast(args);
+   warnForeignCast(capturedHere);
+-  const text = castText(cast);
+-  const findings = scanText(text, rulesForThisMachine());
++  const rules = rulesForThisMachine();
++  const surfaces = publishedSurfaces(cast, args);
++  const found = gateFindings(cast, args, rules);
++  const total = findingCount(found);
+   console.log(`cast:     ${file}`);
+   console.log(`events:   ${cast.events.length}`);
+-  console.log(`findings: ${findings.length}`);
+-  for (const finding of findings.slice(0, 25)) {
+-    const start = Math.max(0, finding.index - 20);
+-    console.log(`  ${finding.rule} @${finding.index}: ${JSON.stringify(text.slice(start, start + 70))}`);
++  console.log(`findings: ${total}${total
++    ? ` (cast ${found.cast.length}, ask ${found.ask.length}, card ${found.card.length}, `
++      + `boundary ${found.boundary.length})`
++    : ""}`);
++  // Every index is counted against the OSC-STRIPPED text the rules actually ran over, so the
++  // excerpt has to be sliced from that same projection or it quotes the wrong 70 characters.
++  const shown = {
++    cast: stripOsc(surfaces.cast),
++    ask: stripOsc(surfaces.ask),
++    card: stripOsc(surfaces.ask),
++    boundary: stripOsc(`${surfaces.cast}\n${surfaces.ask}`),
++  };
++  for (const surface of ["cast", "ask", "card", "boundary"]) {
++    for (const finding of found[surface].slice(0, 25)) {
++      const start = Math.max(0, finding.index - 20);
++      console.log(`  ${surface}: ${finding.rule} @${finding.index}: `
++        + `${JSON.stringify(shown[surface].slice(start, start + 70))}`);
++    }
+   }
+-  if (findings.length) {
++  if (found.cast.length) {
+     console.error("This cast must not be filmed as-is. Re-capture, or add a rule to tools/redact.mjs.");
+-    process.exitCode = 1;
+   }
+-  return findings;
++  if (found.ask.length) {
++    console.error("This --ask must not be published as-is. Retype it; it is not in the cast, so "
++      + "re-capturing cannot change it.");
++  }
++  if (found.card.length) {
++    console.error("The title card this cast renders must not be published as-is. It is rebuilt from "
++      + "the cast, so re-capture or add a rule to tools/redact.mjs.");
++  }
++  if (found.boundary.length) {
++    console.error("A finding spans the cast and the ask. Neither half matches alone, so fix BOTH ends.");
++  }
++  if (total) process.exitCode = 1;
++  return found;
+ }
+ 
+ // The invocation to reason about: `argv` when it is actually there, otherwise the flattened string.
+@@ -1653,14 +1767,12 @@ function reviewPreamble() {
+ // same runBeats, just scoped to the iframe, so a beat added to the standalone montage appears in
+ // this clip too.
+ async function recordLoop(args) {
+-  const { cast, capturedHere } = readCast(args);
++  const { file: castFile, cast, capturedHere } = readCast(args);
+   const rules = rulesForThisMachine();
+-  const findings = scanText(publishedText(cast, args), rules);
+-  if (findings.length && !args["allow-findings"]) {
+-    throw new Error(
+-      `this cast still scans dirty (${findings.length} finding(s)); run 'scan --cast <file>' to see them. `
+-      + "Re-capture or add a rule to tools/redact.mjs rather than publishing it.",
+-    );
++  const found = gateFindings(cast, args, rules);
++  const findingsTotal = findingCount(found);
++  if (findingsTotal && !args["allow-findings"]) {
++    throw new Error(dirtyGateMessage(found, castFile));
+   }
+   warnForeignCast(capturedHere);
+ 
+@@ -1710,7 +1822,7 @@ async function recordLoop(args) {
+   const introMs = Math.round(numberOpt(args, "intro", 3.5) * 1000);
+   const endHoldMs = Math.round(numberOpt(args, "end-hold", 3.5) * 1000);
+   const ask = askFromCast(cast, args);
+-  const unsafe = findings.length > 0;
++  const unsafe = findingsTotal > 0;
+   const outFile = args.out
+     ? path.resolve(String(args.out))
+     : path.join(OUT_ROOT, `loop-${unsafe ? "UNSAFE-" : ""}${stamp()}.webm`);
+@@ -1883,16 +1995,14 @@ async function copyAllBundle(page, scope, warnings) {
+ }
+ 
+ async function renderTerminal(args) {
+-  const { cast: fullCast, capturedHere } = readCast(args);
++  const { file: castFile, cast: fullCast, capturedHere } = readCast(args);
+   const rules = rulesForThisMachine();
+   // Scanned BEFORE any trim, deliberately. The gate exists to stop a secret reaching a published
+   // clip, and scanning only the kept span would let a trim decide what the gate gets to see.
+-  const findings = scanText(publishedText(fullCast, args), rules);
+-  if (findings.length && !args["allow-findings"]) {
+-    throw new Error(
+-      `this cast still scans dirty (${findings.length} finding(s)); run 'scan --cast <file>' to see them. `
+-      + "Re-capture or add a rule to tools/redact.mjs rather than publishing it.",
+-    );
++  const found = gateFindings(fullCast, args, rules);
++  const findingsTotal = findingCount(found);
++  if (findingsTotal && !args["allow-findings"]) {
++    throw new Error(dirtyGateMessage(found, castFile));
+   }
+   // A cast this tool did not capture was never scrubbed at capture time, and the machine-specific
+   // rules here cannot know another operator's home path or account name - so a clean scan says much
+@@ -1948,7 +2058,7 @@ async function renderTerminal(args) {
+   const height = Math.round(numberOpt(args, "height", Math.ceil(rows * fontSize * 1.32) + 84));
+   // A clip rendered over the gate's objection must be impossible to mistake for a clean one later,
+   // when nobody remembers which flag was passed - including when the caller named the file itself.
+-  const unsafe = findings.length > 0;
++  const unsafe = findingsTotal > 0;
+   const outFile = args.out
+     ? path.resolve(String(args.out))
+     : path.join(OUT_ROOT, `terminal-${unsafe ? "UNSAFE-" : ""}${stamp()}.webm`);
+@@ -1989,7 +2099,7 @@ async function renderTerminal(args) {
+     console.log(`speed:    the remaining output plays at ${timeline.speed.toFixed(1)}x`);
+   }
+   if (unsafe) {
+-    console.error(`\nWARNING: rendered despite ${findings.length} finding(s) because --allow-findings was passed.`);
++    console.error(`\nWARNING: rendered despite ${findingsTotal} finding(s) because --allow-findings was passed.`);
+     console.error("This clip is NOT publish-safe. Run 'scan' and look at every finding before it goes anywhere.");
+   }
+   console.log("WATCH THE CLIP before publishing it.");
+@@ -2103,7 +2213,7 @@ const USAGE = `demo-video recorder
+   node record_demo.mjs render  --cast <file.cast.json> [--seconds 45] [--idle 900] [--out <file.webm>]
+                                [--until "<marker>"] [--until-after <mark>] [--until-gap <seconds>]
+                                [--show-command]
+-  node record_demo.mjs scan    --cast <file.cast.json>
++  node record_demo.mjs scan    --cast <file.cast.json> [--ask "<the ask you will render with>"]
+   node record_demo.mjs frames  --clip <file.webm> [--count 12]
+ 
+ The window chrome draws no title, so a clip is born flat; --show-command publishes the whole launch command.
+diff --git a/.github/skills/demo-video/tools/redact.mjs b/.github/skills/demo-video/tools/redact.mjs
+index dcb53084..7cfc612d 100644
+--- a/.github/skills/demo-video/tools/redact.mjs
++++ b/.github/skills/demo-video/tools/redact.mjs
+@@ -470,6 +470,13 @@ function mergeSpans(spans) {
+ // invisible to the gate. The replay has no use for any of them.
+ const OSC_ANY = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g;
+ 
++// The coordinate system every `scanText` finding is indexed in: OSC sequences are removed BEFORE a
++// rule ever runs, so an index counted against the raw text lands in the wrong place the moment a
++// cast carries a shell title or a hyperlink - which modern shells emit by default.
++export function stripOsc(text) {
++  return String(text).replace(OSC_ANY, "");
++}
++
+ export function scrubText(text, rules = DEFAULT_RULES) {
+   const raw = String(text).replace(OSC_ANY, "");
+   // Two passes, both mapped back onto the raw bytes: the VISIBLE text (escapes handled, line
