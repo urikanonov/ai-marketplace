@@ -211,6 +211,32 @@ class SkillZipTests(unittest.TestCase):
                 bsd._tracked_skill_files("/repo", rel)
         self.assertIn("vendor", str(caught.exception))
 
+    def test_tracked_skill_files_refuses_the_skill_dir_tracked_as_a_link(self):
+        # Git tracks no directories, so an entry AT the skill dir path is itself a symlink or a
+        # submodule. The per-file loop would see nothing under the prefix, report "not a git
+        # checkout", and fall back to walking whatever the redirect points at (SITE-BUILD-20).
+        rel = "plugins/demo/pkg/skills/demo"
+        for mode in ("120000", "160000"):
+            out = "%s %040d 0\t%s\0" % (mode, 0, rel)
+            with mock.patch("subprocess.run", return_value=mock.Mock(stdout=out.encode("utf-8"))):
+                with self.assertRaises(SystemExit) as caught:
+                    bsd._tracked_skill_files("/repo", rel)
+            self.assertIn(rel, str(caught.exception))
+
+    def test_an_empty_tracked_set_is_not_the_no_git_fallback(self):
+        # git ran and reported nothing tracked here: a real answer (and a fatal one, since SKILL.md
+        # is then missing), not "no git". Returning None instead would quietly package the
+        # UNTRACKED working tree, which is exactly what the git-tracked member list rules out
+        # (SITE-BUILD-20).
+        with mock.patch("subprocess.run", return_value=mock.Mock(stdout=b"")):
+            self.assertEqual(bsd._tracked_skill_files("/repo", "plugins/demo/pkg/skills/demo"), [])
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill(root)
+            with mock.patch("subprocess.run", return_value=mock.Mock(stdout=b"")):
+                with self.assertRaises(SystemExit) as caught:
+                    bsd.build_skill_zip_members(root, skill_rel, "demo")
+            self.assertIn("SKILL.md", str(caught.exception))
+
     def test_a_tracked_symlink_aborts_the_build_even_when_it_points_inside(self):
         # End-to-end in a real git repo: containment alone would allow this link (it resolves
         # inside the skill dir), but its PACKAGED BYTES still depend on whether the host

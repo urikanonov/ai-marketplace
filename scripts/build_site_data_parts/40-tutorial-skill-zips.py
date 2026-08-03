@@ -155,7 +155,17 @@ def _tracked_skill_files(root, skill_dir_rel):
         if not record:
             continue
         meta, tab, path = record.partition("\t")
-        if not tab or not path.startswith(prefix):
+        if not tab:
+            continue
+        if path == skill_dir_rel.rstrip("/"):
+            # Git tracks no directories, so the skill dir appearing as an entry in its OWN right
+            # means it is a symlink or a submodule - neither packageable host-independently, and
+            # neither visible to the per-file loop below, which would see an empty tracked set and
+            # fall back to walking whatever the redirect points at.
+            raise SystemExit(
+                "Claude Desktop skill ZIP: %s is itself tracked as a symlink or submodule, whose "
+                "packaged bytes would depend on the build host" % skill_dir_rel)
+        if not path.startswith(prefix):
             continue
         entries.append((meta.split(" ", 1)[0], path[len(prefix):]))
     rels = [rel for _, rel in entries]
@@ -175,7 +185,11 @@ def _tracked_skill_files(root, skill_dir_rel):
             "Claude Desktop skill ZIP: %s tracks a symlink or submodule, whose packaged bytes "
             "would depend on the build host; replace it with a regular file: %s"
             % (skill_dir_rel, ", ".join(nonregular[:5])))
-    return rels or None
+    # An EMPTY list is returned as such, never as None: git ran and reported nothing tracked here,
+    # which is a real (and fatal, since SKILL.md is then missing) answer. Only a git FAILURE - not a
+    # checkout, or no git at all - falls back to walking the working tree, so "nothing is committed
+    # yet" can never quietly package untracked files.
+    return rels
 
 
 def _walk_skill_files(skill_dir):
