@@ -667,6 +667,7 @@ class PackageTests(unittest.TestCase):
     def test_write_package_keeps_an_unchanged_zip_and_replaces_a_duplicated_one(self):
         # DEFLATE bytes are not identical across zlib builds, so an unchanged archive must be left
         # alone (no multi-MB churn on a host switch); a duplicated or corrupt one is replaced.
+        import warnings
         v = build.read_version()
         with tempfile.TemporaryDirectory() as d:
             pkg = os.path.join(d, "pkg", "skills", "commentable-html")
@@ -693,14 +694,56 @@ class PackageTests(unittest.TestCase):
             with open(zip_path, "rb") as fh:
                 self.assertEqual(fh.read(), other, "an unchanged zip must not be rewritten")
             self.assertEqual(build.check_package(_paths.PKG, pkg, v), [])
-            # A duplicated archive is not "current": it is replaced with a fresh, clean one.
+            # A DUPLICATED archive is not "current" (the ValueError branch): it is replaced clean.
+            buf = io.BytesIO()
+            with warnings.catch_warnings():  # zipfile warns on each intentional duplicate
+                warnings.simplefilter("ignore", UserWarning)
+                with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for rel, full in members + members:
+                        zf.writestr(rel, build._member_bytes(full))
             with open(zip_path, "wb") as fh:
-                fh.write(other[:-1])  # truncated central directory: unreadable
+                fh.write(buf.getvalue())
             build.write_package(_paths.PKG, pkg, v)
             with zipfile.ZipFile(zip_path) as zf:
                 names = [info.filename for info in zf.infolist()]
             self.assertEqual(len(names), len(set(names)))
             self.assertEqual(build.check_package(_paths.PKG, pkg, v), [])
+            # A CORRUPT archive (truncated central directory) is replaced too.
+            with open(zip_path, "wb") as fh:
+                fh.write(other[:-1])
+            build.write_package(_paths.PKG, pkg, v)
+            self.assertEqual(build.check_package(_paths.PKG, pkg, v), [])
+            # A NONCANONICAL container - same contents, stored uncompressed - is replaced as well,
+            # so a bloated archive cannot sit there merely because its logical members match.
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+                for rel, full in members:
+                    info = zipfile.ZipInfo(rel, date_time=(1980, 1, 1, 0, 0, 0))
+                    info.external_attr = 0o644 << 16
+                    info.create_system = 3
+                    zf.writestr(info, build._member_bytes(full))
+            stored = buf.getvalue()
+            with open(zip_path, "wb") as fh:
+                fh.write(stored)
+            build.write_package(_paths.PKG, pkg, v)
+            with open(zip_path, "rb") as fh:
+                self.assertNotEqual(fh.read(), stored, "a noncanonical container must be replaced")
+            self.assertEqual(build.check_package(_paths.PKG, pkg, v), [])
+
+    def test_resources_zip_is_current_treats_an_unreadable_archive_as_stale(self):
+        # Reading a member can raise beyond a malformed container (RuntimeError for an encrypted
+        # member, NotImplementedError for an unsupported method). Report stale, never crash.
+        v = build.read_version()
+        with tempfile.TemporaryDirectory() as d:
+            pkg = os.path.join(d, "pkg", "skills", "commentable-html")
+            os.makedirs(pkg)
+            build.write_package(_paths.PKG, pkg, v)
+            zip_path = build.resources_zip_path(pkg)
+            fresh = build.build_resources_zip_bytes(_paths.PKG)
+            self.assertTrue(build._resources_zip_is_current(zip_path, fresh))
+            for exc in (RuntimeError("encrypted"), NotImplementedError("compression")):
+                with mock.patch.object(build, "_zip_layout", side_effect=exc):
+                    self.assertFalse(build._resources_zip_is_current(zip_path, fresh))
 
     def test_package_check_detects_zip_drift(self):
         v = build.read_version()

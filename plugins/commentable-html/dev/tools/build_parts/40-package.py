@@ -32,6 +32,10 @@ _PACKAGE_BINARY_EXTS = {
 }
 _HOOKS_MARKER_RE = re.compile(r"(\.skill-resources-)[0-9]+\.[0-9]+\.[0-9]+(\.ok)")
 _HOOKS_VERSION_ARG_RE = re.compile(r"(-{1,2}[Vv]ersion[ =])[0-9]+\.[0-9]+\.[0-9]+")
+# Reading a member can fail on more than a malformed container: an encrypted member raises
+# RuntimeError and an unsupported compression method NotImplementedError. Treat them all as
+# "unreadable, rebuild it" rather than crashing the build.
+_ZIP_READ_ERRORS = (zipfile.BadZipFile, OSError, NotImplementedError, RuntimeError)
 
 
 def resources_zip_path(pkg_dir):
@@ -202,16 +206,32 @@ def write_package(stage_dir, pkg_dir, version):
     return written
 
 
+def _zip_layout(source):
+    """The canonical LAYOUT of a zip given as a path or raw bytes: the ordered member names with the
+    fixed metadata the packager stamps. Compared alongside the contents so a logically identical but
+    noncanonical archive (repeated or reordered members, host timestamps/modes, ZIP_STORED bloat) is
+    still replaced, while the compressed bytes - which vary with the host zlib - are ignored."""
+    def _build(zf):
+        return [(info.filename, info.date_time, info.external_attr, info.create_system,
+                 info.compress_type) for info in zf.infolist()]
+    if isinstance(source, (bytes, bytearray)):
+        with zipfile.ZipFile(io.BytesIO(source)) as zf:
+            return _build(zf)
+    with open(source, "rb") as fh, zipfile.ZipFile(fh) as zf:
+        return _build(zf)
+
+
 def _resources_zip_is_current(zip_path, fresh_bytes):
-    """True when the committed zip already carries exactly the fresh CONTENTS. DEFLATE output is not
-    identical across zlib builds, so rewriting an unchanged archive would churn multi-MB of binary
-    diff on every host switch; an unreadable, duplicated (ValueError), or drifted archive is not
-    current and is replaced."""
+    """True when the committed zip already carries exactly the fresh layout and CONTENTS. DEFLATE
+    output is not identical across zlib builds, so rewriting an unchanged archive would churn
+    multi-MB of binary diff on every host switch; an unreadable, encrypted, duplicated (ValueError),
+    or drifted archive is not current and is replaced."""
     if not os.path.exists(zip_path):
         return False
     try:
-        return _zip_content_map(zip_path) == _zip_content_map(fresh_bytes)
-    except (zipfile.BadZipFile, OSError, ValueError):
+        return (_zip_layout(zip_path) == _zip_layout(fresh_bytes)
+                and _zip_content_map(zip_path) == _zip_content_map(fresh_bytes))
+    except _ZIP_READ_ERRORS + (ValueError,):
         return False
 
 
@@ -229,7 +249,7 @@ def check_package(stage_dir, pkg_dir, version):
     else:
         try:
             have = _zip_content_map(zip_path)
-        except (zipfile.BadZipFile, OSError):
+        except _ZIP_READ_ERRORS:
             have = None
             drift.append(PACKAGE_ZIP_NAME + " (invalid or corrupt; rebuild)")
         except ValueError as exc:
