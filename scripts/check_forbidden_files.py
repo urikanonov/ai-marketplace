@@ -16,6 +16,7 @@ from __future__ import annotations
 import fnmatch
 import subprocess
 import sys
+from pathlib import Path
 
 # Basename globs that indicate a private key, keystore, or environment/secret file.
 FORBIDDEN_GLOBS = (
@@ -57,11 +58,58 @@ SCRATCH_GLOBS = (
     "*.patch",
 )
 
+# The repository ROOT is a CLOSED set: these are the only files that legitimately live there.
+# An agent's one-off probe lands beside AGENTS.md as `test_svg_exec.html`, `temp.txt`,
+# `local.js`, `screenshot.png`, or a bare `x` - shapes the tree-wide diff/patch rule never saw,
+# so `git add -A` could commit one and every gate would stay green (that is how `diff.txt` and
+# `js-diff.txt`, two unreferenced 38KB diff captures, came to be tracked at the root). A
+# denylist of shapes can never keep up with what a probe is named, and the root is small and
+# stable, so anything else tracked HERE is scratch by definition. The rule is anchored to the
+# root, so a report under examples/, a page under site/, or anything in a plugin is untouched.
+# To add a real top-level file, add its name below (and, if the root-anchored .gitignore block
+# would hide it, a `!/name` line there). Names are compared EXACTLY: on a case-sensitive
+# filesystem a lowercase `readme.md` is a DIFFERENT file from `README.md`, so folding case here
+# would widen the closed set instead of narrowing it.
+ROOT_ALLOWED = frozenset(
+    (
+        ".editorconfig",
+        ".gitattributes",
+        ".gitignore",
+        ".ignore",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "CODE_OF_CONDUCT.md",
+        "CONTRIBUTING.md",
+        "LICENSE",
+        "MAINTAINING.md",
+        "README.md",
+        "SECURITY.md",
+        "ai-marketplace.code-workspace",
+    )
+)
+
+
+def is_root_scratch(path: str) -> bool:
+    """Return True when `path` is a file at the repository root that does not belong there.
+
+    `path` is a git index path, so `/` is the only separator: a literal backslash is part of
+    the NAME on a case-sensitive filesystem, and translating it would let a root file called
+    `foo\\bar` pose as a nested one.
+    """
+    norm = path
+    while norm.startswith("./"):
+        norm = norm[2:]
+    if "/" in norm or not norm:
+        return False
+    return norm not in ROOT_ALLOWED
+
 
 def is_scratch_artifact(path: str) -> bool:
-    """Return True when the file looks like a committed scratch diff or patch dump."""
+    """Return True when the file looks like a committed scratch dump."""
     name = path.replace("\\", "/").rsplit("/", 1)[-1].lower()
-    return any(fnmatch.fnmatchcase(name, pattern) for pattern in SCRATCH_GLOBS)
+    if any(fnmatch.fnmatchcase(name, pattern) for pattern in SCRATCH_GLOBS):
+        return True
+    return is_root_scratch(path)
 
 
 def is_forbidden(path: str) -> bool:
@@ -74,10 +122,43 @@ def is_forbidden(path: str) -> bool:
     return any(fnmatch.fnmatchcase(name, pattern) for pattern in FORBIDDEN_GLOBS)
 
 
-def tracked_files() -> "list[str] | None":
+def repo_root() -> "str | None":
+    """Return the top level of the repository this script lives in, or None if there is none.
+
+    Anchoring on the script's own location (not the ambient cwd) matters twice: `git ls-files`
+    run from a subdirectory reports paths relative to THAT directory, which would make every
+    file look root-level to `is_root_scratch`, and the script test suite runs from a throwaway
+    sandbox where a cwd-relative git call sees no repository at all.
+    """
+    here = str(Path(__file__).resolve().parent)
     try:
         result = subprocess.run(
-            ["git", "ls-files", "-z"],
+            ["git", "-C", here, "rev-parse", "--show-toplevel"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        print("check_forbidden_files: git is not installed; skipping the tracked-file scan.")
+        return None
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or "").strip()
+        if "not a git repository" in stderr.lower():
+            print("check_forbidden_files: not a git repository; skipping the tracked-file scan.")
+            return None
+        # Same fail-closed rule as tracked_files(): only a genuine non-repo is a legitimate skip.
+        print(f"check_forbidden_files: 'git rev-parse' failed (exit {exc.returncode}): {stderr}")
+        raise SystemExit(1)
+    return result.stdout.strip() or None
+
+
+def tracked_files() -> "list[str] | None":
+    root = repo_root()
+    if root is None:
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "-C", root, "ls-files", "-z", "--full-name"],
             check=True,
             capture_output=True,
             text=True,
@@ -111,10 +192,14 @@ def main() -> int:
         status = 1
     scratch = sorted(path for path in files if is_scratch_artifact(path))
     if scratch:
-        print("check_forbidden_files: scratch diff/patch dumps must never be committed:")
+        print("check_forbidden_files: scratch dumps must never be committed:")
         for path in scratch:
             print(f"  - {path}")
         print("Write them to the gitignored tmp/ instead, with an absolute or tmp/-prefixed path.")
+        print(
+            "A diff/patch dump is refused anywhere; at the repo ROOT only the files listed in "
+            "ROOT_ALLOWED in this script are allowed - add a real top-level file there."
+        )
         status = 1
     if status == 0:
         print("check_forbidden_files: no secret-bearing files or scratch dumps are tracked. OK")
