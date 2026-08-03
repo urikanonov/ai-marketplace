@@ -94,8 +94,10 @@ function scheduleRepositionActiveAdd() {
   _repositionAddRaf = requestAnimationFrame(() => { _repositionAddRaf = 0; repositionActiveAdd(); });
 }
 window.addEventListener("scroll", scheduleRepositionActiveAdd, true);
-window.addEventListener("resize", scheduleRepositionActiveAdd);
-window.addEventListener("resize", () => {
+cmhOnViewportChange(scheduleRepositionActiveAdd);
+// A soft keyboard or a pinch zoom changes what is visible without a `window` resize, so the bubble
+// re-fits on the visual-viewport events too (04-viewport.js).
+cmhOnViewportChange(() => {
   if (hlBubble.hidden) return;
   if (hlBubbleMark && root.contains(hlBubbleMark)) positionHlBubble(hlBubbleMark);
   else { hlBubble.hidden = true; hlBubbleCid = null; hlBubbleMark = null; }

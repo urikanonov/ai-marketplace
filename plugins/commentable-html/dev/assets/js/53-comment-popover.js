@@ -47,12 +47,12 @@ const _POPOVER_MARGIN = 8;
 
 // Nothing else constrains the dialog's height, so on a short viewport the edit form's Save/Cancel
 // row could sit past the bottom edge with no way to scroll to it (issue #825). Cap it to the
-// MEASURED viewport - which follows a dynamic mobile browser toolbar, unlike a `vh` unit - and let
-// the content scroll inside. No floor: a cap that exceeded the viewport would reintroduce the very
-// overflow this prevents.
+// MEASURED VISIBLE viewport - which follows a dynamic mobile browser toolbar and an on-screen
+// keyboard, unlike a `vh` unit - and let the content scroll inside. No floor: a cap that exceeded
+// the viewport would reintroduce the very overflow this prevents.
 function _capCommentPopoverToViewport() {
   if (!commentPopover) return;
-  commentPopover.style.maxHeight = Math.max(0, window.innerHeight - _POPOVER_MARGIN * 2) + "px";
+  commentPopover.style.maxHeight = Math.max(0, cmhViewportBox().height - _POPOVER_MARGIN * 2) + "px";
 }
 
 // Re-fit the dialog to the viewport WITHOUT re-anchoring it. An in-progress edit deliberately
@@ -61,14 +61,14 @@ function _capCommentPopoverToViewport() {
 function _clampCommentPopoverIntoViewport() {
   if (!commentPopover) return;
   _capCommentPopoverToViewport();
-  const margin = _POPOVER_MARGIN;
+  const vp = cmhViewportRect(_POPOVER_MARGIN);
   const w = commentPopover.offsetWidth || 320;
   const h = commentPopover.offsetHeight || 160;
   const cur = (_popoverLeft == null || _popoverTop == null)
     ? commentPopover.getBoundingClientRect()
     : { left: _popoverLeft, top: _popoverTop };
-  const left = Math.min(Math.max(margin, cur.left), Math.max(margin, window.innerWidth - w - margin));
-  const top = Math.min(Math.max(margin, cur.top), Math.max(margin, window.innerHeight - h - margin));
+  const left = Math.min(Math.max(vp.left, cur.left), Math.max(vp.left, vp.right - w));
+  const top = Math.min(Math.max(vp.top, cur.top), Math.max(vp.top, vp.bottom - h));
   _writeCommentPopoverPosition(left, top);
 }
 
@@ -98,13 +98,14 @@ function _positionCommentPopover(mark) {
   const visible = (typeof _clipAwareRect === "function") ? _clipAwareRect(mark, rect) : rect;
   if (!visible) return false;
   const margin = _POPOVER_MARGIN;
+  const vp = cmhViewportRect(margin);
   const w = commentPopover.offsetWidth || 320;
   const h = commentPopover.offsetHeight || 160;
   let left = visible.left;
   let top = visible.bottom + margin;
-  if (top + h > window.innerHeight) top = Math.max(margin, visible.top - h - margin);
-  left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - w - margin));
-  top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - h - margin));
+  if (top + h > vp.bottom + margin) top = Math.max(vp.top, visible.top - h - margin);
+  left = Math.min(Math.max(vp.left, left), Math.max(vp.left, vp.right - w));
+  top = Math.min(Math.max(vp.top, top), Math.max(vp.top, vp.bottom - h));
   _writeCommentPopoverPosition(left, top);
   return true;
 }
@@ -517,4 +518,6 @@ function _syncCommentPopoverToAnchor() {
   if (!pinned) _clampCommentPopoverIntoViewport();
 }
 window.addEventListener("scroll", _syncCommentPopoverToAnchor, true);
-window.addEventListener("resize", _syncCommentPopoverToAnchor);
+// A window resize is not the only thing that changes what is on screen: an on-screen keyboard and
+// a pinch zoom only move the VISUAL viewport, and only it fires (04-viewport.js).
+cmhOnViewportChange(_syncCommentPopoverToAnchor);

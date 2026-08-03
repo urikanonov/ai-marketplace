@@ -120,12 +120,13 @@ function _showChartTooltip(canvas, point) {
   const tipHeight = tip.offsetHeight;
   let left = leftAtPoint - tipWidth / 2;
   let top = topAtPoint - tipHeight - 12;
-  if (top < 8) {
+  const vp = cmhViewportRect(8);
+  if (top < vp.top) {
     top = rect.top + point.bottom + 12;
     tip.classList.add("below");
   }
-  left = Math.max(8, Math.min(left, window.innerWidth - tipWidth - 8));
-  top = Math.max(8, Math.min(top, window.innerHeight - tipHeight - 8));
+  left = Math.max(vp.left, Math.min(left, vp.right - tipWidth));
+  top = Math.max(vp.top, Math.min(top, vp.bottom - tipHeight));
   tip.style.left = left + "px";
   tip.style.top = top + "px";
   tip.style.setProperty("--cm-tip-arrow", Math.max(10, Math.min(tipWidth - 10, leftAtPoint - left)) + "px");
@@ -326,12 +327,15 @@ function setupInteractiveCharts() {
       root.querySelectorAll(CMH_CHART_DATA_SEL).forEach(function (canvas) {
         renderInteractiveChart(canvas, canvas._cmhChart ? canvas._cmhChart.activeIndex : -1);
       });
-      if (chartTooltipCanvas && chartTooltipCanvas._cmhChart && chartTooltipCanvas._cmhChart.activeIndex >= 0) {
-        const point = chartTooltipCanvas._cmhChart.points[chartTooltipCanvas._cmhChart.activeIndex];
-        if (point) _showChartTooltip(chartTooltipCanvas, point);
-      }
     });
     window.addEventListener("scroll", hideChartTooltip, true);
+    // A soft keyboard or a pinch zoom changes what is visible without a `window` event, so the
+    // tooltip is dropped rather than left stranded over the keyboard - the next pointer move over
+    // the chart raises it again. The shared watcher (04-viewport.js) is registered at layer
+    // evaluation, BEFORE the re-render above, so on a plain window resize the tip is dismissed
+    // first: this dismissal owns the tooltip on every viewport change, and the re-render owns only
+    // the bitmap.
+    cmhOnViewportChange(hideChartTooltip);
   }
   // A chart drawn while its section was collapsed (display:none) read clientWidth 0 and fell back to
   // the width attribute (760), so its bitmap is wrong for the real column width and looks blurry once

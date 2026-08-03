@@ -95,17 +95,6 @@ function cmhAutogrowCap(cs) {
   return Math.min(px, Math.max(120, vh - 16));
 }
 
-// The visible viewport box. `visualViewport` accounts for pinch zoom, panning, retractable mobile
-// toolbars, and the soft keyboard, and its origin is NOT (0, 0) while the user is panning a
-// pinch-zoomed page, so its offsets matter as much as its size.
-function cmhViewportBox() {
-  const vv = window.visualViewport;
-  if (vv && vv.width && vv.height) {
-    return { left: vv.offsetLeft || 0, top: vv.offsetTop || 0, width: vv.width, height: vv.height };
-  }
-  return { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
-}
-
 // The nearest scrolling ancestor (the comments list, for a side-pane editor), falling back to the
 // document scroller. An editor's ancestry does not change while it is open, so resolve it once.
 function cmhScrollParent(el) {
@@ -153,13 +142,13 @@ function cmhForgetClampedSurface(el) {
 
 // A rotation, a window resize, a browser zoom, or the mobile keyboard changes both the wrap width
 // and the viewport-relative cap with no `input` event, so every live editor is re-measured (and
-// every floating surface re-clamped) when the viewport changes. `visualViewport` is what actually
-// fires when a soft keyboard opens on iOS, so listen there too when it exists.
+// every floating surface re-clamped) when the viewport changes. `cmhOnViewportChange` (04-viewport)
+// covers the `visualViewport` events a soft keyboard fires as well as the `window` ones.
 var cmhAutogrowLive = null;
 function cmhAutogrowWatchViewport(ta) {
   if (!cmhAutogrowLive) {
     cmhAutogrowLive = new Set();
-    const onViewportChange = function () {
+    cmhOnViewportChange(function () {
       cmhAutogrowLive.forEach(function (t) {
         if (!t.isConnected) cmhAutogrowLive.delete(t);
         else cmhAutogrowResize(t);
@@ -170,14 +159,7 @@ function cmhAutogrowWatchViewport(ta) {
           else cmhClampIntoViewport(s);
         });
       }
-    };
-    window.addEventListener("resize", onViewportChange);
-    const vv = window.visualViewport;
-    if (vv && vv.addEventListener) {
-      vv.addEventListener("resize", onViewportChange);
-      // Panning a pinch-zoomed page moves the visible box without resizing it.
-      vv.addEventListener("scroll", onViewportChange);
-    }
+    });
   }
   // Prune here as well as from the teardown paths, so an editor removed by a route that does not
   // unregister (a sidebar re-render, say) cannot accumulate in the Set.

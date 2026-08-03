@@ -230,13 +230,29 @@ function showMenu(x, y) {
   // a hardcoded size, so the clamp keeps it snug to the selection near viewport edges.
   const w = menu.offsetWidth || 120;
   const h = menu.offsetHeight || 32;
-  menu.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + "px";
-  menu.style.top  = Math.max(8, Math.min(y, window.innerHeight - h - 8)) + "px";
+  _menuWantX = x;
+  _menuWantY = y;
+  const vp = cmhViewportRect(8);
+  menu.style.left = Math.max(vp.left, Math.min(x, vp.right - w)) + "px";
+  menu.style.top  = Math.max(vp.top, Math.min(y, vp.bottom - h)) + "px";
   // Move focus to the first visible menuitem so a keyboard-only reviewer lands on the
   // primary action and can rove with the Arrow keys.
   const first = _menuItems()[0];
   if (first) { try { first.focus({ preventScroll: true }); } catch (_e) { /* ignore */ } }
 }
+// The position the menu ASKED for, so a viewport change re-clamps the original request rather than
+// walking the menu inward one clamp at a time.
+var _menuWantX = null, _menuWantY = null;
+// An on-screen keyboard or a pinch zoom shrinks and moves the visible box with no `window` event
+// (04-viewport.js), which would otherwise leave an open menu off screen.
+cmhOnViewportChange(function () {
+  if (!menu || menu.hidden || _menuWantX == null) return;
+  const w = menu.offsetWidth || 120;
+  const h = menu.offsetHeight || 32;
+  const vp = cmhViewportRect(8);
+  menu.style.left = Math.max(vp.left, Math.min(_menuWantX, vp.right - w)) + "px";
+  menu.style.top = Math.max(vp.top, Math.min(_menuWantY, vp.bottom - h)) + "px";
+});
 // Arrow keys rove focus among the visible menuitems (wrapping), matching the ARIA menu pattern.
 if (menu) {
   menu.addEventListener("keydown", (e) => {
