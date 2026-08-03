@@ -153,6 +153,7 @@ from checks.parsing import (  # noqa: F401,E402
     _parser_script,
     _parser_script_body,
     _region_marker_matches,
+    _tag_attr_index,
     code_block_spans,
     content_marker_scan,
     layer_regions_text,
@@ -313,46 +314,51 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET, html=None)
     if not ok:
         return [_PARSE_FAIL], []
     errors, warnings = [], []
-    if layer:
-        bd = os.path.dirname(os.path.abspath(path)) if base_dir is _BASE_DIR_UNSET else base_dir
-        e, w = check_layer(html, parser, base_dir=bd)
-        errors += e
-        warnings += w
-        # Content-syntax checks (mermaid diagrams, embedded JSON, and later
-        # diff/kql) are document-content invariants, so they run with the layer
-        # checks, not the chart-only path.
-        e, w = check_mermaid_syntax(parser)
-        errors += e
-        warnings += w
-        e, w = check_json_blocks(parser, chart_checks_run=charts)
-        errors += e
-        warnings += w
-    if charts:
-        e, w, _n = check_charts(html, parser)
-        errors += e
-        warnings += w
-    if layer:
-        e, w = check_checklists(html)
-        errors += e
-        warnings += w
-        e, w = check_notes(html)
-        errors += e
-        warnings += w
-        e, w = check_code_highlighting(html)
-        errors += e
-        warnings += w
-        e, w = check_theme_contrast(html)
-        errors += e
-        warnings += w
-        e, w = check_density(html)
-        errors += e
-        warnings += w
-    # Release the cached parses and views: they are only worth keeping for the duration of ONE
-    # document's checks, and holding a multi-megabyte document's spans alive afterwards would
-    # be a surprising residue in any process that hosts these modules.
-    code_block_spans.cache_clear()
-    layer_regions_text.cache_clear()
-    content_marker_scan.cache_clear()
+    try:
+        if layer:
+            bd = os.path.dirname(os.path.abspath(path)) if base_dir is _BASE_DIR_UNSET else base_dir
+            e, w = check_layer(html, parser, base_dir=bd)
+            errors += e
+            warnings += w
+            # Content-syntax checks (mermaid diagrams, embedded JSON, and later
+            # diff/kql) are document-content invariants, so they run with the layer
+            # checks, not the chart-only path.
+            e, w = check_mermaid_syntax(parser)
+            errors += e
+            warnings += w
+            e, w = check_json_blocks(parser, chart_checks_run=charts)
+            errors += e
+            warnings += w
+        if charts:
+            e, w, _n = check_charts(html, parser)
+            errors += e
+            warnings += w
+        if layer:
+            e, w = check_checklists(html)
+            errors += e
+            warnings += w
+            e, w = check_notes(html)
+            errors += e
+            warnings += w
+            e, w = check_code_highlighting(html)
+            errors += e
+            warnings += w
+            e, w = check_theme_contrast(html)
+            errors += e
+            warnings += w
+            e, w = check_density(html)
+            errors += e
+            warnings += w
+    finally:
+        # Release the cached parses and views: they are only worth keeping for the duration of
+        # ONE document's checks, and holding a multi-megabyte document's spans alive afterwards
+        # would be a surprising residue in any process that hosts these modules. In a `finally`
+        # so a check that RAISES does not leave them pinned for the life of the process (an
+        # embedding caller that validates a whole directory tolerates a per-file error).
+        code_block_spans.cache_clear()
+        layer_regions_text.cache_clear()
+        content_marker_scan.cache_clear()
+        _tag_attr_index.cache_clear()
     return errors, warnings
 
 

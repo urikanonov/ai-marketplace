@@ -1,11 +1,21 @@
 def _check_self_contained(html, parser, nonshareable):
     errors, warnings = [], []
+    # The whole guarantee is read off the shared tag index, so a parse that could not be built
+    # must be REPORTED rather than read as "this document loads nothing" (a partial index would
+    # hide every resource after the failure point).
+    if _tag_attrs_failed(html):
+        errors.append("could not parse the document for the self-contained resource checks - "
+                      "fix the markup and re-run")
     # 11e) Self-contained guarantee: the finished document must not pull resources over the
     #      network (the core promise is a single self-contained file). <a href> links
     #      are navigation, not resource loads, so they are exempt; Chart.js from a CDN
     #      is a documented opt-in in shareable mode (its SRI/version are checked in
     #      check_charts); mermaid CDN imports are handled by check_mermaid_renders.
     #      Offline mode is stricter: no network-loading resource is allowed.
+    #      Every ELEMENT lookup below asks the EGRESS question, so each reads the `<noscript>`
+    #      fallback markup a scripting-disabled browser parses and really does load. (The CSS
+    #      egress scans further down read `_DocParser`'s styles, which do not see inside a
+    #      `<noscript>` - tracked separately.)
     def _is_network(v):
         return bool(NETWORK_URL_RE.match(v or ""))
     descriptor = _layer_descriptor_data(parser) or {}
@@ -42,7 +52,7 @@ def _check_self_contained(html, parser, nonshareable):
             else:
                 errors.append('<%s %s="%s"> loads over the network and breaks the self-contained guarantee - '
                               "inline or remove it" % (tag, attr, item[:80]))
-    for img in _find_tag_attrs(html, "img"):
+    for img in _find_tag_attrs_egress(html, "img"):
         src = img.get("src", "")
         if src and not src.startswith("data:"):
             if _is_network(src):
@@ -68,11 +78,11 @@ def _check_self_contained(html, parser, nonshareable):
     # loader the moment the same bytes are parsed as XHTML. The Chart.js CDN exemption stays bound
     # to `src`, since `check_charts` only validates a `src` loader's version and SRI: exempting an
     # `href` would wave through a remote script nothing else checks.
-    # Parsed once per TAG (not once per tag/attribute pair): `_find_tag_attrs` runs a full pure-Python
-    # tokenizer pass over the whole document, and the widened script set would otherwise triple that
-    # cost for scripts alone.
+    # Parsed once per TAG (not once per tag/attribute pair): `_find_tag_attrs_egress` runs a full
+    # pure-Python tokenizer pass over the whole document, and the widened script set would
+    # otherwise triple that cost for scripts alone.
     for tag, attrs in (("link", ("href",)), ("script", SCRIPT_LOAD_ATTRS), ("iframe", ("src",))):
-        for el in _find_tag_attrs(html, tag):
+        for el in _find_tag_attrs_egress(html, tag):
             for attr in attrs:
                 _check_network_attr(tag, el, attr)
     if offline_mode:
@@ -85,21 +95,21 @@ def _check_self_contained(html, parser, nonshareable):
             ("use", "href", False), ("use", "xlink:href", False),
         )
         for tag, attr, is_srcset in media_attrs:
-            for el in _find_tag_attrs(html, tag):
+            for el in _find_tag_attrs_egress(html, tag):
                 _check_network_attr(tag, el, attr, srcset=is_srcset)
-        for el in _find_tag_attrs(html, "input"):
+        for el in _find_tag_attrs_egress(html, "input"):
             if (el.get("type") or "").lower() == "image":
                 _check_network_attr("input", el, "src")
-        for el in _find_tag_attrs(html, "form"):
+        for el in _find_tag_attrs_egress(html, "form"):
             _check_network_attr("form", el, "action")
         for tag in ("button", "input"):
-            for el in _find_tag_attrs(html, tag):
+            for el in _find_tag_attrs_egress(html, tag):
                 _check_network_attr(tag, el, "formaction")
-        for el in _find_tag_attrs(html, "meta"):
+        for el in _find_tag_attrs_egress(html, "meta"):
             if (el.get("http-equiv") or "").lower() == "refresh" and META_REFRESH_NETWORK_RE.search(el.get("content", "")):
                 errors.append("offline mode: meta refresh points at a network URL - remove it")
         for tag in ("body", "table", "td", "th", "div"):
-            for el in _find_tag_attrs(html, tag):
+            for el in _find_tag_attrs_egress(html, tag):
                 _check_network_attr(tag, el, "background")
         # The exporter removes EVERY `on*` attribute, template content included, so a gate that did
         # not look would certify a hand-authored offline file the export would have changed - and an

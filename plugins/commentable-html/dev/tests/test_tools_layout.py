@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """CMH-TOOL-LAYOUT-01: the shipped tools are grouped into per-topic buckets under tools/<topic>/,
 every expected tool lives at its bucket path, the tools/ root holds no stray flat tool (only the
-_toolpath.py bootstrap), and every tool imports by bare name via the bootstrap - so a bucket move
-that stranded a sibling import (for example finalize -> validate, or a deck tool -> deck_common) is
-caught here instead of at runtime.
+shared cross-bucket modules, _toolpath.py and _browser_attrs.py), and every tool imports by bare
+name via the bootstrap - so a bucket move that stranded a sibling import (for example finalize ->
+validate, or a deck tool -> deck_common) is caught here instead of at runtime.
 """
 import importlib
 import os
 import unittest
 
 import _paths  # noqa: E402  adds the tool buckets to sys.path via the shipped tools/_toolpath.py
+
+# The modules that legitimately sit at the tools/ ROOT: not tools, but the shared bootstrap every
+# bucket imports (`_toolpath`) and the shared browser attribute decode the tools outside the
+# validator's `checks` package read (`_browser_attrs`, CMH-VAL-21). A module here must be
+# importable from ANY bucket, which is exactly why it cannot live in one.
+ROOT_SHARED_MODULES = ("_toolpath.py", "_browser_attrs.py")
 
 # The intended bucket layout. Every shipped tool module is listed exactly once under its topic.
 EXPECTED = {
@@ -38,7 +44,7 @@ class ToolsLayoutTests(unittest.TestCase):
     def test_tools_root_holds_only_the_bootstrap_and_buckets(self):
         stray = sorted(
             n for n in os.listdir(_paths.TOOLS)
-            if n.endswith(".py") and n != "_toolpath.py")
+            if n.endswith(".py") and n not in ROOT_SHARED_MODULES)
         self.assertEqual(stray, [], "unbucketed tool(s) left at tools/ root: %s" % stray)
 
     def test_no_shipped_tool_is_unlisted(self):

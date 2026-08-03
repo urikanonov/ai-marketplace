@@ -487,6 +487,16 @@ def _browser_attrs_dict(parser, tag, attrs):
     return d
 
 
+# The PUBLIC names of the two helpers above, for the tools OUTSIDE this package - the deck
+# validator, the contrast scanner and the authoring tools - which reach them through the
+# `tools/_browser_attrs.py` shim. Each of those kept its own host-trusting attribute dict, so
+# one document was read one way by the validator and another way by the tool beside it
+# (CMH-VAL-21). Callers pass the parser they are handling a start tag for; everything else is
+# the same rule the two tolerant passes here apply.
+browser_attrs = _browser_attrs
+browser_attrs_dict = _browser_attrs_dict
+
+
 def _end_tag_close(rawdata, i):
     """Index just past the `>` that ends the tag starting at `i`, or -1 if it never closes.
 
@@ -1758,34 +1768,192 @@ def _parser_script_body(parser, script_id, lo=None, hi=None):
     return s["body"] if s is not None else None
 
 
-class _TagAttrParser(_BrowserTagNames):
-    """Collect the attribute dict of every occurrence of one tag using the tolerant
-    HTMLParser, so a '>' inside a quoted value is handled correctly and a tag that
-    only appears inside an HTML comment or a <script>/<style> body (which HTMLParser
-    treats as CDATA) is NOT matched."""
+class _TagAttrParser(_BrowserBoundaries):
+    """Index every start tag's attribute dict, drawing the SAME element boundaries the document
+    parser draws (CMH-VAL-21).
 
-    def __init__(self, want):
-        super().__init__(convert_charrefs=True)
-        self._want = _ascii_lower(want)
-        self.found = []
+    This used to be a bare `HTMLParser`, so the lookup the resource checks read and the
+    `_DocParser` view every other check reads disagreed about what an element even IS - and the
+    disagreement was reachable: `html.parser` consumes a whole `<![CDATA[ ... ]]>` marked section
+    in any context, where a browser treats one in HTML content as a BOGUS COMMENT ending at the
+    first `>`. So `<![CDATA[><script src="//evil.example/x.js"></script>]]>` left a LIVE external
+    script that the document parser reported and this lookup did not, and the self-contained /
+    offline checks read this lookup.
+
+    Every tag is indexed in ONE pass (`found` maps tag name -> attribute dicts) because a single
+    validation run asks about a dozen tags, and re-parsing a multi-megabyte document per tag is
+    what the cache on `_tag_attr_index()` below exists to avoid.
+
+    ONE deliberate departure from the shared view, for the EGRESS question only: a `<noscript>`
+    body is raw TEXT while scripting is ENABLED. With scripting off a browser parses it as
+    markup and really does load what it names, and this lookup is what the self-contained /
+    offline resource checks read - so the body is re-parsed and its elements are collected in a
+    SEPARATE index (`noscript_found`). A caller asking "does this document load anything over
+    the network?" opts into that superset and fails CLOSED on it; a caller asking "does this
+    document HAVE element X?" must not, because a scripting-enabled browser never creates it -
+    a CSP `<meta>` or a Run link buried in a `<noscript>` would otherwise satisfy a requirement
+    no reader of the layer can see.
+
+    The re-parse is a SCRIPTING-DISABLED pass, so `<noscript>` is TRANSPARENT inside it (a
+    browser with scripting off parses every nested one as ordinary markup). That keeps the
+    fallback exactly one level deep - no recursion to cap, and no depth at which a nested
+    `<noscript>`'s resources could silently drop out of the index.
+    """
+
+    def __init__(self, html, _fallback=False):
+        super().__init__(html)
+        self._stack = []   # open element tags, parallel to the namespace stack
+        self._fallback = _fallback   # this is the scripting-disabled pass over a <noscript> body
+        self._noscript = None        # buffered raw text of the <noscript> body being read
+        self.found = {}
+        self.noscript_found = {}
+        self.failed = False
+        self.eof_in_tag = False
+
+    def _truncate_stacks(self, depth):
+        super()._truncate_stacks(depth)
+        del self._stack[depth:]
+
+    def _record(self, tag, ad):
+        self.found.setdefault(tag, []).append(ad)
+
+    def handle_data(self, data):
+        if self._noscript is not None:
+            self._noscript.append(data)
+
+    def _enter_raw_text(self, tag, ns):
+        if tag == "noscript" and self._fallback:
+            return   # scripting is off in this pass, so <noscript> holds markup, not text
+        super()._enter_raw_text(tag, ns)
+
+    def _drop_if_truncated(self, k):
+        if k < 0 and self._final:
+            self.eof_in_tag = True
+        return super()._drop_if_truncated(k)
+
+    def _flush_noscript(self):
+        """Index the buffered `<noscript>` body as the MARKUP a scripting-disabled browser sees."""
+        parts, self._noscript = self._noscript, None
+        body = "".join(parts or ())
+        if "<" not in body:
+            return
+        inner = _TagAttrParser(body, _fallback=True)
+        try:
+            inner.parse_document(body)
+        except Exception:
+            # Keep whatever it collected - a partial fallback view still fails closed - but SAY
+            # so, or "could not look" would read like "nothing more to find".
+            self.failed = True
+        # The body's END was decided by the scripting-ENABLED tokenizer (the first `</noscript`),
+        # but a scripting-DISABLED browser is in the DATA state there, so a `</noscript` inside a
+        # quoted attribute VALUE is just text to it. The two views then disagree about where the
+        # body stops, and the tag straddling that seam reaches the inner parse truncated - which
+        # the browser EOF rule correctly discards, leaving a live resource in NEITHER index. It
+        # cannot be resolved from the buffered text, so it is REPORTED instead of dropped.
+        self.failed = self.failed or inner.failed or inner.eof_in_tag
+        for source in (inner.found, inner.noscript_found):
+            for tag, ads in source.items():
+                self.noscript_found.setdefault(tag, []).extend(ads)
 
     def handle_starttag(self, tag, attrs):
         tag = self._browser_tag(tag)
-        if tag != self._want:
+        ad = self._attrs_dict(tag, attrs)
+        ns = self._child_namespace(tag, ad)
+        if ns == "html":
+            self._implicit_close(tag)
+        self._record(tag, ad)
+        # A VOID element has no content and no end tag, so it is never pushed. (A foreign
+        # element is never void: `<svg><rect/>` is self-closing markup, handled below.)
+        if tag not in VOID or ns != "html":
+            self._stack.append(tag)
+            self._push_ns(tag, ns, ad)
+        self._enter_raw_text(tag, ns)
+        if tag == "noscript" and self.cdata_elem == "noscript":
+            self._noscript = []
+
+    def handle_startendtag(self, tag, attrs):
+        # HTML5 ignores a trailing slash on a non-void HTML tag, so it opens an element; a
+        # self-closed FOREIGN element really is closed at once - still an element with
+        # attributes, but never left open.
+        tag = self._browser_tag(tag)
+        ad = self._attrs_dict(tag, attrs)
+        if self._foreign_self_closes(self._child_namespace(tag, ad)):
+            self._record(tag, ad)
             return
-        # Same browser attribute decoding the shared boundary layer applies, so this lookup
-        # cannot disagree with the parsed document about an attribute's value.
-        self.found.append(_browser_attrs_dict(self, tag, attrs))
+        self.handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag):
+        tag = self._browser_tag(tag)
+        if tag == "noscript" and self._noscript is not None:
+            self._flush_noscript()
+        for i in range(len(self._stack) - 1, -1, -1):
+            if self._stack[i] == tag:
+                self._truncate_stacks(i)
+                return
+        # An end tag with no open element is ignored, exactly as a browser ignores it.
+
+    def close(self):
+        # The base flushes the tail of an UNCLOSED raw-text element first, so a `<noscript>` that
+        # never closes still contributes its fallback markup (a browser runs it to EOF too).
+        super().close()
+        if self._noscript is not None:
+            self._flush_noscript()
+
+
+@functools.lru_cache(maxsize=32)
+def _tag_attr_index(html):
+    """`(found, noscript_found, failed)` for `html`: every start tag mapped to its
+    browser-decoded attribute dicts, the `<noscript>` fallback markup indexed separately, and
+    whether the parse blew up.
+
+    Cached like `code_block_spans`, because one validation run asks the same (multi-megabyte)
+    document about a dozen different tags. Room for more than the last document, because a check
+    legitimately interleaves a FRAGMENT lookup (a KQL figure's inner HTML) with the whole
+    document's - at maxsize=1 those two would evict each other and re-parse the document every
+    time. `validate()` clears the cache when a document's checks are done, so nothing is held
+    past the run. The dicts are frozen so a caller can never mutate the shared view.
+
+    A tolerant parse should not raise, but if it does the collected part is kept AND `failed` is
+    set, because a silently PARTIAL index would let the self-contained check conclude that the
+    rest of the document loads nothing."""
+    p, failed = None, False
+    try:
+        p = _TagAttrParser(html)
+        p.parse_document(html)
+    except Exception:
+        failed = True
+    found = p.found if p is not None else {}
+    noscript_found = p.noscript_found if p is not None else {}
+    failed = failed or (p is not None and p.failed)
+    return (_freeze_tag_attrs(found), _freeze_tag_attrs(noscript_found), failed)
+
+def _freeze_tag_attrs(found):
+    return {tag: tuple(MappingProxyType(ad) for ad in ads) for tag, ads in found.items()}
 
 
 def _find_tag_attrs(html, tag):
-    p = _TagAttrParser(tag)
-    try:
-        p.feed(html)
-        p.close()
-    except Exception:
-        pass
-    return p.found
+    """The attribute dict of every occurrence of `tag`, as a browser with scripting ENABLED sees
+    the document - the view a PRESENCE question must ask ("does this document declare X?")."""
+    found, _noscript_found, _failed = _tag_attr_index(html or "")
+    return [dict(ad) for ad in found.get(_ascii_lower(tag), ())]
+
+
+def _find_tag_attrs_egress(html, tag):
+    """The same, PLUS the `<noscript>` fallback markup a scripting-DISABLED browser parses and
+    loads - the view an EGRESS question must ask ("does this document load anything over the
+    network?"). Deliberately a separate function rather than a flag on the one above: a missed
+    argument would be a silent hole in one direction and a fail-open policy check in the other."""
+    found, noscript_found, _failed = _tag_attr_index(html or "")
+    key = _ascii_lower(tag)
+    return ([dict(ad) for ad in found.get(key, ())]
+            + [dict(ad) for ad in noscript_found.get(key, ())])
+
+
+def _tag_attrs_failed(html):
+    """Whether the shared tag index could not be built, so every lookup on this document is
+    incomplete and its consumers must fail CLOSED rather than read a partial answer as clean."""
+    return _tag_attr_index(html or "")[2]
+
 
 
 def _parse_document(html):

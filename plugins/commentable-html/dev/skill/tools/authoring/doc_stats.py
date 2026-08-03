@@ -19,6 +19,9 @@ import re
 import sys
 from html.parser import HTMLParser
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _browser_attrs  # noqa: E402
+
 DEFAULT_WPM = 200
 STATS_ATTR = "data-cmh-doc-stats"
 VOID_TAGS = {
@@ -34,15 +37,6 @@ def _line_starts(text):
     for match in re.finditer("\n", text):
         starts.append(match.end())
     return starts
-
-
-def _attrs_dict(attrs):
-    result = {}
-    for key, value in attrs:
-        name = (key or "").lower()
-        if name not in result:
-            result[name] = value if value is not None else ""
-    return result
 
 
 def _has_class(attrs, class_name):
@@ -90,7 +84,9 @@ class _StatsParser(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
-        attrs_dict = _attrs_dict(attrs)
+        # The shared browser attribute decode (CMH-VAL-21), so a class token this tool reads is
+        # the token a browser sees - and the one the validator sees.
+        attrs_dict = _browser_attrs.attrs_dict(self, tag, attrs)
         start = self._idx()
         start_text = self.get_starttag_text() or ""
         is_stats = STATS_ATTR in attrs_dict

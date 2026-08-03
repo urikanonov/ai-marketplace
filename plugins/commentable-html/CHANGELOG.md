@@ -4,6 +4,40 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.425.0] - 2026-08-03
+
+### Fixed
+
+- The validator's tag-attribute lookup now draws the same element boundaries as the document
+  parser, so one document cannot be two documents depending on which check is asking. It was a
+  bare `HTMLParser`, which consumes a whole `<![CDATA[ ... ]]>` marked section in every context,
+  while a browser (and the shared boundary layer every other check reads) treats one in HTML
+  content as a bogus comment ending at the first `>`. A `<![CDATA[><script src="//host/x.js">
+  </script>]]>` therefore left a LIVE external script that the self-contained and offline resource
+  checks - which read the lookup - reported as absent. The lookup now derives from the shared
+  `_BrowserBoundaries` base (raw-text and comment boundaries, foreign content, the HTML5 implicit
+  close and end-of-input rules included) and indexes every tag in ONE cached pass, so it is also no
+  longer a fresh document parse per tag.
+- The self-contained and offline resource checks now also see the markup inside a `<noscript>`
+  fallback. That body is raw text only while scripting is ENABLED; with scripting off a browser
+  parses it and really does load what it names, so a network `<img>`, `<link>` or `<meta refresh>`
+  hidden there is now reported instead of passing the self-contained guarantee. The fallback view
+  is read through its own lookup, so a PRESENCE question still reads the browser's own view - a
+  Content-Security-Policy `<meta>` inside a `<noscript>` no longer satisfies the offline policy
+  requirement. A tag lookup whose parse fails is reported as unreadable rather than read as a
+  document that loads nothing.
+- The tools outside the validator's `checks` package - the deck validator, the contrast scanner,
+  and the `doc_stats`, `fix_skip`, `generate_toc` and `wrap_sections` authoring tools - decode
+  attribute values through that same shared browser rule instead of trusting the host
+  `html.parser`. Each kept its own attribute dict, so the same document was read one way by the
+  validator and another way by the tool beside it: a named character reference that is only a
+  PREFIX of the value (`class="mermaid &nbspcm-skip"`) resolved on Python 3.12 and invented a
+  `cm-skip` token the author never wrote, and a duplicated attribute kept the LAST occurrence
+  where HTML5 keeps the first - which let a decoy `http-equiv` hide a `<meta refresh>` redirect
+  from the deck's active-content scan, a decoy `style=` hide the live declaration from the
+  contrast scanner, and a decoy `id="commentRoot"` scope the section wrapping to the wrong
+  element.
+
 ## [1.416.0] - 2026-08-03
 
 ### Fixed
