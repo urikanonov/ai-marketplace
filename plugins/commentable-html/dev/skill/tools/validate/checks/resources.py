@@ -47,10 +47,10 @@ OFFLINE_CSP_REQUIRED = {
 # widens both sides together; see the CMH-VAL-08 spec row.
 CSS_NETWORK_URL_RE = re.compile(r"url\(\s*(['\"]?)(?:https?:)?//", re.IGNORECASE)
 
-# A network URL in an attribute value, allowing the leading characters a browser REMOVES before it
-# parses the URL: WHATWG strips leading (and trailing) C0 controls and spaces, U+0000 to U+0020, so
-# a value padded with them still loads while one padded with NBSP or U+FEFF does not resolve as a
-# URL at all. The range is written out as literal code points because the offline export carries an
+# A network URL in an attribute value, read AFTER the URL parser's own input cleanup (see
+# `normalize_url_value` below), so the spellings a browser normalizes into a network load - an
+# embedded ASCII tab or newline, a backslash authority - are not read as relative references. The
+# character ranges are written out as literal code points because the offline export carries an
 # INDEPENDENT JavaScript copy of this predicate (`_OFFLINE_NETWORK_URL_RE` in
 # `assets/js/68-export-offline.js`) and the two engines do not agree about what `\s` means (Python's
 # is Unicode-aware and matches U+001C-U+001F; JS's excludes them but includes U+FEFF). A drift here
@@ -59,11 +59,103 @@ CSS_NETWORK_URL_RE = re.compile(r"url\(\s*(['\"]?)(?:https?:)?//", re.IGNORECASE
 # `re.IGNORECASE` case-folds across the whole of Unicode, so `s` also matches U+017F (LATIN SMALL
 # LETTER LONG S) and `http<U+017F>://host` would be a network URL to the gate but not to a JS `/i`
 # regex, which never folds a non-ASCII character onto an ASCII one.
-# That mirroring is also why this pattern keeps requiring the `//` while the meta-refresh gate
-# below no longer does: an attribute fetch is closed by the offline CSP, and widening only this
-# copy would reject a file the exporter just produced. Issues #961 and #923/#924 move both sides
-# together; see the CMH-VAL-08 spec row.
-NETWORK_URL_RE = re.compile(r"[\x00-\x20]*(?:https?:)?//", re.IGNORECASE | re.ASCII)
+# An explicit `file:` authority counts as a network load for the same reason the meta-refresh gate
+# below counts it: on Windows `file://host/x.js` is an SMB fetch off the machine. How many
+# separators open that authority is NOT "two or more" - a real Chromium (checked, not assumed) reads
+# exactly two OR four-or-more as an authority, while THREE is the empty host of an ordinary local
+# path (`file:///C:/x`), so `file:////evil.example/x.js` really does fetch and a `(?!/)` test alone
+# called it local. Two host spellings that stay on the machine are excluded whatever the separator
+# count: `localhost`, the local machine by definition, and a Windows DRIVE LETTER, which the
+# file-host state turns into a path rather than a host, because reporting either would reject an
+# offline file with no egress at all - and make the exporter delete the author's local reference.
+# The drive-letter test deliberately does NOT require a separator after the `:` or `|`: a real
+# Chromium resolves EVERY `file://` authority that STARTS with one to a local drive path, so
+# `file://C:/x`, `file://C:foo/x` and even `file://c:evil.example/x` are all the local file
+# `file:///C:/...` with an empty host, and demanding the separator over-detected the last two.
+# The `(?!/)` after the long run is what stops the engine BACKTRACKING out of those exclusions: a
+# greedy `/{4,}` alone matches five slashes, fails the `localhost` lookahead, gives a slash back and
+# then matches on the four-slash reading, so `file://///localhost/x` (local) came out network.
+# Every arm requires a NON-EMPTY authority. An authority terminated immediately by `?`, `#` or the
+# end of the value is an empty host, which no browser fetches from: for a special scheme it is a
+# parse FAILURE (`//?q`, `https://`, and the Windows extended-length path `\\?\C:\x`, which the
+# backslash mapping turns into `//?/C:/x`, were all checked to fail parsing), and from a `file:`
+# document it is the local root. Reporting one would delete an author's value over a reference that
+# loads nothing.
+# `\Z` rather than `$` in those lookaheads: Python's `$` also matches before a trailing newline
+# where a JS `$` matches only at the end of input, so `$` here would be a silent engine drift for
+# any caller that reached the pattern without `normalize_url_value` (which removes newlines) first.
+# The http/https arm still requires the `//`, unlike the meta-refresh gate below: an attribute fetch
+# is closed by the offline CSP, and widening only this copy would reject a file the exporter just
+# produced. Issue #961 moves both sides together; see the CMH-VAL-08 spec row.
+NETWORK_URL_RE = re.compile(
+    r"(?:(?:https?:)?//(?![?#]|\Z)"
+    r"|file:(?://(?!/)|/{4,}(?!/))(?![?#]|\Z)(?!localhost(?:[/?#]|\Z))(?![A-Za-z][:|]))",
+    re.IGNORECASE | re.ASCII)
+
+# Every character a URL parser removes from its input before it parses: leading and trailing C0
+# controls or spaces (U+0000-U+0020), and ASCII tab, LF and CR ANYWHERE inside the value.
+_URL_LEADING_TRAILING_STRIP = "".join(chr(c) for c in range(0x21))
+_URL_INNER_REMOVE_RE = re.compile(r"[\t\n\r]")
+
+
+def normalize_url_value(value):
+    """A reference as the URL PARSER sees it, so a literal test reads what a browser will fetch.
+
+    Three cleanups, all of them the parser's own: strip leading and trailing C0-or-space, remove
+    ASCII tab/LF/CR from anywhere, and map every backslash onto a slash (for a special scheme the
+    parser's relative and authority-slash states treat the two alike, so `https:/\\host/x.js` and
+    `\\\\host/x.js` both open an authority). Mirrored byte-for-byte in the exporter's
+    `_offlineNormalizeUrlValue`; `tests/test_vendored_libs.py` pins the pair through the real JS
+    engine.
+    """
+    return _URL_INNER_REMOVE_RE.sub("", str(value or "")).strip(_URL_LEADING_TRAILING_STRIP).replace("\\", "/")
+
+
+def is_network_url(value):
+    """True when an attribute value names a resource a browser would fetch over the network."""
+    return bool(NETWORK_URL_RE.match(normalize_url_value(value)))
+
+
+# HTML's srcset parser splits candidates on ASCII whitespace ONLY - tab, LF, FF, CR and space - so
+# tokenizing with the ENGINE's idea of whitespace was wrong twice over: U+000B is engine whitespace
+# but not ASCII whitespace, so `"\u0001\u000bhttps://host/x 1x"` was cut at the U+000B and both
+# sides tested `"\u0001"` while the browser fetched the host; and the two engines disagree about the
+# rest (Python's `str.strip()`/`split()` take U+001C-U+001F, JS's `trim()` takes U+FEFF), which is
+# the CMH-OFFLINE-04 drift. Only the candidate BOUNDARY is decided here; every character the URL
+# parser itself removes is left to `normalize_url_value`. Mirrored in the exporter's
+# `_offlineSrcsetCandidateUrl` / `_offlineSrcsetHasNetwork`.
+_SRCSET_WS_RE = re.compile(r"[\t\n\f\r ]+")
+
+
+def srcset_candidate_urls(value):
+    """Every string in a `srcset` a browser could load, tokenized the way HTML's parser does.
+
+    Two readings are collected, because splitting on the comma ALONE is not what HTML does: its
+    srcset parser collects a run of non-ASCII-whitespace as the URL, so a comma INSIDE that run
+    belongs to the URL (`srcset="https://,host/x.png 1x"` requests `https://,host/x.png` - measured
+    in a real Chromium). A comma-split alone therefore tests the truncated `https://`, which is an
+    empty authority and local. The whitespace-run reading alone is not enough either, because two
+    candidates may be separated by a comma with no space around it. Taking the UNION costs nothing:
+    a descriptor (`1x`, `320w`) can never match the network predicate. Mirrored in the exporter's
+    `_offlineSrcsetCandidateUrls`.
+    """
+    text = str(value or "")
+    urls = []
+    for part in text.split(","):
+        url = _SRCSET_WS_RE.split(part.lstrip("\t\n\f\r "))[0]
+        if url:
+            urls.append(url)
+    for token in _SRCSET_WS_RE.split(text):
+        token = token.strip(",")
+        if token and token not in urls:
+            urls.append(token)
+    return urls
+
+
+def srcset_has_network(value):
+    """True when any candidate in a `srcset` names a network resource."""
+    return any(is_network_url(url) for url in srcset_candidate_urls(value))
+
 
 # Every attribute through which a <script> can LOAD its code. An SVG <script> uses none of the
 # HTML `src` spelling: it loads through SVG2 `href` or the legacy `xlink:href`, and its body is
@@ -397,12 +489,9 @@ META_REFRESH_NETWORK_URL_RE = re.compile(
     r"|[/\\][/\\])[^/\\?#]",
     re.IGNORECASE | re.ASCII)
 
-_URL_LEADING_TRAILING_STRIP = "".join(chr(c) for c in range(0x21))
-
-
 def meta_refresh_navigates_to_network(content):
     """True when a refresh meta's `content` names a network URL a browser would navigate to."""
-    url = re.sub(r"[\t\n\r]", "", meta_refresh_target(content))
+    url = _URL_INNER_REMOVE_RE.sub("", meta_refresh_target(content))
     return bool(META_REFRESH_NETWORK_URL_RE.match(url.strip(_URL_LEADING_TRAILING_STRIP)))
 
 # Script types that are ACTIVE without being JavaScript, so `_is_executable_js` never looked at

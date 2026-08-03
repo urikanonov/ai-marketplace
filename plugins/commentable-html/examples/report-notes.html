@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.516.0" />
+<meta name="commentable-html-version" content="1.518.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.516.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.518.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Design review sign-off</title>
 
@@ -4276,7 +4276,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.516.0";
+const CMH_VERSION = "1.518.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -17234,21 +17234,82 @@ function _offlineDocFromHtml(html) {
 function _serializeOfflineDoc(doc) {
   return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
 }
-// A network URL in an attribute value, allowing the leading characters a browser REMOVES before it
-// parses the URL: WHATWG strips leading (and trailing) C0 controls and spaces, U+0000 to U+0020, so
-// a value padded with them still loads while one padded with NBSP or U+FEFF does not resolve as a
-// URL at all. The range is written out as literal code points because the strict validator carries
+// A network URL in an attribute value, read AFTER the URL parser's own input cleanup (see
+// `_offlineNormalizeUrlValue`), so the spellings a browser normalizes into a network load - an
+// embedded ASCII tab or newline, a backslash authority - are not read as relative references. The
+// character ranges are written out as literal code points because the strict validator carries
 // an INDEPENDENT Python copy of this predicate (`NETWORK_URL_RE`) and the two engines do not agree
 // about what `\s` means (Python's is Unicode-aware and matches U+001C-U+001F; JS's excludes them but
 // includes U+FEFF). A drift is the CMH-OFFLINE-04 failure mode - the gate blesses a file this strip
 // would have cleaned, or rejects one the exporter just produced.
-const _OFFLINE_NETWORK_URL_RE = /^[\u0000-\u0020]*(?:https?:)?\/\//i;
+function _offlineNormalizeUrlValue(v) {
+  // Three cleanups, all of them the URL parser's own: strip leading and trailing C0-or-space,
+  // remove ASCII tab/LF/CR from anywhere, and map every backslash onto a slash (for a special
+  // scheme the parser's relative and authority-slash states treat the two alike, so
+  // `https:/\host/x.js` and `\\host/x.js` both open an authority and really do fetch).
+  return String(v || "")
+    .replace(/[\u0009\u000a\u000d]/g, "")
+    .replace(/^[\u0000-\u0020]+/, "")
+    .replace(/[\u0000-\u0020]+$/, "")
+    .replace(/\\/g, "/");
+}
+// An explicit `file:` authority counts as a network load: on Windows `file://host/x.js` is an SMB
+// fetch off the machine. How many separators open that authority is NOT "two or more" - a real
+// Chromium (checked, not assumed) reads exactly two OR four-or-more as an authority, while THREE is
+// the empty host of an ordinary local path (`file:///C:/x`), so `file:////host/x.js` really
+// does fetch and a `(?!/)` test alone called it local. Two host spellings that stay on the machine
+// are excluded whatever the separator count: `localhost`, which is the local machine by definition,
+// and a Windows DRIVE LETTER, which the file-host state turns into a path rather than a host,
+// because reporting either would delete an author's local reference and make the gate reject a file
+// with no egress. The drive-letter test deliberately does NOT require a separator after the `:` or
+// `|`: a real Chromium resolves EVERY `file://` authority that STARTS with one to a local drive
+// path, so `file://C:/x`, `file://C:foo/x` and even `file://c:not-a-host/x` are all the local file
+// `file:///C:/...` with an empty host, and demanding the separator over-detected the last two.
+// The `(?!/)` after the long run stops the engine BACKTRACKING out of those exclusions: a greedy
+// `/{4,}` alone matches five slashes, fails the `localhost` lookahead, gives a slash back and then
+// matches on the four-slash reading, so `file://///localhost/x` (local) came out network.
+// Every arm also requires a NON-EMPTY authority: one terminated at once by `?`, `#` or the end of
+// the value fetches nothing (a special scheme cannot even parse it), so `//?q`, `https://` and the
+// Windows extended-length path `\\?\C:\x` - which the backslash mapping turns into `//?/C:/x` - are
+// left alone rather than stripped out of an author's document.
+const _OFFLINE_NETWORK_URL_RE = /^(?:(?:https?:)?\/\/(?![?#]|$)|file:(?:\/\/(?!\/)|\/{4,}(?!\/))(?![?#]|$)(?!localhost(?:[/?#]|$))(?![A-Za-z][:|]))/i;
 function _offlineIsNetworkUrl(v) {
-  return _OFFLINE_NETWORK_URL_RE.test(String(v || ""));
+  return _OFFLINE_NETWORK_URL_RE.test(_offlineNormalizeUrlValue(v));
+}
+// HTML's srcset parser splits candidates on ASCII whitespace ONLY - tab, LF, FF, CR and space - so
+// tokenizing with the ENGINE's idea of whitespace was wrong twice over: U+000B is engine whitespace
+// but not ASCII whitespace, so `"\u0001\u000bhttps://host/x 1x"` was cut at the U+000B and both
+// sides tested `"\u0001"` while the browser fetched the host; and the two engines disagree about
+// the rest (JS `trim()` strips U+FEFF, Python's `str.strip()` strips U+001C-U+001F), which is the
+// CMH-OFFLINE-04 drift. Only the candidate BOUNDARY is decided here; every character the URL parser
+// itself removes is left to `_offlineNormalizeUrlValue`.
+const _OFFLINE_SRCSET_WS_RE = /[\t\n\f\r ]+/;
+function _offlineSrcsetCandidateUrl(part) {
+  return String(part).replace(/^[\t\n\f\r ]+/, "").split(_OFFLINE_SRCSET_WS_RE)[0];
+}
+// Two readings, because splitting on the comma ALONE is not what HTML does: its srcset parser
+// collects a run of non-ASCII-whitespace as the URL, so a comma INSIDE that run belongs to the URL
+// (`srcset="https://,host/x.png 1x"` requests `https://,host/x.png` - measured in a real Chromium),
+// and a comma-split alone tests the truncated `https://`, which is an empty authority and local.
+// The whitespace-run reading alone is not enough either, because two candidates may be separated by
+// a comma with no space around it. Taking the UNION costs nothing: a descriptor (`1x`, `320w`) can
+// never match the network predicate. Mirrored in the validator's `srcset_candidate_urls`.
+function _offlineSrcsetCandidateUrls(v) {
+  const text = String(v || "");
+  const urls = [];
+  text.split(",").forEach(function (part) {
+    const url = _offlineSrcsetCandidateUrl(part);
+    if (url) urls.push(url);
+  });
+  text.split(_OFFLINE_SRCSET_WS_RE).forEach(function (token) {
+    const trimmed = token.replace(/^,+/, "").replace(/,+$/, "");
+    if (trimmed && urls.indexOf(trimmed) === -1) urls.push(trimmed);
+  });
+  return urls;
 }
 function _offlineSrcsetHasNetwork(v) {
-  return String(v || "").split(",").some(function (part) {
-    return _offlineIsNetworkUrl(part.trim().split(/\s+/)[0]);
+  return _offlineSrcsetCandidateUrls(v).some(function (url) {
+    return _offlineIsNetworkUrl(url);
   });
 }
 function _offlineCssNoNetwork(css) {
