@@ -44,6 +44,13 @@ jobs:
         run: python scripts/build_site_data.py
       - name: Run site generator unit tests
         run: python scripts/run_script_tests.py --pattern test_build_site_data.py
+      - name: Check every published clip is VP9
+        # No decoder needed - the codec is plain text in the WebM track header - so this cannot be
+        # skipped and runs before the ffmpeg install. It reads both the served bytes and the
+        # site/src source they are copied from, since a VP8 source would re-publish itself on the
+        # next rebuild. The clips were VP9 only as a side effect of a mask pass once, and reverted
+        # to Chromium's VP8 unnoticed when that pass went away (#866).
+        run: python scripts/check_clip_codec.py
       - name: Install ffmpeg for the clip scan
         # ubuntu-latest no longer ships ffmpeg, and Playwright's bundled one is VP8-only so it
         # cannot decode these VP9 clips. The scan fails closed without a decoder, which is how this

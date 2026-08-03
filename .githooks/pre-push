@@ -129,6 +129,10 @@ fi
 
 # Mirrors the required `site` (site drift) and `dist-in-sync` (layer dist) jobs.
 run "site data in sync (build_site_data --check)" "$PY" scripts/build_site_data.py --check
+# Part of the required `site` job too. It is here rather than behind PREPUSH_TESTS because it
+# reads a few hundred bytes of container header per clip - it costs nothing, and a clip whose
+# codec silently reverted is exactly the kind of thing a re-record does without meaning to.
+run "published clips are VP9 (check_clip_codec)" "$PY" scripts/check_clip_codec.py
 run "commentable-html layer dist in sync (build.py --check)" "$PY" \
   plugins/commentable-html/dev/tools/build.py \
   --assets-dir plugins/commentable-html/dev/assets \
