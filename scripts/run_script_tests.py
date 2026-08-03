@@ -12,7 +12,9 @@ makes the mistake impossible to miss instead:
   * the suite runs with its cwd set to a temporary sandbox, so a bare relative write lands there
     rather than in the repository, and
   * afterwards the sandbox must be EMPTY and the repository working tree must be UNCHANGED -
-    otherwise the run fails and names what was left behind.
+    otherwise the run fails and names what was left behind. The two verdicts are reported
+    separately, because a path in the sandbox is a bare relative write by a test while a changed
+    repository is just as often the developer editing during the run (#930).
 
 It costs no extra time: the suite runs exactly once, just somewhere harmless. The git location
 variables are scrubbed too (see `_git_test_env`), so the runner is safe to call from a git hook.
@@ -31,7 +33,9 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import contextlib
+import difflib
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -69,6 +73,15 @@ _PROBES = (
 #: against the worktree's own git dir, so a sibling can never move them - and a suite that left a
 #: bisect or a rebase running in the repository is a leak no other probe here notices.
 _OWNED_REF_PATTERNS = ("refs/bisect/*", "refs/rewritten/*", "refs/worktree/*")
+
+#: The snapshot's section headers, in the order `worktree_state` writes them. Only these names open
+#: a section when the snapshot is split for a diff: `diff` and `untracked` carry arbitrary file
+#: content and paths, so a body line that merely looks like a header must not invent a probe.
+_SECTIONS = tuple(name for name, _ in _PROBES) + ("refs", "untracked")
+
+#: How many diff lines a single probe may contribute to a failure report. A whole-file rewrite
+#: would otherwise bury the one line that matters under thousands.
+_DIFF_LINES = 40
 
 
 def discover_argv(tests_dir, pattern="test_*.py", python=None):
@@ -411,10 +424,12 @@ _REFRESH = ["update-index", "-q", "--refresh"]
 
 
 def untracked_digest(repo_root, env=None):
-    """`path sha256` for every untracked, non-ignored file, or None when it cannot be listed.
+    """`"path" sha256` for every untracked, non-ignored file, or None when it cannot be listed.
 
     `git status` names an untracked file but says nothing about its CONTENT, so a suite that
-    overwrote one would otherwise look like no change at all.
+    overwrote one would otherwise look like no change at all. The name is JSON-encoded because a
+    path may legally contain a newline on POSIX, and a raw one would let a file name forge a
+    `[probe]` header in the snapshot and misdirect the diff that reports the change (#930).
     """
     if not repo_root:
         return None
@@ -434,7 +449,7 @@ def untracked_digest(repo_root, env=None):
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
         except OSError:
             digest = "<unreadable>"
-        lines.append("%s %s\n" % (name, digest))
+        lines.append("%s %s\n" % (json.dumps(name), digest))
     return "".join(lines)
 
 
@@ -526,12 +541,71 @@ def worktree_state(repo_root, env=None):
     return "".join(parts)
 
 
+def split_sections(state):
+    """The `[probe]` blocks of a rendered snapshot, keyed by probe name and in snapshot order.
+
+    Only the line ENDING is trimmed, never leading whitespace: the `[diff]` body is `git diff`
+    output, whose context lines are indented by a space, so source that literally reads `[status]`
+    arrives as ` [status]` and must not be allowed to open a section.
+    """
+    sections = {}
+    name = "?"
+    for line in (state or "").splitlines(keepends=True):
+        header = line.rstrip("\r\n")
+        if header.startswith("[") and header.endswith("]") and header[1:-1] in _SECTIONS:
+            name = header[1:-1]
+            sections.setdefault(name, "")
+            continue
+        sections[name] = sections.get(name, "") + line
+    return sections
+
+
+def state_diff(before, after):
+    """What differs between two `worktree_state` snapshots, per probe; empty when nothing does.
+
+    Printing both snapshots whole made the reader diff a few hundred lines by hand to find the one
+    that moved, and the answer was usually "a ref a sibling worktree touched" (#930). Showing only
+    the difference, labelled with the probe that saw it, is the whole diagnosis.
+    """
+    if before is None or after is None:
+        return ("the repository could not be read %s the run (git missing, or .git deleted while "
+                "it ran)\n" % ("before" if before is None else "after"))
+    old, new = split_sections(before), split_sections(after)
+    names = list(old) + [name for name in new if name not in old]
+    chunks = []
+    for name in names:
+        was, now = old.get(name, ""), new.get(name, "")
+        if was == now:
+            continue
+        # The two file headers come first and only when something differs, so they are dropped by
+        # POSITION: a removed line whose content starts with `--` is emitted as `---...` and would
+        # otherwise be filtered out as a header - silently hiding the very change being reported.
+        lines = list(difflib.unified_diff(was.splitlines(True), now.splitlines(True),
+                                          n=0, lineterm="\n"))[2:]
+        lines = [line for line in lines if not line.startswith("@@")]
+        dropped = len(lines) - _DIFF_LINES
+        if dropped > 0:
+            # Head AND tail: a unified diff lists every deletion before the additions, so keeping
+            # only the head of a large rewrite would show what went and never what replaced it.
+            half = _DIFF_LINES // 2
+            lines = (lines[:half] + ["... and %d more line(s)\n" % (len(lines) - 2 * half)]
+                     + lines[-half:])
+        chunks.append("[%s]\n%s" % (name, "".join(
+            line if line.endswith("\n") else line + "\n" for line in lines)))
+    return "".join(chunks)
+
+
 def describe_leak(leftovers, before, after):
     """Human-readable problems for a finished run; empty when the run left nothing behind.
 
     `before`/`after` are `worktree_state` results. A tree that was ALREADY dirty is not blamed on
     the suite, only a DIFFERENCE is - including a difference where one side is None, since a
     repository that stopped being readable while the suite ran certainly changed.
+
+    The two problems have different causes and different fixes, so they read differently: a path
+    left in the sandbox is a bare relative write by a test, while a changed repository can equally
+    be the developer editing during the run. Blurring them cost a reader a cycle hunting for a
+    stray write that did not exist (#930).
     """
     problems = []
     if leftovers:
@@ -539,18 +613,22 @@ def describe_leak(leftovers, before, after):
                         % (len(leftovers), ", ".join(leftovers)))
     if (before is not None or after is not None) and before != after:
         problems.append(
-            "the repository changed while the suite ran. If you were editing files during the run, "
-            "rerun on a quiet tree; ONLY if you must keep editing, pass --no-worktree-check "
-            "(from the pre-push hook: PREPUSH_ALLOW_TREE_EDITS=1 git push). Never use it to "
-            "silence a real leak - this is the only check that catches a test writing an ABSOLUTE "
-            "path into the repository.\n"
-            "--- before ---\n%s--- after ---\n%s"
-            % (_render_state(before), _render_state(after)))
+            "the repository changed underneath the run. This is NOT the sandbox check and is not "
+            "necessarily a stray write: anything that moved in the checkout counts, including "
+            "your own concurrent editing. What differed, by probe:\n"
+            "%s\n"
+            "[status], [diff] and [untracked] mean a file in the checkout was created, modified "
+            "or deleted - a test writing an ABSOLUTE path into the repository looks like this; "
+            "[head], [branch] and [refs] mean this worktree's git state moved. A sibling "
+            "worktree's branch, and a fetch that only writes remote-tracking refs, are excluded "
+            "already, so neither is the cause (a fetch that fast-forwards THIS branch is not "
+            "excluded, and shows up under [head]/[refs]). If you were editing during the run, "
+            "rerun on a quiet tree; ONLY if you "
+            "must keep editing, pass --no-worktree-check (from the pre-push hook: "
+            "PREPUSH_ALLOW_TREE_EDITS=1 git push). Never use it to silence a real leak - this is "
+            "the only check that catches a test writing an ABSOLUTE path into the repository."
+            % state_diff(before, after))
     return problems
-
-
-def _render_state(state):
-    return "<unreadable repository>\n" if state is None else state
 
 
 def main(argv=None):
@@ -628,8 +706,9 @@ def main(argv=None):
         problems = describe_leak(leftovers, before, after)
         for problem in problems:
             print("run_script_tests: %s" % problem, file=sys.stderr)
-        if problems:
+        if leftovers:
             print("run_script_tests: %s" % HINT, file=sys.stderr)
+        if problems:
             return rc or 1
         return rc
 
@@ -665,8 +744,11 @@ def main(argv=None):
 
     for problem in problems:
         print("run_script_tests: %s" % problem, file=sys.stderr)
-    if problems:
+    if leftovers:
+        # Only when a path was actually left behind: printing it for a repository change reads as
+        # the diagnosis and sends the reader hunting for a stray relative write (#930).
         print("run_script_tests: %s" % HINT, file=sys.stderr)
+    if problems:
         return returncode or 1
     return returncode
 
