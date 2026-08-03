@@ -205,20 +205,30 @@ test("every recipe's longest wait is a documented budget, not a bare number (DEM
   const recipes = fs.readdirSync(dir).filter((f) => f.endsWith("-session.json"));
   assert.ok(recipes.length, "examples/ should ship at least one capture recipe");
 
+  // Written the way the budgets table writes it, so the committed number and the documented one are
+  // the same number rather than two roundings of it.
+  const plural = (n, unit) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+  const spell = (ms) => (ms % 60_000 === 0 ? plural(ms / 60_000, "minute") : plural(ms / 1000, "second"));
+
   const skill = fs.readFileSync(path.join(import.meta.dirname, "..", "SKILL.md"), "utf8");
+  const rows = skill.split("\n").filter((line) => line.trim().startsWith("|"));
   for (const name of recipes) {
-    const script = readScript(path.join(dir, name));
-    const longest = Math.max(...script.steps.map((s) => s.timeoutMs ?? 0));
-    assert.ok(longest > 0, `${name} needs a timeout on its longest wait; the backstop is the budget`);
-    // Whole minutes, so the committed number and the documented one are the same number rather than
-    // two roundings of it - there is nothing to gain from a budget measured to the second.
-    assert.equal(longest % 60_000, 0,
-      `${name} longest wait is ${longest}ms; make a capture budget a whole number of minutes`);
-    const minutes = longest / 60_000;
-    const documented = skill.split("\n").some((line) => line.includes(name)
-      && new RegExp(`\\b${minutes}\\b\\s*minute`).test(line));
-    assert.ok(documented,
-      `SKILL.md should record ${name} as a ${minutes} minute capture budget, and where that number came from`);
+    // normalizeScript gives every step a timeout, so this is the effective backstop - a wait nobody
+    // declared is still a wait the capture can sit on.
+    const longest = Math.max(...readScript(path.join(dir, name)).steps.map((s) => s.timeoutMs));
+    const row = rows.find((line) => line.split("|")[1]?.includes(name));
+    assert.ok(row,
+      `SKILL.md needs a "Capture budgets" row for ${name}: its longest wait, and where that number came from`);
+    const [, , declared = "", why = ""] = row.split("|");
+    // Match the budget CELL, not the line: the row's rationale names the numbers this budget
+    // replaced ("its 90 minute quit timeout", "ran 36 minutes"), so a line-level match would let a
+    // timeout drift back onto one of them and still report the doc as current.
+    assert.equal(declared.trim(), spell(longest),
+      `the "Capture budgets" row for ${name} records "${declared.trim()}", but its longest wait is ${spell(longest)}`);
+    // A number with no provenance is the thing this test exists to prevent, so the row has to say
+    // where it came from rather than restating the timeout in words.
+    assert.ok(why.trim().length >= 40,
+      `the "Capture budgets" row for ${name} needs to say where ${spell(longest)} came from`);
   }
 });
 

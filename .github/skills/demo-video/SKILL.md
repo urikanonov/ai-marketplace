@@ -87,8 +87,8 @@ layout to cut the file size.
 
 ## Re-record a published clip
 
-A published clip is an unattended capture that can run for the better part of an hour, so the ask is
-not retyped from memory - it is committed. `--script` drives the session from a recipe, and each step
+A published clip is an unattended capture that can run for an hour and a half, so the ask is not
+retyped from memory - it is committed. `--script` drives the session from a recipe, and each step
 waits for its cue (a file that this run produced, a marker in the output, or a window of quiet)
 before sending, so the capture survives an agent that pauses mid-thought.
 
@@ -133,11 +133,13 @@ load-bearing for this clip: a different directory works for the duck recipe but 
 round trip. `--snapshot-out` keeps the report AS REVIEWED, because the agent edits it in place and
 without the copy the "before" side of the round trip is gone.
 
-### Capture budgets (what each recipe is allowed to cost)
+### Capture budgets (where each timeout came from)
 
-A recipe's longest wait is what an unattended capture bills when the ending never arrives, so it is
-derived from a MEASURED run rather than picked from memory. Change a timeout and change the row -
-`DEMO-SCRIPT-12` fails a budget that is only in the JSON:
+Steps wait in SEQUENCE and every timer starts fresh, so a recipe's worst case is the sum of its
+timeouts - which is where the hour and a half above comes from. The number worth arguing about is
+the longest single wait, because that is the one an operator sits through before a stalled capture
+admits it is stalled, and it is derived from a MEASURED run rather than picked from memory. Change a
+timeout and change the row: `DEMO-SCRIPT-12` fails a budget that lives only in the JSON.
 
 | Recipe | Longest wait | Where that number came from |
 | --- | --- | --- |
