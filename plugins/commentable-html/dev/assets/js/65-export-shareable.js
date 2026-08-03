@@ -525,7 +525,7 @@ function _retargetLayerDescriptor(html, mode) {
   // downloading a document with no descriptor.
   const insert = '<script type="application/json" id="commentableHtmlLayer">'
     + _layerDescriptorJson(mode) + "</scr" + "ipt>\n";
-  const anchored = src.replace(/<meta name="commentable-html-version" content="[^"]*"\s*\/?>\s*/i,
+  const anchored = src.replace(/<meta name="commentable-html-version" content="[^"]+"\s*\/?>\s*/i,
     function (m) { return m + insert; });
   if (anchored === src) {
     throw new Error("Export aborted: this document has no commentable-html layer descriptor and no version meta tag to anchor one to.");
