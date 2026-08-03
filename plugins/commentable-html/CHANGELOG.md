@@ -4,6 +4,27 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.391.0] - 2026-08-03
+
+### Fixed
+
+- The Offline export's navigation strip, and the strict validator that mirrors it, now recognize a
+  network URL literal spelled WITHOUT the slashes after its scheme (issue #870). A browser resolves
+  `location.href = "https:host/path"` to `https://host/path`, so that one-token spelling change
+  navigated the whole document - every reviewer comment with it - to an attacker's host while
+  matching neither copy of the pattern, and no CSP delivered in a `<meta>` can restrict top-level
+  navigation, so nothing else would have stopped it. Unlike the misses the residual documents
+  (aliasing, computed access, a runtime-assembled URL), this one needed no indirection at all, and
+  because the validator agreed with the strip it also blessed such a file as offline-clean. The
+  URL literal is now recognized in the three literal prefixes a browser resolves to a network host -
+  scheme plus slashes, protocol-relative, and scheme-only - in both copies, which stay
+  byte-identical. A quoted `https:` that is not a navigation (a scheme constant compared against, a
+  comparison, a sink a local binding shadows) still survives, and the tail is a bare alternation of
+  literals, so it cannot backtrack. The literal is still read RAW, so a URL the browser NORMALIZES
+  first - one led or interrupted by whitespace, or a scheme spelled with a JavaScript string escape -
+  is still missed, and that class is now named in the CMH-OFFLINE-05 residual instead of being
+  implied away (issue #914).
+
 
 ## [1.390.0] - 2026-08-03
 

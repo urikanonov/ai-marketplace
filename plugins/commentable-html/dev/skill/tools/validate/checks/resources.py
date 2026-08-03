@@ -60,6 +60,12 @@ CSS_NETWORK_URL_RE = re.compile(r"url\(\s*(['\"]?)(?:https?:)?//", re.IGNORECASE
 # does not, so `locat<dotless-i>on.href = <url>` - source the exporter PRESERVES, because it is
 # not a real `location` - would be rejected here. That is the false-rejection direction of the
 # same drift the spelled-out classes close, and the parity test asserts the flag is set.
+# The URL literal is recognized in the three literal prefixes a browser resolves to a network host:
+# scheme plus slashes, protocol-relative (slashes only), and SCHEME-ONLY - a quoted `https:`/`http:`
+# with NO slashes after it, which a browser resolves to the same host, so requiring the slashes left
+# the whole channel open to a one-token spelling change. It is still read RAW, so a URL the browser
+# NORMALIZES first (leading or embedded ASCII whitespace, a scheme spelled with a JS string escape)
+# is missed; that class is listed in the CMH-OFFLINE-05 residual.
 OFFLINE_NAV_TO_NETWORK_RE = re.compile(
     r"(?:(?:^|[^.A-Za-z0-9_$])(?:(?:window|self|top|parent|globalThis|document|frames)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
     r"(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
@@ -77,7 +83,7 @@ OFFLINE_NAV_TO_NETWORK_RE = re.compile(
     r"\()|(?:^|[;})>\n\r\u2028\u2029])[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
     r"location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
     r"=(?!=))[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"""["'`](?:https?:)?\/\/""",
+    r"""["'`](?:https?:|\/\/)""",
     re.IGNORECASE | re.ASCII)
 
 # The PREFIXED-only sinks (`window.location...`, `top.open(...)`): the prefix chain is mandatory
@@ -98,7 +104,7 @@ OFFLINE_NAV_PREFIXED_RE = re.compile(
     r")+(?:location[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
     r"=(?!=)|open[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
     r"\())[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"""["'`](?:https?:)?\/\/""",
+    r"""["'`](?:https?:|\/\/)""",
     re.IGNORECASE | re.ASCII)
 
 # A LOCAL binding named `location` - a declaration keyword, a destructuring declaration naming it,
