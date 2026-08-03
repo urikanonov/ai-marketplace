@@ -4,6 +4,40 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.499.0] - 2026-08-03
+
+### Fixed
+
+- The validator's tolerant parsers still let the HOST decide where a start tag ENDS, so the same
+  bytes could tokenize differently on Python 3.12 and 3.13+. `html.parser` answers that question
+  with `check_for_whole_start_tag()`, which reads whichever regex the interpreter ships
+  (`locatestarttagend_tolerant` before 3.13, `locatetagend` from 3.13), and neither is a browser's
+  rule. Two shapes drove real divergence: a NUL in a tag name (pre-3.13 stops the name there, so
+  `<script\0>` opens a raw-text region that swallows the rest of the document, while 3.13 keeps the
+  NUL - a browser writes U+FFFD, in a tag name, an attribute name and an attribute value alike),
+  and an unterminated quoted attribute value (a browser runs the value to its matching quote, meets
+  end of input, and applies the HTML5 eof-in-tag error that DISCARDS the whole tag; both hosts
+  instead fail to match a value, re-read what follows as further attribute NAMES, and close the tag
+  at the next `>`, resurrecting elements a browser never builds). The tag-open, tag-name,
+  attribute-name, attribute-value and self-closing states are now scanned explicitly, and the whole
+  `parse_starttag()` is vendored around them - the host derives the tag NAME with its own regex and
+  falls back to emitting a tag's SOURCE AS DATA, so replacing only the extent would not have closed
+  it. Every parser in the checks package that reads attributes now shares that one base, so the
+  document parser, the code-block spans, the tag lookup and the checklist, notes and density passes
+  can no longer disagree about where an element begins, and the oversized-reference recovery path -
+  the one place a start tag still reaches the host's own machinery - draws the same boundary. A start tag truncated at end of input is
+  still discarded, and mid-stream one still waits for more data, so an incremental caller cannot
+  lose a tag split across two feed chunks; a reused parser's `reset()` clears that end-of-input
+  flag, so the next document is not read as already finished.
+- WHICH elements hold raw text is deliberately unchanged: the shared base enters raw text exactly
+  as the host's own `parse_starttag()` would, because getting that right without a namespace
+  stack is not possible - an `<svg><title>` is an HTML integration point whose children a browser
+  really does build. The tolerant passes keep applying the browser set from their own
+  `handle_starttag()`, where the namespace is known.
+- The vendored scanner folds the tag name ASCII-only, since it is now the code that names the
+  element. `str.lower()` folds U+212A KELVIN SIGN to an ASCII "k", so `<scrip\u212a>` would have
+  opened a raw-text region that a browser - which builds an unknown element there - never opens.
+
 ## [1.486.0] - 2026-08-03
 
 ### Fixed
