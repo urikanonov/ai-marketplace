@@ -583,8 +583,10 @@ class SpecTestReferenceTests(unittest.TestCase):
 
         issues = refs.check_all(((spec, self.base),))
 
-        self.assertEqual(len(issues), 1)
-        self.assertIn("feature id `ORPHAN-99` has no spec row", issues[0].message)
+        self.assertEqual(
+            ["feature id `ORPHAN-99` has no spec row"],
+            [issue.message for issue in issues if "ORPHAN-99" in issue.message],
+        )
 
     def test_flags_automated_clause_missing_cited_name(self):
         spec = self._spec("`tests/demo.spec.js` - element-boundary noise test")
@@ -648,12 +650,21 @@ class SpecTestReferenceTests(unittest.TestCase):
 
         issues = refs.check_all(((spec, self.base),))
 
+        # The COMPLETE list, so a spurious or duplicated report from `check_all`'s two-half split
+        # is caught too. DEMO-02/DEMO-03 come from setUp's demo.spec.js, which the ownership half
+        # now reads because it is an ordinary `*.spec.js`.
         self.assertEqual(
-            ["feature id `ORPHAN-77` has no spec row"],
+            [
+                "feature id `ORPHAN-77` has no spec row",
+                "feature id `DEMO-02` has no spec row",
+                "feature id `DEMO-03` has no spec row",
+            ],
             [issue.message for issue in issues],
         )
 
-    def test_reverse_map_ignores_describe_suite_titles(self):
+    def test_reverse_map_checks_a_suite_title_id_for_ownership_only(self):
+        # A row cannot CITE a suite title (issue #629), so no citation is demanded for one - but
+        # an id no row owns, parked in a suite title, is a satisfiable demand and must be caught.
         regression = self.base / "tests" / "suite-regressions.spec.js"
         regression.write_text(
             "describe('a suite group (ORPHAN-88)', () => {\n"
@@ -662,11 +673,53 @@ class SpecTestReferenceTests(unittest.TestCase):
             encoding="utf-8",
             newline="\n",
         )
-        spec = self._spec(
-            "`tests/suite-regressions.spec.js` - `DEMO-01: a mapped regression`"
+        owned = self._spec_rows((
+            ("DEMO-01", "`tests/suite-regressions.spec.js` - `DEMO-01: a mapped regression`"),
+            ("ORPHAN-88", "`tests/suite-regressions.spec.js` - `DEMO-01: a mapped regression`"),
+        ))
+
+        self.assertEqual(refs.check_test_id_mappings(owned, self.base, (regression,)), [])
+
+        unowned = self._spec_rows((
+            ("DEMO-01", "`tests/suite-regressions.spec.js` - `DEMO-01: a mapped regression`"),
+        ))
+        issues = refs.check_test_id_mappings(unowned, self.base, (regression,))
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("feature id `ORPHAN-88` has no spec row", issues[0].message)
+        self.assertIn("a suite title cannot be cited", issues[0].message)
+
+    def test_reverse_map_reads_a_test_fail_declaration(self):
+        # `test.fail(title, body)` is a real Playwright declaration, so a feature id parked in one
+        # must not be invisible to the reverse map.
+        (self.base / "tests" / "failing.test.js").write_text(
+            "test.fail('an expected-failure behavior (ORPHAN-44)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
+
+        issues = refs.check_all(((spec, self.base),))
+
+        self.assertEqual(
+            ["feature id `ORPHAN-44` has no spec row"],
+            [issue.message for issue in issues if "ORPHAN-44" in issue.message],
         )
 
-        self.assertEqual(refs.check_test_id_mappings(spec, self.base, (regression,)), [])
+    def test_a_test_fail_title_can_be_cited_by_a_spec_row(self):
+        # The forward half of the same grammar: a row citing a `test.fail(...)` title must be
+        # accepted as an exact test reference, not rejected as prose.
+        (self.base / "tests" / "failing.spec.js").write_text(
+            "test.fail('a known-failing behavior (DEMO-45)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec_rows((
+            ("DEMO-01", "`tests/demo.spec.js` - `real browser title (DEMO-01)`"),
+            ("DEMO-45", "`tests/failing.spec.js` - `a known-failing behavior (DEMO-45)`"),
+        ))
+
+        self.assertEqual(refs.check_spec(spec, self.base), [])
 
     def test_tests_dir_prefers_the_spec_directory_over_the_base(self):
         # The site target's base is the repo root, so a `<base>/tests` preference would let a
@@ -693,9 +746,10 @@ class SpecTestReferenceTests(unittest.TestCase):
         )
         spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
 
-        corpus = refs._test_corpus(spec, self.base, reverse_only=True)
+        corpus = refs._test_corpus(spec, self.base)
 
         self.assertIn(nested / "deep.test.mjs", corpus)
+        self.assertTrue(refs._is_reverse_mapped((nested / "deep.test.mjs").name))
 
     def test_test_corpus_covers_every_playwright_test_extension(self):
         for name in ("extra.test.js", "extra.spec.ts", "extra.spec.cjs", "extra.test.mts"):
@@ -995,9 +1049,9 @@ class SpecTestReferenceTests(unittest.TestCase):
 
     def test_check_all_reverse_maps_the_whole_corpus_of_a_fully_mapped_spec(self):
         # A spec that has finished the cleanup gets its ORDINARY `*.spec.js` files reverse-mapped
-        # too, not just its `*.test.*` / regressions subset (the site target, today).
+        # for CITATIONS too, not just for ownership (which a restricted target already gets).
         (self.base / "tests" / "plain.spec.js").write_text(
-            "test('an unmapped behavior (ORPHAN-66)', async () => {});\n",
+            "test('an uncited behavior (DEMO-01)', async () => {});\n",
             encoding="utf-8",
             newline="\n",
         )
@@ -1006,17 +1060,110 @@ class SpecTestReferenceTests(unittest.TestCase):
         restricted = refs.check_all(((spec, self.base),), frozenset())
         full = refs.check_all(((spec, self.base),), frozenset({spec.resolve()}))
 
-        self.assertEqual([], [i for i in restricted if "ORPHAN-66" in i.message])
         self.assertEqual(
-            ["feature id `ORPHAN-66` has no spec row"],
-            [issue.message for issue in full if "ORPHAN-66" in issue.message],
+            [], [i.message for i in restricted if "is not cited by its" in i.message])
+        uncited = [i.message for i in full if "is not cited by its" in i.message]
+        self.assertEqual(1, len(uncited))
+        self.assertIn(
+            "test title `an uncited behavior (DEMO-01)` is not cited by its `DEMO-01` spec row",
+            uncited[0],
         )
+        self.assertIn("covering-tests cell", uncited[0])
 
     def test_the_site_spec_is_fully_reverse_mapped(self):
         self.assertIn(
             (self.root / "site" / "tests" / "SPEC.md").resolve(),
             refs.FULLY_REVERSE_MAPPED_SPECS,
         )
+
+    def test_every_spec_target_is_fully_reverse_mapped(self):
+        # No shipped target is still restricted to the `*.test.*` / regressions subset. A target
+        # that genuinely must start restricted registers itself in `INTENTIONALLY_RESTRICTED_SPECS`
+        # (empty today), so the exemption is a reviewed one-line edit, not a silent omission.
+        restricted = {spec.resolve() for spec, _base in refs.SPEC_TARGETS
+                      if spec.resolve() not in refs.FULLY_REVERSE_MAPPED_SPECS}
+
+        self.assertEqual(refs.INTENTIONALLY_RESTRICTED_SPECS, frozenset(restricted))
+
+    def test_a_restricted_target_still_gets_the_ownership_half_of_the_reverse_map(self):
+        # A target waiting to graduate must not be a hiding place: its plain `*.spec.js` files are
+        # exempt from CITATIONS, never from OWNERSHIP.
+        (self.base / "tests" / "plain.spec.js").write_text(
+            "test('an unowned behavior (ORPHAN-66)', async () => {});\n"
+            "test('an uncited but owned behavior (DEMO-01)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
+
+        restricted = refs.check_all(((spec, self.base),), frozenset())
+
+        self.assertIn(
+            "feature id `ORPHAN-66` has no spec row",
+            [issue.message for issue in restricted],
+        )
+        self.assertEqual(
+            [],
+            [issue.message for issue in restricted if "is not cited by its" in issue.message],
+        )
+
+    def test_the_commentable_html_corpus_reverse_maps_its_plain_spec_files(self):
+        # The widening is only real if the corpus `check_all` reverse-maps for the
+        # commentable-html target now includes its ORDINARY `*.spec.js` files, not just the
+        # `*.test.*` / `*regressions*.spec.*` subset it was limited to.
+        spec = (self.root / "plugins" / "commentable-html" / "dev" / "SPEC.md").resolve()
+        base = spec.parent
+        self.assertIn(spec, refs.FULLY_REVERSE_MAPPED_SPECS)
+        # `check_all` sends a fully mapped target's WHOLE corpus through the citation half.
+        corpus = refs._test_corpus(spec, base)
+        plain = [path.name for path in corpus if not refs._is_reverse_mapped(path.name)]
+
+        self.assertTrue(plain, "no plain .spec.js file is reverse-mapped for commentable-html")
+
+    def test_a_fully_mapped_spec_reports_a_same_file_uncited_carrier_once(self):
+        # An INVARIANT test, not a guard on the `FULLY_REVERSE_MAPPED_SPECS` membership change
+        # (that is what the two tests above pin): it passes the mapping in explicitly. What it
+        # pins is the answer to issue #853's third question - the duplicate direction still
+        # relaxes the same-file case, and that is not a hole, because the REVERSE direction
+        # demands the citation and the relaxation keeps the same miss from being reported twice.
+        base = self.sandbox / "solo-base"
+        (base / "tests").mkdir(parents=True)
+        (base / "tests" / "solo.spec.js").write_text(
+            "test('one angle (DEMO-01)', async () => {});\n"
+            "test('another angle (DEMO-01)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self.sandbox / "SOLO_SPEC.md"
+        spec.write_text(
+            "# Spec\n\n"
+            "| Feature id | Behavior | Covering tests |\n"
+            "| --- | --- | --- |\n"
+            "| DEMO-01 | Demo behavior. | `tests/solo.spec.js` - `one angle (DEMO-01)` |\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+
+        self.assertEqual([], refs.check_duplicate_feature_ids(((spec, base),)))
+        issues = refs.check_all(((spec, base),), frozenset({spec.resolve()}))
+        self.assertEqual(1, len(issues))
+        self.assertIn(
+            "test title `another angle (DEMO-01)` is not cited by its `DEMO-01` spec row",
+            issues[0].message,
+        )
+
+    def test_a_target_with_no_tests_directory_fails_closed(self):
+        # With no tests dir the reverse and duplicate directions are silent no-ops, so a mistyped
+        # base would look like a permanently clean target.
+        bare = self.sandbox / "bare"
+        bare.mkdir()
+        spec = bare / "SPEC.md"
+        spec.write_text("# Spec\n", encoding="utf-8", newline="\n")
+
+        issues = refs.check_all(((spec, bare),))
+
+        self.assertEqual(1, len(issues))
+        self.assertIn("no tests directory found for this target", issues[0].message)
 
     def test_real_specs_have_current_test_references(self):
         issues = refs.check_all()

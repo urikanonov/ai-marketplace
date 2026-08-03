@@ -54,7 +54,7 @@ async function contrastFor(page, selector) {
 }
 
 for (const theme of ["light", "dark"]) {
-  test(`callouts and lede stay readable in ${theme} theme (CMH-CALLOUT-01)`, async ({ page }) => {
+  test(`callouts and lede stay readable in ${theme} theme (CMH-CONTENT-11)`, async ({ page }) => {
     await openInline(page);
     await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
     await ready(page);
@@ -67,7 +67,7 @@ for (const theme of ["light", "dark"]) {
   });
 }
 
-test("every callout variant renders as a bordered box (CMH-CALLOUT-01)", async ({ page }) => {
+test("every callout variant renders as a bordered box (CMH-CONTENT-11)", async ({ page }) => {
   await openInline(page);
   for (const sel of [".cmh-callout-info", ".cmh-callout-success", ".cmh-callout-warning", ".cmh-callout-danger"]) {
     const box = await page.evaluate((s) => {
@@ -82,7 +82,7 @@ test("every callout variant renders as a bordered box (CMH-CALLOUT-01)", async (
   }
 });
 
-test("callout prose is commentable (CMH-CALLOUT-02)", async ({ page }) => {
+test("callout prose is commentable (CMH-CONTENT-11)", async ({ page }) => {
   await openInline(page);
   await addTextComment(page, ".cmh-callout-danger", "review this takeaway");
   expect(await page.locator("mark.cm-hl").count()).toBeGreaterThan(0);

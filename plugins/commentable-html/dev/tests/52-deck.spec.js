@@ -89,7 +89,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     expect(got).toBeCloseTo(expected, 5);
   });
 
-  test("CMH-DECK-05d: keyboard, id, and prev/next navigation; doc-mode chrome suppressed", async ({ page }) => {
+  test("CMH-DECK-05: keyboard, id, and prev/next navigation; doc-mode chrome suppressed", async ({ page }) => {
     await openDeck(page);
     await page.evaluate(() => {
       window.__evts = [];
@@ -585,7 +585,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     expect(await activeId(page)).toBe("slide-00000002");
   });
 
-  test("CMH-DECK-05d: typing in an editable field does not navigate; deck chrome is installed once", async ({ page }) => {
+  test("CMH-DECK-05: typing in an editable field does not navigate; deck chrome is installed once", async ({ page }) => {
     await openDeck(page);
     // the isEditableTarget gate: a keypress inside a textarea must not move the deck
     await page.evaluate(() => {
@@ -869,7 +869,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     expect(clip.over).toBeGreaterThan(4);
   });
 
-  test("CMH-DECK-05d: cmh:slidechange fires only for a changed active slide", async ({ page }) => {
+  test("CMH-DECK-05: cmh:slidechange fires only for a changed active slide", async ({ page }) => {
     // register the listener BEFORE the deck initializes, so a setup-time dispatch would be caught
     await page.addInitScript(() => {
       window.__evtCount = 0;
@@ -884,7 +884,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     expect(await page.evaluate(() => window.__evtCount)).toBe(1);
   });
 
-  test("CMH-DECK-05a: on a narrow screen the deck controls yield to the open sidebar", async ({ page }) => {
+  test("CMH-DECK-05: on a narrow screen the deck controls yield to the open sidebar", async ({ page }) => {
     await page.setViewportSize({ width: 480, height: 800 });
     await openDeck(page);
     await expect(page.locator(".cmh-deck-mode-ctl")).toBeVisible();
@@ -898,7 +898,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(page.locator(".cmh-deck-mode-ctl")).toBeVisible();
   });
 
-  test("CMH-DECK-05a: default closed mode allows the doc-comment menu; off mode suppresses it", async ({ page }) => {
+  test("CMH-DECK-05: default closed mode allows the doc-comment menu; off mode suppresses it", async ({ page }) => {
     await openDeck(page);
     // default closed mode: comments are enabled even with the panel closed.
     const preventedInClosed = await page.evaluate(() => {
@@ -1753,7 +1753,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     }
   });
 
-  test("CMH-DECK-05c: a comment on a hidden slide restores after reload", async ({ page }) => {
+  test("CMH-DECK-05: a comment on a hidden slide restores after reload", async ({ page }) => {
     await openDeck(page);
     await page.evaluate(() => window.__cmhDeck.showSlideById("slide-00000003"));
     await addTextComment(page, ".slide.active p", "persist me");
@@ -1774,7 +1774,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect.poll(() => activeId(page)).toBe("slide-00000003");
   });
 
-  test("CMH-DECK-05d: the deck-aware jump resolves a non-text ([data-cids~]) anchor's slide", async ({ page }) => {
+  test("CMH-DECK-05: the deck-aware jump resolves a non-text ([data-cids~]) anchor's slide", async ({ page }) => {
     await openDeck(page);
     await page.evaluate(() => {
       const slide3 = document.querySelector('[data-slide-id="slide-00000003"]');
@@ -1793,7 +1793,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect.poll(() => activeId(page)).toBe("slide-00000003");
   });
 
-  test("CMH-DECK-05a: default closed mode hides the panel; open mode reveals it and gates keys", async ({ page }) => {
+  test("CMH-DECK-05: default closed mode hides the panel; open mode reveals it and gates keys", async ({ page }) => {
     await openDeck(page);
     const control = page.locator(".cmh-deck-mode-ctl");
     expect(await page.evaluate(() => window.__cmhDeck.deckMode())).toBe("closed");
@@ -1819,7 +1819,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     expect(await activeId(page)).toBe("slide-00000002");
   });
 
-  test("CMH-DECK-05a: open mode force-reveals staged slide content", async ({ page }) => {
+  test("CMH-DECK-05: open mode force-reveals staged slide content", async ({ page }) => {
     await openDeck(page);
     await page.evaluate(() => {
       const s = document.querySelector(".slide.active");
@@ -1839,7 +1839,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     expect(cs.visibility).toBe("visible");
   });
 
-  test("CMH-DECK-05c/05d: a comment restores on a hidden slide and its card jumps to that slide", async ({ page }) => {
+  test("CMH-DECK-05: a comment restores on a hidden slide and its card jumps to that slide", async ({ page }) => {
     await openDeck(page);
     await page.evaluate(() => window.__cmhDeck.showSlideById("slide-00000003"));
     await addTextComment(page, ".slide.active p", "note on slide three");
