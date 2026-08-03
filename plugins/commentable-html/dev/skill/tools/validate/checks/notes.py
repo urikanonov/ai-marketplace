@@ -1,8 +1,6 @@
 """Editable notes-field authoring checks (`data-cmh-note` elements)."""
 
-from html.parser import HTMLParser
-
-from .parsing import _browser_attrs_dict
+from .parsing import _BrowserTagNames, _browser_attrs_dict
 
 _NOTE_VOID = frozenset(
     "area base br col embed hr img input link meta param source track wbr".split())
@@ -19,7 +17,7 @@ _LAYER_ATTRS = ("data-cmh-checklist", "data-cm-widget")
 _LAYER_CLASSES = ("cmh-diff",)
 
 
-class _NotesParser(HTMLParser):
+class _NotesParser(_BrowserTagNames):
     """Collect each data-cmh-note element instance: its id, whether it has element children,
     whether it is void, whether it nests inside another note, and whether it sits inside a
     checklist / diff / widget / deck substrate."""
@@ -34,7 +32,7 @@ class _NotesParser(HTMLParser):
     def _attrs(self, tag, attrs):
         # Browser attribute-value decoding, shared with the document parser, so a
         # `data-cmh-note` id reads the same on every interpreter (CMH-VAL-21).
-        return _browser_attrs_dict(self, tag.lower(), attrs)
+        return _browser_attrs_dict(self, tag, attrs)
 
     def _is_layer(self, d):
         if any(a in d for a in _LAYER_ATTRS):
@@ -43,6 +41,7 @@ class _NotesParser(HTMLParser):
         return any(c in cls for c in _LAYER_CLASSES)
 
     def handle_starttag(self, tag, attrs):
+        tag = self._browser_tag(tag)
         d = self._attrs(tag, attrs)
         is_note = "data-cmh-note" in d
         if not is_note and self._open_notes > 0:
@@ -54,22 +53,22 @@ class _NotesParser(HTMLParser):
         if is_note:
             note = {
                 "id": d.get("data-cmh-note") or "",
-                "void": tag.lower() in _NOTE_VOID,
+                "void": tag in _NOTE_VOID,
                 "nested": self._open_notes > 0,
                 "in_layer": self._layer_depth > 0,
                 "has_child": False,
             }
             self.notes.append(note)
         is_layer = self._is_layer(d)
-        if tag.lower() not in _NOTE_VOID:
-            self._stack.append((tag.lower(), note, is_layer))
+        if tag not in _NOTE_VOID:
+            self._stack.append((tag, note, is_layer))
             if note is not None:
                 self._open_notes += 1
             if is_layer:
                 self._layer_depth += 1
 
     def handle_startendtag(self, tag, attrs):
-        d = self._attrs(tag, attrs)
+        d = self._attrs(self._browser_tag(tag), attrs)
         if "data-cmh-note" in d:
             self.notes.append({
                 "id": d.get("data-cmh-note") or "",
@@ -78,7 +77,7 @@ class _NotesParser(HTMLParser):
             })
 
     def handle_endtag(self, tag):
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         for i in range(len(self._stack) - 1, -1, -1):
             if self._stack[i][0] == tag:
                 popped = self._stack[i:]

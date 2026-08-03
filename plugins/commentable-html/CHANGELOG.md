@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.404.0] - 2026-08-03
+
+### Fixed
+
+- The validator now folds TAG and ATTRIBUTE names ASCII-case-insensitively, the way a browser
+  folds them, instead of inheriting `html.parser`'s Unicode `str.lower()`. U+212A KELVIN SIGN is
+  the one character outside ASCII that lowercases to an ASCII letter ("k"), and that was enough
+  to read `data-\u212aey` as `data-key`, `<lin\u212a>` as a `<link>` and `</mar\u212a>` as a
+  `</mark>` closer - names a browser keeps distinct, so the validator could see a different
+  document from the one a reader gets. The rule that already governed a raw-text end tag
+  (`re.ASCII`) now governs every name the checks key on, in the one shared attribute helper and
+  in a `_BrowserTagNames` base the document, code-span, tag-lookup, checklist, notes and density
+  passes all build on.
 ## [1.403.0] - 2026-08-03
 
 ### Fixed

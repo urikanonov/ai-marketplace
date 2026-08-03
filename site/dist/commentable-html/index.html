@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.403.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.404.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.404.0] - 2026-08-03</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The validator now folds TAG and ATTRIBUTE names ASCII-case-insensitively, the way a browser folds them, instead of inheriting <code>html.parser</code>&#x27;s Unicode <code>str.lower()</code>. U+212A KELVIN SIGN is the one character outside ASCII that lowercases to an ASCII letter (&quot;k&quot;), and that was enough to read <code>data-\u212aey</code> as <code>data-key</code>, <code>&lt;lin\u212a&gt;</code> as a <code>&lt;link&gt;</code> and <code>&lt;/mar\u212a&gt;</code> as a <code>&lt;/mark&gt;</code> closer - names a browser keeps distinct, so the validator could see a different document from the one a reader gets. The rule that already governed a raw-text end tag (<code>re.ASCII</code>) now governs every name the checks key on, in the one shared attribute helper and in a <code>_BrowserTagNames</code> base the document, code-span, tag-lookup, checklist, notes and density passes all build on.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.403.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -503,6 +510,8 @@
               <li><code>validate.py</code> now reports both shapes of the same problem as errors: a duplicated <code>reviewedSections</code> id (like the three other reserved state-block ids) and an id the EMBEDDED COMMENTS region does not own (a block outside it, or one that is not a <code>&lt;script&gt;</code>), and <code>mark_reviewed.py</code> refuses to write a block that region does not own. Its shape check only ever read the region-owned block, so either file used to pass <code>--strict</code> while the runtime ignored or mis-wrote the reader&#x27;s state.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.399.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -513,8 +522,6 @@
               <li>The Chart.js CDN exemption in shareable mode is bound to a <code>src</code> loader again. Widening the script-load set had extended it to <code>href</code> / <code>xlink:href</code>, where the version and SRI checks that justify the exemption never run, so a remote script whose path merely ends in <code>chart.min.js</code> would have passed validation unexamined.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.396.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -543,16 +550,7 @@
               <li>Media anchors: an unlabeled figure is no longer identified by its position alone. An image comment resolves by <code>imageIndex</code> and falls back to the stored <code>imageSrc</code>/<code>imageAlt</code>/<code>imageKind</code>, so media with NO label and no src - an unlabeled inline <code>&lt;svg&gt;</code>, an unlabeled chart <code>&lt;canvas&gt;</code> - had no identity at all beyond its index: inserting a figure ahead of it silently moved the comment to a DIFFERENT graphic, because the metadata check had nothing to disagree with. Such a comment now also stores <code>imageSig</code>, a short digest of an AUTHORED shape descriptor (the tag, an author <code>id</code>, the figure&#x27;s caption, an svg&#x27;s <code>viewBox</code> plus the shape it draws down to each descendant&#x27;s drawing attributes and its own text, a chart canvas&#x27;s <code>data-cmh-chart-*</code> attributes) that excludes everything the runtime writes, so a reload, a re-render, a device-pixel-ratio change and an export/reopen all recompute the same value. The comment now re-anchors to the figure it was left on, or stays unresolved when the shape is genuinely ambiguous, instead of attaching itself to another figure. The signature is the discriminator of last resort: it never overrides a label or a src (so redrawing a still-labelled figure keeps its comment), it is never shown to a reader (no card, <code>Copy all</code> line, Markdown export or printed sheet - it rides along only inside an export&#x27;s embedded comment record, so a reopened copy can re-anchor), and a comment saved before the field existed - or one carrying a value no signature this runtime writes could be - resolves exactly as it did.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.375.0] - 2026-08-02</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Export as Shareable (and every path built on it - Save, Standalone, Offline) now locates the embedded-comments block and the layer descriptor structurally instead of scanning the document text. The layer&#x27;s own source is part of every document and necessarily spells <code>&lt;script id=&quot;embeddedComments&quot;&gt;</code>, so the text scan was answered by the runtime itself: the &quot;make sure the EMBEDDED COMMENTS region is present&quot; error could never fire, and a document that had genuinely lost that region exported a copy whose runtime source had been overwritten mid-function with the comments JSON. The same defect in the descriptor path overwrote a quarter of a megabyte of runtime on every Offline export of such a document. Both now fail loudly and download nothing, and a re-fetched on-disk copy is accepted as the export base only when a real block resolves in it.</li>
-              <li>The resolver follows the HTML tokenizer rather than approximating it, so text a browser parses as CONTENT can no longer masquerade as the block: an end tag must match the element name exactly, <code>&lt;!-- --&gt;</code> (including the empty <code>&lt;!--&gt;</code> form and a <code>--!&gt;</code> terminator), DOCTYPEs, bogus declarations and processing instructions are consumed, <code>&lt;iframe&gt;</code>/<code>&lt;noscript&gt;</code>/<code>&lt;xmp&gt;</code> content is text, <code>&lt;template&gt;</code> content is the inert fragment <code>getElementById</code> cannot see (nesting included), the <code>&lt;!--&lt;script&gt;</code> double-escape idiom is honored, and tag names and attributes are tokenized on ASCII whitespace only. Every result is cross-checked against the browser&#x27;s own parse before anything is spliced, so a shape the two cannot agree on fails loudly instead of being rewritten on a guess. Resolution now also requires exactly ONE owner of the id on each side, so a duplicate block or an element shadowing the id is refused rather than guessed at. An unquoted attribute value containing an apostrophe, and a legal empty comment, no longer swallow the rest of the document.</li>
-              <li>A document with no layer descriptor at all now has one re-anchored to its version <code>&lt;meta&gt;</code> tag matched the way a parser sees it (a DOM-serialized <code>&lt;meta ...&gt;</code> carries neither the space nor the slash the old pattern required), and the export fails loudly if there is nothing to anchor to - instead of quietly downloading a document with no descriptor.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">261 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">262 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

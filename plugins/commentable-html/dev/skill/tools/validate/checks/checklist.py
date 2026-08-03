@@ -1,8 +1,6 @@
 """Layered-checklist authoring checks (`data-cmh-checklist` containers)."""
 
-from html.parser import HTMLParser
-
-from .parsing import _browser_attrs_dict
+from .parsing import _BrowserTagNames, _browser_attrs_dict
 
 _CHECK_STATES = ("blank", "check", "cross", "question")
 
@@ -10,7 +8,7 @@ _CL_VOID = frozenset(
     "area base br col embed hr img input link meta param source track wbr".split())
 
 
-class _ChecklistParser(HTMLParser):
+class _ChecklistParser(_BrowserTagNames):
     """Collect each data-cmh-checklist container INSTANCE and the items inside it (an item is
     an element carrying data-cmh-state or data-cmh-item). Scoped to the innermost open
     container, mirroring the runtime's ownership rule."""
@@ -25,7 +23,7 @@ class _ChecklistParser(HTMLParser):
         # Browser attribute-value decoding, shared with the document parser, so a
         # `data-cmh-item` id reads the same on every interpreter (CMH-VAL-21). Trusting the
         # host's values instead hid a real duplicate id on Python 3.12.
-        return _browser_attrs_dict(self, tag.lower(), attrs)
+        return _browser_attrs_dict(self, tag, attrs)
 
     def _record_item(self, d):
         if self._containers and ("data-cmh-state" in d or "data-cmh-item" in d):
@@ -36,6 +34,7 @@ class _ChecklistParser(HTMLParser):
             })
 
     def handle_starttag(self, tag, attrs):
+        tag = self._browser_tag(tag)
         d = self._attrs(tag, attrs)
         self._record_item(d)
         opened = None
@@ -43,14 +42,14 @@ class _ChecklistParser(HTMLParser):
             opened = {"id": d.get("data-cmh-checklist") or "", "items": []}
             self.instances.append(opened)
             self._containers.append(opened)
-        if tag.lower() not in _CL_VOID:
-            self._stack.append((tag.lower(), opened))
+        if tag not in _CL_VOID:
+            self._stack.append((tag, opened))
 
     def handle_startendtag(self, tag, attrs):
-        self._record_item(self._attrs(tag, attrs))
+        self._record_item(self._attrs(self._browser_tag(tag), attrs))
 
     def handle_endtag(self, tag):
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         for i in range(len(self._stack) - 1, -1, -1):
             if self._stack[i][0] == tag:
                 popped = self._stack[i:]
