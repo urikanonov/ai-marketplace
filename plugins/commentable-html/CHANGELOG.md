@@ -4,6 +4,26 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.395.0] - 2026-08-03
+
+### Security
+
+- The `Export Offline` action no longer inlines the vendored rich-content payload's bytes without
+  scanning them. The payload is inflated and appended as an EXECUTABLE script AFTER both offline
+  strips have run, so a remote dynamic import or a direct scripted navigation to a network URL
+  routed through the payload used to land in the exported file with the strips bypassed - egress
+  inside a file whose whole promise is zero network, and a capability the ordinary authored-script
+  path never had (the strips delete exactly those shapes). The payload's bytes now clear the same
+  two content gates the captured-copy path already applied - the network-egress scan and the
+  script-data escape check - through one shared predicate, so the two paths cannot drift. A refusal
+  is loud and specific: the export fails with a message naming the library, the pattern its bytes
+  matched, and the remedy (re-run the authoring finalize step to refresh the vendored payload), and
+  no file is downloaded, instead of the generic missing-bundle message that sent the user looking
+  for a payload the document does carry. There is deliberately no fallback to a copy already inlined
+  in the document, which would let anyone who can edit the payload invert the payload-wins
+  precedence and silently substitute another source. The shipped bundles pass the gates, so the
+  legitimate path is unchanged.
+
 ## [1.391.0] - 2026-08-03
 
 ### Fixed

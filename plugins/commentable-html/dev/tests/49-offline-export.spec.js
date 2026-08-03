@@ -1857,6 +1857,73 @@ test("CMH-OFFLINE-08: a vendored library whose MIT notice is missing is refused,
   }
 });
 
+test("CMH-OFFLINE-08: payload bytes carrying egress or a script-data escape are refused, not inlined", async ({ page }) => {
+  test.setTimeout(180000);
+  // The inflated payload bytes are appended as an EXECUTABLE script AFTER both offline strips have
+  // already run, so nothing downstream ever looks at them. Position and uniqueness authenticate the
+  // payload against an author of the CONTENT REGION only; against an author of the WHOLE FILE the
+  // old argument was "they can already run script in the document anyway" - true of the SOURCE
+  // document, but the export exists to strip egress OUT of the file it produces. A remote dynamic
+  // import or a scripted navigation to a network URL in an ordinary authored script IS deleted by
+  // `_stripOfflineNetworkLoads`; routing the same code through the payload used to get it into the
+  // exported file with the strips bypassed, which is a capability the authored-script path does not
+  // have. So the payload bytes clear the same two content gates the captured-copy path applies, and
+  // a refusal is loud, specific, and produces NO download.
+  // Pin the whole message CONTRACT, not just its prefix: CMH-OFFLINE-08 promises the refusal names
+  // the library, says what the gate matched, and gives the remedy, so a regex matching only
+  // "refused the vendored X bundle" would stay green if the actionable half were deleted.
+  const refusal = (name) => new RegExp(
+    "refused the vendored " + name + " bundle: its bytes match the network-egress pattern[\\s\\S]*"
+    + "script-data escape[\\s\\S]*Re-run the authoring finalize step to refresh the vendored payload", "i");
+  const cases = [
+    {
+      name: "a remote dynamic import",
+      code: 'import("https://example.com/payload-egress.js");',
+    },
+    {
+      name: "a scripted navigation to a network URL",
+      code: 'window.location.href = "https://example.com/payload-nav";',
+    },
+    {
+      name: "a script-data escape",
+      // The load-bearing shape: `_escClose` only neutralizes an end tag whose `>` follows the name
+      // IMMEDIATELY, but the tokenizer ends the element on whitespace or `/` after the name too, so
+      // these bytes close the library element early and inject the rest of the payload into the head
+      // as MARKUP. Built from parts so this file does not carry the sequence itself.
+      code: "/* <" + "/script > */ window.__payloadEscape = 1;",
+    },
+    {
+      // The inert half of the same deliberately-superset pattern: a start tag alone does not escape
+      // the state, and the gate refuses it anyway rather than reasoning about tokenizer states.
+      name: "a script start tag in the payload bytes",
+      code: "/* <" + "script> */ window.__payloadStartTag = 1;",
+    },
+    {
+      // The gate lives in the one `lib()` chokepoint both libraries go through, so drive the OTHER
+      // branch too rather than trusting that shared call site by inspection.
+      name: "the Chart.js branch is gated too",
+      content: CONTENT,
+      field: "chartjsGzipBase64",
+      code: 'import("https://example.com/payload-chart-egress.js");',
+      expected: refusal("Chart\\.js"),
+    },
+  ];
+
+  await page.route(/^https?:\/\//, (route) => route.abort());
+  for (const c of cases) {
+    const staged = stageContent(c.content || FORGERY_CONTENT, { key: "cmh-offline-payload-egress", source: "offline-payload-egress.html" });
+    try {
+      const bytes = zlib.gzipSync(Buffer.from("/* cmh-payload-unsafe */ " + c.code)).toString("base64");
+      fs.writeFileSync(staged.html, withPayloadField(fs.readFileSync(staged.html, "utf8"), c.field || "mermaidGzipBase64", bytes));
+      // Not the generic missing-bundle message: the bundle IS in the document, and the action that
+      // fixes it is refreshing the payload, so the refusal has to say so.
+      await expectExportRefused(page, staged, c.expected || refusal("mermaid"), c.name);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  }
+});
+
 test("CMH-OFFLINE-08: a noticeless captured copy never displaces a licensed one", async ({ page }) => {
   test.setTimeout(90000);
   // Capture is last-match-wins, so recording a noticeless copy unconditionally would let a planted

