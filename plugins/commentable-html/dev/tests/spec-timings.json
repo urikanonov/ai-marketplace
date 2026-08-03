@@ -65,6 +65,7 @@
   "55-export-dollar-and-markers.spec.js": 4690,
   "55-shot-quality.spec.js": 37985,
   "56-export-fuzz.spec.js": 4605,
+  "57-embedded-comments-guard.spec.js": 17201,
   "57-highlight-parity.spec.js": 2877,
   "58-board-ux.spec.js": 15494,
   "58-help-terminology.spec.js": 10901,

@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.371.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.375.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,15 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.375.0] - 2026-08-02</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Export as Shareable (and every path built on it - Save, Standalone, Offline) now locates the embedded-comments block and the layer descriptor structurally instead of scanning the document text. The layer&#x27;s own source is part of every document and necessarily spells <code>&lt;script id=&quot;embeddedComments&quot;&gt;</code>, so the text scan was answered by the runtime itself: the &quot;make sure the EMBEDDED COMMENTS region is present&quot; error could never fire, and a document that had genuinely lost that region exported a copy whose runtime source had been overwritten mid-function with the comments JSON. The same defect in the descriptor path overwrote a quarter of a megabyte of runtime on every Offline export of such a document. Both now fail loudly and download nothing, and a re-fetched on-disk copy is accepted as the export base only when a real block resolves in it.</li>
+              <li>The resolver follows the HTML tokenizer rather than approximating it, so text a browser parses as CONTENT can no longer masquerade as the block: an end tag must match the element name exactly, <code>&lt;!-- --&gt;</code> (including the empty <code>&lt;!--&gt;</code> form and a <code>--!&gt;</code> terminator), DOCTYPEs, bogus declarations and processing instructions are consumed, <code>&lt;iframe&gt;</code>/<code>&lt;noscript&gt;</code>/<code>&lt;xmp&gt;</code> content is text, <code>&lt;template&gt;</code> content is the inert fragment <code>getElementById</code> cannot see (nesting included), the <code>&lt;!--&lt;script&gt;</code> double-escape idiom is honored, and tag names and attributes are tokenized on ASCII whitespace only. Every result is cross-checked against the browser&#x27;s own parse before anything is spliced, so a shape the two cannot agree on fails loudly instead of being rewritten on a guess. Resolution now also requires exactly ONE owner of the id on each side, so a duplicate block or an element shadowing the id is refused rather than guessed at. An unquoted attribute value containing an apostrophe, and a legal empty comment, no longer swallow the rest of the document.</li>
+              <li>A document with no layer descriptor at all now has one re-anchored to its version <code>&lt;meta&gt;</code> tag matched the way a parser sees it (a DOM-serialized <code>&lt;meta ...&gt;</code> carries neither the space nor the slash the old pattern required), and the export fails loudly if there is nothing to anchor to - instead of quietly downloading a document with no descriptor.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.371.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -503,6 +512,8 @@
               <li>A raw-text element&#x27;s end tag is no longer mistaken for an unfinished one because of a bare quote. A quoted attribute value exists only after <code>=</code>, so <code>&lt;/script &quot; &gt;</code> really does close the script; it used to look unfinished, which ran the raw-text region on to the end of the document and hid the author&#x27;s real <code>&lt;pre&gt;&lt;code&gt;</code> block from the syntax-highlighting and KQL checks.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.370.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -510,8 +521,6 @@
               <li>The open in-document comment dialog no longer eats the reviewer&#x27;s FIRST click on layer chrome that sits OUTSIDE the content root. The outside-click swallow is now stated as the rule it always meant - swallow only a pointer click that lands in the ANNOTATED DOCUMENT (the content root the layer anchors to), the only thing the dismiss must stop from acting - instead of swallowing everything but an enumerated list of carve-outs. So in a document with a content root, switching from one comment to another by clicking a second highlight&#x27;s &quot;Open comment&quot; bubble takes ONE click again, and an overlay or actionable toast the dialog&#x27;s own Save raised (the storage manager and its &quot;Manage storage&quot; recovery action on a quota failure) acts on the first click rather than being spent closing the dialog. Two deliberate consequences: layer controls injected INSIDE the content root (a sortable-table sort control, a widget reset) cannot be told from document content by containment and are still swallowed, and author page furniture a retrofitted document keeps outside its content root now acts on that click. The existing guarantees are unchanged: a pointer click on document content is still swallowed - including content that carries the layer&#x27;s own class names or a chrome control&#x27;s id, a node another capture-phase listener detaches mid-dispatch, and an unclassifiable target - a keyboard-activated click is still never swallowed, a mid-edit dialog still stays open without swallowing, and where <code>#commentRoot</code> is absent and the layer anchors to <code>&lt;body&gt;</code> that mode swallows exactly what it always did. (<code>CMH-CORE-16</code>, <code>CMH-EXP-15</code>)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.364.0] - 2026-08-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -543,14 +552,7 @@
               <li>Two boundaries that go with it: <code>reviewedSections</code> was not in the old skip list, so a runnable one carrying egress used to be removed and is now kept as inert data instead; and the vendored payload id is deliberately NOT neutralized, because it is infrastructure resolved by position, so a script that merely borrows that id stays authored content and must clear the same egress scan as any other script.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.351.0] - 2026-08-02</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A wide diagram no longer prints with washed-out edges. The scroll-fade mask that cues horizontal scrolling on screen is now declared <code>screen</code>-only, so a diagram host carrying it prints with no edge mask - for both <code>pre.mermaid</code> and <code>div.mermaid</code> hosts. The on-screen cue is unchanged.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">254 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">255 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

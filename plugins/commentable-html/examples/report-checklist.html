@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.371.0" />
+<meta name="commentable-html-version" content="1.375.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.371.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.375.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Release readiness review</title>
 
@@ -4006,7 +4006,7 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
      content, not a template-owned region.
 -->
 <div class="app">
-<main data-generated="2026-08-03" id="commentRoot" data-cmh-content-root data-comment-key="cmh-132b5c6f45a0" data-doc-label="Release readiness review" data-doc-source="report-checklist.html">
+<main data-generated="2026-08-02" id="commentRoot" data-cmh-content-root data-comment-key="cmh-132b5c6f45a0" data-doc-label="Release readiness review" data-doc-source="report-checklist.html">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
 <header class="cmh-lede">
@@ -4178,7 +4178,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.371.0";
+const CMH_VERSION = "1.375.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -15555,41 +15555,263 @@ function _stripTransientBodyClasses(html) {
 }
 // Exposed for deterministic tests (body-class normalization is pure and worth unit-testing).
 window.__cmhStripTransientBody = function (h) { return _stripTransientBodyClasses(h); };
+// ASCII whitespace is the HTML spec's tag delimiter set. JS `\s` also matches NBSP and other
+// Unicode spaces, which a browser does NOT treat as a delimiter, so `<script\u00a0id="...">`
+// (one bogus unknown element to a browser) would otherwise look like a real script tag here.
+const _CMH_SPACE_CH = /[\t\n\f\r ]/;
+// One source of truth for "what ends a tag name" - a space belongs here, since an end tag may
+// carry a space before its ">" and still close the element. Spelling the class twice let the space go missing from
+// the close scanners, which made such a document impossible to export at all.
+const _CMH_NAME_END_SRC = "\\t\\n\\f\\r />";
+const _CMH_NAME_END_CH = new RegExp("[" + _CMH_NAME_END_SRC + "]");
+// Elements whose CONTENT a browser parses as TEXT, never as markup (noscript counts because the
+// layer only runs with scripting enabled). Nothing inside one of these is an element.
+const _CMH_RAW_TEXT = /^(?:script|style|textarea|title|xmp|iframe|noembed|noframes|noscript)$/;
 function _cmhTagEnd(html, start) {
   let quote = "";
+  let afterEquals = false;
   for (let i = start + 1; i < html.length; i += 1) {
     const ch = html[i];
     if (quote) {
       if (ch === quote) quote = "";
-    } else if (ch === '"' || ch === "'") {
-      quote = ch;
-    } else if (ch === ">") {
-      return i;
+      continue;
     }
+    // A quote only opens an attribute value directly after `=`; a stray apostrophe elsewhere in
+    // the tag (`<div data-x=it's ok>`) does not, and treating it as one used to swallow the
+    // rest of the document.
+    if (ch === '"' || ch === "'") {
+      if (afterEquals) quote = ch;
+      afterEquals = false;
+      continue;
+    }
+    if (ch === "=") {
+      afterEquals = true;
+      continue;
+    }
+    if (_CMH_SPACE_CH.test(ch)) continue;
+    if (ch === ">") return i;
+    afterEquals = false;
   }
   return -1;
 }
+function _cmhTagName(html, from) {
+  let i = from;
+  while (i < html.length && !_CMH_NAME_END_CH.test(html[i])) i += 1;
+  return html.slice(from, i).toLowerCase();
+}
+function _cmhCommentEnd(html, start) {
+  // `<!-->` and `<!--->` are complete (empty) comments, and `--!>` also terminates one. Missing
+  // those made a legal comment swallow the rest of the document.
+  let i = start + 4;
+  if (html[i] === ">") return i + 1;
+  if (html[i] === "-" && html[i + 1] === ">") return i + 2;
+  const rx = /--!?>/g;
+  rx.lastIndex = i;
+  const m = rx.exec(html);
+  return m ? m.index + m[0].length : html.length;
+}
+function _cmhScriptDataClose(html, from) {
+  // The tokenizer's script-data escaped states: inside a <script> body a `<!--` starts an
+  // escaped run, and a nested `<script` within it starts a DOUBLE-escaped run in which the next
+  // closing script tag only ends that run instead of closing the element (the classic
+  // `<!--<script>` idiom). Only `-->` leaves those runs (`--!>` does not, unlike in a comment).
+  const rx = new RegExp("<!--|-->|</?script(?=[" + _CMH_NAME_END_SRC + "])", "gi");
+  rx.lastIndex = from;
+  let escaped = false;
+  let doubled = false;
+  let m;
+  while ((m = rx.exec(html))) {
+    const tok = m[0].toLowerCase();
+    if (tok === "<!--") { escaped = true; continue; }
+    if (tok.charAt(0) === "-") { escaped = false; doubled = false; continue; }
+    if (tok === "<script") { if (escaped) doubled = true; continue; }
+    if (doubled) { doubled = false; continue; }
+    return m.index;
+  }
+  return -1;
+}
+function _cmhRawTextClose(html, name, from) {
+  if (name === "script") return _cmhScriptDataClose(html, from);
+  // An end tag only closes a raw-text element when the name is followed by whitespace, `/`, or
+  // `>`; an end tag that merely PREFIXES the name (a "scriptfoo" close) is text. Matching a bare
+  // prefix ended the element early and exposed its text to this walk as markup - the very
+  // failure this resolver exists to prevent.
+  const rx = new RegExp("</" + name + "(?=[" + _CMH_NAME_END_SRC + "])", "gi");
+  rx.lastIndex = from;
+  const m = rx.exec(html);
+  return m ? m.index : -1;
+}
+// Walk an HTML string's element tags in document order the way an HTML parser does: consume
+// comments, DOCTYPEs, bogus declarations and processing instructions; skip the TEXT content of
+// raw-text elements; and never report a tag inside <template> content (which is an inert
+// fragment, invisible to getElementById). `visit` gets each open tag and returns a truthy value
+// to stop the walk and hand that value back. All indexes are offsets into the ORIGINAL string.
+function _cmhForEachTag(html, visit) {
+  const raw = String(html == null ? "" : html);
+  let templateDepth = 0;
+  let foreignDepth = 0;
+  for (let pos = 0; pos < raw.length;) {
+    const start = raw.indexOf("<", pos);
+    if (start < 0) break;
+    if (raw.slice(start, start + 4) === "<!--") {
+      pos = _cmhCommentEnd(raw, start);
+      continue;
+    }
+    const lead = raw.charAt(start + 1);
+    if (lead === "!" || lead === "?") {
+      // A DOCTYPE, a bogus declaration (`<![CDATA[...`), or a processing instruction: an HTML
+      // parser consumes it to the first `>`, so nothing inside it is markup.
+      const gt = raw.indexOf(">", start + 1);
+      pos = gt < 0 ? raw.length : gt + 1;
+      continue;
+    }
+    if (lead === "/") {
+      const endName = _cmhTagName(raw, start + 2);
+      const gt = _cmhTagEnd(raw, start);
+      if (endName === "template" && templateDepth > 0) templateDepth -= 1;
+      if ((endName === "svg" || endName === "math") && foreignDepth > 0) foreignDepth -= 1;
+      pos = gt < 0 ? raw.length : gt + 1;
+      continue;
+    }
+    if (!/[A-Za-z]/.test(lead)) {
+      pos = start + 1;
+      continue;
+    }
+    const end = _cmhTagEnd(raw, start);
+    if (end < 0) break;
+    const tag = raw.slice(start, end + 1);
+    const name = _cmhTagName(raw, start + 1);
+    let closeStart = -1;
+    let closeEnd = -1;
+    let next = end + 1;
+    let stop = false;
+    // Inside <svg>/<math> a `/>` really self-closes, so a `<title/>` or `<style/>` there has no
+    // end tag to look for; in HTML the same spelling opens a raw-text element.
+    const selfClosed = foreignDepth > 0 && /\/\s*>$/.test(tag);
+    if (selfClosed) {
+      next = end + 1;
+    } else if (name === "plaintext") {
+      stop = true;  // everything after <plaintext> is text, never markup
+    } else if (_CMH_RAW_TEXT.test(name)) {
+      const close = _cmhRawTextClose(raw, name, end + 1);
+      const closeTagEnd = close < 0 ? -1 : _cmhTagEnd(raw, close);
+      if (closeTagEnd < 0) {
+        // Truncated raw-text element: report no close, so a caller that needs the whole element
+        // fails loudly instead of eating the rest of the document.
+        stop = true;
+      } else {
+        closeStart = close;
+        closeEnd = closeTagEnd + 1;
+        next = closeEnd;
+      }
+    }
+    if (templateDepth === 0) {
+      const found = visit({ name, tag, start, tagEnd: end + 1, closeStart, closeEnd });
+      if (found) return found;
+    }
+    if (stop) break;
+    if (!selfClosed) {
+      if (name === "template") templateDepth += 1;
+      if (name === "svg" || name === "math") foreignDepth += 1;
+    }
+    pos = next;
+  }
+  return null;
+}
+function _cmhTagId(tag) {
+  const attrs = _cmhTagAttributes(tag);
+  const idAttr = attrs.find(function (attr) { return attr.name === "id"; });
+  const value = idAttr && idAttr.valueStart != null
+    ? _cmhDecodeAttribute(tag.slice(idAttr.valueStart, idAttr.valueEnd)) : null;
+  return { attrs, id: value };
+}
+function _cmhProvenanceRootTag(html) {
+  let body = null;
+  const found = _cmhForEachTag(html, function (el) {
+    const parsed = _cmhTagId(el.tag);
+    const range = { start: el.start, end: el.tagEnd, tag: el.tag, attrs: parsed.attrs };
+    if (parsed.id === "commentRoot") return range;
+    if (el.name === "body" && body === null) body = range;
+    return null;
+  });
+  return found || body;
+}
+// Resolve one of the layer's own data <script> blocks as INFRASTRUCTURE, never by scanning the
+// document text: the walk above finds the first script whose PARSED id matches, and the result
+// is then CROSS-CHECKED against the browser's own parser. A raw text scan cannot answer this
+// question honestly, because the layer's own source - part of every document - contains the very
+// markup being looked for: the missing-region guard could never fire, and a document that had
+// genuinely lost the block had its own runtime source overwritten with the comments JSON instead
+// of failing loudly. The cross-check means any residual tokenizer differential is a loud failure
+// rather than a splice into text no browser ever parsed as an element.
+// Returns { present, start, tagEnd, closeStart, end }: `present` is the browser's answer (the
+// element exists), and the offsets are null unless the walk agreed with it.
+function _cmhVerifiedScriptRange(html, id) {
+  const src = String(html == null ? "" : html);
+  const doc = new DOMParser().parseFromString(src, "text/html");
+  const owners = Array.prototype.filter.call(doc.querySelectorAll("[id]"), function (node) {
+    return node.getAttribute("id") === id;
+  });
+  const present = owners.length > 0;
+  // A document may legitimately carry more than one element with the id (a host decoy that
+  // borrowed a reserved one - CMH-OFFLINE-04 keeps such bytes rather than deleting them), and the
+  // runtime reads the FIRST in tree order, so that is the one to rewrite. It must be the script:
+  // a non-script shadowing the id means a reload would not read the block at all.
+  const first = owners.length ? owners[0] : null;
+  const scripts = owners.filter(function (node) {
+    return (node.tagName || "").toLowerCase() === "script";
+  });
+  const el = first && (first.tagName || "").toLowerCase() === "script" ? first : null;
+  const found = [];
+  if (el) {
+    _cmhForEachTag(src, function (tag) {
+      if (tag.name !== "script" || tag.closeEnd < 0) return null;
+      if (_cmhTagId(tag.tag).id !== id) return null;
+      // Collect every candidate rather than stopping at the first: the walk and the parse must
+      // agree on HOW MANY scripts own this id, or the source text is telling a different story
+      // than the document a browser builds from it and there is no safe range to splice.
+      found.push({ start: tag.start, tagEnd: tag.tagEnd, closeStart: tag.closeStart, end: tag.closeEnd });
+      return null;
+    });
+  }
+  // The parser normalizes CRLF to LF in text, so compare newline-normalized bodies.
+  const nl = function (s) { return String(s).replace(/\r\n?/g, "\n"); };
+  const only = found.length === scripts.length && found.length > 0 ? found[0] : null;
+  if (!only || nl(src.slice(only.tagEnd, only.closeStart)) !== nl(el.textContent)) {
+    return { present: present, start: null, tagEnd: null, closeStart: null, end: null };
+  }
+  return {
+    present: present, start: only.start, tagEnd: only.tagEnd,
+    closeStart: only.closeStart, end: only.end,
+  };
+}
+function _cmhEmbeddedCommentsRange(html) {
+  const found = _cmhVerifiedScriptRange(html, "embeddedComments");
+  return found.start == null ? null : { start: found.start, end: found.end };
+}
+// Exposed for deterministic tests (locating the block is pure and worth unit-testing).
+window.__cmhFindEmbeddedComments = function (h) { return _cmhEmbeddedCommentsRange(h); };
 function _cmhTagAttributes(tag) {
   const attrs = [];
   let pos = 1;
-  while (pos < tag.length && !/[\s/>]/.test(tag[pos])) pos += 1;
+  while (pos < tag.length && !_CMH_NAME_END_CH.test(tag[pos])) pos += 1;
   while (pos < tag.length) {
-    while (/\s/.test(tag[pos] || "")) pos += 1;
+    while (_CMH_SPACE_CH.test(tag[pos] || "")) pos += 1;
     if (pos >= tag.length || tag[pos] === ">" || tag[pos] === "/") break;
     const nameStart = pos;
-    while (pos < tag.length && !/[\s=/>]/.test(tag[pos])) pos += 1;
+    while (pos < tag.length && !/[\t\n\f\r =/>]/.test(tag[pos])) pos += 1;
     if (pos === nameStart) {
       pos += 1;
       continue;
     }
     const name = tag.slice(nameStart, pos).toLowerCase();
-    while (/\s/.test(tag[pos] || "")) pos += 1;
+    while (_CMH_SPACE_CH.test(tag[pos] || "")) pos += 1;
     let valueStart = null;
     let valueEnd = null;
     let quote = "";
     if (tag[pos] === "=") {
       pos += 1;
-      while (/\s/.test(tag[pos] || "")) pos += 1;
+      while (_CMH_SPACE_CH.test(tag[pos] || "")) pos += 1;
       if (tag[pos] === '"' || tag[pos] === "'") {
         quote = tag[pos];
         pos += 1;
@@ -15599,7 +15821,7 @@ function _cmhTagAttributes(tag) {
         if (tag[pos] === quote) pos += 1;
       } else {
         valueStart = pos;
-        while (pos < tag.length && !/[\s>]/.test(tag[pos])) pos += 1;
+        while (pos < tag.length && !/[\t\n\f\r >]/.test(tag[pos])) pos += 1;
         valueEnd = pos;
       }
     }
@@ -15620,45 +15842,6 @@ function _cmhEncodeAttribute(value, quote) {
     return "&#" + ch.charCodeAt(0) + ";";
   });
   return '"' + encoded + '"';
-}
-function _cmhProvenanceRootTag(html) {
-  let body = null;
-  for (let pos = 0; pos < html.length;) {
-    const start = html.indexOf("<", pos);
-    if (start < 0) break;
-    if (html.slice(start, start + 4) === "<!--") {
-      const commentEnd = html.indexOf("-->", start + 4);
-      pos = commentEnd < 0 ? html.length : commentEnd + 3;
-      continue;
-    }
-    if (!/[A-Za-z]/.test(html[start + 1] || "")) {
-      pos = start + 1;
-      continue;
-    }
-    const end = _cmhTagEnd(html, start);
-    if (end < 0) break;
-    const tag = html.slice(start, end + 1);
-    const nameMatch = tag.match(/^<([A-Za-z][\w:-]*)/);
-    const name = nameMatch ? nameMatch[1].toLowerCase() : "";
-    const attrs = _cmhTagAttributes(tag);
-    const range = { start, end: end + 1, tag, attrs };
-    const idAttr = attrs.find(function (attr) { return attr.name === "id"; });
-    const firstId = idAttr && idAttr.valueStart != null
-      ? _cmhDecodeAttribute(tag.slice(idAttr.valueStart, idAttr.valueEnd)) : null;
-    if (firstId === "commentRoot") {
-      return range;
-    }
-    if (name === "body" && body === null) body = range;
-    if (/^(?:script|style|textarea|title|template)$/.test(name)) {
-      const close = html.toLowerCase().indexOf("</" + name, end + 1);
-      if (close < 0) break;
-      const closeEnd = _cmhTagEnd(html, close);
-      pos = closeEnd < 0 ? html.length : closeEnd + 1;
-    } else {
-      pos = end + 1;
-    }
-  }
-  return body;
 }
 function _normalizeDocSourceInHtml(html) {
   const raw = String(html == null ? "" : html);
@@ -15691,7 +15874,7 @@ async function _getBaseHtml() {
     const r = await fetch(location.href, { cache: "no-store" });
     if (r.ok) {
       const t = await r.text();
-      if (t && t.includes('id="embeddedComments"')) {
+      if (t && _cmhEmbeddedCommentsRange(t)) {
         return _normalizeDocSourceInHtml(_stripTransientBodyClasses(t));
       }
     }
@@ -15785,21 +15968,26 @@ function _buildSavedHtml(baseHtml, commentArr) {
   const repl = '<script type="application\/json" id="embeddedComments">\n'
              + json
              + '\n<\/script>';
-  // Match the embedded-comments script by a real, whitespace-delimited id attribute,
-  // regardless of the remaining attribute order or spacing: a document authored or re-saved
-  // as `<script id="embeddedComments" type="...">` must still be found. Requiring whitespace
-  // before `id` (not a bare word boundary) means a decoy `data-id="embeddedComments"` or
-  // `aria-id="embeddedComments"` on another script is never mistaken for the real block. The
-  // body is non-greedy to the first closing tag; comment JSON escapes every "<" as \u003c,
-  // so no closing script tag can appear inside it.
-  const rx = /<script\b[^>]*?\sid\s*=\s*(["'])embeddedComments\1[^>]*>[\s\S]*?<\/script>/i;
-  if (!rx.test(baseHtml)) {
+  // Locate the embedded-comments script STRUCTURALLY (see _cmhVerifiedScriptRange): a real,
+  // parsed id attribute on a script the BROWSER also sees as that element, regardless of
+  // attribute order or spacing, so a document authored or re-saved as
+  // `<script id="embeddedComments" type="...">` is still found while a decoy
+  // `data-id="embeddedComments"` on another script never is. A document that genuinely lost the
+  // region resolves to nothing and fails here instead of exporting a corrupted copy.
+  const found = _cmhVerifiedScriptRange(baseHtml, "embeddedComments");
+  if (found.start == null) {
+    // Distinguish the two failures: the region is absent, or it is present but this document's
+    // markup could not be resolved to it reliably (never splice on a guess).
+    if (found.present) {
+      throw new Error('Found <scr' + 'ipt id="embeddedComments"> but could not locate it reliably in the source HTML. The document markup may be malformed; re-generate or repair it, then export again.');
+    }
     throw new Error('Could not find <scr' + 'ipt id="embeddedComments"> in the source HTML. Make sure the EMBEDDED COMMENTS region is present.');
   }
-  // Use a REPLACER FUNCTION, not a string: `repl` is built from user comment text, and a
+  // Splice by OFFSETS, never String.replace: `repl` is built from user comment text, and a
   // string replacement would expand `$&`, `$1`, `$\``, `$'`, and `$$` (a note containing e.g.
   // `$&` or a shell `$'` would corrupt the embedded-comments JSON and break reload).
-  return baseHtml.replace(rx, () => repl);
+  const src = String(baseHtml);
+  return src.slice(0, found.start) + repl + src.slice(found.end);
 }
 function _suggestedFilename() {
   const path = location.pathname;
@@ -15840,10 +16028,32 @@ function _layerDescriptorJson(mode) {
   return JSON.stringify({ version: CMH_VERSION, mode, regions: CMH_REGION_NAMES });
 }
 function _retargetLayerDescriptor(html, mode) {
-  const rx = /(<script\b[^>]*\sid\s*=\s*(["'])commentableHtmlLayer\2[^>]*>)([\s\S]*?)(<\/script>)/i;
-  if (rx.test(html)) return html.replace(rx, "$1" + _layerDescriptorJson(mode) + "$4");
-  return html.replace(/(<meta name="commentable-html-version" content="[^"]+" \/?>\s*)/i,
-    "$1" + '<script type="application/json" id="commentableHtmlLayer">' + _layerDescriptorJson(mode) + "</scr" + "ipt>\n");
+  // Resolve the descriptor block the same structural way as the comments block (see
+  // _cmhVerifiedScriptRange). A text scan could not: the layer's own source spells
+  // `<script type="application/json" id="commentableHtmlLayer">`, so a document that had lost
+  // the real block still "matched" inside the inlined runtime and the replace overwrote a
+  // quarter of a megabyte of runtime JS with the descriptor JSON.
+  const src = String(html == null ? "" : html);
+  const found = _cmhVerifiedScriptRange(src, "commentableHtmlLayer");
+  if (found.start != null) {
+    // Replace only the BODY, so the block keeps whatever attributes it was authored with.
+    return src.slice(0, found.tagEnd) + _layerDescriptorJson(mode) + src.slice(found.closeStart);
+  }
+  if (found.present) {
+    throw new Error("Export aborted: the commentable-html layer descriptor could not be located reliably in the source HTML.");
+  }
+  // No descriptor at all: anchor a fresh one to the version meta tag. Match that tag as a parser
+  // would - a DOM-serialized document writes `<meta name="..." content="...">` with neither the
+  // space nor the slash - and fail loudly if there is nothing to anchor to, rather than
+  // downloading a document with no descriptor.
+  const insert = '<script type="application/json" id="commentableHtmlLayer">'
+    + _layerDescriptorJson(mode) + "</scr" + "ipt>\n";
+  const anchored = src.replace(/<meta name="commentable-html-version" content="[^"]+"\s*\/?>\s*/i,
+    function (m) { return m + insert; });
+  if (anchored === src) {
+    throw new Error("Export aborted: this document has no commentable-html layer descriptor and no version meta tag to anchor one to.");
+  }
+  return anchored;
 }
 async function saveHtml() {
   let baseHtml;
