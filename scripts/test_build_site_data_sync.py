@@ -226,10 +226,10 @@ class SkillZipTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             bsd._skill_zip_bytes(members)
 
-    def test_zip_logical_members_treats_duplicate_members_as_unreadable(self):
-        # A committed ZIP carrying the same path twice must be reported as stale (None) rather than
-        # silently collapsed by a name->bytes map, which is what let a duplicated archive survive
-        # every --check run (SITE-BUILD-19).
+    def test_zip_logical_members_is_an_ordered_list_that_keeps_duplicates(self):
+        # The reading of a committed ZIP is an ORDERED LIST taken from infolist(), not a name->bytes
+        # map: a map collapses a repeated path to one key and reports a bloated archive as in sync,
+        # which is what let a duplicated archive survive every --check run (SITE-BUILD-19).
         import zipfile as _zip
         with tempfile.TemporaryDirectory() as root:
             dup = os.path.join(root, "dup.zip")
@@ -238,8 +238,135 @@ class SkillZipTests(unittest.TestCase):
                 warnings.simplefilter("ignore", UserWarning)
                 with _zip.ZipFile(dup, "w") as z:
                     z.writestr("demo/SKILL.md", "a")
-                    z.writestr("demo/SKILL.md", "a")
-            self.assertIsNone(bsd._zip_logical_members(dup))
+                    z.writestr("demo/SKILL.md", "b")
+            read = bsd._zip_logical_members(dup)
+            self.assertIsInstance(read, list)
+            self.assertEqual([entry[0] for entry in read],
+                             ["demo/SKILL.md", "demo/SKILL.md"])
+            # Distinct payloads: each entry's bytes are read per infolist() entry, so this is the
+            # real archive order and not the name table, which resolves both copies to the last.
+            self.assertEqual([entry[-1] for entry in read], [b"a", b"b"])
+
+    def test_check_flags_a_reordered_committed_zip_and_write_repairs_it(self):
+        # Same names, same bytes, DIFFERENT member order: a name->bytes map compares that equal, so
+        # a repacked archive would sail through --check forever. The ordered comparison catches it
+        # and a write run restores the canonical sorted archive (SITE-BUILD-19).
+        import zipfile as _zip
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill(root)
+            skills = self._descriptor(skill_rel)
+            bsd.sync_skill_zips(root, False, skills=skills)
+            zip_path = os.path.join(root, bsd.SITE_OUT, "skills", "demo.zip")
+            members = bsd.build_skill_zip_members(root, skill_rel, "demo")
+            self.assertGreater(len(members), 1, "need at least two members to reorder")
+            with _zip.ZipFile(zip_path, "w") as z:
+                for arcname, data in reversed(members):
+                    info = _zip.ZipInfo(arcname, date_time=(1980, 1, 1, 0, 0, 0))
+                    info.external_attr = 0o644 << 16
+                    info.create_system = 3
+                    info.compress_type = _zip.ZIP_DEFLATED
+                    z.writestr(info, data)
+            self.assertTrue(bsd.sync_skill_zips(root, True, skills=skills),
+                            "a reordered committed zip must be reported as drift")
+            bsd.sync_skill_zips(root, False, skills=skills)
+            with _zip.ZipFile(zip_path) as z:
+                names = [info.filename for info in z.infolist()]
+            self.assertEqual(names, sorted(names), names)
+            self.assertEqual(bsd.sync_skill_zips(root, True, skills=skills), [])
+
+    def test_zip_logical_members_treats_a_corrupt_member_payload_as_unreadable(self):
+        # A member whose COMPRESSED payload is garbage raises zlib.error out of the decompressor -
+        # not BadZipFile - so an unguarded read would crash the required site --check instead of
+        # reporting the archive as stale (SITE-BUILD-19).
+        import zipfile as _zip
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "corrupt-member.zip")
+            with _zip.ZipFile(path, "w", _zip.ZIP_DEFLATED) as z:
+                z.writestr("demo/SKILL.md", b"hello world " * 50)
+            with _zip.ZipFile(path) as z:
+                info = z.infolist()[0]
+                start = (info.header_offset + 30 + len(info.filename.encode("utf-8"))
+                         + len(info.extra or b""))
+                size = info.compress_size
+            with open(path, "rb") as fh:
+                raw = bytearray(fh.read())
+            raw[start:start + size] = b"\xff" * size
+            with open(path, "wb") as fh:
+                fh.write(bytes(raw))
+            self.assertIsNone(bsd._zip_logical_members(path))
+
+    def test_check_flags_a_committed_zip_with_directory_entries_and_write_repairs_it(self):
+        # Unzipping and re-zipping by hand adds explicit directory entries this build never emits,
+        # so the repacked archive is drift and a write run replaces it (SITE-BUILD-19).
+        import zipfile as _zip
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill(root)
+            skills = self._descriptor(skill_rel)
+            bsd.sync_skill_zips(root, False, skills=skills)
+            zip_path = os.path.join(root, bsd.SITE_OUT, "skills", "demo.zip")
+            members = bsd.build_skill_zip_members(root, skill_rel, "demo")
+            with _zip.ZipFile(zip_path, "w") as z:
+                z.writestr("demo/", b"")
+                for arcname, data in members:
+                    z.writestr(bsd._zip_member_info(arcname), data)
+            self.assertTrue(bsd.sync_skill_zips(root, True, skills=skills),
+                            "a committed zip carrying directory entries must be reported as drift")
+            bsd.sync_skill_zips(root, False, skills=skills)
+            with _zip.ZipFile(zip_path) as z:
+                self.assertEqual([i.filename for i in z.infolist()],
+                                 [arcname for arcname, _ in members])
+            self.assertEqual(bsd.sync_skill_zips(root, True, skills=skills), [])
+
+    def test_check_flags_each_noncanonical_member_stamp_on_its_own(self):
+        # Every stamp the writer applies is compared, so drifting any ONE of them is caught. A test
+        # that mutates all four at once would pass even if only one were compared (SITE-BUILD-19).
+        import zipfile as _zip
+        mutations = {"date_time": (2024, 5, 6, 7, 8, 10),
+                     "external_attr": 0o777 << 16,
+                     "create_system": 0,
+                     "compress_type": _zip.ZIP_STORED}
+        for field, value in mutations.items():
+            with self.subTest(stamp=field):
+                with tempfile.TemporaryDirectory() as root:
+                    skill_rel = self._make_skill(root)
+                    skills = self._descriptor(skill_rel)
+                    bsd.sync_skill_zips(root, False, skills=skills)
+                    zip_path = os.path.join(root, bsd.SITE_OUT, "skills", "demo.zip")
+                    members = bsd.build_skill_zip_members(root, skill_rel, "demo")
+                    with _zip.ZipFile(zip_path, "w") as z:
+                        for arcname, data in members:
+                            info = bsd._zip_member_info(arcname)
+                            setattr(info, field, value)
+                            z.writestr(info, data)
+                    self.assertTrue(bsd.sync_skill_zips(root, True, skills=skills),
+                                    "a drifted %s stamp must be reported as drift" % field)
+
+    def test_check_flags_a_noncanonical_committed_zip_and_write_repairs_it(self):
+        # Same names, same bytes, same order, but repacked with host timestamps/modes and stored
+        # (uncompressed) members. The archive is not what this build produces, so --check reports
+        # drift and a write run replaces it with the canonically stamped one (SITE-BUILD-19).
+        import zipfile as _zip
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill(root)
+            skills = self._descriptor(skill_rel)
+            bsd.sync_skill_zips(root, False, skills=skills)
+            zip_path = os.path.join(root, bsd.SITE_OUT, "skills", "demo.zip")
+            members = bsd.build_skill_zip_members(root, skill_rel, "demo")
+            with _zip.ZipFile(zip_path, "w") as z:
+                for arcname, data in members:
+                    info = _zip.ZipInfo(arcname, date_time=(2024, 5, 6, 7, 8, 10))
+                    info.external_attr = 0o777 << 16
+                    info.create_system = 0
+                    info.compress_type = _zip.ZIP_STORED
+                    z.writestr(info, data)
+            self.assertTrue(bsd.sync_skill_zips(root, True, skills=skills),
+                            "a noncanonically stamped committed zip must be reported as drift")
+            bsd.sync_skill_zips(root, False, skills=skills)
+            with _zip.ZipFile(zip_path) as z:
+                stamps = {(i.date_time, i.external_attr, i.create_system, i.compress_type)
+                          for i in z.infolist()}
+            self.assertEqual(stamps, {((1980, 1, 1, 0, 0, 0), 0o644 << 16, 3, _zip.ZIP_DEFLATED)})
+            self.assertEqual(bsd.sync_skill_zips(root, True, skills=skills), [])
 
     def test_check_flags_a_duplicated_committed_zip_and_write_repairs_it(self):
         import zipfile as _zip
