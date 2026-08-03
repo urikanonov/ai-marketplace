@@ -333,11 +333,48 @@ _FONT_BREAKOUT_ATTRS = ("color", "face", "size")
 # start-tag attribute tokenizer it runs over are vendored here and applied to the RAW start
 # tag, and the host's own decoding is never read (CMH-VAL-21).
 #
-# The three regexes and `_replace_attr_charref` are a copy of CPython 3.13's
-# `Lib/html/parser.py` (`attr_charref`, `tagfind_tolerant`, `attrfind_tolerant`,
-# `_replace_attr_charref`), which is the browser-correct version; keep them in step with that
-# file, not with whatever the running interpreter happens to ship.
+# The three regexes and `_replace_attr_charref` come from CPython 3.13's `Lib/html/parser.py`
+# (`attr_charref`, `tagfind_tolerant`, `attrfind_tolerant`, `_replace_attr_charref`), which is
+# the browser-correct version; keep them in step with that file, not with whatever the running
+# interpreter happens to ship. ONE deliberate DIVERGENCE: `_replace_attr_charref`'s NUMERIC
+# branch resolves through `_numeric_charref()` below (the HTML tokenizer's end state) instead of
+# CPython's `html.unescape()`, which is not the browser rule - do NOT resync that branch to
+# CPython, or the deleted-control-character and oversized-reference bugs come back. Only the
+# regexes and the NAMED branch track CPython.
 _ATTR_CHARREF_RE = re.compile(r"&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*)[;=]?")
+
+# The C1 replacement table the HTML "numeric character reference end state" applies. The five
+# code points in 0x80-0x9F that are NOT listed (0x81, 0x8D, 0x8F, 0x90, 0x9D) are kept as
+# themselves, as any other control character is.
+_C1_CHARREF_REPLACEMENTS = {
+    0x80: "\u20ac", 0x82: "\u201a", 0x83: "\u0192", 0x84: "\u201e", 0x85: "\u2026",
+    0x86: "\u2020", 0x87: "\u2021", 0x88: "\u02c6", 0x89: "\u2030", 0x8a: "\u0160",
+    0x8b: "\u2039", 0x8c: "\u0152", 0x8e: "\u017d", 0x91: "\u2018", 0x92: "\u2019",
+    0x93: "\u201c", 0x94: "\u201d", 0x95: "\u2022", 0x96: "\u2013", 0x97: "\u2014",
+    0x98: "\u02dc", 0x99: "\u2122", 0x9a: "\u0161", 0x9b: "\u203a", 0x9c: "\u0153",
+    0x9e: "\u017e", 0x9f: "\u0178",
+}
+
+# The largest scalar value a reference can name, as a digit COUNT: anything longer than this
+# already exceeds 0x10FFFF, so it resolves without an integer conversion (see _numeric_charref).
+_MAX_CHARREF_DIGITS = {10: len("1114111"), 16: len("10FFFF")}
+
+# A numeric reference the HOST's own attribute decode must never see: a decimal run past
+# Python's integer conversion limit RAISES there, and a hex run has no such limit and builds a
+# big integer whose value is then thrown away. The two bases are kept apart so a decimal run
+# cannot match hex digits (`&#aaaa...` is not a numeric reference at all). The threshold is far
+# above anything an authored document contains and far below the interpreter's limit (~4300
+# digits), which is what keeps the recovery path unreachable by ordinary markup: routing a
+# merely zero-padded `&#0000065;` onto a second tokenizer would decide "is this tag an element,
+# and where does it end" by a different rule than the rest of the document - the
+# one-document-two-views hazard this module exists to close. Each alternative is one greedy
+# quantifier with no preceding optional run, so a hostile digit sequence cannot make it
+# backtrack.
+_BIG_CHARREF_RE = re.compile(r"&#(?:[xX][0-9a-fA-F]{32,}|[0-9]{32,})")
+
+# RCDATA (and with it `set_cdata_mode`'s `escapable` keyword) reached `html.parser` in CPython
+# 3.13; an older host has no such notion, so its start-tag branch has none either.
+_HOST_RCDATA_ELEMENTS = frozenset(getattr(HTMLParser, "RCDATA_CONTENT_ELEMENTS", ()))
 
 # Frozen at import so the membership test cannot follow a mutation of the host's table. (The
 # expansion below still calls `html.unescape`, which reads the live table, so this is a
@@ -406,17 +443,51 @@ _ATTR_RE = re.compile(r"""
 """, re.VERBOSE)
 
 
+def _numeric_charref(body):
+    """The code point a NUMERIC character reference names, resolved the way a BROWSER resolves
+    it (the HTML "numeric character reference end state"), not the way `html.unescape` does
+    (CMH-VAL-21).
+
+    `html.unescape` is not the browser rule, and the two disagree on the same bytes on EVERY
+    interpreter - this is not the 3.12/3.13 attribute drift the rest of this section is about:
+
+      - it DELETES the code points it considers invalid, so `&#1;`, `&#x7f;` and `&#xfffe;`
+        vanish where a browser keeps U+0001, U+007F and U+FFFE. A validator-visible `id`,
+        `content`, `href` or `data-*` then differs from the DOM value, which is exactly the
+        class of mismatch this module exists to close;
+      - it raises `ValueError` on a reference with more digits than Python's integer conversion
+        limit, where a browser just yields U+FFFD.
+
+    So the end state is implemented here: U+FFFD for the null character, for a surrogate and
+    for anything past U+10FFFF, the C1 remapping above, and every other code point kept. The
+    digit run is BOUNDED before any integer conversion, so the decode is total (and cheap) for
+    an arbitrarily long reference.
+    """
+    if body[1] in "xX":
+        digits, base = body[2:], 16
+    else:
+        digits, base = body[1:], 10
+    digits = digits.lstrip("0")
+    if not digits:
+        return "\ufffd"                             # `&#0;` is a null character reference
+    if len(digits) > _MAX_CHARREF_DIGITS[base]:
+        return "\ufffd"                             # past U+10FFFF without converting it
+    num = int(digits, base)
+    if num in _C1_CHARREF_REPLACEMENTS:
+        return _C1_CHARREF_REPLACEMENTS[num]
+    if num > 0x10FFFF or 0xD800 <= num <= 0xDFFF:
+        return "\ufffd"
+    return chr(num)
+
+
 def _replace_attr_charref(m):
     ref = m.group(0)
-    if ref.startswith("&#"):
-        # A reference with more digits than Python's integer-conversion limit makes
-        # `unescape` raise; a browser just resolves it to U+FFFD. Leaving it literal keeps
-        # this decode total, because every parse entry point swallows an exception into a
-        # TRUNCATED parse - which would hide every finding after that tag.
-        try:
-            return unescape(ref)
-        except ValueError:
-            return ref
+    body = m.group(1)
+    if body[0] == "#":
+        trailing = ref[len(body) + 1:]
+        # A numeric reference resolves with or without the `;`; a `;` is consumed and any other
+        # trailing character (`=`) is reconsumed as part of the value, as a browser does.
+        return _numeric_charref(body) + ("" if trailing == ";" else trailing)
     if not ref.endswith("=") and ref[1:] in _HTML5_ENTITY_NAMES:
         return unescape(ref)
     return ref
@@ -447,16 +518,26 @@ def _browser_attrs(parser, tag, attrs):
     raw = parser.get_starttag_text()
     if not raw:
         return attrs
+    found = _tokenize_raw_tag(raw, tag)
+    if found is None:
+        return attrs
+    return found[0]
+
+
+def _tokenize_raw_tag(raw, tag):
+    """`tag`'s `(name, value)` attributes read from its RAW start tag text, paired with the
+    offset attribute tokenization stopped at (which is what tells a caller whether the tag
+    really closed). None when `raw` is not this tag's own start tag."""
     m = _TAG_NAME_RE.match(raw, 1)
     if m is None:
-        return attrs
+        return None
     name = m.group(1)
     # Accepted under EITHER fold: a caller inside a start-tag handler passes the ASCII-folded
     # name, while one reading `html.parser`'s own `tag` passes the Unicode fold, and neither may
     # lose the browser decoding by looking foreign.
     if not any(n == tag or n.split("\x00", 1)[0] == tag
                for n in (_ascii_lower(name), name.lower())):
-        return attrs
+        return None
     out = []
     k, end = m.end(), len(raw)
     while k < end:
@@ -472,7 +553,7 @@ def _browser_attrs(parser, tag, attrs):
             value = _unescape_attr_value(value)
         out.append((_ascii_lower(name), value))
         k = m.end()
-    return out
+    return out, k
 
 
 def _browser_attrs_dict(parser, tag, attrs):
@@ -495,6 +576,106 @@ def _browser_attrs_dict(parser, tag, attrs):
 # the same rule the two tolerant passes here apply.
 browser_attrs = _browser_attrs
 browser_attrs_dict = _browser_attrs_dict
+
+
+class _BrowserStartTag(_BrowserTagNames):
+    """A start tag the HOST's own attribute decode cannot handle is still a start tag
+    (CMH-VAL-21).
+
+    `html.parser` decodes every attribute value inside `parse_starttag()`, and its decoder
+    RAISES on a numeric character reference with more digits than Python's integer conversion
+    limit. That `ValueError` escapes `feed()`, and every parse entry point here swallows an
+    exception into a TRUNCATED parse - so ONE oversized reference hid every finding after that
+    tag, where a browser simply resolves it to U+FFFD and carries on.
+
+    Such a tag is therefore taken away from the host BEFORE it decodes anything and dispatched
+    from its RAW text through the vendored tokenizer, whose numeric decode is bounded. Detecting
+    it up front rather than catching the host's `ValueError` is what makes this safe: the host
+    calls `handle_starttag()` / `handle_startendtag()` / `handle_data()` INSIDE
+    `parse_starttag()`, so catching would also swallow a `ValueError` from a subclass's own
+    handler and dispatch that tag a SECOND time. It also keeps the host from converting a huge
+    hex reference (which has no digit limit) whose value is discarded.
+
+    SCOPE: attribute values only. An oversized reference in TEXT is decoded by the host's
+    `goahead()` (`convert_charrefs=True`) and still fails the parse closed, as it always has.
+    """
+
+    _big_charref_scanned = None   # the rawdata buffer `_big_charref_found` was computed from
+    _big_charref_found = False
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._big_charref_scanned = None
+        self._big_charref_found = False
+
+    def parse_starttag(self, i):
+        if self._buffer_has_big_charref():
+            endpos = self.check_for_whole_start_tag(i)
+            if endpos >= 0 and _BIG_CHARREF_RE.search(self.rawdata, i, endpos):
+                self._stash_tag_name(i + 1)
+                return self._starttag_from_raw(i, endpos)
+        return super().parse_starttag(i)
+
+    def _buffer_has_big_charref(self):
+        """Whether the buffer holds such a reference AT ALL, memoized per `feed()` chunk. The
+        per-tag probe above costs a second `check_for_whole_start_tag()`, so it is gated on one
+        linear scan that no real document ever answers yes to."""
+        rawdata = self.rawdata
+        if self._big_charref_scanned is not rawdata:
+            self._big_charref_scanned = rawdata
+            self._big_charref_found = _BIG_CHARREF_RE.search(rawdata) is not None
+        return self._big_charref_found
+
+    def _starttag_from_raw(self, i, endpos):
+        raw = self.rawdata[i:endpos]
+        # The host stamps this before decoding; the fallback never reaches the host, and
+        # `_browser_attrs()` reads it back through `get_starttag_text()`, so stamp it here.
+        self._HTMLParser__starttag_text = raw
+        m = _TAG_NAME_RE.match(raw, 1)
+        # ASCII-only folding, as a browser names a tag (clause 7) - `str.lower()` here would
+        # make `<lin\u212a>` a `<link>` on exactly this path.
+        tag = None if m is None else _ascii_lower(m.group(1))
+        found = None if tag is None else _tokenize_raw_tag(raw, tag)
+        if found is None:
+            self.handle_data(raw)
+            return endpos
+        self.lasttag = tag
+        attrs, k = found
+        # The host decides start-vs-startend from the tail attribute tokenization STOPPED at,
+        # never from the raw text: an unquoted value swallows a trailing `/`, so `<div a=b/>` is
+        # a normal start tag whose value is `b/`. Reading `raw` instead would self-close it and
+        # skip the raw-text mode below, exposing a `<script>`/`<textarea>` body as markup.
+        end = raw[k:].strip()
+        if end not in (">", "/>"):
+            self.handle_data(raw)
+            return endpos
+        if end == "/>":
+            self.handle_startendtag(tag, attrs)
+        else:
+            self.handle_starttag(tag, attrs)
+            self._enter_host_cdata_mode(tag)
+        return endpos
+
+    def _enter_host_cdata_mode(self, tag):
+        """The host's OWN post-dispatch raw-text branch, mirrored so a tag taken off the fallback
+        path enters exactly the mode every other tag in the same parser enters. (A
+        `_BrowserBoundaries` subclass installs the BROWSER's wider set from its own
+        `handle_starttag`, exactly as it does on the host path; a plain `HTMLParser` subclass
+        gets the host's set, which is what it gets for every other tag.)"""
+        if tag in self.CDATA_CONTENT_ELEMENTS:
+            escapable = False
+        elif not _HOST_RCDATA_ELEMENTS:
+            return                      # a pre-3.13 host's branch ends here
+        elif tag == "plaintext" or (getattr(self, "scripting", False) and tag == "noscript"):
+            escapable = False
+        elif tag in getattr(self, "RCDATA_CONTENT_ELEMENTS", ()):
+            escapable = True
+        else:
+            return
+        if _HOST_RCDATA_ELEMENTS:
+            self.set_cdata_mode(tag, escapable=escapable)
+        else:
+            self.set_cdata_mode(tag)
 
 
 def _end_tag_close(rawdata, i):
@@ -526,7 +707,7 @@ def _end_tag_close(rawdata, i):
     return -1
 
 
-class _BrowserBoundaries(_BrowserTagNames):
+class _BrowserBoundaries(_BrowserStartTag):
     """Where one element ENDS and the next begins, decided the way a BROWSER decides it and
     IDENTICALLY on every interpreter (CMH-VAL-21).
 

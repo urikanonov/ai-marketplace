@@ -10,7 +10,7 @@ use section cards). All findings are non-fatal warnings, matching the section-wr
 """
 import re
 
-from .parsing import _BrowserTagNames, _browser_attrs_dict
+from .parsing import _BrowserStartTag, _browser_attrs_dict
 
 MIN_LONG_PARAGRAPH_CHARS = 240
 MAX_CONSECUTIVE_LONG = 4
@@ -37,7 +37,7 @@ _LAYOUT_CLASSES = ("cmh-diff", "mermaid", "cmh-mermaid", "cmh-chart", "cmh-kql")
 _LAYOUT_ATTRS = ("data-cmh-checklist", "data-cm-widget")
 
 
-class _DensityParser(_BrowserTagNames):
+class _DensityParser(_BrowserStartTag):
     def __init__(self, min_chars, max_run):
         super().__init__(convert_charrefs=True)
         self.min_chars = min_chars

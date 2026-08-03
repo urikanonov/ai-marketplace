@@ -4,6 +4,36 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.434.0] - 2026-08-03
+
+### Fixed
+
+- A NUMERIC character reference in an attribute value now resolves the way a BROWSER resolves it,
+  not the way `html.unescape()` does. The validator's vendored browser rule delegated the numeric
+  case to `html.unescape()`, which is not the HTML tokenizer's "numeric character reference end
+  state" and disagrees with it identically on every interpreter (so this was a validator-vs-browser
+  gap, not the 3.12/3.13 host drift the rule was written for).
+  - `html.unescape()` DELETES the code points it deems invalid, so `&#1;`, `&#x7f;`, `&#x8d;` and
+    the noncharacters vanished where Chromium keeps U+0001, U+007F, U+008D and U+FFFE. A
+    validator-visible `id`, `href`, `content` or `data-*` could therefore differ from the value the
+    DOM actually carries - the very class of mismatch the rule exists to close.
+  - The end state is now implemented directly: U+FFFD for the null character, for a surrogate and
+    for anything past U+10FFFF, the C1 (0x80-0x9F) replacement table applied, and every other code
+    point kept.
+  - An OVERSIZED reference (more digits than Python's integer conversion limit) resolves to U+FFFD
+    instead of raising. The digit run is bounded before any integer conversion, and because the
+    host decodes attribute values inside its own `parse_starttag()` and raised there first - which
+    every parse entry point swallowed into a TRUNCATED parse, hiding every finding after that tag -
+    such a start tag is now taken away from the host before it decodes anything and dispatched from
+    its RAW text through the vendored tokenizer, leaving the rest of the document live. That
+    recovery mirrors the host's dispatch exactly (start-vs-self-closing decided by the tail
+    attribute tokenization stopped at, and the host's own raw-text / RCDATA / `plaintext` /
+    `noscript` mode re-entered), so a recovered tag behaves like every other tag in the same parser.
+    Attribute values only: an oversized reference in the document's TEXT still fails the parse
+    closed, as it always has, and the theme-contrast scan (which builds its own parser and
+    degrades every failure to "no findings") now REPORTS that one shape rather than letting a
+    single attribute silently disable the whole check.
+
 ## [1.432.0] - 2026-08-03
 
 ### Fixed
