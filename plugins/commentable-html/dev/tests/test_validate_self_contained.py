@@ -106,6 +106,92 @@ class NewCheckTests(unittest.TestCase):
         errors, _ = self._errs_warns(doc)
         self.assertTrue(any("offline mode" in e and "meta refresh" in e for e in errors), errors)
 
+    def test_offline_mode_rejects_a_meta_refresh_that_omits_the_url_keyword(self):
+        # The `url=` keyword is OPTIONAL in the HTML shared declarative refresh steps: once the
+        # time and its `;`/`,`/whitespace separator are consumed, anything that is not `url` is
+        # taken as the URL itself. So dropping four characters was a cheaper bypass than the
+        # scheme-only spelling this gate was widened for.
+        for content in ("0;https://evil.example",
+                        "0;https:evil.example",
+                        "0,https://evil.example",
+                        "0 https://evil.example",
+                        "0;'https:evil.example'",
+                        "0;url= https:evil.example",
+                        "0;url=' https://evil.example'",
+                        "0.5;https://evil.example"):
+            doc = with_offline_mode(build(body=self._body(
+                MAIN, '<meta http-equiv="refresh" content="%s">' % content)))
+            errors, _ = self._errs_warns(doc)
+            self.assertTrue(any("offline mode" in e and "meta refresh" in e for e in errors),
+                            "expected an offline meta refresh error for %r, got %r" % (content, errors))
+
+    def test_offline_mode_rejects_a_meta_refresh_with_a_remote_file_authority(self):
+        # A special scheme's relative-slash state treats `\` like `/`, so on a `file://` document
+        # `\\host` resolves to `file://host/...` - a UNC fetch off the machine, and a top-level
+        # navigation the CSP cannot stop either. The explicit `file:` spelling of the same host
+        # has to count for the same reason.
+        for content in ("0;url=\\\\evil.example/out",
+                        "0;url=/\\evil.example/out",
+                        "0;url=file://evil.example/share/x.html",
+                        "0;url=file:\\\\evil.example\\share\\x.html",
+                        "0;file://evil.example/share/x.html"):
+            doc = with_offline_mode(build(body=self._body(
+                MAIN, '<meta http-equiv="refresh" content="%s">' % content)))
+            errors, _ = self._errs_warns(doc)
+            self.assertTrue(any("offline mode" in e and "meta refresh" in e for e in errors),
+                            "expected an offline meta refresh error for %r, got %r" % (content, errors))
+
+    def test_offline_mode_rejects_a_scheme_only_meta_refresh(self):
+        # A browser resolves `https:evil.example` against a file:// document exactly as it
+        # resolves `https://evil.example`, and a meta refresh is a TOP-LEVEL NAVIGATION, which no
+        # meta-delivered CSP can restrict - so while the gate required the slashes, the whole
+        # channel was open to a one-token spelling change.
+        for content in ("0;url=https:evil.example",
+                        "0; url='http:evil.example/out'",
+                        "0;URL=HTTPS:evil.example"):
+            doc = with_offline_mode(build(body=self._body(
+                MAIN, '<meta http-equiv="refresh" content="%s">' % content)))
+            errors, _ = self._errs_warns(doc)
+            self.assertTrue(any("offline mode" in e and "meta refresh" in e for e in errors),
+                            "expected an offline meta refresh error for %r, got %r" % (content, errors))
+
+    def test_offline_mode_accepts_a_local_meta_refresh(self):
+        # The false-positive controls for the widenings above: every one of these is a value a
+        # browser either resolves INSIDE the file or does not treat as a refresh at all, so the
+        # gate must stay quiet. `url=https:...` with no time is not a refresh (the algorithm
+        # returns when the time is empty), the quoted value is TRUNCATED at its closing quote so
+        # the `url=https:` inside it is ordinary path text, and the keyword's `=` may be preceded
+        # only by ASCII whitespace - an NBSP makes the whole tail a relative reference.
+        for content in ("5;url=./x.html",
+                        "0;url=#a",
+                        "0;url=sub/page.html",
+                        "30",
+                        "url=https:evil.example",
+                        "0;url='./x;url=https:evil.example'",
+                        "0;url\u00a0=https:evil.example",
+                        "0;url=data:text/html,x",
+                        "0;url=./x.html?url=https://evil.example",
+                        "0;url=foo.html;url=https:evil.example",
+                        "0;remark url=https:evil.example",
+                        "0;url=https:",
+                        "0;url=http:",
+                        "0;url=https://",
+                        "0;url=\\x.html",
+                        "0;urhttps://evil.example",
+                        "0;urlhttps://evil.example",
+                        "0;u'https://evil.example'",
+                        "0;url https://evil.example",
+                        "0;url=https: ",
+                        "0;url=file:///C:/x.html",
+                        "0;url=file://localhost/x.html",
+                        "0;url=file:notes.html",
+                        "0;url=http\u017f://evil.example"):
+            doc = with_offline_mode(build(body=self._body(
+                MAIN, '<meta http-equiv="refresh" content="%s">' % content)))
+            errors, _ = self._errs_warns(doc)
+            self.assertFalse(any("meta refresh" in e for e in errors),
+                             "unexpected meta refresh error for %r: %r" % (content, errors))
+
     def test_offline_mode_rejects_network_resources_inside_noscript(self):
         # A <noscript> body is raw TEXT only while scripting is enabled; with scripting off a
         # browser parses it and really does load what it names. The EGRESS checks must

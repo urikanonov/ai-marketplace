@@ -4,6 +4,30 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.512.0] - 2026-08-03
+
+### Fixed
+
+- The strict validator now decides an offline-mode `<meta http-equiv="refresh">` target by applying
+  the HTML refresh algorithm instead of matching `url=` in the raw attribute text, which was wrong
+  in both directions. A browser resolves `content="0;url=https:evil.example"` in a `file://`
+  document to `https://evil.example/` and navigates the whole document - every reviewer comment
+  with it - there, but the gate required a `//` after the scheme, so a hand-authored offline file
+  carrying that meta passed `validate.py --strict` unflagged. The `url=` keyword is optional in
+  that algorithm as well, so simply dropping it (`content="0;https://evil.example"`) was an even
+  cheaper bypass, and a remote authority reached the same beacon through `\\host` or an explicit
+  `file://host` UNC target. A meta refresh is a TOP-LEVEL NAVIGATION, the one egress channel no
+  meta-delivered CSP can close, so the gate was the only thing that would have caught any of them.
+  In the other direction, a refresh with no time is not a refresh at all, a quoted value is
+  truncated at its closing quote, a near miss on the `url` keyword is an ordinary relative
+  reference, only ASCII whitespace separates the keyword from its `=`, and a bare `https:` with no
+  host navigates nowhere - all of those used to be reported as network egress and now pass. The
+  export was never affected (it removes every refresh meta whatever its URL), so this closes a
+  validator-only false negative and the gate stays looser than the strip it mirrors. The
+  neighbouring CSS and attribute network-literal gates deliberately keep their slashes-required
+  shape - those are fetch channels the offline CSP closes, and each is byte-mirrored in the
+  exporter, so gate and strip have to move together (tracked separately).
+
 ## [1.509.0] - 2026-08-03
 
 ### Security

@@ -106,7 +106,7 @@ def _check_self_contained(html, parser, nonshareable):
             for el in _find_tag_attrs_egress(html, tag):
                 _check_network_attr(tag, el, "formaction")
         for el in _find_tag_attrs_egress(html, "meta"):
-            if (el.get("http-equiv") or "").lower() == "refresh" and META_REFRESH_NETWORK_RE.search(el.get("content", "")):
+            if (el.get("http-equiv") or "").lower() == "refresh" and meta_refresh_navigates_to_network(el.get("content", "")):
                 errors.append("offline mode: meta refresh points at a network URL - remove it")
         for tag in ("body", "table", "td", "th", "div"):
             for el in _find_tag_attrs_egress(html, tag):
@@ -121,6 +121,9 @@ def _check_self_contained(html, parser, nonshareable):
                           "and cannot stop a navigation), so the export removes it; remove it here too"
                           % (handler.get("tag", "element"), handler.get("attr", "on...")))
         for style in parser.styles + parser.template_styles:
+            # Slashes-required on purpose, and mirrored by the exporter's own `@import` strip: a
+            # stylesheet fetch is closed by the offline CSP, and widening this copy alone would
+            # reject a file the exporter just produced (issue #961, spec row CMH-VAL-08).
             for m in re.finditer(r"@import\s+(?:url\()?['\"]?((?:https?:)?//[^;'\"\)]+)", style.get("body", ""), re.I):
                 errors.append('offline mode: @import "%s" loads over the network - inline or remove it' % m.group(1)[:80])
             if CSS_NETWORK_URL_RE.search(style.get("body", "")):
