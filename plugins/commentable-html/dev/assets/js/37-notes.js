@@ -233,6 +233,7 @@ function setupNotesLayer() {
 
     const ta = document.createElement("textarea");
     ta.className = "cmh-note-input cm-skip";
+    cmhMarkLayerChrome(ta);
     ta.id = "cmh-note-input-" + (++_noteSeq);
     ta.value = current;
     ta.spellcheck = false;
@@ -252,6 +253,7 @@ function setupNotesLayer() {
     const toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = "cmh-note-toggle cm-skip";
+    cmhMarkLayerChrome(toggle);
     toggle.setAttribute("data-cmh-note-toggle", "");
     toggle.addEventListener("click", (ev) => {
       ev.preventDefault(); ev.stopPropagation();
@@ -264,6 +266,7 @@ function setupNotesLayer() {
       const fold = document.createElement("button");
       fold.type = "button";
       fold.className = "cmh-note-fold cm-skip";
+      cmhMarkLayerChrome(fold);
       fold.setAttribute("data-cmh-note-fold", "");
       fold.setAttribute("aria-controls", ta.id);
       fold.addEventListener("click", (ev) => {

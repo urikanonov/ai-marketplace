@@ -4,8 +4,10 @@
    reviewer edits exactly where they clicked instead of being sent to a floating composer. A click
    anywhere else closes the dialog; a pointer click in the ANNOTATED DOCUMENT is also swallowed so
    it performs no other action (for example it does not follow a link the highlight sits on), while
-   a keyboard-activated click, and a click on the layer's own surfaces (its chrome, and the editors
-   it has open), still reach their target.
+   a keyboard-activated click, and a click on the layer's own surfaces, still reach their target -
+   the chrome outside the root, the editors it has open, and the controls it injects INSIDE the root,
+   which are resolved by identity through the `cmhMarkLayerChrome` registry (00-preamble.js) rather
+   than by containment.
    While the dialog is being edited it stays open (an outside click
    or the anchor scrolling away would discard the draft). The sidebar jump still runs alongside this
    from 52-hover-bubble.js. */
@@ -190,6 +192,11 @@ function cmhPopoverWouldSwallowClick(e) {
   const path = _cmhEventPath(e);
   if (_cmhClickIsInPopover(e.target, path)) return false;
   if (!_cmhClickIsInAnnotatedDocument(e, path)) return false;
+  // The layer injects controls INSIDE the content root too (a sort control, a widget reset), which
+  // containment counts as document content. They are carved out by IDENTITY from the registry the
+  // layer fills where it creates them (00-preamble.js), so document content that merely carries the
+  // same class names is still swallowed.
+  if (cmhClickHitsLayerChrome(e.target, path)) return false;
   return !_cmhClickIsInLayerEditor(e.target, path);
 }
 

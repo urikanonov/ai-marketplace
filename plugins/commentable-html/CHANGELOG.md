@@ -4,6 +4,25 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.515.0] - 2026-08-03
+
+### Fixed
+
+- The layer's OWN controls injected INSIDE the content root no longer lose the reviewer's first
+  click to an open comment dialog. Inverting the dismiss to swallow only clicks in the annotated
+  document gave every surface OUTSIDE the content root its first click back, but a sortable-table
+  sort control, a widget "Reset moves", a checklist box, an editable note, a code-block Copy, a
+  section caret or review badge, and a rendered diff's view toolbar all live inside that root, where
+  containment cannot tell them from author content - so with a dialog open the first click on one of
+  them was spent closing the dialog and the control did nothing. The layer now registers each
+  control it creates in an identity set and carves that set out of the swallow, so the control acts
+  on the FIRST click (in the `<body>`-fallback mode too). Identity, not class: document content
+  carrying `cmh-sort-ctrl` or `cm-widget-reset` is still author content and is still swallowed, so
+  the anti-spoofing property is unchanged. A spared click then behaves exactly as it does with no
+  dialog open - the carve-out restores the normal click rather than making the control modal - and
+  a behavior the runtime attaches to AUTHOR content (clicking a commented image to jump to its
+  card, clicking a collapsed section's heading rather than its caret) is not an injected control
+  and is still swallowed.
 ## [1.514.0] - 2026-08-03
 
 ### Fixed

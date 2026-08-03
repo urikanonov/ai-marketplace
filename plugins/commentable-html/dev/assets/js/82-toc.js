@@ -191,6 +191,7 @@ function setupCollapsibleSections() {
     const caret = document.createElement("button");
     caret.type = "button";
     caret.className = "cmh-sec-caret cm-skip";
+    cmhMarkLayerChrome(caret);
     caret.setAttribute("aria-expanded", "true");
     caret.setAttribute("aria-label", "Collapse section");
     caret.title = "Collapse section";

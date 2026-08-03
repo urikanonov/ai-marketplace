@@ -337,6 +337,7 @@ function _syncWidgetResetButtons() {
       btn = document.createElement("button");
       btn.type = "button";
       btn.className = "cm-skip cm-widget-reset";
+      cmhMarkLayerChrome(btn);
       btn.textContent = "Reset moves";
       btn.title = "Return cards to their original positions";
       btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); resetWidgetMoves(w); });

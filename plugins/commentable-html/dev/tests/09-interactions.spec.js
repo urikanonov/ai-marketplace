@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
+import fs from "fs";
 import {
   openKitchenSink, addTextComment, openComposerFor, selectText, distinctCids, realDragSelect,
   allCids, stageContent, stageInline, fileUrl, ready, storedComments,
+  installClipboardCapture, lastCopied,
 } from "./helpers.js";
 
 test.describe("comment interactions", () => {
@@ -715,6 +717,241 @@ test.describe("comment interactions", () => {
     await page.locator("#cmh-pspoof").click();
     await expect(real).toHaveCount(0);
     expect(page.url()).toBe(url);
+  });
+
+  // A document whose content root holds EVERY kind of in-root layer control the runtime injects: a
+  // sortable table (a `.cmh-sort-ctrl` per header cell), a draggable widget (a `.cm-widget-reset`
+  // once a card moves), a checklist (`.cmh-check`), an editable note (`.cmh-note-head` +
+  // `.cmh-note-input`), a code block (`.cm-code-tools` with Copy), a `<section>` heading (a
+  // `.cmh-sec-caret` and a `.cmh-review-badge`), and a diff block (`.cmh-diff-bar` with its view
+  // toggle). Containment cannot tell any of them from author content, so only the identity registry
+  // can spare them.
+  const IN_ROOT_CHROME = `
+    <section id="chrome-sec">
+      <h2 id="chrome-head">In-root chrome</h2>
+      <p>Reviewable paragraph text here for anchoring a comment.</p>
+      <div class="cm-skip" style="height:340px"></div>
+      <table>
+        <thead><tr><th>Service</th><th>Requests</th></tr></thead>
+        <tbody>
+          <tr><td>gateway</td><td>1200</td></tr>
+          <tr><td>auth</td><td>340</td></tr>
+          <tr><td>catalog</td><td>9800</td></tr>
+        </tbody>
+      </table>
+      <div class="board cm-skip" data-cm-widget="triage" data-cm-draggable aria-label="Triage board" id="board">
+        <div class="col" data-cm-slot="Now" id="now"><div class="card" data-cm-part="a" data-cm-part-label="Card A">Card A</div></div>
+        <div class="col" data-cm-slot="Later" id="later"></div>
+      </div>
+      <ul class="cmh-checklist" data-cmh-checklist="rel" data-cmh-checklist-label="Release">
+        <li data-cmh-item="backend" data-cmh-state="blank">Backend</li>
+      </ul>
+      <div class="cmh-note" data-cmh-note="risk" data-cmh-note-label="Risk">No blocking risks yet.</div>
+      <pre><code class="language-python">print("hello")</code></pre>
+      <pre class="cmh-diff" data-diff-label="probe.sql">--- a/probe.sql
++++ b/probe.sql
+@@ -1,2 +1,2 @@
+-old line
++new line
+ context line
+</pre>
+    </section>
+    <section id="chrome-sec2">
+      <h2 id="chrome-head2">Second section</h2>
+      <p>A section with no comment in it, so its review badge is plainly unreviewed.</p>
+    </section>`;
+
+  async function widgetMutationFrame(page) {
+    await page.evaluate(() => new Promise((resolve) => {
+      if (typeof requestAnimationFrame !== "function") { resolve(); return; }
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }));
+  }
+
+  test("CMH-CORE-16: the dialog does not swallow the first click on a layer control inside the content root", async ({ page }) => {
+    await installClipboardCapture(page);
+    const { html } = stageContent(IN_ROOT_CHROME, { key: "cmh-inroot-chrome" });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await addTextComment(page, "#commentRoot section p", "in-root chrome note");
+    const cid = (await allCids(page))[0];
+    const pop = page.locator(".cm-comment-popover");
+    const openDialog = async () => {
+      await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+      await expect(page.locator("#hlBubble")).toBeVisible();
+      await page.locator("#hlBubble").click();
+      await expect(pop).toBeVisible();
+    };
+    const services = () => page.$$eval("#commentRoot table tbody tr td:first-child", (tds) => tds.map((t) => t.textContent.trim()));
+
+    // A sortable-table sort control lives INSIDE the content root, so containment calls it document
+    // content - but it is the layer's own chrome, and the reviewer's FIRST click must sort.
+    expect(await services()).toEqual(["gateway", "auth", "catalog"]);
+    await openDialog();
+    const ctrl = page.locator("#commentRoot table thead th", { hasText: "Requests" }).locator(".cmh-sort-ctrl");
+    await ctrl.click();
+    await expect(ctrl).toHaveAttribute("data-dir", "asc");
+    expect(await services()).toEqual(["auth", "gateway", "catalog"]);
+    await expect(pop).toBeHidden();
+
+    // Same for a widget's "Reset moves", which the runtime injects into the widget itself.
+    await page.evaluate(() => document.getElementById("later").appendChild(document.querySelector('[data-cm-part="a"]')));
+    await widgetMutationFrame(page);
+    const reset = page.locator("#board .cm-widget-reset");
+    await expect(reset).toHaveCount(1);
+    await openDialog();
+    await reset.click();
+    await widgetMutationFrame(page);
+    await expect(page.locator('#now [data-cm-part="a"]')).toHaveCount(1);
+    await expect(reset).toHaveCount(0);
+    await expect(pop).toBeHidden();
+
+    // ...and every other control the layer injects into the root, so the registry's coverage is
+    // pinned per control rather than asserted once and claimed for the rest: deleting any single
+    // `cmhMarkLayerChrome` call reds exactly the leg below that covers it.
+    const check = page.locator('[data-cmh-item="backend"] .cmh-check');
+    await expect(check).toHaveAttribute("data-cmh-check-state", "blank");
+    await openDialog();
+    await check.click();
+    await expect(check).toHaveAttribute("data-cmh-check-state", "check");
+    await expect(pop).toBeHidden();
+
+    // The editable note is two registrations: its mode toggle and the textarea itself. Focus is
+    // committed at mousedown, which the capture-phase swallow never sees, so the textarea leg is
+    // pinned by a bubble-phase probe instead: it records whether the click actually reached the
+    // field un-prevented, which is true only when the carve-out spared it.
+    const noteToggle = page.locator('[data-cmh-note="risk"] .cmh-note-toggle');
+    const noteField = page.locator('[data-cmh-note="risk"] .cmh-note-input');
+    const toggleLabelBefore = (await noteToggle.textContent()).trim();
+    await openDialog();
+    await noteToggle.click();
+    await expect(noteToggle).not.toHaveText(toggleLabelBefore);
+    await expect(pop).toBeHidden();
+    await page.evaluate(() => {
+      window.__cmhNoteFieldReached = false;
+      document.querySelector('[data-cmh-note="risk"] .cmh-note-input')
+        .addEventListener("click", (e) => { window.__cmhNoteFieldReached = !e.defaultPrevented; });
+    });
+    await openDialog();
+    await noteField.click();
+    expect(await page.evaluate(() => window.__cmhNoteFieldReached)).toBe(true);
+    await expect(noteField).toBeFocused();
+    await expect(pop).toBeHidden();
+
+    // The code block's Copy button.
+    await openDialog();
+    await page.locator("#commentRoot .cmh-code-wrap .cm-code-copy").first().click();
+    await expect.poll(() => lastCopied(page)).toContain('print("hello")');
+    await expect(pop).toBeHidden();
+
+    // The collapsible-section caret and the section-review badge are both injected into a heading.
+    // Both act on a SECOND section, so collapsing it cannot hide the anchor highlight the remaining
+    // legs hover, and its badge is plainly unreviewed (no comment in that section outranking it).
+    const section = page.locator("#chrome-sec2");
+    await openDialog();
+    await page.locator("#chrome-head2 .cmh-sec-caret").click();
+    await expect(section).toHaveClass(/cmh-section-collapsed/);
+    await expect(pop).toBeHidden();
+    const badge = page.locator("#chrome-head2 .cmh-review-badge");
+    await expect(badge).toHaveClass(/cmh-review-unreviewed/);
+    await openDialog();
+    await badge.click();
+    await expect(badge).toHaveClass(/cmh-review-reviewed/);
+    await expect(pop).toBeHidden();
+
+    // ...and the rendered diff's view toolbar, whose toggle switches the layout.
+    const view = page.locator(".cmh-diff-view").first();
+    const layoutBefore = await view.getAttribute("class");
+    await openDialog();
+    await page.locator(".cmh-diff-bar .cmh-diff-toggle").first().click();
+    await expect(view).not.toHaveClass(layoutBefore);
+    await expect(pop).toBeHidden();
+  });
+
+  test("CMH-CORE-16: an in-root layer control keeps its first click in the body-fallback root too", async ({ page }) => {
+    // The carve-out is identity- not containment-based, so it is the one thing that still works in
+    // the CMH-CORE-15 `<body>` fallback, where EVERY click counts as the annotated document. Without
+    // it a sort control would be unusable there for as long as a dialog is open.
+    const { html } = stageContent(IN_ROOT_CHROME, { key: "cmh-inroot-fallback" });
+    // Strip the content-root id ON DISK, not in the live page: the layer resolves its root during
+    // parse, so a post-load rename would not reach it (and a reload would restore the file anyway).
+    fs.writeFileSync(html, fs.readFileSync(html, "utf8")
+      .replace('<main id="commentRoot"', '<main id="contentWithoutCommentRoot"'));
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await expect(page.locator("#commentRoot")).toHaveCount(0);
+    await addTextComment(page, "#contentWithoutCommentRoot section p", "body fallback chrome note");
+    const cid = (await allCids(page))[0];
+    const pop = page.locator(".cm-comment-popover");
+    const openDialog = async () => {
+      await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+      await expect(page.locator("#hlBubble")).toBeVisible();
+      await page.locator("#hlBubble").click();
+      await expect(pop).toBeVisible();
+    };
+
+    await openDialog();
+    const ctrl = page.locator("table thead th", { hasText: "Requests" }).locator(".cmh-sort-ctrl");
+    await ctrl.click();
+    await expect(ctrl).toHaveAttribute("data-dir", "asc");
+    expect(await page.$$eval("table tbody tr td:first-child", (tds) => tds.map((t) => t.textContent.trim())))
+      .toEqual(["auth", "gateway", "catalog"]);
+    await expect(pop).toBeHidden();
+
+    // ...while document content in that same fallback root is still swallowed, so this is a carve-out
+    // and not a hole: the identical probe click activates only once no dialog is open.
+    await page.evaluate(() => {
+      const a = document.createElement("a");
+      a.id = "cmh-fprobe"; a.href = "#fallbacknav";
+      a.style.position = "fixed"; a.style.top = "4px"; a.style.left = "4px"; a.style.zIndex = "5";
+      a.style.display = "block"; a.style.width = "60px"; a.style.height = "20px";
+      document.getElementById("contentWithoutCommentRoot").appendChild(a);
+    });
+    await openDialog();
+    const url = page.url();
+    await page.locator("#cmh-fprobe").click();
+    await expect(pop).toBeHidden();
+    expect(page.url()).toBe(url);
+    await page.locator("#cmh-fprobe").click();
+    await expect.poll(() => page.evaluate(() => location.hash)).toBe("#fallbacknav");
+  });
+
+  test("CMH-CORE-16: the dialog still swallows a click on document content that spoofs an in-root control class", async ({ page }) => {
+    const { html } = stageContent(IN_ROOT_CHROME, { key: "cmh-inroot-spoof" });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await addTextComment(page, "#commentRoot section p", "in-root spoof note");
+    const cid = (await allCids(page))[0];
+    // The carve-out is the layer's REGISTERED control, never the class name it happens to carry:
+    // author content wearing `cmh-sort-ctrl` or `cm-widget-reset` is still document content and is
+    // still swallowed. The probes carry no text, so the document's offset space is unchanged.
+    await page.evaluate(() => {
+      [["cmh-sort-ctrl", "cmh-sort-spoof", "#sortspoofed", 4], ["cm-widget-reset", "cmh-reset-spoof", "#resetspoofed", 40]]
+        .forEach(([cls, id, href, top]) => {
+          const wrap = document.createElement("div");
+          wrap.className = cls;
+          wrap.innerHTML = '<a id="' + id + '" href="' + href + '" style="display:block;width:60px;height:20px"></a>';
+          wrap.style.position = "fixed"; wrap.style.left = "4px"; wrap.style.top = top + "px"; wrap.style.zIndex = "5";
+          document.getElementById("commentRoot").appendChild(wrap);
+        });
+    });
+    const pop = page.locator(".cm-comment-popover");
+    const url = page.url();
+    for (const id of ["cmh-sort-spoof", "cmh-reset-spoof"]) {
+      await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+      await expect(page.locator("#hlBubble")).toBeVisible();
+      await page.locator("#hlBubble").click();
+      await expect(pop).toBeVisible();
+      await page.locator(`#${id}`).click();
+      await expect(pop).toBeHidden();
+      expect(page.url()).toBe(url);
+    }
+    // Non-vacuous: with no dialog open the identical click DOES activate each spoof probe, so the
+    // assertions above pin the swallow rather than an inert probe.
+    await page.locator("#cmh-sort-spoof").click();
+    await expect.poll(() => page.evaluate(() => location.hash)).toBe("#sortspoofed");
+    await page.locator("#cmh-reset-spoof").click();
+    await expect.poll(() => page.evaluate(() => location.hash)).toBe("#resetspoofed");
   });
 
   test("CMH-CORE-16: the dialog does not swallow the first click on a floating composer control", async ({ page }) => {

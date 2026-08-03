@@ -18,6 +18,44 @@ const CMH_LAYER_SCRIPT = document.currentScript;
 // host content (which may itself be cm-skip, e.g. a chart <canvas>). See _snapshotWithTail.
 const CMH_INJECTED_CHROME = new Set();
 
+// The layer's OWN interactive chrome, held by IDENTITY. Some of it is injected INSIDE the content
+// root (a sortable-table sort control, a widget "Reset moves", a checklist box), where containment
+// cannot tell it from author content and a class match would let author content spoof its way past
+// a guard. Registering each control where the layer CREATES it is the only test a document cannot
+// fake. Register the interactive CONTROL itself, never a container that also holds inert or author
+// content (a toolbar's label, the code wrap around an author `<pre>`, an author `[data-cmh-note]`
+// container): membership below covers the whole subtree, so a container registration hands away the
+// dismiss click on dead space for no functional gain. Consumed by the comment dialog's
+// outside-click swallow (53-comment-popover.js).
+const CMH_LAYER_CHROME = new WeakSet();
+function cmhMarkLayerChrome(el) {
+  if (!el || el.nodeType !== 1) return el;
+  // Enforce the invariant rather than only documenting it: registering a node that IS or CONTAINS
+  // the annotated document would exempt the whole document from the swallow, which is the one
+  // mistake a future call site could make that silently disables the guard entirely.
+  try {
+    if (el === document.documentElement || el === document.body) return el;
+    if (root && el.contains(root)) return el;
+  } catch (e) { return el; }
+  CMH_LAYER_CHROME.add(el);
+  return el;
+}
+// True when a click landed on, or inside, a registered chrome subtree. Prefers the EVENT's
+// propagation path (fixed at dispatch) so a control another listener detaches mid-dispatch is still
+// recognized, and falls back to the live ancestor chain where `composedPath` is unavailable.
+function cmhClickHitsLayerChrome(target, path) {
+  if (path) {
+    for (let i = 0; i < path.length; i++) if (CMH_LAYER_CHROME.has(path[i])) return true;
+    return false;
+  }
+  let el = target && target.nodeType === 1 ? target : (target && target.parentElement) || null;
+  while (el) {
+    if (CMH_LAYER_CHROME.has(el)) return true;
+    el = el.parentElement;
+  }
+  return false;
+}
+
 // Scroll behavior that respects prefers-reduced-motion: JS scrollIntoView/scrollTo take a
 // `behavior` option that OVERRIDES the CSS `scroll-behavior` reset, so every programmatic
 // smooth scroll must consult this so motion-sensitive readers get an instant jump instead.
@@ -163,7 +201,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.514.0";
+const CMH_VERSION = "1.515.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -2838,6 +2876,7 @@ function renderDiffBlock(block) {
     toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = "cmh-diff-toggle";
+    cmhMarkLayerChrome(toggle);
     toggle.textContent = layout === "split" ? "To inline view" : "To side-by-side view";
     toggle.title = "Switch between side-by-side and inline diff";
     bar.appendChild(toggle);
@@ -2847,6 +2886,7 @@ function renderDiffBlock(block) {
     hlToggle = document.createElement("button");
     hlToggle.type = "button";
     hlToggle.className = "cmh-diff-hltoggle";
+    cmhMarkLayerChrome(hlToggle);
     const on = diffSyntaxOn();
     hlToggle.textContent = on ? "Syntax: on" : "Syntax: off";
     hlToggle.title = "Toggle syntax highlighting in diffs";
@@ -4678,6 +4718,7 @@ function _syncWidgetResetButtons() {
       btn = document.createElement("button");
       btn.type = "button";
       btn.className = "cm-skip cm-widget-reset";
+      cmhMarkLayerChrome(btn);
       btn.textContent = "Reset moves";
       btn.title = "Return cards to their original positions";
       btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); resetWidgetMoves(w); });
@@ -4970,6 +5011,7 @@ function _clMakeBtn(item) {
   const b = document.createElement("button");
   b.type = "button";
   b.className = "cmh-check cm-skip";
+  cmhMarkLayerChrome(b);
   b.setAttribute("data-cmh-check-btn", "");
   b.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); _clCycleItem(item); });
   b.addEventListener("keydown", (e) => {
@@ -5349,6 +5391,7 @@ function setupNotesLayer() {
 
     const ta = document.createElement("textarea");
     ta.className = "cmh-note-input cm-skip";
+    cmhMarkLayerChrome(ta);
     ta.id = "cmh-note-input-" + (++_noteSeq);
     ta.value = current;
     ta.spellcheck = false;
@@ -5368,6 +5411,7 @@ function setupNotesLayer() {
     const toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = "cmh-note-toggle cm-skip";
+    cmhMarkLayerChrome(toggle);
     toggle.setAttribute("data-cmh-note-toggle", "");
     toggle.addEventListener("click", (ev) => {
       ev.preventDefault(); ev.stopPropagation();
@@ -5380,6 +5424,7 @@ function setupNotesLayer() {
       const fold = document.createElement("button");
       fold.type = "button";
       fold.className = "cmh-note-fold cm-skip";
+      cmhMarkLayerChrome(fold);
       fold.setAttribute("data-cmh-note-fold", "");
       fold.setAttribute("aria-controls", ta.id);
       fold.addEventListener("click", (ev) => {
@@ -8838,8 +8883,10 @@ function setupSidebarResize() {
    reviewer edits exactly where they clicked instead of being sent to a floating composer. A click
    anywhere else closes the dialog; a pointer click in the ANNOTATED DOCUMENT is also swallowed so
    it performs no other action (for example it does not follow a link the highlight sits on), while
-   a keyboard-activated click, and a click on the layer's own surfaces (its chrome, and the editors
-   it has open), still reach their target.
+   a keyboard-activated click, and a click on the layer's own surfaces, still reach their target -
+   the chrome outside the root, the editors it has open, and the controls it injects INSIDE the root,
+   which are resolved by identity through the `cmhMarkLayerChrome` registry (00-preamble.js) rather
+   than by containment.
    While the dialog is being edited it stays open (an outside click
    or the anchor scrolling away would discard the draft). The sidebar jump still runs alongside this
    from 52-hover-bubble.js. */
@@ -9024,6 +9071,11 @@ function cmhPopoverWouldSwallowClick(e) {
   const path = _cmhEventPath(e);
   if (_cmhClickIsInPopover(e.target, path)) return false;
   if (!_cmhClickIsInAnnotatedDocument(e, path)) return false;
+  // The layer injects controls INSIDE the content root too (a sort control, a widget reset), which
+  // containment counts as document content. They are carved out by IDENTITY from the registry the
+  // layer fills where it creates them (00-preamble.js), so document content that merely carries the
+  // same class names is still swallowed.
+  if (cmhClickHitsLayerChrome(e.target, path)) return false;
   return !_cmhClickIsInLayerEditor(e.target, path);
 }
 
@@ -11310,6 +11362,7 @@ function setupCodeCopy() {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "cm-code-copy cm-skip";
+    cmhMarkLayerChrome(btn);
     btn.textContent = "Copy";
     btn.title = "Copy this code block to the clipboard";
     btn.addEventListener("click", function () {
@@ -11763,6 +11816,7 @@ function setupSortableTables() {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "cmh-sort-ctrl cm-skip";
+      cmhMarkLayerChrome(btn);
       btn.title = "Sort by this column";
       btn.setAttribute("aria-label", "Sort by " + ((th.textContent || "").trim() || ("column " + (ci + 1))));
       btn.innerHTML = '<span class="cmh-sort-up" aria-hidden="true"></span><span class="cmh-sort-dn" aria-hidden="true"></span>';
@@ -14861,6 +14915,7 @@ function setupCollapsibleSections() {
     const caret = document.createElement("button");
     caret.type = "button";
     caret.className = "cmh-sec-caret cm-skip";
+    cmhMarkLayerChrome(caret);
     caret.setAttribute("aria-expanded", "true");
     caret.setAttribute("aria-label", "Collapse section");
     caret.title = "Collapse section";
@@ -16181,6 +16236,7 @@ function _ensureBadge(heading) {
     badge = document.createElement("button");
     badge.type = "button";
     badge.className = "cmh-review-badge cm-skip";
+    cmhMarkLayerChrome(badge);
     heading.appendChild(badge);
     badge.addEventListener("click", function (e) {
       e.stopPropagation();
