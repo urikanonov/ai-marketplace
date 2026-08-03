@@ -4,6 +4,23 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.397.0] - 2026-08-03
+
+### Fixed
+
+- A sidebar re-render that lands while a modal dialog is open (Manage storage, the clear-all
+  confirm, Help) no longer hands keyboard focus to the side pane BEHIND that dialog's overlay
+  (issue #884). The pane restores an in-progress inline reply/edit draft and its selection across
+  a re-render, and re-focuses that editor when it owned focus beforehand; with an `aria-modal`
+  dialog up, the pane is behind the overlay, so the editor's ownership is vetoed for the whole
+  rebuild and the deferred focus is dropped. A focus the rebuild ORPHANED (it destroyed the control
+  that held it, dropping `activeElement` to `<body>`) is handed back to the dialog rather than left
+  stranded, so its Tab trap keeps working. Without this, a keyboard or screen-reader reviewer could
+  be left typing into an invisible, unreachable textarea outside the modal.
+
+
+
+
 ## [1.437.0] - 2026-08-03
 
 ### Fixed
