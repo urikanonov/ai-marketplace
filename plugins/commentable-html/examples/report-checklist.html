@@ -17317,7 +17317,6 @@ const _OFFLINE_NAV_IDENT_RE = /[.A-Za-z0-9_$]/;
 const _OFFLINE_NAV_STATEMENT_RE = /[;})>\n\r\u2028\u2029]/;
 const _OFFLINE_NAV_LINE_BREAK_RE = /[\n\r\u2028\u2029]/;
 const _OFFLINE_NAV_PREFIX_NAMES = ["window", "self", "top", "parent", "globalThis", "document", "frames"];
-const _OFFLINE_NAV_PREFIX_LOWER = _OFFLINE_NAV_PREFIX_NAMES.map(function (n) { return _offlineNavAsciiLower(n); });
 const _OFFLINE_LOCAL_LOCATION_RE = /(?:^|[^.A-Za-z0-9_$])(?:(?:var|let|const|function|class)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+location(?![A-Za-z0-9_$])|(?:var|let|const)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*[{\[][^}\]]{0,400}location(?![A-Za-z0-9_$])|function[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*[A-Za-z0-9_$]{0,100}[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\([^)]{0,400}location(?![A-Za-z0-9_$])|catch[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\([ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*location(?![A-Za-z0-9_$]))/i;
 function _offlineNavAsciiLower(text) {
   let out = "";
@@ -17327,6 +17326,8 @@ function _offlineNavAsciiLower(text) {
   }
   return out;
 }
+const _OFFLINE_NAV_PREFIX_LOWER = _OFFLINE_NAV_PREFIX_NAMES.map(function (n) { return _offlineNavAsciiLower(n); });
+const _OFFLINE_NAV_PREFIX_MAX = _OFFLINE_NAV_PREFIX_LOWER.reduce(function (m, n) { return Math.max(m, n.length); }, 0);
 function _offlineNavSkipWsBack(src, pos) {
   while (pos > 0 && _OFFLINE_NAV_WS_RE.test(src.charAt(pos - 1))) pos--;
   return pos;
@@ -17334,11 +17335,14 @@ function _offlineNavSkipWsBack(src, pos) {
 function _offlineNavBoundaryOk(src, pos) {
   return pos === 0 || !_OFFLINE_NAV_IDENT_RE.test(src.charAt(pos - 1));
 }
+// One ASCII fold per chain element rather than one per candidate name: the tail is folded once at
+// the longest name's width and every name is then tested against it. Seven folds per element cost
+// 3s on a 1.4 MB chain of them, which is linear but with a constant big enough to matter.
 function _offlineNavPrefixStart(src, pos) {
+  const tail = _offlineNavAsciiLower(src.slice(Math.max(0, pos - _OFFLINE_NAV_PREFIX_MAX), pos));
   for (let i = 0; i < _OFFLINE_NAV_PREFIX_LOWER.length; i++) {
     const name = _OFFLINE_NAV_PREFIX_LOWER[i];
-    const start = pos - name.length;
-    if (start >= 0 && _offlineNavAsciiLower(src.slice(start, pos)) === name) return start;
+    if (pos >= name.length && tail.endsWith(name)) return pos - name.length;
   }
   return -1;
 }

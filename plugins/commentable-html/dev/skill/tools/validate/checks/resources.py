@@ -150,6 +150,7 @@ def _offline_nav_ascii_lower(text):
 
 OFFLINE_NAV_PREFIX_LOWER = tuple(_offline_nav_ascii_lower(name)
                                  for name in OFFLINE_NAV_PREFIX_NAMES)
+OFFLINE_NAV_PREFIX_MAX = max(len(name) for name in OFFLINE_NAV_PREFIX_LOWER)
 
 
 def _offline_nav_skip_ws_back(src, pos):
@@ -163,10 +164,20 @@ def _offline_nav_boundary_ok(src, pos):
 
 
 def _offline_nav_prefix_start(src, pos):
+    """Start index of a global prefix name ending at `pos`, or -1.
+
+    One ASCII fold per chain element rather than one per candidate name: the tail is folded once at
+    the longest name's width and every name is then tested against it. Seven folds per element cost
+    3s on a 1.4 MB chain of them, which is linear but with a constant big enough to matter.
+    """
+    tail = src[max(0, pos - OFFLINE_NAV_PREFIX_MAX):pos]
+    # `str.lower()` is C-fast and, on an ASCII slice, is exactly the ASCII fold; the per-character
+    # fold is only needed when the slice carries a non-ASCII character, which is where `str.lower()`
+    # would part company with the JS engine.
+    tail = tail.lower() if tail.isascii() else _offline_nav_ascii_lower(tail)
     for name in OFFLINE_NAV_PREFIX_LOWER:
-        start = pos - len(name)
-        if start >= 0 and _offline_nav_ascii_lower(src[start:pos]) == name:
-            return start
+        if pos >= len(name) and tail.endswith(name):
+            return pos - len(name)
     return -1
 
 

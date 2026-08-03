@@ -1780,6 +1780,24 @@ class RuntimeParityTests(unittest.TestCase):
             self.assertFalse(resources.offline_script_navigates_to_network(sample),
                              "the validator now rejects the benign script %r" % sample)
 
+    def _run_nav_node(self, node, script, payload, what, timeout=180):
+        """Evaluate the extracted navigation source in node, failing rather than hanging.
+
+        A timeout is not belt and braces here: the shape these checks exist to catch is a scan that
+        grew superlinear, so a regression makes node run for minutes to hours. Without the timeout
+        the run would HANG at exactly the moment the guard was meant to fire.
+        """
+        try:
+            proc = subprocess.run([node, "-e", script], input=json.dumps(payload),
+                                  capture_output=True, text=True, encoding="utf-8",
+                                  timeout=timeout)
+        except subprocess.TimeoutExpired:
+            self.fail("node did not finish %s within %ds - the scan is superlinear again, which is "
+                      "exactly what this guard exists to catch" % (what, timeout))
+        self.assertEqual(proc.returncode, 0,
+                         "node could not evaluate %s: %s" % (what, proc.stderr))
+        return json.loads(proc.stdout)
+
     def test_the_navigation_pattern_behaves_the_same_in_the_real_js_engine(self):
         """Byte-identical pattern text is necessary but NOT sufficient - run the scan in node too.
 
@@ -1806,11 +1824,7 @@ class RuntimeParityTests(unittest.TestCase):
             "navigates:p.navigates.map(_offlineScriptNavigatesToNetwork),"
             "benign:p.benign.map(_offlineScriptNavigatesToNetwork)}));});"
         )
-        proc = subprocess.run([node, "-e", script], input=json.dumps(payload),
-                              capture_output=True, text=True, encoding="utf-8")
-        self.assertEqual(proc.returncode, 0,
-                         "node could not evaluate the navigation scan: %s" % proc.stderr)
-        verdicts = json.loads(proc.stdout)
+        verdicts = self._run_nav_node(node, script, payload, "the navigation scan")
         # Length-check before zipping: `zip` truncates silently, so a helper that returned a short
         # (or empty) list would let this pass having asserted nothing.
         self.assertEqual(len(verdicts.get("navigates", [])), len(self._NAV_CORPUS_NAVIGATES),
@@ -1835,6 +1849,10 @@ class RuntimeParityTests(unittest.TestCase):
         Deterministic and generated rather than listed, because the shapes that matter are the
         near-misses at the JOINS - a boundary character, an optional-chaining dot, a chain that
         ends in whitespace - and those are combinations, not samples anybody thinks to write down.
+
+        Keep every crossed fragment SHORT. The oracle these samples are compared against is the
+        quadratic pattern itself, so a fragment that expands into a long near-match would resurrect
+        the very cost this change removed, in the test rather than in the product.
         """
         corpus = ["".join(parts) for parts in itertools.product(
             self._NAV_CROSS_HEADS, self._NAV_CROSS_CHAINS, self._NAV_CROSS_SINKS,
@@ -1884,6 +1902,34 @@ class RuntimeParityTests(unittest.TestCase):
                     "one it started matching is a benign script the exporter now deletes."
                     % (which, sample))
 
+        # The crossed corpus is where the near-misses at the JOINS live, so it is the corpus most
+        # worth putting through the OTHER engine too: the curated lists above are small enough that
+        # a plausible drift in the hand-written walk (testing the boundary only at the longest chain,
+        # say) passes every one of them and still breaks 129 crossed cases.
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine equivalence check needs it")
+        script = (
+            self._runtime_nav_source() + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);"
+            "process.stdout.write(JSON.stringify(p.map(s=>["
+            "_offlineNavSinkIndex(s,false)>=0,_offlineNavSinkIndex(s,true)>=0])));});"
+        )
+        verdicts = self._run_nav_node(node, script, corpus, "the crossed navigation corpus")
+        self.assertEqual(len(verdicts), len(corpus),
+                         "node returned %d verdicts for %d crossed samples"
+                         % (len(verdicts), len(corpus)))
+        for sample, (js_full, js_prefixed) in zip(corpus, verdicts):
+            self.assertEqual(
+                js_full, bool(self._LEGACY_NAV_FULL.search(sample)),
+                "the REAL JS engine and the pattern the scan replaced disagree about every sink "
+                "in %r" % sample)
+            self.assertEqual(
+                js_prefixed, bool(self._LEGACY_NAV_PREFIXED.search(sample)),
+                "the REAL JS engine and the pattern the scan replaced disagree about the prefixed "
+                "sink in %r" % sample)
+
     def test_the_navigation_pattern_cannot_be_made_to_backtrack(self):
         """The scan must stay linear on adversarial input, in BOTH engines.
 
@@ -1930,10 +1976,8 @@ class RuntimeParityTests(unittest.TestCase):
             "return {ms:Date.now()-t,hit:hit};});"
             "process.stdout.write(JSON.stringify(out));});"
         )
-        proc = subprocess.run([node, "-e", script], input=json.dumps({"evils": evils}),
-                              capture_output=True, text=True, encoding="utf-8")
-        self.assertEqual(proc.returncode, 0, "node could not run the scan: %s" % proc.stderr)
-        results = json.loads(proc.stdout)
+        results = self._run_nav_node(node, script, {"evils": evils},
+                                     "the adversarial navigation inputs")
         self.assertEqual(len(results), len(evils))
         for evil, result in zip(evils, results):
             self.assertFalse(result["hit"])
@@ -1942,10 +1986,24 @@ class RuntimeParityTests(unittest.TestCase):
                             "the exporter would hang the reviewer's browser tab on an "
                             "attacker-authored document" % (result["ms"], len(evil)))
 
-    # A near-match that arms the prefix chain and never reaches a sink, at 10x steps. 18 KB is the
-    # size the quadratic pattern took 2.3s on, so the smallest step alone reds a regression in
-    # seconds rather than after the largest one has run for an hour.
-    _NAV_SCALING_STEPS = (2000, 20000, 200000)
+    # Two near-match SHAPES, each at 10x steps, because they stress opposite halves of the scan.
+    # `head + unit * n + tail` must never match, so the whole input is walked before the verdict.
+    #  - the anchorless near-match arms the prefix chain and never reaches a sink at all: this is
+    #    the shape the quadratic pattern died on, and 18 KB is the size it took 2.3s on, so the
+    #    smallest step alone reds a regression in seconds rather than after the largest one has run
+    #    for an hour;
+    #  - the prefix chain puts ONE anchor behind n prefixes, so the cost is the BACKWARDS walk
+    #    rather than the anchor pass. It really does touch every character, hence the smaller steps;
+    #  - the statement-position near-sink repeats an ASSIGN-tail sink behind a long whitespace run
+    #    that an `X` stops from ever qualifying, which is the only path the first two do not walk.
+    #    Its steps are smaller again because Python pays a regex call per whitespace character here
+    #    (1.3s on 1.7 MB, against 0.2s in node) - linear, but with the largest constant of the three.
+    _NAV_SCALING_SHAPES = (
+        ("anchorless near-match", "", "window . ", "x", (2000, 20000, 200000)),
+        ("prefix chain", "$", "frames.", 'location.href="https:"', (500, 5000, 50000)),
+        ("statement-position near-sink", "", "X" + " " * 500 + 'location = "//e"; ', "",
+         (5, 50, 500)),
+    )
     _NAV_SCALING_BUDGET = 1.0
 
     def test_the_navigation_scan_stays_linear_as_the_near_match_grows(self):
@@ -1965,60 +2023,58 @@ class RuntimeParityTests(unittest.TestCase):
         in the reviewer's own browser, so the damage is an Export Offline that appears to hang - but
         an export that appears to hang is indistinguishable from a broken feature.
         """
-        elapsed = []
-        for n in self._NAV_SCALING_STEPS:
-            evil = "window . " * n + "x"
-            start = time.monotonic()
-            self.assertFalse(resources.offline_script_navigates_to_network(evil))
-            took = time.monotonic() - start
-            elapsed.append(took)
-            self.assertLess(
-                took, self._NAV_SCALING_BUDGET,
-                "the navigation scan took %.2fs on a %d-character near-match. The scan is meant to "
-                "be driven from the `location`/`open` anchors, so a near-match that contains "
-                "neither costs one pass; a quadratic term is back." % (took, len(evil)))
-        # The absolute budgets above cannot be met by a quadratic implementation at the largest
-        # step, but state the SCALING directly as well: 10x the input, at most 30x the time (with a
-        # floor, because the fastest step is too quick to time reliably).
-        self.assertLess(
-            elapsed[-1], max(0.5, elapsed[-2] * 30),
-            "the navigation scan took %.3fs on a %d-character near-match and %.3fs on one 10x "
-            "longer - that is superlinear growth, so the cost is quadratic again"
-            % (elapsed[-2], len("window . " * self._NAV_SCALING_STEPS[-2] + "x"), elapsed[-1]))
-
         node = shutil.which("node")
-        if not node:
-            return
-        script = (
-            self._runtime_nav_source() + "\n"
-            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
-            "const p=JSON.parse(raw);"
-            "process.stdout.write(JSON.stringify(p.steps.map(n=>{"
-            "const evil='window . '.repeat(n)+'x';const t=Date.now();"
-            "const hit=_offlineScriptNavigatesToNetwork(evil);"
-            "return {ms:Date.now()-t,hit:hit,len:evil.length};})));});"
-        )
-        proc = subprocess.run([node, "-e", script],
-                              input=json.dumps({"steps": list(self._NAV_SCALING_STEPS)}),
-                              capture_output=True, text=True, encoding="utf-8")
-        self.assertEqual(proc.returncode, 0, "node could not run the scan: %s" % proc.stderr)
-        results = json.loads(proc.stdout)
-        self.assertEqual(len(results), len(self._NAV_SCALING_STEPS),
-                         "node returned %d timings for %d steps"
-                         % (len(results), len(self._NAV_SCALING_STEPS)))
-        for result in results:
-            self.assertFalse(result["hit"])
+        for label, head, unit, tail, steps in self._NAV_SCALING_SHAPES:
+            elapsed = []
+            for n in steps:
+                evil = head + unit * n + tail
+                start = time.monotonic()
+                self.assertFalse(resources.offline_script_navigates_to_network(evil),
+                                 "the %s sample must NOT match, or the scan stops early and times "
+                                 "nothing" % label)
+                took = time.monotonic() - start
+                elapsed.append(took)
+                self.assertLess(
+                    took, self._NAV_SCALING_BUDGET,
+                    "the navigation scan took %.2fs on a %d-character %s. It is meant to cost one "
+                    "pass over the input; a quadratic term is back." % (took, len(evil), label))
+            # The absolute budgets above cannot be met by a quadratic implementation at the largest
+            # step, but state the SCALING directly as well: 10x the input, at most 30x the time
+            # (with a floor, because the fastest step is too quick to time reliably).
             self.assertLess(
-                result["ms"], int(self._NAV_SCALING_BUDGET * 1000),
-                "the REAL JS engine took %dms on a %d-character near-match - the exporter would "
-                "hang the reviewer's browser tab on a document that plants one, and the vendored "
-                "payload makes planting one cost a few hundred bytes"
-                % (result["ms"], result["len"]))
-        self.assertLess(
-            results[-1]["ms"], max(500, results[-2]["ms"] * 30),
-            "the REAL JS engine took %dms on a %d-character near-match and %dms on one 10x longer "
-            "- that is superlinear growth"
-            % (results[-2]["ms"], results[-2]["len"], results[-1]["ms"]))
+                elapsed[-1], max(0.5, elapsed[-2] * 30),
+                "the navigation scan took %.3fs on a %d-character %s and %.3fs on one 10x longer - "
+                "that is superlinear growth, so the cost is quadratic again"
+                % (elapsed[-2], len(head + unit * steps[-2] + tail), label, elapsed[-1]))
+
+            if not node:
+                continue
+            script = (
+                self._runtime_nav_source() + "\n"
+                + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+                "const p=JSON.parse(raw);"
+                "process.stdout.write(JSON.stringify(p.steps.map(n=>{"
+                "const evil=p.head+p.unit.repeat(n)+p.tail;const t=Date.now();"
+                "const hit=_offlineScriptNavigatesToNetwork(evil);"
+                "return {ms:Date.now()-t,hit:hit,len:evil.length};})));});"
+            )
+            payload = {"steps": list(steps), "head": head, "unit": unit, "tail": tail}
+            results = self._run_nav_node(node, script, payload, "the %s timings" % label)
+            self.assertEqual(len(results), len(steps),
+                             "node returned %d timings for %d steps" % (len(results), len(steps)))
+            for result in results:
+                self.assertFalse(result["hit"])
+                self.assertLess(
+                    result["ms"], int(self._NAV_SCALING_BUDGET * 1000),
+                    "the REAL JS engine took %dms on a %d-character %s - the exporter would hang "
+                    "the reviewer's browser tab on a document that plants one, and the vendored "
+                    "payload makes planting one cost a few hundred bytes"
+                    % (result["ms"], result["len"], label))
+            self.assertLess(
+                results[-1]["ms"], max(500, results[-2]["ms"] * 30),
+                "the REAL JS engine took %dms on a %d-character %s and %dms on one 10x longer - "
+                "that is superlinear growth"
+                % (results[-2]["ms"], results[-2]["len"], label, results[-1]["ms"]))
 
     def test_the_layer_script_survives_its_own_offline_strips(self):
         """The review layer's own script is stripped by the same pass as any other inline script.
