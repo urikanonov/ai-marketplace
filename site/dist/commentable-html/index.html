@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.425.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.427.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.427.0] - 2026-08-03</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The validator now keeps a HEADING that a document leaves unclosed at end of input. A file truncated inside a heading (<code>&lt;h2 id=&quot;sec&quot;&gt;Title</code> with no closer) dropped that heading from the parsed view entirely, even though a browser renders it - exactly as it runs an unclosed <code>&lt;style&gt;</code> to the end of the document. Every heading-derived check was blind to the last heading of such a file: the id scan, the TOC/anchor scan and the heading path a comment anchors to. The parser now finalizes an open heading at end of input through the same helper the end tag uses, so its text, id and top-level/lede flags read the same either way. The same helper now also ends a heading when an ANCESTOR closes, and when a NEW heading starts on it, as a browser does: text after <code>&lt;/section&gt;</code>, after the end of <code>#commentRoot</code>, or after a following <code>&lt;h2&gt;</code> is no longer glued onto the heading (which used to swallow the following prose - and the next heading, id and all - into one title).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.425.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -504,6 +511,8 @@
               <li>The tools outside the validator&#x27;s <code>checks</code> package - the deck validator, the contrast scanner, and the <code>doc_stats</code>, <code>fix_skip</code>, <code>generate_toc</code> and <code>wrap_sections</code> authoring tools - decode attribute values through that same shared browser rule instead of trusting the host <code>html.parser</code>. Each kept its own attribute dict, so the same document was read one way by the validator and another way by the tool beside it: a named character reference that is only a PREFIX of the value (<code>class=&quot;mermaid &amp;nbspcm-skip&quot;</code>) resolved on Python 3.12 and invented a <code>cm-skip</code> token the author never wrote, and a duplicated attribute kept the LAST occurrence where HTML5 keeps the first - which let a decoy <code>http-equiv</code> hide a <code>&lt;meta refresh&gt;</code> redirect from the deck&#x27;s active-content scan, a decoy <code>style=</code> hide the live declaration from the contrast scanner, and a decoy <code>id=&quot;commentRoot&quot;</code> scope the section wrapping to the wrong element.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.416.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -519,8 +528,6 @@
               <li>Recorded as a deliberate scope boundary: Export as Shareable does NOT neutralize a script that borrows a reserved commentable-html data id, the way Export Offline retypes one to inert JSON. Offline does that because its zero-network promise requires the egress strips&#x27; reserved-id exemption to be earned; Shareable makes no such promise and preserves author scripts by design, so the decoy travels untouched. What protects a Shareable export is the boundary above, not a rewrite of the author&#x27;s script.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.407.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -553,14 +560,7 @@
               <li>The Chart.js CDN exemption in shareable mode is bound to a <code>src</code> loader again. Widening the script-load set had extended it to <code>href</code> / <code>xlink:href</code>, where the version and SRI checks that justify the exemption never run, so a remote script whose path merely ends in <code>chart.min.js</code> would have passed validation unexamined.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.396.0] - 2026-08-03</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Every floating affordance now measures the VISUAL viewport instead of the layout viewport, so an on-screen keyboard or a pinch zoom can no longer hide one. <code>window.innerWidth</code> / <code>innerHeight</code> describe the LAYOUT viewport: it does not shrink when a soft keyboard opens (iOS Safari, and Chrome for Android with the default <code>interactive-widget=resizes-visual</code>) and does not move when a pinch-zoomed page is panned, and neither fires a <code>window</code> <code>resize</code>. A control the layer believed fitted could therefore sit behind the keyboard - and focusing a comment textarea is exactly what opens it. - One shared vocabulary (<code>cmhViewportBox()</code>, <code>cmhViewportRect()</code>, <code>cmhOnViewportChange()</code>) now prefers <code>window.visualViewport</code> (size plus <code>offsetLeft</code>/<code>offsetTop</code>, since a <code>position: fixed</code> control is placed in layout coordinates that a pan shifts under it) and falls back to <code>window.innerWidth</code>/<code>innerHeight</code> where that API is absent. - The hover bubble, every structural add button, the in-document comment dialog (placement, height cap, and unanchored re-fit), the floating composer (placement, drag clamp, centred document/slide anchor), the Add-comment selection menu, the heading add button, and the chart and chrome tooltips are all bounded by that box. An ANCHORED affordance whose anchor leaves the visible box (the hover bubble, the add buttons, a dialog being read) hides or closes rather than floating over the keyboard; a surface holding reviewer input (the composer, a dialog mid-edit) and the Add-comment menu are re-clamped into the visible box instead, so no draft is thrown away. - They react to <code>visualViewport</code> <code>resize</code> and <code>scroll</code> as well as the <code>window</code> events, through one shared listener set that every surface registers with exactly once, so repeatedly opening and closing surfaces cannot multiply listeners. The two hover tooltips are dismissed rather than moved (the next pointer move or focus raises them again), which is also the one visible change on a plain desktop window resize.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">265 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">266 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
