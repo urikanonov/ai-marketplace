@@ -61,8 +61,17 @@ function _offlineDocFromHtml(html) {
 function _serializeOfflineDoc(doc) {
   return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
 }
+// A network URL in an attribute value, allowing the leading characters a browser REMOVES before it
+// parses the URL: WHATWG strips leading (and trailing) C0 controls and spaces, U+0000 to U+0020, so
+// a value padded with them still loads while one padded with NBSP or U+FEFF does not resolve as a
+// URL at all. The range is written out as literal code points because the strict validator carries
+// an INDEPENDENT Python copy of this predicate (`NETWORK_URL_RE`) and the two engines do not agree
+// about what `\s` means (Python's is Unicode-aware and matches U+001C-U+001F; JS's excludes them but
+// includes U+FEFF). A drift is the CMH-OFFLINE-04 failure mode - the gate blesses a file this strip
+// would have cleaned, or rejects one the exporter just produced.
+const _OFFLINE_NETWORK_URL_RE = /^[\u0000-\u0020]*(?:https?:)?\/\//i;
 function _offlineIsNetworkUrl(v) {
-  return /^(?:https?:)?\/\//i.test(String(v || "").trim());
+  return _OFFLINE_NETWORK_URL_RE.test(String(v || ""));
 }
 function _offlineSrcsetHasNetwork(v) {
   return String(v || "").split(",").some(function (part) {
@@ -214,15 +223,63 @@ function _neutralizeOfflineReservedDataScripts(doc) {
 }
 // How many neutralized blocks the exported file actually KEEPS. Counting at neutralization time
 // would over-report: a later pass legitimately removes some of the same elements (a network `src`
-// script), and the toast would then claim one script was both removed and kept.
+// script), and the toast would then claim one script was both removed and kept. Membership is read
+// from the element's own parent rather than `doc.contains`, which is FALSE for everything inside a
+// `<template>` even though the export serializes it.
 function _offlineCountKeptNeutralized(doc, neutralized) {
-  return neutralized.filter(function (s) { return doc.contains(s); }).length;
+  return neutralized.filter(function (s) { return s.parentNode !== null; }).length;
+}
+// A script does not always load through `src`: an SVG <script> uses `href` (SVG2) or the legacy
+// `xlink:href`, and its body is EMPTY - so a `script[src]` selector never saw it and the inline
+// egress scan below (which reads `textContent`) had nothing to read. Such a script rode into a file
+// that promises zero network with only the CSP between it and the fetch, and the strict validator
+// mirrored the same blind spot. The set is mirrored by the validator's `SCRIPT_LOAD_ATTRS`, pinned
+// by `test_the_python_and_js_script_load_attributes_agree`.
+const _OFFLINE_SCRIPT_LOAD_ATTRS = ["src", "href", "xlink:href"];
+const _OFFLINE_SVG_NS = "http://www.w3.org/2000/svg";
+// Take the load away, and take no more than that. `src` loads on any script, and an `href` /
+// `xlink:href` loads on an SVG one, so those elements go (dropping just the attribute from an SVG
+// script would start EXECUTING a body SVG2 says is ignored while `href` is present). On an HTML
+// script the same attributes are inert - they fetch nothing, in HTML or in XHTML - so deleting the
+// element would destroy an author's running code for a dead attribute; the attribute alone is
+// removed instead, which leaves the strict validator (whose flat tokenizer has no namespace to
+// consult and so reads all three attributes on every script) nothing to complain about. Returns
+// whether the ELEMENT was removed, so one carrying two network attributes is counted exactly once.
+function _offlineStripScriptLoad(s) {
+  if (_offlineIsNetworkUrl(s.getAttribute("src"))) { s.remove(); return true; }
+  const loading = ["href", "xlink:href"].filter(function (attr) {
+    return _offlineIsNetworkUrl(s.getAttribute(attr));
+  });
+  if (!loading.length) return false;
+  if (s.namespaceURI === _OFFLINE_SVG_NS) { s.remove(); return true; }
+  loading.forEach(function (attr) { s.removeAttribute(attr); });
+  return false;
+}
+// Every matching element, INCLUDING the ones parked inside a <template>. A template's children live
+// in its inert `content` fragment, which `doc.querySelectorAll` cannot see - but the validator's
+// flat tokenizer reads those tags plainly, so a network-loading element parked in a template used to
+// ride untouched into the export and then be REJECTED by the exporter's own `--strict` gate.
+// Templates nest, so the walk recurses.
+function _offlineQueryAll(root, selector) {
+  const found = [];
+  const walk = function (node) {
+    node.querySelectorAll(selector).forEach(function (el) { found.push(el); });
+    node.querySelectorAll("template").forEach(function (t) { if (t.content) walk(t.content); });
+  };
+  walk(root);
+  return found;
 }
 function _stripOfflineNetworkLoads(doc) {
   let dropped = 0;
-  doc.querySelectorAll("script[src]").forEach(function (s) {
-    if (_offlineIsNetworkUrl(s.getAttribute("src"))) { s.remove(); dropped += 1; }
+  const all = function (selector) { return _offlineQueryAll(doc, selector); };
+  all("script").forEach(function (s) {
+    if (_offlineStripScriptLoad(s)) { dropped += 1; }
   });
+  // The inline-egress scan stays on the DOCUMENT's own scripts, deliberately not the template walk
+  // above. Template content never executes, and the validator's script model skips it too, so
+  // scanning it would delete a template-parked script body the gate is happy with - content loss in
+  // exchange for nothing. The LOAD check above does walk templates, because the validator's
+  // tokenizer reads those attributes and would reject the export.
   doc.querySelectorAll("script").forEach(function (s) {
     // No id is exempt here any more. The layer's own data blocks are exempt because they are inert
     // DATA by the time this runs (`_neutralizeOfflineReservedDataScripts` made sure of it), which is
@@ -238,8 +295,8 @@ function _stripOfflineNetworkLoads(doc) {
   });
   // A per-element `referrerpolicy` overrides the document policy for that request, so a permissive
   // one would defeat the no-referrer meta on exactly the anchor an attacker planted.
-  doc.querySelectorAll("[referrerpolicy]").forEach(function (el) { el.removeAttribute("referrerpolicy"); });
-  doc.querySelectorAll("link[href]").forEach(function (link) {
+  all("[referrerpolicy]").forEach(function (el) { el.removeAttribute("referrerpolicy"); });
+  all("link[href]").forEach(function (link) {
     if (!_offlineIsNetworkUrl(link.getAttribute("href"))) return;
     const rel = (link.getAttribute("rel") || "").toLowerCase().split(/\s+/);
     const loads = ["stylesheet", "preload", "modulepreload", "preconnect", "dns-prefetch", "icon", "apple-touch-icon", "manifest", "prefetch", "prerender"];
@@ -253,29 +310,29 @@ function _stripOfflineNetworkLoads(doc) {
     if (el.tagName === "IMG" && attr === "src") el.setAttribute("src", "data:image/gif;base64,R0lGODlhAQABAAAAACw=");
     else el.removeAttribute(attr);
   };
-  doc.querySelectorAll("meta[http-equiv]").forEach(function (m) {
+  all("meta[http-equiv]").forEach(function (m) {
     if ((m.getAttribute("http-equiv") || "").toLowerCase() === "refresh") m.remove();
   });
-  doc.querySelectorAll("img").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "srcset"); });
-  doc.querySelectorAll("iframe").forEach(function (el) { clearAttr(el, "src"); });
-  doc.querySelectorAll("video").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "poster"); });
-  doc.querySelectorAll("audio").forEach(function (el) { clearAttr(el, "src"); });
-  doc.querySelectorAll("source").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "srcset"); });
-  doc.querySelectorAll("track").forEach(function (el) { clearAttr(el, "src"); });
-  doc.querySelectorAll("image").forEach(function (el) { clearAttr(el, "href"); clearAttr(el, "xlink:href"); });
-  doc.querySelectorAll("use").forEach(function (el) { clearAttr(el, "href"); clearAttr(el, "xlink:href"); });
-  doc.querySelectorAll("input[src]").forEach(function (el) {
+  all("img").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "srcset"); });
+  all("iframe").forEach(function (el) { clearAttr(el, "src"); });
+  all("video").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "poster"); });
+  all("audio").forEach(function (el) { clearAttr(el, "src"); });
+  all("source").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "srcset"); });
+  all("track").forEach(function (el) { clearAttr(el, "src"); });
+  all("image").forEach(function (el) { clearAttr(el, "href"); clearAttr(el, "xlink:href"); });
+  all("use").forEach(function (el) { clearAttr(el, "href"); clearAttr(el, "xlink:href"); });
+  all("input[src]").forEach(function (el) {
     if ((el.getAttribute("type") || "").toLowerCase() === "image") clearAttr(el, "src");
   });
-  doc.querySelectorAll("form[action]").forEach(function (el) { clearAttr(el, "action"); });
-  doc.querySelectorAll("button[formaction], input[formaction]").forEach(function (el) { clearAttr(el, "formaction"); });
-  doc.querySelectorAll("object").forEach(function (el) { clearAttr(el, "data"); });
-  doc.querySelectorAll("embed").forEach(function (el) { clearAttr(el, "src"); });
-  doc.querySelectorAll("[background]").forEach(function (el) { clearAttr(el, "background"); });
-  doc.querySelectorAll("style").forEach(function (style) {
+  all("form[action]").forEach(function (el) { clearAttr(el, "action"); });
+  all("button[formaction], input[formaction]").forEach(function (el) { clearAttr(el, "formaction"); });
+  all("object").forEach(function (el) { clearAttr(el, "data"); });
+  all("embed").forEach(function (el) { clearAttr(el, "src"); });
+  all("[background]").forEach(function (el) { clearAttr(el, "background"); });
+  all("style").forEach(function (style) {
     style.textContent = _offlineCssNoNetwork(style.textContent || "");
   });
-  doc.querySelectorAll("[style]").forEach(function (el) {
+  all("[style]").forEach(function (el) {
     const next = _offlineCssNoNetwork(el.getAttribute("style") || "");
     if (next) el.setAttribute("style", next);
     else el.removeAttribute("style");

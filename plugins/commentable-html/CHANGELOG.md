@@ -4,6 +4,44 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.399.0] - 2026-08-03
+
+### Fixed
+
+- The Offline export's loader strip and the strict validator both missed a script that loads
+  through `href` / `xlink:href` instead of `src`. An SVG `<script>` never uses `src` - it loads
+  through SVG2 `href` or the legacy `xlink:href` - and its body is empty, so the strip's
+  `script[src]` selector never saw it and the inline egress scan (which reads `textContent`) had
+  nothing to read; `validate.py --strict` mirrored the same blind spot and certified such a file as
+  offline-clean. The zero-network CSP was the only thing left between that element and the fetch,
+  and the strip and the gate exist precisely so the guarantee does not rest on the CSP. Both now
+  scan `src`, `href`, and `xlink:href`, and a parity test pins the two implementations' attribute
+  sets together in both directions. Each script element is examined once, so one carrying two
+  network attributes is removed - and counted in the download toast - once; a relative or `data:`
+  reference is still left untouched. What counts as a load is namespace-blind on both sides, but
+  what is done about it is not: an SVG script goes (SVG2 ignores its body while `href` is present,
+  so clearing the attribute would start executing it), while on an HTML script the same attributes
+  are inert and only the ATTRIBUTE is removed - so an author's running code is never lost over a
+  dead attribute, and the validator, whose flat tokenizer has no namespace to consult, still finds
+  nothing to complain about.
+- The offline strip now also walks `<template>` content for its load passes - scripts, media, links,
+  forms and styles - rather than scripts alone. A template's children live in an inert fragment that
+  `querySelectorAll` cannot reach, while the validator's tokenizer reads those tags plainly, so a
+  network-loading element parked in a template rode into an export that its own `--strict` gate then
+  rejected. The inline-egress scan deliberately stays on the document's own scripts, matching the
+  validator's script model: template content never executes, so scanning it would only cost an author
+  a script body the gate is happy with.
+- The exporter's and the validator's network-URL predicates now allow exactly the leading
+  characters a browser REMOVES before it parses a URL - C0 controls and spaces, U+0000 to U+0020 -
+  instead of `String.trim()` on one side and nothing on the other. A padded value of that kind
+  loads, and the validator used to bless exactly the file the strip had just cleaned; a value
+  padded with NBSP or U+FEFF resolves as a relative reference and is now left alone by both. A
+  parity test runs the runtime's own pattern in node against the validator's copy.
+- The Chart.js CDN exemption in shareable mode is bound to a `src` loader again. Widening the
+  script-load set had extended it to `href` / `xlink:href`, where the version and SRI checks that
+  justify the exemption never run, so a remote script whose path merely ends in `chart.min.js`
+  would have passed validation unexamined.
+
 ## [1.396.0] - 2026-08-03
 
 ### Fixed

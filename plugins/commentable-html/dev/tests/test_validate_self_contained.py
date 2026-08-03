@@ -148,6 +148,62 @@ class NewCheckTests(unittest.TestCase):
         errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, quote))))
         self.assertFalse(any("imports a network module" in e or "direct top-level " in e for e in errors), errors)
 
+    # An SVG <script> loads through `href` (SVG2) or the legacy `xlink:href`, never `src`, so the
+    # resource check missed it entirely and blessed such a file as offline-clean (#881). The
+    # exporter strips the same shape, so the gate has to see it too or the two disagree. The
+    # padded value is browser-real: a URL parser strips leading whitespace before it parses, so
+    # ` https://...` loads - and the exporter's own predicate trims, so a validator that did not
+    # would bless a file the strip had cleaned.
+    def test_offline_mode_rejects_an_svg_script_that_loads_through_href(self):
+        for attr in ("href", "xlink:href"):
+            for url in ("https://evil.example/x.js", "//evil.example/x.js",
+                        " \t https://evil.example/x.js"):
+                with self.subTest(attr=attr, url=url):
+                    svg = '<svg><script %s="%s"></script></svg>' % (attr, url)
+                    errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, svg))))
+                    self.assertTrue(any("offline mode" in e and "<script %s" % attr in e for e in errors),
+                                    (attr, url, errors))
+
+    # Borrowing a reserved layer id buys no exemption from the LOAD check either: the exporter
+    # neutralizes such a block into inert data, but a remote load is what the strip removes outright,
+    # so the gate must flag it rather than read the id and look away.
+    def test_offline_mode_rejects_a_reserved_id_svg_script_that_loads_through_href(self):
+        for rid in ("embeddedComments", "handledCommentIds", "commentableHtmlLayer",
+                    "reviewedSections", "cmhVendoredRichLibs"):
+            with self.subTest(reserved_id=rid):
+                svg = ('<svg><script id="%s" href="https://evil.example/x.js"></script></svg>' % rid)
+                errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, svg))))
+                self.assertTrue(any("offline mode" in e and "<script href" in e for e in errors),
+                                (rid, errors))
+
+    def test_offline_mode_accepts_a_relative_or_data_svg_script_reference(self):
+        svg = ('<svg><script href="svg-local-keep.js"></script>'
+               '<script xlink:href="data:text/javascript,void%200"></script></svg>')
+        errors, warnings = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, svg))))
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    # The self-contained guarantee is not offline-only: a shareable document that loads a script
+    # over the network is an error however the load is spelled.
+    def test_shareable_mode_rejects_a_script_that_loads_through_href(self):
+        for attr in ("href", "xlink:href"):
+            with self.subTest(attr=attr):
+                svg = '<svg><script %s="https://evil.example/x.js"></script></svg>' % attr
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, svg)))
+                self.assertTrue(any("self-contained guarantee" in e and "<script %s" % attr in e
+                                    for e in errors), (attr, errors))
+
+    # The Chart.js CDN opt-in is bound to `src`, because `check_charts` only validates a `src`
+    # loader's pinned version and SRI. Exempting an `href` would wave through a remote script with
+    # a chart-shaped filename that nothing else in the validator ever looks at.
+    def test_the_chartjs_cdn_exemption_does_not_extend_to_a_script_href(self):
+        for attr in ("href", "xlink:href"):
+            with self.subTest(attr=attr):
+                svg = '<svg><script %s="https://evil.example/z/chart.min.js"></script></svg>' % attr
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, svg)))
+                self.assertTrue(any("self-contained guarantee" in e and "<script %s" % attr in e
+                                    for e in errors), (attr, errors))
+
     def test_external_stylesheet_link_warns(self):
         link = '<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=X">'
         errors, warnings = self._errs_warns(build(body=self._body(MAIN, link)))

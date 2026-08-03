@@ -7,7 +7,7 @@ def _check_self_contained(html, parser, nonshareable):
     #      check_charts); mermaid CDN imports are handled by check_mermaid_renders.
     #      Offline mode is stricter: no network-loading resource is allowed.
     def _is_network(v):
-        return bool(re.match(r"(?:https?:)?//", v or "", re.I))
+        return bool(NETWORK_URL_RE.match(v or ""))
     descriptor = _layer_descriptor_data(parser) or {}
     offline_mode = (not nonshareable and descriptor.get("mode") == "offline")
     def _network_values(value, srcset=False):
@@ -17,7 +17,7 @@ def _check_self_contained(html, parser, nonshareable):
     def _network_error(tag, attr, val):
         label = "<%s %s=\"%s\">" % (tag, attr, val[:80])
         if offline_mode:
-            if tag == "script" and CHARTJS_SRC_RE.search(val):
+            if tag == "script" and attr == "src" and CHARTJS_SRC_RE.search(val):
                 return "offline mode: %s loads Chart.js over the network - inline it or export offline after rendering" % label
             return "offline mode: %s loads over the network - inline or remove it" % label
         return None
@@ -34,7 +34,7 @@ def _check_self_contained(html, parser, nonshareable):
             if e:
                 errors.append(e)
                 continue
-            if tag == "script" and CHARTJS_SRC_RE.search(item):
+            if tag == "script" and attr == "src" and CHARTJS_SRC_RE.search(item):
                 continue
             if tag == "link":
                 warnings.append('<link %s="%s"> loads over the network and breaks the self-contained '
@@ -57,9 +57,24 @@ def _check_self_contained(html, parser, nonshareable):
                 warnings.append('<img src="%s"> is a local path - run tools/inline_images.py to embed '
                                 "it as a data: URI so the image travels with the file" % src[:80])
         _check_network_attr("img", img, "srcset", srcset=True)
-    for tag, attr in (("link", "href"), ("script", "src"), ("iframe", "src")):
+    # An SVG <script> never uses `src`: it loads through `href` (SVG2) or the legacy `xlink:href`,
+    # and its body is empty, so neither this loader check nor the inline egress scan below saw it
+    # and `--strict` certified such a file as offline-clean. The offline export strips the same
+    # attribute set (`SCRIPT_LOAD_ATTRS`), so the gate and the exporter agree by construction.
+    # Deliberately NOT scoped to the SVG namespace: `HTMLParser` has none to consult, so a
+    # namespace test here could only approximate the one the runtime can make exactly, and an
+    # approximation is the drift this row exists to prevent. The cost is that an inert `href` on an
+    # HTML <script> is reported too - a shape no real document uses, and one that becomes a live
+    # loader the moment the same bytes are parsed as XHTML. The Chart.js CDN exemption stays bound
+    # to `src`, since `check_charts` only validates a `src` loader's version and SRI: exempting an
+    # `href` would wave through a remote script nothing else checks.
+    # Parsed once per TAG (not once per tag/attribute pair): `_find_tag_attrs` runs a full pure-Python
+    # tokenizer pass over the whole document, and the widened script set would otherwise triple that
+    # cost for scripts alone.
+    for tag, attrs in (("link", ("href",)), ("script", SCRIPT_LOAD_ATTRS), ("iframe", ("src",))):
         for el in _find_tag_attrs(html, tag):
-            _check_network_attr(tag, el, attr)
+            for attr in attrs:
+                _check_network_attr(tag, el, attr)
     if offline_mode:
         errors.extend(_offline_csp_errors(html))
         media_attrs = (
