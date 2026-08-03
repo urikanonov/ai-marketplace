@@ -92,6 +92,12 @@ function renderComments() {
   // list is rebuilt. An editor's own focus is carried by the draft snapshot below, so it is
   // excluded here, and focus outside the list is not this function's business at all.
   const _listFocus = _captureListFocus();
+  // An aria-modal dialog (Manage storage, the clear-all confirm, Help) puts the SIDE PANE BEHIND its
+  // overlay, so a re-render that lands while one is up must not hand focus to the rebuilt inline
+  // editor: that focus escapes the dialog's trap into a control the reviewer can neither see nor
+  // reach. Ownership is recorded as false for the whole rebuild while a modal is open, and the tail
+  // hands a focus the rebuild ORPHANED back to the dialog instead of leaving it stranded on <body>.
+  const _openModal = _cmhOpenModalBox();
   // A full re-render replaces the list DOM, wiping any open inline reply editor. Snapshot an in-progress
   // draft first (a re-render can be triggered by sorting, a note debounce, a checklist change, etc.) and
   // re-open the editor with the same text AND selection once the list is rebuilt, so the draft is
@@ -124,8 +130,9 @@ function renderComments() {
       // ...but FOCUS is not. A re-render is often triggered from somewhere the reviewer is not
       // looking (a note-typing debounce, a checklist tick, the Sort button), so the re-opened editor
       // is only re-focused when it owned focus beforehand; otherwise the caret would jump out of the
-      // control actually being used (issue #844).
-      hadFocus: !!(_del && (_del.contains(_act) || _pending)),
+      // control actually being used (issue #844). A modal vetoes ownership outright: the pane is
+      // behind its overlay, so no re-render may deliver focus there (issue #884).
+      hadFocus: !_openModal && !!(_del && (_del.contains(_act) || _pending)),
       // Which of the editor's own controls held it, so a reviewer parked on the formatting toolbar
       // or Save/Cancel is handed back to THAT control in the rebuilt editor instead of being dropped
       // into the textarea - the same disorienting jump, one control over.
@@ -166,7 +173,10 @@ function renderComments() {
       </div>`;
     if (typeof applyCommentSearch === "function") applyCommentSearch();
     if (typeof refreshReviewUI === "function") refreshReviewUI();
-    _restoreListFocus(_listFocus);
+    // With a dialog up the pane is behind its overlay, so the list-focus hand-back must stand down
+    // too and the focus goes back to the dialog instead.
+    if (_openModal) _keepModalFocus(_openModal);
+    else _restoreListFocus(_listFocus);
     return;
   }
   const sortKey = _anchorSortKey;
@@ -304,7 +314,60 @@ function renderComments() {
   if (typeof applyCommentSearch === "function") applyCommentSearch();
   if (typeof refreshReviewUI === "function") refreshReviewUI();
   if (_inlineDraft) _reopenInlineDraft(_inlineDraft);
-  _restoreListFocus(_listFocus);
+  if (_openModal) _keepModalFocus(_openModal);
+  else _restoreListFocus(_listFocus);
+}
+// The topmost open modal dialog, or null. Only a real focus-trapping overlay counts: the deck
+// overview marks itself aria-modal="false", and the composer/in-document dialog are not modal at
+// all, so neither may suppress the side pane's focus handling. A DOM query rather than a state flag
+// on purpose: only the storage manager keeps such a flag, while the clear-all confirm and the Help
+// panel build their own aria-modal overlays with none, so a flag-based check would miss them (and
+// every modal added later). It costs one selector match against the 0-1 aria-modal nodes in the
+// document, next to the two full-document tree walks renderComments already runs.
+function _cmhOpenModalBox() {
+  const boxes = document.querySelectorAll('.cm-modal-overlay [aria-modal="true"]');
+  return boxes.length ? boxes[boxes.length - 1] : null;
+}
+// Whether the side pane may take focus at all right now. With an aria-modal dialog up, the pane is
+// behind its overlay, so EVERY path that would focus something in it has to stand down - not just
+// the re-render's own restore, or the next Save/Cancel would hand the caret straight back.
+function _cmhFocusBlockedByModal() {
+  return !!_cmhOpenModalBox();
+}
+// The surfaces the overlay demonstrably COVERS: the side pane and the document. Focus found in one
+// of them while a dialog is up is focus the reviewer can neither see nor reach, so it is reclaimed.
+// Focus anywhere else is left alone on purpose - the deck's own chrome and a toast paint ABOVE the
+// overlay, so pulling focus off one of those would be the very yank this guard exists to prevent.
+function _cmhBehindOverlay(a) {
+  if (!a || a === document.body || a === document.documentElement) return true;
+  return !!(a.closest && a.closest(".cm-sidebar, #commentRoot"));
+}
+// Focus that is behind the open dialog belongs back in it. Rebuilding the list can destroy whatever
+// held focus (the inline editor, a card button), dropping activeElement to <body>, and a delete run
+// FROM the dialog can first restore focus to a composer's opener out in the document - either way
+// the dialog's Tab trap is silently broken while a reviewer sees a modal.
+function _keepModalFocus(modal) {
+  // The snapshot was taken before the rebuild, which can outlive the dialog it named.
+  if (modal && !modal.isConnected) modal = _cmhOpenModalBox();
+  if (!modal) return;
+  const a = document.activeElement;
+  if (modal.contains(a) || !_cmhBehindOverlay(a)) return;
+  // Prefer the dialog's own declared safe default (showConfirm marks Cancel `.cm-modal-default` so
+  // Enter cannot confirm a destructive action) over raw DOM order, which would hand back the danger
+  // button that precedes it. focus() is SILENT when its target cannot take focus (hidden, disabled,
+  // inert), so each candidate is tried until one actually lands rather than stranding focus again;
+  // the dialogs whose first focusable IS their on-open target need no marker.
+  const marked = modal.querySelector(".cm-modal-default, [autofocus]");
+  const rest = modal.querySelectorAll('button, [href], input, select, textarea, summary, [contenteditable="true"], [tabindex]:not([tabindex="-1"])');
+  const candidates = marked ? [marked].concat(Array.prototype.slice.call(rest)) : Array.prototype.slice.call(rest);
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i];
+    try { c.focus({ preventScroll: true }); } catch (e) { try { c.focus(); } catch (e2) {} }
+    if (document.activeElement === c) return;
+  }
+  // Last resort: park focus on the dialog itself rather than leave it stranded outside the trap.
+  if (!modal.hasAttribute("tabindex")) modal.setAttribute("tabindex", "-1");
+  try { modal.focus({ preventScroll: true }); } catch (e) { try { modal.focus(); } catch (e2) {} }
 }
 // Re-open an inline reply/edit editor after a re-render and restore the reviewer's in-progress text
 // AND selection, so a re-render (sort, note debounce, ...) never silently drops a draft or collapses
@@ -588,16 +651,29 @@ function _buildInlineReplyEditor(initialText, saveLabel, onSave, onCancel, opts)
     const wantEnd = keep ? ta.selectionEnd : selEnd;
     const wantDir = (keep && selDir == null) ? ta.selectionDirection : selDir;
     if (wrap.__focusTimer) clearTimeout(wrap.__focusTimer);
-    wrap.__focusTimer = setTimeout(function () {
+    // Deferred while a modal is up rather than DROPPED: the reviewer asked for this caret, so the
+    // intent is held until the dialog closes instead of leaving the re-opened editor focus-less.
+    let held = false;
+    const fire = function () {
       wrap.__focusTimer = 0;
       if (ta.isConnected === false) return;
+      // Checked at DELIVERY, not only when the timer was armed: a modal can open in between (the
+      // quota recovery opens the storage manager from a microtask, which runs BEFORE this
+      // macrotask), and landing the caret in a pane behind that overlay is exactly the escape the
+      // render-time veto closes. The selection restore stands either way; only focus waits.
+      if (_cmhFocusBlockedByModal()) { held = true; wrap.__focusTimer = setTimeout(fire, 150); return; }
+      // A held focus only lands where nothing else has claimed one, so re-delivering it can never
+      // fight the dialog's own restore-to-opener on close.
+      const act = document.activeElement;
+      if (held && act && act !== document.body && act !== document.documentElement) return;
       try {
         ta.focus();
         const r = _clampSelRange({ selStart: wantStart, selEnd: wantEnd }, ta.value.length);
         try { ta.setSelectionRange(r[0], r[1], wantDir || "none"); }
         catch (err2) { ta.setSelectionRange(r[0], r[1]); }
       } catch (err) {}
-    }, 0);
+    };
+    wrap.__focusTimer = setTimeout(fire, 0);
   };
   return wrap;
 }
@@ -628,7 +704,18 @@ function cmhSidebarNoteEditor(cid) {
   };
 }
 function _focusInList(sel) {
+  // Same rule as the re-render's restore: with a modal up the pane is behind its overlay, so a
+  // post-save hand-back must not reach into it (that would undo _keepModalFocus in the same tick).
+  if (_cmhFocusBlockedByModal()) return;
   _focusListEl(listEl.querySelector(sel));
+}
+// Hand focus back to a side-pane control an editor just vacated - unless a modal is up, in which
+// case the pane is behind its overlay and the focus the closing editor released belongs to the
+// dialog instead (doing nothing would leave it stranded on <body> outside the dialog's Tab trap).
+function _restoreFocusTo(el) {
+  const modal = _cmhOpenModalBox();
+  if (modal) { _keepModalFocus(modal); return; }
+  if (el) { try { el.focus(); } catch (e) {} }
 }
 // preventScroll: refocusing a rebuilt panel control must never scroll the DOCUMENT (inline editing
 // and the panel's own housekeeping deliberately leave the reader's place in the page alone).
@@ -769,7 +856,7 @@ function openInlineReply(card, rootId) {
   if (btn) btn.hidden = true;
   row.appendChild(editor);
   cmhAutogrowResize(editor.querySelector("textarea"));
-  _activeInlineEditor = { el: editor, kind: "reply", targetId: rootId, restore: function () { editor.remove(); if (btn) { btn.hidden = false; try { btn.focus(); } catch (e) {} } } };
+  _activeInlineEditor = { el: editor, kind: "reply", targetId: rootId, restore: function () { editor.remove(); if (btn) { btn.hidden = false; _restoreFocusTo(btn); } } };
   editor._focus();
   // First-reply identity prompt (issue #645).
   _nudgeIdentityOnReply();
@@ -841,7 +928,7 @@ function openInlineNoteEdit(entry, cid) {
     noteEl.hidden = false;
     entry.classList.remove("cm-reply-editing");
     const eb = entry.querySelector(editBtnSel);
-    if (eb) { try { eb.focus(); } catch (e) {} }
+    if (eb) _restoreFocusTo(eb);
   } };
   editor._focus();
 }

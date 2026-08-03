@@ -1151,13 +1151,15 @@ test("deleting a comment from the manager keeps focus in the dialog with an inli
   ].join(":"))).toBe("2:7:backward");
 });
 
+// Defense in depth, NOT the bug reproduction. The bug's own routes are driven entirely by supported
+// interactions in the tests above and below - a per-comment delete from the dialog, a Reply click
+// whose queued focus outlives the dialog opening, a delete that leaves focus out in the document,
+// and a stranded focus under the clear-all confirm - and each of those was confirmed RED first.
+// This one forces the remaining branch of the ownership snapshot (the editor holding focus outright
+// while a dialog is up) so the render-time veto cannot regress unnoticed behind the delivery-time
+// one; every modal takes focus on open, so that branch has no supported route of its own.
 test("a re-render while a modal is up never hands focus to the pane behind it (CMH-THREAD-09)", async ({ page }) => {
   const { ta } = await stageDraftUnderModal(page, "cmh-store-modal-render");
-  // Put the editor in the state the modal veto exists for: it OWNS focus while the dialog is up.
-  // This drives the `_del.contains(_act)` branch of the ownership snapshot directly (the deferred
-  // `_focus()` timer the runtime arms ends in the same `ta.focus()` call, and is covered on its own
-  // route below), and it is the state in which the pre-fix code delivered the caret into a textarea
-  // behind the overlay.
   await ta.evaluate((el) => el.focus());
   expect(await focusSurface(page)).toContain("sidebar");
 
