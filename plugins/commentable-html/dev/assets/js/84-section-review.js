@@ -239,8 +239,10 @@ function _cmhElementsWithId(doc, id) {
 }
 // The element the region delimited by `bounds` owns for `id`, or null when it cannot be resolved
 // unambiguously. A LONE match still resolves when the region markers are ABSENT (a document
-// upgraded from before the feature existed keeps working); malformed markers and a duplicated id
-// never resolve.
+// upgraded from before the feature existed keeps working); malformed markers never resolve. With
+// good bounds the test is OWNERSHIP, not scarcity: a decoy elsewhere in the document is fine as
+// long as exactly one block sits inside the region - that is the whole point, so do not "fix" this
+// into rejecting every document that carries a duplicate id.
 function _cmhOwnedById(doc, id, bounds) {
   const all = _cmhElementsWithId(doc, id);
   if (!all.length) return null;
