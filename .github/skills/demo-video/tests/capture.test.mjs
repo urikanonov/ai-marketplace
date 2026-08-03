@@ -13,8 +13,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { captureSession } from "../tools/record_demo.mjs";
-import { normalizeScript } from "../tools/script.mjs";
+import { captureSession, isQuitKey } from "../tools/record_demo.mjs";
+import { normalizeScript, stallNotice } from "../tools/script.mjs";
 import { DEFAULT_RULES } from "../tools/redact.mjs";
 
 const scratch = () => fs.mkdtempSync(path.join(os.tmpdir(), "demo-video-capture-"));
@@ -197,12 +197,41 @@ test("a wedged capture reports progress and says why it gave up (DEMO-CAP-05)", 
     h.progress.some((l) => /"quit"/.test(l) && /NEVER PRINTED/.test(l)),
     `no progress line named the step being waited on: ${JSON.stringify(h.progress)}`,
   );
+  // After the last turn there is no step to name, but "the operator is driving" would be a lie
+  // during exactly the wedge this line exists to diagnose.
+  assert.ok(
+    h.progress.some((l) => /waiting for the session to exit/.test(l)),
+    `no progress line covered the exit grace: ${JSON.stringify(h.progress)}`,
+  );
+  assert.ok(
+    !h.progress.some((l) => /the operator is driving/.test(l)),
+    `a scripted capture claimed the operator was driving: ${JSON.stringify(h.progress)}`,
+  );
   assert.ok(
     h.warnings.some((w) => /never exited/.test(w) && /grace/.test(w)),
     `the capture did not report the stall it gave up on: ${JSON.stringify(h.warnings)}`,
   );
+  // The measured silence travels with the outcome, so the CLOSING summary can repeat the same
+  // number instead of claiming the session had been quiet for 0s.
+  assert.ok(outcome.quietMs > 0, "the capture did not record how long the session had been silent");
+  assert.match(
+    stallNotice({ ended: outcome.ended, quietMs: outcome.quietMs, graceMs: 10000 }),
+    /printed nothing for \d+/,
+  );
   assert.equal(outcome.ended, "no-exit");
   h.cleanup();
+});
+
+test("Ctrl+backslash is the escape hatch a raw-mode terminal leaves (DEMO-CAP-04)", () => {
+  // In raw mode Ctrl+C is a BYTE the session receives - deliberately, since the operator has to be
+  // able to cancel a turn inside the TUI being filmed - so it can never end a wedged interactive
+  // capture. Ctrl+\ is what does, and nothing in these sessions types it.
+  assert.equal(isQuitKey(Buffer.from([0x1c])), true);
+  assert.equal(isQuitKey(Buffer.from("hello\u001cworld", "utf8")), true);
+  assert.equal(isQuitKey("\u001c"), true);
+  assert.equal(isQuitKey(Buffer.from([0x03])), false, "Ctrl+C must still reach the session");
+  assert.equal(isQuitKey(Buffer.from("/exit\r", "utf8")), false);
+  assert.equal(isQuitKey(null), false);
 });
 
 test("a size-limit kill the session ignores still finalizes (DEMO-CAP-01)", async () => {

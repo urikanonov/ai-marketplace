@@ -1,0 +1,203 @@
+diff --git a/.github/skills/demo-video/tests/cli.test.mjs b/.github/skills/demo-video/tests/cli.test.mjs
+index 2177c722a..72304cf82 100644
+--- a/.github/skills/demo-video/tests/cli.test.mjs
++++ b/.github/skills/demo-video/tests/cli.test.mjs
+@@ -78,6 +78,21 @@ test("the argument contract fails loudly rather than guessing (DEMO-CLI-02)", ()
+   const missingExample = run(["report", "--list", "--example", path.join(HERE, "no-such.html")]);
+   assert.notEqual(missingExample.status, 0, "a missing example was accepted");
+   assert.match(missingExample.stderr, /no-such\.html/);
++
++  // The capture watchdogs are settled BEFORE the pty is loaded and the session spawned, so a typo
++  // costs a second rather than a session that is already running with a child attached - and a
++  // silently dropped `--progress` would leave an operator believing a wedge would be reported.
++  const badProgress = run(["capture", "--progress", "-1", "--", "node"]);
++  assert.notEqual(badProgress.status, 0, "a negative --progress was accepted");
++  assert.match(badProgress.stderr, /--progress must be a non-negative number/);
++  const badGrace = run(["capture", "--exit-grace", "0", "--", "node"]);
++  assert.notEqual(badGrace.status, 0, "a zero --exit-grace was accepted");
++  assert.match(badGrace.stderr, /--exit-grace must be a positive number of seconds/);
++  // Seconds in, milliseconds inside: both ends of that conversion have to be refused rather than
++  // silently turning a watchdog the operator asked for into no watchdog at all.
++  const hugeGrace = run(["capture", "--exit-grace", "1e308", "--", "node"]);
++  assert.notEqual(hugeGrace.status, 0, "an --exit-grace that overflows to Infinity was accepted");
++  assert.match(hugeGrace.stderr, /--exit-grace is too large/);
+ });
+ 
+ test("the safety gate refuses a dirty cast before any browser starts (DEMO-CLI-03)", () => {
+diff --git a/.github/skills/demo-video/tests/script.test.mjs b/.github/skills/demo-video/tests/script.test.mjs
+index c35928ba1..231a05a29 100644
+--- a/.github/skills/demo-video/tests/script.test.mjs
++++ b/.github/skills/demo-video/tests/script.test.mjs
+@@ -8,7 +8,7 @@ import os from "node:os";
+ import path from "node:path";
+ 
+ import {
+-  normalizeScript, readScript, stepReady, stepPayload, stepSubmit, fileReady, stepGaveUpNotice, makeSizeGuard, captureLimitBytes, DEFAULT_IDLE_MS,
++  normalizeScript, readScript, stepReady, stepPayload, stepSubmit, fileReady, stepGaveUpNotice, makeSizeGuard, captureLimitBytes, sessionEndState, progressLine, stallNotice, DEFAULT_IDLE_MS,
+ } from "../tools/script.mjs";
+ 
+ const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "demo-video-script-"));
+@@ -304,3 +304,63 @@ test("a file-backed wait requires the file THIS run produced (DEMO-SCRIPT-10)",
+   const step = normalizeScript({ steps: [{ mark: "paste", expectFile: "review.md", send: "x" }] }).steps[0];
+   assert.equal(stepReady(step, { now: startedAt, startedAt, fileExists: false }).ready, false);
+ });
++
++test("the wall clock, not the stream, decides when a capture ends (DEMO-CAP-03)", () => {
++  const grace = { exitGraceMs: 120000, killGraceMs: 5000 };
++  // Nothing has finished, so nothing is ended - an interactive capture is never killed for quiet.
++  assert.deepEqual(
++    sessionEndState({ now: 10000000, ...grace }),
++    { action: "wait", reason: "running" },
++  );
++  // A scripted capture whose last turn has been sent: the child gets the grace, then it is killed,
++  // and a child that ignores the kill is abandoned rather than allowed to hold the recording.
++  const done = 1000;
++  assert.equal(sessionEndState({ now: done + 119000, driverDoneAt: done, ...grace }).action, "wait");
++  assert.deepEqual(
++    sessionEndState({ now: done + 120000, driverDoneAt: done, ...grace }),
++    { action: "kill", reason: "no-exit" },
++  );
++  const killed = done + 120000;
++  assert.equal(sessionEndState({ now: killed + 4999, driverDoneAt: done, killedAt: killed, ...grace }).action, "wait");
++  assert.deepEqual(
++    sessionEndState({ now: killed + 5000, driverDoneAt: done, killedAt: killed, ...grace }),
++    { action: "finalize", reason: "no-exit" },
++  );
++  // An interrupt kills AT ONCE - the operator already decided to stop - but still finalizes.
++  assert.deepEqual(
++    sessionEndState({ now: 5000, interruptedAt: 5000, ...grace }),
++    { action: "kill", reason: "interrupt" },
++  );
++  assert.deepEqual(
++    sessionEndState({ now: 10001, interruptedAt: 5000, killedAt: 5001, ...grace }),
++    { action: "finalize", reason: "interrupt" },
++  );
++});
++
++test("a progress line names what a capture is waiting on (DEMO-CAP-05)", () => {
++  const line = progressLine({
++    now: 3800000,
++    startedAt: 200000,
++    lastDataAt: 3700000,
++    bytes: 3 * 1024 * 1024,
++    waiting: 'step "quit" waiting for 30000ms of quiet',
++  });
++  assert.match(line, /^capture: 1h00m elapsed/);
++  assert.match(line, /1m40s since the last output/);
++  assert.match(line, /3\.0MB captured/);
++  assert.match(line, /step "quit" waiting for 30000ms of quiet/);
++  // With no script there is no step to name, and the operator is the one driving.
++  assert.match(
++    progressLine({ now: 1000, startedAt: 0, lastDataAt: 0, bytes: 12 }),
++    /12B captured, no script; the operator is driving$/,
++  );
++  // Both endings say the cast may not be the take the recipe asked for; the timed-out one also says
++  // how long the session had been silent, which is the evidence an operator needs to decide.
++  const stalled = stallNotice({ ended: "no-exit", quietMs: 3960000, graceMs: 120000 });
++  assert.match(stalled, /printed nothing for 1h06m/);
++  assert.match(stalled, /never exited/);
++  assert.match(stalled, /2m00s exit grace/);
++  assert.match(stalled, /may not show the ending the recipe asked for/);
++  assert.match(stallNotice({ ended: "interrupt" }), /interrupted/);
++  assert.match(stallNotice({ ended: "interrupt" }), /may not show the ending the recipe asked for/);
++});
+diff --git a/.github/skills/demo-video/tools/script.mjs b/.github/skills/demo-video/tools/script.mjs
+index 694e8e127..efabb6fef 100644
+--- a/.github/skills/demo-video/tools/script.mjs
++++ b/.github/skills/demo-video/tools/script.mjs
+@@ -14,6 +14,16 @@ import path from "node:path";
+ 
+ export const DEFAULT_TIMEOUT_MS = 900000;
+ export const DEFAULT_IDLE_MS = 4000;
++// How long a SCRIPTED capture waits for the session to end itself once the last turn has been sent,
++// before it stops waiting on the child and finalizes anyway. Two minutes is generous for a TUI
++// shutting down and trivial next to the ninety minutes a capture can cost.
++export const DEFAULT_EXIT_GRACE_MS = 120000;
++// And how long the kill it then sends is given to land before the capture stops waiting for the
++// child at all. A pty child that ignores a kill must not be able to hold the recording hostage.
++export const DEFAULT_KILL_GRACE_MS = 5000;
++// How often a running capture says where it is. A wedge is otherwise indistinguishable from a slow
++// agent, and the only way to tell them apart was watching a log file's mtime by eye.
++export const DEFAULT_PROGRESS_MS = 60000;
+ 
+ // Every key a step is allowed to carry. Unknown keys are REFUSED rather than ignored, because the
+ // failure they cause is silent and expensive: `expects` for `expect`, or `submitMS` for `submitMs`,
+@@ -256,3 +266,78 @@ export function stepPayload(step) {
+ export function stepSubmit(step) {
+   return step.enter ? "\r" : "";
+ }
++
++// WHEN A CAPTURE ENDS IS DECIDED BY THE WALL CLOCK, NEVER BY THE STREAM.
++//
++// The stream is not a dependable signal against a TUI: it repaints, it goes quiet mid-thought, and
++// after `/exit` it can simply stop while the child stays alive. A capture that only waited on
++// `child.onExit` therefore had no bound at all - one sat for seventeen hours holding a ninety minute
++// session in memory and never wrote a byte, because the cast is only produced at finalization.
++//
++// So the supervisor polls this instead. `driverDoneAt` is set once the script has sent its last turn
++// (an UNSCRIPTED capture never sets it - the operator is sitting there, and an interactive session
++// must not be killed for being quiet). `interruptedAt` is set by a signal, which kills at once
++// because the operator already decided to stop. Either way the kill gets `killGraceMs` to land, and
++// then the capture finalizes whether the child is gone or not.
++export function sessionEndState({
++  now,
++  driverDoneAt = null,
++  interruptedAt = null,
++  killedAt = null,
++  exitGraceMs = DEFAULT_EXIT_GRACE_MS,
++  killGraceMs = DEFAULT_KILL_GRACE_MS,
++} = {}) {
++  const stage = (since, graceMs, reason) => {
++    if (killedAt === null) {
++      return now - since >= graceMs ? { action: "kill", reason } : { action: "wait", reason };
++    }
++    return now - killedAt >= killGraceMs ? { action: "finalize", reason } : { action: "wait", reason };
++  };
++  if (interruptedAt !== null) return stage(interruptedAt, 0, "interrupt");
++  if (driverDoneAt !== null) return stage(driverDoneAt, exitGraceMs, "no-exit");
++  return { action: "wait", reason: "running" };
++}
++
++export function formatDuration(ms) {
++  const total = Math.max(0, Math.round(ms / 1000));
++  const hours = Math.floor(total / 3600);
++  const minutes = Math.floor((total % 3600) / 60);
++  const seconds = total % 60;
++  if (hours) return `${hours}h${String(minutes).padStart(2, "0")}m`;
++  if (minutes) return `${minutes}m${String(seconds).padStart(2, "0")}s`;
++  return `${seconds}s`;
++}
++
++export function formatBytes(bytes) {
++  const value = Math.max(0, Number(bytes) || 0);
++  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)}MB`;
++  if (value >= 1024) return `${Math.round(value / 1024)}KB`;
++  return `${Math.round(value)}B`;
++}
++
++// A wedged capture has to be detectable WITHOUT reading the log by eye. The only symptom was a log
++// file whose last write stopped advancing, which nobody notices for an hour, so the capture says
++// where it is on its own clock: how long it has run, how long the session has been silent, how much
++// it is holding, and what it is waiting for.
++export function progressLine({ now, startedAt, lastDataAt, bytes = 0, waiting = null }) {
++  return [
++    `capture: ${formatDuration(now - startedAt)} elapsed`,
++    `${formatDuration(now - lastDataAt)} since the last output`,
++    `${formatBytes(bytes)} captured`,
++    waiting || "no script; the operator is driving",
++  ].join(", ");
++}
++
++// What the capture says when it stops waiting. Both endings mean the same thing for the cast - it is
++// whatever had been recorded, not the ending the recipe asked for - so both say so plainly rather
++// than letting a closing summary read like a clean take.
++export function stallNotice({ ended, quietMs = 0, graceMs = DEFAULT_EXIT_GRACE_MS }) {
++  if (ended === "interrupt") {
++    return "the capture was interrupted; the cast holds what had been recorded, so it may not show "
++      + "the ending the recipe asked for.";
++  }
++  return `the session printed nothing for ${formatDuration(quietMs)} and never exited; ending it `
++    + `after the ${formatDuration(graceMs)} exit grace and keeping what was recorded, so this cast `
++    + "may not show the ending the recipe asked for.";
++}
++

@@ -1199,7 +1199,17 @@ export async function captureSession({
   // fall silent for an hour while the child stays alive, so the decision to stop is the clock's.
   let gaveUpBecause = null;
   let ended = null;
+  let quietMs = 0;
   let nextProgressAt = started + progressMs;
+  // Between steps, and for the whole exit grace after the last turn, there is no step to name - but
+  // "no script; the operator is driving" would be a lie during exactly the wedge this line exists to
+  // diagnose, so a scripted capture says where the SCRIPT is instead.
+  const scriptState = () => {
+    if (!script) return null;
+    return driverDoneAt !== null
+      ? "the script has sent its last turn; waiting for the session to exit"
+      : "between steps";
+  };
   for (;;) {
     if (childExited) { ended = gaveUpBecause || "exit"; break; }
     const at = now();
@@ -1210,7 +1220,8 @@ export async function captureSession({
     if (state.action === "kill") {
       killedAt = at;
       gaveUpBecause = reason;
-      warn(`\n  WARNING: ${stallNotice({ ended: reason, quietMs: at - lastDataAt, graceMs: exitGraceMs })}`);
+      quietMs = at - lastDataAt;
+      warn(`\n  WARNING: ${stallNotice({ ended: reason, quietMs, graceMs: exitGraceMs })}`);
       try { child.kill(); } catch (e) { /* already gone */ }
     } else if (state.action === "finalize") {
       // The child ignored the kill. Stop waiting for it rather than let it hold the recording.
@@ -1222,7 +1233,7 @@ export async function captureSession({
       gaveUpBecause = reason;
     }
     if (progressMs > 0 && at >= nextProgressAt) {
-      progress(progressLine({ now: at, startedAt: started, lastDataAt, bytes, waiting }));
+      progress(progressLine({ now: at, startedAt: started, lastDataAt, bytes, waiting: waiting || scriptState() }));
       nextProgressAt = at + progressMs;
     }
     await nap(pollMs);
@@ -1284,10 +1295,24 @@ export async function captureSession({
     overflowed,
     driverError,
     ended,
+    quietMs,
     exitCode,
     redactions: scrubbed.redactions,
     leftover: scanText(castText(cast), rules),
   };
+}
+
+// In RAW MODE Ctrl+C is a byte the session receives, not a signal to this process - and that is
+// deliberate: the operator has to be able to cancel a turn inside the TUI being filmed. So Ctrl+C
+// can never end a wedged interactive capture, and the escape hatch is Ctrl+\ (0x1c, the terminal's
+// traditional quit key), which nothing in these sessions uses. Kept separate from the pty so the
+// decision is testable without one.
+export const QUIT_KEY = 0x1c;
+
+export function isQuitKey(data) {
+  if (data == null) return false;
+  if (Buffer.isBuffer(data)) return data.includes(QUIT_KEY);
+  return String(data).includes(String.fromCharCode(QUIT_KEY));
 }
 
 async function captureTerminal(args) {
@@ -1323,7 +1348,11 @@ async function captureTerminal(args) {
   });
 
   const wasRaw = process.stdin.isRaw;
-  const onInput = (data) => { try { child.write(data.toString("utf8")); } catch (e) { /* child is gone */ } };
+  const onInput = (data) => {
+    // Ctrl+\ ends the CAPTURE and writes the cast; Ctrl+C belongs to the session (see QUIT_KEY).
+    if (process.stdin.isTTY && isQuitKey(data)) { onSignal(); return; }
+    try { child.write(data.toString("utf8")); } catch (e) { /* child is gone */ }
+  };
   const onResize = () => { try { child.resize(process.stdout.columns || cols, process.stdout.rows || rows); } catch (e) { /* child is gone */ } };
   // Raw mode belongs to the CALLER's terminal, so it must be handed back on every path - a throw, a
   // Ctrl+C, a child that dies badly - or the operator is left with an unusable shell.
@@ -1336,10 +1365,11 @@ async function captureTerminal(args) {
     if (process.stdin.isTTY) { try { process.stdin.setRawMode(!!wasRaw); } catch (e) { /* already closed */ } }
     process.stdin.pause();
   };
-  // The FIRST signal ends the session and lets the capture finalize. It used to kill the child and
-  // exit(130) without writing anything, so stopping a wedged capture by hand - the operator's only
-  // option - threw away the entire session. A SECOND signal is the operator saying they will not
-  // wait for the write either, and only then is the process torn down.
+  // The FIRST signal (or Ctrl+\ from a raw-mode terminal) ends the session and lets the capture
+  // finalize. It used to kill the child and exit(130) without writing anything, so stopping a wedged
+  // capture by hand - the operator's only option - threw away the entire session. A SECOND one is
+  // the operator saying they will not wait for the write either, and only then is the process torn
+  // down.
   let interrupt = null;
   const onSignal = () => {
     if (interrupt && interrupt()) {
@@ -1425,7 +1455,7 @@ async function captureTerminal(args) {
   // not the take the recipe describes. An overflow and a failed script already have their own
   // messages, so only the two endings that would otherwise pass silently are named here.
   if (outcome.ended === "interrupt" || outcome.ended === "no-exit") {
-    console.warn(`  WARNING: ${stallNotice({ ended: outcome.ended, graceMs: exitGraceMs })}`);
+    console.warn(`  WARNING: ${stallNotice({ ended: outcome.ended, quietMs: outcome.quietMs, graceMs: exitGraceMs })}`);
   }
   const leftover = outcome.leftover;
   if (leftover.length) console.warn(`  WARNING: ${leftover.length} finding(s) survived scrubbing - render will refuse this cast`);

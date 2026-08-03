@@ -69,9 +69,13 @@ to wait on the session's own exit with no bound, so a TUI that printed its answe
 exited held a ninety minute run in memory and wrote nothing (one sat for seventeen hours), and Ctrl+C
 - the only way out - exited before writing anything. Three things now guarantee a cast:
 
-- **Ctrl+C writes the cast.** The first SIGINT/SIGTERM ends the session and finalizes, warning that
+- **A signal writes the cast.** The first SIGINT/SIGTERM ends the session and finalizes, warning that
   the ending may not be the one the recipe asked for. A second one exits immediately, so an operator
-  who will not wait for the write is still not stuck.
+  who will not wait for the write is still not stuck. One caveat worth knowing: while a capture is
+  attached to your terminal it puts stdin in RAW MODE, so Ctrl+C is a byte the SESSION receives (that
+  is what lets you cancel a turn inside the TUI being filmed) and never reaches the capture. The
+  escape hatch there is **Ctrl+\\**, which ends the capture and writes the cast; from another shell,
+  `kill <pid>` does the same.
 - **The wall clock is authoritative** (`--exit-grace`, 120 seconds). Once a `--script` has sent its
   last turn, the session gets that long to exit on its own; then it is killed and the cast is written
   regardless of what the stream is doing. Nothing here trusts quiet: a TUI repaints, so "the stream
@@ -81,9 +85,10 @@ exited held a ninety minute run in memory and wrote nothing (one sat for sevente
   supervisor, so none of them can kill the child and then wait for a session that is already gone.
 - **A stalled capture says so** (`--progress`, every 60 seconds; `0` turns it off). The line names
   elapsed time, how long the session has been silent, how much has been captured, and the step being
-  waited on, so a wedge is visible without watching a log file's mtime by eye. It goes to stderr and
-  only when stdout is NOT a terminal, because drawing a status line into a live TUI corrupts the very
-  screen the clip is of - the unattended run whose log nobody is watching is the case that needs it.
+  waited on - or, once the last turn has been sent, that it is waiting for the session to exit. It
+  goes to stderr and only when stdout is NOT a terminal, because drawing a status line into a live
+  TUI corrupts the very screen the clip is of - the unattended run whose log nobody is watching is
+  the case that needs it.
 
 An ending the clock or the operator forced is reported in the closing lines and exits non-zero, so a
 capture that did not end the way the recipe asked can never read like a clean take.
