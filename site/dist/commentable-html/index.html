@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.516.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.518.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.518.0] - 2026-08-03</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The offline strip and the strict validator now read a reference the way a browser&#x27;s URL parser does before deciding whether it loads over the network, so the spellings a browser NORMALIZES into a network URL are no longer read as local. Both sides tested the raw literal for <code>(?:https?:)?//</code>, so <code>https:/\evil.example/x.js</code> (a backslash opens an authority for a special scheme exactly as a slash does - verified fetching <code>https://evil.example/x.js</code> in a real Chromium), the scheme-relative <code>\\evil.example/x.js</code>, a value carrying an embedded ASCII tab, CR or LF (<code>ht&lt;tab&gt;tps://evil.example/x.js</code>), and <code>file://host/x.js</code> (an SMB UNC fetch off the machine on Windows) were all called local by the exporter AND certified as offline-clean by <code>validate.py --strict</code>. Each value is now cleaned up first - leading and trailing C0-or-space stripped, ASCII tab/LF/CR removed from anywhere, every backslash mapped onto a slash - and an explicit <code>file:</code> authority counts as a network load. How many separators open that authority was checked in a real Chromium rather than read off the spec, because the answer is not &quot;two or more&quot;: exactly two, or FOUR-or-more, give a host, while THREE is the empty host of an ordinary local path, so <code>file:////evil.example/x.js</code> fetches too. The spellings that stay ON the machine are still local - an empty host (<code>file:///C:/x</code>), <code>localhost</code>, and a Windows drive letter in the host position (<code>file://C:/x</code>, <code>file://c|/x</code>, which the URL parser turns into a path) - as is any value whose authority is empty because it ends at once (<code>//?q</code>, <code>https://</code>, and the Windows extended-length path <code>\\?\C:\x</code>), since a special scheme fails to parse there and fetches nothing. <code>srcset</code> is fixed at its own boundary: HTML tokenizes candidates on ASCII whitespace ONLY, and both implementations split on their engine&#x27;s whitespace instead, so a candidate written with a U+000B was cut there and its load was hidden from both - and the two engines disagreed about the rest (Python&#x27;s <code>str.strip()</code> takes U+001C-U+001F, JavaScript&#x27;s <code>trim()</code> takes U+FEFF). Splitting on the COMMA was wrong too: HTML collects a run of non-whitespace as the URL, so <code>srcset=&quot;https://,host/x.png 1x&quot;</code> really does request <code>https://,host/x.png</code>, and the comma-split tested only the truncated <code>https://</code>. Both readings are now taken. This covers every attribute both implementations read, including <code>img</code>/<code>iframe</code>/media <code>src</code> and <code>srcset</code>, <code>video poster</code>, <code>object data</code>, <code>embed src</code>, legacy <code>background</code>, <code>link href</code>, form <code>action</code>/<code>formaction</code>, and the script <code>src</code>/<code>href</code>/<code>xlink:href</code> set - not only scripts. The zero-network CSP already blocked the fetch in an exported file, so this is defense in depth - but the strip and the gate are the layer that is not supposed to depend on the CSP.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.516.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -503,6 +510,8 @@
               <li>A document with no <code>reviewedSections</code> block at all gets one inserted again when its content carries an <code>embeddedComments</code> decoy. The insert anchors on the <code>embeddedComments</code> block the region owns and refused to anchor when more than one element carried that id anywhere - counting authored content the exporter itself ignores, so a single decoy inside the content root permanently stopped the reader&#x27;s review state from travelling with an exported copy. It now counts only the blocks the layer owns, which is the same set the exporter writes the comments into.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.515.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -510,8 +519,6 @@
               <li>The layer&#x27;s OWN controls injected INSIDE the content root no longer lose the reviewer&#x27;s first click to an open comment dialog. Inverting the dismiss to swallow only clicks in the annotated document gave every surface OUTSIDE the content root its first click back, but a sortable-table sort control, a widget &quot;Reset moves&quot;, a checklist box, an editable note, a code-block Copy, a section caret or review badge, and a rendered diff&#x27;s view toolbar all live inside that root, where containment cannot tell them from author content - so with a dialog open the first click on one of them was spent closing the dialog and the control did nothing. The layer now registers each control it creates in an identity set and carves that set out of the swallow, so the control acts on the FIRST click (in the <code>&lt;body&gt;</code>-fallback mode too). Identity, not class: document content carrying <code>cmh-sort-ctrl</code> or <code>cm-widget-reset</code> is still author content and is still swallowed, so the anti-spoofing property is unchanged. A spared click then behaves exactly as it does with no dialog open - the carve-out restores the normal click rather than making the control modal - and a behavior the runtime attaches to AUTHOR content (clicking a commented image to jump to its card, clicking a collapsed section&#x27;s heading rather than its caret) is not an injected control and is still swallowed.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.514.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -545,14 +552,7 @@
               <li>The vendored scanner folds the tag name ASCII-only, since it is now the code that names the element. <code>str.lower()</code> folds U+212A KELVIN SIGN to an ASCII &quot;k&quot;, so <code>&lt;scrip\u212a&gt;</code> would have opened a raw-text region that a browser - which builds an unknown element there - never opens.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.486.0] - 2026-08-03</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The offline export&#x27;s scripted-navigation check is now LINEAR on a long near-match, in both the exporter (JavaScript) and the strict validator (Python). It carried the global-prefix chain (<code>window</code>, <code>self</code>, <code>top</code>, <code>parent</code>, <code>globalThis</code>, <code>document</code>, <code>frames</code>) as an unbounded repetition in front of the sink, so the engine re-entered that chain at every position a prefix could follow and a near-match that never reaches a sink cost QUADRATIC time: <code>window . </code> repeated measured 2.3s at 18 KB, 9.4s at 36 KB, 36s at 72 KB and 174s at 144 KB - 4x the time for 2x the input. - Both callers feed it unbounded document-supplied text: the loader strip runs it over every runnable inline script, and the vendored-payload gate runs it over the payload&#x27;s INFLATED bytes, where a few hundred base64 bytes buy megabytes of near-match. The export runs in the reviewer&#x27;s own browser on a document whose own scripts already ran, so this was a stall of the Export Offline action rather than an escalation - but an export that appears to hang is indistinguishable from a broken feature. - Every shape it recognizes requires the literal <code>location</code> or <code>open</code>, so recognition is now a SCAN driven from those anchors: forward from an anchor the tail is a regex matched ANCHORED at that offset (every unbounded whitespace run is followed by a distinct non-whitespace literal, so no run can be split two ways), and backward from an anchor the prefix chain is walked once in code. Chains for two different anchors cannot overlap, because no sink name is a prefix name. The same input now costs 0.08s at 1.8 MB in Python and 2ms in node. - The recognized shapes are unchanged, pinned in both directions against the pattern the scan replaced over a crossed corpus of sinks and near-sinks, so no egress case stopped matching and no benign script started being stripped. The two implementations still agree literal for literal, and the walk that joins those literals is pinned by running the exporter&#x27;s own source in node. - The regression test measures the SCALING at 10x steps rather than one fixed size, which is why the quadratic term survived the earlier catastrophic-backtracking guard (it used ~200 repetitions, far below where the growth is visible).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">279 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">280 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -325,6 +325,46 @@ class NewCheckTests(unittest.TestCase):
         self.assertEqual(errors, [], errors)
         self.assertEqual(warnings, [], warnings)
 
+    # A browser normalizes several spellings INTO a network URL before it fetches (issue #923), so
+    # the gate must read the value the way the URL parser does. Both implementations used to test
+    # the raw literal and call every one of these local, which is under-detection rather than a
+    # disagreement: the exporter left the load in place and the gate then certified the file.
+    def test_offline_mode_rejects_a_browser_normalized_network_reference(self):
+        for url in ("https:/\\evil.example/x.js", "\\\\evil.example/x.js",
+                    "ht\ttps://evil.example/x.js", "https:\n//evil.example/x.js",
+                    "file://evil.example/x.js", "file:\\\\evil.example/x.js",
+                    "file:////evil.example/x.js"):
+            with self.subTest(url=url):
+                markup = ('<img src="%s"><svg><script href="%s"></script></svg>' % (url, url))
+                errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, markup))))
+                self.assertTrue(any("offline mode" in e and "<img src" in e for e in errors),
+                                (url, errors))
+                self.assertTrue(any("offline mode" in e and "<script href" in e for e in errors),
+                                (url, errors))
+
+    # ...and the spellings that stay ON the machine must still pass, or the gate would reject an
+    # offline file with no egress at all: a `file:` URL with an empty host, `localhost`, or a Windows
+    # DRIVE LETTER in the host position (which the URL parser turns into a path), and a backslash
+    # inside an ordinary relative path.
+    def test_offline_mode_accepts_a_local_file_or_backslash_relative_reference(self):
+        for url in ("file:///C:/local/x.js", "file:///local/x.js", "file://localhost/local/x.js",
+                    "file://C:/local/x.js", "file://c|/local/x.js", "file:////C:/local/x.js",
+                    "sub\\local-keep.js", "/root\\local-keep.js"):
+            with self.subTest(url=url):
+                markup = '<svg><script href="%s"></script></svg>' % url
+                errors, warnings = self._errs_warns(
+                    with_offline_mode(build(body=self._body(MAIN, markup))))
+                self.assertEqual(errors, [], (url, errors))
+                self.assertEqual(warnings, [], (url, warnings))
+
+    # A `srcset` candidate is tokenized before the URL predicate sees it, and HTML draws that
+    # boundary at ASCII whitespace only. Splitting on the ENGINE's whitespace cut the candidate at a
+    # U+000B and hid a real load from both implementations.
+    def test_offline_mode_reads_a_srcset_candidate_the_way_html_tokenizes_it(self):
+        markup = '<img src="local.png" srcset="\u0001\u000b//evil.example/x.png 1x">'
+        errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, markup))))
+        self.assertTrue(any("offline mode" in e and "<img srcset" in e for e in errors), errors)
+
     # The self-contained guarantee is not offline-only: a shareable document that loads a script
     # over the network is an error however the load is spelled.
     def test_shareable_mode_rejects_a_script_that_loads_through_href(self):

@@ -6,7 +6,7 @@ import re
 import json
 from collections import Counter
 from .parsing import CONTENT_BEGIN, CONTENT_END, DEMO_KEYS, DOC_EXAMPLE_COMMENT_KEY, FORBIDDEN_IDS, LAYER_DESCRIPTOR_ID, LAYER_JSON_IDS, REGIONS, REQUIRED_IDS, SAFE_ID_RE, UNIQUE_JSON_IDS, _COMMENT_ROOT_ATTR_RE, _DATA_KEY_RE, _HTML_COMMENT_RE, _PRE_TAG_RE, _SCRIPT_STYLE_RE, _TITLE_RE, _TRANSIENT_BODY_CLASSES, _attrs_have_class, _find_tag_attrs, _find_tag_attrs_egress, _is_executable_js, _is_json_attrs, _js_scan, _parser_script, _region_marker_matches, _tag_attrs_failed, code_block_spans, content_marker_scan, layer_regions_text, parsed_attrs_have_class
-from .resources import CHARTJS_SRC_RE, CSS_NETWORK_URL_RE, NETWORK_URL_RE, NONSHAREABLE_REGIONS, SCRIPT_LOAD_ATTRS, _check_nonshareable, _is_adx_run_href, _is_nonshareable, _link_loads, _offline_csp_errors, meta_refresh_navigates_to_network, offline_active_data_block_is_removable, offline_active_data_script_type, offline_script_navigates_to_network
+from .resources import CHARTJS_SRC_RE, CSS_NETWORK_URL_RE, NONSHAREABLE_REGIONS, SCRIPT_LOAD_ATTRS, _check_nonshareable, _is_adx_run_href, _is_nonshareable, _link_loads, _offline_csp_errors, is_network_url, meta_refresh_navigates_to_network, offline_active_data_block_is_removable, offline_active_data_script_type, offline_script_navigates_to_network, srcset_candidate_urls
 from .kind import check_document_kind, check_favicon, check_mermaid_renders, check_section_reference_links, check_section_wrapping
 from .links import check_links
 

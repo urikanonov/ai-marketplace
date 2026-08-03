@@ -4,6 +4,41 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.518.0] - 2026-08-03
+
+### Fixed
+
+- The offline strip and the strict validator now read a reference the way a browser's URL parser
+  does before deciding whether it loads over the network, so the spellings a browser NORMALIZES
+  into a network URL are no longer read as local. Both sides tested the raw literal for
+  `(?:https?:)?//`, so `https:/\evil.example/x.js` (a backslash opens an authority for a special
+  scheme exactly as a slash does - verified fetching `https://evil.example/x.js` in a real
+  Chromium), the scheme-relative `\\evil.example/x.js`, a value carrying an embedded ASCII tab, CR
+  or LF (`ht<tab>tps://evil.example/x.js`), and `file://host/x.js` (an SMB UNC fetch off the
+  machine on Windows) were all called local by the exporter AND certified as offline-clean by
+  `validate.py --strict`. Each value is now cleaned up first - leading and trailing C0-or-space
+  stripped, ASCII tab/LF/CR removed from anywhere, every backslash mapped onto a slash - and an
+  explicit `file:` authority counts as a network load. How many separators open that authority was
+  checked in a real Chromium rather than read off the spec, because the answer is not "two or
+  more": exactly two, or FOUR-or-more, give a host, while THREE is the empty host of an ordinary
+  local path, so `file:////evil.example/x.js` fetches too. The spellings that stay ON the machine
+  are still local - an empty host (`file:///C:/x`), `localhost`, and a Windows drive letter in the
+  host position (`file://C:/x`, `file://c|/x`, which the URL parser turns into a path) - as is any
+  value whose authority is empty because it ends at once (`//?q`, `https://`, and the Windows
+  extended-length path `\\?\C:\x`), since a special scheme fails to parse there and fetches
+  nothing. `srcset` is fixed at its own boundary: HTML tokenizes candidates on ASCII whitespace
+  ONLY, and both implementations split on their engine's whitespace instead, so a candidate written
+  with a U+000B was cut there and its load was hidden from both - and the two engines disagreed
+  about the rest (Python's `str.strip()` takes U+001C-U+001F, JavaScript's `trim()` takes U+FEFF).
+  Splitting on the COMMA was wrong too: HTML collects a run of non-whitespace as the URL, so
+  `srcset="https://,host/x.png 1x"` really does request `https://,host/x.png`, and the comma-split
+  tested only the truncated `https://`. Both readings are now taken.
+  This covers every attribute both implementations read, including `img`/`iframe`/media `src` and
+  `srcset`, `video poster`, `object data`, `embed src`, legacy `background`, `link href`, form
+  `action`/`formaction`, and the script `src`/`href`/`xlink:href` set - not only scripts. The
+  zero-network CSP already blocked the fetch in an exported file, so this is defense in depth - but
+  the strip and the gate are the layer that is not supposed to depend on the CSP.
+
 ## [1.516.0] - 2026-08-03
 
 ### Fixed

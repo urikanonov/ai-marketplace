@@ -17,12 +17,12 @@ def _check_self_contained(html, parser, nonshareable):
     #      egress scans further down read `_DocParser`'s styles, which do not see inside a
     #      `<noscript>` - tracked separately.)
     def _is_network(v):
-        return bool(NETWORK_URL_RE.match(v or ""))
+        return is_network_url(v)
     descriptor = _layer_descriptor_data(parser) or {}
     offline_mode = (not nonshareable and descriptor.get("mode") == "offline")
     def _network_values(value, srcset=False):
         if srcset:
-            return [part.strip().split()[0] for part in (value or "").split(",") if part.strip()]
+            return srcset_candidate_urls(value)
         return [value or ""]
     def _network_error(tag, attr, val):
         label = "<%s %s=\"%s\">" % (tag, attr, val[:80])

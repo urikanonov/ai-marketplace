@@ -1279,68 +1279,248 @@ class RuntimeParityTests(unittest.TestCase):
     # URL at all. Both engines must draw that line in the same place: JS `\s` excludes U+001C-U+001F
     # but includes U+FEFF, Python's includes the former and not the latter, and Python's
     # `re.IGNORECASE` folds `s` onto U+017F where JS never does.
+    # Each case carries its EXPECTED verdict rather than only being compared across the two
+    # engines: two implementations that under-detect the same spelling agree perfectly, which is
+    # how the browser-normalized spellings below (#923) sat unnoticed in both for so long.
     _NETWORK_URL_CORPUS = [
-        "https://evil.example/x.js", "HTTPS://EVIL.EXAMPLE/x.js", "http://evil.example/x.js",
-        "//evil.example/x.js", " https://evil.example/x.js", "\thttps://evil.example/x.js",
-        "\n//evil.example/x.js", "\r\n//evil.example/x.js", "\f//evil.example/x.js",
-        "\u000b//evil.example/x.js", "\u0000//evil.example/x.js", "\u001c//evil.example/x.js",
-        "\u001d//evil.example/x.js", "\u001e//evil.example/x.js", "\u001f//evil.example/x.js",
-        "\u000e//evil.example/x.js", "\u001f  \t https://evil.example/x.js",
+        ("https://evil.example/x.js", True), ("HTTPS://EVIL.EXAMPLE/x.js", True),
+        ("http://evil.example/x.js", True), ("//evil.example/x.js", True),
+        (" https://evil.example/x.js", True), ("\thttps://evil.example/x.js", True),
+        ("\n//evil.example/x.js", True), ("\r\n//evil.example/x.js", True),
+        ("\f//evil.example/x.js", True), ("\u000b//evil.example/x.js", True),
+        ("\u0000//evil.example/x.js", True), ("\u001c//evil.example/x.js", True),
+        ("\u001d//evil.example/x.js", True), ("\u001e//evil.example/x.js", True),
+        ("\u001f//evil.example/x.js", True), ("\u000e//evil.example/x.js", True),
+        ("\u001f  \t https://evil.example/x.js", True),
         # padding a browser does NOT strip: the value is a relative reference, not a network load
-        "\u00a0https://evil.example/x.js", "\u2028//evil.example/x.js", "\u3000//evil.example/x.js",
-        "\ufeff//evil.example/x.js", "\u200b//evil.example/x.js",
+        ("\u00a0https://evil.example/x.js", False), ("\u2028//evil.example/x.js", False),
+        ("\u3000//evil.example/x.js", False), ("\ufeff//evil.example/x.js", False),
+        ("\u200b//evil.example/x.js", False),
         # not a network load: relative, rooted, fragment, data, another scheme, or the literal
         # buried after something that is not padding
-        "", "svg-local-keep.js", "./x.js", "/root-relative.js", "#anchor",
-        "data:text/javascript,void%200", "mailto:someone@example.com", "ftp://evil.example/x.js",
-        "x https://evil.example/x.js", "https:/evil.example/x.js", "https:evil.example/x.js",
+        ("", False), ("svg-local-keep.js", False), ("./x.js", False), ("/root-relative.js", False),
+        ("#anchor", False), ("data:text/javascript,void%200", False),
+        ("mailto:someone@example.com", False), ("ftp://evil.example/x.js", False),
+        ("x https://evil.example/x.js", False),
+        # A single slash after a special scheme IS an authority to the URL parser, and a scheme-only
+        # spelling resolves to the same host - but both sides deliberately still require the two
+        # slashes, because widening the attribute predicate alone would reject a file the exporter
+        # just produced. Issue #961 moves both sides together; these stay False until it does.
+        ("https:/evil.example/x.js", False), ("https:evil.example/x.js", False),
         # Case folding is ASCII-only on both sides: Python's `re.IGNORECASE` would otherwise fold
         # `s` onto U+017F, which a JS `/i` regex never does (and which no browser resolves as a
         # scheme either), so the gate would flag a value the strip keeps.
-        "http\u017f://evil.example/x.js", "HTTP\u017f://evil.example/x.js",
-        "\u212a//evil.example/x.js",
+        ("http\u017f://evil.example/x.js", False), ("HTTP\u017f://evil.example/x.js", False),
+        ("\u212a//evil.example/x.js", False),
+        # Spellings the URL parser NORMALIZES into a network URL before it fetches, so both sides
+        # must normalize before they test. A backslash opens an authority for a special scheme
+        # exactly as a slash does, in either position (`https:/\evil.example/x.js` was verified
+        # fetching https://evil.example/x.js in a real Chromium), and an ASCII tab, CR or LF is
+        # removed from ANYWHERE in the input rather than only from the front.
+        ("https:/\\evil.example/x.js", True), ("https:\\/evil.example/x.js", True),
+        ("https:\\\\evil.example/x.js", True), ("\\\\evil.example/x.js", True),
+        ("\\/evil.example/x.js", True), ("/\\evil.example/x.js", True),
+        ("https:\n//evil.example/x.js", True), ("ht\ttps://evil.example/x.js", True),
+        ("//evil.\rexample/x.js", True), ("/\t/evil.example/x.js", True),
+        ("\u001f \\\\evil.example/x.js", True),
+        # Trailing padding is stripped like leading padding. `https://` with a trailing space is the
+        # row that pins it: with the trailing strip the value is an EMPTY authority and local, and
+        # without it the space reads as the first character of a host.
+        ("https://evil.example/x.js ", True), ("\u001fhttps://evil.example/x.js\u0000", True),
+        ("https:// ", False), ("https://?q ", False), ("// ", False),
+        # `file:` with an AUTHORITY is an off-machine load: on Windows it resolves to an SMB UNC
+        # path, so it beacons exactly like an http one, and no `file://` document's CSP stops the
+        # navigation it can carry. How many separators open that authority was CHECKED in a real
+        # Chromium rather than read off the spec: exactly two, or four-or-more, give a host, while
+        # THREE is the empty host of an ordinary local path.
+        ("file://evil.example/x.js", True), ("FILE://evil.example/x.js", True),
+        ("file:\\\\evil.example/x.js", True), ("file:////evil.example/x.js", True),
+        ("file://///evil.example/x.js", True), ("file:///\\evil.example/x.js", True),
+        # ...but the `file:` spellings that stay on the machine are not. A third slash means an
+        # EMPTY host, `localhost` is the local machine by definition, and a Windows DRIVE LETTER is
+        # turned into a path rather than a host by the file-host state - `file://C:/x` is the same
+        # local file as `file:///C:/x`, and it is the spelling Windows tools paste. Reporting any of
+        # them would delete an author's local reference and reject a file with no egress at all.
+        # The FIVE-slash rows pin the backtracking guard: a greedy `/{4,}` alone gives a slash back
+        # when a lookahead fails and then matches on the four-slash reading, so these came out
+        # network until the run was made unbacktrackable.
+        ("file:///C:/local/x.js", False), ("file:///x.js", False),
+        ("file://localhost/x.js", False), ("file://localhost", False),
+        ("file:////localhost/x.js", False), ("file://C:/local/x.js", False),
+        ("file://c|/local/x.js", False), ("file://C:\\local\\x.js", False),
+        ("file:////C:/local/x.js", False), ("file://", False), ("file://?q", False),
+        ("file://///localhost/x.js", False), ("file://///C:/local/x.js", False),
+        ("file://///c|/local/x.js", False), ("file://///?q", False), ("file://///", False),
+        ("file://////localhost/x.js", False),
+        # A real Chromium resolves EVERY `file://` authority that STARTS with a drive letter to a
+        # local drive path with an EMPTY host, separator or no separator, so what looks like a host
+        # after one is really a path segment.
+        ("file://C:foo/x.js", False), ("file://c|foo", False), ("file://a:8080/x.js", False),
+        ("file://c:evil.example/x.js", False), ("file:////C:foo/x.js", False),
+        # A SINGLE leading slash or backslash is a path, not an authority, and a backslash deeper
+        # inside a relative reference leaves it relative.
+        ("\\relative\\x.js", False), ("/root\\relative.js", False), ("file:x.js", False),
+        ("file:/x.js", False),
+        # An authority terminated at once by `?`, `#` or the end of the value is an EMPTY host,
+        # which nothing fetches from: a special scheme fails to parse outright (checked in a real
+        # Chromium), and from a `file:` document it is the local root. The third of these is the
+        # Windows extended-length path `\\?\C:\x`, which the backslash mapping turns into `//?/C:/x`.
+        ("//", False), ("//?q", False), ("//#f", False), ("https://", False),
+        ("https://?q", False), ("\\\\?\\C:\\x", False),
+        # ...but a host of `.` (the Windows device path `\\.\C:\x`) really does parse to a host, and
+        # a loopback SMB share is still egress off the document, so both stay flagged. Note that
+        # `\\localhost\C$\x` is True while `file:////localhost/x.js` is False: the backslash spelling
+        # normalizes to a scheme-relative `//localhost/...` and is judged by the http/https arm,
+        # which deliberately carries NO `localhost` exclusion - an authority-bearing UNC share is
+        # egress even to the loopback, while the direct `file://localhost/...` spelling is the
+        # ordinary way to name a local file and stays local.
+        ("\\\\.\\C:\\x", True), ("\\\\localhost\\C$\\x", True),
     ]
 
-    def test_the_python_and_js_network_url_predicates_agree(self):
-        """Run the runtime's own network-URL regex in node and require identical verdicts.
+    # `srcset` is the one attribute whose value is a LIST, so the candidate boundary is decided
+    # before the URL predicate ever sees a value - and HTML's parser draws that boundary at ASCII
+    # whitespace only (tab, LF, FF, CR, space). Tokenizing with the engine's own whitespace both
+    # HID a real load from both sides (U+000B is engine whitespace but not ASCII whitespace, so the
+    # candidate was cut there) and drifted between the engines (Python's `str.strip()` takes
+    # U+001C-U+001F, JS's `trim()` takes U+FEFF). Pinned with expected verdicts for the same reason
+    # as the corpus above.
+    _SRCSET_CORPUS = [
+        ("local.png 1x, local-2x.png 2x", False),
+        ("https://evil.example/x.png 1x", True),
+        ("local.png 1x, //evil.example/x.png 2x", True),
+        ("https:/\\evil.example/x.png 1x", True),
+        ("file://evil.example/x.png 1x", True),
+        ("\u0001\u000b//evil.example/x.png 1x", True),
+        ("\u001f\u000b//evil.example/x.png 1x", True),
+        ("\t\ufeff//evil.example/x.png 1x", False),
+        ("\ufeffhttps://evil.example/x.png 1x", False),
+        ("   \t local.png   1x  ", False),
+        # A candidate whose only unusual character is U+001C: the VERDICT is the same either way, so
+        # this row exists for the TOKEN comparison below - Python's old `str.strip()`/`str.split()`
+        # cut it into three tokens where HTML keeps one, and only comparing the tokenizers' OUTPUT
+        # catches a revert on the Python side.
+        ("a\u001cb.png 1x", False), ("\u000b//evil.example/x.png 1x", True),
+        # A comma INSIDE the URL run: HTML collects the whole run, so this really does request
+        # `https://,evil.example/x.png` (measured in a real Chromium), while a comma-split alone
+        # tests the truncated `https://` - an empty authority, and local.
+        ("https://,evil.example/x.png 1x", True), ("//,evil.example/x.png 1x", True),
+        ("file://,evil.example/x.png 1x", True),
+        # ...and two candidates separated by a comma with no space around it, which the
+        # whitespace-run reading alone would join into one non-matching token.
+        ("local.png 1x,https://evil.example/x.png 2x", True),
+        ("", False), (",", False), ("   ", False),
+        ("data:image/gif;base64,R0lGODlhAQABAAAAACw= 1x", False),
+        (",local.png 1x,", False), ("local.png 1x 2x, local-2.png 100w", False),
+    ]
 
-        Compiling the extracted JS text with Python's `re` could only ever prove what PYTHON does
-        with it, and the whole point of spelling the whitespace class out is an ENGINE difference.
-        Skipped when node is absent, the way the repo's other node-gated checks degrade.
+    def _runtime_network_url_source(self):
+        """The exporter's whole network-URL decision, as JS source, for evaluation in node.
+
+        Extracted as one contiguous region rather than as the bare regex literal: the decision is
+        the URL parser's input cleanup, the literal test, and the `srcset` candidate boundary, and
+        reading only the pattern would keep passing after any of the others drifted - the very drift
+        this parity test exists to catch.
         """
+        source = self._read("68-export-offline.js")
+        start = source.find("function _offlineNormalizeUrlValue(")
+        self.assertNotEqual(start, -1,
+                            "the runtime no longer defines _offlineNormalizeUrlValue; the parity "
+                            "extraction is stale and must be re-pointed at whatever replaced it")
+        end = source.find("function _offlineSrcsetHasNetwork(", start)
+        self.assertNotEqual(end, -1,
+                            "the runtime no longer defines _offlineSrcsetHasNetwork after the "
+                            "normalizer; the parity extraction is stale")
+        end = source.find("\n}", end)
+        self.assertNotEqual(end, -1, "could not find the end of _offlineSrcsetHasNetwork")
+        region = source[start:end + 2]
+        for name in ("_OFFLINE_NETWORK_URL_RE", "_offlineIsNetworkUrl", "_OFFLINE_SRCSET_WS_RE",
+                     "_offlineSrcsetCandidateUrl", "_offlineSrcsetCandidateUrls"):
+            self.assertIn(name, region,
+                          "%s is no longer inside the extracted network-URL region, so the parity "
+                          "check would run a partial copy of the decision" % name)
+        # A region that stopped early (a helper inserted between the two anchors whose body ends in
+        # a column-0 `}`) would evaluate a TRUNCATED predicate, so require it to close cleanly AND
+        # to be the LAST closing brace in the file's own extraction window - `endswith("}")` alone
+        # is satisfied by any column-0 brace, including one inside the function.
+        self.assertTrue(region.rstrip().endswith("}"),
+                        "the extracted network-URL region does not end at a closing brace, so the "
+                        "parity check would evaluate a truncated copy of the decision")
+        self.assertEqual(region.count("function _offlineSrcsetHasNetwork("), 1,
+                         "the extracted region does not carry exactly one _offlineSrcsetHasNetwork "
+                         "definition, so the parity check would run a partial copy")
+        self.assertEqual(region.count("{") - region.count("}"), 0,
+                         "the extracted network-URL region has unbalanced braces, so it was cut "
+                         "mid-function and the parity check would evaluate a truncated copy")
+        return region
+
+    def test_the_python_and_js_network_url_predicates_agree(self):
+        """Run the runtime's own network-URL predicate in node and require the expected verdicts.
+
+        The whole predicate is extracted and evaluated rather than just its regex, because the
+        decision is now two parts - the URL parser's input cleanup and the literal test - and a
+        check that read only the pattern would pass while the normalizer drifted. Compiling the
+        extracted JS text with Python's `re` could only ever prove what PYTHON does with it, and
+        the point of spelling the whitespace class out is an ENGINE difference. Skipped when node
+        is absent, the way the repo's other node-gated checks degrade.
+        """
+        for value, expected in self._NETWORK_URL_CORPUS:
+            self.assertEqual(
+                resources.is_network_url(value), expected,
+                "the validator's network-URL predicate calls %r %s. A miss is a remote load the "
+                "gate certifies as offline-clean; a false hit rejects a file the exporter just "
+                "produced." % (value, "local" if expected else "a network URL"))
+        for value, expected in self._SRCSET_CORPUS:
+            self.assertEqual(
+                resources.srcset_has_network(value), expected,
+                "the validator's srcset predicate calls %r %s" % (value, "local" if expected else "a network URL"))
         node = shutil.which("node")
         if not node:
             self.skipTest("node is not on PATH; the JS-engine parity check needs it")
-        source = self._read("68-export-offline.js")
-        m = re.search(r"const _OFFLINE_NETWORK_URL_RE = /([^\n]*)/i;\n", source)
-        self.assertIsNotNone(m, "the runtime no longer declares _OFFLINE_NETWORK_URL_RE; the "
-                                "parity check is stale and must be re-pointed at whatever replaced it")
-        # The extractor takes everything up to the LAST `/i;` on the line, so a pattern that ever
-        # contained that sequence would be captured truncated and this test would then compare the
-        # wrong regex - passing while the real one drifted.
-        self.assertNotIn("/i;", m.group(1),
-                         "the extracted pattern is truncated: the regex literal now contains '/i;'")
-        payload = {"pattern": m.group(1), "corpus": self._NETWORK_URL_CORPUS}
+        payload = {"corpus": [value for value, _ in self._NETWORK_URL_CORPUS],
+                   "srcset": [value for value, _ in self._SRCSET_CORPUS]}
         script = (
-            "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
-            "const p=JSON.parse(raw);const re=new RegExp(p.pattern,'i');"
-            "process.stdout.write(JSON.stringify(p.corpus.map(s=>re.test(String(s||'')))));});"
+            self._runtime_network_url_source() + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);process.stdout.write(JSON.stringify({"
+            "corpus:p.corpus.map(s=>_offlineIsNetworkUrl(s)),"
+            "srcset:p.srcset.map(s=>_offlineSrcsetHasNetwork(s)),"
+            "tokens:p.srcset.map(s=>_offlineSrcsetCandidateUrls(s))}));});"
         )
         proc = subprocess.run([node, "-e", script], input=json.dumps(payload),
                               capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(proc.returncode, 0,
-                         "node could not evaluate the network-URL pattern: %s" % proc.stderr)
+                         "node could not evaluate the network-URL predicate: %s" % proc.stderr)
         verdicts = json.loads(proc.stdout)
-        self.assertEqual(len(verdicts), len(self._NETWORK_URL_CORPUS),
+        self.assertEqual(len(verdicts["corpus"]), len(self._NETWORK_URL_CORPUS),
                          "node returned %d verdicts for %d samples"
-                         % (len(verdicts), len(self._NETWORK_URL_CORPUS)))
-        for value, js_says in zip(self._NETWORK_URL_CORPUS, verdicts):
+                         % (len(verdicts["corpus"]), len(self._NETWORK_URL_CORPUS)))
+        self.assertEqual(len(verdicts["srcset"]), len(self._SRCSET_CORPUS),
+                         "node returned %d srcset verdicts for %d samples"
+                         % (len(verdicts["srcset"]), len(self._SRCSET_CORPUS)))
+        for (value, expected), js_says in zip(self._NETWORK_URL_CORPUS, verdicts["corpus"]):
             self.assertEqual(
-                js_says, bool(resources.NETWORK_URL_RE.match(value)),
-                "the runtime's _OFFLINE_NETWORK_URL_RE and the validator's NETWORK_URL_RE "
-                "disagree about %r. A value only one of them calls a network URL is either a "
-                "remote load the gate blesses, or an exported file its own --strict run rejects."
-                % value)
+                js_says, expected,
+                "the runtime's _offlineIsNetworkUrl calls %r %s, so the strip and the validator "
+                "have diverged. A value only one of them calls a network URL is either a remote "
+                "load the gate blesses, or an exported file its own --strict run rejects."
+                % (value, "local" if expected else "a network URL"))
+        for (value, expected), js_says in zip(self._SRCSET_CORPUS, verdicts["srcset"]):
+            self.assertEqual(
+                js_says, expected,
+                "the runtime's _offlineSrcsetHasNetwork calls %r %s, so the strip and the "
+                "validator have diverged about a srcset candidate boundary."
+                % (value, "local" if expected else "a network URL"))
+        # The TOKENS, not only the verdict: a candidate boundary can drift without changing any
+        # verdict in this corpus, and the boundary is the half of the srcset decision the URL
+        # predicate cannot see.
+        for (value, _), js_tokens in zip(self._SRCSET_CORPUS, verdicts["tokens"]):
+            self.assertEqual(
+                js_tokens, resources.srcset_candidate_urls(value),
+                "the runtime's _offlineSrcsetCandidateUrl and the validator's "
+                "srcset_candidate_urls tokenize %r differently (%r vs %r). HTML splits candidates "
+                "on ASCII whitespace only; an engine-whitespace split hides a load from whichever "
+                "side cuts the candidate short."
+                % (value, js_tokens, resources.srcset_candidate_urls(value)))
 
 
     # (type, attrs, body) tuples the exporter REMOVES and the validator rejects.
