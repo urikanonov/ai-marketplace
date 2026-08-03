@@ -1,6 +1,6 @@
 """Layered-checklist authoring checks (`data-cmh-checklist` containers)."""
 
-from .parsing import _BrowserTagNames, _browser_attrs_dict
+from .parsing import _BrowserStartTag, _browser_attrs_dict
 
 _CHECK_STATES = ("blank", "check", "cross", "question")
 
@@ -8,7 +8,7 @@ _CL_VOID = frozenset(
     "area base br col embed hr img input link meta param source track wbr".split())
 
 
-class _ChecklistParser(_BrowserTagNames):
+class _ChecklistParser(_BrowserStartTag):
     """Collect each data-cmh-checklist container INSTANCE and the items inside it (an item is
     an element carrying data-cmh-state or data-cmh-item). Scoped to the innermost open
     container, mirroring the runtime's ownership rule."""

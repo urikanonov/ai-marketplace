@@ -14,10 +14,11 @@ from _validate_helpers import *  # noqa: F401,F403  (unittest + sys.path wiring)
 import contextlib  # noqa: E402
 import html as _html  # noqa: E402
 import html.parser as _html_parser  # noqa: E402
+import re  # noqa: E402
 from html.parser import HTMLParser  # noqa: E402
 from unittest import mock  # noqa: E402
 
-from checks import checklist, density, notes, parsing  # noqa: E402
+from checks import checklist, density, notes, parsing, theme_contrast  # noqa: E402
 
 # Every HTML raw-text / RCDATA element: its CONTENT is text a reader SEES, never markup.
 RAW_TEXT_ELEMENTS = ("script", "style", "textarea", "title", "xmp", "iframe",
@@ -801,14 +802,228 @@ class DocParserAttributeValueTests(unittest.TestCase):
         parser = _StaleRawTagParser('<p\x00x id="&notit;">')
         self.assertEqual(parser.attrs_for("p", [("id", "\u00acit;")]), {"id": "&notit;"})
 
-    def test_an_oversized_numeric_reference_does_not_break_the_decode(self):
-        # `html.unescape` raises on a reference with more digits than Python's integer
-        # conversion limit. Every parse entry point swallows an exception into a TRUNCATED
-        # parse, so a raise here would hide every finding after that tag - and the pre-3.13
-        # host can hand us such a value in a place its own decoder never looked at (it splits
-        # `id=a\xa0&#...;=1` differently). The reference is left literal instead.
+    def test_a_control_character_reference_is_preserved_in_an_attribute(self):
+        # A BROWSER's numeric character reference end state only reports a parse error for a
+        # control character - it KEEPS the code point - so `id="a&#1;b"` really is `a\x01b` in
+        # the DOM. `html.unescape` DELETES the whole reference, so the validator read a
+        # different id, href, class, meta content or companion-resource path than the document
+        # carries, on every interpreter (this is not the 3.12/3.13 drift; both agree, and both
+        # disagree with the browser).
+        for source, expected in (("a&#1;b", "a\x01b"), ("a&#x1;b", "a\x01b"),
+                                 ("a&#11;b", "a\x0bb"), ("a&#x7f;b", "a\x7fb"),
+                                 ("a&#129;b", "a\x81b"), ("a&#x8d;b", "a\x8db")):
+            with self.subTest(source=source):
+                self.assertEqual(_ids('<div id="%s"></div>' % source), [expected])
+
+    def test_a_noncharacter_reference_is_preserved_in_an_attribute(self):
+        # Same rule for the noncharacters: a parse error, not a deletion.
+        for source, expected in (("a&#xfdd0;b", "a\ufdd0b"), ("a&#xffff;b", "a\uffffb"),
+                                 ("a&#x1fffe;b", "a\U0001fffeb")):
+            with self.subTest(source=source):
+                self.assertEqual(_ids('<div id="%s"></div>' % source), [expected])
+
+    def test_a_c1_reference_is_remapped_in_an_attribute(self):
+        # The WHOLE C1 (0x80-0x9F) replacement table the HTML tokenizer applies, entry by entry -
+        # a sampled test would let a typo in any unsampled row ship. The five code points the
+        # table does NOT list (0x81, 0x8D, 0x8F, 0x90, 0x9D) are kept as themselves, like any
+        # other control character. (`html.unescape` agrees on the 27 mapped rows, so those are
+        # positive confirmation rather than red-before; the five unmapped ones are the ones it
+        # deletes, and they are covered by the control-character test above.)
+        table = {
+            0x80: "\u20ac", 0x82: "\u201a", 0x83: "\u0192", 0x84: "\u201e", 0x85: "\u2026",
+            0x86: "\u2020", 0x87: "\u2021", 0x88: "\u02c6", 0x89: "\u2030", 0x8a: "\u0160",
+            0x8b: "\u2039", 0x8c: "\u0152", 0x8e: "\u017d", 0x91: "\u2018", 0x92: "\u2019",
+            0x93: "\u201c", 0x94: "\u201d", 0x95: "\u2022", 0x96: "\u2013", 0x97: "\u2014",
+            0x98: "\u02dc", 0x99: "\u2122", 0x9a: "\u0161", 0x9b: "\u203a", 0x9c: "\u0153",
+            0x9e: "\u017e", 0x9f: "\u0178",
+        }
+        for code in range(0x80, 0xa0):
+            expected = table.get(code, chr(code))
+            for source in ("&#%d;" % code, "&#x%x;" % code, "&#X%X;" % code):
+                with self.subTest(source=source):
+                    self.assertEqual(_ids('<div id="a%sb"></div>' % source), ["a%sb" % expected])
+        self.assertEqual(parsing._C1_CHARREF_REPLACEMENTS, table)
+
+    def test_a_reference_the_host_can_decode_is_left_to_the_host(self):
+        # The recovery path decides "is this tag an element, and where does it end" with a SECOND
+        # tokenizer, so ordinary markup must never reach it: a merely long or zero-padded
+        # reference is still handed to the host, and only a run no authored document contains
+        # (and that the host would raise on) is taken away.
+        for value in ("&#65;", "&#0000065;", "&#1114111;", "&#x10FFFF;", "&#%s;" % ("0" * 20),
+                      "&#%s;" % ("a" * 64)):
+            with self.subTest(value=value):
+                self.assertIsNone(parsing._BIG_CHARREF_RE.search('<div id="%s">' % value))
+        self.assertIsNotNone(parsing._BIG_CHARREF_RE.search('<div id="&#%s;">' % ("9" * 5000)))
+        self.assertIsNotNone(parsing._BIG_CHARREF_RE.search('<div id="&#x%s;">' % ("f" * 64)))
+
+    def test_an_out_of_range_or_surrogate_reference_is_the_replacement_character(self):
+        for source in ("&#0;", "&#x0;", "&#xd800;", "&#xdfff;", "&#x110000;", "&#1114112;"):
+            with self.subTest(source=source):
+                self.assertEqual(_ids('<div id="%s"></div>' % source), ["\ufffd"])
+
+    def test_an_oversized_numeric_reference_resolves_to_the_replacement_character(self):
+        # A reference with more digits than Python's integer conversion limit makes
+        # `html.unescape` RAISE, and the HOST's own `parse_starttag` decodes the value before
+        # this module is reached - so the whole parse was swallowed into a TRUNCATED one and
+        # every finding after that tag disappeared. A browser just resolves anything past
+        # 0x10FFFF to U+FFFD, so the decode is bounded and total, and the start tag is
+        # re-dispatched from its RAW text when the host refuses it.
+        for ref in ("&#%s;" % ("9" * 5000), "&#x%s;" % ("f" * 5000), "&#%s" % ("9" * 5000)):
+            with self.subTest(ref=ref):
+                self.assertEqual(parsing._unescape_attr_value("a" + ref + "b"), "a\ufffdb")
+                self.assertEqual(_ids('<div id="a%sb"></div>' % ref), ["a\ufffdb"])
+                metas = parsing._find_tag_attrs(
+                    '<meta name="x" content="a%sb">' % ref, "meta")
+                self.assertEqual([d.get("content") for d in metas], ["a\ufffdb"])
+
+    def test_a_start_tag_the_host_refused_to_decode_does_not_truncate_the_parse(self):
+        # The re-dispatch keeps the REST of the document live: a self-closed tag still reaches
+        # handle_startendtag, a raw-text element still enters its text region, and the elements
+        # after the offending tag are still collected.
         ref = "&#%s;" % ("9" * 5000)
-        self.assertEqual(parsing._unescape_attr_value("a" + ref), "a" + ref)
+        html = ('<meta id="m%s"/>'
+                '<script id="s%s">var u = "<div id=\'quoted\'>";</script>'
+                '<div id="after"></div>') % (ref, ref)
+        self.assertEqual(_ids(html), ["m\ufffd", "s\ufffd", "after"])
+
+    def test_the_raw_tag_path_dispatches_exactly_what_the_host_would(self):
+        # The tag taken away from the host must produce the SAME event stream the host produces -
+        # otherwise the recovery path is its own dialect. The comparison is run on the SAME bytes
+        # both ways (the routing regex is widened so an ordinary `&#65;` takes the recovery path),
+        # so attribute VALUES and data payloads are compared too, not just the event shape.
+        # Pinned over the shapes that decide start-vs-startend and raw-text entry, including an
+        # UNQUOTED value that swallows a trailing `/` (`<div a=b/>` is a normal start tag whose
+        # value is `b/`, NOT a self-closed tag) and a tag whose attributes stop before the close.
+        for shape in ('<div id="&#65;" a=b/>x</div>', '<div id="&#65;"/>x</div>',
+                      '<div id=&#65;/>x</div>', '<div a=1 id="&#65;" />x</div>',
+                      '<script id="&#65;">var u = "<b id=\'q\'>";</script>',
+                      '<textarea id="&#65;"><b id="q"></b></textarea>',
+                      '<title id="&#65;"><b id="q"></b></title>',
+                      '<plaintext id="&#65;"><b id="q"></b>',
+                      '<div id="&#65;" a="1"b>x</div>', '<div id="&#65;">x</div>',
+                      '<div id="&#65;" a="1" a="2">x</div>', '<svg><rect id="&#65;"/></svg>'):
+            with self.subTest(shape=shape):
+                host = _EventProbe()
+                host.parse_document(shape)
+                ours = _EventProbe()
+                with _force_raw_tag_path():
+                    ours.parse_document(shape)
+                self.assertEqual(ours.events, host.events, shape)
+
+    def test_an_oversized_reference_keeps_every_shared_parser_reading(self):
+        # Each check-local parser derives from the shared base for the same reason, and each one
+        # swallows a parse failure its own way - so pin, per parser, that the elements AFTER the
+        # offending tag are still seen. Without the shared base these all go silently empty.
+        ref = "&#%s;" % ("9" * 5000)
+        _errors, warnings = checklist.check_checklists(
+            '<div data-cmh-checklist="c1">'
+            '<li data-cmh-state="check" data-cmh-item="a%s">a</li>'
+            '<li data-cmh-state="check" data-cmh-item="dup">b</li>'
+            '<li data-cmh-state="check" data-cmh-item="dup">c</li></div>' % ref)
+        self.assertTrue(any('duplicate data-cmh-item id "dup"' in w for w in warnings), warnings)
+
+        note_parser = notes._NotesParser()
+        note_parser.feed('<p data-cmh-note="a%s">n</p><p data-cmh-note="after">m</p>' % ref)
+        note_parser.close()
+        self.assertEqual([n["id"] for n in note_parser.notes], ["a\ufffd", "after"])
+
+        parsing.code_block_spans.cache_clear()
+        try:
+            spans = parsing.code_block_spans(
+                '<pre id="a%s"><code class="language-python">x</code></pre>' % ref)
+        finally:
+            parsing.code_block_spans.cache_clear()
+        self.assertFalse(spans.failed)
+        self.assertEqual(spans.pres[0]["attrs"]["id"], "a\ufffd")
+
+        wall = "<p>%s</p>" % ("word " * 80)
+        _derrors, dwarnings = density.check_density(
+            '<meta name="commentable-html-kind" content="report">'
+            '<main id="commentRoot"><section id="s%s"><h2>H</h2>%s</section></main>'
+            % (ref, wall * 5))
+        self.assertTrue(dwarnings, "the density pass saw nothing after the offending tag")
+
+    def test_a_document_the_contrast_scan_cannot_read_is_reported_not_skipped(self):
+        # The contrast scan builds its own tolerant parser, which still raises on an oversized
+        # reference. Degrading to "no findings" would let ONE attribute silently disable the whole
+        # check on a document every other parse now reads - and that document used to be refused
+        # outright by the failing parse.
+        ref = "&#%s;" % ("9" * 5000)
+        errors, _warnings = theme_contrast.check_theme_contrast(
+            '<div id="a%s"></div><style>:root{--cp-text:#fff;}</style>' % ref)
+        self.assertTrue(any("oversized numeric character reference" in e for e in errors), errors)
+        self.assertEqual(theme_contrast.check_theme_contrast("<div id=a></div>")[0], [])
+
+    def test_the_raw_tag_path_dispatches_each_tag_exactly_once(self):
+        # A recovery that ran BESIDE the host's own dispatch (rather than instead of it) would
+        # double-record the element - a duplicate id, a duplicate checklist item, a duplicate
+        # note - so pin the count, not just the value.
+        ref = "&#%s;" % ("9" * 5000)
+        probe = _EventProbe()
+        probe.parse_document('<div id="a%s"></div>' % ref)
+        self.assertEqual(probe.events,
+                         [("start", "div", (("id", "a\ufffd"),)), ("end", "div")])
+
+    def test_a_handler_error_is_not_mistaken_for_a_host_decode_refusal(self):
+        # The host calls handle_starttag INSIDE parse_starttag, so RECOVERING BY CATCHING would
+        # swallow a subclass's own ValueError and dispatch the tag a second time. The refusal is
+        # detected up front instead, so a handler bug still propagates.
+        class _Boom(_EventProbe):
+            def handle_starttag(self, tag, attrs):
+                raise ValueError("handler bug")
+
+        for source in ('<div id="a"></div>', '<div id="a&#%s;"></div>' % ("9" * 5000)):
+            with self.subTest(source=source):
+                with self.assertRaises(ValueError):
+                    _Boom().parse_document(source)
+
+    def test_an_incomplete_start_tag_still_waits_for_more_input(self):
+        # `check_for_whole_start_tag` says "not yet" with -1; the recovery path must pass that
+        # through rather than inventing a tag out of a partial one.
+        probe = _EventProbe()
+        probe.feed('<div id="a&#%s;" ' % ("9" * 5000))
+        self.assertEqual(probe.events, [])
+        probe.feed('class="c">')
+        probe.close()
+        self.assertEqual(probe.events, [("start", "div", (("id", "a\ufffd"), ("class", "c")))])
+
+
+class _EventProbe(parsing._BrowserStartTag):
+    """A PLAIN start-tag parser that records the dispatch stream. Deliberately not a
+    `_BrowserBoundaries` subclass: that one installs the BROWSER's raw-text set from its own
+    `handle_starttag`, which would mask a divergence in the recovery path's raw-text entry."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.events = []
+
+    def parse_document(self, html):
+        self.feed(html)
+        self.close()
+
+    def _attrs(self, tag, attrs):
+        return tuple(parsing._browser_attrs(self, tag, attrs))
+
+    def handle_starttag(self, tag, attrs):
+        self.events.append(("start", tag, self._attrs(tag, attrs)))
+
+    def handle_startendtag(self, tag, attrs):
+        self.events.append(("startend", tag, self._attrs(tag, attrs)))
+
+    def handle_endtag(self, tag):
+        self.events.append(("end", tag))
+
+    def handle_data(self, data):
+        self.events.append(("data", data))
+
+
+@contextlib.contextmanager
+def _force_raw_tag_path():
+    """Widen the routing regex so an ORDINARY numeric reference is taken away from the host, and
+    the recovery path can be compared against the host on byte-identical input."""
+    with mock.patch.object(parsing, "_BIG_CHARREF_RE",
+                           re.compile(r"&#[xX]?[0-9a-fA-F]{2,}")):
+        yield
 
 
 class _HostAttrProbe(HTMLParser):

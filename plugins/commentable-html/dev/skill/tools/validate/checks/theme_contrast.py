@@ -23,6 +23,8 @@ except ImportError:  # pragma: no cover - path guard mirrors the sibling checks
 
 from dataclasses import dataclass
 
+from . import parsing
+
 ADVISORY_PREFIX = "theme contrast advisory: "
 ERROR_PREFIX = "theme contrast: "
 
@@ -164,10 +166,23 @@ def check_theme_contrast(html):
     near-miss text/link overrides and unresolved chains are advisory WARNINGS carrying a stable
     ADVISORY_PREFIX so downstream tools (retrofit) can keep them out of the hard-fail path. Any
     unexpected failure while resolving the palette degrades to no findings (best-effort) rather
-    than aborting the whole validation run for every caller."""
+    than aborting the whole validation run for every caller.
+
+    ONE input is exempt from that degrade: this scan builds its own tolerant parser, which still
+    raises on an oversized numeric character reference, while the document parse now resolves one
+    in an ATTRIBUTE VALUE to U+FFFD and carries on (CMH-VAL-21). Staying silent there would let a
+    single attribute disable the whole contrast check on a document the rest of the validator
+    happily reads - and that document used to be refused outright by the failing parse - so that
+    shape is REPORTED instead of skipped. The report does not claim WHERE the reference is: the
+    same raise happens for one in the document's TEXT, which the document parse also refuses
+    (issue #946), and this scan cannot tell the two apart."""
     try:
         findings = theme_contrast_findings(html)
     except Exception:
+        if parsing._BIG_CHARREF_RE.search(html or ""):
+            return [ERROR_PREFIX + "this document could not be read for contrast: it carries an "
+                    "oversized numeric character reference. Shorten it (a browser resolves it to "
+                    "U+FFFD) so the check is not silently skipped"], []
         return [], []
     errors, warnings = [], []
     for finding in findings:

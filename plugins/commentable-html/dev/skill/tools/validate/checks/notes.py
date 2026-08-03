@@ -1,6 +1,6 @@
 """Editable notes-field authoring checks (`data-cmh-note` elements)."""
 
-from .parsing import _BrowserTagNames, _browser_attrs_dict
+from .parsing import _BrowserStartTag, _browser_attrs_dict
 
 _NOTE_VOID = frozenset(
     "area base br col embed hr img input link meta param source track wbr".split())
@@ -17,7 +17,7 @@ _LAYER_ATTRS = ("data-cmh-checklist", "data-cm-widget")
 _LAYER_CLASSES = ("cmh-diff",)
 
 
-class _NotesParser(_BrowserTagNames):
+class _NotesParser(_BrowserStartTag):
     """Collect each data-cmh-note element instance: its id, whether it has element children,
     whether it is void, whether it nests inside another note, and whether it sits inside a
     checklist / diff / widget / deck substrate."""
