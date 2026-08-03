@@ -164,6 +164,11 @@ test("a dirty --ask is refused with instructions that can reproduce and fix it (
       NO_BROWSERS);
     assert.doesNotMatch(rendered.stderr, /is not defined/,
       "the clean render path broke after the gate passed");
+    // An empty --ask is an override that does nothing: it would fall back to the cast's own prompt
+    // and the operator would be told to re-capture, with no sign their flag was ignored.
+    const blank = run(["render", "--cast", clean.file, "--ask", ""]);
+    assert.notEqual(blank.status, 0, "an empty --ask was accepted and ignored");
+    assert.match(blank.stderr, /--ask needs text/);
   } finally {
     clean.cleanup();
   }

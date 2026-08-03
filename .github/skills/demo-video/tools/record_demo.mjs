@@ -145,6 +145,12 @@ function checkSubjectFlags(args, subject) {
   if (stray.length) {
     throw new Error(`${subject} does not use ${stray.map((k) => `--${k}`).join(", ")}`);
   }
+  // An EMPTY `--ask` is silently ignored downstream - `askFromCast` falls back to the cast's own
+  // prompt - so an operator blanking a dirty title card would be told to re-capture instead, with
+  // no sign their override did nothing. Say so rather than guessing which they meant.
+  if ("ask" in args && !String(args.ask).trim()) {
+    throw new Error("--ask needs text; omit it entirely to use the prompt the cast already carries");
+  }
 }
 function parseArgs(argv) {
   const out = { _: [], passthrough: [] };
