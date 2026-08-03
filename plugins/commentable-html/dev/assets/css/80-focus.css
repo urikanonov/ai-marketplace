@@ -20,3 +20,11 @@
   outline-offset: 2px;
 }
 
+/* The comment list itself takes focus when a re-render driven from inside it empties the list
+   (issue #897), so the landing has to look intentional. Inset, since an outset ring on a
+   full-height scroll container is clipped by the panel edge. */
+#commentList:focus-visible {
+  outline: 2px solid var(--cp-accent);
+  outline-offset: -2px;
+}
+
