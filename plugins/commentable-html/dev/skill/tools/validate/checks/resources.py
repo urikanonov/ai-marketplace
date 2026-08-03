@@ -41,6 +41,28 @@ OFFLINE_CSP_REQUIRED = {
 
 CSS_NETWORK_URL_RE = re.compile(r"url\(\s*(['\"]?)(?:https?:)?//", re.IGNORECASE)
 
+# A network URL in an attribute value, allowing the leading characters a browser REMOVES before it
+# parses the URL: WHATWG strips leading (and trailing) C0 controls and spaces, U+0000 to U+0020, so
+# a value padded with them still loads while one padded with NBSP or U+FEFF does not resolve as a
+# URL at all. The range is written out as literal code points because the offline export carries an
+# INDEPENDENT JavaScript copy of this predicate (`_OFFLINE_NETWORK_URL_RE` in
+# `assets/js/68-export-offline.js`) and the two engines do not agree about what `\s` means (Python's
+# is Unicode-aware and matches U+001C-U+001F; JS's excludes them but includes U+FEFF). A drift here
+# is the CMH-OFFLINE-04 failure mode - the gate blesses a file the strip would have cleaned, or
+# rejects one the exporter just produced. `re.ASCII` is on for the same reason: Python's
+# `re.IGNORECASE` case-folds across the whole of Unicode, so `s` also matches U+017F (LATIN SMALL
+# LETTER LONG S) and `http<U+017F>://host` would be a network URL to the gate but not to a JS `/i`
+# regex, which never folds a non-ASCII character onto an ASCII one.
+NETWORK_URL_RE = re.compile(r"[\x00-\x20]*(?:https?:)?//", re.IGNORECASE | re.ASCII)
+
+# Every attribute through which a <script> can LOAD its code. An SVG <script> uses none of the
+# HTML `src` spelling: it loads through SVG2 `href` or the legacy `xlink:href`, and its body is
+# empty, so a `src`-only check saw nothing at all. Kept beside the predicate above because the
+# offline strip carries the same list as `_OFFLINE_SCRIPT_LOAD_ATTRS`, and
+# `test_the_python_and_js_script_load_attributes_agree` pins the two together.
+SCRIPT_LOAD_ATTRS = ("src", "href", "xlink:href")
+
+
 # A DIRECT scripted top-level navigation to a network URL, in an inline script an offline file
 # still carries. The pattern text below is BYTE-IDENTICAL to the `_OFFLINE_NAV_TO_NETWORK_RE`
 # regex literal in assets/js/68-export-offline.js (including the JS-only `\/` escapes, which

