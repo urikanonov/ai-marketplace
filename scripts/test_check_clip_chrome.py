@@ -20,13 +20,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_clip_chrome as ccc
 
 
-def _frames(kinds, spreads):
+def _frames(kinds, spreads, gutters=None):
     """Build the four parallel measurement lists the scanner consumes.
 
     `kinds` is a string of 't' (settled chrome on screen), 'f' (mid cross-fade, so the lights are
     part-faded or shifted), 'o' (LATE cross-fade: the lights are fully saturated again while the
     report is still faintly painted over the window) and 'b' (no chrome at all - a browser page);
-    `spreads` is the luminance spread of each frame's title strip.
+    `spreads` is the luminance spread of each frame's title strip. `gutters` overrides the gutter
+    spread per frame, which is how a case at the decision boundary is expressed.
     """
     strip = [{"t": i * 0.04, "YMIN": 0.0, "YMAX": s, "SATMAX": 10.0} for i, s in enumerate(spreads)]
     # Measured on real clips: the lights read 83-93 fully drawn, drop well under the threshold at
@@ -37,16 +38,22 @@ def _frames(kinds, spreads):
     # The chrome's empty gutter: flat whenever nothing is painted over the window, and carrying the
     # report's ghost while it is. Measured on the loop clip: 19 at worst settled, 24-44 mid-fade.
     gutter_spread = {"t": 6.0, "f": 44.0, "o": 44.0, "b": 6.0}
-    gutter = [{"YMIN": 0.0, "YMAX": gutter_spread[k]} for k in kinds]
+    values = gutters if gutters is not None else [gutter_spread[k] for k in kinds]
+    gutter = [{"YMIN": 0.0, "YMAX": v} for v in values]
     # A terminal is on screen for anything but a browser frame.
     means = {"t": 30.0, "f": 30.0, "o": 30.0, "b": 200.0}
     kind = [{"YAVG": means[k]} for k in kinds]
+    for i, row in enumerate(strip):
+        # The scanner pairs the four probes by index and checks that their timestamps agree, so the
+        # fixture has to carry the same timestamp on every probe, exactly as ffmpeg reports it.
+        for other in (lights, gutter, kind):
+            other[i]["t"] = row["t"]
     return strip, lights, gutter, kind
 
 
 class ScanDecisionTests(unittest.TestCase):
-    def _run(self, kinds, spreads):
-        calls = iter(_frames(kinds, spreads))
+    def _run(self, kinds, spreads, gutters=None):
+        calls = iter(_frames(kinds, spreads, gutters))
         original = ccc._measure
         ccc._measure = lambda *a, **k: next(calls)
         try:
@@ -54,8 +61,8 @@ class ScanDecisionTests(unittest.TestCase):
         finally:
             ccc._measure = original
 
-    def _scan(self, kinds, spreads):
-        return self._run(kinds, spreads)[0]
+    def _scan(self, kinds, spreads, gutters=None):
+        return self._run(kinds, spreads, gutters)[0]
 
     def test_text_on_a_terminal_frame_is_reported(self):
         spreads = [0.0] * 20
@@ -97,13 +104,52 @@ class ScanDecisionTests(unittest.TestCase):
         self.assertEqual(judged, 15)
         self.assertEqual(occluded, 5)
 
-    def test_a_late_cross_fade_frame_is_not_reported_however_bright_its_ghost(self):
-        # An occluded frame is not the title bar, so its content is not a leak - and reporting one
-        # would send the operator hunting for text that is not in the chrome.
-        bad, judged, occluded = self._run("t" * 10 + "o" * 5, [0.0] * 10 + [148.0] * 5)
+    def test_a_late_cross_fade_ghost_is_not_reported_as_a_leak(self):
+        # An occluded frame is not the title bar, so a report ghost on it is not a leak - reporting
+        # one would send the operator hunting for text that is not in the chrome. A ghost stays
+        # well under the coarse tolerance: measured, the worst reads 33 where a title reads 167.
+        spreads = [0.0] * 10 + [ccc.OCCLUDED_LEAK_TOLERANCE - 1] * 5
+        bad, judged, occluded = self._run("t" * 10 + "o" * 5, spreads)
         self.assertEqual(bad, [])
         self.assertEqual(judged, 10)
         self.assertEqual(occluded, 5)
+
+    def test_a_title_drawn_under_an_overlay_is_still_reported(self):
+        # Not judged must not mean not looked at. The overlay is faint wherever the lights still
+        # read as drawn, so a real title keeps most of its contrast - and a leaked title long
+        # enough to wrap would put ink in the gutter and so exempt its OWN frame. The #815 leak sat
+        # on the last frames of a segment, which is exactly where a transition starts.
+        spreads = [0.0] * 10 + [167.0] * 2 + [0.0] * 8
+        bad, judged, occluded = self._run("t" * 10 + "o" * 2 + "t" * 8, spreads)
+        self.assertEqual([round(t, 2) for t, _ in bad], [0.40, 0.44])
+        self.assertEqual((judged, occluded), (18, 2))
+
+    def test_a_mostly_painted_over_clip_is_refused_not_passed_on_the_remainder(self):
+        # An older recorder's chrome padding puts the terminal's first row inside the gutter band,
+        # so the published loop clip of that era judges 23 of its 448 chrome frames. Passing on the
+        # survivors reads exactly like a clean scan, which is the failure this gate exists to
+        # replace, so a clip mostly skipped is refused.
+        with self.assertRaises(ccc.ChromeOccluded) as caught:
+            self._scan("t" * 5 + "o" * 15, [0.0] * 20)
+        self.assertIn("older recorder", str(caught.exception))
+
+    def test_a_clip_with_a_transition_or_two_is_not_refused(self):
+        # The refusal is a coverage floor, not a ban on transitions: the loop clip skips 3.5%.
+        _, judged, occluded = self._run("t" * 16 + "o" * 4, [0.0] * 20)
+        self.assertEqual((judged, occluded), (16, 4))
+
+    def test_the_gutter_tolerance_is_honoured_at_its_boundary(self):
+        # Pin the comparison itself, not just values far from it: a frame exactly AT the tolerance
+        # is judged and one a unit above is skipped.
+        gutters = [ccc.GUTTER_TOLERANCE] * 10 + [ccc.GUTTER_TOLERANCE + 1] * 5
+        _, judged, occluded = self._run("t" * 15, [0.0] * 15, gutters)
+        self.assertEqual((judged, occluded), (10, 5))
+
+    def test_a_faded_frame_is_not_counted_as_painted_over(self):
+        # A mid-fade frame is skipped on the lights, before the gutter is consulted, so it must not
+        # inflate the skipped count - which is the number the coverage floor is measured against.
+        _, judged, occluded = self._run("t" * 5 + "f" * 5 + "o" * 5, [0.0] * 15)
+        self.assertEqual((judged, occluded), (5, 5))
 
     def test_the_settled_frames_before_a_fade_are_still_judged(self):
         # The occlusion gate must not become the positional settle window in disguise: the frames
@@ -178,20 +224,28 @@ class ScanDecisionTests(unittest.TestCase):
     def test_the_skipped_count_is_reported_so_dropped_frames_are_visible(self):
         # A frame skipped for occlusion is a frame NOT checked. Reporting only the judged count
         # would hide how much of a clip the gate quietly declined to look at.
-        def fake(ffmpeg, clip):
-            return [], 577, 21
+        out = self._report(([], 577, 21))
+        self.assertIn("judged 577", out)
+        self.assertIn("skipped 21", out)
 
+    def test_a_clip_with_nothing_skipped_says_so_by_saying_nothing(self):
+        # The clean case must not grow a "skipped 0" clause; a report that always mentions skipping
+        # trains the reader to ignore the number that matters.
+        out = self._report(([], 1135, 0))
+        self.assertIn("judged 1135", out)
+        self.assertNotIn("skipped", out)
+
+    def _report(self, result):
         original_scan, original_find = ccc.scan_clip, ccc.find_ffmpeg
-        ccc.scan_clip, ccc.find_ffmpeg = fake, lambda: "ffmpeg"
+        ccc.scan_clip, ccc.find_ffmpeg = (lambda ffmpeg, clip: result), lambda: "ffmpeg"
         out = io.StringIO()
         try:
             with contextlib.redirect_stdout(out):
-                code = ccc.main(["loop.webm"])
+                code = ccc.main(["clip.webm"])
         finally:
             ccc.scan_clip, ccc.find_ffmpeg = original_scan, original_find
         self.assertEqual(code, 0)
-        self.assertIn("judged 577", out.getvalue())
-        self.assertIn("skipped 21", out.getvalue())
+        return out.getvalue()
 
 
 class UntrustworthyInputTests(unittest.TestCase):
@@ -208,6 +262,21 @@ class UntrustworthyInputTests(unittest.TestCase):
         try:
             with self.assertRaises(SystemExit):
                 ccc.scan_clip("ffmpeg", "clip.webm")
+        finally:
+            ccc._measure = original
+
+    def test_the_scan_refuses_probes_whose_timestamps_disagree(self):
+        # Equal lengths are not alignment. Four independent decodes are paired BY INDEX, so a run
+        # that dropped one frame and duplicated another would judge one frame's gutter against its
+        # neighbour's strip with no symptom at all.
+        strip, lights, gutter, kind = _frames("t" * 10, [0.0] * 10)
+        gutter[4]["t"] += 0.04
+        original = ccc._measure
+        ccc._measure = self._measure_returning(strip, lights, gutter, kind)
+        try:
+            with self.assertRaises(SystemExit) as caught:
+                ccc.scan_clip("ffmpeg", "clip.webm")
+            self.assertIn("timestamps", str(caught.exception))
         finally:
             ccc._measure = original
 
@@ -292,6 +361,20 @@ def chrome_css():
             raise AssertionError("the page builders disagree on %s %s: %s" % (selector, prop, seen))
         return seen[0]
 
+    def line_height():
+        """The line height the title inherits, read from the page's `font:` shorthand.
+
+        Restating it as a literal 1.4 would let a restyle move the title's line box - and with it
+        the row a leaked title's descenders reach - while this file kept asserting against the old
+        number, which is the drift these tests exist to prevent.
+        """
+        found = re.findall(r"html,\s*body\s*\{[^}]*font:\s*[^;}]*?\d+px/([\d.]+)", text)
+        if not found:
+            raise AssertionError("no inherited line-height in the recorder's html, body rule")
+        if len(set(found)) != 1:
+            raise AssertionError("the page builders disagree on the line height: %s" % found)
+        return float(found[0])
+
     return {
         "pad_top": rules(".wrap", "padding", 0),
         "pad_side": rules(".wrap", "padding", 1),
@@ -301,6 +384,7 @@ def chrome_css():
         "chrome_pad_bottom": rules(".chrome", "padding-bottom"),
         "title_margin": rules(".title", "margin-left"),
         "title_font": rules(".title", "font-size"),
+        "line_height": line_height(),
     }
 
 
@@ -391,17 +475,29 @@ class CropGeometryTests(unittest.TestCase):
     def test_the_gutter_probe_lies_between_the_title_row_and_the_terminal(self):
         # The gutter is the chrome's own bottom padding: background on every settled frame whatever
         # the terminal prints, and a row a title can never be drawn on. Both bounds matter - drift
-        # UP and it starts reading the title (an occlusion gate that hides real leaks), drift DOWN
-        # and it reads the terminal's antialiased first row on every frame (a gate that judges
-        # nothing). The strip's own history is the warning: merely touching the terminal's edge was
-        # enough to flag 14 frames of a clean clip.
+        # UP and it starts reading the title (an occlusion gate that could hide a real leak), drift
+        # DOWN and it reads the terminal's antialiased first row on every frame (a gate that judges
+        # nothing). The band the padding leaves is only 8.5 video px tall, so the clearances cannot
+        # both be as generous as the strip's 4.0: the panel's answer is that the two sides fail
+        # differently. Reading the title would be silent, and is guarded by the coarse leak check
+        # that still inspects a skipped frame; reading the terminal only DECLINES frames, and a
+        # clip that declines most of them is refused rather than passed (MAX_OCCLUDED_SHARE).
         css = chrome_css()
         found = re.match(r"crop=iw:(\d+):0:(\d+)$", ccc.GUTTER)
         self.assertTrue(found, "GUTTER is not the expected crop shape: %r" % ccc.GUTTER)
         height, top = (int(g) for g in found.groups())
-        title_row_bottom = (css["pad_top"] + max(css["dot"], css["title_font"] * 1.4)) * ccc.PUBLISH_SCALE
+        # These clips are yuv420p, so ffmpeg snaps an odd crop to an even one: a band written at
+        # y=23 measures the same rows as one written at y=22, and the assertions below would then
+        # be checking a band that is not the one being measured.
+        self.assertEqual((top % 2, height % 2), (0, 0),
+                         "GUTTER must be even-aligned or ffmpeg measures different rows than these "
+                         "offsets describe")
+        title_row_bottom = ((css["pad_top"] + max(css["dot"], css["title_font"] * css["line_height"]))
+                            * ccc.PUBLISH_SCALE)
         terminal_top = (css["pad_top"] + css["dot"] + css["chrome_pad_bottom"]) * ccc.PUBLISH_SCALE
-        self.assertGreaterEqual(top, title_row_bottom)
+        self.assertGreaterEqual(top, title_row_bottom + 2.0,
+                                "the gutter starts %.1f video px below the title's line box"
+                                % (top - title_row_bottom))
         self.assertGreaterEqual(terminal_top - (top + height), 2.0,
                                 "the terminal starts %.1f video px below the gutter"
                                 % (terminal_top - (top + height)))
@@ -423,11 +519,13 @@ class CropGeometryTests(unittest.TestCase):
 class ScaleGuardTests(unittest.TestCase):
     """A clip rendered at another scale is measured in the wrong place, and must say so."""
 
-    def _scan(self, satmax):
+    def _scan(self, satmax, gutter_spread=6.0):
         strip = [{"t": 0.4, "YMIN": 0.0, "YMAX": 1.0, "SATMAX": satmax}]
         lights = [{"SATMAX": 88.0}]
-        gutter = [{"YMIN": 0.0, "YMAX": 6.0}]
+        gutter = [{"YMIN": 0.0, "YMAX": gutter_spread}]
         kind = [{"YAVG": 30.0}]
+        for row in (lights[0], gutter[0], kind[0]):
+            row["t"] = 0.4
         calls = iter([strip, lights, gutter, kind])
         original = ccc._measure
         ccc._measure = lambda *a, **k: next(calls)
@@ -435,6 +533,15 @@ class ScaleGuardTests(unittest.TestCase):
             return ccc.scan_clip("ffmpeg", "clip.webm")[0]
         finally:
             ccc._measure = original
+
+    def test_a_mis_scaled_clip_says_scale_even_when_its_gutter_reads_as_painted_over(self):
+        # At another scale nothing lands where these offsets expect it: the lights fall inside the
+        # strip AND the gutter falls on the title row, so the clip reads as occluded everywhere.
+        # Reporting "something is painted over the chrome" there would send the operator re-recording
+        # a clip whose only problem is the scale it was rendered at, so the colour wins.
+        with self.assertRaises(ccc.ScaleMismatch) as caught:
+            self._scan(200.0, gutter_spread=ccc.GUTTER_TOLERANCE + 22)
+        self.assertIn("--scale 0.6", str(caught.exception))
 
     def test_colour_in_the_strip_is_reported_as_a_scale_problem_not_a_leak(self):
         # At scale 1 the traffic lights sit inside the strip, so EVERY terminal frame "leaks". That
@@ -458,12 +565,14 @@ class ScaleGuardTests(unittest.TestCase):
         # Measured over the published loop clip's 598 judged frames: the gutter reads at most 19 on
         # a settled frame and 24-44 while the report is still painted over the window, with nothing
         # in between. It must also be TIGHTER than the strip's leak tolerance, or it would admit
-        # exactly the frames it exists to drop. It can afford to be tight in a way the strip cannot:
-        # dropping a settled frame costs one frame of coverage out of hundreds, while a false leak
-        # sends the operator hunting for text that is not there.
+        # exactly the frames it exists to drop, and the coarse tolerance that still inspects a
+        # skipped frame must sit ABOVE any measured ghost (33) and below a real title (167).
         self.assertGreater(ccc.GUTTER_TOLERANCE, 19.0)
         self.assertLess(ccc.GUTTER_TOLERANCE, 24.0)
         self.assertLess(ccc.GUTTER_TOLERANCE, ccc.FLAT_TOLERANCE)
+        self.assertGreater(ccc.OCCLUDED_LEAK_TOLERANCE, 33.0 * 2)
+        self.assertLess(ccc.OCCLUDED_LEAK_TOLERANCE, 167.0 * 0.85)
+        self.assertGreater(ccc.OCCLUDED_LEAK_TOLERANCE, ccc.FLAT_TOLERANCE)
 
     def test_the_flatness_tolerance_separates_a_real_leak_from_clean_chrome(self):
         # Measured end to end at the publish scale, rendering the SAME cast both ways: a real
