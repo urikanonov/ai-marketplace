@@ -56,9 +56,11 @@ jobs:
         # cannot decode these VP9 clips. The scan fails closed without a decoder, which is how this
         # was caught rather than silently skipped.
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
-      - name: Check no published clip shows its launch command
+      - name: Check no published clip or poster shows its launch command
         # --require-ffmpeg makes the gate FAIL rather than skip if the decoder is missing: a green
-        # gate that scanned nothing reads as proof the clips were checked.
+        # gate that scanned nothing reads as proof the clips were checked. The posters are covered
+        # by the same run: each is scaled back to its clip's frame and read by the same probes,
+        # then matched against that clip so a re-record cannot leave a stale one published.
         run: python scripts/check_clip_chrome.py --require-ffmpeg
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
