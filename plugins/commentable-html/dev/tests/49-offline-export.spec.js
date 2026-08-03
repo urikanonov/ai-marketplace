@@ -166,7 +166,7 @@ function expectForwardCompatibleContract(html, mode) {
 
 function mediaLoadAttributes(html) {
   const refs = [];
-  const tagRe = /<(script|link|img|source|iframe|video|audio|object|embed|track|image|use|input|meta|body|table|td|th|form|button)\b[^>]*>/gi;
+  const tagRe = /<(script|link|img|source|iframe|video|audio|object|embed|track|image|use|input|meta|base|body|table|td|th|form|button)\b[^>]*>/gi;
   for (const tag of html.matchAll(tagRe)) {
     for (const attr of tag[0].matchAll(/\s(href|xlink:href|src|srcset|poster|data|background|content|action|formaction)\s*=\s*["']([^"']+)["']/gi)) {
       refs.push({ tag: tag[1].toLowerCase(), attr: attr[1].toLowerCase(), value: attr[2] });
@@ -2432,6 +2432,170 @@ test("CMH-OFFLINE-04: the offline strip reads a reference the way the URL parser
     expect(external).toEqual([]);
   } finally {
     if (ctx2) await ctx2.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+const BASE_HREF_CONTENT = [
+  "<h1>Injected base element</h1>",
+  '<p id="base-note">A base element rebases every relative reference in this document.</p>',
+  // The control case the strip and the gate both rest on: a RELATIVE reference loads nothing over
+  // the network - unless a <base href> rebases it onto a remote host, which is what makes this
+  // beacon fetch off-host while every check reads it as local. It is an iframe rather than an img
+  // because the validator warns on a local-path img ("inline it as a data: URI"), and the exported
+  // file is measured by `--strict`, which rejects a warning.
+  '<iframe id="cmh-base-beacon" title="beacon" src="beacon.html"></iframe>',
+  // A base is held to a STRICTER predicate than a per-resource load, because one attribute
+  // re-points every safe reference in the document. A WHATWG URL parser resolves each of these to a
+  // remote host (or, from file://, a UNC share) just as readily as `https://evil.example/`, so the
+  // `//`-requiring network predicate the other passes use would have let the whole check be
+  // side-stepped by dropping a slash.
+  '<base id="cmh-base-schemeless-decoy" href="https:evil.example/schemeless/">',
+  '<base id="cmh-base-oneslash-decoy" href="https:/evil.example/oneslash/">',
+  '<base id="cmh-base-backslash-decoy" href="https:/\\evil.example/backslash/">',
+  '<base id="cmh-base-scheme-relative-decoy" href="//evil.example/scheme-relative/">',
+  '<base id="cmh-base-file-decoy" href="file://evil.example/share/">',
+  '<base id="cmh-base-unc-decoy" href="\\\\evil.example\\share\\">',
+  // A browser strips leading C0 controls and spaces before it parses a URL.
+  '<base id="cmh-base-padded-decoy" href=" \thttps://evil.example/padded/">',
+  // A template-parked base is inert until a script adopts the fragment and inserts it, at which
+  // point it starts rebasing - the same reason the other offline passes walk into templates.
+  '<template id="cmh-base-template"><base href="https://evil.example/parked/"></template>',
+  // ...and no further: a relative base still resolves inside the file's own directory, and a
+  // `target` is not egress at all, so both must survive INTACT.
+  '<base id="cmh-base-keep" href="local-assets/" target="_blank">',
+].join("\n");
+
+function baseHrefValues(html) {
+  return [...html.matchAll(/<base\b[^>]*>/gi)]
+    .map((tag) => (tag[0].match(/\shref\s*=\s*["']([^"']*)["']/i) || [])[1])
+    .filter((v) => v !== undefined);
+}
+
+test("CMH-OFFLINE-04: an injected base href cannot rebase the relative references the strip treats as safe", async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const staged = stageContent(BASE_HREF_CONTENT, { key: "cmh-offline-base-href", source: "offline-base-href.html" });
+  // The real shape: a base element belongs in the head, where it rebases the whole document.
+  fs.writeFileSync(staged.html, fs.readFileSync(staged.html, "utf8").replace(
+    "<head>", '<head>\n<base id="cmh-base-decoy" href="https://evil.example/rebased/">'));
+  const outDir = makeTmpDir();
+  let ctx2;
+  let ctx3;
+  try {
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    // The bug, pinned on the SOURCE document: the relative beacon really does resolve off-host.
+    expect(await page.evaluate(() => document.getElementById("cmh-base-beacon").src))
+      .toContain("evil.example");
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    expect(exportedHtml, "a non-local base href must not survive, in any spelling").not.toContain("evil.example");
+    // Neutralized, not deleted: taking the whole element would lose an author's `target` and any
+    // other bookkeeping on it, and the reference the base was rebasing is content that stays.
+    for (const id of ["cmh-base-decoy", "cmh-base-schemeless-decoy", "cmh-base-oneslash-decoy",
+      "cmh-base-backslash-decoy", "cmh-base-scheme-relative-decoy", "cmh-base-file-decoy",
+      "cmh-base-unc-decoy", "cmh-base-padded-decoy", "cmh-base-template", "cmh-base-keep"]) {
+      expect(exportedHtml, `${id} must be kept as an element`).toContain(`id="${id}"`);
+    }
+    expect(exportedHtml).toContain('href="local-assets/"');
+    expect(exportedHtml).toContain('target="_blank"');
+    expect(exportedHtml).toContain('src="beacon.html"');
+    // The direct evidence for the strip: the only base href left anywhere in the file is the
+    // relative one. `networkLoadRefs` alone would not see a base at all before this spec added it.
+    expect(baseHrefValues(exportedHtml)).toEqual(["local-assets/"]);
+    expect(networkLoadRefs(exportedHtml)).toEqual([]);
+    // Clearing a base re-points references that still WORK - author links included - so unlike
+    // every other pass here it must not be silent.
+    await expect(page.locator("#toast")).toContainText(
+      "9 <base href> pointing away from this file were cleared, so relative references and links now resolve beside the file.");
+
+    const exportedPath = path.join(outDir, "offline-base-href.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    // The gate must agree with the strip: a file the exporter cleans is offline-clean to --strict.
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+    // ...and the other direction, which the clean file alone cannot prove: re-inject a base into
+    // the EXPORTED file and the gate must reject it, so a hand-authored offline document cannot
+    // keep what the strip takes away. The slash-less spelling is the one a `//` predicate misses.
+    const reinjectedPath = path.join(outDir, "offline-base-href-reinjected.html");
+    const reinjectedHtml = exportedHtml.replace(
+      "<head>", '<head>\n<base id="cmh-base-reinjected" href="https:evil.example/rebased/">');
+    expect(reinjectedHtml, "the base must actually have been re-injected").not.toEqual(exportedHtml);
+    fs.writeFileSync(reinjectedPath, reinjectedHtml);
+    // Pinned to the BASE rule, not merely to a non-zero exit: an exit-code-only assertion would be
+    // satisfied by any future rule that happened to reject this file for an unrelated reason, which
+    // is exactly how a fail-open regression in the check under test would go unnoticed.
+    let reinjectedFailure = null;
+    try {
+      execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", reinjectedPath], { cwd: SKILL, stdio: "pipe" });
+    } catch (err) {
+      reinjectedFailure = String(err.stdout || "") + String(err.stderr || "");
+    }
+    expect(reinjectedFailure, "--strict must reject a re-injected base").not.toBeNull();
+    expect(reinjectedFailure).toMatch(/<base href="https:evil\.example/);
+    expect(reinjectedFailure).toContain("cannot resolve on its own");
+
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    // Adopt every parked fragment, so a template-parked base would genuinely get its chance to
+    // rebase the document before the beacon is re-read.
+    await page2.evaluate(() => {
+      document.querySelectorAll("template").forEach((t) => {
+        document.body.appendChild(document.importNode(t.content, true));
+      });
+    });
+    expect(await page2.evaluate(() => document.baseURI)).not.toContain("evil.example");
+    expect(await page2.evaluate(() => document.getElementById("cmh-base-beacon").src))
+      .toMatch(/^file:/);
+    expect(await page2.evaluate(() => document.getElementById("cmh-base-decoy").hasAttribute("href")))
+      .toBe(false);
+    expect(external).toEqual([]);
+
+    // The strip is the layer that must not DEPEND on the CSP, so prove it alone: the same export
+    // with its zero-network policy removed must still resolve the beacon locally. Without this the
+    // browser evidence above is satisfied by `base-uri 'none'` even if the strip did nothing.
+    const noCspPath = path.join(outDir, "offline-base-href-no-csp.html");
+    const cspMetaRe = /<meta\b[^>]*http-equiv=["']Content-Security-Policy["'][^>]*>/gi;
+    expect((exportedHtml.match(cspMetaRe) || []).length, "the export must carry a CSP meta").toBeGreaterThan(0);
+    // Global on purpose: a future second policy meta must not be left behind to satisfy the
+    // "without the CSP" evidence below on the strip's behalf.
+    const noCspHtml = exportedHtml.replace(cspMetaRe, "");
+    expect(noCspHtml.match(cspMetaRe), "every CSP meta must actually have been removed").toBeNull();
+    fs.writeFileSync(noCspPath, noCspHtml);
+    ctx3 = await browser.newContext();
+    const page3 = await ctx3.newPage();
+    const externalNoCsp = [];
+    await page3.route(/^https?:\/\//, async (route) => {
+      externalNoCsp.push(route.request().url());
+      await route.abort();
+    });
+    await page3.goto(fileUrl(noCspPath));
+    await ready(page3);
+    await page3.evaluate(() => {
+      document.querySelectorAll("template").forEach((t) => {
+        document.body.appendChild(document.importNode(t.content, true));
+      });
+    });
+    expect(await page3.evaluate(() => document.baseURI)).not.toContain("evil.example");
+    expect(await page3.evaluate(() => document.getElementById("cmh-base-beacon").src)).toMatch(/^file:/);
+    expect(externalNoCsp).toEqual([]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    if (ctx3) await ctx3.close();
     fs.rmSync(staged.dir, { recursive: true, force: true });
     fs.rmSync(outDir, { recursive: true, force: true });
   }

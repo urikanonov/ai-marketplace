@@ -534,6 +534,7 @@ function _offlineQueryAll(root, selector) {
 }
 function _stripOfflineNetworkLoads(doc) {
   let dropped = 0;
+  let clearedBases = 0;
   const all = function (selector) { return _offlineQueryAll(doc, selector); };
   all("script").forEach(function (s) {
     if (_offlineStripScriptLoad(s)) { dropped += 1; }
@@ -582,6 +583,33 @@ function _stripOfflineNetworkLoads(doc) {
   all("meta[http-equiv]").forEach(function (m) {
     if ((m.getAttribute("http-equiv") || "").toLowerCase() === "refresh") m.remove();
   });
+  // A <base href> loads nothing itself, which is why no pass here used to look at one - and every
+  // pass above leaves a RELATIVE reference alone, which is the whole control case. A base element
+  // REBASES every relative reference in the document onto the base it names, so the very relative
+  // image or script reference this strip reads as local resolves off-host instead. Its blast radius
+  // is what makes it different: one attribute re-points EVERY safe reference, so it is held to the
+  // stricter `_offlineIsNonLocalRef` (any scheme, or an authority of two slashes/backslashes in
+  // either order, after the URL parser's own input cleanup) rather than the `//`-requiring network
+  // predicate the per-resource passes use. A browser resolves a slash-less `https:host/` and a
+  // backslash-authority `https:/\host/` to a remote host just as readily as the two-slash spelling;
+  // for one attribute that is the documented #923 residual the CSP absorbs, but for a base it would
+  // defeat this whole pass, and `base-uri 'none'` cannot be leaned on - a meta-delivered policy does
+  // not bind a base element the parser already resolved before it. The href alone goes: a `target`
+  // is not egress, and a RELATIVE base reaches no network at all (a root-relative one resolves
+  // against the filesystem, which the ordinary local-path rules already cover), so clearing either
+  // would be content loss. Namespace-blind on purpose, exactly as the script LOAD attributes
+  // are: the strict validator's flat tokenizer has no namespace to consult, so scoping this to the
+  // HTML namespace here would make the exporter KEEP an SVG-namespaced `base` href the gate then
+  // REJECTS. An SVG `base` is a meaningless element either way, so agreement is worth more.
+  // Counted, because this is the one strip that changes references which still WORK: it re-points
+  // every relative reference, author `<a href>` navigation included, which no other pass here
+  // touches. Silently doing that would leave the author guessing why their links moved.
+  all("base").forEach(function (el) {
+    if (el.hasAttribute("href") && _offlineIsNonLocalRef(el.getAttribute("href") || "")) {
+      el.removeAttribute("href");
+      clearedBases += 1;
+    }
+  });
   all("img").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "srcset"); });
   all("iframe").forEach(function (el) { clearAttr(el, "src"); });
   all("video").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "poster"); });
@@ -606,7 +634,7 @@ function _stripOfflineNetworkLoads(doc) {
     if (next) el.setAttribute("style", next);
     else el.removeAttribute("style");
   });
-  return dropped;
+  return { dropped: dropped, clearedBases: clearedBases };
 }
 function _stripOfflineRichRenderers(doc) {
   // On a re-export of an already-offline document, remove any previously inlined library notice
@@ -1207,7 +1235,7 @@ async function _buildOfflineHtml(shareableHtml) {
   const vendoredPayload = _offlineResolveVendoredPayload(doc);
   const inlinedRichLibs = _offlineCaptureInlinedRichLibs(doc);
   _stripOfflineRichRenderers(doc);
-  const droppedScripts = _stripOfflineNetworkLoads(doc);
+  const stripped = _stripOfflineNetworkLoads(doc);
   _stripOfflineEventHandlers(doc);
   _offlineHoistChartScripts(doc);
   await _offlineInlineRichLibs(doc, referencesChartLib, inlinedRichLibs, vendoredPayload);
@@ -1215,7 +1243,8 @@ async function _buildOfflineHtml(shareableHtml) {
   const html = _serializeOfflineDoc(doc).replace(/\n{3,}/g, "\n\n");
   return {
     html: html,
-    droppedScripts: droppedScripts,
+    droppedScripts: stripped.dropped,
+    clearedBases: stripped.clearedBases,
     neutralizedScripts: _offlineCountKeptNeutralized(doc, neutralizedScripts),
   };
 }
@@ -1257,7 +1286,13 @@ async function saveOffline() {
   const inertNote = m > 0
     ? " " + m + " script" + (m === 1 ? " carrying a reserved commentable-html data id was" : "s carrying a reserved commentable-html data id were") + " kept as inert data."
     : "";
-  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + review.note, { center: true });
+  // Clearing a base href is the one change here that re-points references which still WORK -
+  // author links included - so the author is told rather than left to discover it.
+  const b = built.clearedBases;
+  const baseNote = b > 0
+    ? " " + b + " <base href> pointing away from this file " + (b === 1 ? "was" : "were") + " cleared, so relative references and links now resolve beside the file."
+    : "";
+  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + baseNote + review.note, { center: true });
 }
 ["btnExportOffline", "btnExportOfflineTop"].forEach(function (id) {
   const b = document.getElementById(id);

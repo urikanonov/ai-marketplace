@@ -563,6 +563,70 @@ class NewCheckTests(unittest.TestCase):
         self.assertEqual(errors, [], errors)
         self.assertEqual(warnings, [], warnings)
 
+    # A <base href> loads nothing itself, so neither this gate nor the export strip looked at one -
+    # and both treat a RELATIVE reference as safe, which is the whole control case. A base element
+    # REBASES every relative reference in the document onto the base it names, so the very relative
+    # image or script reference both sides read as local fetches off-host instead. The exporter
+    # clears the same attribute, so the gate has to see it too or the two disagree (#924).
+    #
+    # The spellings matter here in a way they do not for a single resource: a base is held to the
+    # stricter `offline_is_non_local_ref` rather than the `//`-requiring network predicate, because
+    # a browser resolves `https:evil.example/` and `https:/\evil.example/` to a remote host too and
+    # for a base that would defeat the whole check (a #923 residual the CSP absorbs for one
+    # attribute is a document-wide rebase here).
+    def test_offline_mode_rejects_a_base_href_that_points_at_the_network(self):
+        beacon = MAIN.replace("<p>content</p>", '<p>content</p>\n  <img src="beacon.png" alt="x">')
+        # The pairing this row exists for: the relative reference alone is NOT an error.
+        errors, warnings = self._errs_warns(with_offline_mode(build(body=self._body(beacon))))
+        self.assertEqual(errors, [], errors)
+        self.assertTrue(any("local path" in w for w in warnings), warnings)
+        cases = (
+            '<base href="https://evil.example/">',
+            '<base href="//evil.example/">',
+            # A browser strips leading C0 controls and spaces before it parses a URL.
+            '<base href=" \thttps://evil.example/">',
+            # Slash-less and backslash spellings a WHATWG URL parser still resolves to a host.
+            '<base href="https:evil.example/">',
+            '<base href="https:/evil.example/">',
+            '<base href="https:/\\evil.example/">',
+            # An SMB/UNC authority leaks credentials from a file:// document.
+            '<base href="file://evil.example/share/">',
+            '<base href="\\\\evil.example\\share\\">',
+            # A scheme the file cannot resolve on its own is non-local however it is spelled.
+            '<base href="blob:https://evil.example/x">',
+            # A template-parked base is inert until a script adopts the fragment and inserts it,
+            # which is when it starts rebasing - the same reason the other offline checks walk in.
+            '<template id="parked-base"><base href="https://evil.example/"></template>',
+        )
+        for base in cases:
+            with self.subTest(base=base):
+                doc = with_offline_mode(build(body=self._body(beacon, base)))
+                errors, _ = self._errs_warns(doc)
+                self.assertTrue(any("offline mode" in e and "<base href" in e for e in errors),
+                                (base, errors))
+
+    # The self-contained guarantee is not offline-only, and unlike offline a shareable file has no
+    # zero-network CSP behind it - so a shareable document that rebases its relative references onto
+    # a remote host is an error there too.
+    def test_shareable_mode_rejects_a_base_href_that_points_at_the_network(self):
+        for base in ('<base href="https://evil.example/">', '<base href="https:evil.example/">'):
+            with self.subTest(base=base):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, base)))
+                self.assertTrue(any("self-contained guarantee" in e and "<base href" in e
+                                    for e in errors), (base, errors))
+
+    # The control: a relative base still resolves inside the file's own directory, so it reaches no
+    # network and must be left alone - removing it would break an author's local reference set.
+    def test_offline_mode_accepts_a_relative_base_href(self):
+        for base in ('<base href="assets/">', '<base href="./assets/">', '<base href="/assets/">',
+                     '<base href="">', '<base target="_blank">'):
+            with self.subTest(base=base):
+                doc = with_offline_mode(build(body=self._body(MAIN, base)))
+                errors, warnings = self._errs_warns(doc)
+                self.assertEqual(errors, [], (base, errors))
+                self.assertEqual(warnings, [], (base, warnings))
+
+
     def test_external_stylesheet_link_warns(self):
         link = '<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=X">'
         errors, warnings = self._errs_warns(build(body=self._body(MAIN, link)))

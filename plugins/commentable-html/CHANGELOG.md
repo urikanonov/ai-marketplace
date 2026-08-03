@@ -4,6 +4,34 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.522.0] - 2026-08-03
+
+### Fixed
+
+- An injected `<base href>` can no longer rebase the relative references the Offline export strip
+  and the strict validator both treat as safe. Neither side looked at a base element - it loads
+  nothing itself - and both deliberately leave a RELATIVE reference alone, so a single base element
+  naming a remote host turned every relative image and SVG script reference in the document into an
+  off-host fetch while passing both checks as local. The export now clears a non-local base `href`
+  through the same template-walking pass as every other load (a parked base starts rebasing the
+  moment a script adopts the fragment), and `validate.py --strict` flags the same shape, so the
+  exporter and the gate agree. Three bounds are deliberate. A base is held to a STRICTER predicate
+  than the per-resource passes - the same "non-local reference" rule the import-map check uses (any
+  scheme, or an authority of two slashes or backslashes in either order, after the URL parser's own
+  input cleanup) - because one attribute re-points EVERY safe reference in the document, so the
+  slash-less, one-slash, backslash-authority, `file://` UNC and `blob:`/`data:` spellings a browser
+  still resolves to a remote host cannot be left to the CSP the way a single attribute can. The
+  href alone is cleared rather than the element removed: a `target` is not egress, and a relative
+  base reaches no network at all. And the validator's copy is not scoped to
+  offline mode, because the self-contained guarantee is not offline-only and a shareable file has no
+  zero-network CSP behind it. Clearing a base is also the one attribute pass the download toast
+  names, because it re-points references that still work - author links included - and outside
+  offline mode the gate suggests making the base relative rather than simply removing it. The
+  offline CSP's `base-uri 'none'` covers the same channel as defense
+  in depth, but a policy delivered in a `<meta>` does not bind a base element the parser already
+  resolved before it, and the strip and the gate are the layer that is not supposed to depend on the
+  CSP anyway.
+
 ## [1.521.0] - 2026-08-04
 
 ### Fixed
