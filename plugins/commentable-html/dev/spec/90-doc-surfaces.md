@@ -112,10 +112,12 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-VAL-18 | opt-out: an authoring-time validator/tooling internal (which validator warnings are advisory and therefore non-blocking); readers of a document see no new capability | opt-out: a warning-severity contract for the authoring tools, with nothing to show on a slide |
 | CMH-VAL-20 | opt-out: an authoring-time validator correctness fix (three checks read the layer's own markup instead of the whole document); a reader of a document sees no new capability | opt-out: validator internals, with nothing to show on a slide |
 | CMH-VAL-21 | opt-out: an authoring-time validator internal (both tolerant parsers share one browser-accurate, version-independent set of element boundaries); a reader of a document sees no new capability | opt-out: tokenizer internals, with nothing to show on a slide |
-| CMH-CONTENT-01 | opt-out: an agent-facing authoring tool that makes the review loop cheaper; readers of a document see no new capability | opt-out: tooling for the agent side of the loop, with nothing to demonstrate on a slide |
-| CMH-CONTENT-02 | opt-out: an agent-facing authoring tool (atomic write-back); no reader-visible behavior change | opt-out: a transactional guarantee for tooling, not a deck topic |
-| CMH-CONTENT-03 | opt-out: an internal fidelity invariant (untouched sections keep their hashes); readers see no new capability | opt-out: an invariant with nothing to show on a slide |
-| CMH-CONTENT-04 | opt-out: an agent-facing export-reading format for the peer-review handoff | opt-out: agent-side tooling, already covered by the documented peer-review loop |
+| CMH-CONTENT-IO-01 | opt-out: an agent-facing authoring tool that makes the review loop cheaper; readers of a document see no new capability | opt-out: tooling for the agent side of the loop, with nothing to demonstrate on a slide |
+| CMH-CONTENT-IO-02 | opt-out: an agent-facing authoring tool (atomic write-back); no reader-visible behavior change | opt-out: a transactional guarantee for tooling, not a deck topic |
+| CMH-CONTENT-IO-03 | opt-out: an internal fidelity invariant (untouched sections keep their hashes); readers see no new capability | opt-out: an invariant with nothing to show on a slide |
+| CMH-CONTENT-IO-04 | opt-out: an agent-facing export-reading format for the peer-review handoff | opt-out: agent-side tooling, already covered by the documented peer-review loop |
+| CMH-BUILD-21 | opt-out: an internal CI gate over the spec-to-test mapping; a reader of a document sees no new capability | opt-out: a spec-hygiene gate, with nothing to show on a slide |
+| CMH-DECK-43 | opt-out: a deck-theme hover affordance a reviewer discovers by pointing at a cell; the same behavior the renamed row always described | deck |
 | CMH-KQL-09 | opt-out: an internal dispatch unification; KQL blocks already rendered highlighted, so readers see no change | opt-out: an internal refactor with no visible behavior change |
 | CMH-KQL-10 | site | opt-out: the deck's KQL slide already shows a runnable block; the fix is that the link stays correct after an edit, which a slide cannot show |
 | CMH-HL-12 | opt-out: a validator hardening that catches malformed highlighting markup; not a reader-facing capability | opt-out: a validation guard, not a deck topic |

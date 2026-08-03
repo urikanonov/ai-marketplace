@@ -258,7 +258,7 @@ test("each hub plugin card has a stable anchor id and clears the sticky nav (SIT
 });
 
 
-test("the hub nav 'Plugins' is a dropdown that lists each plugin and scrolls to its card (SITE-NAV-02)", async ({ page }) => {
+test("the hub nav 'Plugins' is a dropdown that lists each plugin and scrolls to its card (SITE-NAV-04)", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const trigger = page.locator(".nav-switcher-start .nav-switcher-trigger");
   await expect(trigger).toHaveText(/Plugins/);
@@ -284,7 +284,7 @@ test("the hub nav 'Plugins' is a dropdown that lists each plugin and scrolls to 
 });
 
 
-test("the hub nav 'Plugins' dropdown also reveals on keyboard focus (SITE-NAV-02)", async ({ page }) => {
+test("the hub nav 'Plugins' dropdown also reveals on keyboard focus (SITE-NAV-04)", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const menu = page.locator(".nav-switcher-start .nav-switcher-menu");
   await expect(menu).toBeHidden();

@@ -635,7 +635,7 @@ class PluginPageStructureTests(unittest.TestCase):
 
 
 class RenderNavPluginsTests(unittest.TestCase):
-    """SITE-NAV-02: the hub nav 'Plugins' entry is a plugin dropdown (mirroring the plugin-page
+    """SITE-NAV-04: the hub nav 'Plugins' entry is a plugin dropdown (mirroring the plugin-page
     Marketplace switcher). The trigger still links to '#plugins' (scrolls to the section as before);
     the flyout lists every plugin, each linking to its own card anchor '#plugin-<slug>' on the
     page."""
@@ -673,7 +673,7 @@ class RenderNavPluginsTests(unittest.TestCase):
         self.assertNotIn(">urikan-ai-marketplace-auto-updater<", out)
 
     def test_tiles_show_title_case_category_labels(self):
-        # SITE-NAV-02: the hub nav "Jump to plugin" flyout sub-labels are Title Case category labels
+        # SITE-NAV-04: the hub nav "Jump to plugin" flyout sub-labels are Title Case category labels
         # via category_label (matching the card badges and the plugin-page switcher), never the
         # lowercase manifest slug ("code review" reads "Code and Plan Review").
         out = bsd.render_nav_plugins(self._manifest())
