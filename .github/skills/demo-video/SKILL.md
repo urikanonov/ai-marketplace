@@ -258,10 +258,28 @@ from an older recorder looks like here, because its chrome padding puts the term
 inside the band this gate reads. Re-record such a clip with the current recorder rather than
 trusting a partial scan of it.
 
-**The posters are a published surface too, and no gate scans them.** `site/src/poster-*.jpg` is the
-first thing a reader sees, it carries the window chrome, and the launch command shipped in one once
-before. A re-record makes the old posters stale as well as unchecked, so regenerate each poster from
-its NEW clip and look at it before publishing - the scan only reads `.webm`.
+**The posters are scanned too, and they are the surface a reader meets first.** `site/src/poster-*.jpg`
+loads on first paint, so whatever is in it is seen without anyone pressing play - and the launch
+command shipped in one once before. The scan reads a poster as what it is: a whole frame of its clip,
+scaled by one factor, so it is scaled BACK to the clip's frame and measured by the same probes at the
+same tolerances. It also checks that each poster still DEPICTS a frame of the clip beside it (ffmpeg's
+`ssim`, best match over every frame), because a re-record keeps the clip's filename and used to leave
+the old poster published against the new recording with nothing failing. So re-cut each poster from
+its NEW clip - the gate will tell you if you forget - and still look at it, because "the strip is flat"
+is not "this is a good poster". Cut one from a settled frame of its clip - `scale=800:-2` is what the
+published posters are, and it reproduces both shapes (864x540 -> 800x500, 1078x620 -> 800x460):
+
+```powershell
+ffmpeg -ss <seconds> -i "$repo\site\src\demo-<name>.webm" -frames:v 1 -vf "scale=800:-2" -q:v 3 `
+  "$repo\site\src\poster-<name>.jpg"
+```
+
+Then scan it, passing it next to the clip it was cut from:
+
+```powershell
+python "$repo\scripts\check_clip_chrome.py" --require-ffmpeg <the re-cut posters...>
+```
+
 
 `--allow-all` is what keeps an unattended capture from stalling: it covers tools, paths and URLs, so
 no permission dialog can appear with nobody there to answer it. Be clear-eyed that it is the BROAD
@@ -381,10 +399,12 @@ next flag when unquoted), so flags written after the prompt never ride onto it. 
 no `--ask` it degrades to the program name rather than painting the whole invocation.
 
 **Posters are a first-class review surface.** A poster is a frame of the clip, and on a web page it
-loads on FIRST PAINT - so whatever is in it is seen without anyone pressing play. Review the poster
-with the same eyes as the clip. This is not hypothetical: the launch command shipped in every frame
-of two clips on the public site AND in their posters, past two review rounds, because the eye reads
-a title bar as chrome rather than as content.
+loads on FIRST PAINT - so whatever is in it is seen without anyone pressing play. The chrome scan now
+reads the posters as well as the clips (see above), which is what turned "review the poster with the
+same eyes as the clip" from the only defense into a second one - keep doing it anyway, since the gate
+answers "is the title bar empty", not "is this a good still". This is not hypothetical: the launch
+command shipped in every frame of two clips on the public site AND in their posters, past two review
+rounds, because the eye reads a title bar as chrome rather than as content.
 
 Read the transcript, then look at the frames, before anything is published. If the net misses a
 shape, add a rule to `tools/redact.mjs` with a test - do not just re-run.

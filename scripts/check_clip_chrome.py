@@ -23,6 +23,14 @@ frame mechanically instead:
 It is deliberately not a text recogniser. "The strip is not flat" is the property that matters and
 it cannot be argued with, whereas an OCR pass would invite a debate about confidence thresholds.
 
+The published POSTERS are scanned too, and they are the surface a reader sees FIRST - a poster loads
+on first paint, so whatever is in it is seen without anyone pressing play, and the command shipped in
+one already. A poster is a whole frame of its clip, uniformly downscaled (864x540 -> 800x500 and
+1078x620 -> 800x460 are both isotropic), so it gets no geometry of its own: it is scaled BACK to its
+clip's frame and measured by the very probes above, at the very same tolerances. A second pass then
+asks whether it still DEPICTS a frame of that clip, because a re-record keeps the clip's filename and
+left the old poster in place with nothing failing (see poster_similarity).
+
 Judging on the lights replaced a mid-frame luminance probe that stood in for "is this the terminal".
 That proxy both dropped ~10% of plainly-terminal frames on the busiest clip (dense output raised the
 mid-frame mean past its cut-off, and those are precisely the frames whose strip is most crowded) and
@@ -156,6 +164,36 @@ FLAT_TOLERANCE = 40.0
 LIGHTS_SATURATION = 60.0
 # The scale every published clip is rendered at, and the one these offsets describe.
 PUBLISH_SCALE = 0.6
+# A poster and the clip it was cut from, which sit beside each other in the published assets:
+# `poster-multi-duck.jpg` is a frame of `demo-multi-duck.webm`. The pairing is by NAME because the
+# poster carries no record of where it came from, and both halves of the poster gate are questions
+# asked of the clip - the frame size to measure the poster at, and the frames it must still depict.
+POSTER_PREFIX = "poster-"
+POSTER_SUFFIXES = (".jpg", ".jpeg")
+CLIP_PREFIX = "demo-"
+CLIP_SUFFIX = ".webm"
+# How far a poster's width and height scales may disagree before it is not a WHOLE frame of its clip
+# any more. Scaling it back only recovers the clip's geometry because one factor produced it; a
+# cropped or letterboxed poster stretches under that scale and carries its chrome somewhere the
+# offsets do not describe, so the flatness it then measured would mean nothing. The published pairs
+# agree to within 0.0003 (1078/800 = 1.34750 against 620/460 = 1.34783), which is integer rounding
+# in the publish step rather than a shape difference.
+POSTER_ASPECT_TOLERANCE = 0.01
+# Structural similarity below which a poster no longer depicts any frame of the clip it ships beside.
+# Measured with ffmpeg's ssim filter over every frame of each published clip: the three real pairs
+# score 0.9894, 0.9900 and 0.9906, while a poster paired with the wrong clip scores 0.7406, 0.7576
+# and 0.7970. This sits in that gap, nearer the mismatched side - a re-encode of the SAME frame at
+# another JPEG quality still scores 0.98, so the tolerance an operator needs is small, while the
+# thing being caught is a poster left over from a recording that no longer exists.
+POSTER_MATCH_MIN = 0.95
+# Frames the freshness pass must have compared before its verdict means anything. It reads the
+# poster against EVERY frame of the clip, so a run that compared a handful did not answer the
+# question - it answered a different, much easier one, and could pass a stale poster that happens
+# to resemble the clip's opening frame. This is not hypothetical: writing the same comparison with
+# `shortest=1` compared exactly ONE frame and reported a best match of 0.44 on a poster that in
+# fact matches at 0.99. A second of video is far below any published clip (the shortest is 769
+# frames) and far above that degenerate case.
+POSTER_MATCH_MIN_FRAMES = 25
 
 
 class Unscannable(Exception):
@@ -172,6 +210,14 @@ class ScaleMismatch(Unscannable):
 
 class ChromeOccluded(Unscannable):
     """A clip whose chrome is painted over on all, or implausibly many, of the frames showing it."""
+
+
+class PosterUnpaired(Unscannable):
+    """A poster with no clip beside it, so neither question this gate asks can be answered."""
+
+
+class StalePoster(Unscannable):
+    """A poster that no longer depicts any frame of the clip it is published beside."""
 
 
 def display_name(clip):
@@ -202,12 +248,15 @@ def find_ffmpeg():
     return shutil.which("ffmpeg")
 
 
-def _measure(ffmpeg, clip, crop, keys):
+def _measure(ffmpeg, clip, crop, keys, prefix=""):
     """Return a list of per-frame dicts of the requested signalstats keys.
+
+    `prefix` is filter text applied BEFORE the crop, and it is how a poster is measured by the
+    clip's own offsets: scaled back to the clip's frame, the poster is a one-frame clip.
 
     Read from ffmpeg's stderr rather than `metadata=print:file=`: a Windows path needs escaping
     inside a filter description, which is a portability trap for no benefit here."""
-    chain = "%s,signalstats,metadata=print" % crop
+    chain = "%s%s,signalstats,metadata=print" % (prefix, crop)
     proc = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "info", "-i", clip,
                            "-vf", chain, "-f", "null", "-"],
                           capture_output=True, text=True)
@@ -236,13 +285,16 @@ def _measure(ffmpeg, clip, crop, keys):
     return frames
 
 
-def scan_clip(ffmpeg, clip):
+def scan_clip(ffmpeg, clip, prefix=""):
     """Return `(bad, judged, occluded)` - frames whose title strip is not flat, how many frames were
-    judged, and how many showed the chrome with something painted over it."""
-    strip = _measure(ffmpeg, clip, STRIP, ("YMIN", "YMAX", "SATMAX"))
-    lights = _measure(ffmpeg, clip, LIGHTS, ("SATMAX",))
-    gutter = _measure(ffmpeg, clip, GUTTER, ("YMIN", "YMAX"))
-    kind = _measure(ffmpeg, clip, KIND, ("YAVG",))
+    judged, and how many showed the chrome with something painted over it.
+
+    `prefix` is filter text applied before every probe (see `_measure`); the poster path uses it to
+    put a poster back at its clip's frame size, so both surfaces are read by one implementation."""
+    strip = _measure(ffmpeg, clip, STRIP, ("YMIN", "YMAX", "SATMAX"), prefix)
+    lights = _measure(ffmpeg, clip, LIGHTS, ("SATMAX",), prefix)
+    gutter = _measure(ffmpeg, clip, GUTTER, ("YMIN", "YMAX"), prefix)
+    kind = _measure(ffmpeg, clip, KIND, ("YAVG",), prefix)
 
     if not strip:
         raise SystemExit("no frames decoded from %s" % clip)
@@ -396,22 +448,156 @@ def scan_clip(ffmpeg, clip):
     return sorted(bad + suspect), judged, occluded
 
 
+def is_poster(path):
+    """Whether a path names a published poster rather than a clip."""
+    name = os.path.basename(path).lower()
+    return name.startswith(POSTER_PREFIX) and name.endswith(POSTER_SUFFIXES)
+
+
+def poster_clip(poster):
+    """The clip a poster was cut from: `poster-X.jpg` pairs with `demo-X.webm` beside it."""
+    directory, name = os.path.split(poster)
+    stem = os.path.splitext(name)[0][len(POSTER_PREFIX):]
+    return os.path.join(directory, CLIP_PREFIX + stem + CLIP_SUFFIX)
+
+
+def _dimensions(ffmpeg, path):
+    """The frame size ffmpeg reports for a file's first video stream.
+
+    Parsed from the INPUT header only: the output and stream-mapping lines repeat a size, and after
+    a filter has run that size is the filter's, not the file's. A poster whose own size were read
+    off the scaled output would agree with its clip no matter what shape it really was."""
+    proc = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "info", "-i", path,
+                           "-frames:v", "1", "-f", "null", "-"], capture_output=True, text=True)
+    for line in proc.stderr.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Output #") or stripped.startswith("Stream mapping"):
+            break
+        if ": Video: " not in line:
+            continue
+        hit = re.search(r"[ ,](\d{2,5})x(\d{2,5})[ ,]", line)
+        if hit:
+            return int(hit.group(1)), int(hit.group(2))
+    raise SystemExit("ffmpeg did not report a frame size for %s, so it cannot be measured: %s"
+                     % (path, proc.stderr.strip()[-400:]))
+
+
+def poster_similarity(ffmpeg, poster, clip, width, height):
+    """The best structural similarity between a poster and ANY frame of its clip.
+
+    A poster is published beside a clip that keeps its filename across a re-record, so nothing used
+    to fail when the recording changed and the poster went on showing the old one. Asking whether
+    the poster still depicts SOME frame of the current clip is the mechanical form of that question,
+    and it needs no record of which frame was cut: ffmpeg holds the poster still against every frame
+    in one pass. Both sides are compared at the poster's own size, which is where the publish step
+    made the comparison in the first place.
+
+    The poster is a single-frame input and the CLIP drives the timeline: ssim's frame sync repeats
+    the last frame of an input that has ended, so the comparison runs to the clip's last frame and
+    stops there. `-loop 1` with `shortest=1` measures the same thing (verified: identical best match
+    over 1600 frames) but takes three times as long and leans on two more options, one of which - a
+    demuxer loop - runs forever if the other is not honoured."""
+    chain = ("[0:v]scale=%d:%d,format=yuv420p[a];[1:v]format=yuv420p[b];"
+             "[a][b]ssim=stats_file=-" % (width, height))
+    proc = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-i", clip,
+                           "-i", poster, "-filter_complex", chain, "-f", "null", "-"],
+                          capture_output=True, text=True)
+    best = None
+    compared = 0
+    for line in proc.stdout.splitlines():
+        hit = re.search(r"\bAll:([\d.]+)", line)
+        if hit:
+            compared += 1
+            value = float(hit.group(1))
+            best = value if best is None else max(best, value)
+    if compared < POSTER_MATCH_MIN_FRAMES:
+        # No verdict, or a verdict on almost nothing. Either way reporting a match would be the
+        # pass-having-checked-nothing this whole script is written against, so it is fatal rather
+        # than skipped - and it is not reported as a stale poster, which would send the operator
+        # re-cutting a poster whose only problem is that ffmpeg was not understood.
+        raise SystemExit("ffmpeg compared %d frame(s) of %s against %s, under the %d a verdict on "
+                         "the poster's freshness needs: %s"
+                         % (compared, display_name(clip), display_name(poster),
+                            POSTER_MATCH_MIN_FRAMES, proc.stderr.strip()[-400:]))
+    return best
+
+
+def scan_poster(ffmpeg, poster):
+    """Return `(bad, judged, occluded, similarity)` for a published poster.
+
+    A poster is a whole frame of its clip, scaled by one factor, so it is put BACK at that frame's
+    size and handed to `scan_clip` unchanged. That is the point: the poster is measured by the
+    offsets and tolerances the clip is measured by, and there is no second geometry to keep in step
+    with the recorder's CSS. `similarity` is `None` when a leak was found, because that verdict
+    replaces the poster whatever its freshness and the freshness pass is a whole extra decode."""
+    clip = poster_clip(poster)
+    if not os.path.isfile(clip):
+        raise PosterUnpaired(
+            "%s has no clip beside it (expected %s), so neither the frame size to measure it at nor "
+            "the frames it must still depict can be answered. Scan a poster next to the clip it was "
+            "cut from." % (display_name(poster), display_name(clip)))
+    clip_width, clip_height = _dimensions(ffmpeg, clip)
+    poster_width, poster_height = _dimensions(ffmpeg, poster)
+    by_width = float(poster_width) / clip_width
+    by_height = float(poster_height) / clip_height
+    if abs(by_width - by_height) > POSTER_ASPECT_TOLERANCE * by_width:
+        raise ScaleMismatch(
+            "%s is %dx%d against its clip's %dx%d, so it is not a whole frame of it (the width "
+            "scales by %.4f and the height by %.4f). A cropped or letterboxed poster stretches when "
+            "it is scaled back, which moves the chrome off every offset this gate measures. Cut the "
+            "poster from a full frame of %s."
+            % (display_name(poster), poster_width, poster_height, clip_width, clip_height,
+               by_width, by_height, display_name(clip)))
+    bad, judged, occluded = scan_clip(ffmpeg, poster,
+                                      prefix="scale=%d:%d," % (clip_width, clip_height))
+    if bad:
+        return bad, judged, occluded, None
+    similarity = poster_similarity(ffmpeg, poster, clip, poster_width, poster_height)
+    if similarity < POSTER_MATCH_MIN:
+        raise StalePoster(
+            "%s does not depict any frame of %s (best structural similarity %.4f, under the %.2f a "
+            "poster cut from its own clip reads). A re-recorded clip keeps its filename, so a "
+            "poster left over from the previous recording is published beside it with nothing "
+            "failing. Re-cut this poster from the current clip."
+            % (display_name(poster), display_name(clip), similarity, POSTER_MATCH_MIN))
+    return bad, judged, occluded, similarity
+
+
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("clips", nargs="*", help="clips to scan (default: every published clip)")
+    parser.add_argument("files", nargs="*",
+                        help="clips and posters to scan (default: every published one)")
     parser.add_argument("--require-ffmpeg", action="store_true",
                         help="fail instead of skipping when ffmpeg is unavailable (used by CI, "
                              "where a skipped scan would be a green gate that checked nothing)")
     args = parser.parse_args(argv)
 
     ffmpeg = find_ffmpeg()
-    clips = args.clips
-    if not clips:
-        directory = os.path.join(REPO_ROOT, CLIP_DIR)
-        clips = [os.path.join(directory, n) for n in sorted(os.listdir(directory))
-                 if n.endswith(".webm")]
-    if not clips:
-        raise SystemExit("no published clips found under %s" % CLIP_DIR)
+    directory = os.path.join(REPO_ROOT, CLIP_DIR)
+    if args.files:
+        clips = [f for f in args.files if f.lower().endswith(CLIP_SUFFIX)]
+        posters = [f for f in args.files if is_poster(f)]
+        unknown = [f for f in args.files if f not in clips and f not in posters]
+        if unknown:
+            raise SystemExit("not a published clip or poster: %s (clips are %s files, posters are "
+                             "%s*%s)" % (", ".join(unknown), CLIP_SUFFIX, POSTER_PREFIX,
+                                         POSTER_SUFFIXES[0]))
+    else:
+        names = sorted(os.listdir(directory))
+        clips = [os.path.join(directory, n) for n in names if n.endswith(CLIP_SUFFIX)]
+        posters = [os.path.join(directory, n) for n in names if is_poster(n)]
+        # Each surface is named separately, because "found nothing to scan" is indistinguishable
+        # from "scanned it and it was clean" in the output, and the posters were the surface that
+        # went ungated for as long as they did.
+        if not clips:
+            raise SystemExit("no published clips found under %s" % CLIP_DIR)
+        if not posters:
+            raise SystemExit("no published posters (%s*%s) found under %s; they are a published "
+                             "surface too, and a run that quietly scanned only the clips would "
+                             "report the same OK as a clean one"
+                             % (POSTER_PREFIX, POSTER_SUFFIXES[0], CLIP_DIR))
+    if not clips and not posters:
+        raise SystemExit("no published clips or posters found under %s" % CLIP_DIR)
 
     if not ffmpeg:
         message = ("no ffmpeg on PATH (set DEMO_CLIP_FFMPEG to override). Playwright's bundled "
@@ -457,13 +643,32 @@ def main(argv):
                       % (name, judged, occluded))
             else:
                 print("OK   %s (judged %d frame(s))" % (name, judged))
+    for poster in posters:
+        name = display_name(poster)
+        try:
+            bad, judged, occluded, similarity = scan_poster(ffmpeg, poster)
+        except Unscannable as problem:
+            failed = True
+            print("FAIL %s: %s" % (name, problem))
+            continue
+        if bad:
+            failed = True
+            leaked = True
+            print("FAIL %s: its title bar is not empty (luminance spread %.0f), and a poster is "
+                  "seen on first paint without anyone pressing play"
+                  % (name, max(spread for _, spread in bad)))
+        elif not judged:
+            print("OK   %s (no window chrome to check, matches its clip at %.4f)"
+                  % (name, similarity))
+        else:
+            print("OK   %s (title bar clear, matches its clip at %.4f)" % (name, similarity))
     if failed:
         # Tie the advice to the clip that earned it. Gating it on "nothing was unscannable" meant
         # one unreadable clip swallowed the instruction for a DIFFERENT clip that really did leak.
         if leaked:
-            print("\nA published clip is showing its launch command. Re-mask the WHOLE terminal "
-                  "segment (measure the boundaries, do not guess them), or re-record with the "
-                  "current recorder.")
+            print("\nA published clip or poster is showing its launch command. Re-mask the WHOLE "
+                  "terminal segment (measure the boundaries, do not guess them), or re-record with "
+                  "the current recorder, and re-cut the posters from the new clips.")
         return 1
     return 0
 

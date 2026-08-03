@@ -442,6 +442,250 @@ class FfmpegAvailabilityTests(unittest.TestCase):
             ccc.find_ffmpeg = original
 
 
+def _poster_frames(strip_spread, lights=96.0, gutter=9.0, mid=30.0, strip_sat=5.0):
+    """The four probes for a SINGLE frame - which is all a poster is.
+
+    The defaults are the published multi-duck poster measured at its clip's frame size: its chrome
+    is drawn (lights 96), its title strip is flat (spread 4), its gutter is clear (9) and its
+    middle is a terminal (mean 30).
+    """
+    strip = [{"t": 0.0, "YMIN": 0.0, "YMAX": strip_spread, "SATMAX": strip_sat}]
+    return (strip,
+            [{"t": 0.0, "SATMAX": lights}],
+            [{"t": 0.0, "YMIN": 0.0, "YMAX": gutter}],
+            [{"t": 0.0, "YAVG": mid}])
+
+
+class PosterTests(unittest.TestCase):
+    """The posters are a published surface, and they are the one a reader sees FIRST.
+
+    They carry the same window chrome as the clip they are cut from - `site/src/poster-multi-duck.jpg`
+    plainly shows the traffic lights and the strip beside them - and the launch command shipped in a
+    poster once already. A poster is a whole frame of its clip, uniformly downscaled (864x540 ->
+    800x500 and 1078x620 -> 800x460, both isotropic), so it needs no geometry of its own: scaled back
+    to its clip's frame it IS a one-frame clip, and every offset and tolerance carries over.
+    """
+
+    def _scan(self, frames, clip_size=(1078, 620), poster_size=(800, 460), similarity=0.99):
+        sizes = {"poster-x.jpg": poster_size, "demo-x.webm": clip_size}
+        calls = iter(frames)
+        with mock.patch.object(ccc, "_measure", lambda *a, **k: next(calls)), \
+                mock.patch.object(ccc, "_dimensions", lambda ffmpeg, path: sizes[os.path.basename(path)]), \
+                mock.patch.object(ccc, "poster_similarity", lambda *a, **k: similarity), \
+                mock.patch("os.path.isfile", lambda path: True):
+            return ccc.scan_poster("ffmpeg", os.path.join("assets", "poster-x.jpg"))
+
+    def test_a_poster_names_the_clip_it_is_cut_from(self):
+        self.assertEqual(ccc.poster_clip(os.path.join("a", "poster-multi-duck.jpg")),
+                         os.path.join("a", "demo-multi-duck.webm"))
+
+    def test_the_frame_size_is_read_from_the_input_not_the_filtered_output(self):
+        # ffmpeg repeats a frame size on its output and stream-mapping lines, and after a filter
+        # has run that size is the FILTER's. A poster whose own size were read off the scaled
+        # output would agree with its clip's shape no matter what shape it really was, which is
+        # exactly the check that would then never fire.
+        proc = type("P", (), {"returncode": 0, "stdout": "", "stderr": (
+            "  Stream #0:0: Video: mjpeg (Baseline), yuvj420p(pc), 800x460 [SAR 1:1 DAR 40:23], "
+            "25 fps, 25 tbr, 25 tbn\n"
+            "Stream mapping:\n"
+            "  Stream #0:0 -> #0:0 (mjpeg (native) -> wrapped_avframe (native))\n"
+            "  Stream #0:0: Video: wrapped_avframe, yuv420p, 1078x620, q=2-31, 25 fps\n")})()
+        with mock.patch.object(ccc.subprocess, "run", lambda *a, **k: proc):
+            self.assertEqual(ccc._dimensions("ffmpeg", "poster-x.jpg"), (800, 460))
+
+    def test_a_file_whose_frame_size_ffmpeg_did_not_report_is_fatal(self):
+        proc = type("P", (), {"returncode": 1, "stdout": "", "stderr": "not a media file\n"})()
+        with mock.patch.object(ccc.subprocess, "run", lambda *a, **k: proc):
+            with self.assertRaises(SystemExit) as caught:
+                ccc._dimensions("ffmpeg", "poster-x.jpg")
+        self.assertIn("poster-x.jpg", str(caught.exception))
+
+    def test_a_poster_with_no_clip_beside_it_is_refused(self):
+        # Both halves of this gate are asked OF THE CLIP: the frame size the poster is measured at,
+        # and the frames it must still depict. Without the clip there is nothing to answer them
+        # with, and scanning the poster at a guessed size is exactly the confident-verdict-on-
+        # nothing this file exists to refuse.
+        with mock.patch("os.path.isfile", lambda path: False):
+            with self.assertRaises(ccc.Unscannable) as caught:
+                ccc.scan_poster("ffmpeg", os.path.join("assets", "poster-x.jpg"))
+        self.assertIn("demo-x.webm", str(caught.exception))
+
+    def test_a_poster_is_measured_at_its_clips_frame_size(self):
+        # The offsets are video pixels at the publish scale and do NOT chase the frame size
+        # (SITE-VIDEO-18), so the poster is scaled back to the frame it was cut from rather than
+        # the offsets being scaled down to the poster. That way there is no second geometry to
+        # keep in step - the poster is measured by the very probes the clip is.
+        seen = {}
+
+        def fake_scan(ffmpeg, path, prefix=""):
+            seen["prefix"] = prefix
+            return [], 1, 0
+
+        with mock.patch.object(ccc, "scan_clip", fake_scan), \
+                mock.patch.object(ccc, "_dimensions",
+                                  lambda ffmpeg, path: (1078, 620) if path.endswith(".webm") else (800, 460)), \
+                mock.patch.object(ccc, "poster_similarity", lambda *a, **k: 0.99), \
+                mock.patch("os.path.isfile", lambda path: True):
+            ccc.scan_poster("ffmpeg", os.path.join("assets", "poster-x.jpg"))
+        self.assertEqual(seen["prefix"], "scale=1078:620,")
+
+    def test_a_leaked_title_in_a_poster_is_reported(self):
+        # The negative control, measured end to end: a terminal frame with the terminal's own
+        # rendered text pasted into its title strip, published at the poster's 800x460, reads a
+        # spread of 246 where the real poster reads 4. That is the same 25x separation the clip
+        # scan enjoys, because it IS the clip scan.
+        bad, judged, occluded, _ = self._scan(_poster_frames(246.0))
+        self.assertEqual(judged, 1)
+        self.assertEqual(occluded, 0)
+        self.assertEqual([round(spread) for _, spread in bad], [246])
+
+    def test_a_clean_terminal_poster_passes(self):
+        bad, judged, _, similarity = self._scan(_poster_frames(4.0))
+        self.assertEqual(bad, [])
+        self.assertEqual(judged, 1)
+        self.assertEqual(similarity, 0.99)
+
+    def test_a_browser_frame_poster_has_no_chrome_to_check(self):
+        # Two of the three published posters are frames of the report in a browser: no window
+        # chrome, so no title bar to read. Measured, their lights read 2 and their middle 234-245.
+        bad, judged, occluded, _ = self._scan(_poster_frames(200.0, lights=2.0, mid=234.0))
+        self.assertEqual((bad, judged, occluded), ([], 0, 0))
+
+    def test_a_poster_that_is_not_a_whole_frame_of_its_clip_is_refused(self):
+        # Scaling back only works because a poster is the WHOLE frame, scaled by one factor. A
+        # cropped or letterboxed poster stretches under that scale, which moves the chrome off
+        # every offset - and the flatness it then measured would mean nothing at all.
+        with self.assertRaises(ccc.ScaleMismatch) as caught:
+            self._scan(_poster_frames(4.0), poster_size=(800, 400))
+        self.assertIn("whole frame", str(caught.exception))
+
+    def test_a_poster_must_depict_a_frame_of_its_current_clip(self):
+        # Staleness is the other half. A re-record keeps the clip's filename, so nothing failed
+        # when the poster beside it went on showing the OLD recording. Measured with ffmpeg's ssim
+        # over every frame: the three published pairs score 0.9894-0.9906, and a poster paired with
+        # the wrong clip scores 0.7406-0.7970.
+        with self.assertRaises(ccc.StalePoster) as caught:
+            self._scan(_poster_frames(4.0), similarity=0.80)
+        self.assertIn("demo-x.webm", str(caught.exception))
+
+    def test_the_similarity_floor_sits_between_a_matched_and_a_mismatched_poster(self):
+        self.assertGreater(ccc.POSTER_MATCH_MIN, 0.80)
+        self.assertLess(ccc.POSTER_MATCH_MIN, 0.9894)
+
+    def test_the_freshness_pass_takes_the_best_match_over_every_frame(self):
+        # Which frame was cut is not recorded anywhere, so the question is whether the poster
+        # matches ANY frame - the best one over the whole clip, not the first or the last.
+        stdout = "".join("n:%d Y:0.5 U:0.9 V:0.8 All:%.6f (4.6)\n" % (i, s)
+                         for i, s in enumerate([0.41, 0.99, 0.62] + [0.30] * 30))
+        proc = type("P", (), {"returncode": 0, "stdout": stdout, "stderr": ""})()
+        with mock.patch.object(ccc.subprocess, "run", lambda *a, **k: proc):
+            self.assertAlmostEqual(
+                ccc.poster_similarity("ffmpeg", "poster-x.jpg", "demo-x.webm", 800, 460), 0.99)
+
+    def test_a_freshness_pass_that_compared_almost_nothing_is_fatal(self):
+        # Writing this comparison with `shortest=1` compared exactly ONE frame and reported 0.44
+        # for a poster that matches at 0.99. Reported as a stale poster that would send the
+        # operator re-cutting a poster whose only problem is that ffmpeg was not understood, and
+        # the mirror of it - one frame that happens to match - would be a pass on nothing.
+        proc = type("P", (), {"returncode": 0,
+                              "stdout": "n:1 All:0.438956 (3.5)\n", "stderr": ""})()
+        with mock.patch.object(ccc.subprocess, "run", lambda *a, **k: proc):
+            with self.assertRaises(SystemExit) as caught:
+                ccc.poster_similarity("ffmpeg", "poster-x.jpg", "demo-x.webm", 800, 460)
+        self.assertIn("1 frame(s)", str(caught.exception))
+
+    def test_a_leaking_poster_is_reported_before_its_freshness_is_even_asked(self):
+        # A leak outranks staleness: both replace the poster, but only one says there is a command
+        # on screen. Answering "and it is stale too" would bury that, and the freshness pass is a
+        # whole extra decode of the clip for a poster that is being replaced anyway.
+        asked = []
+        frames = iter(_poster_frames(246.0))
+        with mock.patch.object(ccc, "_measure", lambda *a, **k: next(frames)), \
+                mock.patch.object(ccc, "_dimensions",
+                                  lambda ffmpeg, path: (1078, 620) if path.endswith(".webm") else (800, 460)), \
+                mock.patch.object(ccc, "poster_similarity", lambda *a, **k: asked.append(1) or 0.5), \
+                mock.patch("os.path.isfile", lambda path: True):
+            bad, _, _, similarity = ccc.scan_poster("ffmpeg", os.path.join("assets", "poster-x.jpg"))
+        self.assertTrue(bad)
+        self.assertIsNone(similarity)
+        self.assertEqual(asked, [])
+
+
+class PosterRunTests(unittest.TestCase):
+    """What the default run covers, and what it refuses to report as a pass."""
+
+    def _run(self, files, scan_poster=None):
+        out = io.StringIO()
+        with mock.patch.object(ccc, "find_ffmpeg", lambda: "ffmpeg"), \
+                mock.patch.object(ccc, "scan_clip", lambda ffmpeg, clip: ([], 5, 0)), \
+                mock.patch.object(ccc, "scan_poster",
+                                  scan_poster or (lambda ffmpeg, poster: ([], 1, 0, 0.99))), \
+                contextlib.redirect_stdout(out):
+            code = ccc.main(files)
+        return code, out.getvalue()
+
+    def test_a_poster_passed_by_name_is_scanned_as_a_poster(self):
+        code, out = self._run([os.path.join("assets", "poster-x.jpg")])
+        self.assertEqual(code, 0)
+        self.assertIn("poster-x.jpg", out)
+        self.assertIn("OK", out)
+
+    def test_a_leaking_poster_fails_the_run_and_says_what_to_do(self):
+        def leaking(ffmpeg, poster):
+            return [(0.0, 246.0)], 1, 0, None
+
+        code, out = self._run([os.path.join("assets", "poster-x.jpg")], scan_poster=leaking)
+        self.assertNotEqual(code, 0)
+        self.assertIn("FAIL", out)
+        self.assertIn("showing its launch command", out)
+
+    def test_an_unreadable_poster_does_not_hide_a_later_one(self):
+        def fussy(ffmpeg, poster):
+            if poster.endswith("poster-a.jpg"):
+                raise ccc.StalePoster("poster-a.jpg no longer depicts its clip")
+            return [(0.0, 246.0)], 1, 0, None
+
+        code, out = self._run([os.path.join("assets", "poster-a.jpg"),
+                               os.path.join("assets", "poster-b.jpg")], scan_poster=fussy)
+        self.assertNotEqual(code, 0)
+        self.assertIn("poster-a.jpg", out)
+        self.assertIn("poster-b.jpg", out)
+
+    def test_the_default_run_covers_the_posters_beside_the_clips(self):
+        scanned = {"clips": [], "posters": []}
+        listing = ["demo-x.webm", "poster-x.jpg", "styles.css"]
+        out = io.StringIO()
+        with mock.patch.object(ccc, "find_ffmpeg", lambda: "ffmpeg"), \
+                mock.patch.object(ccc.os, "listdir", lambda directory: listing), \
+                mock.patch.object(ccc, "scan_clip",
+                                  lambda ffmpeg, clip: scanned["clips"].append(clip) or ([], 5, 0)), \
+                mock.patch.object(ccc, "scan_poster",
+                                  lambda ffmpeg, poster: scanned["posters"].append(poster) or ([], 1, 0, 0.99)), \
+                contextlib.redirect_stdout(out):
+            self.assertEqual(ccc.main([]), 0)
+        self.assertEqual([os.path.basename(p) for p in scanned["clips"]], ["demo-x.webm"])
+        self.assertEqual([os.path.basename(p) for p in scanned["posters"]], ["poster-x.jpg"])
+
+    def test_a_run_that_found_no_poster_to_scan_is_an_error_not_a_pass(self):
+        # The posters ARE the surface this covers, so a default run that quietly scanned only the
+        # clips would report the same OK it reports when both are clean - a gate that goes green
+        # having checked nothing, which is the failure mode this whole script is written against.
+        out = io.StringIO()
+        with mock.patch.object(ccc, "find_ffmpeg", lambda: "ffmpeg"), \
+                mock.patch.object(ccc.os, "listdir", lambda directory: ["demo-x.webm"]), \
+                mock.patch.object(ccc, "scan_clip", lambda ffmpeg, clip: ([], 5, 0)), \
+                contextlib.redirect_stdout(out):
+            with self.assertRaises(SystemExit) as caught:
+                ccc.main([])
+        self.assertIn("no published posters", str(caught.exception))
+
+    def test_a_file_that_is_neither_a_clip_nor_a_poster_is_refused(self):
+        with mock.patch.object(ccc, "find_ffmpeg", lambda: "ffmpeg"):
+            with self.assertRaises(SystemExit) as caught:
+                ccc.main([os.path.join("assets", "styles.css")])
+        self.assertIn("styles.css", str(caught.exception))
+
+
 #: The renderer's chrome CSS, parsed out of the page builders so this file cannot drift from them.
 #: Duplicating the geometry as literals is what these tests exist to prevent: the gate and the
 #: renderer encode the SAME numbers, and a chrome tweak that moved one silently invalidated the
