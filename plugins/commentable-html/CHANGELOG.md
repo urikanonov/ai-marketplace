@@ -15,16 +15,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   from the decoy's markers, and an export baked the current state INTO the decoy while the
   region-owned block kept its stale contents - silent loss of user data that nothing reported. The
   runtime now resolves the block by the region's own BEGIN/END markers and document order, leaves a
-  decoy byte-identical, and inserts a fresh region-owned block when the document owns none. Absent
-  markers still let a lone block resolve, so a file upgraded from before the feature existed keeps
-  working; malformed markers resolve nothing, and a `<noscript>` cannot hide a block from the reader
-  while offering it to the export (`DOMParser` parses `<noscript>` contents as markup, a live
-  browser does not). When nothing can be attributed to the region, the export declines and the
-  download toast says why - a separate toast would simply be replaced by it - and a load logs one
-  console warning rather than quietly showing every section unreviewed.
+  decoy with its own contents, and inserts a fresh region-owned block when the document owns none.
+  Absent markers still let a lone block resolve, so a file upgraded from before the feature existed
+  keeps working; markers that are present but not one ordered pair resolve nothing, only a `<script>`
+  can carry the id (exactly what the validator accepts), and a `<noscript>` cannot hide a block from
+  the reader while offering it to the export (`DOMParser` parses `<noscript>` contents as markup, a
+  live browser does not). When nothing can be attributed to the region, the export declines and the
+  download toast says why - a separate toast would simply be replaced by it - and the load warns the
+  reader once, in a toast and in the console, rather than quietly showing every section unreviewed.
 - `validate.py` now reports both shapes of the same problem as errors: a duplicated
-  `reviewedSections` id (like the three other reserved state-block ids) and a lone block that sits
-  outside the EMBEDDED COMMENTS region. Its shape check only ever read the region-owned block, so
+  `reviewedSections` id (like the three other reserved state-block ids) and an id the EMBEDDED
+  COMMENTS region does not own (a block outside it, or one that is not a `<script>`), and
+  `mark_reviewed.py` refuses to write a block that region does not own. Its shape check only ever
+  read the region-owned block, so
   either file used to pass `--strict` while the runtime ignored or mis-wrote the reader's state.
 
 ## [1.399.0] - 2026-08-03

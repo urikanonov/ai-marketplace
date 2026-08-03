@@ -955,7 +955,8 @@ async function saveOffline() {
   baseHtml = _applyWidgetLayoutToHtml(baseHtml);
   baseHtml = _applyChecklistStateToHtml(baseHtml);
   baseHtml = _applyNoteStateToHtml(baseHtml);
-  baseHtml = _applyReviewStateToHtml(baseHtml);
+  const review = _applyReviewStateToHtml(baseHtml);
+  baseHtml = review.html;
   const exportComments = _exportableComments();
   let shareable;
   try {
@@ -981,7 +982,7 @@ async function saveOffline() {
   const inertNote = m > 0
     ? " " + m + " script" + (m === 1 ? " carrying a reserved commentable-html data id was" : "s carrying a reserved commentable-html data id were") + " kept as inert data."
     : "";
-  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + cmhReviewExportNote(), { center: true });
+  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + review.note, { center: true });
 }
 ["btnExportOffline", "btnExportOfflineTop"].forEach(function (id) {
   const b = document.getElementById(id);

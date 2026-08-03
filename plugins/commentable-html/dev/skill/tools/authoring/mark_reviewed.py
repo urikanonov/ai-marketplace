@@ -99,6 +99,29 @@ def _locate_block(html, block_id):
     return p.spans
 
 
+# The EMBEDDED COMMENTS region OWNS this block: the runtime reads and writes only the block that
+# region contains, so a block outside it (or a document whose markers are not one ordered pair) is
+# state nobody will ever load. This tool refuses such a file rather than baking markers into it.
+_REGION_BEGIN_RE = re.compile(
+    r"^[ \t]*(?:<!--[ \t]*)?(?:=+[ \t]*)?BEGIN: commentable-html - EMBEDDED COMMENTS[ \t]*(?:=+[ \t]*)?(?:-->)?[ \t]*$",
+    re.MULTILINE)
+_REGION_END_RE = re.compile(
+    r"^[ \t]*(?:<!--[ \t]*)?(?:=+[ \t]*)?END: commentable-html - EMBEDDED COMMENTS[ \t]*(?:=+[ \t]*)?(?:-->)?[ \t]*$",
+    re.MULTILINE)
+
+
+def _region_span(html):
+    """(lo, hi) of the EMBEDDED COMMENTS region, None when the document carries no markers, or
+    "malformed" when it does not carry exactly one ordered pair."""
+    begins = [m.start() for m in _REGION_BEGIN_RE.finditer(html)]
+    ends = [m.start() for m in _REGION_END_RE.finditer(html)]
+    if not begins and not ends:
+        return None
+    if len(begins) != 1 or len(ends) != 1 or begins[0] >= ends[0]:
+        return "malformed"
+    return (begins[0], ends[0])
+
+
 def _format_object(markers):
     if not markers:
         return "{}"
@@ -128,6 +151,14 @@ def _load_markers(html):
     if len(spans) > 1:
         raise ValueError('multiple <script id="reviewedSections"> blocks (must be unique)')
     lo, hi = spans[0]
+    region = _region_span(html)
+    if region == "malformed":
+        raise ValueError("the EMBEDDED COMMENTS region markers are not one ordered BEGIN/END pair, "
+                         "so the reviewedSections block has no owner - run validate.py")
+    if region is not None and not (region[0] < lo and hi < region[1]):
+        raise ValueError('the <script id="reviewedSections"> block is outside the EMBEDDED COMMENTS '
+                         "region - the runtime only reads the block that region owns, so writing "
+                         "this one would have no effect; move it back inside the region")
     body = html[lo:hi].strip() or "{}"
     try:
         obj = json.loads(body)

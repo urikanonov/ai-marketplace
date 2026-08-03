@@ -1027,7 +1027,7 @@ class ReviewedSectionsTests(ValidateAssertions, unittest.TestCase):
         doc = doc.replace(owned, "").replace(
             "<p>content</p>",
             '<p>content</p><script type="application/json" id="reviewedSections">{}</script>')
-        self.assertError(doc, "outside the EMBEDDED COMMENTS region")
+        self.assertError(doc, "is not on a <script> the EMBEDDED COMMENTS region owns")
 
 
 if __name__ == "__main__":

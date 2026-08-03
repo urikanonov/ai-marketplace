@@ -183,7 +183,8 @@ async function saveStandalone() {
   baseHtml = _applyWidgetLayoutToHtml(baseHtml);
   baseHtml = _applyChecklistStateToHtml(baseHtml);
   baseHtml = _applyNoteStateToHtml(baseHtml);
-  baseHtml = _applyReviewStateToHtml(baseHtml);
+  const review = _applyReviewStateToHtml(baseHtml);
+  baseHtml = review.html;
   const exportComments = _exportableComments();
   let text;
   try { text = _buildStandaloneHtml(baseHtml, exportComments); }
@@ -191,5 +192,5 @@ async function saveStandalone() {
   const filename = _suggestedFilename();
   const n = exportComments.length;
   _downloadHtml(text, filename);
-  showToast(`Downloaded ${filename} - one shareable file, ${n} comment${n === 1 ? "" : "s"} embedded, no companion files needed.` + cmhReviewExportNote(), { center: true });
+  showToast(`Downloaded ${filename} - one shareable file, ${n} comment${n === 1 ? "" : "s"} embedded, no companion files needed.` + review.note, { center: true });
 }

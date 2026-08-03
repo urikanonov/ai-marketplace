@@ -401,6 +401,107 @@ test.describe("section review tracking", () => {
     expect(Object.keys(blocks[0])).toEqual(["rv-beta"]);          // the decoy is untouched
     expect(blocks[0]["rv-beta"].hash).toBe("deadbeef");
     expect(Object.keys(blocks[1]).sort()).toEqual(["rv-alpha", "rv-gamma"]);
+    // A clean export says nothing about review state; only a declined one does.
+    await expect(page.locator("#toast")).not.toContainText("Section-review state was left out");
+  });
+
+  test("a noscript decoy is invisible to both the load and the export (CMH-REVIEW-16)", async ({ page }) => {
+    await installClipboardCapture(page);
+    await denyExternalNetwork(page);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    const { html } = stageContent(CONTENT, { key: "cmh-review-noscript", source: "noscript.html" });
+    // DOMParser (scripting disabled) parses <noscript> contents as real nodes while the live
+    // document keeps them as text. A block hidden there must be ignored by BOTH, or the export
+    // would write the reader's state where their browser can only see inert text.
+    const staged = fs.readFileSync(html, "utf8");
+    const anchor = '<script type="application/json" id="reviewedSections">';
+    expect(staged).toContain(anchor);
+    const hidden = "<noscript>" + anchor
+      + JSON.stringify({ "rv-beta": { hash: "deadbeef", headingText: "Beta", level: 2, reviewedAt: "2020-01-01T00:00:00.000Z" } })
+      + "</script></noscript>\n";
+    fs.writeFileSync(html, staged.replace(anchor, hidden + anchor));
+    await page.goto(fileUrl(html));
+    await ready(page);
+    expect(await stateOf(page, "rv-beta")).toBe("unreviewed"); // the hidden markers are not read
+    await page.locator("#rv-alpha").hover();
+    await page.locator("#rv-alpha .cmh-review-badge").click();
+    await openToolbarMenu(page);
+    const [download] = await Promise.all([page.waitForEvent("download"), page.click("#btnSaveHtmlTop")]);
+    const saved = await readDownload(download);
+    await expect(page.locator("#toast")).not.toContainText("Section-review state was left out");
+    const blocks = [...saved.matchAll(/<script[^>]*type="application\/json"[^>]*id="reviewedSections"[^>]*>([\s\S]*?)<\/script>/g)]
+      .map((m) => JSON.parse(m[1].trim() || "{}"));
+    expect(blocks.length).toBe(2);
+    expect(Object.keys(blocks[0])).toEqual(["rv-beta"]); // the hidden one keeps its own bytes
+    expect(Object.keys(blocks[1])).toEqual(["rv-alpha"]); // the region-owned one took the state
+  });
+
+  test("absent region markers still resolve a lone block, malformed ones resolve nothing (CMH-REVIEW-16)", async ({ page }) => {
+    await installClipboardCapture(page);
+    await denyExternalNetwork(page);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    const BEGIN = /<!--[^>]*?BEGIN: commentable-html - EMBEDDED COMMENTS[\s\S]*?-->/;
+    // One baked document, two derived shapes (one python spawn, not two).
+    const { dir, html } = stageContent(CONTENT, { key: "cmh-review-absent", source: "absent.html" });
+    const tool = path.join(SKILL, "tools", "authoring", "mark_reviewed.py");
+    const r = spawnSync(PYTHON, [tool, html, "rv-alpha"], { encoding: "utf8" });
+    expect(r.status, r.stderr).toBe(0);
+    const baked = fs.readFileSync(html, "utf8");
+    const begin = baked.match(BEGIN);
+    expect(begin).toBeTruthy();
+
+    // ABSENT: a document that carries no region markers at all (the pre-region shape) still reads
+    // its lone block, so an upgraded file keeps working.
+    fs.writeFileSync(html, baked.replace(begin[0], "").replace(
+      /<!--\s*END: commentable-html - EMBEDDED COMMENTS\s*-->/, ""));
+    await page.goto(fileUrl(html));
+    await ready(page);
+    expect(await stateOf(page, "rv-alpha")).toBe("reviewed");
+
+    // MALFORMED: a second BEGIN marker leaves no trustworthy owner, so the same baked block is
+    // ignored, the reader is told once, and the export declines instead of guessing. A distinct
+    // comment key keeps the first document's localStorage marker out of this one.
+    const badPath = path.join(dir, "malformed.html");
+    fs.writeFileSync(badPath, baked.replace(begin[0], begin[0] + "\n" + begin[0])
+      .replace('data-comment-key="cmh-review-absent"', 'data-comment-key="cmh-review-malformed"'));
+    await page.goto(fileUrl(badPath));
+    await ready(page);
+    expect(await stateOf(page, "rv-alpha")).toBe("unreviewed");
+    await expect(page.locator("#toast")).toContainText("region does not own");
+    await page.locator("#rv-gamma").hover();
+    await page.locator("#rv-gamma .cmh-review-badge").click();
+    await openToolbarMenu(page);
+    const [download] = await Promise.all([page.waitForEvent("download"), page.click("#btnSaveHtmlTop")]);
+    const saved = await readDownload(download);
+    await expect(page.locator("#toast")).toContainText("ordered pair of EMBEDDED COMMENTS region markers");
+    const blocks = [...saved.matchAll(/<script[^>]*type="application\/json"[^>]*id="reviewedSections"[^>]*>([\s\S]*?)<\/script>/g)]
+      .map((m) => JSON.parse(m[1].trim() || "{}"));
+    expect(blocks.length).toBe(1);
+    expect(Object.keys(blocks[0])).toEqual(["rv-alpha"]); // untouched: rv-gamma was NOT written in
+  });
+
+  test("a document with no block gets one inserted inside the region (CMH-REVIEW-16)", async ({ page }) => {
+    await installClipboardCapture(page);
+    await denyExternalNetwork(page);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    const { html } = stageContent(CONTENT, { key: "cmh-review-insert", source: "insert.html" });
+    const staged = fs.readFileSync(html, "utf8");
+    const owned = staged.match(/<script[^>]*type="application\/json"[^>]*id="reviewedSections"[^>]*>[\s\S]*?<\/script>/);
+    expect(owned).toBeTruthy();
+    fs.writeFileSync(html, staged.replace(owned[0], ""));
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await page.locator("#rv-alpha").hover();
+    await page.locator("#rv-alpha .cmh-review-badge").click();
+    await openToolbarMenu(page);
+    const [download] = await Promise.all([page.waitForEvent("download"), page.click("#btnSaveHtmlTop")]);
+    const saved = await readDownload(download);
+    await expect(page.locator("#toast")).not.toContainText("Section-review state was left out");
+    const region = saved.match(/BEGIN: commentable-html - EMBEDDED COMMENTS[\s\S]*?END: commentable-html - EMBEDDED COMMENTS/);
+    expect(region).toBeTruthy();
+    const inRegion = [...region[0].matchAll(/<script[^>]*id="reviewedSections"[^>]*>([\s\S]*?)<\/script>/g)];
+    expect(inRegion.length).toBe(1);                                  // inserted inside the region
+    expect(Object.keys(JSON.parse(inRegion[0][1].trim()))).toEqual(["rv-alpha"]);
   });
 
   test("export declines to bake review state when no block can be attributed to the region (CMH-REVIEW-16)", async ({ page }) => {
