@@ -15,9 +15,17 @@ import { launchSpec } from "../tools/record_demo.mjs";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TOOL = path.join(HERE, "..", "tools", "record_demo.mjs");
 
-function run(args) {
-  return spawnSync(process.execPath, [TOOL, ...args], { encoding: "utf8" });
+function run(args, env = {}) {
+  return spawnSync(process.execPath, [TOOL, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, ...env },
+  });
 }
+
+// Playwright is looked up on disk, so a render that gets PAST the gate must not be allowed to
+// launch a real browser from a unit suite. Pointing the browser path at nothing makes the launch
+// fail immediately and deterministically, wherever the suite runs.
+const NO_BROWSERS = { PLAYWRIGHT_BROWSERS_PATH: path.join(os.tmpdir(), "demo-video-no-browsers") };
 
 // Scratch casts go to the OS temp dir, never into the repo.
 function tempCast(cast) {
@@ -148,6 +156,14 @@ test("a dirty --ask is refused with instructions that can reproduce and fix it (
     assert.notEqual(withAsk.status, 0, "scan passed a dirty --ask");
     assert.match(withAsk.stdout, /findings:\s*[1-9]/);
     assert.match(withAsk.stdout, /ask/, "scan does not say which surface the finding came from");
+
+    // The gate is the only thing between a clean cast and the renderer, so the path it hands over
+    // to has to work: splitting the scan left a dangling reference to the old single finding list,
+    // which fails AFTER the gate passes and therefore never on any dirty-cast test.
+    const rendered = run(["render", "--cast", clean.file, "--out", path.join(os.tmpdir(), "demo-video-probe.webm")],
+      NO_BROWSERS);
+    assert.doesNotMatch(rendered.stderr, /is not defined/,
+      "the clean render path broke after the gate passed");
   } finally {
     clean.cleanup();
   }

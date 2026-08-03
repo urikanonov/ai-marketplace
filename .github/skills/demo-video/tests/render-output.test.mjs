@@ -10,6 +10,7 @@ import {
   castText,
   publishedSurfaces,
   gateFindings,
+  findingCount,
   dirtyGateMessage,
   terminalPage,
   stagePage,
@@ -459,6 +460,32 @@ test("the safety gate tells the cast and the ask apart (DEMO-SAFE-42)", () => {
   const fromMark = gateFindings(dirtyMark, {});
   assert.ok(fromMark.cast.length, "mark text left the cast scan");
   assert.deepEqual(fromMark.ask, [], "a mark-derived ask was reported as operator-supplied");
+});
+
+// Splitting one scan into two must not drop what only the JOIN caught: `scanText` rejoins a
+// hard-wrapped value across a line break, so a credential whose halves sit at the end of the cast
+// and the start of the ask matched when the two were one string and matches in neither alone. Both
+// halves are published, and together they read as one credential.
+test("a credential split across the cast and the ask is still caught (DEMO-SAFE-42)", () => {
+  const cast = {
+    cols: 80,
+    rows: 24,
+    command: "npm test",
+    argv: ["npm", "test"],
+    marks: [],
+    events: [{ t: 0, data: "run this: ghp_0123456789" }],
+  };
+  const found = gateFindings(cast, { ask: "abcdefghijklmnopqrstuvwxyzAB now" });
+  assert.deepEqual(found.cast, [], "half a token should not match on its own");
+  assert.deepEqual(found.ask, [], "the other half should not match on its own");
+  assert.ok(found.boundary.length, "a credential spanning the two surfaces was let through");
+  // The clip is marked UNSAFE from this count, so a bucket left out of it is a clip that ships
+  // looking clean.
+  assert.equal(findingCount(found), found.boundary.length);
+
+  const message = dirtyGateMessage(found, "probe.cast.json");
+  assert.match(message, /span/i, "the refusal does not say the finding spans both surfaces");
+  assert.match(message, /--ask/);
 });
 
 test("a dirty ask is refused in its own words (DEMO-SAFE-42)", () => {

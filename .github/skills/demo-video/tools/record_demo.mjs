@@ -1241,12 +1241,34 @@ export function publishedSurfaces(cast, args = {}) {
 // every other ask (a mark's text, a `-p` prompt, the program name) is drawn FROM the cast and is
 // already in `castText`, so attributing it to `--ask` would be the same dead end pointing the other
 // way - telling the operator to edit a flag they never passed.
+//
+// `boundary` keeps what only the JOINED text catches. `scanText` rejoins a hard-wrapped value
+// across a line break, so a credential whose halves land at the end of the cast and the start of
+// the ask fired when the two were scanned as one string and fires in neither half alone - both
+// halves are still published, and both are still legible. Splitting the scan must not drop that
+// catch, and a finding that belongs to neither surface alone belongs to both.
 export function gateFindings(cast, args = {}, rules = undefined) {
   const surfaces = publishedSurfaces(cast, args);
-  return {
-    cast: scanText(surfaces.cast, rules),
-    ask: args.ask ? scanText(surfaces.ask, rules) : [],
-  };
+  const castFindings = scanText(surfaces.cast, rules);
+  // Truthiness, matching `askFromCast`: an empty `--ask` falls back to the cast-derived ask there,
+  // so treating it as operator-supplied here would attribute a cast finding to a flag that is not
+  // being published. The two must agree, or the message names the wrong surface.
+  if (!args.ask) return { cast: castFindings, ask: [], boundary: [] };
+  const askFindings = scanText(surfaces.ask, rules);
+  const offset = surfaces.cast.length + 1;
+  const seen = new Set([
+    ...castFindings.map((f) => `${f.rule}@${f.index}`),
+    ...askFindings.map((f) => `${f.rule}@${f.index + offset}`),
+  ]);
+  const boundary = scanText(`${surfaces.cast}\n${surfaces.ask}`, rules)
+    .filter((f) => !seen.has(`${f.rule}@${f.index}`));
+  return { cast: castFindings, ask: askFindings, boundary };
+}
+
+// How many findings the gate has, across every surface. The clip is marked UNSAFE and the warning
+// counts from this, so a surface added later cannot be left out of the count by accident.
+export function findingCount(found) {
+  return found.cast.length + found.ask.length + found.boundary.length;
 }
 
 function ruleNames(findings) {
@@ -1267,6 +1289,12 @@ export function dirtyGateMessage(found, file = "<file>") {
       + "it is the text on your command line, not the cast, so re-capturing cannot change it and a "
       + "bare 'scan --cast' cannot see it. Retype the --ask, or reproduce the finding with "
       + `'scan --cast ${file} --ask "<text>"'.`);
+  }
+  if (found.boundary.length) {
+    parts.push(`${found.boundary.length} finding(s) (${ruleNames(found.boundary)}) span the cast and `
+      + "the --ask: neither half matches alone, so both are published and together they read as one "
+      + "credential. Fix BOTH ends - retype the --ask and re-capture (or add a rule to "
+      + "tools/redact.mjs).");
   }
   return parts.join("\n");
 }
@@ -1332,15 +1360,19 @@ function scanCast(args) {
   const rules = rulesForThisMachine();
   const surfaces = publishedSurfaces(cast, args);
   const found = gateFindings(cast, args, rules);
-  const total = found.cast.length + found.ask.length;
+  const total = findingCount(found);
   console.log(`cast:     ${file}`);
   console.log(`events:   ${cast.events.length}`);
   // The ask is only ITS OWN surface when the operator passed one, so the breakdown appears only
   // when there are two surfaces to tell apart.
-  console.log(`findings: ${total}${args.ask ? ` (cast ${found.cast.length}, ask ${found.ask.length})` : ""}`);
-  for (const surface of ["cast", "ask"]) {
+  console.log(`findings: ${total}${args.ask
+    ? ` (cast ${found.cast.length}, ask ${found.ask.length}, boundary ${found.boundary.length})`
+    : ""}`);
+  const joined = `${surfaces.cast}\n${surfaces.ask}`;
+  for (const surface of ["cast", "ask", "boundary"]) {
     for (const finding of found[surface].slice(0, 25)) {
-      const text = surfaces[surface];
+      // A boundary finding is indexed into the JOINED text, which is the only place it exists.
+      const text = surface === "boundary" ? joined : surfaces[surface];
       const start = Math.max(0, finding.index - 20);
       console.log(`  ${surface}: ${finding.rule} @${finding.index}: ${JSON.stringify(text.slice(start, start + 70))}`);
     }
@@ -1351,6 +1383,9 @@ function scanCast(args) {
   if (found.ask.length) {
     console.error("This --ask must not be published as-is. Retype it; it is not in the cast, so "
       + "re-capturing cannot change it.");
+  }
+  if (found.boundary.length) {
+    console.error("A finding spans the cast and the --ask. Neither half matches alone, so fix BOTH ends.");
   }
   if (total) process.exitCode = 1;
   return found;
@@ -1702,7 +1737,8 @@ async function recordLoop(args) {
   const { file: castFile, cast, capturedHere } = readCast(args);
   const rules = rulesForThisMachine();
   const found = gateFindings(cast, args, rules);
-  if ((found.cast.length || found.ask.length) && !args["allow-findings"]) {
+  const findingsTotal = findingCount(found);
+  if (findingsTotal && !args["allow-findings"]) {
     throw new Error(dirtyGateMessage(found, castFile));
   }
   warnForeignCast(capturedHere);
@@ -1753,7 +1789,7 @@ async function recordLoop(args) {
   const introMs = Math.round(numberOpt(args, "intro", 3.5) * 1000);
   const endHoldMs = Math.round(numberOpt(args, "end-hold", 3.5) * 1000);
   const ask = askFromCast(cast, args);
-  const unsafe = findings.length > 0;
+  const unsafe = findingsTotal > 0;
   const outFile = args.out
     ? path.resolve(String(args.out))
     : path.join(OUT_ROOT, `loop-${unsafe ? "UNSAFE-" : ""}${stamp()}.webm`);
@@ -1931,7 +1967,8 @@ async function renderTerminal(args) {
   // Scanned BEFORE any trim, deliberately. The gate exists to stop a secret reaching a published
   // clip, and scanning only the kept span would let a trim decide what the gate gets to see.
   const found = gateFindings(fullCast, args, rules);
-  if ((found.cast.length || found.ask.length) && !args["allow-findings"]) {
+  const findingsTotal = findingCount(found);
+  if (findingsTotal && !args["allow-findings"]) {
     throw new Error(dirtyGateMessage(found, castFile));
   }
   // A cast this tool did not capture was never scrubbed at capture time, and the machine-specific
@@ -1988,7 +2025,7 @@ async function renderTerminal(args) {
   const height = Math.round(numberOpt(args, "height", Math.ceil(rows * fontSize * 1.32) + 84));
   // A clip rendered over the gate's objection must be impossible to mistake for a clean one later,
   // when nobody remembers which flag was passed - including when the caller named the file itself.
-  const unsafe = findings.length > 0;
+  const unsafe = findingsTotal > 0;
   const outFile = args.out
     ? path.resolve(String(args.out))
     : path.join(OUT_ROOT, `terminal-${unsafe ? "UNSAFE-" : ""}${stamp()}.webm`);
@@ -2029,7 +2066,7 @@ async function renderTerminal(args) {
     console.log(`speed:    the remaining output plays at ${timeline.speed.toFixed(1)}x`);
   }
   if (unsafe) {
-    console.error(`\nWARNING: rendered despite ${findings.length} finding(s) because --allow-findings was passed.`);
+    console.error(`\nWARNING: rendered despite ${findingsTotal} finding(s) because --allow-findings was passed.`);
     console.error("This clip is NOT publish-safe. Run 'scan' and look at every finding before it goes anywhere.");
   }
   console.log("WATCH THE CLIP before publishing it.");
