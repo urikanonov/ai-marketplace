@@ -364,6 +364,76 @@ test.describe("section review tracking", () => {
     expect(await stateOf(page, "rv-alpha")).toBe("unreviewed");
   });
 
+  test("a decoy reviewedSections block cannot shadow the region-owned review state (CMH-REVIEW-16)", async ({ page }) => {
+    await installClipboardCapture(page);
+    await denyExternalNetwork(page);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    const { html } = stageContent(CONTENT, { key: "cmh-review-decoy", source: "decoy.html" });
+    // Bake a real marker into the REGION-OWNED block first (mark_reviewed.py refuses a document
+    // that already carries two), then plant a decoy block in the authored content, ahead of it.
+    const tool = path.join(SKILL, "tools", "authoring", "mark_reviewed.py");
+    const r = spawnSync(PYTHON, [tool, html, "rv-alpha"], { encoding: "utf8" });
+    expect(r.status, r.stderr).toBe(0);
+    const decoy = '<script type="application/json" id="reviewedSections">'
+      + JSON.stringify({ "rv-beta": { hash: "deadbeef", headingText: "Beta", level: 2, reviewedAt: "2020-01-01T00:00:00.000Z" } })
+      + "</script>";
+    // Ahead of the EMBEDDED COMMENTS region, so getElementById() binds the decoy first.
+    const staged = fs.readFileSync(html, "utf8");
+    const bodyOpen = staged.match(/<body[^>]*>/);
+    expect(bodyOpen).toBeTruthy();
+    fs.writeFileSync(html, staged.replace(bodyOpen[0], bodyOpen[0] + "\n" + decoy));
+    await page.goto(fileUrl(html));
+    await ready(page);
+    // The load reads the region-owned block, not the first getElementById match: alpha is the
+    // reviewed one, and beta (only the decoy claims it) stays unreviewed rather than "changed".
+    expect(await stateOf(page, "rv-alpha")).toBe("reviewed");
+    expect(await stateOf(page, "rv-beta")).toBe("unreviewed");
+    // The export writes the region-owned block too, leaving the decoy's bytes alone.
+    await page.locator("#rv-gamma").hover();
+    await page.locator("#rv-gamma .cmh-review-badge").click();
+    expect(await stateOf(page, "rv-gamma")).toBe("reviewed");
+    await openToolbarMenu(page);
+    const [download] = await Promise.all([page.waitForEvent("download"), page.click("#btnSaveHtmlTop")]);
+    const saved = await readDownload(download);
+    const blocks = [...saved.matchAll(/<script[^>]*type="application\/json"[^>]*id="reviewedSections"[^>]*>([\s\S]*?)<\/script>/g)]
+      .map((m) => JSON.parse(m[1].trim() || "{}"));
+    expect(blocks.length).toBe(2);
+    expect(Object.keys(blocks[0])).toEqual(["rv-beta"]);          // the decoy is untouched
+    expect(blocks[0]["rv-beta"].hash).toBe("deadbeef");
+    expect(Object.keys(blocks[1]).sort()).toEqual(["rv-alpha", "rv-gamma"]);
+  });
+
+  test("export declines to bake review state when no block can be attributed to the region (CMH-REVIEW-16)", async ({ page }) => {
+    await installClipboardCapture(page);
+    await denyExternalNetwork(page);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    const { html } = stageContent(CONTENT, { key: "cmh-review-orphan", source: "orphan.html" });
+    // Strip the region-owned block and leave ONLY a decoy ahead of the region: nothing can be
+    // attributed to EMBEDDED COMMENTS, so the export must not write the decoy (nor add a third).
+    const staged = fs.readFileSync(html, "utf8");
+    const owned = staged.match(/<script[^>]*type="application\/json"[^>]*id="reviewedSections"[^>]*>[\s\S]*?<\/script>/);
+    expect(owned).toBeTruthy();
+    const decoy = '<script type="application/json" id="reviewedSections">'
+      + JSON.stringify({ "rv-beta": { hash: "deadbeef", headingText: "Beta", level: 2, reviewedAt: "2020-01-01T00:00:00.000Z" } })
+      + "</script>";
+    const bodyOpen = staged.match(/<body[^>]*>/);
+    expect(bodyOpen).toBeTruthy();
+    fs.writeFileSync(html, staged.replace(owned[0], "").replace(bodyOpen[0], bodyOpen[0] + "\n" + decoy));
+    await page.goto(fileUrl(html));
+    await ready(page);
+    expect(await stateOf(page, "rv-beta")).toBe("unreviewed"); // the decoy's marker is not read
+    await page.locator("#rv-gamma").hover();
+    await page.locator("#rv-gamma .cmh-review-badge").click();
+    await openToolbarMenu(page);
+    const [download] = await Promise.all([page.waitForEvent("download"), page.click("#btnSaveHtmlTop")]);
+    const saved = await readDownload(download);
+    await expect(page.locator("#toast")).toContainText("Section-review state was left out");
+    const blocks = [...saved.matchAll(/<script[^>]*type="application\/json"[^>]*id="reviewedSections"[^>]*>([\s\S]*?)<\/script>/g)]
+      .map((m) => JSON.parse(m[1].trim() || "{}"));
+    expect(blocks.length).toBe(1);                     // no third block was invented
+    expect(Object.keys(blocks[0])).toEqual(["rv-beta"]); // the decoy's bytes are untouched
+  });
+
   test("the runtime section hash matches the JS/Python golden (CMH-REVIEW-08)", async ({ page }) => {
     await openReviewDoc(page);
     const goldenPath = path.join(DEV, "tests", "fixtures", "section_hash", "golden.json");

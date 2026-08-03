@@ -1008,6 +1008,27 @@ class ReviewedSectionsTests(ValidateAssertions, unittest.TestCase):
         # Invalid JSON is rejected.
         self.assertError(self._build("{bad"), "reviewedSections is not valid JSON")
 
+    def test_duplicate_reviewed_sections_block_flagged(self):
+        # CMH-REVIEW-16: review state is user data, so a decoy block that getElementById would
+        # bind INSTEAD of the region-owned one must be reported, exactly like the other state
+        # blocks. The decoy sits in the authored content, ahead of the real block.
+        doc = self._build("{}").replace(
+            "<p>content</p>",
+            '<p>content</p><script type="application/json" id="reviewedSections">{}</script>')
+        self.assertError(doc, '<script id="reviewedSections"> appears 2 times')
+
+    def test_reviewed_sections_block_outside_the_region_flagged(self):
+        # CMH-REVIEW-16: a LONE block outside the region satisfies the uniqueness rule, but the
+        # runtime reads and writes only the block the region owns - so a document that looks like it
+        # carries review state, and does not, must be reported rather than called clean.
+        owned = '<script type="application/json" id="reviewedSections">{}</script>\n'
+        doc = self._build("{}")
+        self.assertIn(owned, doc)
+        doc = doc.replace(owned, "").replace(
+            "<p>content</p>",
+            '<p>content</p><script type="application/json" id="reviewedSections">{}</script>')
+        self.assertError(doc, "outside the EMBEDDED COMMENTS region")
+
 
 if __name__ == "__main__":
     unittest.main()

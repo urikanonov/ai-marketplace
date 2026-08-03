@@ -179,6 +179,72 @@ function computeSectionStates() {
 }
 
 /* ----- persistence ----- */
+// Review state is user data, so the block it lives in is resolved by the region that OWNS it, never
+// by getElementById() (which binds the FIRST match in document order). A decoy element carrying the
+// same id ahead of the real one - in a hand-authored file, or after a botched edit - would otherwise
+// be read on load and written on export, while the region-owned block silently kept its stale
+// contents. validate.py rejects the duplicate id; this keeps the runtime correct on a document that
+// never met the validator.
+const REVIEW_BLOCK_ID = "reviewedSections";
+const REVIEW_REGION = "EMBEDDED COMMENTS";
+function _cmhRegionCommentRe(kind, name) {
+  return new RegExp("^[ \\t]*(?:=+[ \\t]*)?" + kind + ": commentable-html - " + name + "[ \\t]*(?:=+[ \\t]*)?$", "m");
+}
+// DOMParser parses with scripting DISABLED, so it sees <noscript> contents as real elements and
+// comments while the live document keeps the same bytes as inert text. Skipping them keeps the
+// export's view of a document identical to the reader's, so nothing can hide in a <noscript> and be
+// written into (where it would turn back into text, losing the state, on the next open).
+function _cmhInInertHost(node) {
+  const el = node.nodeType === 1 ? node : node.parentElement;
+  return !!(el && el.closest && el.closest("noscript"));
+}
+// Where the region called `name` begins and ends: `{state: "ok", begin, end}`, `"absent"` (the
+// document carries no such marker at all - for example a file from before the regions existed), or
+// `"malformed"` (markers exist but not as exactly one ordered pair, so nothing in the document can
+// be attributed to the region and callers must refuse rather than guess).
+function _cmhRegionCommentBounds(doc, name) {
+  const beginRe = _cmhRegionCommentRe("BEGIN", name);
+  const endRe = _cmhRegionCommentRe("END", name);
+  const begins = [], ends = [];
+  let walker;
+  try { walker = doc.createTreeWalker(doc, NodeFilter.SHOW_COMMENT); } catch (e) { return { state: "malformed" }; }
+  let node;
+  while ((node = walker.nextNode())) {
+    if (_cmhInInertHost(node)) continue;
+    const data = node.data || "";
+    if (beginRe.test(data)) begins.push(node);
+    if (endRe.test(data)) ends.push(node);
+  }
+  if (!begins.length && !ends.length) return { state: "absent" };
+  if (begins.length !== 1 || ends.length !== 1) return { state: "malformed" };
+  if (!(begins[0].compareDocumentPosition(ends[0]) & Node.DOCUMENT_POSITION_FOLLOWING)) return { state: "malformed" };
+  return { state: "ok", begin: begins[0], end: ends[0] };
+}
+function _cmhNodeInRegion(el, bounds) {
+  return !!(bounds.begin.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)
+    && !!(bounds.end.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING);
+}
+// Every element carrying `id`, not just the first one getElementById would return. `id` is always
+// one of this file's own constants, so it needs no selector escaping.
+function _cmhElementsWithId(doc, id) {
+  return Array.prototype.slice.call(doc.querySelectorAll('[id="' + id + '"]'))
+    .filter(function (el) { return !_cmhInInertHost(el); });
+}
+// The element the region delimited by `bounds` owns for `id`, or null when it cannot be resolved
+// unambiguously. A LONE match still resolves when the region markers are ABSENT (a document
+// upgraded from before the feature existed keeps working); malformed markers and a duplicated id
+// never resolve.
+function _cmhOwnedById(doc, id, bounds) {
+  const all = _cmhElementsWithId(doc, id);
+  if (!all.length) return null;
+  if (!bounds || bounds.state === "malformed") return null;
+  if (bounds.state === "absent") return all.length === 1 ? all[0] : null;
+  const owned = all.filter(function (el) { return _cmhNodeInRegion(el, bounds); });
+  return owned.length === 1 ? owned[0] : null;
+}
+function _cmhOwnedStateBlock(doc, id) {
+  return _cmhOwnedById(doc, id, _cmhRegionCommentBounds(doc, REVIEW_REGION));
+}
 // A null-prototype object so a heading id like "__proto__" or "constructor" becomes an ordinary
 // own key instead of mutating a real prototype (which would silently drop that section's marker).
 function _sanitizeMarkers(obj) {
@@ -197,9 +263,25 @@ function _sanitizeMarkers(obj) {
   });
   return clean;
 }
+// A document whose reviewedSections block cannot be attributed to its region is reported once, so a
+// reader who sees every section "unreviewed" on a file that plainly carries markers has an
+// explanation. The export path reports the same condition through cmhReviewExportNote().
+let _reviewBlockWarned = false;
+function _cmhWarnUnownedReviewBlock() {
+  if (_reviewBlockWarned) return;
+  _reviewBlockWarned = true;
+  try {
+    console.warn("commentable-html: this document carries a " + REVIEW_BLOCK_ID + " block that the "
+      + REVIEW_REGION + " region does not own (duplicated id, misplaced block, or broken region "
+      + "markers), so its baked section-review markers are ignored. Run validate.py on the file.");
+  } catch (e) { /* console is optional */ }
+}
 function getEmbeddedReviewMarkers() {
-  const el = document.getElementById("reviewedSections");
-  if (!el) return Object.create(null);
+  const el = _cmhOwnedStateBlock(document, REVIEW_BLOCK_ID);
+  if (!el) {
+    if (_cmhElementsWithId(document, REVIEW_BLOCK_ID).length) _cmhWarnUnownedReviewBlock();
+    return Object.create(null);
+  }
   try {
     const raw = JSON.parse((el.textContent || "").trim() || "{}");
     return _sanitizeMarkers(raw);
@@ -393,9 +475,21 @@ if (typeof window !== "undefined") {
 // this block with it). "<" is escaped as \u003c like the embedded-comments block. The document is
 // round-tripped through DOMParser (not a string regex) so the reviewedSections id is matched only
 // as a real DOM element, never as tag text that appears inside the inlined layer JS (a self-
-// contained Shareable/Offline copy inlines this runtime, whose comments mention the block by name).
+// contained Shareable/Offline copy inlines this runtime, whose comments mention the block by name),
+// and the element written is the one the EMBEDDED COMMENTS region owns, never the first id match.
+// When nothing can be attributed to the region the state is left out rather than written to a
+// guess; showToast REPLACES the visible message, so the reason is handed to the caller (which owns
+// the single "Downloaded ..." toast) through cmhReviewExportNote() instead of being toasted here
+// and immediately wiped.
+let _reviewStateOmitted = "";
+function cmhReviewExportNote() {
+  const note = _reviewStateOmitted;
+  _reviewStateOmitted = "";
+  return note;
+}
 function _applyReviewStateToHtml(html) {
   const src = String(html || "");
+  _reviewStateOmitted = "";
   const markers = _sanitizeMarkers(reviewMarkers);
   // Bake only markers whose heading still exists in the current document, so a stale marker for a
   // deleted section cannot leak its old headingText/reviewedAt/hash into a shared Shareable/Offline
@@ -409,16 +503,34 @@ function _applyReviewStateToHtml(html) {
   let doc;
   try { doc = new DOMParser().parseFromString(src, "text/html"); } catch (e) { return html; }
   if (!doc || !doc.documentElement) return html;
-  let block = doc.getElementById("reviewedSections");
+  const bounds = _cmhRegionCommentBounds(doc, REVIEW_REGION);
+  let block = _cmhOwnedById(doc, REVIEW_BLOCK_ID, bounds);
   if (block && String(block.textContent || "").trim() === json.trim()) return html;
   if (!block) {
-    // No block present (an older document): insert one right after the embeddedComments block so it
-    // sits inside the EMBEDDED COMMENTS region and is stripped by Plain export for free.
-    const ec = doc.getElementById("embeddedComments");
-    if (!ec || !ec.parentNode) return html;
+    // An element carries the id but no single one can be attributed to the EMBEDDED COMMENTS
+    // region: writing would overwrite a decoy and leave the real block stale, and inserting would
+    // add a THIRD contender. Decline, and hand the reason to the caller's download toast - the
+    // reader's markers stay in localStorage, they just do not travel with this copy.
+    const carriers = _cmhElementsWithId(doc, REVIEW_BLOCK_ID).length;
+    if (carriers) {
+      _reviewStateOmitted = carriers > 1
+        ? " Section-review state was left out: this file carries " + carriers + " " + REVIEW_BLOCK_ID
+          + " blocks. Run validate.py and remove the duplicate."
+        : " Section-review state was left out: this file's " + REVIEW_BLOCK_ID + " block is not inside"
+          + " its " + REVIEW_REGION + " region. Run validate.py.";
+      return html;
+    }
+    // No block at all (an older document): insert one right after the region-owned embeddedComments
+    // block so it sits inside the EMBEDDED COMMENTS region and Plain export strips it for free.
+    const ec = _cmhOwnedById(doc, "embeddedComments", bounds);
+    if (!ec || !ec.parentNode) {
+      _reviewStateOmitted = " Section-review state was left out: this file's " + REVIEW_REGION
+        + " region could not be located. Run validate.py.";
+      return html;
+    }
     block = doc.createElement("script");
     block.setAttribute("type", "application/json");
-    block.id = "reviewedSections";
+    block.id = REVIEW_BLOCK_ID;
     ec.parentNode.insertBefore(block, ec.nextSibling);
   }
   block.textContent = json;

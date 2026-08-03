@@ -548,5 +548,5 @@ async function saveHtml() {
   const n = exportComments.length;
   const noun = "comment" + (n === 1 ? "" : "s");
   _downloadHtml(text, filename);
-  showToast(`Downloaded ${filename} with ${n} embedded ${noun}. Replace the original on disk to make them stick.`, { center: true });
+  showToast(`Downloaded ${filename} with ${n} embedded ${noun}. Replace the original on disk to make them stick.` + cmhReviewExportNote(), { center: true });
 }

@@ -5,7 +5,7 @@ layer descriptor validation."""
 import re
 import json
 from collections import Counter
-from .parsing import CONTENT_BEGIN, CONTENT_END, DEMO_KEYS, DOC_EXAMPLE_COMMENT_KEY, FORBIDDEN_IDS, LAYER_DESCRIPTOR_ID, LAYER_JSON_IDS, REGIONS, REQUIRED_IDS, SAFE_ID_RE, _COMMENT_ROOT_ATTR_RE, _DATA_KEY_RE, _HTML_COMMENT_RE, _PRE_TAG_RE, _SCRIPT_STYLE_RE, _TITLE_RE, _TRANSIENT_BODY_CLASSES, _attrs_have_class, _find_tag_attrs, _is_executable_js, _is_json_attrs, _js_scan, _parser_script, _region_marker_matches, code_block_spans, content_marker_scan, layer_regions_text, parsed_attrs_have_class
+from .parsing import CONTENT_BEGIN, CONTENT_END, DEMO_KEYS, DOC_EXAMPLE_COMMENT_KEY, FORBIDDEN_IDS, LAYER_DESCRIPTOR_ID, LAYER_JSON_IDS, REGIONS, REQUIRED_IDS, SAFE_ID_RE, UNIQUE_JSON_IDS, _COMMENT_ROOT_ATTR_RE, _DATA_KEY_RE, _HTML_COMMENT_RE, _PRE_TAG_RE, _SCRIPT_STYLE_RE, _TITLE_RE, _TRANSIENT_BODY_CLASSES, _attrs_have_class, _find_tag_attrs, _is_executable_js, _is_json_attrs, _js_scan, _parser_script, _region_marker_matches, code_block_spans, content_marker_scan, layer_regions_text, parsed_attrs_have_class
 from .resources import CHARTJS_SRC_RE, CSS_NETWORK_URL_RE, META_REFRESH_NETWORK_RE, NETWORK_URL_RE, NONSHAREABLE_REGIONS, OFFLINE_NAV_TO_NETWORK_RE, SCRIPT_LOAD_ATTRS, _check_nonshareable, _is_adx_run_href, _is_nonshareable, _link_loads, _offline_csp_errors, offline_script_navigates_to_network
 from .kind import check_document_kind, check_favicon, check_mermaid_renders, check_section_reference_links, check_section_wrapping
 from .links import check_links
@@ -271,7 +271,7 @@ def _check_element_ids(parser, html):
     # whole active DOM. A duplicated id makes getElementById() bind to a decoy,
     # silently reading/writing the wrong element. Absence is already reported by
     # dedicated checks above, so only flag duplicates.
-    for uid in sorted(LAYER_JSON_IDS):
+    for uid in sorted(UNIQUE_JSON_IDS):
         c = id_counts.get(uid, 0)
         if c > 1:
             if uid == LAYER_DESCRIPTOR_ID:
