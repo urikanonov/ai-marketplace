@@ -4,6 +4,29 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [1.390.0] - 2026-08-03
+
+### Fixed
+
+- Media anchors: an unlabeled figure is no longer identified by its position alone. An image comment
+  resolves by `imageIndex` and falls back to the stored `imageSrc`/`imageAlt`/`imageKind`, so media
+  with NO label and no src - an unlabeled inline `<svg>`, an unlabeled chart `<canvas>` - had no
+  identity at all beyond its index: inserting a figure ahead of it silently moved the comment to a
+  DIFFERENT graphic, because the metadata check had nothing to disagree with. Such a comment now also
+  stores `imageSig`, a short digest of an AUTHORED shape descriptor (the tag, an author `id`, the
+  figure's caption, an svg's `viewBox` plus the shape it draws down to each descendant's drawing
+  attributes and its own text, a chart canvas's `data-cmh-chart-*` attributes) that excludes
+  everything the runtime writes, so a reload, a re-render, a device-pixel-ratio change and an
+  export/reopen all recompute the same value. The comment now
+  re-anchors to the figure it was left on, or stays unresolved when the shape is genuinely
+  ambiguous, instead of attaching itself to another figure. The signature is the discriminator of
+  last resort: it never overrides a label or a src (so redrawing a still-labelled figure keeps its
+  comment), it is never shown to a reader (no card, `Copy all` line, Markdown export or printed
+  sheet - it rides along only inside an export's embedded comment record, so a reopened copy can
+  re-anchor), and a comment saved before the field existed - or one carrying a value no signature
+  this runtime writes could be - resolves exactly as it did.
+
 ## [1.375.0] - 2026-08-02
 
 ### Fixed

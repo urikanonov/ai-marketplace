@@ -14,7 +14,7 @@ An image or chart is a whole-target anchor: you can leave several comments on th
 
 ## Inline SVG figures (commentable)
 
-An authored inline `<svg>` in `#commentRoot` is commentable media exactly like an `<img>`: it is indexed with the other media, made focusable, reveals the same floating **Add Comment** button on hover or <kbd>Enter</kbd>, and stores an `anchorType: "image"` comment. Its quote and `imageAlt` come from the svg's accessible name, in accessible-name order: `aria-labelledby` (resolved to the referenced elements' text - naming an svg from its `<figcaption>` works), then `aria-label`, then a DIRECT-CHILD `<title>` (only a direct child names the svg, so a figure never borrows a nested shape's tooltip). ALWAYS give a commentable graphic one of those three: the label is the only metadata an svg anchor has (it has no `src`), so an unlabeled graphic can only be found again by its position. A graphic with none of them is still commentable and quotes `image N`; the layer then adds an affordance `aria-label` so it is not a nameless focus stop, and marks that synthesized label (`data-cm-img-auto-label="1"`) so it never becomes anchor metadata - only the exact synthesized string is discounted, so an author's own `aria-label` still wins even on an element that carries the marker. The layer adds `role="img"` when the svg has no role, and never rewrites an author's name.
+An authored inline `<svg>` in `#commentRoot` is commentable media exactly like an `<img>`: it is indexed with the other media, made focusable, reveals the same floating **Add Comment** button on hover or <kbd>Enter</kbd>, and stores an `anchorType: "image"` comment. Its quote and `imageAlt` come from the svg's accessible name, in accessible-name order: `aria-labelledby` (resolved to the referenced elements' text - naming an svg from its `<figcaption>` works), then `aria-label`, then a DIRECT-CHILD `<title>` (only a direct child names the svg, so a figure never borrows a nested shape's tooltip). ALWAYS give a commentable graphic one of those three: the label is the strongest metadata an svg anchor has (it has no `src`), and it is the only one that survives an edit to the drawing itself. A graphic with none of them is still commentable and quotes `image N`; it falls back to the structural signature described under "Two notes on stability" below, and the layer adds an affordance `aria-label` so it is not a nameless focus stop, and marks that synthesized label (`data-cm-img-auto-label="1"`) so it never becomes anchor metadata - only the exact synthesized string is discounted, so an author's own `aria-label` still wins even on an element that carries the marker. The layer adds `role="img"` when the svg has no role, and never rewrites an author's name.
 
 Author a commentable graphic as a plain figure:
 
@@ -39,6 +39,20 @@ SVG that another layer or the runtime owns stays inert, so these are NOT given a
 Two notes on stability. Media are indexed ONCE at load, so a graphic that is inline-`display:none`
 or `hidden` at load time is skipped for good even if a script later reveals it. And because inline
 SVG now joins the same media index as images and chart canvases, `imageIndex` numbering shifts in a
-document that gains one: labelled media re-anchors through its stored label, so ALWAYS label a
-commentable graphic (and an unlabelled chart `<canvas>` too, with `aria-label`).
+document that gains one: labelled media re-anchors through its stored label, so PREFER to label a
+commentable graphic (and an unlabelled chart `<canvas>` too, with `aria-label`). Media that carries
+neither a label nor a `src` is not left to its index alone - the comment also stores `imageSig`, a
+short structural signature of the figure. It is computed only from what the AUTHOR wrote - the tag,
+an author `id`, the figure's caption, an svg's `viewBox` plus the shape it draws (each descendant's
+tag, its drawing attributes and its own short text), a chart canvas's `data-cmh-chart-*` attributes -
+and never from anything the runtime adds, so it survives a reload, a re-render, a device-pixel-ratio
+change and an export/reopen. When the stored index lands on a figure whose signature disagrees, the
+anchor re-resolves to the figure that matches, or stays unresolved if several (or none) do, instead
+of silently attaching the note to a different graphic. Two figures identical in shape, text AND
+caption are genuinely indistinguishable, so give them a label. The signature is anchor plumbing
+only: it is never shown to a reader - not in a card, **Copy all**, the Markdown export, or the
+printed sheet - though it does ride along inside the embedded comment record of an export (Shareable
+or Offline), which is what lets a reopened copy re-anchor. A comment saved before the field existed
+keeps resolving exactly as it did. A label is still the better key - it survives an edit to the
+drawing, which a structural signature deliberately does not.
 

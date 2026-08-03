@@ -492,6 +492,7 @@ function saveComposerElement(el) {
       imageSrc: info.src,
       imageAlt: info.alt,
       imageKind: info.kind || "image",
+      imageSig: info.sig || "",
       quote: info.quote,
       note,
       createdAt: new Date().toISOString(),
