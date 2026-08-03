@@ -189,8 +189,13 @@ def display_name(clip):
 
 
 def find_ffmpeg():
-    """A full ffmpeg build. Playwright bundles a VP8-only one that cannot decode these clips, so it
-    is deliberately not used here - it fails with 'no decoder found for: vp9'."""
+    """A full ffmpeg build. Playwright bundles a VP8-only one that cannot decode the published
+    clips, so it is deliberately not used here - it fails with 'no decoder found for: vp9'.
+
+    That the clips ARE VP9 is not left to chance: `scripts/check_clip_codec.py` gates it, because
+    they reverted to VP8 once when the pass that happened to encode them went away (#866). Scan the
+    FINAL published bytes rather than the render they came from - the compression pass is what a
+    published clip actually ships."""
     override = os.environ.get("DEMO_CLIP_FFMPEG")
     if override:
         return override if os.path.isfile(override) else None
@@ -410,7 +415,7 @@ def main(argv):
 
     if not ffmpeg:
         message = ("no ffmpeg on PATH (set DEMO_CLIP_FFMPEG to override). Playwright's bundled "
-                   "ffmpeg is VP8-only and cannot decode these clips.")
+                   "ffmpeg is VP8-only and cannot decode the published VP9 clips.")
         if args.require_ffmpeg:
             # Fail CLOSED. A gate that goes green having scanned nothing is worse than no gate,
             # because it reads as proof the clips were checked.

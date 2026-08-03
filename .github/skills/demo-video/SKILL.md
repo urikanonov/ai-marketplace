@@ -169,23 +169,42 @@ render either way. The three published clips are `demo-commentable-html.webm` (t
 duck cast).
 
 A freshly rendered clip needs NO hand-applied ffmpeg mask: the chrome draws no title and the loop's
-phase caption clears it, so the strip is born flat. Confirm it before publishing rather than
-assuming, and check the clips you are replacing too, so a regression is obvious:
+phase caption clears it, so the strip is born flat.
+
+It does need COMPRESSING. Chromium writes VP8, and the published clips are VP9 - roughly half the
+bytes at the same picture (SSIM 0.99), which matters because the site fetches a whole clip the
+moment a thumbnail is pressed. Re-encode each render before publishing it:
 
 ```powershell
-python "$repo\scripts\check_clip_chrome.py" --require-ffmpeg <new clips...>
+ffmpeg -i "$repo\tmp\rerecord-review\<clip>.webm" `
+  -c:v libvpx-vp9 -b:v 0 -crf 32 -g 125 -row-mt 1 -deadline good -cpu-used 2 `
+  -pix_fmt yuv420p -an "$repo\tmp\rerecord-publish\<clip>.webm"
 ```
 
-That needs a full ffmpeg build; Playwright's bundled one is VP8-only and cannot decode these VP9
-clips. Point `DEMO_CLIP_FFMPEG` at a real build if `ffmpeg` is not on PATH. The scan reports how
-many frames it judged, so read that number. It judges only the frames whose chrome is drawn AND
-unoccluded, so a clip with transitions legitimately judges fewer frames than it has - the loop clip
-skips the handful where the report is still painted over the window - and a skipped frame is still
-inspected at a coarser tolerance, so a fade never excuses a title that is plainly drawn. A clip
-MOSTLY skipped is refused outright rather than passed on the remainder: that is what a clip from an
-older recorder looks like here, because its chrome padding puts the terminal's first row inside the
-band this gate reads. Re-record such a clip with the current recorder rather than trusting a partial
-scan of it.
+This pass is also what makes the clip SEEKABLE: a browser recording carries no duration and no
+cues, so its scrub bar is dead until it is written out again (SITE-VIDEO-06). The VP9 compression
+used to happen by accident - as a side effect of the mask pass above - so when the mask went away
+the clips silently reverted to VP8 and grew by nearly half again with nobody choosing it (#866). It
+is now a required gate: `python "$repo\scripts\check_clip_codec.py"` fails a published clip that is
+not VP9, and it needs no ffmpeg at all because the codec is plain text in the container header.
+
+Then check the FINAL published bytes - the re-encoded files, not the renders they came from - and
+check the clips you are replacing too, so a regression is obvious:
+
+```powershell
+python "$repo\scripts\check_clip_chrome.py" --require-ffmpeg <the re-encoded clips...>
+```
+
+That needs a full ffmpeg build; Playwright's bundled one is VP8-only and cannot decode the VP9
+clips this publishes. Point `DEMO_CLIP_FFMPEG` at a real build if `ffmpeg` is not on PATH. The scan
+reports how many frames it judged, so read that number. It judges only the frames whose chrome is
+drawn AND unoccluded, so a clip with transitions legitimately judges fewer frames than it has - the
+loop clip skips the handful where the report is still painted over the window - and a skipped frame
+is still inspected at a coarser tolerance, so a fade never excuses a title that is plainly drawn. A
+clip MOSTLY skipped is refused outright rather than passed on the remainder: that is what a clip
+from an older recorder looks like here, because its chrome padding puts the terminal's first row
+inside the band this gate reads. Re-record such a clip with the current recorder rather than
+trusting a partial scan of it.
 
 **The posters are a published surface too, and no gate scans them.** `site/src/poster-*.jpg` is the
 first thing a reader sees, it carries the window chrome, and the launch command shipped in one once
