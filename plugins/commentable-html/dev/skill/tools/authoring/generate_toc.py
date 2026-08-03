@@ -117,7 +117,9 @@ class _TocParser(HTMLParser):
                 self.all_ids.append(element_id)
 
     def handle_data(self, data):
-        if self._heading is not None:
+        # A nested <template>'s text is inert (a browser renders none of it), so it is not part
+        # of the heading a reader sees - the same rule the validator's heading capture applies.
+        if self._heading is not None and not self._in_template():
             self._heading["text_parts"].append(data)
 
     def handle_endtag(self, tag):

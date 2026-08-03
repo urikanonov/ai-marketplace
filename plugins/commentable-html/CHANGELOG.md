@@ -4,6 +4,24 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.437.0] - 2026-08-03
+
+### Fixed
+
+- The validator no longer reads inert `<template>` content as `#commentRoot` prose, nor as heading
+  text. A template's contents live in a DocumentFragment a browser never renders, and the parser's
+  element view already declined them, but the PROSE and HEADING views did not - so a document that
+  merely SHOWED a section cross reference inside a template (a doc about authoring, or any parked
+  markup fragment) raised an "unlinked cross-reference" warning its author could not clear by any
+  edit to the rendered page, and a template nested inside a heading contributed invisible text to
+  the heading the named-cross-reference and document-title checks read. Both now apply the same
+  inertness rule as the element view, whether the template is closed or left open at end of input.
+  `generate_toc.py` follows the same rule, so a generated table of contents no longer labels an
+  entry with text a reader cannot see: a heading that contains a template is listed by its visible
+  text only, and a heading whose text is entirely inside a template is dropped from the TOC (and
+  gets no generated slug id) - which also means a `report`/`plan` whose only `<h1>` is parked in a
+  template now correctly fails the top-level-title requirement instead of passing on an invisible
+  title.
 ## [1.434.0] - 2026-08-03
 
 ### Fixed

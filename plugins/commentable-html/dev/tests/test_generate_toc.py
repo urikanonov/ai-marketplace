@@ -67,6 +67,21 @@ class GenerateTocTests(unittest.TestCase):
         self.assertNotIn("after-root", toc)
         self.assertNotIn("After Root", toc)
 
+    def test_heading_text_inside_a_template_is_not_part_of_the_title(self):
+        # A nested <template> is inert, so its text is neither rendered nor part of the heading
+        # the TOC links to - the validator's heading capture reads it the same way.
+        toc = generate_toc.build_toc(
+            doc('<h2 id="alpha">Real<template>Hidden</template>Tail</h2>'))
+        self.assertIn('<li><a href="#alpha">RealTail</a></li>', toc)
+        self.assertNotIn("Hidden", toc)
+
+    def test_a_heading_whose_text_is_only_a_template_is_not_listed(self):
+        toc = generate_toc.build_toc(
+            doc('<h2 id="alpha"><template>Hidden</template></h2><h2 id="beta">Beta</h2>'))
+        self.assertNotIn("Hidden", toc)
+        self.assertNotIn("#alpha", toc)
+        self.assertIn('<li><a href="#beta">Beta</a></li>', toc)
+
     def test_only_headings_inside_comment_root_and_not_cm_skip_are_included(self):
         html = (
             '<h2 id="outside">Outside</h2>'
