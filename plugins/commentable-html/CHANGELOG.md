@@ -4,6 +4,28 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.370.0] - 2026-08-02
+
+### Fixed
+
+- The open in-document comment dialog no longer eats the reviewer's FIRST click on layer chrome that
+  sits OUTSIDE the content root. The outside-click swallow is now stated as the rule it always meant - swallow only a
+  pointer click that lands in the ANNOTATED DOCUMENT (the content root the layer anchors to), the
+  only thing the dismiss must stop from acting - instead of swallowing everything but an enumerated
+  list of carve-outs. So in a document with a content root, switching from one comment to another by
+  clicking a second highlight's "Open comment" bubble takes ONE click again, and an overlay or
+  actionable toast the dialog's own Save raised (the storage manager and its "Manage storage"
+  recovery action on a quota failure) acts
+  on the first click rather than being spent closing the dialog. Two deliberate consequences: layer
+  controls injected INSIDE the content root (a sortable-table sort control, a widget reset) cannot be
+  told from document content by containment and are still swallowed, and author page furniture a
+  retrofitted document keeps outside its content root now acts on that click. The existing
+  guarantees are unchanged: a pointer click on document content is still swallowed - including
+  content that carries the layer's own class names or a chrome control's id, a node another
+  capture-phase listener detaches mid-dispatch, and an unclassifiable target - a keyboard-activated
+  click is still never swallowed, a mid-edit dialog still stays open without swallowing, and where
+  `#commentRoot` is absent and the layer anchors to `<body>` that mode swallows exactly what it
+  always did. (`CMH-CORE-16`, `CMH-EXP-15`)
 ## [1.364.0] - 2026-08-02
 
 ### Fixed

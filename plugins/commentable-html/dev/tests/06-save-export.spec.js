@@ -4,7 +4,7 @@ import path from "path";
 import os from "os";
 import {
   openInline, addTextComment, openComposerFor, openToolbarMenu, readDownload, fileUrl, ready,
-  stageContent, stageNonShareable,
+  stageContent, stageInline, stageNonShareable,
   openSidebarExportMenu, installClipboardCapture, lastCopied,
   clickSidebarExport, startStaticServer,
 } from "./helpers.js";
@@ -313,8 +313,18 @@ test.describe("Save comments / Export plain", () => {
   });
 
   test("the export toast is suppressed when an open comment popover swallows the click (CMH-EXP-15)", async ({ page }) => {
-    await openInline(page);
-    await addTextComment(page, "#commentRoot section p", "popover guard note");
+    // A document with no `#commentRoot` anchors the layer to `<body>` (CMH-CORE-15), which contains
+    // the layer's chrome, so THERE an export control really does sit inside the annotated root -
+    // the one configuration in which an open dialog still swallows an export click. That makes this
+    // the honest pin for the coupling, with no contrived duplicate-id control.
+    const { html } = stageInline({
+      mutate: (doc) => doc.replace(/<main id="commentRoot"(?=[^>]*data-comment-key="commentable-html-demo")[^>]*>/,
+        '<main id="contentWithoutCommentRoot">'),
+    });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await expect(page.locator("#commentRoot")).toHaveCount(0);
+    await addTextComment(page, "main p", "popover guard note", 0);
     // Stub window.print so a PDF export never opens a dialog, and record whether it actually ran.
     await page.evaluate(() => {
       window.__printed = 0;
@@ -323,25 +333,61 @@ test.describe("Save comments / Export plain", () => {
     // Open the on-screen comment popover (hover the highlight, click its bubble).
     const cid = await page.locator("mark.cm-hl").first().getAttribute("data-cid");
     await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await expect(page.locator("#hlBubble")).toBeVisible();
     await page.locator("#hlBubble").click();
     await expect(page.locator(".cm-comment-popover")).toBeVisible();
+    // The dismiss listener arms a tick after the dialog opens; let that tick pass before dispatching
+    // synthetically, so the assertions below cannot land in the pre-arming window.
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 0)));
 
-    // A pointer click (detail > 0) on an export button while the popover is open is swallowed by
-    // the popover's outside-click dismiss (it closes the popover and stops propagation), so the
-    // export never runs. The intent toast must NOT falsely announce it.
-    await page.evaluate(() => {
+    // Dispatch and read the toast state SYNCHRONOUSLY in one task: the intent toast auto-hides after
+    // 2.5s, so a retrying "not shown" assertion would also pass for a toast that DID announce.
+    const suppressed = await page.evaluate(() => {
+      const t = document.getElementById("toast");
+      t.classList.remove("show", "cm-toast-center");
+      t.textContent = "";
       document.getElementById("btnPrint").dispatchEvent(
         new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+      return { show: t.classList.contains("show"), text: t.textContent || "" };
     });
+    expect(suppressed).toEqual({ show: false, text: "" });
     await expect(page.locator(".cm-comment-popover")).toHaveCount(0);
     expect(await page.evaluate(() => window.__printed)).toBe(0);
-    await expect(page.locator("#toast")).not.toHaveClass(/\bshow\b/);
 
     // With no popover open, the same click runs the export and the intent toast appears.
     await page.evaluate(() => {
       document.getElementById("btnPrint").dispatchEvent(
         new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
     });
+    expect(await page.evaluate(() => window.__printed)).toBe(1);
+    await expect(page.locator("#toast")).toHaveClass(/cm-toast-center/);
+    await expect(page.locator("#toast")).toContainText("Exporting as PDF");
+  });
+
+  test("an export control in the layer's own chrome is never swallowed by an open popover (CMH-EXP-15)", async ({ page }) => {
+    await openInline(page);
+    await addTextComment(page, "#commentRoot section p", "chrome export note");
+    await page.evaluate(() => {
+      window.__printed = 0;
+      window.print = () => { window.__printed += 1; };
+    });
+    const cid = await page.locator("mark.cm-hl").first().getAttribute("data-cid");
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await expect(page.locator("#hlBubble")).toBeVisible();
+    await page.locator("#hlBubble").click();
+    await expect(page.locator(".cm-comment-popover")).toBeVisible();
+    // The dismiss listener arms a tick after the dialog opens; let that tick pass so this proves the
+    // chrome carve-out rather than the pre-arming window.
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 0)));
+
+    // In a document that HAS a `#commentRoot`, the Export controls sit outside it - layer chrome,
+    // not the annotated document - so the dialog closes but the reviewer's FIRST click still runs
+    // the export, and it is announced.
+    await page.evaluate(() => {
+      document.getElementById("btnPrint").dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+    });
+    await expect(page.locator(".cm-comment-popover")).toHaveCount(0);
     expect(await page.evaluate(() => window.__printed)).toBe(1);
     await expect(page.locator("#toast")).toHaveClass(/cm-toast-center/);
     await expect(page.locator("#toast")).toContainText("Exporting as PDF");

@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import {
   openKitchenSink, addTextComment, openComposerFor, selectText, distinctCids, realDragSelect,
-  allCids, stageContent, fileUrl, ready, storedComments,
+  allCids, stageContent, stageInline, fileUrl, ready, storedComments,
 } from "./helpers.js";
 
 test.describe("comment interactions", () => {
@@ -591,16 +591,19 @@ test.describe("comment interactions", () => {
     expect(icon.width).toBeGreaterThanOrEqual(15);
   });
 
-  test("CMH-CORE-16: clicking anywhere else closes the inline dialog and swallows the click", async ({ page }) => {
+  test("CMH-CORE-16: clicking elsewhere in the annotated document closes the inline dialog and swallows the click", async ({ page }) => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "swallow me");
     const cid = (await allCids(page))[0];
-    // A probe link outside the dialog whose activation would change the URL hash.
+    // A probe link in the ANNOTATED DOCUMENT - the only place the swallow applies - whose
+    // activation would change the URL hash. It carries no text, so it cannot perturb the
+    // document's text-offset space.
     await page.evaluate(() => {
       const a = document.createElement("a");
-      a.id = "cmh-probe"; a.href = "#navigated"; a.textContent = "probe";
+      a.id = "cmh-probe"; a.href = "#navigated";
       a.style.position = "fixed"; a.style.top = "4px"; a.style.left = "4px"; a.style.zIndex = "5";
-      document.body.appendChild(a);
+      a.style.display = "block"; a.style.width = "60px"; a.style.height = "20px";
+      document.getElementById("commentRoot").appendChild(a);
     });
     await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
     await page.locator("#hlBubble").click();
@@ -611,6 +614,24 @@ test.describe("comment interactions", () => {
     await page.locator("#cmh-probe").click();
     await expect(pop).toBeHidden();
     expect(page.url()).toBe(url); // the outside click did NOT activate the probe link
+
+    // The deliberate flip side: author page furniture OUTSIDE the content root (a wrapping site
+    // nav or footer that a retrofitted document keeps) is not the annotated document, so the
+    // dismiss click closes the dialog AND activates it.
+    await page.evaluate(() => {
+      const a = document.createElement("a");
+      a.id = "cmh-outside"; a.href = "#outside";
+      a.style.position = "fixed"; a.style.top = "40px"; a.style.left = "4px"; a.style.zIndex = "5";
+      a.style.display = "block"; a.style.width = "60px"; a.style.height = "20px";
+      document.body.appendChild(a);
+    });
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await expect(page.locator("#hlBubble")).toBeVisible();
+    await page.locator("#hlBubble").click();
+    await expect(pop).toBeVisible();
+    await page.locator("#cmh-outside").click();
+    await expect(pop).toBeHidden();
+    await expect.poll(() => page.evaluate(() => location.hash)).toBe("#outside");
   });
 
   test("CMH-CORE-16: the dialog does not swallow the first click on a side-pane editor control", async ({ page }) => {
@@ -718,16 +739,265 @@ test.describe("comment interactions", () => {
     await expect(pop).toBeHidden();
   });
 
+  test("CMH-CORE-16: with a dialog open, another highlight's bubble opens THAT comment on the first click", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(1) p", "first note");
+    await addTextComment(page, "#commentRoot section:nth-of-type(3) p", "second note");
+    const stored = await storedComments(page);
+    const first = stored.find((c) => c.note === "first note").id;
+    const second = stored.find((c) => c.note === "second note").id;
+
+    await page.locator(`mark.cm-hl[data-cid="${first}"]`).first().hover();
+    await expect(page.locator("#hlBubble")).toBeVisible();
+    await page.locator("#hlBubble").click();
+    await expect(page.locator(`.cm-comment-popover[data-cid="${first}"]`)).toBeVisible();
+
+    // The bubble is the layer's OWN chrome, not document content, so the open dialog must not eat
+    // the click: one click switches to the other comment instead of only closing the first dialog.
+    await page.locator(`mark.cm-hl[data-cid="${second}"]`).first().hover();
+    await expect(page.locator("#hlBubble")).toBeVisible();
+    await page.locator("#hlBubble").click();
+    await expect(page.locator(`.cm-comment-popover[data-cid="${second}"]`)).toBeVisible();
+    await expect(page.locator(`.cm-comment-popover[data-cid="${first}"]`)).toHaveCount(0);
+
+    // Re-clicking the SAME highlight's bubble no longer toggles the dialog shut (that only happened
+    // because the click was eaten): the bubble means "open this comment", so it closes and reopens
+    // and the reviewer is left looking at the same comment. The rendered note carries a per-opening
+    // id, so a genuine close-and-reopen is observable - a silent no-op would keep the old one.
+    const noteIdBefore = await page.locator(`.cm-comment-popover[data-cid="${second}"] .cm-comment-popover-note`).getAttribute("id");
+    expect(noteIdBefore).toBeTruthy();
+    await page.locator(`mark.cm-hl[data-cid="${second}"]`).first().hover();
+    await expect(page.locator("#hlBubble")).toBeVisible();
+    await page.locator("#hlBubble").click();
+    const reopened = page.locator(`.cm-comment-popover[data-cid="${second}"]`);
+    await expect(reopened).toBeVisible();
+    await expect.poll(async () => reopened.locator(".cm-comment-popover-note").getAttribute("id"))
+      .not.toBe(noteIdBefore);
+  });
+
+  test("CMH-CORE-16: an overlay or toast the dialog's own Save raised acts on the first click", async ({ page }) => {
+    const key = "cmh-popover-quota";
+    const { html } = stageContent("<section><p>reviewable paragraph text here for anchoring.</p></section>",
+      { key, source: "popover-quota.html" });
+    // Stateful quota: the comment write throws only while the bloat document's data is present, so
+    // the first comment saves normally and it is the DIALOG'S OWN Save that trips the quota.
+    await page.addInitScript((k) => {
+      const bloat = "commentable-html:/reports/popbloat.html::z";
+      const orig = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        if (key === k + "::z" && localStorage.getItem(bloat) !== null) {
+          throw new DOMException("quota", "QuotaExceededError");
+        }
+        return orig.call(this, key, value);
+      };
+    }, key);
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await addTextComment(page, "#commentRoot p", "note that stores fine");
+    await page.evaluate(() => localStorage.setItem("commentable-html:/reports/popbloat.html::z",
+      "\u0001z" + "x".repeat(200)));
+
+    const cid = (await allCids(page))[0];
+    const openDialog = async () => {
+      await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+      await expect(page.locator("#hlBubble")).toBeVisible();
+      await page.locator("#hlBubble").click();
+      await expect(page.locator(".cm-comment-popover")).toBeVisible();
+    };
+    const pop = page.locator(".cm-comment-popover");
+    const saveQuotaEdit = async (note) => {
+      await pop.locator('[data-act="edit"]').click();
+      await pop.locator("textarea").fill(note);
+      await pop.locator('[data-act="edit-save"]').click();
+    };
+    await openDialog();
+    await saveQuotaEdit("edited note that cannot be stored");
+
+    // Save raised the storage manager while the dialog is still open and armed. The overlay is the
+    // layer's own chrome, so the reviewer's FIRST click on its controls must act on it.
+    const manager = page.locator(".cm-storage-manager");
+    await expect(manager).toBeVisible();
+    await expect(pop).toBeVisible();
+    await manager.locator(".cm-storage-foot-close").click();
+    await expect(manager).toHaveCount(0);
+    await expect(pop).toHaveCount(0);
+
+    // With the write still pending the manager will not re-open itself for the same quota episode,
+    // so the next Save from the dialog raises an ACTIONABLE TOAST instead - again while the dialog
+    // is open and armed. Its first click must run the action, not be spent closing the dialog.
+    await openDialog();
+    await saveQuotaEdit("edited again, still unstorable");
+    const toast = page.locator("#toast");
+    await expect(toast).toContainText("is shown but this browser's storage is full");
+    await expect(pop).toBeVisible();
+    await toast.locator(".cm-toast-action").click();
+    await expect(page.locator(".cm-storage-manager")).toBeVisible();
+    await expect(pop).toHaveCount(0);
+  });
+
+  test("CMH-CORE-16: the body-fallback root still swallows document clicks and still spares the editors", async ({ page }) => {
+    // With no #commentRoot the layer anchors to <body> (CMH-CORE-15), which contains the layer's own
+    // chrome too - so the inverted "swallow only inside the annotated document" rule must not start
+    // swallowing every click there: the editor carve-outs still apply, and document content is still
+    // swallowed exactly as before.
+    const { html } = stageInline({
+      mutate: (doc) => doc.replace(/<main id="commentRoot"(?=[^>]*data-comment-key="commentable-html-demo")[^>]*>/,
+        '<main id="contentWithoutCommentRoot">'),
+    });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await expect(page.locator("#commentRoot")).toHaveCount(0);
+    await addTextComment(page, "main p", "body fallback swallow", 0);
+    const cid = (await allCids(page))[0];
+
+    await page.evaluate(() => {
+      const a = document.createElement("a");
+      a.id = "cmh-bprobe"; a.href = "#bodynav"; a.textContent = "probe";
+      a.style.position = "fixed"; a.style.top = "4px"; a.style.left = "4px"; a.style.zIndex = "5";
+      document.body.appendChild(a);
+    });
+    const pop = page.locator(".cm-comment-popover");
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    await expect(pop).toBeVisible();
+
+    const url = page.url();
+    await page.locator("#cmh-bprobe").click();
+    await expect(pop).toBeHidden();
+    expect(page.url()).toBe(url); // still swallowed in the fallback
+
+    // The fallback root is `<body>`, so a click whose target is OUTSIDE it (`<html>`, the page
+    // gutter) must still be swallowed exactly as it was before the rule was inverted. The window
+    // bubble-phase counter observes it: capture-phase stopPropagation never reaches window.
+    await page.evaluate(() => {
+      window.__reached = 0;
+      window.addEventListener("click", () => { window.__reached += 1; });
+    });
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await expect(page.locator("#hlBubble")).toBeVisible();
+    await page.locator("#hlBubble").click();
+    await expect(pop).toBeVisible();
+    // The dismiss listener is registered a tick after the dialog opens, so let that tick pass before
+    // dispatching synthetically (a real Playwright click takes long enough on its own).
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 0)));
+    await page.evaluate(() => {
+      document.documentElement.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+    });
+    await expect(pop).toBeHidden();
+    expect(await page.evaluate(() => window.__reached)).toBe(0);
+    // Non-vacuous: the identical dispatch reaches window once no dialog is open.
+    await page.evaluate(() => {
+      document.documentElement.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+    });
+    expect(await page.evaluate(() => window.__reached)).toBe(1);
+
+    // ...and the side-pane editor, which lives inside the fallback root, still owns its first click.
+    await page.locator(`.cm-card[data-cid="${cid}"] .cm-reply-btn`).click();
+    const editor = page.locator(`.cm-card[data-cid="${cid}"] .cm-reply-compose`);
+    const ta = editor.locator("textarea");
+    await ta.fill("pick me");
+    await ta.evaluate((el) => el.setSelectionRange(0, 4));
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    await expect(pop).toBeVisible();
+    await editor.locator('.cm-format-bar button[data-fmt="bold"]').click();
+    await expect(ta).toHaveValue("**pick** me");
+    await expect(pop).toBeHidden();
+
+    // ...and so does a floating composer, the other half of the identity-resolved carve-out. It is
+    // appended to `document.body`, which IS the root here, so this is the only mode in which that
+    // branch of the predicate decides anything.
+    const composer = await openComposerFor(page, "main p", { index: 1 });
+    const cta = composer.locator("textarea");
+    await cta.fill("pick me");
+    await cta.evaluate((el) => el.setSelectionRange(0, 4));
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await expect(page.locator("#hlBubble")).toBeVisible();
+    await page.locator("#hlBubble").click();
+    await expect(pop).toBeVisible();
+    await composer.locator('.cm-format-bar button[data-fmt="bold"]').click();
+    await expect(cta).toHaveValue("**pick** me");
+    await expect(pop).toBeHidden();
+    await composer.locator('[data-act="cancel"]').click();
+    await expect(composer).toHaveCount(0);
+
+    // Documented limitation of this mode (tracked separately): because the layer's chrome is inside
+    // the fallback root, another highlight's bubble is still swallowed here, so switching comments
+    // still takes two clicks. Pinned so the prose cannot drift from the behavior.
+    await addTextComment(page, "main p", "second fallback note", 3);
+    const other = (await storedComments(page)).find((c) => c.note === "second fallback note").id;
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await expect(page.locator("#hlBubble")).toBeVisible();
+    await page.locator("#hlBubble").click();
+    await expect(page.locator(`.cm-comment-popover[data-cid="${cid}"]`)).toBeVisible();
+    await page.locator(`mark.cm-hl[data-cid="${other}"]`).first().hover();
+    await expect(page.locator("#hlBubble")).toBeVisible();
+    await page.locator("#hlBubble").click();
+    await expect(page.locator(".cm-comment-popover")).toHaveCount(0);
+  });
+
+  test("CMH-CORE-16: a document click whose node is detached mid-dispatch is still swallowed", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "detach me");
+    const cid = (await allCids(page))[0];
+    // An EARLIER capture-phase listener (registered before the dialog arms its own) removes the
+    // clicked node mid-dispatch. The click still landed in the annotated document, so it must still
+    // be swallowed - a live-tree containment test would answer "outside" and let it act. The window
+    // bubble-phase counter observes the swallow directly: capture-phase stopPropagation on
+    // `document` means the event never reaches it.
+    // ORDER MATTERS: this evaluate must run BEFORE the bubble click below. Same-node capture
+    // listeners fire in registration order, so registering the detacher first is what puts it ahead
+    // of the dialog's dismiss listener; move it after and the node is never detached in time and
+    // the test passes for the wrong reason.
+    await page.evaluate(() => {
+      const a = document.createElement("a");
+      a.id = "cmh-dprobe"; a.href = "#detached";
+      a.style.position = "fixed"; a.style.top = "4px"; a.style.left = "4px"; a.style.zIndex = "5";
+      a.style.display = "block"; a.style.width = "60px"; a.style.height = "20px";
+      document.getElementById("commentRoot").appendChild(a);
+      window.__reached = 0;
+      window.addEventListener("click", () => { window.__reached += 1; });
+      document.addEventListener("click", (e) => {
+        const t = e.target;
+        if (t && t.id === "cmh-dprobe" && t.parentNode) t.parentNode.removeChild(t);
+      }, true);
+    });
+    const pop = page.locator(".cm-comment-popover");
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await expect(page.locator("#hlBubble")).toBeVisible();
+    await page.locator("#hlBubble").click();
+    await expect(pop).toBeVisible();
+
+    await page.locator("#cmh-dprobe").click();
+    await expect(pop).toBeHidden();
+    expect(await page.evaluate(() => window.__reached)).toBe(0);
+
+    // Non-vacuous: with no dialog open the same detached-node click propagates normally.
+    await page.evaluate(() => {
+      const a = document.createElement("a");
+      a.id = "cmh-dprobe"; a.href = "#detached2";
+      a.style.position = "fixed"; a.style.top = "4px"; a.style.left = "4px"; a.style.zIndex = "5";
+      a.style.display = "block"; a.style.width = "60px"; a.style.height = "20px";
+      document.getElementById("commentRoot").appendChild(a);
+    });
+    await page.locator("#cmh-dprobe").click();
+    expect(await page.evaluate(() => window.__reached)).toBe(1);
+  });
+
   test("CMH-CORE-16: a keyboard-activated outside click closes the dialog but is not swallowed", async ({ page }) => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "keyboard me");
     const cid = (await allCids(page))[0];
-    // A probe link outside the dialog; activating it by keyboard should still work.
+    // A probe link in the annotated document (where the swallow applies); activating it by
+    // keyboard should still work. No text, so the document's offset space is unchanged.
     await page.evaluate(() => {
       const a = document.createElement("a");
-      a.id = "cmh-kprobe"; a.href = "#navk"; a.textContent = "probe";
+      a.id = "cmh-kprobe"; a.href = "#navk";
       a.style.position = "fixed"; a.style.top = "4px"; a.style.left = "4px"; a.style.zIndex = "5";
-      document.body.appendChild(a);
+      a.style.display = "block"; a.style.width = "60px"; a.style.height = "20px";
+      document.getElementById("commentRoot").appendChild(a);
     });
     await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
     await page.locator("#hlBubble").click();
