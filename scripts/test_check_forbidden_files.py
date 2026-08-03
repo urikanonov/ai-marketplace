@@ -6,6 +6,8 @@ Run from the repo root:
 """
 
 import importlib.util
+import os
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -95,13 +97,13 @@ class IsScratchArtifactTest(unittest.TestCase):
 
 
 class RootScratchTest(unittest.TestCase):
-    """A probe dropped at the repo ROOT is scratch, whatever its extension.
+    """A file tracked at the repo ROOT that is not a documented top-level file is scratch.
 
-    An agent's one-off probe lands beside AGENTS.md as `test_svg_exec.html`, `temp.txt`,
-    or a bare `x`; the *.diff / *.patch rule never saw those shapes, so a `git add -A`
-    could commit one and every gate would stay green. The repo root holds only its
-    documented top-level files, so the rule is ANCHORED there - a real report under
-    examples/ or a page under site/ is untouched.
+    An agent's one-off probe lands beside AGENTS.md as `test_svg_exec.html`, `temp.txt`, or a
+    bare `x`; the *.diff / *.patch rule never saw those shapes, so a `git add -A` could commit
+    one and every gate would stay green. The root is a closed set, so the rule is an allowlist
+    (a denylist of shapes cannot keep up with what a probe is named) and it is ANCHORED there -
+    a real report under examples/ or a page under site/ is untouched.
     """
 
     def test_flags_probes_at_the_repo_root(self):
@@ -123,6 +125,12 @@ class RootScratchTest(unittest.TestCase):
             "js-diff.txt",
             "local.js",
             "old_parsing.py",
+            "screenshot.png",
+            "result.svg",
+            "debug.yaml",
+            "notes.md",
+            "foo",
+            "./temp.txt",
         ]:
             with self.subTest(path=path):
                 self.assertTrue(cff.is_scratch_artifact(path), f"{path} should be refused")
@@ -138,6 +146,7 @@ class RootScratchTest(unittest.TestCase):
             "site/src/site.js",
             "docs/notes.txt",
             "plugins/commentable-html/dev/skill/dist/x",
+            "./scripts/check_forbidden_files.py",
         ]:
             with self.subTest(path=path):
                 self.assertFalse(cff.is_scratch_artifact(path), f"{path} should be allowed")
@@ -161,6 +170,22 @@ class RootScratchTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertFalse(cff.is_scratch_artifact(path), f"{path} should be allowed")
 
+    def test_the_allowlist_is_the_escape_hatch(self):
+        """A real top-level file is allowed by naming it, whatever case it is written in."""
+        original = cff.ROOT_ALLOWED
+        cff.ROOT_ALLOWED = frozenset(name.lower() for name in ("CITATION.cff", "renovate.json"))
+        try:
+            self.assertFalse(cff.is_scratch_artifact("CITATION.cff"))
+            self.assertFalse(cff.is_scratch_artifact("renovate.json"))
+            self.assertTrue(cff.is_scratch_artifact("README.md"))
+        finally:
+            cff.ROOT_ALLOWED = original
+
+    def test_the_allowlist_entries_are_lowercased(self):
+        """is_root_scratch compares a lowercased name, so a mixed-case entry would never match."""
+        for name in cff.ROOT_ALLOWED:
+            self.assertEqual(name, name.lower(), name)
+
     def test_every_tracked_root_file_is_allowed(self):
         files = cff.tracked_files()
         if files is None:
@@ -168,6 +193,37 @@ class RootScratchTest(unittest.TestCase):
         root = [p for p in files if "/" not in p]
         offenders = [p for p in root if cff.is_scratch_artifact(p)]
         self.assertEqual(offenders, [], f"scratch is tracked at the repo root: {offenders}")
+
+
+class TrackedFilesTest(unittest.TestCase):
+    """`git ls-files` reports paths relative to the CWD, which would break the root rule.
+
+    Run from a subdirectory, every listed path loses its directory component and looks
+    root-level, so the guard would refuse legitimate files; run from outside the repository
+    (the script test suite's sandbox), it would silently scan nothing at all. Both are fixed by
+    anchoring git on the repository this script lives in.
+    """
+
+    def test_paths_are_repo_root_relative_from_any_cwd(self):
+        files = cff.tracked_files()
+        if files is None:
+            self.skipTest("git unavailable")
+        self.assertIn("scripts/check_forbidden_files.py", files)
+        self.assertIn("README.md", files)
+
+    def test_survives_being_run_from_an_unrelated_directory(self):
+        original = Path.cwd()
+        with tempfile.TemporaryDirectory() as sandbox:
+            os.chdir(sandbox)
+            try:
+                files = cff.tracked_files()
+            finally:
+                os.chdir(original)
+        if files is None:
+            self.skipTest("git unavailable")
+        self.assertIn("scripts/check_forbidden_files.py", files)
+        offenders = [p for p in files if cff.is_scratch_artifact(p)]
+        self.assertEqual(offenders, [], f"scratch is tracked: {offenders}")
 
 
 if __name__ == "__main__":
