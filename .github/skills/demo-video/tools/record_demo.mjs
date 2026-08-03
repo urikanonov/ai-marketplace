@@ -1916,7 +1916,8 @@ export function askFromCast(cast, args, preferredMark = "ask") {
   if (fromCommand) return fromCommand;
   // NOT the raw command. With no prompt to state there is nothing worth reading here, and the
   // invocation would be painted across the card in the largest type in the clip - a louder leak
-  // than the window chrome that prompted this.
+  // than the window chrome that prompted this. `--show-command` reaches this fallback too, so
+  // opting in publishes the command on the CARD as well as in the chrome (DEMO-SAFE-43).
   return windowLabel(castInvocation(cast), args);
 }
 
@@ -2553,7 +2554,8 @@ const USAGE = `demo-video recorder
   node record_demo.mjs scan    --cast <file.cast.json> [--ask "<the ask you will render with>"]
   node record_demo.mjs frames  --clip <file.webm> [--count 12]
 
-The window chrome draws no title, so a clip is born flat; --show-command publishes the whole launch command.
+The window chrome draws no title, so a clip is born flat; --show-command publishes the whole launch
+command - in the chrome AND on the title card, which falls back to that label when a cast has no ask.
 
 Everything is written under tmp/demo-video (gitignored). Nothing is committed.`;
 

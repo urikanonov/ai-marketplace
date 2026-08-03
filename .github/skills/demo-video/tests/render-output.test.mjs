@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 
 import {
   windowLabel,
@@ -605,4 +607,41 @@ test("a dirty ask is refused in its own words (DEMO-SAFE-42)", () => {
   const both = dirtyGateMessage(gateFindings(dirtyCast, { ask: `review ${TOKEN}` }), "probe.cast.json");
   assert.match(both, /this cast still scans dirty/i);
   assert.match(both, /--ask/);
+});
+
+// `--show-command` reads as a chrome control - that is how SKILL.md introduced it, and since the
+// chrome draws nothing by default an operator reaching for it is thinking about a title bar. But
+// `askFromCast`'s last fallback is `windowLabel(...)`, which the flag turns into the RAW command,
+// so for a cast with no ask mark and no `-p` prompt the flag paints the whole invocation across the
+// title card at up to 30px - the largest type in the clip. The reach is intended (the flag is an
+// explicit opt-in to publishing the command) but it was undocumented, so both halves are pinned:
+// the behavior, and the sentence in SKILL.md that warns about it.
+test("--show-command reaches the title card, not just the chrome (DEMO-SAFE-43)", () => {
+  const bare = { command: LEAKY };
+  assert.equal(askFromCast(bare, {}), "copilot",
+    "the safe fallback stopped applying without the flag");
+  // Both spellings: parseArgs produces the dashed one, a direct caller uses the camelCase alias.
+  assert.equal(askFromCast(bare, { "show-command": true }), LEAKY);
+  assert.equal(askFromCast(bare, { showCommand: true }), LEAKY);
+  // Only the FALLBACK is affected. A cast that has something to state still states it, so opting in
+  // never overwrites a real ask with the invocation.
+  assert.equal(
+    askFromCast({ command: LEAKY, marks: [{ label: "ask", text: "review the panel" }] },
+      { "show-command": true }),
+    "review the panel");
+  assert.equal(
+    askFromCast({ command: 'copilot -p "review this" --disable-mcp-server kusto' }, { "show-command": true }),
+    "review this");
+  assert.equal(askFromCast(bare, { "show-command": true, ask: "a short ask" }), "a short ask");
+
+  // The doc half. A flag introduced purely as chrome control hides its loudest effect, so the
+  // SENTENCE that introduces it must name the title card - a mention elsewhere in the paragraph is
+  // what the operator already had, and it read as a note about the chrome fallback.
+  const skill = fs.readFileSync(path.join(import.meta.dirname, "..", "SKILL.md"), "utf8");
+  const sentences = skill.replace(/\s+/g, " ").split(/(?<=[.!?])\s+/)
+    .filter((s) => s.includes("--show-command"));
+  assert.ok(sentences.length, "SKILL.md no longer mentions --show-command at all");
+  assert.ok(
+    sentences.some((s) => /title card/i.test(s)),
+    "SKILL.md introduces --show-command without saying it also arms the title card");
 });
