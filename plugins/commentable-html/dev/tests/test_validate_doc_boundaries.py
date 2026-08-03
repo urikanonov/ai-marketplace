@@ -1256,6 +1256,191 @@ class _StaleRawTagParser:
         return parsing._browser_attrs_dict(self, tag, attrs)
 
 
+class DocParserStartTagExtentTests(unittest.TestCase):
+    """Where a start tag ENDS - and whether there is a start tag at all - decided here.
+
+    `html.parser` leaves that to `check_for_whole_start_tag`, which reads whichever regex the
+    host happens to ship (`locatestarttagend_tolerant` before 3.13, `locatetagend` from 3.13),
+    and neither is the browser's rule: pre-3.13 stops a tag NAME at a NUL, 3.13 keeps the NUL
+    where a browser writes U+FFFD, and BOTH resolve an unterminated quoted attribute value by
+    closing the tag at some later `>` - reading what a browser swallows as further attribute
+    NAMES - instead of discarding the tag at EOF as the HTML5 eof-in-tag error requires. The
+    same bytes were three different documents. Most assertions below pin the BROWSER answer,
+    which no host produces, so they are red on every interpreter if the vendored scanner goes
+    away; the rest are deliberate NON-REGRESSION pins for behavior a host already got right
+    (that a truncated tag still waits for more input mid-stream, and that a self-closing tag is
+    still dispatched as one), so that vendoring the whole `parse_starttag` cannot quietly lose
+    it.
+    """
+
+    class _TagRecorder(parsing._DocParser):
+        def __init__(self, html):
+            super().__init__(html)
+            self.tags_seen = []
+
+        def handle_starttag(self, tag, attrs):
+            self.tags_seen.append((tag, tuple(attrs)))
+            super().handle_starttag(tag, attrs)
+
+    def _tags(self, html):
+        p = self._TagRecorder(html)
+        p.parse_document(html)
+        return [t for t, _attrs in p.tags_seen]
+
+    def test_a_nul_in_a_tag_name_is_a_replacement_character(self):
+        # HTML5 tag-name state: a NUL is the unexpected-null-character parse error and becomes
+        # U+FFFD. Pre-3.13 html.parser TRUNCATES the name there (so `<div\x00x>` is a real
+        # `<div>`) and 3.13 keeps the NUL - one document, three element names.
+        self.assertEqual(self._tags('<div\x00x id="real"></div>'), ["div\ufffdx"])
+
+    def test_a_nul_in_a_tag_name_does_not_open_a_raw_text_element(self):
+        # The browser-visible consequence of the name: `<script\x00>` is not a `<script>`, so
+        # what follows is live markup, not a swallowed raw-text body.
+        self.assertEqual(_ids('<script\x00><div id="real"></div>'), ["real"])
+
+    def test_a_nul_in_an_attribute_name_or_value_is_a_replacement_character(self):
+        # The same tokenizer rule decides the attribute name and value states, so the id and
+        # tag-lookup views must fold a NUL too rather than carry a host-specific one.
+        self.assertEqual(_ids('<div id="a\x00b"></div>'), ["a\ufffdb"])
+        self.assertEqual(parsing._find_tag_attrs('<meta a\x00b="1">', "meta"),
+                         [{"a\ufffdb": "1"}])
+
+    def test_an_unterminated_quoted_attribute_value_discards_the_tag(self):
+        # A quoted value runs to its matching quote; EOF inside it is the eof-in-tag error,
+        # which DISCARDS the tag - so everything after the opening quote belongs to a tag that
+        # never was, not to live markup. The host's value regex simply fails to match and what
+        # follows is re-read as attribute NAMES, closing the tag at the next `>` and
+        # resurrecting elements a browser never builds.
+        for quote in ('"', "'"):
+            with self.subTest(quote=quote):
+                html = "<div id=wrap></div><p a =%sx><div id=real></div>" % quote
+                self.assertEqual(_ids(html), ["wrap"])
+
+    def test_an_unterminated_quoted_attribute_value_is_dropped_at_eof(self):
+        raw = '<p a ="x><div id=real>'
+        p = self._TagRecorder(raw)
+        p.rawdata = raw
+        p._final = True
+        self.assertEqual(p.parse_starttag(0), len(raw),
+                         "EOF inside a quoted attribute value must discard the whole tag")
+        self.assertEqual(p.tags_seen, [])
+
+    def test_a_truncated_tag_still_waits_for_more_input_before_the_end(self):
+        # The drop is an END-OF-INPUT rule: mid-stream the scanner must still ask for more
+        # data, or an incremental caller loses a tag merely split across two feed() chunks.
+        raw = '<p a ="x'
+        p = self._TagRecorder(raw)
+        p.rawdata = raw
+        self.assertEqual(p.parse_starttag(0), -1)
+
+    def test_every_attribute_view_shares_the_vendored_extent(self):
+        # The extent is not the document parser's alone: the tag lookup and the checklist,
+        # notes and density passes read it too, so one document cannot be two documents
+        # depending on which check is asking.
+        self.assertEqual(parsing._find_tag_attrs('<meta x ="1><meta name=real>', "meta"), [])
+        note_parser = notes._NotesParser()
+        note_parser.feed('<p x ="1><p data-cmh-note="n1">a</p>')
+        note_parser.close()
+        self.assertEqual(note_parser.notes, [])
+        _errors, warnings = checklist.check_checklists(
+            '<div data-cmh-checklist="c1"><li x ="1>'
+            '<li data-cmh-state="check" data-cmh-item="i1">a</li></div>')
+        self.assertEqual(warnings, [])
+
+    def test_a_reused_parser_does_not_start_the_next_document_at_eof(self):
+        # `reset()` starts the NEXT document, so the end-of-input flag must be cleared there and
+        # not only set in close(). A leaked flag makes every later mid-stream "incomplete" look
+        # like EOF, silently discarding a tag split across two feed() chunks.
+        p = notes._NotesParser()
+        p.feed('<p data-cmh-note="one">a</p>')
+        p.close()
+        p.reset()
+        p.feed('<p data-cmh-note="t')
+        p.feed('wo">a</p><p data-cmh-note="three">b</p>')
+        p.close()
+        self.assertEqual([n["id"] for n in p.notes], ["one", "two", "three"])
+
+    def test_the_scanner_folds_the_tag_name_ascii_only(self):
+        # The scanner now owns the tag name, so CMH-VAL-21 clause 7 has to hold INSIDE it:
+        # `str.lower()` folds U+212A KELVIN SIGN to an ASCII "k", which would make `<scrip\u212a>`
+        # a `<script>` and put every parser into raw text for an element a browser builds as
+        # unknown - swallowing the rest of the document up to the next `</script`.
+        self.assertEqual(parsing._scan_start_tag("<scrip\u212a>", 0)[1], "scrip\u212a")
+        self.assertEqual(
+            parsing._find_tag_attrs("<scrip\u212a><meta name=hidden></scrip\u212a>"
+                                    "<meta name=real>", "meta"),
+            [{"name": "hidden"}, {"name": "real"}])
+
+    def test_a_narrow_parser_keeps_script_and_style_opaque(self):
+        # In HTML content a `<script>`/`<style>` body is TEXT, so a tag a reader only SEES quoted
+        # inside one is not an element - for the tag lookup exactly as for the document parser.
+        # (What a browser does with those two inside SVG/MathML is a separate, open question,
+        # tracked in #959; nothing here exercises it.)
+        self.assertEqual(
+            parsing._find_tag_attrs('<script>var a = "<meta name=hidden>";</script>'
+                                    "<meta name=real>", "meta"),
+            [{"name": "real"}])
+        self.assertEqual(
+            parsing._find_tag_attrs('<style>/* <meta name=hidden> */</style>'
+                                    "<meta name=real>", "meta"),
+            [{"name": "real"}])
+
+    def test_a_narrow_parser_does_not_swallow_a_foreign_integration_point(self):
+        # An `<svg><title>` is an HTML integration point whose children a browser really does
+        # build, so treating it as RCDATA would hide a network-loading element from
+        # `_find_tag_attrs` - and with it from the offline-resource gate that reads it. Pinned
+        # here because the vendored start-tag layer sits under that lookup.
+        payload = '<svg><title><script href="//evil.example/x.js"></script></title></svg>'
+        self.assertEqual(parsing._find_tag_attrs(payload, "script"),
+                         [{"href": "//evil.example/x.js"}])
+        self.assertEqual(_ids('<svg><title><div id="real"></div></title></svg>'), ["real"])
+
+    def test_a_self_closing_tag_is_still_recognized(self):
+        # The scanner decides self-closing itself (a `/` in TAG position immediately before the
+        # `>`), so the startendtag path a void/foreign element reaches must not regress.
+        self.assertEqual(_ids('<svg><rect id="real"/></svg>'), ["real"])
+        self.assertEqual(_ids('<div id="wrap"><img id="void"/></div>'), ["wrap", "void"])
+        # A `/` that is part of an UNQUOTED value is value text, not a self-closing slash.
+        self.assertEqual(parsing._find_tag_attrs("<meta name=a/>", "meta"), [{"name": "a/"}])
+
+    def test_only_a_slash_immediately_before_the_gt_self_closes(self):
+        # HTML5 self-closing-start-tag: a `/` anywhere else in tag position is the
+        # unexpected-solidus-in-tag error and is simply skipped, so only the LAST separator
+        # before the `>` decides. A "sticky" slash flag would pass every other test here.
+        for raw, expected in (("<p/>", True), ("<p //>", True), ("<p a=1 />", True),
+                              ("<p a='1'/>", True), ("<p / >", False), ("<p/ >", False),
+                              ("<p a=1/>", False), ("<p>", False)):
+            with self.subTest(raw=raw):
+                scanned = parsing._scan_start_tag(raw, 0)
+                self.assertIsNotNone(scanned, raw)
+                end, _tag, self_closing = scanned
+                self.assertEqual(end, len(raw), raw)
+                self.assertEqual(self_closing, expected, raw)
+
+    def test_the_attribute_tokenizer_consumes_the_whole_scanned_extent(self):
+        # The extent is scanned character by character and the attributes are then read off the
+        # same raw text with `_ATTR_RE`. The two agree only because their separator classes are
+        # the same, and nothing but this test would notice if a later edit desynced them: the
+        # attribute loop must always land on the `>` (or the self-closing `/>`) the scan chose.
+        for raw in ("<p>", "<p/>", "<p //>", "<p / >", "<p a>", "<p a=1>", "<p a=1/>",
+                    "<p a= >", "<p a =b>", "<p a = b >", '<p a="1"b=2>', "<p a='1'/>",
+                    "<p id==x>", "<p id=a\u00a0b>", '<p a="x>y" b>', "<p =>", '<p ="x">',
+                    "<p a=b=c>", "<p\x00x a=1>", '<p a="&notit;">', "<p a=/>", "<p a b c>"):
+            with self.subTest(raw=raw):
+                scanned = parsing._scan_start_tag(raw, 0)
+                self.assertIsNotNone(scanned, raw)
+                self.assertEqual(scanned[0], len(raw), raw)
+                m = parsing._TAG_NAME_RE.match(raw, 1)
+                k = m.end()
+                while k < len(raw):
+                    am = parsing._ATTR_RE.match(raw, k)
+                    if am is None or am.end() == k:
+                        break
+                    k = am.end()
+                self.assertIn(raw[k:].strip(), (">", "/>"),
+                              "the attribute tokenizer stopped short of the scanned extent")
+
+
 class MarkerScanBoundaryTests(unittest.TestCase):
     """The marker scan and the document parser must agree on what a raw-text body is."""
 

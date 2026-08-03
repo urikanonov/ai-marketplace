@@ -508,6 +508,104 @@ def _unescape_attr_value(value):
     return _ATTR_CHARREF_RE.sub(_replace_attr_charref, value)
 
 
+# The character classes the HTML5 tokenizer's tag states switch on. CR counts as whitespace
+# because a browser normalizes CR / CRLF to LF before tokenizing, so it can never be anything
+# else here (CPython's own tag regexes take the same shortcut).
+_TAG_WS = "\t\n\r\f "
+_TAG_WS_SLASH = "\t\n\r\f /"
+_TAG_NAME_STOP = "\t\n\r\f />"
+_ATTR_NAME_STOP = "\t\n\r\f /=>"
+_UNQUOTED_VALUE_STOP = "\t\n\r\f >"
+
+
+def _fold_nul(text):
+    """A NUL, replaced with U+FFFD the way a browser replaces it.
+
+    HTML5's tag-name, attribute-name and attribute-value states all report an
+    unexpected-null-character parse error and append U+FFFD. html.parser does neither: before
+    3.13 it TRUNCATES a tag name at a NUL (so `<div\x00x>` is a real `<div>`) and from 3.13 it
+    keeps the NUL, so one document carried a different element name per interpreter."""
+    return text.replace("\x00", "\ufffd") if "\x00" in text else text
+
+
+def _scan_start_tag(rawdata, i):
+    """The extent of the start tag opening at `i` (a `<` followed by an ASCII letter), decided
+    the way a BROWSER decides it: `(end, tag, self_closing)`, where `end` is the index just
+    past the `>`, or None when the tag never finishes.
+
+    This is the HTML5 tag-open / tag-name / before-attribute-name / attribute-name /
+    after-attribute-name / before-attribute-value / attribute-value / after-attribute-value /
+    self-closing-start-tag states, applied EXPLICITLY (CMH-VAL-21). html.parser leaves the same
+    question to `check_for_whole_start_tag`, which reads whichever regex the host ships -
+    `locatestarttagend_tolerant` before 3.13, `locatetagend` from 3.13 - and neither is the
+    browser's rule, so the two interpreters disagree about where a pathological start tag ends,
+    and sometimes about whether there is a start tag at all. The two known drivers:
+
+      - a NUL in the tag name (pre-3.13 stops the name there, so `<script\x00>` opens a raw-text
+        region that swallows the rest of the document; a browser keeps the name with a U+FFFD
+        and opens nothing);
+      - an UNTERMINATED quoted attribute value. A browser runs the value to its matching quote
+        and, finding EOF instead, applies the eof-in-tag error: the whole tag is DISCARDED, and
+        with it every character after the opening quote. Both hosts instead fail to match a
+        value, re-read what follows as further attribute NAMES, and close the tag at the next
+        `>` - resurrecting elements a browser never builds.
+
+    Returning None is that eof-in-tag case; the caller resolves it (drop at end of input, ask
+    for more data before it). Scanned character by character rather than matched with one
+    regex: the "a quote only opens a value after `=`" rule needs nested alternation to express,
+    which backtracks exponentially on a hostile document, and this parser reads untrusted input.
+    """
+    n = len(rawdata)
+    j = i + 1
+    name_start = j
+    while j < n and rawdata[j] not in _TAG_NAME_STOP:
+        j += 1
+    tag = _fold_nul(_ascii_lower(rawdata[name_start:j]))
+    while True:
+        # before-attribute-name / after-attribute-value: a `/` here is the self-closing slash
+        # only when the `>` follows it immediately; anywhere else it is just skipped.
+        slash = False
+        while j < n and rawdata[j] in _TAG_WS_SLASH:
+            slash = rawdata[j] == "/"
+            j += 1
+        if j >= n:
+            return None
+        if rawdata[j] == ">":
+            return j + 1, tag, slash
+        # attribute-name: the FIRST character is taken unconditionally, so a `=` where a name
+        # belongs starts a name called `=` rather than a value.
+        j += 1
+        while j < n and rawdata[j] not in _ATTR_NAME_STOP:
+            j += 1
+        # after-attribute-name: only whitespace may sit between the name and its `=`.
+        k = j
+        while k < n and rawdata[k] in _TAG_WS:
+            k += 1
+        if k >= n:
+            return None
+        if rawdata[k] != "=":
+            continue                      # a bare attribute; re-dispatch on rawdata[j]
+        k += 1
+        while k < n and rawdata[k] in _TAG_WS:
+            k += 1
+        if k >= n:
+            return None
+        quote = rawdata[k]
+        if quote in "\"'":
+            close = rawdata.find(quote, k + 1)
+            if close < 0:
+                return None               # the value ran to EOF: the tag is discarded
+            j = close + 1
+            continue
+        if quote == ">":
+            return k + 1, tag, False      # missing-attribute-value: the tag ends here
+        while k < n and rawdata[k] not in _UNQUOTED_VALUE_STOP:
+            k += 1
+        if k >= n:
+            return None
+        j = k
+
+
 def _browser_attrs(parser, tag, attrs):
     """The start tag's `(name, value)` attributes, re-derived from the RAW start tag `parser`
     just accepted and decoded by the browser rule above, so they are the same on every
@@ -546,7 +644,7 @@ def _tokenize_raw_tag(raw, tag):
     # Accepted under EITHER fold: a caller inside a start-tag handler passes the ASCII-folded
     # name, while one reading `html.parser`'s own `tag` passes the Unicode fold, and neither may
     # lose the browser decoding by looking foreign.
-    if not any(n == tag or n.split("\x00", 1)[0] == tag
+    if not any(n == tag or n.split("\x00", 1)[0] == tag or _fold_nul(n) == tag
                for n in (_ascii_lower(name), name.lower())):
         return None
     out = []
@@ -560,9 +658,11 @@ def _tokenize_raw_tag(raw, tag):
             value = None
         elif value[:1] == "'" == value[-1:] or value[:1] == '"' == value[-1:]:
             value = value[1:-1]
-        if value and "&" in value:
-            value = _unescape_attr_value(value)
-        out.append((_ascii_lower(name), value))
+        if value:
+            value = _fold_nul(value)
+            if "&" in value:
+                value = _unescape_attr_value(value)
+        out.append((_fold_nul(_ascii_lower(name)), value))
         k = m.end()
     return out, k
 
@@ -589,7 +689,98 @@ browser_attrs = _browser_attrs
 browser_attrs_dict = _browser_attrs_dict
 
 
-class _BrowserStartTag(_BrowserTagNames):
+class _BrowserStartTagExtent(_BrowserTagNames):
+    """Every start tag's EXTENT, decided by the vendored scanner instead of by the host
+    (CMH-VAL-21).
+
+    `html.parser.parse_starttag()` asks `check_for_whole_start_tag()` where the tag ends, and
+    that reads whichever regex the interpreter ships, so the same bytes tokenize differently on
+    Python 3.12 and 3.13 (see `_scan_start_tag`). Replacing the whole method - not just the
+    extent - is what closes it: the host also derives the tag NAME with its own
+    `tagfind_tolerant` (which truncates at a NUL before 3.13) and falls back to emitting the
+    tag's SOURCE AS DATA whenever its own attribute regex stops short of the end it found.
+
+    Every parser in the checks package that reads attributes derives from this, so a document
+    cannot be two documents depending on which check is asking or which Python is running.
+    `check_for_whole_start_tag()` is vendored too, so the oversized-reference recovery path in
+    the subclass below - the one place a start tag still reaches the host's own machinery -
+    draws the same boundary.
+    """
+
+    # The end-of-input flag the eof-in-tag drop is armed by. Exactly one of `close()` (the
+    # incremental callers) and `parse_document()` (the whole-document one) must set it before
+    # the final `goahead`; `reset()` clears it for the next document. A subclass that overrides
+    # `close()` without calling super() would silently stop discarding a truncated tag.
+    _final = False
+
+    def reset(self):
+        # `HTMLParser` instances are reusable, and `reset()` is what starts the next document -
+        # so the end-of-input flag has to be cleared here, not only set in `close()`. Leaving it
+        # set would make every later mid-stream "incomplete" look like EOF and silently discard
+        # a tag that was merely split across two `feed()` chunks. (`HTMLParser.__init__` calls
+        # this, so a fresh instance starts clean too.) It clears THIS class's state only: a
+        # subclass's own per-document stacks survive, so reuse is safe for the incremental
+        # scanners and a new parser is still the right thing per document elsewhere.
+        self._final = False
+        super().reset()
+
+    def close(self):
+        self._final = True
+        super().close()
+
+    def check_for_whole_start_tag(self, i):
+        scanned = _scan_start_tag(self.rawdata, i)
+        return -1 if scanned is None else scanned[0]
+
+    def parse_starttag(self, i):
+        rawdata = self.rawdata
+        # The host stamps the raw tag here before decoding anything, and `_browser_attrs()`
+        # reads it back through `get_starttag_text()`; this path never reaches the host, so it
+        # stamps it itself - same name, same lifetime.
+        self._HTMLParser__starttag_text = None
+        scanned = _scan_start_tag(rawdata, i)
+        if scanned is None:
+            return self._drop_if_truncated(-1)
+        end, tag, self_closing = scanned
+        raw = rawdata[i:end]
+        self._HTMLParser__starttag_text = raw
+        self._stash_tag_name(i + 1)
+        self.lasttag = tag
+        found = _tokenize_raw_tag(raw, tag)
+        attrs = found[0] if found is not None else []
+        if self_closing:
+            self.handle_startendtag(tag, attrs)
+        else:
+            self.handle_starttag(tag, attrs)
+            self._enter_cdata_mode(tag)
+        return end
+
+    def _drop_if_truncated(self, k):
+        """EOF inside a TAG discards the tag, as a browser does (the HTML5 eof-in-tag error).
+
+        Mid-stream the same shape only means "not yet complete", so -1 is returned and the base
+        class asks for more input - an incremental caller must not lose a tag merely split
+        across two `feed()` chunks. At end of input the host resolves it its own way instead:
+        before 3.12.11 / 3.13.5 the unfinished tag's SOURCE is handed to handle_data (so
+        `<p>hi<div class="x` leaves `hi<div class="x` as prose, and inside raw text it lands in
+        the element body), while a fixed host drops it.
+        """
+        if k < 0 and self._final:
+            return len(self.rawdata)
+        return k
+
+    def _enter_cdata_mode(self, tag):
+        """Enter raw text exactly as the host would have, since this class replaces the
+        method that used to do it. WHICH elements hold text is a separate boundary and is
+        deliberately untouched here: getting it right without a namespace stack is not
+        possible (an `<svg><title>` is an HTML integration point whose children a browser
+        really does build, so calling it RCDATA would hide them), so the tolerant passes
+        apply the browser set from their own handle_starttag - where the namespace IS
+        known - and every other parser keeps the set it already had."""
+        self._enter_host_cdata_mode(tag)
+
+
+class _BrowserStartTag(_BrowserStartTagExtent):
     """A start tag the HOST's own attribute decode cannot handle is still a start tag
     (CMH-VAL-21).
 
@@ -745,7 +936,6 @@ class _BrowserBoundaries(_BrowserStartTag):
     def __init__(self, html):
         super().__init__(convert_charrefs=True)
         self._starts = _line_starts(html)
-        self._final = False   # the whole document has been handed to feed()
         self._ns = []         # [(tag, namespace, is_integration_point)], parallel to the stack
         self._comment_raw = None      # source of the REAL comment being handled (see below)
 
@@ -917,21 +1107,11 @@ class _BrowserBoundaries(_BrowserStartTag):
         self.handle_comment(rawdata[i + 2:])    # `</` + junk opens a BOGUS COMMENT
         return len(rawdata)
 
-    def parse_starttag(self, i):
-        return self._drop_if_truncated(super().parse_starttag(i))
-
-    def _drop_if_truncated(self, k):
-        """EOF inside a TAG discards the tag, as a browser does (the HTML5 eof-in-tag error).
-
-        The host signals "incomplete" with -1 and then resolves it its own way at end of input:
-        before 3.12.11 / 3.13.5 the unfinished tag's SOURCE is handed to handle_data (so
-        `<p>hi<div class="x` leaves `hi<div class="x` as prose, and inside raw text it lands in
-        the element body), while a fixed host drops it. Resolve it here instead of inheriting
-        whichever the host does.
-        """
-        if k < 0 and self._final:
-            return len(self.rawdata)
-        return k
+    def _enter_cdata_mode(self, tag):
+        # Off: this family enters raw text from its own handle_starttag (`_enter_raw_text`),
+        # where the element's NAMESPACE is known, so an SVG `<title>` is parsed rather than
+        # swallowed. Doing it here as well would defeat that carve-out.
+        pass
 
     def parse_pi(self, i):
         # A browser has no processing instructions: `<?` opens a BOGUS COMMENT that ends at the
