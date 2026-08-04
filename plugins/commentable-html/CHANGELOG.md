@@ -4,6 +4,28 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.527.0] - 2026-08-04
+
+### Fixed
+
+- The theme-contrast scan no longer goes silent on a document carrying an oversized numeric
+  character reference in an attribute value. Its two scanners were the last parse path in the
+  validator still built on a bare `html.parser.HTMLParser`, so the host decoded their attribute
+  values and RAISED on a reference with more digits than Python's integer conversion limit - a
+  shape the rest of the validator resolves to U+FFFD and reads straight through, as a browser
+  does. Because the check degrades any failure to "no findings" by contract (an advisory must
+  never abort a run), one attribute disabled the whole check on a document every other parse
+  reads. The scanners now derive from the same start-tag base the checks package uses, whose tag
+  extent comes from the vendored tokenizer and whose numeric decode is bounded. They reach it
+  through the existing `tools/_browser_attrs.py` shim rather than importing `checks` directly,
+  because `cmhval` is a sibling package that must stay independently importable and `checks`
+  already imports it, so the direct import would be a cycle; a partial install still degrades to
+  the host's own parser with the standard missing-tool warning. One shape stays reported rather
+  than read: a reference in the scan's TEXT still reaches the host's own decode. Through
+  `validate()` that document never reaches the check (the document parse fails first and the run
+  reports a parse failure), so the report is for a direct caller of the standalone check, which
+  would otherwise be handed an empty finding list for a document nothing read.
+
 ## [1.525.0] - 2026-08-04
 
 ### Fixed

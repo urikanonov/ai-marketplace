@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """WCAG contrast checks for author-time HTML tooling."""
 from dataclasses import dataclass
-from html.parser import HTMLParser
 import math
 import os
 import re
 import sys
 
-# The shared browser attribute decode lives beside the validator's `checks` package; the shim at
-# the tools/ root resolves it (and degrades to the host's own list on a partial install).
+# The shared browser parse lives beside the validator's `checks` package; the shim at the tools/
+# root resolves it (and degrades to the host's own parser and list on a partial install). It is
+# reached through the shim rather than imported directly because `cmhval` is a SIBLING package that
+# must stay independently importable, and `checks` already imports `cmhval` - so importing `checks`
+# back from here would be a cycle.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import _browser_attrs  # noqa: E402
 
@@ -399,7 +401,7 @@ def _background_decl(declarations, items=None):
     return declarations.get("background-color") or declarations.get("background")
 
 
-class _StyleScanner(HTMLParser):
+class _StyleScanner(_browser_attrs.StartTagParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.style_blocks = []

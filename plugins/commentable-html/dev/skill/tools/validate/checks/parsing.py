@@ -880,6 +880,15 @@ class _BrowserStartTag(_BrowserStartTagExtent):
             self.set_cdata_mode(tag)
 
 
+# The PUBLIC name of the start-tag base above, for the tools OUTSIDE this package, which reach it
+# through the `tools/_browser_attrs.py` shim for the same reason they reach the attribute helpers
+# there. A parser built on a bare `html.parser.HTMLParser` draws the tag EXTENT with whatever regex
+# the interpreter ships and lets the host decode the attribute values, so it raises on an oversized
+# numeric reference the rest of the validator now resolves to U+FFFD - which silently disabled a
+# whole check on a document every other parse reads (CMH-VAL-21).
+browser_start_tag_parser = _BrowserStartTag
+
+
 def _end_tag_close(rawdata, i):
     """Index just past the `>` that ends the tag starting at `i`, or -1 if it never closes.
 

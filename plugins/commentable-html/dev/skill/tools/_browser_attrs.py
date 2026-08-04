@@ -1,22 +1,27 @@
-"""Browser-accurate attribute decoding for the tools OUTSIDE the validator's `checks` package.
+"""Browser-accurate HTML parsing for the tools OUTSIDE the validator's `checks` package.
 
 `checks/parsing` decodes an attribute value the way a BROWSER decodes it, re-derived from the RAW
 start tag so the host `html.parser` is never trusted: a NAMED character reference resolves only on
 an exact match not followed by `=` (so `class="a &nbspcm-skip"` keeps the literal token
 `&nbspcm-skip`, where Python 3.12 turns it into a `cm-skip` token that was never authored), the
 attribute SPLIT uses HTML whitespace and a single `=`, and a duplicated attribute keeps the FIRST
-occurrence as HTML5 does.
+occurrence as HTML5 does. The same package also owns the start-tag PARSER that rule runs inside,
+whose tag extent is scanned by a vendored tokenizer and whose numeric decode is bounded, so an
+oversized reference resolves to U+FFFD instead of raising; the contrast scanner reads that parser
+from here too (`StartTagParser`), which is the start-tag parse only - the wider element boundaries
+and ASCII-only tag-name folding stay each consumer's own.
 
 The deck validator, the contrast scanner and the authoring tools each used to keep their own
 host-trusting attribute dict, so the same document was read one way by the validator and another
 way by the tool beside it (CMH-VAL-21). They all read the rule from here instead.
 
-A partial install (the `validate` tool missing) falls back to the host's own list rather than
-failing: a degraded decode is better than a tool that cannot run, and the fallback is WARNED about
-once, the way every other optional-tool import in the skill is.
+A partial install (the `validate` tool missing) falls back to the host's own list and the host's own
+`HTMLParser` rather than failing: a degraded parse is better than a tool that cannot run, and the
+fallback is WARNED about once, the way every other optional-tool import in the skill is.
 """
 import os
 import sys
+from html.parser import HTMLParser
 
 _TOOLS_ROOT = os.path.dirname(os.path.abspath(__file__))
 _VALIDATE_ROOT = os.path.join(_TOOLS_ROOT, "validate")
@@ -53,6 +58,25 @@ else:
 
 _shared_attrs = getattr(_parsing, "browser_attrs", None)
 _shared_attrs_dict = getattr(_parsing, "browser_attrs_dict", None)
+
+
+def _start_tag_parser(parsing_module):
+    """The shared start-tag parser base, or the host's own `HTMLParser` when it is unavailable.
+
+    Kept a function so the degraded install has a reachable, tested path: the class itself is
+    bound once at import, as every consumer subclasses it at import time too."""
+    base = getattr(parsing_module, "browser_start_tag_parser", None)
+    if isinstance(base, type) and issubclass(base, HTMLParser):
+        return base
+    return HTMLParser
+
+
+# The start-tag base for a consumer outside `checks` that needs the tag EXTENT and the bounded
+# numeric decode, not only the attribute rule - today the contrast scanner (`cmhval/contrast.py`),
+# the one such scanner inside the validator. It shares the START TAG parse only: the wider element
+# boundaries (`_BrowserBoundaries`) and ASCII-only tag-name folding are still each consumer's own
+# (CMH-VAL-21).
+StartTagParser = _start_tag_parser(_parsing)
 
 
 def attrs(parser, tag, raw_attrs):

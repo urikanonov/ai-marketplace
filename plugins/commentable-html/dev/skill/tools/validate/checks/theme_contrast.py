@@ -168,14 +168,14 @@ def check_theme_contrast(html):
     unexpected failure while resolving the palette degrades to no findings (best-effort) rather
     than aborting the whole validation run for every caller.
 
-    ONE input is exempt from that degrade: this scan builds its own tolerant parser, which still
-    raises on an oversized numeric character reference, while the document parse now resolves one
-    in an ATTRIBUTE VALUE to U+FFFD and carries on (CMH-VAL-21). Staying silent there would let a
-    single attribute disable the whole contrast check on a document the rest of the validator
-    happily reads - and that document used to be refused outright by the failing parse - so that
-    shape is REPORTED instead of skipped. The report does not claim WHERE the reference is: the
-    same raise happens for one in the document's TEXT, which the document parse also refuses
-    (issue #946), and this scan cannot tell the two apart."""
+    ONE input is exempt from that degrade: this scan's parser shares the validator's start-tag base,
+    so an oversized numeric character reference in an ATTRIBUTE VALUE resolves to U+FFFD and the
+    document is read like any other (CMH-VAL-21) - but one in the document's TEXT still goes through
+    the host's `convert_charrefs` decode, which raises there exactly as the document parse does
+    (issue #946). Through `validate()` that document never reaches this check at all: `_parse()`
+    fails first and the run reports `_PARSE_FAIL`. A DIRECT caller of this standalone check has no
+    such signal, so staying silent would hand it an empty finding list for a document nothing
+    actually read - and that is what the report exists to prevent."""
     try:
         findings = theme_contrast_findings(html)
     except Exception:

@@ -1158,14 +1158,33 @@ class DocParserAttributeValueTests(unittest.TestCase):
             % (ref, wall * 5))
         self.assertTrue(dwarnings, "the density pass saw nothing after the offending tag")
 
+    def test_an_oversized_reference_in_an_attribute_still_yields_contrast_findings(self):
+        # The contrast scanners were the last parse path in the validator on a bare `HTMLParser`,
+        # so the host's attribute decode raised and `check_theme_contrast` degraded the WHOLE
+        # advisory to nothing (or, once that was noticed, to "could not be read"). Sharing the
+        # start-tag base makes the same reference resolve to U+FFFD, so the document is read and
+        # its authored override is judged like any other.
+        ref = "&#%s;" % ("9" * 5000)
+        doc = ('<div id="a%s"></div>'
+               "<style>:root{--cp-text:#eeeeee;--cp-bg:#ffffff;}</style>" % ref)
+        findings = theme_contrast.theme_contrast_findings(doc)
+        self.assertTrue(
+            any(f.label == "body text" and f.severity == "error" for f in findings), findings)
+        errors, _warnings = theme_contrast.check_theme_contrast(doc)
+        self.assertTrue(any("body text" in e for e in errors), errors)
+        self.assertFalse(
+            any("oversized numeric character reference" in e for e in errors), errors)
+
     def test_a_document_the_contrast_scan_cannot_read_is_reported_not_skipped(self):
-        # The contrast scan builds its own tolerant parser, which still raises on an oversized
-        # reference. Degrading to "no findings" would let ONE attribute silently disable the whole
-        # check on a document every other parse now reads - and that document used to be refused
-        # outright by the failing parse.
+        # The scan's start tags are now bounded, but its TEXT still goes through the host's
+        # `convert_charrefs` decode, which raises on an oversized reference exactly as the
+        # document parse does (issue #946). Through `validate()` such a document never reaches
+        # this check - `_parse()` fails first and the run reports `_PARSE_FAIL` - so this report
+        # is for a DIRECT caller of the standalone check, which would otherwise be handed an
+        # empty finding list for a document nothing read.
         ref = "&#%s;" % ("9" * 5000)
         errors, _warnings = theme_contrast.check_theme_contrast(
-            '<div id="a%s"></div><style>:root{--cp-text:#fff;}</style>' % ref)
+            "<p>a%sb</p><style>:root{--cp-text:#fff;}</style>" % ref)
         self.assertTrue(any("oversized numeric character reference" in e for e in errors), errors)
         self.assertEqual(theme_contrast.check_theme_contrast("<div id=a></div>")[0], [])
 

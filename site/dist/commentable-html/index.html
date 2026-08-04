@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.525.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.527.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.527.0] - 2026-08-04</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The theme-contrast scan no longer goes silent on a document carrying an oversized numeric character reference in an attribute value. Its two scanners were the last parse path in the validator still built on a bare <code>html.parser.HTMLParser</code>, so the host decoded their attribute values and RAISED on a reference with more digits than Python&#x27;s integer conversion limit - a shape the rest of the validator resolves to U+FFFD and reads straight through, as a browser does. Because the check degrades any failure to &quot;no findings&quot; by contract (an advisory must never abort a run), one attribute disabled the whole check on a document every other parse reads. The scanners now derive from the same start-tag base the checks package uses, whose tag extent comes from the vendored tokenizer and whose numeric decode is bounded. They reach it through the existing <code>tools/_browser_attrs.py</code> shim rather than importing <code>checks</code> directly, because <code>cmhval</code> is a sibling package that must stay independently importable and <code>checks</code> already imports it, so the direct import would be a cycle; a partial install still degrades to the host&#x27;s own parser with the standard missing-tool warning. One shape stays reported rather than read: a reference in the scan&#x27;s TEXT still reaches the host&#x27;s own decode. Through <code>validate()</code> that document never reaches the check (the document parse fails first and the run reports a parse failure), so the report is for a direct caller of the standalone check, which would otherwise be handed an empty finding list for a document nothing read.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.525.0] - 2026-08-04</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -503,6 +510,8 @@
               <li>A Manage storage dialog opened from a toast action no longer strands keyboard focus. <code>showToast()</code> removes the action button before running its handler, so <code>document.activeElement</code> was <code>&lt;body&gt;</code> by the time the dialog snapshotted it and its restore-on-close was a silent no-op. The toast now resolves a focus-restore target first and hands it to the action, <code>cmhStorageAction()</code> forwards it as <code>restoreFocus</code>, and the manager&#x27;s <code>close()</code> re-resolves it - falling back to the stable chrome triggers (<code>More</code>, the toolbar overflow, the panel toggle) when the snapshot is missing, detached, hidden, or disabled - so closing the dialog always lands on a real, visible control.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.522.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -510,8 +519,6 @@
               <li>An injected <code>&lt;base href&gt;</code> can no longer rebase the relative references the Offline export strip and the strict validator both treat as safe. Neither side looked at a base element - it loads nothing itself - and both deliberately leave a RELATIVE reference alone, so a single base element naming a remote host turned every relative image and SVG script reference in the document into an off-host fetch while passing both checks as local. The export now clears a non-local base <code>href</code> through the same template-walking pass as every other load (a parked base starts rebasing the moment a script adopts the fragment), and <code>validate.py --strict</code> flags the same shape, so the exporter and the gate agree. Three bounds are deliberate. A base is held to a STRICTER predicate than the per-resource passes - the same &quot;non-local reference&quot; rule the import-map check uses (any scheme, or an authority of two slashes or backslashes in either order, after the URL parser&#x27;s own input cleanup) - because one attribute re-points EVERY safe reference in the document, so the slash-less, one-slash, backslash-authority, <code>file://</code> UNC and <code>blob:</code>/<code>data:</code> spellings a browser still resolves to a remote host cannot be left to the CSP the way a single attribute can. The href alone is cleared rather than the element removed: a <code>target</code> is not egress, and a relative base reaches no network at all. And the validator&#x27;s copy is not scoped to offline mode, because the self-contained guarantee is not offline-only and a shareable file has no zero-network CSP behind it. Clearing a base is also the one attribute pass the download toast names, because it re-points references that still work - author links included - and outside offline mode the gate suggests making the base relative rather than simply removing it. The offline CSP&#x27;s <code>base-uri &#x27;none&#x27;</code> covers the same channel as defense in depth, but a policy delivered in a <code>&lt;meta&gt;</code> does not bind a base element the parser already resolved before it, and the strip and the gate are the layer that is not supposed to depend on the CSP anyway.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.521.0] - 2026-08-04</h3></div>
             <div class="group-label">Fixed</div>
@@ -542,14 +549,7 @@
               <li>A document with no <code>reviewedSections</code> block at all gets one inserted again when its content carries an <code>embeddedComments</code> decoy. The insert anchors on the <code>embeddedComments</code> block the region owns and refused to anchor when more than one element carried that id anywhere - counting authored content the exporter itself ignores, so a single decoy inside the content root permanently stopped the reader&#x27;s review state from travelling with an exported copy. It now counts only the blocks the layer owns, which is the same set the exporter writes the comments into.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.515.0] - 2026-08-03</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The layer&#x27;s OWN controls injected INSIDE the content root no longer lose the reviewer&#x27;s first click to an open comment dialog. Inverting the dismiss to swallow only clicks in the annotated document gave every surface OUTSIDE the content root its first click back, but a sortable-table sort control, a widget &quot;Reset moves&quot;, a checklist box, an editable note, a code-block Copy, a section caret or review badge, and a rendered diff&#x27;s view toolbar all live inside that root, where containment cannot tell them from author content - so with a dialog open the first click on one of them was spent closing the dialog and the control did nothing. The layer now registers each control it creates in an identity set and carves that set out of the swallow, so the control acts on the FIRST click (in the <code>&lt;body&gt;</code>-fallback mode too). Identity, not class: document content carrying <code>cmh-sort-ctrl</code> or <code>cm-widget-reset</code> is still author content and is still swallowed, so the anti-spoofing property is unchanged. A spared click then behaves exactly as it does with no dialog open - the carve-out restores the normal click rather than making the control modal - and a behavior the runtime attaches to AUTHOR content (clicking a commented image to jump to its card, clicking a collapsed section&#x27;s heading rather than its caret) is not an injected control and is still swallowed.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">284 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">285 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
