@@ -34,10 +34,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   (its own end tag, an ancestor's, a breakout, end of input) rather than by end-tag NAME, so a
   stray `</style>` no longer ends a capture no element of it ever opened either. Each capture
   collects only the text a browser reads as its OWN (the element must be the current node), the
-  recorded bodies are restored to document order, the template-parked view is finalized the same
-  way, and the NonShareable watchdog token now counts only from a script that OPENED outside the
-  content region - so one an author left open across the content-end marker cannot stand in for
-  the layer's.
+  recorded bodies are restored to document order, the template-parked view is a depth-keyed stack
+  finalized the same way - so a script NESTED in a parked one is recorded with its own attributes,
+  where folding it into the outer inert record let the offline gate skip a network import the
+  exporter really carries - and the NonShareable watchdog token now counts only from a script that
+  OPENED outside the content region, so one an author left open across the content-end marker
+  cannot stand in for the layer's.
 
 ## [1.600.0] - 2026-08-04
 

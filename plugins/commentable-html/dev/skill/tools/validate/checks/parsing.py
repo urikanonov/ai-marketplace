@@ -1587,19 +1587,22 @@ class _DocParser(_BrowserBoundaries):
         self.cm_skip_code_blocks = []    # [{"kind": "<pre>"|"<pre><code>"}] for direct cm-skip misuse
         self._mermaid_stack = []         # parallel to self.stack: current mermaid block index, or None
         # Open `<script>`/`<style>` captures, innermost LAST: [{"tag", "pos", "attrs", "depth",
-        # "parts"}]. A STACK rather than one scalar per kind because outside the HTML namespace
-        # those two hold MARKUP, so one really can contain another (`<svg><style><style>`) and a
-        # BREAKOUT start tag can pop one before its own end tag ever arrives. With a scalar, the
-        # inner element silently replaced the outer capture and the outer body - the CSS a browser
-        # still applies, `@import url(...)` included - never reached `styles`, hiding egress from
-        # the offline gate that reads it. Each capture is finalized from `_truncate_stacks()`, so
-        # every close a browser performs (its own end tag, an ancestor's, a breakout, EOF) records
-        # it, and DATA is appended to every open capture: a superset of the element's own text
-        # nodes, which fails closed.
+        # "parts", "in_content"}]. A STACK rather than one scalar per kind because outside the HTML
+        # namespace those two hold MARKUP, so one really can contain another (`<svg><style><style>`)
+        # and a BREAKOUT start tag can pop one before its own end tag ever arrives. With a scalar,
+        # the inner element silently replaced the outer capture and the outer body - the CSS a
+        # browser still applies, `@import url(...)` included - never reached `styles`, hiding egress
+        # from the offline gate that reads it. Each capture is finalized from `_truncate_stacks()`,
+        # so every close a browser performs (its own end tag, an ancestor's, a breakout, EOF)
+        # records it, and DATA goes only to the capture that is the CURRENT NODE - see
+        # `_current_raw_capture()`.
         self._raw_captures = []
-        self._cur_tpl_raw = None  # (tag, attrs_dict, [body parts]) while inside a TEMPLATE-parked
-                                  # <script>/<style>; kept apart from the above so template
-                                  # content never leaks into a check that must ignore it.
+        # The same, for a TEMPLATE-parked <script>/<style>, kept apart from the above so template
+        # content never leaks into a check that must ignore it. A stack for the same reason, and so
+        # a NESTED parked script is recorded with its OWN attributes: the export path walks every
+        # `<script>` in a template, so folding an inner executable one into an outer inert record
+        # would let the offline gate skip a network import the exporter really carries.
+        self._tpl_captures = []
         self.commentroot_prose = []  # #commentRoot text NOT inside <a> or a cm-skip element
         self._cr_depth = None        # stack depth at which #commentRoot was entered
         self._cr_closed = False      # True once #commentRoot (or an ancestor) has closed
@@ -1697,14 +1700,13 @@ class _DocParser(_BrowserBoundaries):
         cap = self._raw_captures[-1]
         return cap if cap["depth"] == len(self.stack) - 1 else None
 
-    def _flush_template_raw(self):
-        """Record a template-parked <script>/<style> body in its own view and clear the state."""
-        if self._cur_tpl_raw is None:
-            return
-        ttag, tad, parts, _depth = self._cur_tpl_raw
-        sink = self.template_scripts if ttag == "script" else self.template_styles
-        sink.append({"pos": None, "attrs": tad, "body": "".join(parts)})
-        self._cur_tpl_raw = None
+    def _flush_template_raw(self, depth=0):
+        """Record each template-parked <script>/<style> body the element at `depth` (or an ancestor
+        of it) closed, innermost first, in its own view."""
+        while self._tpl_captures and self._tpl_captures[-1]["depth"] >= depth:
+            cap = self._tpl_captures.pop()
+            sink = self.template_scripts if cap["tag"] == "script" else self.template_styles
+            sink.append({"pos": None, "attrs": cap["attrs"], "body": "".join(cap["parts"])})
 
     def _truncate_stacks(self, depth):
         # Every truncation path - an end tag, an implicit </p>/</li> close, a foreign-content
@@ -1712,8 +1714,7 @@ class _DocParser(_BrowserBoundaries):
         # A template-parked raw-text element can never outlive the <template> that holds it: an
         # unterminated one would otherwise keep collecting, and the next parked block's body would
         # be concatenated onto it into a body no browser would ever see.
-        if self._cur_tpl_raw is not None and depth <= self._cur_tpl_raw[3]:
-            self._flush_template_raw()
+        self._flush_template_raw(depth)
         self._flush_raw_captures(depth)
         # Closing #commentRoot (or an ancestor of it) ends the root subtree for
         # good, so headings/prose in a later sibling container are not collected.
@@ -1825,12 +1826,13 @@ class _DocParser(_BrowserBoundaries):
                 self.mermaid_blocks[idx]["has_svg"] = True
         if tag in ("script", "style") and not self._in_template():
             self._open_raw_capture(tag, ad)
-        if tag in ("script", "style") and self._in_template() and self._cur_tpl_raw is None:
+        if tag in ("script", "style") and self._in_template():
             # The stack DEPTH is carried so the state can never outlive its template: html.parser
             # keeps a raw-text element open to EOF, which matches a browser, but if any future path
             # ever left one open past `</template>` the next parked block's body would silently be
             # concatenated onto it and the offline check would read a body no browser would see.
-            self._cur_tpl_raw = (tag, ad, [], len(self.stack))
+            self._tpl_captures.append({"tag": tag, "attrs": ad, "depth": len(self.stack),
+                                       "parts": []})
         if (tag in _HEADING_TAGS and self._cur_heading is None and self._cr_depth is not None
                 and not self._cr_closed and len(self.stack) > self._cr_depth and not own_skip
                 and not self._skip_ancestor() and not self._in_template()):
@@ -1886,8 +1888,8 @@ class _DocParser(_BrowserBoundaries):
         self._note_ready_token(data)
         # A template-parked <script>/<style> body is collected ALONGSIDE the ordinary flow (never
         # instead of it), so adding this view cannot change what any existing check sees.
-        if self._cur_tpl_raw is not None:
-            self._cur_tpl_raw[2].append(data)
+        if self._tpl_captures and self._tpl_captures[-1]["depth"] == len(self.stack) - 1:
+            self._tpl_captures[-1]["parts"].append(data)
         # Capture the raw source text of the current mermaid block (entities are already
         # decoded because convert_charrefs=True), so the mermaid syntax checker can read it.
         # Only meaningful before the diagram renders to <svg>; a rendered block's has_svg
