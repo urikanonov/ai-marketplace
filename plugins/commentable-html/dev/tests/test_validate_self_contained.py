@@ -862,12 +862,16 @@ class NewCheckTests(unittest.TestCase):
                                 (url, errors))
 
     # ...and the spellings that stay ON the machine must still pass, or the gate would reject an
-    # offline file with no egress at all: a `file:` URL with an empty host, `localhost`, or a Windows
-    # DRIVE LETTER in the host position (which the URL parser turns into a path), and a backslash
-    # inside an ordinary relative path.
+    # offline file with no egress at all: a `file:` URL with an empty host, `localhost` - including
+    # every spelling the URL parser CANONICALIZES onto it, since it percent-decodes and lowercases a
+    # file host before the file-host state empties it - or a Windows DRIVE LETTER in the host
+    # position (which the URL parser turns into a path), and a backslash inside an ordinary relative
+    # path.
     def test_offline_mode_accepts_a_local_file_or_backslash_relative_reference(self):
         for url in ("file:///C:/local/x.js", "file:///local/x.js", "file://localhost/local/x.js",
                     "file://C:/local/x.js", "file://c|/local/x.js", "file:////C:/local/x.js",
+                    "file://local%68ost/local/x.js", "file://%4Cocalhost/local/x.js",
+                    "file:////local%68ost/local/x.js",
                     "sub\\local-keep.js", "/root\\local-keep.js"):
             with self.subTest(url=url):
                 markup = '<svg><script href="%s"></script></svg>' % url
@@ -875,6 +879,27 @@ class NewCheckTests(unittest.TestCase):
                     with_offline_mode(build(body=self._body(MAIN, markup))))
                 self.assertEqual(errors, [], (url, errors))
                 self.assertEqual(warnings, [], (url, warnings))
+
+    # A TRAILING DOT is not that: the file-host state special-cases the exact string `localhost`, so
+    # `file://localhost./x` keeps a NON-EMPTY host and resolves to the SMB path `\\localhost.\x` on
+    # Windows - egress even though it lands on the loopback, exactly as `\\localhost\C$\x` is. The
+    # percent-encoded spellings of the dot and of the host agree, and a host that merely STARTS with
+    # `localhost` is a different machine. A SECOND path slash is egress for a different reason: the
+    # host is emptied and `//evil.example/x.js` stays as the PATH, so the value canonicalizes to
+    # `file:////evil.example/x.js` - the four-separator UNC form the rows above already reject. The
+    # backslash spelling reaches the same place, since the URL cleanup maps `\` onto `/`.
+    def test_offline_mode_rejects_a_trailing_dot_or_near_miss_localhost_file_authority(self):
+        for url in ("file://localhost./x.js", "file://localhost%2E/x.js",
+                    "file://%6Cocalhost./x.js", "file://local%68ostx/x.js",
+                    "file://localhost//evil.example/x.js",
+                    "file://local%68ost//evil.example/x.js",
+                    "file://localhost/\\evil.example/x.js"):
+            with self.subTest(url=url):
+                markup = '<svg><script href="%s"></script></svg>' % url
+                errors, _ = self._errs_warns(
+                    with_offline_mode(build(body=self._body(MAIN, markup))))
+                self.assertTrue(any("offline mode" in e and "<script href" in e for e in errors),
+                                (url, errors))
 
     # A `srcset` candidate is tokenized before the URL predicate sees it, and HTML draws that
     # boundary at ASCII whitespace only. Splitting on the ENGINE's whitespace cut the candidate at a

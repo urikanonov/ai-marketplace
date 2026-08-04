@@ -4,6 +4,81 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.678.0] - 2026-08-04
+
+### Fixed
+
+- A `file:` reference that hides a UNC authority behind a `localhost` label, a dot segment, or an
+  empty path segment is no longer blessed as local by the offline strip or the strict gate
+  (CMH-OFFLINE-04). The rule the whole `file:` arm now keeps is CANONICALIZATION STABILITY: a value
+  and the href the URL parser canonicalizes it to must get the SAME verdict. Three shapes broke it,
+  and none is reachable by a test that reads only the START of a value, because the parser's path
+  state runs AFTER the host is emptied.
+  - `file://localhost//evil.example/x.js` empties the host and keeps `//evil.example/x.js` as the
+    PATH, so it canonicalizes to `file:////evil.example/x.js` - the four-separator UNC form this
+    same predicate already calls an off-machine SMB load on Windows - yet the exclusion's terminator
+    accepted ANY `/` after the host, so both implementations agreed it was a local file. The
+    terminator now accepts the end of the value, a `?` or `#`, or a SINGLE path slash, which also
+    covers the backslash spelling `file://localhost/\evil.example/x.js` (the URL cleanup maps `\`
+    onto `/`).
+  - A DOUBLE-DOT segment pops the segment before it, including the very label an exclusion just
+    matched: `file:////localhost/../evil.example/x` and `file:////C:/../x.js` canonicalize onto the
+    four-separator form with a different leading label. A `..` anywhere in the path now makes the
+    arm match REGARDLESS of the `localhost` and drive-letter exclusions, in every spelling the
+    parser treats as a double-dot segment (`..`, `.%2e`, `%2e.`, `%2e%2e`, case-insensitively).
+  - An EMPTY path segment IS that four-separator form, and it arrives from values the separator
+    arms never look at: `file:///.//x.js` and `file:/a/..//x.js` both canonicalize to
+    `file:////x.js` from a three-slash or slash-less value. It now has an arm of its own that
+    ignores the leading separator count entirely and reads only a `//` in the PATH.
+
+  A fuzz of 421,560 values against a real URL parser measured the result at this revision: ZERO
+  remain where the predicate says local while the value's own canonical form is egress. The cost is
+  over-detection in the safe direction, pinned in the corpus rather than left implicit -
+  `file://localhost//C:/x.js` (canonically the LOCAL `file:////C:/x.js`),
+  `file://localhost/a/../b.js`, a bare `file://localhost//`, and an authored `file:///C:/a//b.png`
+  are all now reported, while `file://localhost/a/./b.js`, `file:///C:/local/x.js` and
+  `file://localhost/x.js?q//h` stay local.
+- The `file:` egress predicate now excludes `localhost` in every PERCENT-ENCODED and CASE spelling,
+  instead of testing the literal nine characters (CMH-OFFLINE-04). A file host is percent-decoded
+  and lowercased through domain-to-ASCII BEFORE the file-host state turns the exact string
+  `localhost` into the empty host, so `file://local%68ost/x` parses to `file:///x` in a real WHATWG
+  parser - the same purely local file as `file://localhost/x`. The literal test called it egress,
+  which is the SAFE direction (nothing leaks; both implementations agreed, so there was no
+  exporter/validator drift) but costs content: the offline strip deleted the author's reference and
+  `validate.py --strict` then rejected a file with no egress at all. Both sides now spell the host
+  one alternation per character, with BOTH hex rows per letter, because a `/i` regex folds `%6c`
+  onto `%6C` but never onto `%4c` and `%4c` decodes to `L`. The same tolerance is right for the
+  four-or-more-separator arm, where there is no host to decode: that arm's UNC name comes out of the
+  PATH, and a real Chromium was MEASURED percent-decoding a `file:` path before it touches the
+  filesystem. The widening cannot smuggle a host past either side: only a host that decodes to
+  exactly `localhost` matches, and `%2F` / `%00` are forbidden host code points that fail to parse
+  outright. All 4096 encode/case spellings of the host were cross-checked against a real URL parser.
+- A TRAILING DOT stays egress, and that boundary is now stated rather than left implicit. The
+  file-host state special-cases the exact string `localhost` and `localhost.` is not it, so
+  `file://localhost./x` keeps a NON-EMPTY host and on Windows resolves to the SMB path
+  `\\localhost.\x` - egress even though it lands on the loopback, exactly as the scheme-relative
+  `\\localhost\C$\x` already is. So this is the parser-faithful reading, not an accepted
+  over-detection, and the parity corpus now carries the trailing-dot, percent-encoded-dot and
+  starts-with-`localhost` spellings with their expected verdicts so neither implementation can
+  drift across the boundary on its own.
+
+### Changed
+
+- The IDNA/UTS-46 half of host canonicalization is now recorded as an ACCEPTED, deliberate
+  over-detection rather than left unstated: `file://<U+FF4C>ocalhost/x`, its percent-encoded UTF-8
+  `file://%EF%BD%8Cocalhost/x`, `file://LOCALHO<U+017F>T/x` and the soft-hyphen
+  `file://local%C2%ADhost/x` all parse to href `file:///x` (measured) and are still reported as
+  egress. UTS-46 mapping cannot be written as a regex both engines agree on, and Python's
+  `re.IGNORECASE` folds `s` onto U+017F where a JS `/i` never does, so attempting it is how the two
+  drift; over-detecting costs a rare reference while under-detecting is a beacon the gate blesses.
+  The corpus pins those spellings so the boundary cannot move on one side only.
+- The two implementations' shared `localhost` sub-patterns are now pinned BYTE-for-byte to each
+  other by a text-equality parity assertion, not only by matching verdicts over the corpus - a
+  corpus cannot see a drift on a spelling it does not carry, and a nine-character alternation has
+  far more spellings than any corpus can list.
+### Changed
+
+
 ## [1.677.0] - 2026-08-04
 
 ### Changed

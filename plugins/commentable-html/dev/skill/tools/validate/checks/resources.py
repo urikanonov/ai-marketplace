@@ -125,6 +125,60 @@ CSS_NETWORK_IMPORT_RE = re.compile(
     + _CSS_NETWORK_PREFIX + _CSS_HOST_CHAR + r"[^;'\")]*)",
     re.IGNORECASE | re.ASCII)
 
+# The `localhost` exclusion is spelled as the URL PARSER compares a host, not as a literal, because
+# the parser percent-decodes a file host and lowercases it through domain-to-ASCII BEFORE the
+# file-host state turns the exact string `localhost` into the EMPTY host: `file://local%68ost/x`
+# parses to href `file:///x` in a real WHATWG parser, exactly like `file://localhost/x`. A literal
+# test therefore reported a local reference as egress, which deletes the author's value and leaves
+# the gate rejecting a file with no egress at all. One alternation per character, with BOTH hex rows
+# per letter, because `re.IGNORECASE` folds `%6c` onto `%6C` but never onto `%4c` - and `%4c`
+# decodes to `L`, which domain-to-ASCII lowercases back. Nothing that decodes to anything OTHER than
+# `localhost` can match, so this cannot smuggle a host past the gate: `%2F` and `%00` are forbidden
+# host code points and fail to parse outright (both checked), and a host that merely STARTS with
+# `localhost` is stopped by the terminator that follows. Mirrored character for character in the
+# exporter's `_OFFLINE_PCT_LOCALHOST`, and pinned to it by a TEXT-equality parity assertion (matching
+# verdicts over a corpus cannot see a drift on a spelling the corpus does not carry).
+# It covers PERCENT-ENCODING and CASE, which is the half of canonicalization a regex can model. It
+# does NOT model the IDNA/UTS-46 half, so a spelling that only IDNA maps onto `localhost` is an
+# ACCEPTED, deliberate over-detection: `file://<U+FF4C>ocalhost/x`, its percent-encoded UTF-8
+# `file://%EF%BD%8Cocalhost/x`, `file://LOCALHO<U+017F>T/x` and the soft-hyphen `file://local%C2%ADhost/x`
+# all parse to href `file:///x` (measured) and are still reported here. That residual is deliberate
+# rather than an oversight: UTS-46 mapping cannot be written as a regex either side would agree on,
+# and Python's `re.IGNORECASE` folds `s` onto U+017F where a JS `/i` never does, so ATTEMPTING it is
+# how the two engines drift. Over-detecting costs the author's rare reference; under-detecting is a
+# beacon the gate blesses, so the boundary is drawn on the safe side and the corpus pins these
+# spellings as network so a future edit cannot move them silently.
+_PCT_LOCALHOST = (r"(?:l|%[46]c)(?:o|%[46]f)(?:c|%[46]3)(?:a|%[46]1)(?:l|%[46]c)"
+                  r"(?:h|%[46]8)(?:o|%[46]f)(?:s|%[57]3)(?:t|%[57]4)")
+# What may FOLLOW that host for the exclusion to fire: the end of the value, a `?` or `#`, or a
+# SINGLE path slash. A second slash is an egress MISS, not a local path:
+# `file://localhost//not-a-host/x.js` empties the host and keeps `//not-a-host/x.js` as the PATH, so
+# the parser canonicalizes it to `file:////not-a-host/x.js` (measured) - which the four-or-more-slash
+# arm right here calls an off-machine SMB load. The backslash spelling
+# `file://localhost/\not-a-host/x.js` reaches it too, since the cleanup maps `\` onto `/`. The cost
+# is that `file://localhost//C:/x.js`, canonically the LOCAL `file:////C:/x.js`, is over-reported;
+# that is the fail-CLOSED direction this predicate takes everywhere else.
+_PCT_LOCALHOST_END = r"(?:[?#]|\Z|/(?!/))"
+# The rule both of the following exist to keep is CANONICALIZATION STABILITY: a value and the href
+# the URL parser canonicalizes it to must get the SAME verdict, or a spelling hides an authority
+# that only the parser sees. Two shapes broke it, and neither is reachable by a test that reads only
+# the START of the value, because the parser's path state runs AFTER the host is emptied.
+# (1) A DOUBLE-DOT segment pops the segment before it - including the very label an exclusion just
+# matched. `file:////localhost/../not-a-host/x` and `file:////C:/../x.js` both canonicalize onto the
+# four-separator UNC form with a different leading label, so a `..` anywhere in the path makes the
+# arm match REGARDLESS of the exclusions. Every spelling the parser treats as a double-dot segment
+# is covered - `..`, `.%2e`, `%2e.`, `%2e%2e`, case-insensitively.
+# (2) An EMPTY path segment IS the four-separator form: `file:///.//x.js` and `file:/a/..//x.js`
+# canonicalize to `file:////x.js` from a THREE-slash or even slash-less value the arms above never
+# look at, so it needs an arm of its own that ignores the leading separator count entirely. The
+# leading `/*(?!/)` consumes the whole separator run unbacktrackably, so only a `//` in the PATH
+# counts, and `[^?#]` stops at the query, which cannot change the path.
+# A fuzz of 421,560 values against a real URL parser measured the result: ZERO remain where the
+# predicate says local while the value's own canonical form is egress. The cost is over-detection in
+# the safe direction (93,789 of those values, all absurd spellings): an authored `file:///C:/a//b.png`
+# or `file://localhost/a/../b.js` is now reported. Corpus rows pin both directions.
+_FILE_DOTDOT_SEGMENT = r"(?:\.|%2e)(?:\.|%2e)"
+_FILE_EMPTY_SEGMENT = r"file:/*(?!/)[^?#]*?//"
 # A network URL in an attribute value, read AFTER the URL parser's own input cleanup (see
 # `normalize_url_value` below), so the spellings a browser normalizes into a network load - an
 # embedded ASCII tab or newline, a backslash authority - are not read as relative references. The
@@ -143,9 +197,23 @@ CSS_NETWORK_IMPORT_RE = re.compile(
 # exactly two OR four-or-more as an authority, while THREE is the empty host of an ordinary local
 # path (`file:///C:/x`), so `file:////evil.example/x.js` really does fetch and a `(?!/)` test alone
 # called it local. Two host spellings that stay on the machine are excluded whatever the separator
-# count: `localhost`, the local machine by definition, and a Windows DRIVE LETTER, which the
+# count: `localhost` - in every PERCENT-ENCODED and CASE spelling, see `_PCT_LOCALHOST` above for
+# what that does and does not cover - and a Windows DRIVE LETTER, which the
 # file-host state turns into a path rather than a host, because reporting either would reject an
 # offline file with no egress at all - and make the exporter delete the author's local reference.
+# The percent-tolerance is right for the FOUR-or-more-slash arm too, even though there is no host
+# there to decode: that arm's UNC name comes out of the PATH, and a real Chromium was measured
+# percent-decoding a `file:` path before it touches the filesystem (a directory named `loc alhost`
+# opened through `loc%20alhost`), so `file:////local%68ost/x.js` reaches the same local name that
+# `file:////localhost/x.js` does.
+# A TRAILING DOT is deliberately outside that exclusion, and that is the parser-faithful reading
+# rather than an accepted over-detection: the file-host state special-cases the exact string
+# `localhost`, and `localhost.` is not it, so `file://localhost./x` keeps a NON-EMPTY host (checked:
+# the href stays `file://localhost./x`) and on Windows resolves to the SMB path `\\localhost.\x`.
+# That is the same call the scheme-relative `\\localhost\C$\x` gets - an authority-bearing share is
+# egress even to the loopback - so excluding it would be the inconsistency. Percent-encoding cannot
+# reach the DRIVE-LETTER exclusion the way it reaches this one: the drive test reads the raw buffer
+# the file-host state reads, and `%3A`/`%7C` decode to forbidden host code points that fail to parse.
 # The drive-letter test deliberately does NOT require a separator after the `:` or `|`: a real
 # Chromium resolves EVERY `file://` authority that STARTS with one to a local drive path, so
 # `file://C:/x`, `file://C:foo/x` and even `file://c:evil.example/x` are all the local file
@@ -193,7 +261,10 @@ CSS_NETWORK_IMPORT_RE = re.compile(
 # once.
 NETWORK_URL_RE = re.compile(
     r"(?:(?:https?:/*|/{2,})[^/?#]"
-    r"|file:(?://(?!/)|/{4,}(?!/))(?![?#]|\Z)(?!localhost(?:[/?#]|\Z))(?![A-Za-z][:|]))",
+    r"|file:(?://(?!/)|/{4,}(?!/))(?![?#]|\Z)"
+    r"(?:(?=[^?#]*/" + _FILE_DOTDOT_SEGMENT + r"(?:[/?#]|\Z))"
+    r"|(?!" + _PCT_LOCALHOST + _PCT_LOCALHOST_END + r")(?![A-Za-z][:|]))"
+    r"|" + _FILE_EMPTY_SEGMENT + r")",
     re.IGNORECASE | re.ASCII)
 
 # Every character a URL parser removes from its input before it parses: leading and trailing C0
