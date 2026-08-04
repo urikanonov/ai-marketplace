@@ -267,5 +267,57 @@ class MermaidWiredIntoValidate(unittest.TestCase):
         self.assertIn("Syntax error", errs[0])
 
 
+class MermaidTemplateInertness(unittest.TestCase):
+    """CMH-SYN-02 / CMH-CONTENT-16: a `<template>` nested inside a LIVE mermaid host
+    contributes nothing to the diagram source the syntax checker reads. A template's
+    children live in its `.content` DocumentFragment, so they are not part of the host
+    element's `textContent` - which is exactly what mermaid renders from."""
+
+    def _errors(self, html):
+        parser, ok = validate._parse(html)
+        self.assertTrue(ok)
+        errs, _ = validate.check_mermaid_syntax(parser)
+        return errs
+
+    def test_template_parked_text_is_not_diagram_source(self):
+        # The parked line is a real syntax error, but the diagram never contains it.
+        html = (
+            '<pre class="mermaid cm-skip">sequenceDiagram\n'
+            '  A-&gt;&gt;B: fine\n'
+            '<template>\n'
+            '  A-&gt;&gt;B: step one; then X -&gt; Y happens\n'
+            '</template>\n'
+            '</pre>')
+        self.assertEqual(self._errors(html), [])
+
+    def test_unclosed_template_stays_inert_to_eof(self):
+        html = (
+            '<pre class="mermaid cm-skip">sequenceDiagram\n'
+            '  A-&gt;&gt;B: fine\n'
+            '<template>\n'
+            '  A-&gt;&gt;B: step one; then X -&gt; Y happens\n')
+        self.assertEqual(self._errors(html), [])
+
+    def test_live_text_around_a_template_is_still_checked(self):
+        # The guard must not silence the source the diagram DOES render.
+        html = (
+            '<pre class="mermaid cm-skip">sequenceDiagram\n'
+            '<template>  A-&gt;&gt;B: parked</template>\n'
+            '  A-&gt;&gt;B: step one; then X -&gt; Y happens\n'
+            '</pre>')
+        errs = self._errors(html)
+        self.assertTrue(errs)
+        self.assertIn("then X -> Y happens", errs[0])
+
+    def test_a_block_whose_only_text_is_parked_is_empty(self):
+        # A browser renders nothing here, so mermaid reports "No diagram type
+        # detected" - the empty-block finding is the correct one to raise.
+        html = ('<pre class="mermaid cm-skip"><template>sequenceDiagram\n'
+                '  A-&gt;&gt;B: hi</template></pre>')
+        errs = self._errors(html)
+        self.assertEqual(len(errs), 1)
+        self.assertIn("empty", errs[0])
+
+
 if __name__ == "__main__":
     unittest.main()

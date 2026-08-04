@@ -4,6 +4,25 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.602.0] - 2026-08-04
+
+### Fixed
+
+- The validator no longer syntax-checks inert `<template>` text as if it were mermaid diagram
+  source (CMH-CONTENT-16, CMH-SYN-02). A `<template>`'s children live in its `.content`
+  DocumentFragment, so they are NOT part of the host element's `textContent` - which is exactly
+  what mermaid renders from - but `_DocParser.handle_data()` appended to the current mermaid
+  block's source before its template guards, so a `<template>` nested inside a live
+  `pre.mermaid` / `div.mermaid` fed its parked text to the mermaid checker. Hidden diagram text
+  parked in such a template raised a mermaid syntax error for source the diagram never contains,
+  and no edit to what renders could clear it. The capture now skips data inside a template,
+  closed or left open to end of input. Live text around the template is still checked, and a
+  host whose ONLY text is parked is reported as the EMPTY block it renders as (mermaid's "No
+  diagram type detected"). The reverse direction was already correct - a mermaid host that is
+  itself inside a template is never registered as a live one - so both directions now agree.
+  This is the same class of leak 1.437.0 closed for the prose, heading and cross-reference views
+  and 1.579.0 closed for the wall-of-prose density advisory.
+
 ## [1.601.0] - 2026-08-04
 
 ### Fixed
@@ -40,7 +59,6 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   exporter really carries - and the NonShareable watchdog token now counts only from a script that
   OPENED outside the content region, so one an author left open across the content-end marker
   cannot stand in for the layer's.
-
 ## [1.600.0] - 2026-08-04
 
 ### Fixed

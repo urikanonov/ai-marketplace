@@ -1893,8 +1893,13 @@ class _DocParser(_BrowserBoundaries):
         # Capture the raw source text of the current mermaid block (entities are already
         # decoded because convert_charrefs=True), so the mermaid syntax checker can read it.
         # Only meaningful before the diagram renders to <svg>; a rendered block's has_svg
-        # flag lets the checker skip it.
-        if self._mermaid_stack and self._mermaid_stack[-1] is not None:
+        # flag lets the checker skip it. Text parked in a nested <template> is NOT part of
+        # the host's textContent (it lives in the template's inert DocumentFragment), which
+        # is exactly what mermaid renders from - so it is no more diagram source than a
+        # template-parked heading is heading text, and `_record()` already declines to
+        # register a mermaid host that is itself inside a template.
+        if (self._mermaid_stack and self._mermaid_stack[-1] is not None
+                and not self._in_template()):
             self.mermaid_blocks[self._mermaid_stack[-1]].setdefault("src_parts", []).append(data)
         if self._raw_captures:
             cap = self._current_raw_capture()
