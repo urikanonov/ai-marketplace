@@ -4,6 +4,30 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.680.0] - 2026-08-04
+
+### Fixed
+
+- A `<link>` that fetches through `imagesrcset` no longer rides through an Offline export, or past
+  `validate.py --strict` in offline mode (CMH-OFFLINE-04, CMH-VAL-08). A preload link needs no
+  `href` at all: `<link rel="preload" as="image" imagesrcset="https://host/a.png 1x">` was measured
+  issuing that request in a real Chromium, and `imagesizes` rides with it - but the export strip
+  read `link[href]` only and the strict validator checked `("link", ("href",))`, so both attributes
+  were invisible to both sides. In an offline export the zero-network CSP still blocks the fetch
+  (`img-src data:`), and in shareable mode the value would only ever have been a warning; but the
+  strip and the gate are the layer that is not supposed to DEPEND on the CSP, which is why this is
+  fixed in the attribute set rather than left to the policy. Both implementations now read
+  `imagesrcset` - tokenized as a SRCSET through the shared `_offlineSrcsetCandidateUrls` /
+  `srcset_candidate_urls`, so one network candidate among local ones is caught and a descriptor is
+  never mistaken for a URL - and `imagesizes`, as one value. The two attribute sets
+  (`_OFFLINE_LINK_IMAGE_ATTRS`, `LINK_IMAGE_ATTRS`) are pinned to each other by a parity test, the
+  way the script-load set is, because an attribute only one side reads is either an unstripped
+  fetch the gate blesses or an exported file its own `--strict` run rejects. Unlike the `href`
+  pass, which removes a fetching link outright, this clears the ATTRIBUTE and keeps the element -
+  a `rel`/`as` link is metadata an author wrote, and there is no load left once the URL is gone -
+  so both sides are `rel`-blind, and a local candidate list, a `data:` candidate and an ordinary
+  `imagesizes` value are left exactly as authored.
+
 ## [1.678.0] - 2026-08-04
 
 ### Fixed
@@ -77,7 +101,6 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   corpus cannot see a drift on a spelling it does not carry, and a nine-character alternation has
   far more spellings than any corpus can list.
 ### Changed
-
 
 ## [1.677.0] - 2026-08-04
 

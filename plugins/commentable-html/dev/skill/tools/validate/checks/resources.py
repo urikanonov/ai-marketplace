@@ -340,6 +340,18 @@ def srcset_has_network(value):
 SCRIPT_LOAD_ATTRS = ("src", "href", "xlink:href")
 
 
+# The two attributes through which a `<link>` fetches with NO `href` at all. A
+# `<link rel="preload" as="image" imagesrcset="https://host/a.png 1x">` issued a request for that
+# host in a real Chromium, and both this gate and the export strip read only `href` on a link, so
+# the load was invisible to both (#999). `imagesrcset` is a SRCSET (tokenized through
+# `srcset_candidate_urls`); `imagesizes` rides with it and is read as one value. Kept beside
+# `SCRIPT_LOAD_ATTRS` for the same reason it is: the offline strip carries the same list as
+# `_OFFLINE_LINK_IMAGE_ATTRS`, and `test_the_python_and_js_link_image_attributes_agree` pins the two
+# together, because an attribute only one side reads is either an unstripped fetch this gate
+# blesses or an exported file its own `--strict` run rejects.
+LINK_IMAGE_ATTRS = ("imagesrcset", "imagesizes")
+
+
 # A DIRECT scripted top-level navigation to a network URL, in an inline script an offline file
 # still carries. It is a SCAN rather than one pattern, and the shared parts below are BYTE-IDENTICAL
 # to the same-named regex literals in assets/js/68-export-offline.js (including the JS-only `\/`

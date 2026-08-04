@@ -100,10 +100,20 @@ def _check_self_contained(html, parser):
     # Parsed once per TAG (not once per tag/attribute pair): `_find_tag_attrs_egress` runs a full
     # pure-Python tokenizer pass over the whole document, and the widened script set would
     # otherwise triple that cost for scripts alone.
-    for tag, attrs in (("link", ("href",)), ("script", SCRIPT_LOAD_ATTRS), ("iframe", ("src",))):
+    # A `<link>` fetches through more than its `href`: a preload link carries the URL in
+    # `imagesrcset` instead, with NO href at all - `<link rel="preload" as="image"
+    # imagesrcset="https://host/a.png 1x">` was measured issuing that request in a real Chromium -
+    # and `imagesizes` rides with it. Both used to be invisible here and to the export strip alike
+    # (#999). `imagesrcset` is tokenized as a SRCSET through the same shared helper the `img` and
+    # `source` checks use, since a candidate carries a descriptor after it and a comma can sit
+    # inside the URL. The `rel` is deliberately NOT consulted for these two, though it is for
+    # `href`: the strip clears the ATTRIBUTE rather than removing the element (a `rel`/`as` link is
+    # not content a reader loses), so it is rel-blind, and a gate that consulted `rel` would drift
+    # from it in both directions.
+    for tag, attrs in (("link", ("href",) + LINK_IMAGE_ATTRS), ("script", SCRIPT_LOAD_ATTRS), ("iframe", ("src",))):
         for el in _find_tag_attrs_egress(html, tag):
             for attr in attrs:
-                _check_network_attr(tag, el, attr)
+                _check_network_attr(tag, el, attr, srcset=(attr == "imagesrcset"))
     # A <base href> is not itself a load, which is why neither this gate nor the export strip used
     # to look at one - and both treat a RELATIVE reference as safe, which is the whole control case.
     # A base element REBASES every relative reference in the document onto the base it names, so the

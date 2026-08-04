@@ -797,6 +797,66 @@ class NewCheckTests(unittest.TestCase):
         self.assertEqual(errors, [], errors)
         self.assertEqual(warnings, [], warnings)
 
+    # A preload link fetches with NO `href` at all: `<link rel="preload" as="image"
+    # imagesrcset="https://host/a.png 1x">` issued a request for `https://host/a.png` in a real
+    # Chromium, and this gate read only the `href` attribute on a link, so the load was invisible
+    # to it (#999). The value is a SRCSET, so it is tokenized through the shared
+    # `srcset_candidate_urls` the `img`/`source` checks already use rather than tested whole -
+    # a candidate carries a descriptor after it, and a comma may sit inside the URL.
+    def test_offline_mode_rejects_a_preload_link_that_fetches_through_imagesrcset(self):
+        for value in ("https://evil.example/a.png 1x",
+                      "//evil.example/a.png 1x, //evil.example/b.png 2x",
+                      "local.png 1x, https://evil.example/b.png 2x",
+                      " \t https://evil.example/a.png"):
+            with self.subTest(value=value):
+                markup = '<link rel="preload" as="image" imagesrcset="%s">' % value
+                errors, _ = self._errs_warns(
+                    with_offline_mode(build(body=self._body(MAIN, markup))))
+                self.assertTrue(any("offline mode" in e and "<link imagesrcset" in e
+                                    and "evil.example" in e for e in errors), (value, errors))
+
+    # `imagesizes` rides with `imagesrcset`, and it is read the same way both sides read it: as one
+    # value, not a srcset. Its grammar holds media conditions and lengths rather than URLs, so a
+    # network value there is malformed either way - but reading it costs nothing and keeps the
+    # attribute pair covered on both sides rather than half of it.
+    def test_offline_mode_rejects_a_network_imagesizes_on_a_link(self):
+        markup = '<link rel="preload" as="image" imagesizes="https://evil.example/sizes">'
+        errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, markup))))
+        self.assertTrue(any("offline mode" in e and "<link imagesizes" in e for e in errors),
+                        errors)
+
+    # The two attributes are read whatever the `rel` says, on both sides. The `href` check skips a
+    # non-fetching rel because a `rel=canonical` href really loads nothing, but the export strip
+    # clears these two attributes rel-blind (it clears an ATTRIBUTE rather than removing the
+    # element, so there is no content to lose), and a gate that consulted `rel` would then reject
+    # nothing the strip had left - or bless a shape it clears. Agreement by construction.
+    def test_offline_mode_reads_link_image_attributes_whatever_the_rel_says(self):
+        markup = '<link rel="canonical" imagesrcset="https://evil.example/a.png 1x">'
+        errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, markup))))
+        self.assertTrue(any("offline mode" in e and "<link imagesrcset" in e for e in errors),
+                        errors)
+
+    # Outside offline mode a fetching link is a WARNING rather than an error, exactly as an `href`
+    # is - the self-contained guarantee is not offline-only, but a shareable file may legitimately
+    # reference a CDN, so the report says so without rejecting the document.
+    def test_a_network_imagesrcset_warns_in_shareable_mode(self):
+        markup = '<link rel="preload" as="image" imagesrcset="https://evil.example/a.png 1x">'
+        errors, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+        self.assertEqual(errors, [], errors)
+        self.assertTrue(any("imagesrcset" in w and "evil.example" in w for w in warnings), warnings)
+
+    # The control: a relative or `data:` candidate resolves inside the file, and a `sizes` value of
+    # the shape authors actually write is not a URL at all, so widening the link attribute set
+    # cannot start rejecting a document with no egress.
+    def test_offline_mode_accepts_a_local_imagesrcset_on_a_link(self):
+        markup = ('<link rel="preload" as="image" imagesrcset="local.png 1x, tile-2x.png 2x" '
+                  'imagesizes="(max-width: 600px) 100vw, 50vw">\n'
+                  '<link rel="preload" as="image" '
+                  'imagesrcset="data:image/gif;base64,R0lGODlhAQABAAAAACw= 1x">')
+        errors, warnings = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, markup))))
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
     # Hyperlink auditing: a click POSTs to every URL in `ping`, and neither the export strip nor
     # this gate looked at the attribute (#992). CSP Level 3 folds auditing into `connect-src`,
     # which the offline policy does set to `'none'`, so a current browser most likely absorbs it -
