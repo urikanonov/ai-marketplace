@@ -31,6 +31,17 @@ auto-run into arbitrary code execution with a privileged token, or leak a secret
            script, so the runner passes it as data, never as code. This also blunts
            prompt-injection reaching any LLM step downstream of the shell.
 
+  RULE E - A job whose checkout requests FULL history (`fetch-depth: 0`) must not declare a
+           `timeout-minutes` a full clone of this repository can plausibly exceed. History
+           (issue #951): the `changes` and `version-lane` jobs were cancelled at 5m1s-5m4s
+           under runner contention while their full clone was still running - and because the
+           aggregate `plugin-tests` gate is deliberately fail-CLOSED, a cancelled `changes`
+           reddened a REQUIRED check that said nothing about the PR. A timeout that loses a
+           race with a checkout catches no hung job; it only manufactures flaky reds. A job
+           with no `timeout-minutes` at all is not flagged (GitHub's 6-hour default cannot
+           lose that race), and neither is a non-numeric budget, which cannot be evaluated
+           statically.
+
 Exit non-zero on any violation. Standard library plus PyYAML only.
 """
 import glob
@@ -142,6 +153,52 @@ def _iter_run_scripts(doc):
                 yield job_id, idx, step["run"]
 
 
+# RULE E: the smallest timeout a job may declare when its checkout clones the full history.
+# Observed spurious cancellations sat at 5m under runner contention, so 5 is not a budget - it is
+# a coin flip. Ten minutes leaves the clone room while still catching a genuinely hung job.
+FULL_HISTORY_MIN_TIMEOUT = 10
+_CHECKOUT_STEP_RE = re.compile(r"^actions/checkout(?:@|$)")
+
+
+def _is_full_history_checkout(step):
+    """True when a step is an actions/checkout that asks for the whole history."""
+    if not isinstance(step, dict):
+        return False
+    uses = step.get("uses")
+    if not isinstance(uses, str) or not _CHECKOUT_STEP_RE.match(uses.strip().strip("\"'")):
+        return False
+    with_ = step.get("with")
+    if not isinstance(with_, dict):
+        return False
+    # YAML gives an int for `fetch-depth: 0` and a str for `fetch-depth: "0"`; both mean full.
+    return str(with_.get("fetch-depth", "")).strip() == "0"
+
+
+def check_job_budgets(doc, rel):
+    """RULE E: a full-history checkout must not race the job's own timeout."""
+    violations = []
+    jobs = doc.get("jobs")
+    if not isinstance(jobs, dict):
+        return violations
+    for job_id, job in jobs.items():
+        if not isinstance(job, dict):
+            continue
+        steps = job.get("steps")
+        if not isinstance(steps, list) or not any(_is_full_history_checkout(s) for s in steps):
+            continue
+        budget = job.get("timeout-minutes")
+        if isinstance(budget, bool) or not isinstance(budget, (int, float)):
+            continue  # unset (6-hour default) or an expression we cannot evaluate statically
+        if budget < FULL_HISTORY_MIN_TIMEOUT:
+            violations.append(
+                rel + ": RULE E - job '" + str(job_id) + "' checks out with fetch-depth: 0 but "
+                "budgets only " + str(budget) + " minute(s). A full clone of this repository can "
+                "exceed that under runner contention, and the job is then CANCELLED - a red that "
+                "says nothing about the change (issue #951). Budget at least "
+                + str(FULL_HISTORY_MIN_TIMEOUT) + " minutes, or make the checkout cheaper.")
+    return violations
+
+
 def check_workflow(path):
     """Return a list of violation strings for one workflow file."""
     rel = _rel(path)
@@ -187,6 +244,9 @@ def check_workflow(path):
                     + " interpolates attacker-controllable context `" + hit.group(0)
                     + "` straight into a run: shell (script injection). Bind it to an env: var and "
                     'reference it as "$VAR" in the script so the runner passes it as data, not code.')
+
+    # RULE E: a full-history checkout must not lose a race with the job's own timeout.
+    violations.extend(check_job_budgets(doc, rel))
 
     return violations
 

@@ -120,7 +120,9 @@ jobs:
 
   version-bump:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # A full-history checkout (below) must not lose a race with its own timeout - see RULE E in
+    # scripts/check_workflow_policy.py and issue #951.
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -140,7 +142,8 @@ jobs:
 
   dependency-cooldown:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Full-history checkout budget; see RULE E in scripts/check_workflow_policy.py (issue #951).
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -236,7 +239,10 @@ jobs:
   # script gracefully SKIPS (green) if it cannot list open PRs, so no widened token is needed.
   version-lane:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # It reads dev/VERSION at the PR base, so it needs history - and a 5-minute budget lost that
+    # race under runner contention, reporting an advisory red that said nothing about the PR
+    # (issue #951). See RULE E in scripts/check_workflow_policy.py.
+    timeout-minutes: 10
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout

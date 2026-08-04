@@ -227,9 +227,136 @@ class RuleDTests(unittest.TestCase):
             self.assertEqual([x for x in cwp.check_workflow(p) if "RULE D" in x], [])
 
 
+class RuleETests(unittest.TestCase):
+    """A full-history checkout must not race its own job timeout (issue #951)."""
+
+    def _wf(self, job_body):
+        return ("on:\n  pull_request:\n"
+                "jobs:\n  j:\n    runs-on: ubuntu-latest\n" + job_body)
+
+    def _v(self, job_body):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = _write(tmp, "wf.yml", self._wf(job_body))
+            return [x for x in cwp.check_workflow(p) if "RULE E" in x]
+
+    _FULL_CHECKOUT = ("    steps:\n"
+                      "      - uses: actions/checkout@v4\n"
+                      "        with:\n"
+                      "          fetch-depth: 0\n")
+
+    def test_full_history_checkout_under_the_minimum_budget_fails(self):
+        v = self._v("    timeout-minutes: 5\n" + self._FULL_CHECKOUT)
+        self.assertTrue(v, "a fetch-depth: 0 job budgeted below the minimum must be flagged")
+        self.assertIn("fetch-depth: 0", v[0])
+
+    def test_full_history_checkout_at_the_minimum_budget_passes(self):
+        self.assertEqual(
+            self._v("    timeout-minutes: %d\n" % cwp.FULL_HISTORY_MIN_TIMEOUT + self._FULL_CHECKOUT),
+            [],
+        )
+
+    def test_quoted_fetch_depth_is_still_a_full_history_checkout(self):
+        v = self._v("    timeout-minutes: 5\n"
+                    "    steps:\n"
+                    "      - uses: actions/checkout@v4\n"
+                    "        with:\n"
+                    '          fetch-depth: "0"\n')
+        self.assertTrue(v, "fetch-depth as a quoted string must not evade the rule")
+
+    def test_a_shallow_checkout_may_keep_a_short_budget(self):
+        self.assertEqual(
+            self._v("    timeout-minutes: 5\n"
+                    "    steps:\n"
+                    "      - uses: actions/checkout@v4\n"
+                    "        with:\n"
+                    "          persist-credentials: false\n"),
+            [],
+        )
+
+    def test_an_unbudgeted_job_is_not_flagged(self):
+        # No timeout-minutes means GitHub's 6-hour default, which cannot lose a race with a clone.
+        self.assertEqual(self._v(self._FULL_CHECKOUT), [])
+
+    def test_a_non_numeric_budget_is_not_flagged(self):
+        # An expression cannot be evaluated statically; do not guess.
+        self.assertEqual(
+            self._v("    timeout-minutes: ${{ fromJSON(inputs.budget) }}\n" + self._FULL_CHECKOUT),
+            [],
+        )
+
+    def test_the_offending_job_is_named(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = _write(tmp, "wf.yml",
+                       "on:\n  pull_request:\n"
+                       "jobs:\n  changes:\n    runs-on: ubuntu-latest\n"
+                       "    timeout-minutes: 5\n" + self._FULL_CHECKOUT)
+            v = [x for x in cwp.check_workflow(p) if "RULE E" in x]
+            self.assertTrue(v)
+            self.assertIn("changes", v[0])
+
+
+class SpecCoverageTest(unittest.TestCase):
+    """`scripts/SPEC.md`'s CI-POLICY rows must name tests that exist in this suite.
+
+    Same self-enforcing shape as the REPO-GUARD rows in `scripts/test_check_forbidden_files.py`:
+    the rows are held to the spec-and-test discipline locally, so a row cannot promise coverage
+    that nobody checks.
+    """
+
+    _SPEC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "SPEC.md")
+
+    def _rows(self):
+        with open(self._SPEC, "r", encoding="utf-8") as fh:
+            text = fh.read()
+        return [line for line in text.splitlines() if line.startswith("| CI-POLICY-")]
+
+    def test_every_named_test_exists(self):
+        import re
+        module = sys.modules[__name__]
+        rows = self._rows()
+        self.assertTrue(rows, "the spec declares no CI-POLICY feature ids")
+        for line in rows:
+            feature_id = line.split("|")[1].strip()
+            coverage = line.split("|")[3]
+            named = re.findall(r"`([A-Za-z_]\w*Test(?:s)?\.test_\w+)`", coverage)
+            with self.subTest(feature_id=feature_id):
+                self.assertTrue(named, f"{feature_id} names no covering test")
+                foreign = [
+                    ref for ref in re.findall(r"`(scripts/[\w./-]+\.py)`", coverage)
+                    if ref != "scripts/test_check_workflow_policy.py"
+                ]
+                self.assertEqual(
+                    foreign, [],
+                    f"{feature_id} cites a suite this test cannot verify",
+                )
+                for ref in named:
+                    cls_name, method = ref.split(".", 1)
+                    cls = getattr(module, cls_name, None)
+                    self.assertIsNotNone(cls, f"{feature_id}: {cls_name} is not in this suite")
+                    self.assertTrue(
+                        callable(getattr(cls, method, None)), f"{feature_id}: {ref} does not exist"
+                    )
+
+    def test_every_feature_id_is_declared_once(self):
+        ids = [line.split("|")[1].strip() for line in self._rows()]
+        self.assertTrue(ids, "the spec declares no CI-POLICY feature ids")
+        self.assertEqual(len(ids), len(set(ids)), f"duplicate feature-id rows: {ids}")
+
+
 class RealRepoTests(unittest.TestCase):
     def test_current_workflows_satisfy_the_policy(self):
         self.assertEqual(cwp.main(), 0)
+
+    def test_every_full_history_job_budgets_for_the_clone(self):
+        # The concrete regression from issue #951: `changes` and `version-lane` were cancelled at
+        # 5m under runner contention while their fetch-depth: 0 clone was still running, and a
+        # cancelled `changes` reds the required (fail-closed) plugin-tests gate.
+        import glob
+        offenders = []
+        for path in sorted(glob.glob(os.path.join(cwp.WORKFLOWS_DIR, "*.yml"))
+                           + glob.glob(os.path.join(cwp.WORKFLOWS_DIR, "*.yaml"))):
+            offenders.extend(x for x in cwp.check_workflow(path) if "RULE E" in x)
+        self.assertEqual(offenders, [])
 
 
 if __name__ == "__main__":

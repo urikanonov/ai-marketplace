@@ -47,7 +47,7 @@ jobs:
   # success). Fails SAFE: if the diff cannot be computed, it runs the suites.
   changes:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     outputs:
       run_plugin: ${{ steps.filter.outputs.run_plugin }}
     steps:
@@ -55,7 +55,14 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          # Full history is needed to resolve the PR base/head and their merge base, but the
+          # BLOBS are not: `git diff --name-only --no-renames` reads trees only, and a blobless
+          # partial clone carries every tree. This repository's history is heavy with large
+          # generated bundles, so the filter is what keeps this ~2-second git diff from losing a
+          # race with its own checkout (issue #951: cancelled at 5m1s-5m4s under contention,
+          # which reds the fail-closed gate below). The raised timeout is the belt to that brace.
           fetch-depth: 0
+          filter: blob:none
       - name: Decide whether to run the plugin suites
         id: filter
         shell: bash
@@ -77,8 +84,11 @@ jobs:
           fi
           # Use -z (NUL-separated, unquoted) so a non-ASCII plugin path is not C-quoted to
           # `"plugins/...` and missed by the ^plugins/ matcher (which would wrongly skip the
-          # suites). A git-diff failure fails SAFE to running.
-          changed=$(git diff --name-only -z "$BASE_SHA...$HEAD_SHA" | tr '\0' '\n') || {
+          # suites). --no-renames keeps this a TREE-only diff: rename detection compares blob
+          # CONTENT, which in the blobless clone above would lazily refetch blobs over the
+          # network. Renames are irrelevant here anyway - a renamed file shows up as a delete
+          # plus an add, which errs toward running the suites. A git-diff failure fails SAFE.
+          changed=$(git diff --name-only --no-renames -z "$BASE_SHA...$HEAD_SHA" | tr '\0' '\n') || {
             echo "run_plugin=true" >> "$GITHUB_OUTPUT"
             echo "git diff failed; running the plugin suites (fail-safe)."
             exit 0

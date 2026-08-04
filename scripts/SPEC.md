@@ -6,23 +6,27 @@ tracked-file guards that the required `validate` and `cross-platform` CI jobs ru
 bad change reaching `main` - but they are still behavior, so the spec-and-test discipline in
 `AGENTS.md` applies to them: a change here needs a feature-id row naming a covering test.
 
-This spec is seeded with `scripts/check_forbidden_files.py`, the tracked-file guard. Other guard
-scripts are covered by their own `scripts/test_*.py` suites and join this table as they are
-changed. Every row's test runs under `python scripts/run_script_tests.py` (the required `validate`
-and `cross-platform` jobs, and the opt-in `PREPUSH_TESTS=1` hook path).
+This spec is seeded with `scripts/check_forbidden_files.py`, the tracked-file guard, and carries the
+CI-policy rows for `scripts/check_workflow_policy.py`. Other guard scripts are covered by their own
+`scripts/test_*.py` suites and join this table as they are changed. Every row's test runs under
+`python scripts/run_script_tests.py` (the required `validate` and `cross-platform` jobs, and the
+opt-in `PREPUSH_TESTS=1` hook path).
 
 The rows below are self-enforcing: `SpecCoverageTest` in `scripts/test_check_forbidden_files.py`
-fails if a row names no covering test, names one that does not exist, repeats a feature id, or
-cites a suite it cannot resolve. That is local rather than an entry in the `SPEC_TARGETS` registry
+(for the `REPO-GUARD` rows) and `SpecCoverageTest` in `scripts/test_check_workflow_policy.py` (for
+the `CI-POLICY` rows) fail if a row names no covering test, names one that does not exist, repeats a
+feature id, or cites a suite it cannot resolve. That is local rather than an entry in the
+`SPEC_TARGETS` registry
 of `scripts/check_spec_test_refs.py` for a structural reason, not a coverage one: that checker
 locates a target's tests as `<spec dir>/tests` or `<base>/tests` and builds its reverse corpus from
 `*.spec.*` / `*.test.*` files, neither of which fits a flat Python suite living beside the scripts
 it covers, so registering this spec today would fail closed with "no tests directory found".
 Teaching the checker that shape is tracked separately; until then the rows are held to the same
-standard here, and a row that reaches outside this suite fails rather than going unchecked.
+standard here, and a row that reaches outside its own suite fails rather than going unchecked.
 
-Coverage notation: each row names the covering test class and method in
-`scripts/test_check_forbidden_files.py`.
+Coverage notation: each `REPO-GUARD` row names the covering test class and method in
+`scripts/test_check_forbidden_files.py`; each `CI-POLICY` row names one in
+`scripts/test_check_workflow_policy.py`.
 
 | Feature id | Behavior | Covering test |
 | --- | --- | --- |
@@ -34,9 +38,14 @@ Coverage notation: each row names the covering test class and method in
 | REPO-GUARD-06 | A non-ASCII path survives both hops that would otherwise corrupt it, each of which is a silent allowlist miss: `-z` changes only the delimiter, so `core.quotePath=false` is what stops git C-quoting the name, and an explicit UTF-8 decode is what stops Python reading git's path bytes with the locale codec (cp1252 on Windows). | `TrackedFilesEncodingTest.test_a_non_ascii_name_is_reported_literally` |
 | REPO-GUARD-07 | The guard EXITS non-zero and names the offender, rather than merely classifying it. That is the behavior the required `validate` job and the pre-commit hook depend on, and it is what the classifier unit tests above cannot observe. An offender is named once even when git reports it several times (an unmerged path is listed once per stage), and a name that is not valid UTF-8 is rendered so it can always be printed - a `UnicodeEncodeError` on a narrow console would replace the refusal with a traceback at the one moment the message matters most. | `GuardExitStatusTest.test_a_root_scratch_dump_fails_the_guard`, `GuardExitStatusTest.test_a_dump_in_an_unapproved_directory_fails_the_guard`, `GuardExitStatusTest.test_an_offender_is_named_once`, `GuardExitStatusTest.test_a_clean_tree_passes`, `DisplayPathTest.test_a_surrogate_bearing_name_survives_a_narrow_console`, `DisplayPathTest.test_an_ordinary_name_is_unchanged` |
 | REPO-GUARD-08 | Every row in this spec names at least one covering test that really exists in the suite, no feature id is declared twice, and a row that cites a suite this check cannot resolve fails rather than going unverified. | `SpecCoverageTest.test_every_named_test_exists`, `SpecCoverageTest.test_every_feature_id_is_declared_once` |
+| CI-POLICY-01 | RULE E: a job whose checkout requests FULL history (`fetch-depth: 0`) may not declare a `timeout-minutes` a full clone of this repository can exceed (the minimum is 10). A timeout that loses a race with a checkout catches no hung job - it manufactures a flaky red, which for the fail-closed `plugin-tests` gate meant a REQUIRED check going red while every shard would have passed (issue #951, cancellations at 5m1s-5m4s). A job with no `timeout-minutes` (GitHub's 6-hour default) or a non-numeric one is not flagged, and a shallow checkout may keep a short budget. | `RuleETests.test_full_history_checkout_under_the_minimum_budget_fails`, `RuleETests.test_full_history_checkout_at_the_minimum_budget_passes`, `RuleETests.test_quoted_fetch_depth_is_still_a_full_history_checkout`, `RuleETests.test_a_shallow_checkout_may_keep_a_short_budget`, `RuleETests.test_an_unbudgeted_job_is_not_flagged`, `RuleETests.test_a_non_numeric_budget_is_not_flagged`, `RuleETests.test_the_offending_job_is_named` |
+| CI-POLICY-02 | The repository's own workflows satisfy every rule, RULE E included, so the gate is enforced against the real `.github/workflows` tree rather than only synthetic fixtures. | `RealRepoTests.test_current_workflows_satisfy_the_policy`, `RealRepoTests.test_every_full_history_job_budgets_for_the_clone` |
+| CI-POLICY-03 | Every CI-POLICY row names at least one covering test that really exists in this suite, no feature id is declared twice, and a row citing a suite this check cannot resolve fails rather than going unverified. | `SpecCoverageTest.test_every_named_test_exists`, `SpecCoverageTest.test_every_feature_id_is_declared_once` |
 
 ## Coverage gaps
 
 None for the rows above. This spec deliberately does not yet enumerate every script under
 `scripts/`; those behaviors are covered by their own `scripts/test_*.py` suites and are added here
-as each is changed, rather than backfilled in one sweep.
+as each is changed, rather than backfilled in one sweep. RULES A-D of
+`scripts/check_workflow_policy.py` are covered by `RuleATests`-`RuleDTests` in
+`scripts/test_check_workflow_policy.py` and join the table above as they are next changed.
