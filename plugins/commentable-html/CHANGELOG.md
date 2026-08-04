@@ -4,6 +4,37 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.667.0] - 2026-08-04
+
+### Changed
+
+- Documented the identifier escape in the offline navigation sink chain as a deliberate residual of
+  the strip, in BOTH of its directions, rather than leaving the CMH-OFFLINE-05 residual list
+  understating it. A UnicodeEscapeSequence that decodes to a legal identifier character may appear
+  inside an IdentifierName and names exactly the same property, so an escape in ANY identifier of
+  the chain and at any position in it - a prefix name, the sink name, or the
+  `href`/`assign`/`replace` after it, in either the `\u006E` or the `\u{6E}` form
+  (`window.locatio\u006E.href`, `window.\u006Fpen(...)`, `location.hre\u0066`) - walks past both the
+  exporter's strip and the strict validator, which match all of those as literal text. The one shape
+  that survives the escape is a prefix name separated from its `.` (or `?.`) by WHITESPACE: the
+  backwards walk skips that run and finds a legal boundary at it, so the literal remainder of the
+  chain qualifies on its own. That is incidental rather than a defence - the same whitespace makes
+  an arbitrary `zzz . location.href` match - and the corpus pins it beside a non-escaped control so
+  it cannot be misread as one. The same literal matching cuts the other way in the local-binding
+  shadow rule, and that direction costs an author content instead of letting a beacon out: an
+  escaped `location` declaration does not register as a shadow, so a script that navigates nothing
+  is deleted whole.
+- Both directions are a decision, not an oversight. Recognizing each name as literal-or-escaped per
+  character is possible without backtracking, but it turns a plain literal anchor search into a
+  per-position automaton over every inline script - the exporter runs the same scan over the
+  vendored payload's inflated megabytes - to close a channel computed access (`location["href"]`)
+  already leaves open for a shorter edit. It also caps how much further hardening the URL literal is
+  worth: an author who will not write an encoded scheme can write an encoded sink name for the same
+  cost. The residual list, the runtime comment and the validator comment now say so, and a corpus
+  pins every direction in BOTH engines against its plain-spelled twin - each escaped sample must
+  DERIVE from that twin by substituting one parser-verified spelling, and each is compiled in the
+  position it is actually used in - so the decision cannot be reversed, or quietly lost, without a
+  test going red.
 ## [1.666.0] - 2026-08-04
 
 ### Fixed

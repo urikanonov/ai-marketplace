@@ -293,6 +293,27 @@ SCRIPT_LOAD_ATTRS = ("src", "href", "xlink:href")
 # a `javascript:` wrapper that assigns the real URL at runtime - the latter a deliberate trade
 # rather than a visibility limit, since a script able to write it already runs arbitrary code. Both
 # are listed in the CMH-OFFLINE-05 residual.
+# The SINK side keeps a residual of the same shape, and it caps what tightening the URL literal
+# further is worth: a UnicodeEscapeSequence that decodes to a legal identifier character may appear
+# inside an IdentifierName and names exactly the same property, so an escape in ANY identifier of
+# the chain - a prefix name, the sink name, or the property name (`locatio\u006E`, `\u006Fpen`,
+# `hre\u0066`, either the `\u006E` or the `\u{6E}` form, at any character position including the
+# first) - is invisible to the anchor and tails below, which match those names as literal text. The
+# ONE shape that survives the escape is a prefix name separated from its `.` (or `?.`) by
+# WHITESPACE: the walk skips that run and finds a legal boundary at it, so the literal remainder of
+# the chain qualifies on its own and `windo\u0077 . top.location` is caught where the tight
+# `windo\u0077.top.location` is not. That is incidental rather than a defence - the same whitespace
+# makes an arbitrary `zzz . location` match - and the corpus pins it beside a non-escaped control.
+# The same literal matching cuts the other way in
+# `OFFLINE_LOCAL_LOCATION_RE`, and that direction costs an author content rather than letting a
+# beacon out: an ESCAPED local `location` declaration does not register as a shadow, so a script
+# that navigates nothing is rejected whole. Both are DECIDED, not overlooked. Recognizing each name
+# as literal-or-escaped per character is possible without backtracking, but it turns a plain literal
+# anchor search into a per-position automaton over every inline script - the exporter's copy of this
+# scan runs over the vendored payload's inflated megabytes too - to close a channel computed access
+# (`location["href"]`) already leaves open for a shorter edit. Documented in the CMH-OFFLINE-05
+# residual and pinned in BOTH engines, in both directions and against their plain-spelled controls,
+# by `test_the_escaped_identifier_sink_is_the_documented_residual_in_both_engines`.
 OFFLINE_NAV_ANCHOR_RE = re.compile(r"location|open", re.IGNORECASE | re.ASCII)
 OFFLINE_NAV_PROP_TAIL_RE = re.compile(
     r"[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:\?[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\.[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"

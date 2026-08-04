@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.666.0" />
+<meta name="commentable-html-version" content="1.667.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.666.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.667.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable Visuals Matrix</title>
 
@@ -4516,7 +4516,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.666.0";
+const CMH_VERSION = "1.667.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -18226,9 +18226,30 @@ function _offlineScriptHasNetworkImport(body) {
 // below make the pattern mean the same thing in both engines.
 // Deliberately literal, matching the import test next to it - and therefore NOT a boundary. It sees
 // only these sinks, written out directly: an alias (`var l = location; l.href = ...`), computed
-// access (`location["href"]`), a comment between the sink and the URL, a URL assembled at runtime,
-// or an entirely different sink (a synthesized anchor click, a script-injected refresh meta) all
-// pass through. A BARE unprefixed `open(<url>)` is deliberately not matched either: in raw source
+// access (`location["href"]`), an IDENTIFIER ESCAPE in any identifier of the chain, a
+// comment between the sink and the URL, a URL assembled at runtime, or an entirely different sink
+// (a synthesized anchor click, a script-injected refresh meta) all pass through. The identifier
+// escape is the one worth naming, because the anchors below are what the widened URL literal is
+// matched FROM: a UnicodeEscapeSequence that decodes to a legal identifier character may appear
+// inside an IdentifierName and names exactly the same property, so an escaped prefix name, an
+// escaped sink name, or an escaped `href`/`assign`/`replace` (`locatio\u006E`, `\u006Fpen`,
+// `hre\u0066`, either the `\u006E` or the `\u{6E}` form, at any character position including the
+// first) steps around text matched literally. The ONE shape that survives the escape is a prefix
+// name separated from its `.` (or `?.`) by WHITESPACE: the walk below skips that run and finds a
+// legal boundary at it, so the literal remainder of the chain qualifies on its own and
+// `windo\u0077 . top.location` is caught where the tight `windo\u0077.top.location` is not. That is
+// incidental rather than a defence - the same whitespace makes an arbitrary `zzz . location` match
+// - and the corpus pins it beside a non-escaped control so it cannot be read as one. The same
+// literal matching runs the other way too, and that direction costs an author content rather than
+// letting a beacon out: `_OFFLINE_LOCAL_LOCATION_RE` reads a local `location` binding literally, so
+// an ESCAPED declaration does not register as a shadow and a script that navigates nothing is
+// deleted whole. Both are DECIDED rather than overlooked. Recognizing each name as literal-or-
+// escaped per character is possible without backtracking, but it turns a plain literal anchor
+// search into a per-position automaton over every inline script - the vendored payload's inflated
+// megabytes included - to close a channel computed access already leaves open for a shorter edit;
+// that is also why hardening the URL LITERAL further has reached its useful limit, since an author
+// who will not write an encoded scheme can write an encoded sink name.
+// A BARE unprefixed `open(<url>)` is deliberately not matched either: in raw source
 // it cannot be told apart from a local `open` helper, and deleting the wrong script is the costlier
 // error. A bare `location = <url>` is matched only after a delimiter that cannot begin a
 // declaration (`;`, `}`, `)`, `>`, or a line break), so a purely local binding - a `var`/`let`/
