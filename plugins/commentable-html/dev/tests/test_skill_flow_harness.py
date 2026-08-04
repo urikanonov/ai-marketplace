@@ -175,6 +175,11 @@ class ContentCheckTests(unittest.TestCase):
         # use href and CSS url(). Each local form must FAIL; the self-contained forms must PASS.
         for markup in (
             '<img srcset="small.jpg 1x, big.jpg 2x">',
+            # A preload link references a companion the same way, through `imagesrcset` and with no
+            # href at all (issue #999). The alternation this scan uses was `\b`-anchored, and a word
+            # boundary cannot fall between `e` and `s`, so `\bsrcset` never matched inside
+            # `imagesrcset` and the reference was invisible here.
+            '<link rel="preload" as="image" imagesrcset="sidecar.png 1x, sidecar-2x.png 2x">',
             '<video poster="thumb.jpg"></video>',
             '<object data="report.pdf"></object>',
             '<image href="diagram.svg"></image>',
@@ -185,6 +190,7 @@ class ContentCheckTests(unittest.TestCase):
             self.assertFalse(harness._content_check("shareable", self._LAYER + markup)[0], markup)
         for markup in (
             '<img srcset="data:image/png;base64,AAAA 1x">',
+            '<link rel="preload" as="image" imagesrcset="data:image/png;base64,AAAA 1x">',
             '<video poster="https://cdn.example.com/t.jpg"></video>',
             '<use xlink:href="#icon"></use>',
             '<style>.hero{background:url(data:image/png;base64,AAAA)}</style>',

@@ -26,7 +26,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   pass, which removes a fetching link outright, this clears the ATTRIBUTE and keeps the element -
   a `rel`/`as` link is metadata an author wrote, and there is no load left once the URL is gone -
   so both sides are `rel`-blind, and a local candidate list, a `data:` candidate and an ordinary
-  `imagesizes` value are left exactly as authored.
+  `imagesizes` value are left exactly as authored. The same `href`-only blind spot is closed in the
+  two OTHER readers of the question: the deck gate (`skill/tools/deck/deck_validate.py`), where
+  `imagesrcset` was in neither the URL-attribute set nor the egress map, so its dangerous-scheme and
+  parent-directory rules skipped it too, and the companion-asset scan
+  (`tools/skill_flow_harness.py`), whose `\b`-anchored attribute alternation could never match
+  inside `imagesrcset` because a word boundary cannot fall between `e` and `s`.
 
 ## [1.678.0] - 2026-08-04
 

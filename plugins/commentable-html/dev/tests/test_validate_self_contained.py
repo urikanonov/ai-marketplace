@@ -815,6 +815,19 @@ class NewCheckTests(unittest.TestCase):
                 self.assertTrue(any("offline mode" in e and "<link imagesrcset" in e
                                     and "evil.example" in e for e in errors), (value, errors))
 
+    # Wherever it is parked. A `<template>` fragment starts preloading the moment a script adopts
+    # it, and `<noscript>` markup is what a scripting-disabled reader really parses - both of which
+    # the export strip reaches, so the gate must read them through its own egress views or the two
+    # sides disagree about the same document.
+    def test_offline_mode_rejects_a_preload_imagesrcset_wherever_it_is_parked(self):
+        link = '<link rel="preload" as="image" imagesrcset="https://evil.example/a.png 1x">'
+        for markup in ("<template>%s</template>" % link, "<noscript>%s</noscript>" % link):
+            with self.subTest(markup=markup):
+                errors, _ = self._errs_warns(
+                    with_offline_mode(build(body=self._body(MAIN, markup))))
+                self.assertTrue(any("offline mode" in e and "<link imagesrcset" in e
+                                    for e in errors), (markup, errors))
+
     # `imagesizes` rides with `imagesrcset`, and it is read the same way both sides read it: as one
     # value, not a srcset. Its grammar holds media conditions and lengths rather than URLs, so a
     # network value there is malformed either way - but reading it costs nothing and keeps the

@@ -1304,6 +1304,32 @@ class RuntimeParityTests(unittest.TestCase):
                          "reads is either an unstripped preload fetch the gate blesses, or an "
                          "exported file its own --strict run rejects."
                          % (runtime_attrs, tuple(resources.LINK_IMAGE_ATTRS)))
+        # The constants alone are not the whole contract: either side could keep the constant and
+        # then hard-code its own list at the point of USE, which would pass the equality above while
+        # the two implementations diverged. So pin the USE too - the strip's link pass must iterate
+        # the runtime constant, and the gate's link attribute tuple must be built from the Python
+        # one.
+        self.assertIn("_OFFLINE_LINK_IMAGE_ATTRS.forEach", source,
+                      "the offline strip no longer iterates _OFFLINE_LINK_IMAGE_ATTRS in its link "
+                      "pass, so the constant this test pins is no longer what the strip reads")
+        gate_path = os.path.join(_paths.DEV, "skill", "tools", "validate", "checks",
+                                 "layer_parts", "20-resources.py")
+        with open(gate_path, "r", encoding="utf-8", newline="") as fh:
+            gate = fh.read()
+        self.assertIn('("link", ("href",) + LINK_IMAGE_ATTRS)', gate,
+                      "the strict validator's link check no longer builds its attribute tuple from "
+                      "LINK_IMAGE_ATTRS, so the constant this test pins is no longer what the gate "
+                      "reads")
+        # Which of the two is read as a SRCSET is a separate decision on each side, and a list is
+        # not a tokenizer: adding a future srcset-shaped link attribute to both constants would
+        # pass every assertion above while the two sides tokenized it differently. So pin the
+        # treatment too - both must name exactly `imagesrcset` as the candidate-list one.
+        self.assertIn('attr === "srcset" || attr === "imagesrcset"', source,
+                      "the offline strip no longer tokenizes `imagesrcset` as a srcset; a "
+                      "whole-value test would miss a network candidate written beside local ones")
+        self.assertIn('srcset=(attr == "imagesrcset")', gate,
+                      "the strict validator no longer tokenizes `imagesrcset` as a srcset, so it "
+                      "and the export strip would read the same value differently")
 
     # A browser removes leading C0 controls and spaces (U+0000-U+0020) before it parses a URL, so a
     # value padded with those still loads while one padded with NBSP or U+FEFF does not resolve as a

@@ -2849,6 +2849,11 @@ const PRELOAD_IMAGESRCSET_CONTENT = [
   // A template-parked one starts preloading the moment a script adopts the fragment, which is why
   // every load pass walks into templates.
   '<template id="cmh-preload-template"><link id="cmh-preload-parked" rel="preload" as="image" imagesrcset="https://evil.example/parked.png 1x"></template>',
+  // A <noscript>-parked one is markup a scripting-DISABLED browser really parses and preloads, and
+  // it is the axis where the two sides reach the same element by DIFFERENT mechanisms - the export
+  // strip parses into a DOMParser document (scripting off, so this is a real element) while the
+  // gate reads its own noscript egress view - so it is pinned rather than assumed.
+  '<noscript><link id="cmh-preload-noscript" rel="preload" as="image" imagesrcset="https://evil.example/noscript.png 1x"></noscript>',
   // The controls: nothing here reaches the network, so nothing here may change.
   '<link id="cmh-preload-local" rel="preload" as="image" imagesrcset="local-tile.png 1x, local-tile-2x.png 2x" imagesizes="100vw">',
   '<link id="cmh-preload-data" rel="preload" as="image" imagesrcset="data:image/gif;base64,R0lGODlhAQABAAAAACw= 1x">',
@@ -2883,13 +2888,15 @@ test("CMH-OFFLINE-04: a preload link's imagesrcset and imagesizes are stripped f
     expect(exportedHtml, "no preload fetch may survive").not.toContain("evil.example");
     // Neutralized, not deleted: a `rel`/`as` link is metadata the author wrote.
     for (const id of ["cmh-preload-net", "cmh-preload-mixed", "cmh-preload-norel",
-      "cmh-preload-sizes", "cmh-preload-parked", "cmh-preload-local", "cmh-preload-data"]) {
+      "cmh-preload-sizes", "cmh-preload-parked", "cmh-preload-noscript", "cmh-preload-local",
+      "cmh-preload-data"]) {
       expect(exportedHtml, `${id} must be kept as an element`).toContain(`id="${id}"`);
     }
     expect(attrOfId(exportedHtml, "cmh-preload-net", "imagesrcset")).toBeUndefined();
     expect(attrOfId(exportedHtml, "cmh-preload-mixed", "imagesrcset")).toBeUndefined();
     expect(attrOfId(exportedHtml, "cmh-preload-norel", "imagesrcset")).toBeUndefined();
     expect(attrOfId(exportedHtml, "cmh-preload-parked", "imagesrcset")).toBeUndefined();
+    expect(attrOfId(exportedHtml, "cmh-preload-noscript", "imagesrcset")).toBeUndefined();
     expect(attrOfId(exportedHtml, "cmh-preload-sizes", "imagesizes")).toBeUndefined();
     // ...and no further. An `imagesizes` that names no URL is left exactly as authored even on the
     // link whose `imagesrcset` went: it fetches nothing on its own, and removing it would be
