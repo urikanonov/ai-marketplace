@@ -18,11 +18,6 @@ import _browser_boundaries  # noqa: E402
 DEFAULT_MIN_CONTRAST_RATIO = 4.5
 DEFAULT_MIN_STROKE_CONTRAST_RATIO = 3.0
 
-_VOID_TAGS = frozenset((
-    "area", "base", "br", "col", "embed", "hr", "img", "input", "link",
-    "meta", "param", "source", "track", "wbr",
-))
-
 _NAMED_COLORS = {
     "black": (0, 0, 0, 1.0),
     "white": (255, 255, 255, 1.0),
@@ -453,40 +448,22 @@ class _StyleScanner(_browser_boundaries.BrowserBoundaries):
         if "style" in attr_map:
             self.inline_styles.append((tag, attr_map, attr_map["style"]))
 
-    def handle_starttag(self, tag, attrs):
-        tag = self._browser_tag(tag)
-        attr_map = self._attrs_dict(tag, attrs)
-        ns = self._child_namespace(tag, attr_map)
-        if ns == "html":
-            self._implicit_close(tag)
-        self._element(tag, attr_map)
+    def _visit_start(self, tag, ad, ns, opens):
+        self._element(tag, ad)
         if tag == "style" and self._style_attrs is None:
-            self._style_attrs = attr_map
+            self._style_attrs = ad
             self._style_index = len(self._els)
             self._style_body = []
-        if tag not in _VOID_TAGS or ns != "html":
-            self._els.append(tag)
-            self._push_ns(tag, ns, attr_map)
-        self._enter_raw_text(tag, ns)
 
-    def handle_startendtag(self, tag, attrs):
-        tag = self._browser_tag(tag)
-        attr_map = self._attrs_dict(tag, attrs)
-        if self._foreign_self_closes(self._child_namespace(tag, attr_map)):
-            self._element(tag, attr_map)
-            return
-        self.handle_starttag(tag, attrs)
+    def _push_element(self, tag, ad, ns, info):
+        self._els.append(tag)
+
+    def _visit_self_closed(self, tag, ad, ns):
+        self._element(tag, ad)
 
     def handle_data(self, data):
         if self._style_attrs is not None:
             self._style_body.append(data)
-
-    def handle_endtag(self, tag):
-        tag = self._browser_tag(tag)
-        for i in range(len(self._els) - 1, self._end_tag_floor(tag) - 1, -1):
-            if self._els[i] == tag:
-                self._truncate_stacks(i)
-                return
 
     def close(self):
         # The base flushes the tail of an UNCLOSED raw-text element first, so a `<style>` that
@@ -521,15 +498,13 @@ class _DocumentScanner(_StyleScanner):
         node.parent.children.append(node)
         self._stack.append(node)
 
-    def handle_starttag(self, tag, attrs):
-        super().handle_starttag(tag, attrs)
-        if len(self._stack) > len(self._els) + 1:
-            # A VOID or self-closed element is a node but never an open one; drop it back off the
-            # ancestor stack so its siblings are not parented under it.
-            del self._stack[len(self._els) + 1:]
+    def _visit_void(self, tag, ad, ns, info):
+        # A VOID element is a node but never an open one; drop it back off the ancestor stack so
+        # its siblings are not parented under it.
+        del self._stack[len(self._els) + 1:]
 
-    def handle_startendtag(self, tag, attrs):
-        super().handle_startendtag(tag, attrs)
+    def _visit_self_closed(self, tag, ad, ns):
+        super()._visit_self_closed(tag, ad, ns)
         del self._stack[len(self._els) + 1:]
 
     def handle_data(self, data):

@@ -33,10 +33,7 @@ import _browser_boundaries  # noqa: E402
 # source text in place: name, then an optional ="quoted"/'quoted'/bare value.
 _ATTR_RE = re.compile(r'([^\s"\'>/=]+)(\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+))?')
 
-_VOID = frozenset((
-    "area", "base", "br", "col", "embed", "hr", "img", "input", "link",
-    "meta", "param", "source", "track", "wbr",
-))
+
 
 
 class _MermaidPreLocator(_browser_boundaries.BrowserBoundaries):
@@ -71,32 +68,11 @@ class _MermaidPreLocator(_browser_boundaries.BrowserBoundaries):
             start = self._off()
             self.spans.append((start, self._start_tag_end()))
 
-    def handle_starttag(self, tag, attrs):
-        tag = self._browser_tag(tag)
-        ad = self._attrs_dict(tag, attrs)
-        ns = self._child_namespace(tag, ad)
-        if ns == "html":
-            self._implicit_close(tag)
+    def _visit_start(self, tag, ad, ns, opens):
         self._check(tag, ad)
-        if tag not in _VOID or ns != "html":
-            self.stack.append(tag)
-            self._push_ns(tag, ns, ad)
-        self._enter_raw_text(tag, ns)
 
-    def handle_startendtag(self, tag, attrs):
-        tag = self._browser_tag(tag)
-        ad = self._attrs_dict(tag, attrs)
-        if self._foreign_self_closes(self._child_namespace(tag, ad)):
-            self._check(tag, ad)
-            return
-        self.handle_starttag(tag, attrs)
-
-    def handle_endtag(self, tag):
-        tag = self._browser_tag(tag)
-        for i in range(len(self.stack) - 1, self._end_tag_floor(tag) - 1, -1):
-            if self.stack[i] == tag:
-                self._truncate_stacks(i)
-                return
+    def _push_element(self, tag, ad, ns, info):
+        self.stack.append(tag)
 
 
 def _add_cm_skip(tag_text):

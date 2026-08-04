@@ -36,11 +36,6 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _browser_boundaries  # noqa: E402
 
-_VOID = frozenset((
-    "area", "base", "br", "col", "embed", "hr", "img", "input", "link",
-    "meta", "param", "source", "track", "wbr",
-))
-
 
 class _TopLevelLocator(_browser_boundaries.BrowserBoundaries):
     """Locate direct-child <h2> start tags (and any direct-child <section>) in a fragment.
@@ -52,8 +47,9 @@ class _TopLevelLocator(_browser_boundaries.BrowserBoundaries):
     matters more here than in a read-only check: this tool INSERTS bytes at the offsets it reports,
     so an element a browser never builds would move the edit into someone's prose.
 
-    The element stack is kept parallel to the shared namespace stack (pushed through `_push_ns()`,
-    truncated through `_truncate_stacks()`), so the two views can never drift apart.
+    The shared base runs the tag handlers (so the void, foreign self-closing, implicit-close and
+    raw-text steps are not repeated here); this class only collects, and pushes its element stack
+    parallel to the shared namespace stack through `_push_element()`.
     """
 
     def __init__(self, html):
@@ -73,39 +69,11 @@ class _TopLevelLocator(_browser_boundaries.BrowserBoundaries):
             elif tag == "section":
                 self.has_top_section = True
 
-    def handle_starttag(self, tag, attrs):
-        tag = self._browser_tag(tag)
-        # The shared browser attribute decode (CMH-VAL-21), so the id this tool copies into the
-        # generated `aria-labelledby` is the id a browser gives the heading.
-        ad = self._attrs_dict(tag, attrs)
-        ns = self._child_namespace(tag, ad)
-        if ns == "html":
-            self._implicit_close(tag)
+    def _visit_start(self, tag, ad, ns, opens):
         self._record(tag, ad)
-        # A VOID element has no content and no end tag, so it is never pushed; a FOREIGN element
-        # is never void (`<svg><rect/>` is self-closing markup, handled below).
-        if tag not in _VOID or ns != "html":
-            self.stack.append(tag)
-            self._push_ns(tag, ns, ad)
-        self._enter_raw_text(tag, ns)
 
-    def handle_startendtag(self, tag, attrs):
-        # A trailing slash on a non-void HTML tag is ignored by browsers (it opens an element);
-        # a self-closed FOREIGN element really is closed at once.
-        tag = self._browser_tag(tag)
-        ad = self._attrs_dict(tag, attrs)
-        if self._foreign_self_closes(self._child_namespace(tag, ad)):
-            self._record(tag, ad)
-            return
-        self.handle_starttag(tag, attrs)
-
-    def handle_endtag(self, tag):
-        tag = self._browser_tag(tag)
-        for i in range(len(self.stack) - 1, self._end_tag_floor(tag) - 1, -1):
-            if self.stack[i] == tag:
-                self._truncate_stacks(i)
-                return
-        # An end tag with no open element is ignored, exactly as a browser ignores it.
+    def _push_element(self, tag, ad, ns, info):
+        self.stack.append(tag)
 
 
 def wrap_fragment(html):
@@ -170,41 +138,19 @@ class _ContentRootLocator(_browser_boundaries.BrowserBoundaries):
                 and depth <= self._root_index):
             self.inner_end = self._off()
 
-    def handle_starttag(self, tag, attrs):
-        tag = self._browser_tag(tag)
-        # HTML5 keeps the FIRST `id`, so a decoy `<main id="decoy" id="commentRoot">` is NOT the
-        # content root.
-        ad = self._attrs_dict(tag, attrs)
-        ns = self._child_namespace(tag, ad)
-        if ns == "html":
-            self._implicit_close(tag)
-        is_void = tag in _VOID and ns == "html"
+    def _visit_start(self, tag, ad, ns, opens):
         # A void element has no inner HTML, so it can never be the content root.
-        is_root = not is_void and self.inner_start is None and ad.get("id") == "commentRoot"
-        if not is_void:
-            if is_root:
-                self._root_index = len(self.stack)
-                self.inner_start = self._start_tag_end()
-            self.stack.append(tag)
-            self._push_ns(tag, ns, ad)
-        self._enter_raw_text(tag, ns)
+        if opens and self.inner_start is None and ad.get("id") == "commentRoot":
+            self._root_index = len(self.stack)
+            self.inner_start = self._start_tag_end()
 
-    def handle_startendtag(self, tag, attrs):
-        tag = self._browser_tag(tag)
-        ad = self._attrs_dict(tag, attrs)
-        if self._foreign_self_closes(self._child_namespace(tag, ad)):
-            return
-        self.handle_starttag(tag, attrs)
+    def _push_element(self, tag, ad, ns, info):
+        self.stack.append(tag)
 
-    def handle_endtag(self, tag):
-        tag = self._browser_tag(tag)
-        for i in range(len(self.stack) - 1, self._end_tag_floor(tag) - 1, -1):
-            if self.stack[i] == tag:
-                if (self._root_index is not None and self.inner_end is None
-                        and i <= self._root_index):
-                    self.inner_end = self._off()
-                self._truncate_stacks(i)
-                return
+    def _visit_end(self, tag, index):
+        if (index >= 0 and self._root_index is not None and self.inner_end is None
+                and index <= self._root_index):
+            self.inner_end = self._off()
 
 
 def _locate_content_region(html):

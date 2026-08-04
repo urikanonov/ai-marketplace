@@ -13,10 +13,13 @@ shared element rule, so a `<main id="commentRoot">` or a `<pre class="mermaid">`
 it is to a browser and to the validator - instead of being a real start tag an authoring tool would
 anchor its edit to, differently on 3.12 than on 3.13.
 
-A subclass keeps its OWN element stack parallel to the shared namespace stack: push through
-`_push_ns()`, truncate through `_truncate_stacks()`, and enter raw text through `_enter_raw_text()`
-from `handle_starttag()` (where the namespace is known). `checks/parsing._TagAttrParser` is the
-smallest worked example.
+A subclass keeps its OWN element stack parallel to the shared namespace stack, but it does NOT
+repeat the tag-handler sequence: `handle_starttag()`, `handle_startendtag()` and `handle_endtag()`
+live in the shared base and drive overridable hooks (`_visit_start()`, `_push_element()`,
+`_visit_void()`, `_after_start()`, `_visit_self_closed()`, `_visit_end()`), so a subclass overrides
+only what it COLLECTS and the boundary order - including `_enter_raw_text()`, which the base's own
+`_enter_cdata_mode()` is deliberately off for - is written down once.
+`checks/parsing._TagAttrParser` is the smallest worked example.
 
 A partial install (the `validate` tool missing) falls back to a host-semantics base with the same
 API rather than failing: a degraded parse is better than a tool that cannot run, and the fallback is
@@ -25,6 +28,11 @@ WARNED about once, exactly as the attribute shim's is.
 import os
 import sys
 from html.parser import HTMLParser
+
+_VOID = frozenset((
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link",
+    "meta", "param", "source", "track", "wbr",
+))
 
 _TOOLS_ROOT = os.path.dirname(os.path.abspath(__file__))
 if _TOOLS_ROOT not in sys.path:
@@ -78,6 +86,8 @@ class _FallbackBoundaries(HTMLParser):
         super().__init__(convert_charrefs=True)
         self._starts = _line_starts(html)
         self._ns = []
+        self._end_tag_close = False
+        self._host_attrs = ()
 
     def parse_document(self, html):
         self.feed(html)
@@ -125,6 +135,84 @@ class _FallbackBoundaries(HTMLParser):
     def _enter_raw_text(self, tag, ns):
         """No-op: on this path the host's own `parse_starttag()` has already entered whatever
         raw-text mode it knows about."""
+
+    def _innermost_open(self, _tag):
+        """The stack index an end tag would close, or -1. Scanned rather than indexed: the shipped
+        base keeps a name index for it, and reproducing that here would be a second copy of
+        bookkeeping this shim only needs to answer the handler skeleton below."""
+        for i in range(len(self._ns) - 1, -1, -1):
+            if self._ns[i][0] == _tag:
+                return i
+        return -1
+
+    # -- the shared handler skeleton, degraded ------------------------------ #
+    #
+    # The same sequence and the same hooks as the shipped base, so a subclass written against the
+    # hooks keeps parsing on a broken/partial install instead of losing its tag handlers entirely.
+    # What degrades is only what the methods above degrade (the host's raw-text set, no implicit
+    # close, no `<template>` floor) - never WHICH steps run, or in what order.
+
+    def _opens_element(self, tag, ns):
+        return tag not in _VOID or ns != "html"
+
+    def handle_starttag(self, tag, attrs):
+        tag = self._browser_tag(tag)
+        self._host_attrs = attrs
+        ad = self._attrs_dict(tag, attrs)
+        ns = self._child_namespace(tag, ad)
+        if ns == "html":
+            self._implicit_close(tag)
+        opens = self._opens_element(tag, ns)
+        info = self._visit_start(tag, ad, ns, opens)
+        if opens:
+            self._push_element(tag, ad, ns, info)
+            self._push_ns(tag, ns, ad)
+        else:
+            self._visit_void(tag, ad, ns, info)
+        self._enter_raw_text(tag, ns)
+        self._after_start(tag, ad, ns, opens)
+
+    def handle_startendtag(self, tag, attrs):
+        tag = self._browser_tag(tag)
+        self._host_attrs = attrs
+        ad = self._attrs_dict(tag, attrs)
+        ns = self._child_namespace(tag, ad)
+        if not self._foreign_self_closes(ns):
+            self.handle_starttag(tag, attrs)
+            return
+        self._visit_self_closed(tag, ad, ns)
+
+    def handle_endtag(self, tag):
+        tag = self._browser_tag(tag)
+        index = self._innermost_open(tag)
+        self._visit_end(tag, index)
+        if index < 0:
+            return
+        self._end_tag_close = True
+        try:
+            self._truncate_stacks(index)
+        finally:
+            self._end_tag_close = False
+
+    def _visit_start(self, tag, ad, ns, opens):
+        return None
+
+    def _push_element(self, tag, ad, ns, info):
+        """Push the element onto the subclass's own stack (see the shipped base)."""
+
+    def _visit_void(self, tag, ad, ns, info):
+        """The element is never pushed, so it has no content."""
+
+    def _after_start(self, tag, ad, ns, opens):
+        """After `_enter_raw_text()`."""
+
+    def _visit_self_closed(self, tag, ad, ns):
+        """A FOREIGN element written self-closed: opened and closed at once, reported as a start
+        tag that opens nothing (see the shipped base)."""
+        self._visit_void(tag, ad, ns, self._visit_start(tag, ad, ns, False))
+
+    def _visit_end(self, tag, index):
+        """An end tag, before anything is truncated."""
 
 
 class _RefreshedLineStarts:

@@ -32,6 +32,7 @@ in neither view.
 
 import os
 import sys
+import ast
 import types
 import unittest
 import importlib.util
@@ -532,6 +533,240 @@ def _reloaded_on_degraded_base(module):
         copy = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(copy)
     return copy
+
+
+class _HookOnlyBase(object):
+    """The body of a parser that implements ONLY the collect hooks - no tag handler of its own.
+
+    Deliberately the smallest thing a new subclass could be: it says what it wants to COLLECT and
+    where its own stack lives, and nothing about raw text, void elements, foreign self-closing or
+    the implicit `</p>` / `</li>` close. Everything it does NOT say is what the shared skeleton
+    supplies, so these tests fail the moment the sequence stops being shared. Mixed onto the
+    SHIPPED base below and onto the degraded one, so both are held to the same hooks.
+    """
+
+    def __init__(self, html=""):
+        super().__init__(html)
+        self.stack = []
+        self.seen = []        # (tag, ns, opens) per start tag reaching `_visit_start`
+        self.closed = []      # (tag, index) per end tag reaching `_visit_end`
+        self.own_close = []   # tags whose truncation the base flagged as their OWN end tag
+        self.text = []
+
+    def _truncate_stacks(self, depth):
+        super()._truncate_stacks(depth)
+        del self.stack[depth:]
+
+    def _visit_start(self, tag, ad, ns, opens):
+        self.seen.append((tag, ns, opens))
+
+    def _push_element(self, tag, ad, ns, info):
+        self.stack.append(tag)
+
+    def _visit_end(self, tag, index):
+        self.closed.append((tag, index))
+        if index >= 0:
+            self.own_close.append(tag)
+
+    def handle_data(self, data):
+        self.text.append(data)
+
+
+class _HookOnlyParser(_HookOnlyBase, _browser_boundaries.BrowserBoundaries):
+    pass
+
+
+def _hook_only(html, cls=_HookOnlyParser):
+    parser = cls(html)
+    parser.parse_document(html)
+    return parser
+
+
+class HookOnlySubclassTests(unittest.TestCase):
+    """CMH-VAL-21: the start / start-end / end sequence lives in ONE place, so a subclass that
+    writes only its hooks gets every boundary of it for free.
+
+    Each case pins a step the eleven hand-written copies of the skeleton each had to remember:
+    forgetting `_enter_raw_text()` parsed a `<script>` body as markup (the base deliberately
+    disables the host's own `_enter_cdata_mode()`), mis-ordering `_implicit_close()` keyed the
+    subclass's own bookkeeping on a stack a browser had already popped, and the void / foreign
+    self-closing carve-outs decide what is left OPEN at all.
+    """
+
+    def test_the_hook_only_parser_really_writes_no_tag_handler(self):
+        # The framing assertion: without it every case below could be passing on a handler the
+        # subclass wrote for itself, which is exactly what this refactor removed.
+        for name in ("handle_starttag", "handle_startendtag", "handle_endtag"):
+            self.assertNotIn(name, _HookOnlyBase.__dict__)
+            self.assertNotIn(name, _HookOnlyParser.__dict__)
+
+    def test_raw_text_is_text_for_free(self):
+        # `<noscript>` is raw text to a scripting-ENABLED browser and ordinary markup to
+        # html.parser on every version, so a subclass that forgot `_enter_raw_text()` would
+        # collect the `<img>` as an element.
+        parser = _hook_only("<noscript><img src=x></noscript><p>after")
+        self.assertNotIn("img", [tag for tag, _ns, _opens in parser.seen])
+        self.assertIn("<img src=x>", "".join(parser.text))
+        self.assertEqual(parser.stack, ["p"])
+
+    def test_a_script_body_is_never_parsed_as_markup(self):
+        parser = _hook_only("<script><b id=x></script>")
+        self.assertNotIn("b", [tag for tag, _ns, _opens in parser.seen])
+
+    def test_a_void_element_is_never_left_open(self):
+        parser = _hook_only("<img src=x><p>a")
+        self.assertEqual(parser.seen[0], ("img", "html", False))
+        self.assertEqual(parser.stack, ["p"])
+
+    def test_a_self_closed_foreign_element_is_opened_and_closed_at_once(self):
+        parser = _hook_only("<svg><rect/></svg><p>a")
+        self.assertIn(("rect", "svg", False), parser.seen)
+        self.assertEqual(parser.stack, ["p"])
+
+    def test_a_bare_self_closed_svg_leaves_nothing_open(self):
+        parser = _hook_only("<svg/><p>a")
+        self.assertEqual(parser.stack, ["p"])
+
+    def test_a_self_closed_html_element_still_opens(self):
+        # HTML5 IGNORES the trailing slash on a non-void HTML tag, so `<pre/>` still needs `</pre>`.
+        parser = _hook_only("<pre/>")
+        self.assertEqual(parser.stack, ["pre"])
+
+    def test_the_implicit_paragraph_close_applies_for_free(self):
+        parser = _hook_only("<p>a<div>b")
+        self.assertEqual(parser.stack, ["div"])
+
+    def test_the_implicit_list_item_close_applies_for_free(self):
+        parser = _hook_only("<ul><li>a<li>b")
+        self.assertEqual(parser.stack, ["ul", "li"])
+
+    def test_a_visit_start_hook_sees_the_stack_a_browser_has(self):
+        # The implicit close runs BEFORE the hook, so a subclass keying state on the stack depth
+        # keys it on the depth a browser is at - the ordering half of the invariant.
+        parser = _HookOnlyParser("<p>a<div>b")
+        depths = []
+        parser._visit_start = lambda tag, ad, ns, opens: depths.append((tag, len(parser.stack)))
+        parser.parse_document("<p>a<div>b")
+        self.assertEqual(depths, [("p", 0), ("div", 0)])
+
+    def test_an_end_tag_reports_the_element_it_closes(self):
+        parser = _hook_only("<div><span></span></div></em>")
+        self.assertEqual(parser.closed, [("span", 1), ("div", 0), ("em", -1)])
+        self.assertEqual(parser.own_close, ["span", "div"])
+        self.assertEqual(parser.stack, [])
+
+    def test_a_closer_scoped_away_by_a_template_matches_nothing(self):
+        parser = _hook_only("<div><template></div>")
+        self.assertEqual(parser.closed, [("div", -1)])
+        self.assertEqual(parser.stack, ["div", "template"])
+
+    def test_the_degraded_base_drives_the_same_hooks(self):
+        # A broken/partial install must still give a hook-only subclass a working parser: what
+        # degrades is the host's raw-text set, never WHICH steps run.
+        degraded = type("BrowserBoundaries",
+                        (_browser_boundaries._RefreshedLineStarts,
+                         _browser_boundaries._FallbackBoundaries), {})
+        cls = type("_DegradedHookOnly", (_HookOnlyBase, degraded), {})
+        parser = _hook_only("<img src=x><p>a<div>b</div>", cls)
+        self.assertEqual(parser.seen[0], ("img", "html", False))
+        self.assertEqual([tag for tag, _index in parser.closed], ["div"])
+        self.assertEqual(parser.stack, ["p"])
+
+
+def _tool_class_bases():
+    """Every class defined in the shipped tools, mapped to the SHORT names of its bases.
+
+    Read with `ast` rather than by importing, so a tool module added later is covered whether or
+    not any test imports it, and a class is seen even when its module needs an install-shaped
+    sys.path to load."""
+    bases = {}
+    where = {}
+    for root, dirs, files in os.walk(_paths.TOOLS):
+        dirs[:] = [d for d in dirs if not d.startswith((".", "__pycache__"))]
+        for name in sorted(files):
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(root, name)
+            with open(path, encoding="utf-8") as fh:
+                tree = ast.parse(fh.read(), filename=path)
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.ClassDef):
+                    continue
+                names = set()
+                for base in node.bases:
+                    if isinstance(base, ast.Attribute):
+                        names.add(base.attr)     # `_browser_boundaries.BrowserBoundaries`
+                    elif isinstance(base, ast.Name):
+                        names.add(base.id)
+                bases[node.name] = bases.get(node.name, set()) | names
+                where.setdefault(node.name, os.path.relpath(path, _paths.TOOLS))
+    return bases, where
+
+
+# The two names the shared skeleton itself lives under: `checks/parsing._BrowserBoundaries` and the
+# `tools/_browser_boundaries.BrowserBoundaries` shim every tool outside that package derives from.
+_SKELETON_ROOTS = frozenset(("_BrowserBoundaries", "BrowserBoundaries"))
+# The ONE subclass allowed to write its own tag handlers, with the reason. Density keeps no
+# namespace stack and applies no implicit close (a documented foreign-content gap), so the shared
+# sequence would silently CHANGE what it counts rather than share it.
+_HANDLER_ALLOWLIST = {
+    "_DensityParser": "keeps no namespace stack and applies no implicit close",
+}
+_TAG_HANDLERS = ("handle_starttag", "handle_startendtag", "handle_endtag")
+
+
+class SharedHandlerSkeletonTests(unittest.TestCase):
+    """CMH-VAL-21: no subclass may re-copy the boundary sequence.
+
+    The hooks above make the right thing easy; this makes the wrong thing FAIL. Eleven independent
+    copies of the same ~25-line skeleton is what the hoist removed, and nothing but this guard
+    stops the twelfth from being written - a copy that forgot one step would parse a document
+    differently from every other view of it and no other gate would see it.
+    """
+
+    def _boundary_subclasses(self):
+        bases, where = _tool_class_bases()
+        found = set(_SKELETON_ROOTS)
+        changed = True
+        while changed:
+            changed = False
+            for name, parents in bases.items():
+                if name not in found and parents & found:
+                    found.add(name)
+                    changed = True
+        return sorted(found - _SKELETON_ROOTS), where
+
+    def test_every_boundary_subclass_drives_the_shared_skeleton(self):
+        subclasses, where = self._boundary_subclasses()
+        offenders = []
+        for name in subclasses:
+            if name in _HANDLER_ALLOWLIST:
+                continue
+            src = os.path.join(_paths.TOOLS, where[name])
+            with open(src, encoding="utf-8") as fh:
+                tree = ast.parse(fh.read(), filename=src)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ClassDef) and node.name == name:
+                    for item in node.body:
+                        if (isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+                                and item.name in _TAG_HANDLERS):
+                            offenders.append("%s.%s (%s)" % (name, item.name, where[name]))
+        self.assertEqual(offenders, [], "these re-copy the shared handler skeleton: %s" % offenders)
+
+    def test_the_guard_sees_every_boundary_subclass(self):
+        # A guard that discovered nothing would pass vacuously, and the fixpoint has to reach the
+        # indirect subclasses (a `_DocumentScanner` derives from `_StyleScanner`, not the base).
+        subclasses, _where = self._boundary_subclasses()
+        for name in ("_DocParser", "_CodeSpanParser", "_RawTextSpanParser", "_TagAttrParser",
+                     "_DensityParser", "_TopLevelLocator", "_ContentRootLocator", "_TocParser",
+                     "_StatsParser", "_MermaidPreLocator", "_ActiveContentScanner",
+                     "_AuthoredContentScanner", "_StyleScanner", "_DocumentScanner"):
+            self.assertIn(name, subclasses)
+
+    def test_the_allowlist_does_not_rot(self):
+        subclasses, _where = self._boundary_subclasses()
+        for name in _HANDLER_ALLOWLIST:
+            self.assertIn(name, subclasses, "%s is allowlisted but no longer exists" % name)
 
 
 if __name__ == "__main__":
