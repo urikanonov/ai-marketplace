@@ -597,6 +597,13 @@ async function captureGarden(ctx) {
     if (t) t.click();
   });
   await page.locator(".cm-help-overlay .cm-help").waitFor({ state: "visible", timeout: 5000 });
+  // The Copy-all toast from the previous shot now paints ABOVE a modal overlay (CMH-A11Y-13, so it
+  // can never hold invisible focus behind a dialog), which lands it in the middle of this clip.
+  // Dismiss it the same way the 08-top-dark step does before capturing the dialog.
+  await page.evaluate(() => {
+    const t = document.getElementById("toast");
+    if (t) t.classList.remove("show");
+  });
   // Capture the Help dialog cleanly (issue #462): the .cm-help-overlay backdrop dims and blurs the
   // whole page behind the dialog, which reads as faded and blurry. Neutralize the backdrop dim/blur
   // and clip to the dialog bounds instead of shooting the full dimmed page.

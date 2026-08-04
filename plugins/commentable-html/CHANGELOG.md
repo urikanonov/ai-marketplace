@@ -4,6 +4,24 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.525.0] - 2026-08-04
+
+### Fixed
+
+- A toast can no longer become invisible-but-operable focus behind a modal dialog. The toast and
+  `.cm-modal-overlay` both sat at `z-index: 300`, so which one painted on top was decided purely by
+  DOM order: a toast raised BEFORE a dialog opened was drawn UNDER the dialog's scrim while its
+  action button stayed focusable and clickable. The toast layer now sits above the overlay
+  (`z-index: 320`, still below the tooltip layer), so a recovery toast stays visible and hit-testable
+  on top of a dialog instead of holding focus a reviewer cannot see.
+- A Manage storage dialog opened from a toast action no longer strands keyboard focus. `showToast()`
+  removes the action button before running its handler, so `document.activeElement` was `<body>` by
+  the time the dialog snapshotted it and its restore-on-close was a silent no-op. The toast now
+  resolves a focus-restore target first and hands it to the action, `cmhStorageAction()` forwards it
+  as `restoreFocus`, and the manager's `close()` re-resolves it - falling back to the stable chrome
+  triggers (`More`, the toolbar overflow, the panel toggle) when the snapshot is missing, detached,
+  hidden, or disabled - so closing the dialog always lands on a real, visible control.
+
 ## [1.522.0] - 2026-08-03
 
 ### Fixed

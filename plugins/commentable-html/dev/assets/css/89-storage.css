@@ -130,6 +130,13 @@ html[data-theme="dark"] .cm-storage-usage {
   font-family: inherit; font-weight: 600; cursor: pointer; pointer-events: none;
 }
 .cm-toast.show .cm-toast-action { pointer-events: auto; }
+/* An aria-modal dialog traps Tab and hides everything outside itself from assistive tech, so an
+   inline action out here would be visible to a mouse yet unreachable by keyboard or a screen
+   reader - the mirror image of the invisible-focus bug the toast's raised z-index fixes (#939).
+   While a dialog is up the action is removed from the layout, the tab order, and the a11y tree; the
+   toast MESSAGE still paints above the scrim and is still announced, and the action returns if the
+   toast outlives the dialog. The dialogs offer their own in-dialog recovery, so nothing is lost. */
+body:has(> .cm-modal-overlay > [aria-modal="true"]) .cm-toast-action { display: none; }
 .cm-toast-action:hover { filter: brightness(1.08); }
 
 @media (max-width: 640px) {

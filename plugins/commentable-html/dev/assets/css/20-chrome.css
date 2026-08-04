@@ -367,7 +367,11 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   transform: translateX(-50%) translateY(20px);
   background: var(--cp-accent); color: var(--cp-accent-fg);
   padding: var(--cp-chrome-card-y) var(--cp-chrome-toast-x); border-radius: 999px;
-  box-shadow: var(--cp-shadow); font-size: var(--cp-chrome-font); z-index: 300;
+  /* Above .cm-modal-overlay (300) and below the tooltip layer (400). A toast raised BEFORE a modal
+     opened used to share the overlay's 300, so DOM order buried it under the scrim while its action
+     button stayed focusable and operable - focus a reviewer could hold but never see (issue #939).
+     The side pane's modal focus guard already assumes a toast paints above the overlay. */
+  box-shadow: var(--cp-shadow); font-size: var(--cp-chrome-font); z-index: 320;
   opacity: 0; pointer-events: none;
   transition: opacity 0.2s, transform 0.2s;
   max-width: 90vw; text-align: center;
