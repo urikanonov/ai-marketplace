@@ -137,9 +137,10 @@ drift guards), so a push that would fail a required check is caught locally firs
 in the PR title; describe the change.
 
 Push in BATCHES once the PR is open, not per fix. Every push to an open PR re-runs the required
-checks and cancels the run in progress, so a second push moments later just restarts the first.
-Finish the local verification above, fold in every outstanding review comment, and then push once -
-see the "BATCH YOUR PUSHES TO AN OPEN PR" bullet under "Branch and PR rules" in
+checks, and nearly all of them cancel the run in progress - only `require-owner-approval` and
+`All conversations resolved` deliberately do not - so a second push moments later mostly just
+restarts the first. Finish the local verification above, fold in every outstanding review comment,
+and then push once - see the "BATCH YOUR PUSHES TO AN OPEN PR" bullet under "Branch and PR rules" in
 [AGENTS.md](../../../AGENTS.md). Before the PR exists, push freely: a feature-branch push runs no
 required check, and it keeps the work recoverable if the session is interrupted. Fewer rounds means
 pushing fewer times, never skipping or weakening a check.
