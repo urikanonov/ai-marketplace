@@ -18699,6 +18699,14 @@ function _offlineCountKeptNeutralized(doc, neutralized) {
 // mirrored the same blind spot. The set is mirrored by the validator's `SCRIPT_LOAD_ATTRS`, pinned
 // by `test_the_python_and_js_script_load_attributes_agree`.
 const _OFFLINE_SCRIPT_LOAD_ATTRS = ["src", "href", "xlink:href"];
+// A <link> fetches through more than its `href`: a preload link carries the URL in `imagesrcset`
+// with NO href at all - a `rel=preload as=image` link whose `imagesrcset` names an https host was
+// measured requesting it in a real Chromium - and `imagesizes` rides with it. Both were invisible
+// to this strip and to the strict validator alike (#999). Mirrored by the validator's
+// `LINK_IMAGE_ATTRS`, pinned by `test_the_python_and_js_link_image_attributes_agree`. Written
+// without the markup spelled out, because this file's own text is inlined into an export that the
+// gate then reads: a literal tag carrying a network URL in a comment is one the tokenizer sees.
+const _OFFLINE_LINK_IMAGE_ATTRS = ["imagesrcset", "imagesizes"];
 const _OFFLINE_SVG_NS = "http://www.w3.org/2000/svg";
 // The URLs a `ping` list really names, tokenized the way HTML tokenizes it: on ASCII whitespace
 // ONLY (tab, LF, FF, CR, space), written as literal code points because the two engines' whitespace
@@ -18786,7 +18794,7 @@ function _stripOfflineNetworkLoads(doc) {
   const clearAttr = function (el, attr) {
     if (!el.hasAttribute(attr)) return;
     const value = el.getAttribute(attr) || "";
-    const network = attr === "srcset" ? _offlineSrcsetHasNetwork(value) : _offlineIsNetworkUrl(value);
+    const network = (attr === "srcset" || attr === "imagesrcset") ? _offlineSrcsetHasNetwork(value) : _offlineIsNetworkUrl(value);
     if (!network) return;
     if (el.tagName === "IMG" && attr === "src") el.setAttribute("src", "data:image/gif;base64,R0lGODlhAQABAAAAACw=");
     else el.removeAttribute(attr);
@@ -18822,6 +18830,18 @@ function _stripOfflineNetworkLoads(doc) {
       el.removeAttribute("href");
       clearedBases += 1;
     }
+  });
+  // The pass above reads a link's `href`, which is not the only way one fetches: a preload link
+  // carries the URL in `imagesrcset` with NO href at all (a `rel=preload as=image` link whose
+  // `imagesrcset` names an https host was measured requesting it in a real Chromium), and
+  // `imagesizes` rides with it. In an offline export the zero-network CSP still blocks the fetch
+  // (`img-src data:`), but this strip is the layer that must not DEPEND on the CSP, and the strict
+  // validator was blind to the same attributes. Unlike the `href` pass this clears the ATTRIBUTE
+  // rather than removing the element - a `rel`/`as` link is metadata an author may want kept, and
+  // there is no load left once the URL is gone - so it is `rel`-blind, exactly as the validator's
+  // copy is: a value that names a network URL goes whatever the `rel` says.
+  all("link").forEach(function (el) {
+    _OFFLINE_LINK_IMAGE_ATTRS.forEach(function (attr) { clearAttr(el, attr); });
   });
   all("img").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "srcset"); });
   // `srcdoc` carries a WHOLE NESTED DOCUMENT as an attribute VALUE, which no pass here can see
