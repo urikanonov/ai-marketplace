@@ -4,6 +4,48 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.677.0] - 2026-08-04
+
+### Changed
+
+- The scheme boundary of the offline strip's and the strict validator's network-URL predicates is
+  now EVIDENCE rather than an unexplained omission (CMH-OFFLINE-04). Both recognize an http/https
+  authority, a scheme-relative one and an explicit `file:` host, and both read every other
+  authority-bearing scheme - `ftp:`, `ws:`, `wss:`, `filesystem:`, and a custom scheme with no
+  registered handler - as local. That was checked in a real Chromium rather than argued from the
+  URL standard, whose `special scheme` set is wider than what a browser will fetch: from a `file:`
+  document, raw TCP listeners behind every attribute and CSS load channel the strip covers recorded
+  connections for http and https and NONE for any of the others (`net::ERR_UNKNOWN_URL_SCHEME` for
+  `ftp:`, `ws:`, `wss:`, `gopher:` and a custom scheme - Chromium removed FTP support in 88 - and
+  `Not allowed to load local resource` for `filesystem:`). So neither predicate is widened: doing so
+  would buy no egress protection while making the exporter DELETE an author's reference and the gate
+  reject a file with no egress in it. The controls are PER CHANNEL rather than aggregate, because an
+  aggregate control is satisfied by the first image and lets a channel that is dead by construction
+  hand every candidate a free zero - which the first draft did, through an at-rule import written
+  after a qualified rule, a `source` element beside a media `src`, and `background` on a `div`.
+  Five limits of the evidence are recorded rather than implied: a scripted `WebSocket` does reach
+  the network in `ws:`/`wss:` and is closed by the export's `connect-src 'none'`; a REGISTERED
+  protocol handler (whether registered by a page or already installed on a reader's machine) is a
+  different, unmeasurable-from-`file:` case; `preconnect`/`dns-prefetch` leak a name rather than
+  open a connection, and one in a candidate scheme survives the link pass (#1076); a scheme handed
+  to an external application is not a network load at all; and the measurement is Chromium's, with
+  nothing claimed for other engines and `ftp:` named as the row to re-measure first. What protects a
+  file already on disk is not this predicate but the zero-network CSP the export bakes into it, so
+  `offline-clean` means no automatic browser egress under the strip and that policy together rather
+  than the absence of every authority-shaped token. The shared parity corpus now carries these
+  schemes with their expected verdicts on BOTH sides, so a future widening has to move the exporter
+  and the gate together instead of drifting.
+
+### Fixed
+
+- The exported file's `connect-src 'none'` is now pinned by a live measurement instead of a
+  substring check on the policy text (CMH-OFFLINE-04, CMH-OFFLINE-05). A scripted `WebSocket` is
+  the one network channel no attribute predicate can see, so the decision not to widen `ws:`/`wss:`
+  rests entirely on that directive - and a policy that still spelled `'none'` beside another source
+  would have passed the old substring assertion while the channel silently reopened. The exported
+  file is now driven against a raw TCP listener in both directions: blocked with the policy, and
+  connecting once the policy is removed, which is what makes the zero a measurement.
+
 ## [1.674.0] - 2026-08-04
 
 ### Fixed

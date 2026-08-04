@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.674.0" />
+<meta name="commentable-html-version" content="1.677.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.674.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.677.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable Visuals Matrix</title>
 
@@ -4580,7 +4580,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.674.0";
+const CMH_VERSION = "1.677.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -18072,6 +18072,18 @@ function _offlineNormalizeUrlValue(v) {
 // states resolve to the same host as `https://host/x.js` - are network URLs here too, and one host
 // character is required so an empty authority stays local. That widening moved with the CSS strips
 // below and the validator's copies of all three, both sides at once (issue #961).
+// The scheme set is CLOSED at http/https, scheme-relative and `file:`, and that is EVIDENCE rather
+// than an omission: from a `file:` document a current Chromium produces no connection at all for
+// `ftp:`, `ws:`, `wss:`, `filesystem:` or a custom scheme with no registered handler, through any
+// automatic subresource channel this strip covers. Widening would therefore buy no egress protection
+// while DELETING an author's reference - the same over-detection trade the `localhost` and
+// drive-letter exclusions make. The measurement, its limits (a scripted `WebSocket`, which no
+// attribute can carry and `connect-src 'none'` closes; a REGISTERED protocol handler; DNS-only
+// `preconnect`/`dns-prefetch`; engines other than Chromium; and the durable backstop for a file
+// already on disk, which is the export's own zero-network CSP rather than this predicate. Recorded
+// in the CMH-OFFLINE-04 spec row with the tests that re-run them; `tests/test_vendored_libs.py`
+// holds this predicate and the validator's to the same verdicts, so a widening has to move both
+// sides at once.
 const _OFFLINE_NETWORK_URL_RE = /^(?:(?:https?:\/*|\/{2,})[^/?#]|file:(?:\/\/(?!\/)|\/{4,}(?!\/))(?![?#]|$)(?!localhost(?:[/?#]|$))(?![A-Za-z][:|]))/i;
 function _offlineIsNetworkUrl(v) {
   return _OFFLINE_NETWORK_URL_RE.test(_offlineNormalizeUrlValue(v));
@@ -18118,6 +18130,8 @@ function _offlineSrcsetHasNetwork(v) {
 // this file's own text is scanned by the offline export's dynamic-import egress check, which reads
 // that sequence as a dynamic import and DELETES the script it sits in, which is this one.
 const _OFF_CSS_WS = "[\\t\\n\\f\\r ]";
+// The same CLOSED scheme set as `_OFFLINE_NETWORK_URL_RE` above, for the same measured reason: a
+// `url(ftp://host/x)`, and the at-rule form beside it, fetch nothing from a `file:` document.
 const _OFF_CSS_NET = "(?:https?:\\/*|\\/{2,})";
 // One host character, the same approximation the validator's `_CSS_HOST_CHAR` makes.
 const _OFF_CSS_HOST = "[^/?#\"')\\t\\n\\f\\r ]";
@@ -18597,13 +18611,15 @@ function _stripOfflineNetworkLoads(doc) {
   // REBASES every relative reference in the document onto the base it names, so the very relative
   // image or script reference this strip reads as local resolves off-host instead. Its blast radius
   // is what makes it different: one attribute re-points EVERY safe reference, so it is held to the
-  // stricter `_offlineIsNonLocalRef` (any scheme, or an authority of two slashes/backslashes in
-  // either order, after the URL parser's own input cleanup) rather than the `//`-requiring network
-  // predicate the per-resource passes use. A browser resolves a slash-less `https:host/` and a
-  // backslash-authority `https:/\host/` to a remote host just as readily as the two-slash spelling;
-  // for one attribute that is the documented #923 residual the CSP absorbs, but for a base it would
-  // defeat this whole pass, and `base-uri 'none'` cannot be leaned on - a meta-delivered policy does
-  // not bind a base element the parser already resolved before it. The href alone goes: a `target`
+  // stricter `_offlineIsNonLocalRef` (ANY scheme, or an authority of two slashes/backslashes in
+  // either order, after the URL parser's own input cleanup) rather than the network predicate the
+  // per-resource passes use. The two are different KINDS of predicate, not two strictness settings:
+  // the per-resource one asks "would a browser FETCH this", which is why its scheme set is closed
+  // at what one measurably does (#993), while this one asks "is this reference self-contained",
+  // which any scheme fails. The slash-less `https:host/` and backslash-authority `https:/\host/`
+  // spellings the per-resource arm now also catches (#961) were caught here first, and a `blob:` or
+  // `data:` base is caught only here. `base-uri 'none'` cannot be leaned on instead - a
+  // meta-delivered policy does not bind a base element the parser already resolved before it. The href alone goes: a `target`
   // is not egress, and a RELATIVE base reaches no network at all (a root-relative one resolves
   // against the filesystem, which the ordinary local-path rules already cover), so clearing either
   // would be content loss. Namespace-blind on purpose, exactly as the script LOAD attributes

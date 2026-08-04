@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
 import fs from "fs";
+import net from "net";
 import path from "path";
 import zlib from "zlib";
 import {
@@ -3282,3 +3283,460 @@ test("CMH-OFFLINE-04: the offline strips inspect speculationrules, importmap, an
   }
 });
 
+
+// The SCHEME half of the network-URL predicates, measured rather than assumed. Both
+// implementations (`_offlineIsNetworkUrl` in the exporter, `is_network_url` in the strict
+// validator) recognize http/https authorities, scheme-relative ones and an explicit `file:` host,
+// and deliberately read every OTHER authority-bearing scheme - `ftp:`, `ws:`, `wss:`,
+// `filesystem:`, a custom scheme with no registered handler - as local. That boundary decides
+// whether the exporter DELETES an author's reference and whether the gate rejects a file, so it is
+// settled by what a browser actually does rather than by what the URL standard permits. What is
+// driven is every AUTOMATIC SUBRESOURCE channel the strip covers; the references it also clears
+// that are not automatic loads are listed in `SCHEME_PROBE_NON_LOAD_STRIP_TARGETS` below, each with
+// its own covering test elsewhere on this row.
+//
+// The harness is asymmetric on purpose. The http CONTROL gets one raw TCP listener PER CHANNEL, so
+// every channel is proven LIVE rather than assumed: an aggregate control is satisfied by the first
+// `<img>` and lets a channel that is dead-by-construction contribute a free zero to every candidate
+// forever (the first draft did exactly that - an at-rule import written after a qualified rule is
+// dropped by the CSS parser, a `<source>` inside a media element that already carries `src` is
+// ignored, and `background` is not a loading attribute on a `<div>`). Each CANDIDATE scheme then
+// gets one listener for all channels together, because for a candidate the question is only "did
+// ANYTHING connect", and a connection identifies the scheme that made it whatever protocol it would
+// then have spoken. Because every URL here names the same loopback host, a proxy or sandbox policy
+// applies to control and candidates alike - one that hid a candidate would fail the control first,
+// loudly.
+//
+// What this probe deliberately does NOT measure, so the residual it backs is not read as wider than
+// the evidence: the `file:` AUTHORITY arm (an off-machine SMB fetch that needs a real UNC host; the
+// shared corpus in `tests/test_vendored_libs.py` and the URL-parser spec test pin that one); a
+// scripted `WebSocket`, which no attribute can carry and which the next test measures against the
+// export's own CSP; a scheme with a REGISTERED protocol handler, which turns a navigation into a
+// fetch of the handler's own https template and cannot be registered from a `file:` document at all;
+// DNS-only channels (`preconnect`, `dns-prefetch`) whose leak is a name resolution rather than a
+// connection to this port - and which survive the strip in a candidate scheme, tracked as #1076;
+// and any engine other than Chromium. `ws:`/`wss:`/`filesystem:` were not observed as
+// subresource-fetchable in the Chromium under test, and nothing is claimed for other engines, but
+// FTP removal in particular is an implementation choice, so that is the row to re-measure if the
+// boundary is ever revisited. What travels WITH an already-exported file is not this probe but the
+// export's own zero-network CSP, which refuses these subresources whatever a future engine decides.
+const SCHEME_PROBE_CONTROL = "http";
+// A second, aggregate control on the OTHER scheme both predicates recognize. It needs no
+// per-channel breakdown - `https:` shares the http arm of the predicate and the same network stack
+// - but a document that loaded neither would be a broken probe rather than evidence.
+const SCHEME_PROBE_CONTROL_TLS = "https";
+const SCHEME_PROBE_CANDIDATES = ["ftp", "ws", "wss", "filesystem", "custom", "gopher"];
+// Every `rel` the exporter's own link pass treats as a LOAD (`_stripOfflineNetworkLoads`), not just
+// the two obvious ones: a candidate scheme that fetched through only `modulepreload` or `prefetch`
+// would otherwise leave this probe green.
+const SCHEME_PROBE_LINK_RELS = [
+  "stylesheet", "preload", "modulepreload", "preconnect", "dns-prefetch",
+  "icon", "apple-touch-icon", "manifest", "prefetch", "prerender",
+];
+const SCHEME_PROBE_CHANNELS = [
+  "img-src", "img-srcset", "script-src", "iframe-src", "video-src", "video-poster",
+  "source-src", "source-srcset", "track-src", "audio-src", "object-data", "embed-src",
+  "input-image", "td-background", "css-import", "css-url", "inline-style-url", "svg-image",
+  "svg-use", "svg-script", "svg-feimage", "svg-fill", "svg-stroke", "svg-mask", "svg-clip",
+  "svg-marker", ...SCHEME_PROBE_LINK_RELS.map((rel) => "link-" + rel),
+];
+// The channels the control was MEASURED to drive from a `file:` document. Each one is asserted
+// live below, so a channel that silently stops loading is a failure rather than a free zero for
+// every candidate. The SVG PAINT attributes are here even though the offline strip does not yet
+// cover them (that gap is issue #1065, filed with #1063): they load over http, so they are exactly
+// the kind of channel a scheme boundary has to be tested against, and pointing them at a candidate
+// is free evidence. (`filter` is in #1065's list too but is NOT here: as a presentation attribute
+// or a CSS value it did not resolve externally in the Chromium under test, so requiring it live
+// would red the gate for a channel this engine does not drive.)
+const SCHEME_PROBE_LIVE_CHANNELS = [
+  "img-src", "img-srcset", "script-src", "iframe-src", "video-src", "video-poster",
+  "source-src", "source-srcset", "audio-src", "object-data", "embed-src", "input-image",
+  "td-background", "css-import", "css-url", "inline-style-url", "svg-image", "svg-script",
+  "svg-feimage", "svg-fill", "svg-stroke", "svg-mask", "svg-clip", "svg-marker",
+  "link-stylesheet", "link-preload", "link-modulepreload", "link-prefetch",
+];
+// ...and the ones the strip still covers but a headless page cannot be made to drive, each for a
+// reason of its own rather than through a probe bug: a `<track>` is fetched only once its cue mode
+// leaves `disabled`, an SVG `<use>` is same-origin only, `preconnect`/`dns-prefetch` resolve a name
+// without connecting to this port (#1076), an icon or manifest is fetched by browser UI this page
+// has none of, and `<link rel=prerender>` is a no-op superseded by speculation rules. They stay in
+// the markup (a future engine may start driving them, and then the control assertion is what
+// notices) but they are not claimed as measured.
+const SCHEME_PROBE_UNOBSERVED_CHANNELS = [
+  "track-src", "svg-use", "link-preconnect", "link-dns-prefetch",
+  "link-icon", "link-apple-touch-icon", "link-manifest", "link-prerender",
+];
+// The strip covers four more references that this probe deliberately does NOT carry, because none
+// of them is an automatic subresource LOAD and a TCP listener is therefore the wrong instrument:
+// `a`/`area` `ping` (a beacon that needs a click), `form` `action` and `formaction` (a submission),
+// `base` `href` (it rebases OTHER references rather than loading anything) and a `meta` refresh (a
+// navigation). Each has its own covering test elsewhere on the CMH-OFFLINE-04 row, so what this
+// probe claims is every automatic subresource channel, not literally everything the strip touches.
+const SCHEME_PROBE_NON_LOAD_STRIP_TARGETS = [
+  "a-ping", "form-action", "formaction", "base-href", "meta-refresh",
+];
+
+function schemeProbeUrl(name, authority) {
+  if (name === "filesystem") return `filesystem:http://${authority}/temporary/p.png`;
+  if (name === "custom") return `x-cmh-probe://${authority}/p.png`;
+  return `${name}://${authority}/p.png`;
+}
+
+// `urlFor(channel)` lets the control hand every channel its own port while a candidate hands them
+// all the same one. Every channel the markup asks for is RECORDED and an unknown one throws, so the
+// coverage assertion below compares the declared lists to what the document really carries rather
+// than to each other - otherwise a channel could be deleted from the markup while still parked in
+// the unobserved list, and go unmeasured forever.
+function schemeProbeMarkup(name, urlFor, seen) {
+  const u = (channel) => {
+    if (SCHEME_PROBE_CHANNELS.indexOf(channel) === -1) {
+      throw new Error(`scheme probe markup uses an undeclared channel '${channel}'`);
+    }
+    if (seen) seen.add(channel);
+    return urlFor(channel).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  };
+  const links = SCHEME_PROBE_LINK_RELS
+    .map((rel) => `<link rel="${rel}"${rel === "preload" ? ' as="image"' : ""} href="${u("link-" + rel)}">`)
+    .join("\n");
+  return `
+<h2>${name}</h2>
+<style>@import url("${u("css-import")}");</style>
+<style>#probe-${name} { background-image: url("${u("css-url")}"); }</style>
+${links}
+<img src="${u("img-src")}" alt="">
+<img srcset="${u("img-srcset")} 1x" alt="">
+<script src="${u("script-src")}"></script>
+<iframe src="${u("iframe-src")}"></iframe>
+<video src="${u("video-src")}" poster="${u("video-poster")}"></video>
+<video preload="auto"><source src="${u("source-src")}"><track src="${u("track-src")}" default></video>
+<picture><source srcset="${u("source-srcset")}"><img alt=""></picture>
+<audio src="${u("audio-src")}" preload="auto"></audio>
+<object data="${u("object-data")}"></object>
+<embed src="${u("embed-src")}">
+<input type="image" src="${u("input-image")}">
+<table><tr><td background="${u("td-background")}">legacy</td></tr></table>
+<div id="probe-${name}">x</div>
+<div id="probe-inline-${name}" style="background-image:url('${u("inline-style-url")}')">inline</div>
+<svg width="40" height="40"><image href="${u("svg-image")}" width="8" height="8"></image><use href="${u("svg-use")}#g"></use><script href="${u("svg-script")}"></script>
+<filter id="probe-fe-${name}"><feImage href="${u("svg-feimage")}"></feImage></filter>
+<circle cx="10" cy="10" r="4" fill="url(${u("svg-fill")}#g)"></circle>
+<circle cx="10" cy="22" r="4" stroke="url(${u("svg-stroke")}#s)"></circle>
+<circle cx="22" cy="10" r="4" mask="url(${u("svg-mask")}#m)"></circle>
+<circle cx="22" cy="22" r="4" clip-path="url(${u("svg-clip")}#c)"></circle>
+<line x1="0" y1="0" x2="20" y2="20" stroke="black" marker-end="url(${u("svg-marker")}#mk)"></line>
+</svg>
+`;
+}
+
+test("CMH-OFFLINE-04: no authority-bearing scheme but http and https loads from a file: document, so the predicates' scheme boundary is evidence", async ({ page }) => {
+  test.setTimeout(180000);
+  const listeners = [];
+  const connections = {};
+  // One listener per (control, channel) pair and one per candidate scheme.
+  const listenOn = async (key) => {
+    connections[key] = 0;
+    const server = net.createServer((socket) => {
+      connections[key] += 1;
+      socket.on("error", () => {});
+      // Close quickly: nothing here needs to speak the protocol - the CONNECTION is the whole
+      // measurement - and a held-open socket would stall the page's load event.
+      setTimeout(() => socket.destroy(), 200);
+    });
+    server.on("error", () => {});
+    await new Promise((resolve, reject) => {
+      const onError = (err) => reject(err);
+      server.once("error", onError);
+      server.listen(0, "127.0.0.1", () => {
+        server.removeListener("error", onError);
+        resolve();
+      });
+    });
+    listeners.push(server);
+    return `127.0.0.1:${server.address().port}`;
+  };
+  const dir = makeTmpDir();
+  try {
+    const controlAuthority = {};
+    for (const channel of SCHEME_PROBE_CHANNELS) {
+      controlAuthority[channel] = await listenOn("control:" + channel);
+    }
+    const candidateUrl = {};
+    const candidateAuthority = {};
+    for (const name of [SCHEME_PROBE_CONTROL_TLS, ...SCHEME_PROBE_CANDIDATES]) {
+      candidateAuthority[name] = await listenOn(name);
+      candidateUrl[name] = schemeProbeUrl(name, candidateAuthority[name]);
+    }
+    const markupChannels = new Set();
+    const blocks = [
+      schemeProbeMarkup(SCHEME_PROBE_CONTROL,
+                        (channel) => schemeProbeUrl(SCHEME_PROBE_CONTROL, controlAuthority[channel]),
+                        markupChannels),
+      ...[SCHEME_PROBE_CONTROL_TLS, ...SCHEME_PROBE_CANDIDATES].map(
+        (name) => schemeProbeMarkup(name, () => candidateUrl[name])),
+    ];
+    // The declared channel list must match what the DOCUMENT actually carries, not just itself: a
+    // channel dropped from the markup while still parked in the unobserved list would otherwise go
+    // unmeasured forever, handing every candidate a free zero.
+    expect([...markupChannels].sort(),
+           "the probe markup and SCHEME_PROBE_CHANNELS have diverged")
+      .toEqual([...SCHEME_PROBE_CHANNELS].sort());
+    // ...and the live/unobserved split must partition exactly that list, with no overlap.
+    expect([...SCHEME_PROBE_LIVE_CHANNELS, ...SCHEME_PROBE_UNOBSERVED_CHANNELS].sort(),
+           "the live/unobserved split no longer partitions the probe's channels")
+      .toEqual([...SCHEME_PROBE_CHANNELS].sort());
+    expect(SCHEME_PROBE_LIVE_CHANNELS.filter((c) => SCHEME_PROBE_UNOBSERVED_CHANNELS.includes(c)),
+           "a channel is in BOTH the live and the unobserved list").toEqual([]);
+    // The `rel` set is a hand copy of the exporter's own; pin it to the source so a rel added
+    // there cannot silently stop being probed.
+    const stripSource = fs.readFileSync(path.join(DEV, "assets", "js", "68-export-offline.js"), "utf8");
+    const relsMatch = stripSource.match(/const loads = \[([^\]]*)\];/);
+    expect(relsMatch, "the exporter no longer declares its link `loads` rel list where this test "
+                      + "reads it; re-point the extraction").toBeTruthy();
+    expect(relsMatch[1].match(/"([^"]+)"/g).map((s) => s.slice(1, -1)).sort(),
+           "SCHEME_PROBE_LINK_RELS has drifted from the exporter's link `loads` list")
+      .toEqual([...SCHEME_PROBE_LINK_RELS].sort());
+    const probe = path.join(dir, "scheme-probe.html");
+    fs.writeFileSync(probe, `<!DOCTYPE html><html><head><meta charset="utf-8"><title>scheme probe</title></head>
+<body>${blocks.join("\n")}</body></html>`);
+    await page.goto(fileUrl(probe), { waitUntil: "domcontentloaded" });
+    // Every block must actually be in the document: a truncated parse would otherwise read as a
+    // set of inert schemes.
+    for (const name of [SCHEME_PROBE_CONTROL, SCHEME_PROBE_CONTROL_TLS, ...SCHEME_PROBE_CANDIDATES]) {
+      await expect(page.locator("#probe-" + name)).toHaveCount(1);
+    }
+
+    await expect
+      .poll(() => connections[SCHEME_PROBE_CONTROL_TLS],
+            { timeout: 60000,
+              message: "the https control never connected, so this document cannot say anything "
+                       + "about the candidate schemes" })
+      .toBeGreaterThan(0);
+    for (const channel of SCHEME_PROBE_LIVE_CHANNELS) {
+      await expect
+        .poll(() => connections["control:" + channel],
+              { timeout: 60000,
+                message: `the http control never loaded through '${channel}', so that channel `
+                         + "cannot say anything about the candidate schemes. Fix the markup if it "
+                         + "is a probe bug; if the engine genuinely stopped driving the channel, "
+                         + "move it to SCHEME_PROBE_UNOBSERVED_CHANNELS and say why there." })
+        .toBeGreaterThan(0);
+    }
+    // Give a candidate every chance to connect AFTER the whole document has settled, so a zero
+    // below is a measurement rather than a race.
+    await page.waitForLoadState("load").catch(() => {});
+    await page.waitForTimeout(3000);
+    const candidateVerdict = () => {
+      for (const name of SCHEME_PROBE_CANDIDATES) {
+        expect(connections[name],
+               `${candidateUrl[name]} produced a connection from a file: document, so this scheme `
+               + "IS a load channel and BOTH network-URL predicates (and the CSS ones) must be "
+               + "widened to recognize it - together, or the exporter and the gate drift").toBe(0);
+      }
+    };
+    candidateVerdict();
+    // The control's budget is "however long its slowest channel took", so give the candidates a
+    // second look at the very end - a late connection must fail rather than land after the read.
+    await page.waitForTimeout(2000);
+    candidateVerdict();
+  } finally {
+    for (const server of listeners) await new Promise((r) => server.close(r));
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("CMH-OFFLINE-04: a reference in a scheme no Chromium fetches survives the strip and its own strict gate", async ({ page, browser }) => {
+  test.setTimeout(120000);
+  // The product half of the boundary above: because none of these schemes loads, neither side
+  // reports one, so the exporter KEEPS the author's reference and `--strict` still certifies the
+  // file as offline-clean. Widening one predicate without the other would break exactly one of
+  // these two assertions, which is the CMH-OFFLINE-04 drift this pins.
+  const CONTENT_WITH_INERT_SCHEMES = `
+<h1>Inert scheme references</h1>
+<p id="inert-note">A scheme a browser will not fetch is an author's reference, not egress.</p>
+<img id="ftpRef" alt="ftp reference" src="ftp://inert.example/archive.png">
+<img id="wsRef" alt="ws reference" src="ws://inert.example/socket.png">
+<img id="wssRef" alt="wss reference" src="wss://inert.example/socket.png">
+<img id="customRef" alt="custom reference" src="x-cmh-probe://inert.example/app.png">
+<a id="mailtoRef" href="mailto:someone@inert.example">mail</a>
+<style>.inert-bg { background-image: url("ftp://inert.example/bg.png"); }</style>
+<img id="networkControl" alt="network control" src="https://evil.example/tracker.png">`;
+  const staged = stageContent(CONTENT_WITH_INERT_SCHEMES, { key: "cmh-offline-inert-schemes", source: "offline-inert.html" });
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    await page.route(/^https?:\/\//, async (route) => {
+      const url = route.request().url();
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url)) return route.fallback();
+      return route.abort();
+    });
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    // Kept, values intact: the strip has no business deleting a reference no browser fetches.
+    expect(exportedHtml).toContain('src="ftp://inert.example/archive.png"');
+    expect(exportedHtml).toContain('src="ws://inert.example/socket.png"');
+    expect(exportedHtml).toContain('src="wss://inert.example/socket.png"');
+    expect(exportedHtml).toContain('src="x-cmh-probe://inert.example/app.png"');
+    expect(exportedHtml).toContain('href="mailto:someone@inert.example"');
+    expect(exportedHtml).toContain('url("ftp://inert.example/bg.png")');
+    // ...while the control in the same document, in a scheme that DOES load, is still stripped.
+    expect(exportedHtml).not.toContain("evil.example");
+
+    const exportedPath = path.join(outDir, "offline-inert.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    // The gate agrees: it certifies the very file the exporter produced, inert schemes and all.
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    await expect(page2.locator("#cmTypeBadge")).toHaveText("Offline");
+    expect(external).toEqual([]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+// The one channel the scheme boundary above defers to the CSP, pinned as a live measurement rather
+// than as a string match on the policy text. A scripted `new WebSocket("ws://host/...")` really
+// does reach the network from a `file:` document, and NO attribute predicate can see it - there is
+// no URL-shaped attribute to read - so the "do not widen `ws:`/`wss:`" decision rests entirely on
+// the export's `connect-src 'none'`. Asserting the directive SUBSTRING (which the CSP tests above
+// already do) would still pass if a later edit made the policy carry a `connect-src` that no longer
+// blocks, so this drives the real exported file, from a real page, against a raw TCP listener, and
+// pins BOTH directions: blocked with the policy, connecting without it. The no-CSP control is what
+// makes the zero meaningful - without it a broken harness would "prove" the channel closed.
+test("CMH-OFFLINE-04: the export's connect-src none is what closes the scripted WebSocket channel no attribute predicate can see", async ({ page, browser }) => {
+  test.setTimeout(120000);
+  const staged = stageContent(
+    '<h1>Scripted socket</h1>\n<p id="socket-note">A scripted WebSocket is not an attribute.</p>',
+    { key: "cmh-offline-scripted-socket", source: "offline-socket.html" });
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  // TWO listeners, one per phase. Sharing one counter would let a slow connection from the BLOCKED
+  // phase land during the control phase, where the poll would read it as the control succeeding -
+  // green for a file that actually leaks.
+  const connections = { blocked: 0, control: 0 };
+  const listeners = [];
+  let ctx2;
+  try {
+    const listenOn = async (key) => {
+      const server = net.createServer((socket) => {
+        connections[key] += 1;
+        socket.on("error", () => {});
+        setTimeout(() => socket.destroy(), 200);
+      });
+      server.on("error", () => {});
+      await new Promise((resolve, reject) => {
+        const onError = (err) => reject(err);
+        server.once("error", onError);
+        server.listen(0, "127.0.0.1", () => {
+          server.removeListener("error", onError);
+          resolve();
+        });
+      });
+      listeners.push(server);
+      return `ws://127.0.0.1:${server.address().port}/beacon`;
+    };
+    const blockedUrl = await listenOn("blocked");
+    const controlUrl = await listenOn("control");
+
+    await page.route(/^https?:\/\//, async (route) => {
+      const url = route.request().url();
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url)) return route.fallback();
+      return route.abort();
+    });
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+    expect(cspMetaContent(exportedHtml)).toContain("connect-src 'none'");
+    const withCspPath = path.join(outDir, "offline-socket.html");
+    fs.writeFileSync(withCspPath, exportedHtml);
+    // The same bytes with the policy taken out, so the control differs from the subject in exactly
+    // one thing: the CSP.
+    const withoutCsp = exportedHtml.replace(
+      /<meta\b[^>]*http-equiv=["']Content-Security-Policy["'][^>]*>/i, "");
+    expect(withoutCsp).not.toBe(exportedHtml);
+    const noCspPath = path.join(outDir, "offline-socket-no-csp.html");
+    fs.writeFileSync(noCspPath, withoutCsp);
+
+    const openSocket = (target, url) => target.evaluate((u) => new Promise((resolve) => {
+      let ws;
+      try {
+        ws = new WebSocket(u);
+      } catch (e) {
+        resolve("throw");
+        return;
+      }
+      ws.onopen = () => resolve("open");
+      ws.onerror = () => resolve("error");
+      setTimeout(() => resolve("timeout"), 5000);
+    }), url);
+
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const blockedMessages = [];
+    page2.on("console", (m) => blockedMessages.push(m.text()));
+    await page2.goto(fileUrl(withCspPath));
+    await ready(page2);
+    await openSocket(page2, blockedUrl);
+    await page2.waitForTimeout(1000);
+    expect(connections.blocked,
+           "the exported file's zero-network CSP must stop a scripted WebSocket; a connection here "
+           + "means the ws:/wss: schemes reach the network from an export and the decision not to "
+           + "widen the network-URL predicates has lost its only backstop").toBe(0);
+    // The refusal must name THIS socket and THIS directive: a bare "some CSP violation happened"
+    // would also be satisfied by an unrelated report while the socket died of something else, and
+    // the zero above would then be vacuous too.
+    const blockedLog = blockedMessages.join("\n");
+    expect(blockedLog, "the socket must be refused BY THE POLICY, not by an unrelated failure")
+      .toMatch(/violates the following Content Security Policy directive/i);
+    expect(blockedLog, "the CSP refusal must name the connect-src directive").toContain("connect-src");
+    expect(blockedLog, "the CSP refusal must name the socket this test opened").toContain(blockedUrl);
+
+    // The control: the identical document without the policy DOES connect, so the zero above is a
+    // measurement of the CSP rather than of a harness that never worked. It uses its OWN listener,
+    // so nothing it produces can be mistaken for the blocked phase or the reverse.
+    await page2.goto(fileUrl(noCspPath));
+    await ready(page2);
+    await openSocket(page2, controlUrl);
+    await expect
+      .poll(() => connections.control,
+            { timeout: 20000,
+              message: "the no-CSP control never connected, so this test cannot prove the CSP is "
+                       + "what blocked the socket" })
+      .toBeGreaterThan(0);
+    // Re-read the security assertion LAST, so a late connection from the blocked phase fails the
+    // test rather than arriving after the only check of it.
+    expect(connections.blocked,
+           "a connection arrived on the CSP-protected socket after the fact").toBe(0);
+  } finally {
+    if (ctx2) await ctx2.close();
+    for (const l of listeners) await new Promise((r) => l.close(r));
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
