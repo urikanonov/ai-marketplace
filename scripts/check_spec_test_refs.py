@@ -164,10 +164,12 @@ _HEADING_RE = re.compile(r" {0,3}#{1,6}\s+(.*?)\s*#*\s*$")
 _INDENTED_CODE_RE = re.compile(r" {4,}\S")
 _NON_FEATURE_SECTIONS = ("doc-surface registry",)
 _NON_FEATURE_TABLE_HEADERS = ("doc surface",)
-# How a row records coverage that is deliberately not automated (AGENTS.md keeps `manual` for a
-# behavior that cannot be). The marker must OPEN the cell and be followed by a separator or end,
-# so a sentence that merely begins "Manual verification covers ..." is prose, not a declaration.
-_MANUAL_COVERAGE_RE = re.compile(r"^[`*_~]*(?:manual|partial)[`*_~]*\s*(?:[-:;]|$)", re.IGNORECASE)
+# How a flat Python row records coverage that is deliberately not automated. AGENTS.md keeps
+# `manual` for a behavior that genuinely cannot be automated, and only that: `partial` asserts a
+# test EXISTS, so a flat row must name it. The marker must OPEN the cell and be followed by a
+# separator or end, so prose that merely begins "Manual verification covers ..." is not a
+# declaration.
+_MANUAL_COVERAGE_RE = re.compile(r"^[`*_~]*manual[`*_~]*\s*(?:[-:;]|$)", re.IGNORECASE)
 _JS_TITLE_RE = re.compile(
     r'(?:test\.describe(?:\.(?:only|skip|fixme|fail|serial|parallel))*|'
     r'(?:test|it|describe)(?:\.(?:only|skip|fixme|fail|serial|parallel))*)\s*\(\s*'
@@ -885,6 +887,20 @@ def _clause_end(text: str, start: int, default_end: int) -> int:
     return default_end
 
 
+def _coverage_gap_ids(spec_path: Path) -> frozenset[str]:
+    """Feature ids named under the spec's "Coverage gaps" heading."""
+    ids: set[str] = set()
+    in_section = False
+    for _line_no, line in _unfenced_lines(_read(spec_path))[0]:
+        heading = _HEADING_RE.match(line)
+        if heading:
+            in_section = _undecorated(heading.group(1)).strip().lower() == "coverage gaps"
+            continue
+        if in_section:
+            ids.update(_FEATURE_ID_RE.findall(line))
+    return frozenset(ids)
+
+
 def _check_flat_python_rows(spec_path: Path) -> list[SpecIssue]:
     """Every feature row of a flat Python target must NAME a test, or declare manual coverage.
 
@@ -893,14 +909,52 @@ def _check_flat_python_rows(spec_path: Path) -> list[SpecIssue]:
     refuse. A JS target is caught from the other side: its tests carry the feature id in their
     titles and the reverse direction demands the citation. A Python test is a `Class.method` name
     that cannot carry an id, so here the ROW has to carry it. `manual` keeps the documented escape
-    hatch for a behavior that genuinely cannot be automated.
+    hatch for a behavior that genuinely cannot be automated, and AGENTS.md's other half of that
+    bargain is enforced too: the row must be listed under "Coverage gaps". `partial` is not an
+    escape hatch, because it asserts a test exists and a flat row must then name it.
+
+    A row that is not WELL FORMED is reported rather than skipped, for the same reason. GFM makes
+    the trailing `|` optional, so `| ID | behavior | coverage` renders as an ordinary row while
+    `_row_cells` and the coverage cell both go unread - which would quietly reopen exactly the gap
+    above. A gated table must not hold a row this direction cannot see.
+
+    A registered target with NO feature rows fails as well: the per-suite checks this replaced
+    asserted their spec still declared rows, so an emptied or renamed table cannot leave a
+    vacuously green gate behind.
     """
     issues: list[SpecIssue] = []
-    for line_no, feature_id, cells, well_formed in _feature_rows(spec_path)[0]:
+    rows = _feature_rows(spec_path)[0]
+    if not rows:
+        return [SpecIssue(
+            spec_path,
+            1,
+            "this target is registered in `FLAT_PYTHON_SUITES` but declares no feature rows, so "
+            "the gate would pass over nothing; add its rows or drop the registration",
+        )]
+    gap_ids = _coverage_gap_ids(spec_path)
+    for line_no, feature_id, cells, well_formed in rows:
         if not well_formed:
+            issues.append(SpecIssue(
+                spec_path,
+                line_no,
+                "row `%s` is not a well-formed table row (a blockquoted row, a row of fewer than "
+                "three cells, or a row missing its trailing `|`), so its covering-tests cell is "
+                "not read; a flat Python target has no reverse direction to catch that, so write "
+                "the row as `| id | behavior | covering tests |`" % feature_id,
+            ))
             continue
         coverage = cells[-1].strip()
-        if _TEST_PATH_RE.search(coverage) or _MANUAL_COVERAGE_RE.match(coverage):
+        if _TEST_PATH_RE.search(coverage):
+            continue
+        if _MANUAL_COVERAGE_RE.match(coverage):
+            if feature_id not in gap_ids:
+                issues.append(SpecIssue(
+                    spec_path,
+                    line_no,
+                    "row `%s` records `manual` coverage but is not listed under \"Coverage "
+                    "gaps\"; AGENTS.md asks for both, and the listing is what keeps the escape "
+                    "hatch reviewable" % feature_id,
+                ))
             continue
         issues.append(SpecIssue(
             spec_path,
@@ -1239,7 +1293,10 @@ def main(argv: list[str] | None = None) -> int:
         "--target",
         action="append",
         type=_parse_target,
-        help="Spec/base pair to check, formatted SPEC=BASE. May be repeated.",
+        help="Spec/base pair to check, formatted SPEC=BASE. May be repeated. A flat Python target "
+             "is recognised by its registered path (FLAT_PYTHON_SUITES), so a COPY of such a spec "
+             "passed here is treated as an ordinary target and fails closed with 'no tests "
+             "directory found'.",
     )
     args = parser.parse_args(argv)
 

@@ -1194,7 +1194,18 @@ class FlatPythonSuiteTests(unittest.TestCase):
         )
 
     def _spec(self, rows):
-        spec = self.sandbox / "SPEC.md"
+        return self._write_spec(self.sandbox / "SPEC.md", rows)
+
+    def _spec_at(self, directory, feature_id):
+        """A minimal, fully covered spec in *directory*, for a test about the DIRECTORY."""
+        return self._write_spec(
+            directory / "SPEC.md",
+            ((feature_id,
+              "`scripts/test_check_forbidden_files.py` - "
+              "`IsForbiddenTest.test_allows_safe_files`"),),
+        )
+
+    def _write_spec(self, spec, rows):
         spec.write_text(
             "# Spec\n\n"
             "| Feature id | Behavior | Covering tests |\n"
@@ -1259,8 +1270,7 @@ class FlatPythonSuiteTests(unittest.TestCase):
     def test_a_registered_directory_with_no_python_suite_fails_closed(self):
         bare = self.sandbox / "bare"
         bare.mkdir()
-        spec = bare / "SPEC.md"
-        spec.write_text("# Spec\n", encoding="utf-8", newline="\n")
+        spec = self._spec_at(bare, "GUARD-01")
 
         messages = [issue.message for issue in self._check_all(spec)]
 
@@ -1343,10 +1353,40 @@ class FlatPythonSuiteTests(unittest.TestCase):
 
     def test_a_row_may_still_record_manual_coverage(self):
         # AGENTS.md keeps `manual` for a behavior that genuinely cannot be automated, so the row
-        # rule must demand a NAMED test rather than forbid the documented escape hatch.
-        spec = self._spec((("GUARD-01", "`manual` - an agent-behavior convention, not automatable"),))
+        # rule must demand a NAMED test rather than forbid the documented escape hatch - provided
+        # the row is also listed under "Coverage gaps", which is the other half of that bargain.
+        spec = self.sandbox / "SPEC.md"
+        spec.write_text(
+            "# Spec\n\n"
+            "| Feature id | Behavior | Covering tests |\n"
+            "| --- | --- | --- |\n"
+            "| GUARD-01 | Demo behavior. | `manual` - an agent convention, not automatable |\n"
+            "\n## Coverage gaps\n\n"
+            "GUARD-01 is a prompt-level convention with no automatable surface.\n",
+            encoding="utf-8",
+            newline="\n",
+        )
 
         self.assertEqual([issue.format() for issue in self._check_all(spec)], [])
+
+    def test_a_manual_row_must_be_listed_under_coverage_gaps(self):
+        spec = self._spec((("GUARD-01", "`manual` - an agent convention, not automatable"),))
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("is not listed under \"Coverage gaps\"", messages[0])
+
+    def test_a_registered_spec_with_no_feature_rows_fails(self):
+        # The per-suite checks this replaced asserted their spec still declared rows. Without that,
+        # an emptied or renamed table would leave a vacuously green gate behind.
+        spec = self.sandbox / "SPEC.md"
+        spec.write_text("# Spec\n\nProse only.\n", encoding="utf-8", newline="\n")
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("declares no feature rows", messages[0])
 
     def test_a_directory_named_like_a_test_file_is_not_a_suite(self):
         # `_test_corpus` skips a directory, so accepting one here would hand back an empty corpus
@@ -1354,8 +1394,7 @@ class FlatPythonSuiteTests(unittest.TestCase):
         # to prevent.
         bare = self.sandbox / "dir-suite"
         (bare / "test_not_a_file.py").mkdir(parents=True)
-        spec = bare / "SPEC.md"
-        spec.write_text("# Spec\n", encoding="utf-8", newline="\n")
+        spec = self._spec_at(bare, "GUARD-01")
 
         messages = [issue.message for issue in self._check_all(spec)]
 
@@ -1389,6 +1428,35 @@ class FlatPythonSuiteTests(unittest.TestCase):
             "feature id `ORPHAN-99` has no spec row",
             [issue.message for issue in refs.check_test_id_mappings(spec, base, (carrier,))],
         )
+
+    def test_a_partial_marker_does_not_excuse_a_flat_row(self):
+        # `partial` asserts a test EXISTS, so a flat row must name it. Only `manual` - a behavior
+        # that genuinely cannot be automated - is a no-test declaration here.
+        spec = self._spec((("GUARD-01", "partial - covered elsewhere"),))
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("row `GUARD-01` names no covering test", messages[0])
+
+    def test_a_row_missing_its_trailing_pipe_is_reported_not_skipped(self):
+        # GFM makes the trailing `|` optional, so this renders as an ordinary row - but neither
+        # `_row_cells` nor the coverage gate reads it, and a flat target has no reverse direction
+        # to notice. Skipping it would reopen the bare-citation gap on a row that looks normal.
+        spec = self.sandbox / "SPEC.md"
+        spec.write_text(
+            "# Spec\n\n"
+            "| Feature id | Behavior | Covering tests |\n"
+            "| --- | --- | --- |\n"
+            "| GUARD-01 | Demo behavior. | `scripts/test_check_forbidden_files.py`\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("row `GUARD-01` is not a well-formed table row", messages[0])
 
     def test_every_flat_python_suite_is_a_registered_target(self):
         # A `FLAT_PYTHON_SUITES` entry that is not also in `SPEC_TARGETS` is dead weight: nothing
