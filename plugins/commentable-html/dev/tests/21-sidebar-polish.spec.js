@@ -124,6 +124,13 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
     await openSidebarPanel(page);
     const sort = page.locator("#btnSort");
     const tipBubble = page.locator(".cm-tooltip.is-visible");
+    // The panel SLIDES in, and a tooltip is only shown for a control that is inside the visible
+    // box - so focusing mid-slide legitimately shows nothing. Wait for the button to land before
+    // focusing, or this test races the transition instead of testing the tooltip refresh.
+    await expect.poll(async () => page.evaluate(() => {
+      const r = document.getElementById("btnSort").getBoundingClientRect();
+      return r.right <= window.innerWidth && r.left >= 0;
+    })).toBe(true);
     // Focusing the button shows the shared tooltip bubble describing the current (document) state.
     await sort.focus();
     await expect(tipBubble).toBeVisible();

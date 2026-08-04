@@ -45,6 +45,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `03-selectors.js` | CMH-CHART, CMH-MMD, CMH-OFFLINE, CMH-PRINT | The one shared rich-content selector vocabulary (`CMH_MERMAID_SEL`, `CMH_CHART_DATA_SEL`, `CMH_CHART_CANVAS_SEL`, `CMH_RICH_CONTENT_SEL`) the chart renderer, the image layer, the Offline exporter, the print/measure cap in `83-print.js`, and the author-time payload detector all derive from. |
 | `04-viewport.js` | CMH-CORE | The one shared VIEWPORT vocabulary (`cmhViewportBox`, `cmhViewportRect`, `cmhOnViewportChange`): every floating affordance measures the VISUAL viewport through these and subscribes to its `resize`/`scroll` here, so an on-screen keyboard or a pinch zoom cannot leave one of them off screen. Also hosts the shared SCROLL GUARD (`cmhBeginScrollGuard`), which keeps the browser's scroll anchoring from moving the document out from under a surface being opened. |
 | `05-persistence.js` | CMH-PERSIST, CMH-STORE, CMH-EXP | localStorage load/merge/save of the comments array; sync compression codec + quota-aware write helpers. |
+| `06-preferences.js` | CMH-MENU-PREF | Scoped reviewer preferences: the cross-document default and the per-document override behind "Auto-open panel on comment", each read/written through a try/catch guard. |
 | `10-offsets.js` | CMH-CORE, CMH-TEXT | Text-offset anchoring helpers. |
 | `15-context.js` | CMH-CORE, CMH-COPY, CMH-CTX | Section + surrounding-text context capture. |
 | `20-mermaid.js` | CMH-MMD, CMH-MMDLOAD, CMH-DECK, CMH-ANCHOR | Mermaid diagram commenting layer; deck diagram contain-fit sizing; hosts the shared `setActiveAdd()` single-affordance sentinel for all structural-anchor layers. |
@@ -69,7 +70,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `52-hover-bubble.js` | CMH-CORE | Hover bubble to open a comment. |
 | `53-comment-popover.js` | CMH-CORE, CMH-RICH | Inline on-screen comment dialog opened from the hover bubble (renders the note rich; note + Edit button, whose in-place editor carries the shared formatting toolbar and shortcuts; an outside pointer click closes it, and is swallowed when it lands in the annotated document unless it hits one of the layer's identity-resolved surfaces - an open editor, or a control registered through `cmhMarkLayerChrome` - while a keyboard-activated one is never swallowed). |
 | `54-sidebar-toggle.js` | CMH-SIDE, CMH-A11Y | Sidebar open/close. |
-| `55-toolbar-menu.js` | CMH-MENU-ICON, CMH-UI | Toolbar overflow menu; renders the menu header's brand icon and running-version text. |
+| `55-toolbar-menu.js` | CMH-MENU-ICON, CMH-MENU-PREF, CMH-UI | Toolbar overflow menu; renders the menu header's brand icon and running-version text; wires the sidebar More menu's Preferences checkbox rows and its roving focus. |
 | `56-copy-clear.js` | CMH-COPY | Copy all + Clear all. |
 | `57-storage-manager.js` | CMH-STORE | Cross-document storage manager dialog: document registry, grouping, per-document delete, quota auto-open + retry. |
 | `60-export-markdown.js` | CMH-MD, CMH-CODE | Export to Markdown; per-code-block Copy button, language pill, and optional caption. |

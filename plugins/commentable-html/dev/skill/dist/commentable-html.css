@@ -682,7 +682,9 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   box-shadow: var(--cp-shadow);
 }
 .cm-sidebar-export-menu[hidden] { display: none; }
-.cm-sidebar-more-menu { left: auto; right: 0; }
+/* Anchored to its toggle's right edge, and capped to the panel so the longer Preferences labels
+   wrap instead of pushing the menu past the header ribbon at the sidebar's minimum width. */
+.cm-sidebar-more-menu { left: auto; right: 0; max-width: min(18rem, calc(var(--cm-sidebar-w, 25rem) - 4rem)); }
 /* In the primary row the Export button is the right-hand action, so its menu opens from the right
    edge (extending left into the sidebar) rather than off the right of the viewport. */
 .cm-sidebar .head-primary .cm-sidebar-export-menu { left: auto; right: 0; }
@@ -713,6 +715,22 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-sidebar-more-menu .cm-menu-group { padding: 0.3rem 0.45rem 0.15rem; font-size: var(--cp-chrome-tiny-font); letter-spacing: 0.08em; text-transform: uppercase; color: var(--cp-text-soft); font-weight: 700; }
 .cm-sidebar-more-menu button.danger { color: var(--cp-danger); }
 .cm-sidebar-more-menu button.danger:hover { background: var(--cp-danger-soft); color: var(--cp-danger); }
+/* Preference rows (role=menuitemcheckbox): a square box that fills with a tick when checked, and a
+   label that WRAPS rather than widening the menu past the panel (the Manage actions keep nowrap).
+   The override row is indented so it reads as nested under the default it can override. */
+.cm-sidebar .cm-sidebar-more-menu button.cm-menu-check { white-space: normal; overflow: visible; text-overflow: clip; align-items: flex-start; }
+.cm-menu-check-box {
+  flex: none; width: 0.85rem; height: 0.85rem; margin-top: 0.1rem;
+  border: 1px solid var(--cp-border-strong, var(--cp-border)); border-radius: 0.25rem;
+  background: var(--cp-surface); position: relative;
+}
+.cm-menu-check[aria-checked="true"] .cm-menu-check-box { background: var(--cp-accent); border-color: var(--cp-accent); }
+.cm-menu-check[aria-checked="true"] .cm-menu-check-box::after {
+  content: ""; position: absolute; left: 0.24rem; top: 0.04rem;
+  width: 0.22rem; height: 0.45rem; border: solid var(--cp-bg-elevated);
+  border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.cm-sidebar .cm-sidebar-more-menu button.cm-menu-check-sub { padding-left: calc(var(--cp-chrome-action-x) + 0.9rem); }
 
 /* Comment search / filter row: a single text field with a leading magnifier, a clear (X)
    button, and a shown/total count. Filtered-out cards are hidden with an explicit class

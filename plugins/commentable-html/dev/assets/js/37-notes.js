@@ -97,7 +97,7 @@ function _noteSyncUi() {
   _noteHadChanges = has;
   if (typeof updateDocTypeUi === "function") updateDocTypeUi();
   if (typeof updateCopyAllState === "function") updateCopyAllState();
-  if (has && !document.body.classList.contains("cmh-deck-comments-off") && typeof openSidebar === "function") openSidebar();
+  if (has && !document.body.classList.contains("cmh-deck-comments-off") && typeof openSidebar === "function" && cmhShouldAutoOpenPanel()) openSidebar();
 }
 // The expensive half of a note change: renderComments() runs two full-document tree walks (a
 // getTextNodes walk per changed note plus the section-review scan), so it is O(document) and must

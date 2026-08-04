@@ -110,5 +110,6 @@
   "93-autogrow.spec.js": 27973,
   "93-chart-bare-canvas.spec.js": 12318,
   "94-visual-viewport.spec.js": 10819,
+  "95-auto-open-panel.spec.js": 19000,
   "95-composer-scroll.spec.js": 17832
 }
