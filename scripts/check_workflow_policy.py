@@ -31,20 +31,21 @@ auto-run into arbitrary code execution with a privileged token, or leak a secret
            script, so the runner passes it as data, never as code. This also blunts
            prompt-injection reaching any LLM step downstream of the shell.
 
-  RULE E - A job whose checkout requests FULL history (`fetch-depth: 0`) must not declare a
-           `timeout-minutes` a full clone of this repository can plausibly exceed. History
-           (issue #951): the `changes` and `version-lane` jobs were cancelled at 5m1s-5m4s
-           under runner contention while their full clone was still running - and because the
-           aggregate `plugin-tests` gate is deliberately fail-CLOSED, a cancelled `changes`
-           reddened a REQUIRED check that said nothing about the PR. A timeout that loses a
-           race with a checkout catches no hung job; it only manufactures flaky reds. A job
-           with no `timeout-minutes` at all is not flagged (GitHub's 6-hour default cannot
-           lose that race), and neither is a non-numeric budget, which cannot be evaluated
-           statically.
+  RULE E - A job whose checkout requests FULL history (`fetch-depth: 0`) must not run under a
+           `timeout-minutes` a full clone of this repository can plausibly exceed - on the job
+           or on the checkout step itself, whichever is tighter. History (issue #951): the
+           `changes` and `version-lane` jobs were cancelled at 5m1s-5m4s under runner
+           contention while their full clone was still running - and because the aggregate
+           `plugin-tests` gate is deliberately fail-CLOSED, a cancelled `changes` reddened a
+           REQUIRED check that said nothing about the PR. A timeout that loses a race with a
+           checkout catches no hung job; it only manufactures flaky reds. A job with no
+           `timeout-minutes` at all is not flagged (GitHub's 6-hour default cannot lose that
+           race), and neither is a budget that cannot be read statically (an expression).
 
 Exit non-zero on any violation. Standard library plus PyYAML only.
 """
 import glob
+import math
 import os
 import re
 import sys
@@ -158,6 +159,26 @@ def _iter_run_scripts(doc):
 # a coin flip. Ten minutes leaves the clone room while still catching a genuinely hung job.
 FULL_HISTORY_MIN_TIMEOUT = 10
 _CHECKOUT_STEP_RE = re.compile(r"^actions/checkout(?:@|$)")
+# A plain decimal number, the only shape we resolve statically; anything else is treated the way
+# JavaScript's Number() treats it - NaN - which actions/checkout turns into a full-history fetch.
+_NUMBER_RE = re.compile(r"^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$")
+
+
+def _fetch_depth_is_full(value):
+    """True when a `fetch-depth` input asks actions/checkout for the WHOLE history.
+
+    Mirrors the action's own coercion (`Math.floor(Number(input))`, with NaN or a negative result
+    becoming 0, and 0 meaning "fetch everything"). So `0`, `"0"`, `"00"`, `0.5`, `-1` and outright
+    garbage all mean full history, and only an expression (unevaluable here) is passed over.
+    """
+    text = str(value).strip()
+    if not text:
+        return False  # an empty input falls back to the action's default depth of 1
+    if "${{" in text:
+        return False  # an expression cannot be evaluated statically
+    if not _NUMBER_RE.match(text):
+        return True  # Number("nonsense") is NaN, which the action turns into 0 = full history
+    return math.floor(float(text)) <= 0
 
 
 def _is_full_history_checkout(step):
@@ -168,34 +189,64 @@ def _is_full_history_checkout(step):
     if not isinstance(uses, str) or not _CHECKOUT_STEP_RE.match(uses.strip().strip("\"'")):
         return False
     with_ = step.get("with")
-    if not isinstance(with_, dict):
+    if not isinstance(with_, dict) or "fetch-depth" not in with_:
         return False
-    # YAML gives an int for `fetch-depth: 0` and a str for `fetch-depth: "0"`; both mean full.
-    return str(with_.get("fetch-depth", "")).strip() == "0"
+    return _fetch_depth_is_full(with_["fetch-depth"])
+
+
+def _budget_minutes(value):
+    """Return a numeric `timeout-minutes`, or None when it cannot be read statically.
+
+    YAML gives an int for `timeout-minutes: 5` and a str for `timeout-minutes: "5"`; both mean the
+    same thing to the runner, so a quoted number must not slip past the rule. A bool is not a
+    budget (YAML's `false` would otherwise read as 0), and an expression cannot be evaluated here.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return None
+    return None
 
 
 def check_job_budgets(doc, rel):
-    """RULE E: a full-history checkout must not race the job's own timeout."""
+    """RULE E: a full-history checkout must not race the timeout it runs under."""
     violations = []
     jobs = doc.get("jobs")
     if not isinstance(jobs, dict):
         return violations
+
+    def _too_small(budget, scope, job_id):
+        return (
+            rel + ": RULE E - " + scope + " '" + str(job_id) + "' checks out with fetch-depth: 0 "
+            "but budgets only " + str(budget) + " minute(s). A full clone of this repository can "
+            "exceed that under runner contention, and the job is then CANCELLED - a red that "
+            "says nothing about the change (issue #951). Budget at least "
+            + str(FULL_HISTORY_MIN_TIMEOUT) + " minutes, or make the checkout cheaper.")
+
     for job_id, job in jobs.items():
         if not isinstance(job, dict):
             continue
         steps = job.get("steps")
-        if not isinstance(steps, list) or not any(_is_full_history_checkout(s) for s in steps):
+        if not isinstance(steps, list):
             continue
-        budget = job.get("timeout-minutes")
-        if isinstance(budget, bool) or not isinstance(budget, (int, float)):
+        checkouts = [s for s in steps if _is_full_history_checkout(s)]
+        if not checkouts:
+            continue
+        # A step-level timeout is the tighter of the two and races the clone just as well.
+        for step in checkouts:
+            step_budget = _budget_minutes(step.get("timeout-minutes"))
+            if step_budget is not None and step_budget < FULL_HISTORY_MIN_TIMEOUT:
+                violations.append(_too_small(step_budget, "the checkout step of job", job_id))
+        budget = _budget_minutes(job.get("timeout-minutes"))
+        if budget is None:
             continue  # unset (6-hour default) or an expression we cannot evaluate statically
         if budget < FULL_HISTORY_MIN_TIMEOUT:
-            violations.append(
-                rel + ": RULE E - job '" + str(job_id) + "' checks out with fetch-depth: 0 but "
-                "budgets only " + str(budget) + " minute(s). A full clone of this repository can "
-                "exceed that under runner contention, and the job is then CANCELLED - a red that "
-                "says nothing about the change (issue #951). Budget at least "
-                + str(FULL_HISTORY_MIN_TIMEOUT) + " minutes, or make the checkout cheaper.")
+            violations.append(_too_small(budget, "job", job_id))
     return violations
 
 

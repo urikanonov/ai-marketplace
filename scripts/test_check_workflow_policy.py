@@ -262,6 +262,75 @@ class RuleETests(unittest.TestCase):
                     "        with:\n"
                     '          fetch-depth: "0"\n')
         self.assertTrue(v, "fetch-depth as a quoted string must not evade the rule")
+        self.assertIn("fetch-depth: 0", v[0])
+
+    def test_a_quoted_budget_is_still_a_budget(self):
+        # `timeout-minutes: "5"` means exactly what `timeout-minutes: 5` means to the runner.
+        v = self._v('    timeout-minutes: "5"\n' + self._FULL_CHECKOUT)
+        self.assertTrue(v, "a quoted number must not be mistaken for an unevaluable expression")
+
+    def test_a_step_level_budget_is_checked_too(self):
+        # The tighter of the two timeouts races the clone; a generous job budget does not save it.
+        v = self._v("    timeout-minutes: 30\n"
+                    "    steps:\n"
+                    "      - uses: actions/checkout@v4\n"
+                    "        timeout-minutes: 5\n"
+                    "        with:\n"
+                    "          fetch-depth: 0\n")
+        self.assertTrue(v, "a short step-level timeout on the checkout must be flagged")
+        self.assertIn("checkout step", v[0])
+
+    def test_a_generous_step_level_budget_passes(self):
+        self.assertEqual(
+            self._v("    timeout-minutes: 30\n"
+                    "    steps:\n"
+                    "      - uses: actions/checkout@v4\n"
+                    "        timeout-minutes: 15\n"
+                    "        with:\n"
+                    "          fetch-depth: 0\n"),
+            [],
+        )
+
+    def test_a_false_budget_is_not_read_as_zero(self):
+        # YAML `false` is not a budget; reading it as 0 would be a bogus violation.
+        self.assertEqual(self._v("    timeout-minutes: false\n" + self._FULL_CHECKOUT), [])
+
+    def test_a_reusable_workflow_job_without_steps_is_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = _write(tmp, "wf.yml",
+                       "on:\n  pull_request:\n"
+                       "jobs:\n  j:\n    uses: ./.github/workflows/reusable.yml\n"
+                       "    with:\n      fetch-depth: 0\n")
+            self.assertEqual([x for x in cwp.check_workflow(p) if "RULE E" in x], [])
+
+    def test_every_depth_the_action_treats_as_full_history_is_flagged(self):
+        # actions/checkout coerces fetch-depth with Math.floor(Number(input)) and turns NaN or a
+        # negative into 0 - i.e. FULL history. Each of these is therefore the pattern this rule
+        # exists to stop, dressed differently.
+        for depth in ('0', '"0"', '"00"', "0.5", '"-1"', "-3", '"nonsense"', "false"):
+            v = self._v("    timeout-minutes: 5\n"
+                        "    steps:\n"
+                        "      - uses: actions/checkout@v4\n"
+                        "        with:\n"
+                        "          fetch-depth: %s\n" % depth)
+            self.assertTrue(v, "fetch-depth: %s is a full-history fetch" % depth)
+
+    def test_a_genuine_shallow_depth_is_not_flagged(self):
+        for depth in ("1", '"1"', "2", "50", "1.9"):
+            v = self._v("    timeout-minutes: 5\n"
+                        "    steps:\n"
+                        "      - uses: actions/checkout@v4\n"
+                        "        with:\n"
+                        "          fetch-depth: %s\n" % depth)
+            self.assertEqual(v, [], "fetch-depth: %s is shallow" % depth)
+
+    def test_an_expression_depth_is_not_guessed(self):
+        v = self._v("    timeout-minutes: 5\n"
+                    "    steps:\n"
+                    "      - uses: actions/checkout@v4\n"
+                    "        with:\n"
+                    "          fetch-depth: ${{ inputs.depth }}\n")
+        self.assertEqual(v, [])
 
     def test_a_shallow_checkout_may_keep_a_short_budget(self):
         self.assertEqual(

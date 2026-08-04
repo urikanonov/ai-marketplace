@@ -56,11 +56,13 @@ jobs:
         with:
           persist-credentials: false
           # Full history is needed to resolve the PR base/head and their merge base, but the
-          # BLOBS are not: `git diff --name-only --no-renames` reads trees only, and a blobless
-          # partial clone carries every tree. This repository's history is heavy with large
-          # generated bundles, so the filter is what keeps this ~2-second git diff from losing a
-          # race with its own checkout (issue #951: cancelled at 5m1s-5m4s under contention,
-          # which reds the fail-closed gate below). The raised timeout is the belt to that brace.
+          # historical BLOBS are not: `git diff --name-only --no-renames` reads trees only, and a
+          # blobless partial clone carries every tree. (The worktree checkout still materializes
+          # HEAD's own files; what the filter drops is the rest of history's blobs, which is where
+          # this repository's weight sits - large generated bundles.) That is what keeps a
+          # ~2-second git diff from losing a race with its own checkout (issue #951: cancelled at
+          # 5m1s-5m4s under contention, which reds the fail-closed gate below). The raised timeout
+          # is the belt to that brace.
           fetch-depth: 0
           filter: blob:none
       - name: Decide whether to run the plugin suites
