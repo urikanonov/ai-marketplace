@@ -40,6 +40,37 @@ function _tableKey(t, idx) {
   const sig = hdr ? [...hdr.cells].map(c => (c.textContent || "").trim()).join("|") : "";
   return idx + "::" + sig.slice(0, 120);
 }
+// `_tableKey` numbers the sortable tables in DOCUMENT order, and a sortable table nested in another
+// table's cell CHANGES that number whenever the outer table's rows move. The three call sites
+// therefore saw three different orders: `applyPersistedTableSorts` reads the UNSORTED startup DOM,
+// `setupSortableTables` runs AFTER the persisted sorts are applied (so an already-sorted one), and
+// the export pass re-derives keys around its own unsort. A reader who sorted a nested table then
+// persisted it under a key neither reload nor export looked it up by (#976). So bind each table's
+// key ONCE, on the unsorted startup DOM, and look it up by ELEMENT from then on. For a document
+// with no nested sortable table the bound value is exactly what every call site computed anyway,
+// so no reader loses a persisted sort.
+const _tableKeyBinding = new WeakMap();
+function _bindTableKeys() {
+  // Never re-key a table that is already bound: a later pass would see the SORTED document order
+  // and overwrite the canonical key this binding exists to hold still.
+  _sortableTables().forEach(function (t, i) {
+    if (!_tableKeyBinding.has(t)) _tableKeyBinding.set(t, _tableKey(t, i));
+  });
+}
+// The bound key, falling back to the positional one for a table the binding never saw (a table
+// added after startup, or a caller that runs before `applyPersistedTableSorts`).
+function _tableKeyFor(t, idx) {
+  const bound = _tableKeyBinding.get(t);
+  return bound === undefined ? _tableKey(t, idx) : bound;
+}
+// Persisted sort state is reader-owned `localStorage` and can be absent, stale, or corrupt, so
+// every consumer accepts only a state it can actually apply: the load pass, and the control setup
+// that reflects the active direction on the chevron. A state one of them applied while the other
+// ignored it would show a "sorted" column that is not sorted. The upper column bound is left to
+// `_sortRows`, which reads a missing cell as empty text and so cannot scramble a table.
+function _validSortState(st) {
+  return !!st && Number.isInteger(st.col) && st.col >= 0 && (st.dir === "asc" || st.dir === "desc");
+}
 function _parseNum(s) {
   if (s == null) return null;
   const t = String(s).replace(/[\s,$%]/g, "");
@@ -188,20 +219,54 @@ function recomputeTextOffsets(persist) {
 // re-applies the sorted view - leaving the live state untouched. Widget moves are not
 // reverted here because Shareable and Offline exports save the moved widget DOM.
 function _canonicalCommentsForExport() {
-  if (!_tableSortState || Object.keys(_tableSortState).length === 0) {
-    recomputeTextOffsets(false);
-    return comments.map(function (c) { return Object.assign({}, c); });
+  // The recompute below rewrites live comment offsets into AUTHORED-row coordinates. Snapshot them
+  // so a throw part-way through cannot leave the reader holding offsets that no longer describe the
+  // restored view: the next ordinary save would persist that mismatch and the reload after it would
+  // land the highlight on an unrelated row.
+  const liveOffsets = comments.map(function (c) { return { c: c, start: c.start, end: c.end }; });
+  let completed = false;
+  // Capture each table's LIVE row order BEFORE the first unsort, and put exactly that order back
+  // afterwards. Re-deriving it by re-sorting is NOT an inverse of the unsort: `_sortRows` breaks
+  // ties on a row's CURRENT index, and an outer table sorted on a column whose cells hold a nested
+  // table compares that cell's live text - so a re-sort could hand the reader an order they never
+  // had, and on a failed pass one the restored offsets no longer describe. Capturing the rows also
+  // means the restore needs no persisted state and cannot fail: `_reorderBody` no-ops unless it is
+  // handed exactly this body's own rows.
+  const sorts = (!_tableSortState || Object.keys(_tableSortState).length === 0) ? [] :
+    _sortableTables().map(function (t) {
+      const body = _tableBody(t);
+      return { body: body, rows: Array.prototype.slice.call(body.rows), unsorted: false };
+    });
+  function restoreRows() {
+    sorts.forEach(function (s) {
+      if (!s.unsorted) return;
+      s.unsorted = false;
+      _reorderBody(s.body, s.rows);
+    });
   }
-  const savedState = JSON.parse(JSON.stringify(_tableSortState));
-  _sortableTables().forEach(function (t) { _unsortRows(_tableBody(t)); });
-  recomputeTextOffsets(false);
-  const snap = comments.map(function (c) { return Object.assign({}, c); });
-  _sortableTables().forEach(function (t, i) {
-    const st = savedState[_tableKey(t, i)];
-    if (st) _sortRows(_tableBody(t), st.col, st.dir);
-  });
-  recomputeTextOffsets(false);
-  return snap;
+  function revertOffsets() {
+    liveOffsets.forEach(function (o) {
+      if (o.start === undefined) delete o.c.start; else o.c.start = o.start;
+      if (o.end === undefined) delete o.c.end; else o.c.end = o.end;
+    });
+  }
+  try {
+    sorts.forEach(function (s) { _unsortRows(s.body); s.unsorted = true; });
+    recomputeTextOffsets(false);
+    const snap = comments.map(function (c) { return Object.assign({}, c); });
+    restoreRows();
+    if (sorts.length) recomputeTextOffsets(false);
+    completed = true;
+    return snap;
+  } finally {
+    // A throw above must never leave the reader looking at a permanently unsorted document, nor
+    // holding the canonical pass's offsets. On the happy path both are no-ops: every table was put
+    // back already and the recompute above realigned the offsets with it. The offsets are RESTORED
+    // from the snapshot rather than recomputed, so unwinding cannot throw a second time and replace
+    // the failure the caller is about to report.
+    restoreRows();
+    if (!completed) revertOffsets();
+  }
 }
 function _exportableComments() {
   return withoutHandled(_canonicalCommentsForExport());
@@ -211,11 +276,20 @@ function _exportableComments() {
 function applyPersistedTableSorts() {
   _loadTableSortState();
   _indexTableRows();
-  _sortableTables().forEach(function (t, i) {
-    const st = _tableSortState[_tableKey(t, i)];
-    if (st && typeof st.col === "number" && (st.dir === "asc" || st.dir === "desc")) {
-      _sortRows(_tableBody(t), st.col, st.dir);
-    }
+  _bindTableKeys();
+  // Innermost-first (document order reversed, since a nested table always follows its ancestor):
+  // an outer table sorted on a column whose cells HOLD a nested table compares that cell's text,
+  // so the nested table has to be in its own persisted order first or the outer table comes back
+  // in a different order than the reader left it.
+  const pending = _sortableTables().map(function (t, i) {
+    return { body: _tableBody(t), state: _tableSortState[_tableKeyFor(t, i)] };
+  });
+  pending.reverse().forEach(function (p) {
+    if (!_validSortState(p.state)) return;
+    // One table that cannot be sorted must not abort the rest of startup: this runs as a bare
+    // statement, so a throw here would take backfillContext, restoreHighlights and the whole UI
+    // setup with it and leave a document with no comments and no chrome.
+    try { _sortRows(p.body, p.state.col, p.state.dir); } catch (e) { /* sort the rest */ }
   });
 }
 function _reflectSortIco(btn, dir) {
@@ -230,11 +304,11 @@ function _reflectSortIco(btn, dir) {
 }
 function setupSortableTables() {
   _sortableTables().forEach(function (t, i) {
-    const key = _tableKey(t, i);
+    const key = _tableKeyFor(t, i);
     const hdr = _tableHeaderRow(t);
     const body = _tableBody(t);
     t.classList.add("cmh-sortable");
-    const cur = _tableSortState[key] || null;
+    const cur = _validSortState(_tableSortState[key]) ? _tableSortState[key] : null;
     [...hdr.cells].forEach(function (th, ci) {
       if (cmhOwnChrome(th, ":scope > .cmh-sort-ctrl")) return;
       const btn = document.createElement("button");

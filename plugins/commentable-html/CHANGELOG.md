@@ -4,6 +4,44 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.664.0] - 2026-08-04
+
+### Fixed
+
+- A sortable table nested in another sortable table's cell no longer loses its own sort when the
+  reader exports. A table's persisted key is positional, and a nested table changes document index
+  whenever the outer table's rows move, so the three call sites disagreed about which key belonged
+  to it: `applyPersistedTableSorts` reads the UNSORTED startup DOM, `setupSortableTables` runs after
+  the persisted sorts have been applied (an already-sorted DOM), and the export's canonical pass
+  re-derived keys around its own unsort. A reader who sorted a nested table therefore persisted it
+  under a key neither the next reload nor the export looked it up by, and the export silently left
+  that table unsorted. Each table's key is now bound ONCE, on the unsorted startup DOM, and looked
+  up by element from then on, so a click, a reload, and an export all agree; the key VALUES are
+  unchanged for a document with no nested sortable table, so no reader loses a persisted sort.
+- The export's canonical pass now captures each table's LIVE row order before its first unsort and
+  puts exactly that order back, from a `finally`. The pass unsorts every table to canonicalize
+  comment offsets, so a throw in between (an offset recompute that fails) previously left the reader
+  looking at a permanently unsorted document rather than at a failed export. The order is REPLAYED
+  rather than re-derived by re-sorting, because a re-sort is not an inverse of the unsort:
+  `_sortRows` breaks ties on a row's current index, and an outer table sorted on a column whose
+  cells hold a nested table ranks its rows by that cell's live text, so a successful export could
+  hand the reader an order they never had.
+- A failed export no longer leaves the reader's live comment offsets in authored-row coordinates.
+  The canonical pass rewrites them in place, so a throw part-way through used to leave offsets that
+  no longer described the restored (sorted) view; the next ordinary save persisted that mismatch and
+  the load after it anchored the highlight onto an unrelated row. The pass now snapshots those
+  offsets and puts them back when it does not complete (restored from the snapshot rather than
+  recomputed, so unwinding cannot throw again and mask the real failure). The guard covers the
+  no-sort fast path too, which rewrites the same offsets.
+- Persisted sort state is validated the same way wherever it is read (a non-negative integer column
+  and a direction of exactly `asc`/`desc`), so a corrupt `localStorage` entry that the load pass
+  correctly ignores can no longer light up a column's sort chevron and `aria-sort` on a table that
+  is in authored order.
+- Persisted sorts now replay innermost-first, and one table that cannot be sorted no longer aborts
+  the rest of startup: an outer table sorted on a column whose cells HOLD a nested table ranks its
+  rows by that cell's text, so the nested table has to be back in its own order first or the outer
+  table comes back in a different order than the reader left it.
+
 ## [1.663.0] - 2026-08-04
 
 ### Fixed
