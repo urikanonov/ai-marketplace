@@ -366,6 +366,69 @@ function _stripOfflineEventHandlers(doc) {
     });
   });
 }
+// A `</noscript` END-TAG-OPEN: the name, then any character that can end a tag name (HTML lets an end
+// tag carry whitespace or a slash before its `>`). Written out rather than spelled `<\/noscript>` for
+// the same reason the close scanners in 65-export-shareable.js are: a space before the `>` still
+// closes the element, and a name-end class that forgot one would read a live seam as text.
+const _OFFLINE_NOSCRIPT_END_RE = /<\/noscript[\t\n\f\r />]/i;
+const _OFFLINE_HTML_NS = "http://www.w3.org/1999/xhtml";
+// Whether `el` sits inside an HTML `<noscript>` - fallback markup a scripting-ENABLED reader gets as
+// inert TEXT. Only the HTML namespace counts, for the reason the strip below gives (an
+// `<svg><noscript>` switches no tokenizer, so a script inside one really does run and moving it
+// changes nothing). The walk stops at a `<template>`'s content fragment, whose `parentNode` is null:
+// that matches the only caller, which selects with `doc.querySelectorAll` and so never reaches a
+// template-parked node either. A caller that switched to `_offlineQueryAll` would need the host
+// chain as well.
+function _offlineInHtmlNoscript(el) {
+  for (let n = el.parentNode; n; n = n.parentNode) {
+    if (n.localName === "noscript" && n.namespaceURI === _OFFLINE_HTML_NS) return true;
+  }
+  return false;
+}
+// A `<noscript>` body has TWO readings and this export re-parses with only one of them. The
+// `DOMParser` every strip walks has scripting OFF, so the body is MARKUP; the reviewer who opens the
+// exported file has scripting ON, so it is RAW TEXT that ends at the FIRST `</noscript`. The two
+// agree exactly while the serialized body carries no such seam - then one reader sees inert text and
+// the other sees the markup the strips already scrubbed - and disagree the moment it does, because
+// everything past that seam becomes live markup for the reviewer while it was fallback content the
+// strips saw (or, worse, content they could not see at all: a comment or a raw-text `<style>` child
+// is serialized VERBATIM, which is how `<noscript><!-- </noscript><img onload=...> --></noscript>`
+// rides out of an unguarded export as a live handler). It cannot be reconciled from here - escaping
+// the seam would change what the scripting-disabled reader is shown - so the body is DROPPED. The
+// strict validator already fails closed on the same seam, so leaving one in would ship a file this
+// exporter's own gate rejects. This is deliberately the ONLY reason a fallback is removed: an
+// ordinary one (the layer's own print fallback included) reads the same both ways and is content.
+// Runs after every pass that can rewrite a fallback body - the handler scrub and the CSS strip both
+// can take a seam away with the attribute or declaration that carried it - and the count is
+// returned so the removal is named rather than silent.
+function _stripOfflineStraddlingNoscript(doc) {
+  let dropped = 0;
+  // Walked root by root rather than through `_offlineQueryAll`, because the skip below has to be
+  // exact: `Node.contains` does NOT reach into a `<template>`'s content fragment, so a flat list
+  // could not tell a fallback that was already taken with its ancestor from one still standing, and
+  // would report the same content loss twice. Within a root `contains` answers precisely, and a
+  // template whose own subtree has just been removed is simply never descended into.
+  const walk = function (root) {
+    root.querySelectorAll("noscript").forEach(function (el) {
+      // A nested fallback serializes its own `</noscript>` into its ancestor's body, so the OUTER
+      // one is always flagged too and this one has already gone with it.
+      if (!root.contains(el)) return;
+      // The HTML namespace ONLY. A type selector matches a local name in ANY namespace, but an
+      // `<svg><noscript>` is an ordinary foreign element that switches no tokenizer on either side -
+      // both readings agree about it, seam or no seam - so removing one would be pure content loss.
+      // An HTML fallback CONTAINING foreign content is still caught: the seam is in ITS body.
+      if (el.namespaceURI !== _OFFLINE_HTML_NS) return;
+      if (!_OFFLINE_NOSCRIPT_END_RE.test(el.innerHTML || "")) return;
+      el.remove();
+      dropped += 1;
+    });
+    root.querySelectorAll("template").forEach(function (t) {
+      if (t.content && root.contains(t)) walk(t.content);
+    });
+  };
+  walk(doc);
+  return dropped;
+}
 function _ensureOfflineCsp(doc) {
   const html = doc.documentElement || doc.querySelector("html");
   let head = doc.head || doc.querySelector("head");
@@ -1188,6 +1251,12 @@ function _offlineHoistChartScripts(doc) {
   if (!body || !head) return;
   const scripts = Array.from(doc.querySelectorAll("script:not([src])")).filter(function (s) {
     if (_offlineIsInlinedLibScript(s)) return false;
+    // Never hoist fallback content OUT of an HTML `<noscript>`. To this scripting-disabled
+    // `DOMParser` such a script is a real element, but to the reader who opens the exported file it
+    // is inert TEXT - so moving it into the body would not relocate author code, it would START
+    // EXECUTING code the source document never ran. (The chart EVIDENCE scan is left alone: a false
+    // positive there only costs bytes, which is the trade that row already documents.)
+    if (_offlineInHtmlNoscript(s)) return false;
     if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return false;
     const text = s.textContent || "";
     if (_OFFLINE_LAYER_DECL_RE.test(text)) return false;
@@ -1475,6 +1544,9 @@ async function _buildOfflineHtml(shareableHtml) {
   _stripOfflineRichRenderers(doc);
   const stripped = _stripOfflineNetworkLoads(doc);
   _stripOfflineEventHandlers(doc);
+  // Last of the passes that read a fallback body, because it judges what those passes LEFT: a seam
+  // the handler scrub or the CSS strip has just taken away is no longer a disagreement.
+  const droppedFallbacks = _stripOfflineStraddlingNoscript(doc);
   _offlineHoistChartScripts(doc);
   await _offlineInlineRichLibs(doc, referencesChartLib, inlinedRichLibs, vendoredPayload);
   _ensureOfflineCsp(doc);
@@ -1482,6 +1554,7 @@ async function _buildOfflineHtml(shareableHtml) {
   return {
     html: html,
     droppedScripts: stripped.dropped,
+    droppedFallbacks: droppedFallbacks,
     clearedBases: stripped.clearedBases,
     clearedSrcdocs: stripped.clearedSrcdocs,
     neutralizedScripts: _offlineCountKeptNeutralized(doc, neutralizedScripts),
@@ -1525,6 +1598,12 @@ async function saveOffline() {
   const inertNote = m > 0
     ? " " + m + " script" + (m === 1 ? " carrying a reserved commentable-html data id was" : "s carrying a reserved commentable-html data id were") + " kept as inert data."
     : "";
+  // A dropped fallback is author content too, and it goes for a reason no reader could guess from
+  // the file: the two tokenizers could not be made to agree about where its body ends.
+  const f = built.droppedFallbacks;
+  const fallbackNote = f > 0
+    ? " " + f + " noscript fallback " + (f === 1 ? "block whose end a scripting-enabled reader reads differently was" : "blocks whose end a scripting-enabled reader reads differently were") + " removed."
+    : "";
   // Clearing a base href is the one change here that re-points references which still WORK -
   // author links included - so the author is told rather than left to discover it.
   const b = built.clearedBases;
@@ -1538,7 +1617,7 @@ async function saveOffline() {
   const srcdocNote = s > 0
     ? " " + s + " <iframe srcdoc> nested document" + (s === 1 ? " was" : "s were") + " removed - an offline export cannot inspect a document carried inside an attribute."
     : "";
-  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + baseNote + srcdocNote + review.note, { center: true });
+  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + fallbackNote + baseNote + srcdocNote + review.note, { center: true });
 }
 ["btnExportOffline", "btnExportOfflineTop"].forEach(function (id) {
   const b = document.getElementById(id);

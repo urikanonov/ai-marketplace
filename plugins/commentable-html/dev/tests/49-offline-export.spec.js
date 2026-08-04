@@ -535,6 +535,147 @@ test("Export Offline adds a zero-network CSP and strips loader, media, CSS, and 
   }
 });
 
+// A `<noscript>` body has TWO readings, and the export re-parses with only one of them. To the
+// `DOMParser` (scripting off) the body is MARKUP, which is what every strip walks; to the reviewer
+// who opens the exported file (scripting on) it is RAW TEXT that ends at the first `</noscript`.
+// The two therefore disagree whenever the SERIALIZED body still carries a `</noscript` end-tag-open,
+// and what follows that seam is markup the strips never saw. Measured in chromium, two shapes really
+// do survive an unguarded export as a LIVE handler - a comment and a raw-text `<style>` child, both
+// of which the serializer writes out verbatim. (An attribute value no longer can: the serializer now
+// escapes `<` and `>` inside one.) The strict validator already fails closed on exactly this seam, so
+// an export that emits one produces a file its own gate rejects, which is the self-contradiction the
+// offline parity work exists to remove.
+const NOSCRIPT_STRADDLE_CONTENT = `
+<h1>Noscript straddle</h1>
+<p id="straddle-note">A fallback body the two tokenizers end differently must not ride into an offline export.</p>
+<noscript><!-- cmh-noscript-comment-straddle </noscript><img id="commentStraddleProbe" alt="comment straddle" src="data:image/gif;base64,AA" onload="window.__cmhStraddle = 'comment'"> --></noscript>
+<noscript><style id="noscriptStraddleStyle">/* cmh-noscript-style-straddle </noscript><img id="styleStraddleProbe" alt="style straddle" src="data:image/gif;base64,AA" onload="window.__cmhStraddle = 'style'"> */</style></noscript>
+<noscript><p id="plainFallbackProbe">cmh-noscript-plain-keep: enable JavaScript to review this document.</p></noscript>
+<!-- A fallback SCRIPT: a real element to the scripting-disabled DOMParser, inert TEXT to the reader
+     who opens the file. The chart hoist moves a Chart-mentioning script into the body so it runs
+     after the inlined library - which, for one parked here, would not relocate author code but
+     START it. -->
+<noscript><script>window.__cmhNoscriptHoisted = 1; new Chart(document.body, {});/* cmh-noscript-hoist-probe */</script></noscript>
+<!-- A FOREIGN noscript is an ordinary SVG element: it switches no tokenizer on either side, so
+     both readings agree about it even when its body spells the seam, and it must survive. -->
+<svg width="10" height="10" aria-label="foreign fallback"><noscript id="svgFallbackProbe"><!-- cmh-svg-noscript-keep </noscript> --></noscript></svg>`;
+
+test("CMH-OFFLINE-05: a noscript body the two tokenizers end differently is dropped, and an ordinary fallback is not", async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const staged = stageContent(NOSCRIPT_STRADDLE_CONTENT, { key: "cmh-offline-noscript-straddle", source: "offline-noscript-straddle.html" });
+  // Served over HTTP so the export reads the AUTHORED bytes off disk (the `file://` fallback is the
+  // live-DOM snapshot, where the scripting-enabled reading has already been baked in).
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    await page.route(/^https?:\/\//, async (route) => {
+      const url = route.request().url();
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url)) return route.fallback();
+      return route.abort();
+    });
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    // The unresolvable bodies go whole: what sits past the seam is markup no strip ever saw, so
+    // there is nothing to scrub it with and nothing that could certify it.
+    expect(exportedHtml, "a comment-straddled fallback must not survive").not.toContain("cmh-noscript-comment-straddle");
+    expect(exportedHtml, "a style-straddled fallback must not survive").not.toContain("cmh-noscript-style-straddle");
+    expect(exportedHtml, "the straddled handler must not survive").not.toContain("__cmhStraddle");
+    // ... and ONLY those. An ordinary fallback reads the same both ways (inert text to one reader,
+    // already-scrubbed markup to the other), so removing it would be unrequested content loss - the
+    // layer's own print fallback included.
+    expect(exportedHtml, "an ordinary fallback is not a straddle").toContain("cmh-noscript-plain-keep");
+    expect(exportedHtml, "the layer's own print fallback must survive").toContain("cmhPrintNoScript");
+    // A foreign `<noscript>` is an ordinary SVG element - no tokenizer switches on either side - so
+    // it is not a straddle however its body reads, and removing it would be pure content loss.
+    expect(exportedHtml, "a foreign noscript is not a straddle").toContain("cmh-svg-noscript-keep");
+    // Nor may the export ACTIVATE fallback content. A script parked in a fallback is inert text to
+    // the reader, and the chart hoist would otherwise move it into the body, where it runs.
+    const hoistProbe = exportedHtml.indexOf("cmh-noscript-hoist-probe");
+    expect(hoistProbe, "the fallback script must still be in the file").toBeGreaterThan(0);
+    const fallbackStart = exportedHtml.lastIndexOf("<noscript>", hoistProbe);
+    const fallbackEnd = exportedHtml.indexOf("</noscript>", fallbackStart);
+    expect(fallbackEnd, "the fallback script must still be INSIDE its noscript").toBeGreaterThan(hoistProbe);
+    // Removing author content is named rather than silent, exactly as a dropped script is.
+    await expect(page.locator("#toast")).toContainText("2 noscript fallback blocks");
+
+    const exportedPath = path.join(outDir, "offline-noscript-straddle.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    // The gate must agree with the strip: the exporter cannot ship a file its own --strict rejects.
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+    // ...and the other direction, which the clean file alone cannot prove: put a straddling body
+    // BACK into the exported file and the gate must reject it, so what the strip removes is really
+    // what the gate refuses to certify rather than a shape it never looked at.
+    const reinjectedPath = path.join(outDir, "offline-noscript-straddle-reinjected.html");
+    // The LAST `</body>`: the layer's own script text mentions the string, and replacing the first
+    // occurrence would bury the fallback inside a script body, where it is inert text and proves
+    // nothing.
+    const bodyEnd = exportedHtml.lastIndexOf("</body>");
+    expect(bodyEnd, "the exported file must have a body end tag").toBeGreaterThan(0);
+    const reinjectedHtml = exportedHtml.slice(0, bodyEnd)
+      + "<noscript><!-- </noscript><img alt=\"reinjected\" src=\"data:image/gif;base64,AA\" onload=\"window.__cmhStraddle = 1\"> --></noscript>"
+      + exportedHtml.slice(bodyEnd);
+    expect(reinjectedHtml, "the fallback must actually have been re-injected").not.toEqual(exportedHtml);
+    fs.writeFileSync(reinjectedPath, reinjectedHtml);
+    // Pinned to the PARSE-FAILURE rule, not merely to a non-zero exit: an exit-code-only assertion
+    // would be satisfied by any future rule that rejected this file for an unrelated reason.
+    let reinjectedFailure = null;
+    try {
+      execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", reinjectedPath], { cwd: SKILL, stdio: "pipe" });
+    } catch (err) {
+      reinjectedFailure = String(err.stdout || "") + String(err.stderr || "");
+    }
+    expect(reinjectedFailure, "--strict must reject a re-injected straddling fallback").not.toBeNull();
+    expect(reinjectedFailure).toContain("could not parse the document for the self-contained resource checks");
+
+    // The reading that matters is the reviewer's: open the exported file in a REAL browser, where
+    // scripting is on and a straddled `<img onload>` would be a live element rather than text.
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    expect(await page2.locator("#commentStraddleProbe").count()).toBe(0);
+    expect(await page2.locator("#styleStraddleProbe").count()).toBe(0);
+    expect(await page2.evaluate(() => window.__cmhStraddle)).toBeUndefined();
+    // The fallback script must NOT have run: it was inert text in the source document and the export
+    // may not turn it into live code.
+    expect(await page2.evaluate(() => window.__cmhNoscriptHoisted)).toBeUndefined();
+    expect(external).toEqual([]);
+
+    // Shareable makes no zero-network promise and preserves the author's bytes by design, so it is
+    // unaffected in BOTH directions: the ordinary fallback and the straddling ones all travel.
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnSaveHtmlTop").click(),
+    ]);
+    const shareableHtml = await capturedDownloadText(page);
+    expect(shareableHtml, "Shareable keeps an ordinary fallback").toContain("cmh-noscript-plain-keep");
+    expect(shareableHtml, "Shareable does not rewrite author bytes").toContain("cmh-noscript-comment-straddle");
+    expect(shareableHtml, "Shareable does not rewrite author bytes").toContain("cmh-noscript-style-straddle");
+  } finally {
+    if (ctx2) await ctx2.close();
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
 test("Export Offline neutralizes form posts and preserves safe canvas scripts (CMH-OFFLINE-04, CMH-OFFLINE-05)", async ({ page, browser }) => {
   const CONTENT_WITH_FORMS_AND_CANVAS = `
 <h1>Offline forms and canvas</h1>

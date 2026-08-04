@@ -4,6 +4,43 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.679.0] - 2026-08-04
+
+### Fixed
+
+- The Offline export no longer emits a `<noscript>` body whose end the two tokenizers disagree
+  about - a file its own `--strict` gate rejects. A fallback body has two readings, and the export
+  re-parses with only one: the `DOMParser` every strip walks has scripting OFF, so the body is
+  markup, while the reviewer who opens the exported file has scripting ON, so it is raw text that
+  ends at the first `</noscript`. The two agree exactly while the serialized body carries no such
+  end-tag-open, and disagree the moment it does, because everything past that seam is live markup to
+  the reviewer while the strips never saw it. Measured in chromium, two shapes really did ride an
+  export out as a live `on*` handler, both because the serializer writes them verbatim: a comment
+  (`<noscript><!-- </noscript><img onload=...> --></noscript>`) and a raw-text `<style>` child. The
+  seam cannot be reconciled from the exporter, since escaping it would change what a
+  scripting-disabled reader is shown, so such a body is dropped whole and the count is named in the
+  export toast rather than being silent content loss. The predicate reads the SERIALIZED body rather
+  than modelling which node types a serializer writes verbatim, so it also catches an attribute-value
+  seam on an engine that predates the escaping of `<` and `>` inside an attribute value (Chrome 116,
+  Firefox 118, Safari 17) - an export runs in whatever browser the reviewer opened the document with.
+  An ordinary fallback - the layer's own print fallback included - reads the same both ways and is
+  preserved, an `<svg><noscript>` is an ordinary foreign element and is never judged at all, and
+  Shareable is untouched, since it makes no zero-network promise and preserves the author's bytes by
+  design.
+- The Offline export no longer ACTIVATES fallback content it was only supposed to carry: the chart
+  hoist moved a `Chart`-mentioning `<script>` parked inside a `<noscript>` into the body so it would
+  run after the inlined library. Such a script is a real element to the scripting-disabled parse the
+  export walks, but inert TEXT to the reader, so hoisting it did not relocate author code - it
+  started executing code the source document never ran. The hoist now skips any script with an HTML
+  `<noscript>` ancestor; the chart evidence scan is unchanged, where a false positive only costs
+  bytes.
+- Known bound, tracked as issue #1081: all of the above concerns a `<noscript>` in the BODY. A
+  `<noscript>` in the HEAD has its body promoted out of the fallback by `DOMParser` itself (the "in
+  head noscript" insertion mode allows only `link`, `style`, `meta`, comments and whitespace), before
+  any pass can see it, so a script parked there still rides out as live head content. Closing that
+  needs a pre-parse, source-string pass, since a promoted node is indistinguishable in the DOM from
+  an authored head sibling.
+
 ## [1.678.0] - 2026-08-04
 
 ### Fixed
