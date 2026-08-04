@@ -227,9 +227,271 @@ class RuleDTests(unittest.TestCase):
             self.assertEqual([x for x in cwp.check_workflow(p) if "RULE D" in x], [])
 
 
+class RuleETests(unittest.TestCase):
+    """A full-history checkout must not race its own job timeout (issue #951)."""
+
+    def _wf(self, job_body):
+        return ("on:\n  pull_request:\n"
+                "jobs:\n  j:\n    runs-on: ubuntu-latest\n" + job_body)
+
+    def _v(self, job_body):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = _write(tmp, "wf.yml", self._wf(job_body))
+            return [x for x in cwp.check_workflow(p) if "RULE E" in x]
+
+    _FULL_CHECKOUT = ("    steps:\n"
+                      "      - uses: actions/checkout@v4\n"
+                      "        with:\n"
+                      "          fetch-depth: 0\n")
+
+    def test_full_history_checkout_under_the_minimum_budget_fails(self):
+        v = self._v("    timeout-minutes: 5\n" + self._FULL_CHECKOUT)
+        self.assertTrue(v, "a fetch-depth: 0 job budgeted below the minimum must be flagged")
+        self.assertIn("fetch-depth: 0", v[0])
+
+    def test_full_history_checkout_at_the_minimum_budget_passes(self):
+        self.assertEqual(
+            self._v("    timeout-minutes: %d\n" % cwp.FULL_HISTORY_MIN_TIMEOUT + self._FULL_CHECKOUT),
+            [],
+        )
+
+    def test_quoted_fetch_depth_is_still_a_full_history_checkout(self):
+        v = self._v("    timeout-minutes: 5\n"
+                    "    steps:\n"
+                    "      - uses: actions/checkout@v4\n"
+                    "        with:\n"
+                    '          fetch-depth: "0"\n')
+        self.assertTrue(v, "fetch-depth as a quoted string must not evade the rule")
+        self.assertIn("fetch-depth: 0", v[0])
+
+    def test_a_quoted_budget_is_still_a_budget(self):
+        # `timeout-minutes: "5"` means exactly what `timeout-minutes: 5` means to the runner.
+        v = self._v('    timeout-minutes: "5"\n' + self._FULL_CHECKOUT)
+        self.assertTrue(v, "a quoted number must not be mistaken for an unevaluable expression")
+
+    def test_a_step_level_budget_is_checked_too(self):
+        # The tighter of the two timeouts races the clone; a generous job budget does not save it.
+        v = self._v("    timeout-minutes: 30\n"
+                    "    steps:\n"
+                    "      - uses: actions/checkout@v4\n"
+                    "        timeout-minutes: 5\n"
+                    "        with:\n"
+                    "          fetch-depth: 0\n")
+        self.assertTrue(v, "a short step-level timeout on the checkout must be flagged")
+        self.assertIn("checkout step", v[0])
+
+    def test_a_generous_step_level_budget_passes(self):
+        self.assertEqual(
+            self._v("    timeout-minutes: 30\n"
+                    "    steps:\n"
+                    "      - uses: actions/checkout@v4\n"
+                    "        timeout-minutes: 15\n"
+                    "        with:\n"
+                    "          fetch-depth: 0\n"),
+            [],
+        )
+
+    def test_a_false_budget_is_not_read_as_zero(self):
+        # YAML `false` is not a budget; reading it as 0 would be a bogus violation.
+        self.assertEqual(self._v("    timeout-minutes: false\n" + self._FULL_CHECKOUT), [])
+
+    def test_a_reusable_workflow_job_without_steps_is_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = _write(tmp, "wf.yml",
+                       "on:\n  pull_request:\n"
+                       "jobs:\n  j:\n    uses: ./.github/workflows/reusable.yml\n"
+                       "    with:\n      fetch-depth: 0\n")
+            self.assertEqual([x for x in cwp.check_workflow(p) if "RULE E" in x], [])
+
+    def test_every_depth_the_action_treats_as_full_history_is_flagged(self):
+        # actions/checkout coerces fetch-depth with Math.floor(Number(input)) and turns NaN or a
+        # negative into 0 - i.e. FULL history. Each of these is therefore the pattern this rule
+        # exists to stop, dressed differently.
+        for depth in ('0', '"0"', '"00"', "0.5", '"-1"', "-3", '"nonsense"', "false"):
+            v = self._v("    timeout-minutes: 5\n"
+                        "    steps:\n"
+                        "      - uses: actions/checkout@v4\n"
+                        "        with:\n"
+                        "          fetch-depth: %s\n" % depth)
+            self.assertTrue(v, "fetch-depth: %s is a full-history fetch" % depth)
+
+    def test_a_genuine_shallow_depth_is_not_flagged(self):
+        for depth in ("1", '"1"', "2", "50", "1.9"):
+            v = self._v("    timeout-minutes: 5\n"
+                        "    steps:\n"
+                        "      - uses: actions/checkout@v4\n"
+                        "        with:\n"
+                        "          fetch-depth: %s\n" % depth)
+            self.assertEqual(v, [], "fetch-depth: %s is shallow" % depth)
+
+    def test_an_expression_depth_is_not_guessed(self):
+        v = self._v("    timeout-minutes: 5\n"
+                    "    steps:\n"
+                    "      - uses: actions/checkout@v4\n"
+                    "        with:\n"
+                    "          fetch-depth: ${{ inputs.depth }}\n")
+        self.assertEqual(v, [])
+
+    def test_an_absurd_depth_does_not_crash_the_gate(self):
+        # float("1e1000") is inf, and math.floor(inf) raises OverflowError: a checker that
+        # tracebacks reports nothing at all, which is worse than either verdict.
+        for depth in ("1e1000", "-1e1000", ""):
+            self._v("    timeout-minutes: 5\n"
+                    "    steps:\n"
+                    "      - uses: actions/checkout@v4\n"
+                    "        with:\n"
+                    "          fetch-depth: %s\n" % depth)
+        self.assertFalse(cwp._fetch_depth_is_full("1e1000"))
+        self.assertTrue(cwp._fetch_depth_is_full("-1e1000"))
+        self.assertFalse(cwp._fetch_depth_is_full(None))
+
+    def test_a_shallow_checkout_may_keep_a_short_budget(self):
+        self.assertEqual(
+            self._v("    timeout-minutes: 5\n"
+                    "    steps:\n"
+                    "      - uses: actions/checkout@v4\n"
+                    "        with:\n"
+                    "          persist-credentials: false\n"),
+            [],
+        )
+
+    def test_an_unbudgeted_job_is_not_flagged(self):
+        # No timeout-minutes means GitHub's 6-hour default, which cannot lose a race with a clone.
+        self.assertEqual(self._v(self._FULL_CHECKOUT), [])
+
+    def test_a_non_numeric_budget_is_not_flagged(self):
+        # An expression cannot be evaluated statically; do not guess.
+        self.assertEqual(
+            self._v("    timeout-minutes: ${{ fromJSON(inputs.budget) }}\n" + self._FULL_CHECKOUT),
+            [],
+        )
+
+    def test_the_offending_job_is_named(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = _write(tmp, "wf.yml",
+                       "on:\n  pull_request:\n"
+                       "jobs:\n  changes:\n    runs-on: ubuntu-latest\n"
+                       "    timeout-minutes: 5\n" + self._FULL_CHECKOUT)
+            v = [x for x in cwp.check_workflow(p) if "RULE E" in x]
+            self.assertTrue(v)
+            self.assertIn("changes", v[0])
+
+    def test_a_case_variant_of_the_action_name_does_not_evade_the_rule(self):
+        # GitHub resolves owner/repo case-insensitively, so Actions/Checkout is the same action.
+        for name in ("Actions/Checkout@v4", "ACTIONS/CHECKOUT@v4"):
+            v = self._v("    timeout-minutes: 5\n"
+                        "    steps:\n"
+                        "      - uses: %s\n"
+                        "        with:\n"
+                        "          fetch-depth: 0\n" % name)
+            self.assertTrue(v, name)
+
+
+class ChangesJobCheckoutTests(unittest.TestCase):
+    """The `changes` job's checkout must stay CHEAP, not merely generously budgeted (issue #951).
+
+    RULE E only guards the timeout. The blobless filter and the rename-free diff are what make the
+    job fast in the first place, and dropping either would silently restore the historical-blob
+    fetch (or add a lazy promisor fetch for rename detection) while leaving every test green.
+    """
+
+    _WORKFLOW = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        ".github", "workflows", "plugin-tests.yml")
+
+    def _changes_job(self):
+        import yaml
+        with open(self._WORKFLOW, "r", encoding="utf-8") as fh:
+            doc = yaml.safe_load(fh)
+        job = doc["jobs"]["changes"]
+        self.assertIsInstance(job, dict, "plugin-tests.yml has no `changes` job")
+        return job
+
+    def test_the_checkout_is_blobless(self):
+        job = self._changes_job()
+        checkouts = [s for s in job["steps"] if cwp._is_full_history_checkout(s)]
+        self.assertTrue(checkouts, "the changes job no longer takes a full-history checkout")
+        for step in checkouts:
+            self.assertEqual(
+                str(step["with"].get("filter", "")).strip(), "blob:none",
+                "the changes job must clone blobless: its diff reads trees only, and the "
+                "historical blobs are what made the clone lose a race with its own timeout")
+
+    def test_the_diff_disables_rename_detection(self):
+        job = self._changes_job()
+        runs = [s.get("run", "") for s in job["steps"] if isinstance(s, dict)]
+        diffs = [r for r in runs if "git diff" in r]
+        self.assertTrue(diffs, "the changes job no longer runs a git diff")
+        for run in diffs:
+            self.assertIn(
+                "--no-renames", run,
+                "rename detection compares blob CONTENT, which in a blobless clone means a lazy "
+                "promisor fetch; --no-renames keeps the diff tree-only (and errs toward running "
+                "the suites, since a rename shows up as a delete plus an add)")
+
+
+class SpecCoverageTest(unittest.TestCase):
+    """`scripts/SPEC.md`'s CI-POLICY rows must name tests that exist in this suite.
+
+    Same self-enforcing shape as the REPO-GUARD rows in `scripts/test_check_forbidden_files.py`:
+    the rows are held to the spec-and-test discipline locally, so a row cannot promise coverage
+    that nobody checks.
+    """
+
+    _SPEC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "SPEC.md")
+
+    def _rows(self):
+        with open(self._SPEC, "r", encoding="utf-8") as fh:
+            text = fh.read()
+        return [line for line in text.splitlines() if line.startswith("| CI-POLICY-")]
+
+    def test_every_named_test_exists(self):
+        import re
+        module = sys.modules[__name__]
+        rows = self._rows()
+        self.assertTrue(rows, "the spec declares no CI-POLICY feature ids")
+        for line in rows:
+            feature_id = line.split("|")[1].strip()
+            coverage = line.split("|")[3]
+            named = re.findall(r"`([A-Za-z_]\w*Test(?:s)?\.test_\w+)`", coverage)
+            with self.subTest(feature_id=feature_id):
+                self.assertTrue(named, f"{feature_id} names no covering test")
+                foreign = [
+                    ref for ref in re.findall(r"`(scripts/[\w./-]+\.py)`", coverage)
+                    if ref != "scripts/test_check_workflow_policy.py"
+                ]
+                self.assertEqual(
+                    foreign, [],
+                    f"{feature_id} cites a suite this test cannot verify",
+                )
+                for ref in named:
+                    cls_name, method = ref.split(".", 1)
+                    cls = getattr(module, cls_name, None)
+                    self.assertIsNotNone(cls, f"{feature_id}: {cls_name} is not in this suite")
+                    self.assertTrue(
+                        callable(getattr(cls, method, None)), f"{feature_id}: {ref} does not exist"
+                    )
+
+    def test_every_feature_id_is_declared_once(self):
+        ids = [line.split("|")[1].strip() for line in self._rows()]
+        self.assertTrue(ids, "the spec declares no CI-POLICY feature ids")
+        self.assertEqual(len(ids), len(set(ids)), f"duplicate feature-id rows: {ids}")
+
+
 class RealRepoTests(unittest.TestCase):
     def test_current_workflows_satisfy_the_policy(self):
         self.assertEqual(cwp.main(), 0)
+
+    def test_every_full_history_job_budgets_for_the_clone(self):
+        # The concrete regression from issue #951: `changes` and `version-lane` were cancelled at
+        # 5m under runner contention while their fetch-depth: 0 clone was still running, and a
+        # cancelled `changes` reds the required (fail-closed) plugin-tests gate.
+        import glob
+        offenders = []
+        for path in sorted(glob.glob(os.path.join(cwp.WORKFLOWS_DIR, "*.yml"))
+                           + glob.glob(os.path.join(cwp.WORKFLOWS_DIR, "*.yaml"))):
+            offenders.extend(x for x in cwp.check_workflow(path) if "RULE E" in x)
+        self.assertEqual(offenders, [])
 
 
 if __name__ == "__main__":

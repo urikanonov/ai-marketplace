@@ -182,7 +182,14 @@ intentional skip as success (failing SAFE - if the diff cannot be computed, the 
 is otherwise fail-CLOSED: only an explicit `run_plugin=false` from a SUCCESSFUL `changes` job counts as
 a legitimate skip, so a failed or timed-out `changes` job (or any unexpected `run_plugin` value) reds
 the gate instead of silently skipping. The `plugin-tests` gate still fails if no plugin test suite is
-discovered at all, so an accidentally removed suite cannot pass silently.
+discovered at all, so an accidentally removed suite cannot pass silently. Because that fail-closed
+wiring turns any `changes` failure into a red REQUIRED check, its checkout must not be able to lose
+a race with its own timeout: it clones with `filter: blob:none` (a blobless partial clone still
+carries every tree, which is all `git diff --name-only --no-renames` reads) and budgets 10 minutes.
+More generally, RULE E of `scripts/check_workflow_policy.py` refuses any job that pairs
+`fetch-depth: 0` with a `timeout-minutes` under 10 - the combination that cancelled `changes` and
+`version-lane` at ~5m under runner contention and reddened a required gate for reasons unrelated to
+the PR.
 
 To add browser tests to a plugin, drop these under its `dev/` folder (see `plugins/commentable-html/dev/` for a
 working example):
