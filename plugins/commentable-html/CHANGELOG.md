@@ -16,7 +16,10 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   `pre.mermaid` / `div.mermaid` fed its parked text to the mermaid checker. Hidden diagram text
   parked in such a template raised a mermaid syntax error for source the diagram never contains,
   and no edit to what renders could clear it. The capture now skips data inside a template,
-  closed or left open to end of input. Live text around the template is still checked, and a
+  closed or left open to end of input, gated on the NAMESPACE-AWARE HTML-template floor so an
+  element merely named `template` in a foreign namespace (`<math><template>`, which a browser
+  keeps in the host's `textContent`) still hides nothing from the checker. Live text around the
+  template is still checked, and a
   host whose ONLY text is parked is reported as the EMPTY block it renders as (mermaid's "No
   diagram type detected"). The reverse direction was already correct - a mermaid host that is
   itself inside a template is never registered as a live one - so both directions now agree.
@@ -59,6 +62,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   exporter really carries - and the NonShareable watchdog token now counts only from a script that
   OPENED outside the content region, so one an author left open across the content-end marker
   cannot stand in for the layer's.
+
 ## [1.600.0] - 2026-08-04
 
 ### Fixed

@@ -318,6 +318,18 @@ class MermaidTemplateInertness(unittest.TestCase):
         self.assertEqual(len(errs), 1)
         self.assertIn("empty", errs[0])
 
+    def test_a_foreign_template_hides_nothing(self):
+        # Only an HTML-namespace <template> is inert. An element merely NAMED
+        # `template` under <math> is ordinary foreign content a browser keeps in the
+        # host's textContent, so its broken source must still be flagged.
+        html = (
+            '<pre class="mermaid cm-skip">sequenceDiagram\n'
+            '<math><template>  A-&gt;&gt;B: step one; then X -&gt; Y happens\n'
+            '</template></math></pre>')
+        errs = self._errors(html)
+        self.assertTrue(errs)
+        self.assertIn("then X -> Y happens", errs[0])
+
 
 if __name__ == "__main__":
     unittest.main()
