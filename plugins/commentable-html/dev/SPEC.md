@@ -889,6 +889,7 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 
 | Feature id | Doc surface | Deck |
 | --- | --- | --- |
+| CMH-SEC-06 | opt-out: an internal threat-model and review-scope declaration for maintainers and review panels, not a reader-facing behavior - it documents what the export deliberately does NOT promise, and the promises it bounds (the zero-network CSP, CMH-OFFLINE-05) are already surfaced by their own rows | opt-out: a non-goals statement has nothing for a viewer to see on a slide |
 | CMH-HELP-COUNT-01 | help | opt-out: in-runtime Help/About panel topic, not a deck slide |
 | CMH-HELP-THREADS-01 | help | opt-out: in-runtime Help/About panel topic, not a deck slide |
 | CMH-HELP-STORE-01 | help | opt-out: in-runtime Help/About panel topic, not a deck slide |
