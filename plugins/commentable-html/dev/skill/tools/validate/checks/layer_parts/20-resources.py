@@ -115,7 +115,7 @@ def _check_self_contained(html, parser, nonshareable):
         # A parse that could not be built was already reported at the top of this function, so the
         # lookups below are best-effort on a PARTIAL index rather than gated on it - they can only
         # add to a report that already says the document could not be read.
-        errors.extend(_offline_csp_errors(html))
+        errors.extend(_offline_csp_errors(parser))
         media_attrs = (
             ("video", "src", False), ("video", "poster", False),
             ("audio", "src", False), ("source", "src", False), ("source", "srcset", True),
