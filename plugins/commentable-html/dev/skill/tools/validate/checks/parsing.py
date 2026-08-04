@@ -1646,6 +1646,15 @@ class _DocParser(_BrowserBoundaries):
         # ids / canvases / scripts inside a template must not be counted.
         return self._ancestors().template > 0
 
+    def _in_html_template(self):
+        # Namespace-aware form of `_in_template()`: only an HTML-namespace <template> is
+        # inert. An element merely NAMED `template` in a foreign namespace (under <math>
+        # or <svg>) is an ordinary element whose text a browser keeps in its ancestor's
+        # textContent, so it must not hide content from a view that models textContent.
+        # `_tpl_stop` is the same HTML-template floor `_end_tag_floor()` reads, and it
+        # answers in O(1).
+        return bool(self._tpl_stop) and self._tpl_stop[-1] >= 0
+
     def _in_comment_root(self):
         return self._cr_depth is not None and not self._cr_closed and len(self.stack) > self._cr_depth
 
@@ -1893,8 +1902,15 @@ class _DocParser(_BrowserBoundaries):
         # Capture the raw source text of the current mermaid block (entities are already
         # decoded because convert_charrefs=True), so the mermaid syntax checker can read it.
         # Only meaningful before the diagram renders to <svg>; a rendered block's has_svg
-        # flag lets the checker skip it.
-        if self._mermaid_stack and self._mermaid_stack[-1] is not None:
+        # flag lets the checker skip it. Text parked in a nested HTML <template> is NOT part of
+        # the host's textContent (it lives in the template's inert DocumentFragment), which
+        # is exactly what mermaid renders from - so it is no more diagram source than a
+        # template-parked heading is heading text, and `_record()` already declines to
+        # register a mermaid host that is itself inside a template. The check is
+        # namespace-aware: a foreign element merely NAMED `template` (under <math> or <svg>)
+        # is ordinary content a browser keeps in textContent, so it hides nothing.
+        if (self._mermaid_stack and self._mermaid_stack[-1] is not None
+                and not self._in_html_template()):
             self.mermaid_blocks[self._mermaid_stack[-1]].setdefault("src_parts", []).append(data)
         if self._raw_captures:
             cap = self._current_raw_capture()
