@@ -104,6 +104,25 @@ class SharedDecodeShimTests(unittest.TestCase):
         self.assertIsNotNone(_browser_attrs._shared_attrs_dict)
         self.assertTrue(_browser_attrs._is_shipped(_browser_attrs._parsing))
 
+    def test_the_shim_resolves_the_shipped_start_tag_parser(self):
+        # The tools outside `checks` must PARSE with the shared base too, not only decode with the
+        # shared rule: a bare `HTMLParser` lets the host draw the tag extent and decode the values,
+        # so it raises where the rest of the validator resolves the reference and reads on.
+        self.assertIs(_browser_attrs.StartTagParser,
+                      _browser_attrs._parsing.browser_start_tag_parser)
+        self.assertTrue(issubclass(contrast._StyleScanner, _browser_attrs.StartTagParser))
+        self.assertTrue(issubclass(contrast._DocumentScanner, _browser_attrs.StartTagParser))
+
+    def test_the_degraded_path_falls_back_to_the_host_parser(self):
+        # A partial install must still give a tool a usable parser class, for the same reason the
+        # attribute fallback exists: degraded beats unable to run.
+        self.assertIs(_browser_attrs._start_tag_parser(None), HTMLParser)
+        self.assertIs(_browser_attrs._start_tag_parser(types.ModuleType("checks.parsing")),
+                      HTMLParser)
+        not_a_parser = types.ModuleType("checks.parsing")
+        not_a_parser.browser_start_tag_parser = object
+        self.assertIs(_browser_attrs._start_tag_parser(not_a_parser), HTMLParser)
+
     def test_a_decoder_from_an_unexpected_origin_is_refused(self):
         # `import checks.parsing` resolves through sys.modules first, so a host process that
         # already imported some other top-level `checks` would otherwise hand these tools a
