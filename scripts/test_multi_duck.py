@@ -79,7 +79,11 @@ class MultiDuckRegistrationTests(unittest.TestCase):
     def test_registered_in_both_marketplaces_with_matching_identity(self):
         # MDUCK-REG-01: multi-duck is registered in the Copilot and Claude marketplace manifests, and
         # the shared identity fields (version, source, description, keywords) match across both plus
-        # the two plugin.json files, at 1.1.0.
+        # the two plugin.json files, at the version the CHANGELOG's newest release heading names.
+        # The expected version is DERIVED rather than hardcoded: a literal went stale the moment a
+        # release bumped the four manifests and reddened this required test for no real defect. The
+        # drift-detection value is unchanged - all four manifests must still agree with each other
+        # AND with the changelog, which is the actual invariant.
         cop = _entry(COPILOT_MKT, PLUGIN)
         cla = _entry(CLAUDE_MKT, PLUGIN)
         self.assertIsNotNone(cop, "multi-duck missing from Copilot marketplace")
@@ -88,8 +92,13 @@ class MultiDuckRegistrationTests(unittest.TestCase):
         self.assertEqual(cla["source"], "./plugins/multi-duck/pkg")
         cop_pj = _json(COPILOT_PJ)
         cla_pj = _json(CLAUDE_PJ)
+        released = re.search(r"^## \[(\d+\.\d+\.\d+)\]", _read(CHANGELOG), re.MULTILINE)
+        self.assertIsNotNone(released, "CHANGELOG.md has no versioned release heading")
         versions = {cop["version"], cla["version"], cop_pj["version"], cla_pj["version"]}
-        self.assertEqual(versions, {"1.1.0"})
+        self.assertEqual(
+            versions, {released.group(1)},
+            "all four manifests must carry the version of the newest CHANGELOG release heading",
+        )
         descs = {cop["description"], cla["description"],
                  cop_pj["description"], cla_pj["description"]}
         self.assertEqual(len(descs), 1, "description must be byte-identical across all four manifests")
@@ -243,6 +252,82 @@ class MultiDuckSkillTests(unittest.TestCase):
         self.assertIn("Confine autonomous action to LOCAL", t)
         self.assertIn("Do NOT commit, push", t)
         self.assertIn("no infrastructure or deployment/config change", t)
+
+
+class MultiDuckScopeGateTests(unittest.TestCase):
+    def test_the_panel_respects_a_declared_threat_model_and_dismisses_out_of_scope_findings(self):
+        # MDUCK-SCOPE-12: the panel collects the project's declared threat model / non-goals into the
+        # shared bundle, instructs every duck to respect it, and consolidates an out-of-scope finding
+        # as a recorded DISMISSAL instead of a follow-up issue. Without this a review panel
+        # manufactures work faster than it can be done (branching factor 1.83 over issues #623-#1073).
+        t = _read(SKILL)
+        # It is gathered into the bundle...
+        self.assertIn("Declared threat model and non-goals", t)
+        self.assertIn("the declared threat model / non-goals", t)
+        # ...the ducks are told to honor it...
+        self.assertIn("RESPECT THE DECLARED THREAT MODEL AND NON-GOALS", t)
+        self.assertIn("declares TRUSTED", t)
+        self.assertIn("already accepted by design", t)
+        # ...a POLICY disagreement is raised as a question, not laundered into a finding...
+        self.assertIn("never laundered into `FINDINGS:` as if it were a bug", t)
+        self.assertIn("The split is by KIND OF CLAIM", t)
+        # ...and consolidation records the dismissal without spawning an issue.
+        self.assertIn("Dismissed-as-out-of-scope", t)
+        self.assertIn("Do NOT open a follow-up issue for a dismissed finding", t)
+
+    def test_the_scope_gate_still_admits_the_findings_that_always_matter(self):
+        # MDUCK-SCOPE-12: the gate is not a blanket silencer - a weakened enforcement layer, a false
+        # positive that breaks benign input, and validator drift stay in scope. The always-in-scope
+        # list must reach BOTH audiences: whoever assembles the bundle (Step 1) and the ducks
+        # themselves (the shared hard rules). Asserted per SECTION rather than as a global count, so
+        # an extra harmless mention elsewhere cannot redden this.
+        t = _read(SKILL)
+        bundle, _, rest = t.partition("**Shared hard rules**")
+        self.assertTrue(rest, "SKILL.md no longer has a 'Shared hard rules' section")
+        for section, label in ((bundle, "bundle assembly"), (rest, "shared hard rules")):
+            self.assertIn(
+                "WEAKENS a declared enforcement layer", section,
+                "the always-in-scope list must appear in the " + label + " section",
+            )
+        self.assertIn("FALSE POSITIVE where a guard breaks or rejects benign input", t)
+        self.assertIn("its own validator rejects", t)
+
+    def test_an_inaccurate_enforcement_claim_can_never_be_dismissed_as_out_of_scope(self):
+        # MDUCK-SCOPE-12: the escape hatch that stops the gate becoming a suppression tool. A duck
+        # that can SHOW a channel the project asserts is blocked is not blocked has disproved the
+        # non-goal, so it must be reported as a finding rather than demoted to a question - the
+        # panel found exactly this (a WebRTC channel no CSP directive covers) while reviewing the
+        # change that introduced this gate.
+        t = _read(SKILL)
+        self.assertIn("EVIDENCE THAT A DECLARED ENFORCEMENT CLAIM IS FACTUALLY INACCURATE", t)
+        self.assertIn("never demote it to a question", t)
+
+    def test_findings_are_verified_before_filing_and_questions_are_carried_through(self):
+        # MDUCK-SCOPE-12: filtering out-of-scope findings does not filter WRONG ones, so a finding is
+        # confirmed against the code before it becomes an issue; and an unresolved question against a
+        # declared non-goal reaches a human instead of dying in the panel.
+        t = _read(SKILL)
+        self.assertIn("Verify BEFORE you file, not just before you fix", t)
+        self.assertIn("never filed as a defect", t)
+        self.assertIn("Carry unresolved `QUESTIONS:` through", t)
+        self.assertIn("must reach a human, not die in the panel", t)
+
+    def test_the_scope_policy_is_read_from_the_base_revision_not_the_reviewed_diff(self):
+        # MDUCK-SCOPE-12: without this a PR could ADD a non-goal declaring its own vulnerability class
+        # accepted by design and have the panel suppress findings about itself - and the diff is
+        # untrusted data, so a policy taken from it is attacker-controlled.
+        t = _read(SKILL)
+        self.assertIn("Read them from the BASE/target revision, never from the PR's own checkout", t)
+        self.assertIn("do NOT apply it as scope policy to its own diff", t)
+
+    def test_a_dismissed_candidate_actually_reaches_the_consolidator(self):
+        # MDUCK-SCOPE-12: the ducks are told to keep out-of-scope candidates OUT of FINDINGS, so
+        # without a dedicated channel the consolidator could never record the auditable dismissal it
+        # promises. The output shape carries a SCOPED-OUT section and consolidation consumes it.
+        t = _read(SKILL)
+        self.assertIn("`SCOPED-OUT:`", t)
+        self.assertIn("Consume each duck's `SCOPED-OUT:` section", t)
+        self.assertIn("never in `FINDINGS:`", t)
 
 
 class MultiDuckHouseStyleTests(unittest.TestCase):

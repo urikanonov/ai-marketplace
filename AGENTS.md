@@ -54,8 +54,10 @@ reading or investigating and will never make a change.
    assign it to yourself. An issue exists on GitHub the moment you file it - decoupled from any branch,
    worktree, or PR - so, unlike the old committed Backlog.md task files, work can never be lost if a
    worktree is discarded or a PR is abandoned, and filing it is a single `gh` command with no separate
-   creation PR. NEVER start work that is not tracked by an issue, and capture any follow-up or newly
-   discovered work as its own issue the moment it comes up so nothing lives only in the chat session.
+   creation PR. NEVER start work that is not tracked by an issue. Record any follow-up or newly
+   discovered work the moment it comes up so nothing lives only in the chat session - but FILE it as
+   an issue only once it clears the reachability and confirmation gate in "GitHub Issues workflow"
+   below; a finding that fails that gate is dismissed in one line in the PR body instead.
    Prefer the in-repo task-management skill, which wraps these `gh` calls. See "GitHub Issues workflow"
    for the full workflow.
 3. **Write the test first, then the code (TDD).** Every feature or user-visible behavior change ships with a
@@ -83,6 +85,14 @@ reading or investigating and will never make a change.
    status check (`scripts/check_multi_duck_review.py`) FAILS a PR that carries neither stamp, so an
    unstamped PR cannot merge; Dependabot PRs auto-pass. Do not skip the review just to add the stamp -
    the stamp asserts the review actually happened.
+   - **A duck-spawned fix PR still runs the FULL panel** - the panel is what validates the fix, and
+     skipping it there would be the one place a regression could land unreviewed. What is raised on
+     such a PR is the bar for SPAWNING FURTHER ISSUES, not the depth of the review: apply the
+     reachability gate below, and additionally do not open an issue for another INSTANCE of a residual
+     the owning spec has already declared (a further JS spelling that evades the best-effort offline
+     navigation pattern, say - see `CMH-SEC-06`). Note it in the PR body and move on. Without this,
+     each fix PR spawns its successors and the backlog grows without bound: measured over issues
+     #623-#1073 the branching factor was 1.83, with 13 spawned issues becoming parents themselves.
 
 ## Layout
 
@@ -952,6 +962,47 @@ commands are:
 CAPTURE as you go: the moment a follow-up or new problem surfaces mid-session, file an issue for it
 immediately (`gh issue create --label task ...`) so it never lives only in the chat transcript. That is
 the whole point of issue-first - it is how work stops getting forgotten between sessions.
+
+**But capture is GATED by reachability - not every finding is work.** Before opening an issue for a
+finding (your own, a reviewer's, or a multi-duck panel's), it must clear this bar:
+
+1. **Is it reachable given the surface's DECLARED trust boundary and enforcement layers?** A finding
+   whose attacker is a party the spec already declares TRUSTED, or whose effect an enforcement layer
+   already blocks unconditionally, is not a defect. For commentable-html this is written down in
+   `CMH-SEC-06` (the offline threat model) and `CMH-SEC-01` (authored content is trusted, unsanitized
+   HTML): for the subresource-fetch classes the CSP actually covers, the zero-network CSP - not the
+   parser-level strip - is what enforces egress, so a new way to SPELL such a fetch is not a
+   vulnerability; and a document's own author already runs arbitrary inline script by design, so a
+   "bypass" granting them capability they already have is not a finding. Read the row for the LIMITS
+   of that reasoning before citing it: a few channels (the speculative-connection link rels
+   `preconnect` / `dns-prefetch` / `prefetch` / `prerender`, and `<base href>`) are STRIP-ENFORCED
+   because no CSP directive governs them, so a gap there is a real egress bug and is never
+   dismissible on these grounds.
+2. **Is it a new defect, or another INSTANCE of an already-declared residual?** A residual the spec
+   acknowledges (top-level scripted navigation, `CMH-SEC-06` / `CMH-OFFLINE-05`) does not generate a
+   fresh issue per newly discovered spelling. Undecidable problems have infinitely many instances;
+   enumerating them is not progress.
+3. **Would fixing it change observable behavior for a real user, or only satisfy a pattern?**
+
+A finding that fails the bar is DISMISSED IN ONE LINE in the PR body (or the panel summary), citing
+the spec row that makes it out of scope. Do not open an issue for it, and do not "capture it just in
+case" - a permanently-open issue nobody will ever act on is worse than a dismissal with a reason,
+because it hides the real backlog. Findings that CLEAR the bar are still captured immediately, exactly
+as above.
+
+These always clear the bar and are real work: a change that WEAKENS a declared enforcement layer;
+EVIDENCE THAT A DECLARED ENFORCEMENT CLAIM IS FACTUALLY INACCURATE (a channel the spec asserts is
+blocked that turns out not to be - that invalidates the non-goal itself, so it must be filed, never
+dismissed by citing the row it disproves); a FALSE POSITIVE where a guard deletes, rejects, or breaks
+benign content; a drift that makes a tool emit output its own validator rejects; and anything a user
+can actually observe.
+
+**Confirm a finding before you file it.** The gate above filters findings that are out of scope; it
+does nothing about findings that are simply WRONG. A review panel running in prisms mode expects low
+cross-model agreement, so a lone unreviewed finding is as likely to be a model artifact as a bug.
+Read the actual code and satisfy yourself the problem is real before opening an issue - the same bar
+that applies before auto-fixing one. File what you confirmed; report what you could not confirm as
+unverified rather than as a defect.
 
 ### Signal that an issue is actively being worked on (branch stamp + heartbeat)
 
