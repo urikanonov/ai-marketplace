@@ -4,6 +4,43 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.601.0] - 2026-08-04
+
+### Fixed
+
+- Nothing is raw text inside foreign content, so a `<svg><script>` or `<svg><style>` can no longer
+  hide a live, network-loading element from the resource gates (CMH-VAL-21). The shared element
+  boundaries kept `script` and `style` in raw-text mode even when the element was inserted in the
+  SVG or MathML namespace; HTML5 does not - its "in foreign content" insertion mode takes both
+  through "any other start tag", which inserts a foreign element and leaves the TOKENIZER in the
+  data state, so the content is MARKUP. Chromium confirms it:
+  `<svg><script><img src="https://evil.example/x.png"></script></svg>` really does build the `<img>`
+  (`img` is a breakout tag, so it pops the open foreign elements and is inserted in the HTML
+  namespace) and fetch it. Because both the tag lookup and the document parse read that region as
+  text, the element was in NEITHER index, and a document that makes a network request could be
+  certified self-contained (and pass offline mode). `_enter_raw_text()` now refuses outright outside
+  the HTML namespace, and the host's own raw-text call is refused there too. The namespace-blind
+  passes (checklist, notes, density) carry no namespace stack and keep the host's reading; that
+  residual is now recorded in the spec and pinned by a test - it is contained, because those three
+  key only on the author's own `data-cmh-*` attributes and prose density and no resource, egress or
+  self-contained gate reads them.
+- A `<style>` body a foreign-content BREAKOUT popped, or one that contains another `<style>`, no
+  longer disappears from the CSS the offline and self-contained gates read (CMH-VAL-21). Once a
+  foreign `<script>`/`<style>` holds markup, one can contain another and a breakout start tag can
+  pop one before its own end tag arrives - and with one scalar capture per kind the inner element
+  silently replaced the outer, so `<svg><style>@import url("//evil.example/a.css");<img>` followed
+  by an innocent `<style>` recorded only the innocent rule while a browser still fetched the
+  import. Each capture is now depth-keyed on a stack, finalized wherever a browser ends the element
+  (its own end tag, an ancestor's, a breakout, end of input) rather than by end-tag NAME, so a
+  stray `</style>` no longer ends a capture no element of it ever opened either. Each capture
+  collects only the text a browser reads as its OWN (the element must be the current node), the
+  recorded bodies are restored to document order, the template-parked view is a depth-keyed stack
+  finalized the same way - so a script NESTED in a parked one is recorded with its own attributes,
+  where folding it into the outer inert record let the offline gate skip a network import the
+  exporter really carries - and the NonShareable watchdog token now counts only from a script that
+  OPENED outside the content region, so one an author left open across the content-end marker
+  cannot stand in for the layer's.
+
 ## [1.600.0] - 2026-08-04
 
 ### Fixed

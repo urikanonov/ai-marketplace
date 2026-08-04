@@ -1105,6 +1105,102 @@ class DocParserForeignContentTests(unittest.TestCase):
         html = '<script>var u = "</\u017fcript><div id=\'quoted\'>";</script><div id="real"></div>'
         self.assertEqual(_ids(html), ["real"])
 
+    def test_nothing_is_raw_text_inside_foreign_content(self):
+        # HTML5's "in foreign content" insertion mode handles a `<script>` or `<style>` start tag
+        # under "any other start tag": it inserts a FOREIGN element and leaves the TOKENIZER in
+        # the data state, so the content is MARKUP, not text. Chromium agrees - both documents
+        # below really do build the `<img>` (`img` is a breakout tag, so it pops the open foreign
+        # elements and is inserted in the HTML namespace) and it fetches. Reading either body as
+        # raw text hid a live, network-loading element from every check that reads this parse.
+        for elem in ("script", "style"):
+            with self.subTest(elem=elem):
+                html = ('<svg><%s><img id="real" src="//evil.example/x.png"></%s></svg>'
+                        % (elem, elem))
+                self.assertEqual(_ids(html), ["real"])
+
+    def test_a_foreign_raw_text_name_does_not_swallow_the_rest_of_the_document(self):
+        # The same rule from the other side: with no raw-text region to close, the `</script>`
+        # here is an ordinary end tag and the markup AFTER the `<svg>` is live either way. What
+        # a raw-text reading changed is the region BETWEEN, which is where the resource hid.
+        html = ('<svg><script><div id="inside"></div></script></svg>'
+                '<div id="after"></div>')
+        self.assertEqual(_ids(html), ["inside", "after"])
+
+    def test_a_foreign_style_popped_by_a_breakout_still_contributes_its_css(self):
+        # Because a foreign `<style>` now holds MARKUP, a BREAKOUT start tag can pop it before
+        # its own end tag ever arrives - and a browser still applies the CSS it collected. With
+        # one scalar capture per kind, the pop left the capture open and the NEXT `<style>`
+        # silently replaced it, so the egress below reached `styles` in NEITHER element and the
+        # offline CSS gate read only the innocent rule. Each capture is finalized on truncation
+        # now, so both bodies are recorded.
+        html = ('<svg><style>@import url("//evil.example/a.css");'
+                '<img src="//evil.example/x.png">'
+                "<style>p { color: red; }</style>")
+        bodies = [s["body"] for s in parsing._parse_document(html).styles]
+        self.assertEqual(len(bodies), 2, bodies)
+        self.assertIn("//evil.example/a.css", bodies[0])
+        self.assertIn("color: red", bodies[1])
+
+    def test_a_style_nested_in_a_foreign_style_does_not_drop_the_outer_body(self):
+        # The other loss the scalar had: an INNER `<style>` (only reachable in foreign content,
+        # where the outer holds markup) replaced the outer capture, so text written after the
+        # inner one closed - CSS a browser still applies to the OUTER element - was dropped.
+        html = ('<svg><style><style></style>@import url("//evil.example/b.css");'
+                "</style></svg>")
+        bodies = [s["body"] for s in parsing._parse_document(html).styles]
+        self.assertTrue(any("//evil.example/b.css" in b for b in bodies), bodies)
+
+    def test_a_stray_style_closer_does_not_end_a_capture_it_never_opened(self):
+        # A browser IGNORES an end tag with no open element, so the `</style>` in the middle
+        # closes nothing and the whole body still belongs to the one real `<style>`.
+        html = '<style>a { b: c }</style x><div id="real"></div>'
+        doc = parsing._parse_document(html)
+        self.assertEqual([s["body"] for s in doc.styles], ["a { b: c }"])
+        self.assertEqual([i for i in doc.all_ids], ["real"])
+
+    def test_text_under_a_nested_element_is_not_the_outer_bodys_source(self):
+        # A browser reads a `<style>`'s CSS (and a `<script>`'s code) from its own CHILD text
+        # nodes; text under a nested element - only reachable in foreign content, where these
+        # two hold markup - is that element's. Crediting it to the ancestor would let text no
+        # browser treats as the outer element's source satisfy a PRESENCE check, which fails
+        # OPEN, so only the capture that is the CURRENT NODE collects it.
+        html = ('<svg><style>outer{}<g>[hidden] { display: none !important; }</g>'
+                "tail{}</style></svg>")
+        bodies = [s["body"] for s in parsing._parse_document(html).styles]
+        self.assertEqual(bodies, ["outer{}tail{}"])
+
+    def test_the_recorded_bodies_are_in_document_order(self):
+        # Nested captures finalize innermost first, so the order is restored before a consumer
+        # reads it - every check that walks `styles`/`scripts` reads them in document order.
+        html = ('<svg><style>outer{}<style>inner{}</style>tail{}</style></svg>'
+                "<style>last{}</style>")
+        doc = parsing._parse_document(html)
+        self.assertEqual([s["body"] for s in doc.styles],
+                         ["outer{}tail{}", "inner{}", "last{}"])
+        self.assertEqual([s["pos"] for s in doc.styles], sorted(s["pos"] for s in doc.styles))
+
+    def test_a_nested_closer_does_not_end_a_template_parked_block_early(self):
+        # The template views the OFFLINE checks read are finalized on truncation too, so an
+        # inner `</style>` (again, only reachable in foreign content) cannot end the parked
+        # block early and drop the CSS a browser would still read from it if it were cloned.
+        html = ('<template><svg><style><style></style>'
+                '@import url("//evil.example/t.css");</style></svg></template>')
+        bodies = [s["body"] for s in parsing._parse_document(html).template_styles]
+        self.assertTrue(any("//evil.example/t.css" in b for b in bodies), bodies)
+
+    def test_a_script_opened_inside_the_content_region_cannot_supply_the_ready_token(self):
+        # The watchdog token counts only from a LAYER script. A foreign `<script>` the author
+        # opened inside their own content and left open ACROSS the content-end marker is not
+        # one: by the time the token is read the marker has passed, so the "outside the content
+        # region" test alone would accept it. The capture remembers where it OPENED, so it does
+        # not. (Only reachable in foreign content, where a `<script>` body holds markup and so
+        # really can carry a comment and a nested closer.)
+        html = ('<main id="commentRoot">' + parsing.CONTENT_BEGIN
+                + "<svg><script><script></script>" + parsing.CONTENT_END
+                + parsing.READY_TOKEN + "</script></svg></main>")
+        self.assertFalse(parsing._parse_document(html).layer_ready_token,
+                         "a script opened inside the content region is not the layer's")
+
 
 class DocParserNameFoldTests(unittest.TestCase):
     """Tag and ATTRIBUTE names fold ASCII-case-insensitively, the way a browser folds them
@@ -1980,8 +2076,6 @@ class DocParserStartTagExtentTests(unittest.TestCase):
     def test_a_narrow_parser_keeps_script_and_style_opaque(self):
         # In HTML content a `<script>`/`<style>` body is TEXT, so a tag a reader only SEES quoted
         # inside one is not an element - for the tag lookup exactly as for the document parser.
-        # (What a browser does with those two inside SVG/MathML is a separate, open question,
-        # tracked in #959; nothing here exercises it.)
         self.assertEqual(
             parsing._find_tag_attrs('<script>var a = "<meta name=hidden>";</script>'
                                     "<meta name=real>", "meta"),
@@ -1990,6 +2084,30 @@ class DocParserStartTagExtentTests(unittest.TestCase):
             parsing._find_tag_attrs('<style>/* <meta name=hidden> */</style>'
                                     "<meta name=real>", "meta"),
             [{"name": "real"}])
+
+    def test_a_namespace_blind_pass_keeps_the_hosts_foreign_reading(self):
+        # The RESIDUAL of "nothing is raw text inside foreign content" (CMH-VAL-21). The checklist,
+        # notes and density passes derive from the start-tag base, not from `_BrowserBoundaries`,
+        # so they carry no namespace stack and cannot tell an SVG `<script>` from an HTML one:
+        # they enter the HOST's raw-text mode for both and so read a `<svg><script>` body as text
+        # where a browser reads markup. That is pinned here rather than left to be rediscovered.
+        #
+        # It is CONTAINED, which is why it is recorded instead of fixed: those three passes key
+        # only on the author's own `data-cmh-*` attributes and on prose density, and NO resource,
+        # egress or self-contained gate reads them - every gate reads `_find_tag_attrs` and
+        # `_DocParser`, both of which are namespace-aware and covered above. The failure mode is
+        # an authoring finding this document does not report, never a network load it certifies
+        # away, and the document parser still records the same element for the duplicate-id view.
+        html = ('<div data-cmh-checklist="c"><svg><script>'
+                '<li data-cmh-item="hidden"></li></script></svg></div>')
+        parser = checklist._ChecklistParser()
+        parser.feed(html)
+        parser.close()
+        self.assertEqual([[i["item_id"] for i in inst["items"]] for inst in parser.instances],
+                         [[]], "the residual: the namespace-blind pass reads the body as text")
+        # The gates that DO decide network behavior see the element a browser builds.
+        parsing._tag_attr_index.cache_clear()
+        self.assertEqual(len(parsing._find_tag_attrs(html, "li")), 1)
 
     def test_a_narrow_parser_does_not_swallow_a_foreign_integration_point(self):
         # An `<svg><title>` is an HTML integration point whose children a browser really does
@@ -2182,6 +2300,23 @@ class TagAttrLookupBoundaryTests(unittest.TestCase):
                 self.assertEqual(parsing._find_tag_attrs(html, "img"), [])
                 self.assertEqual(len(parsing._find_tag_attrs(html, elem)), 1,
                                  "the raw-text element itself is still an element")
+
+    def test_a_foreign_script_or_style_body_does_not_hide_a_live_element(self):
+        # NOTHING is raw text inside foreign content: HTML5's "in foreign content" insertion mode
+        # takes a `<script>` / `<style>` start tag through "any other start tag", which inserts a
+        # foreign element and leaves the TOKENIZER in the data state. So the `<img>` below is a
+        # real element a browser BUILDS and FETCHES (verified in Chromium), and reading the body
+        # as raw text left it in NEITHER the lookup nor the parse - which is exactly the pair the
+        # self-contained and offline resource gates read, so the document was certified clean.
+        for elem in ("script", "style"):
+            with self.subTest(elem=elem):
+                parsing._tag_attr_index.cache_clear()
+                html = ('<svg><%s><img src="//evil.example/x.png"></%s></svg>' % (elem, elem))
+                self.assertEqual([d.get("src") for d in parsing._find_tag_attrs(html, "img")],
+                                 ["//evil.example/x.png"])
+                self.assertEqual([d.get("src")
+                                  for d in parsing._find_tag_attrs_egress(html, "img")],
+                                 ["//evil.example/x.png"])
 
     def test_the_tag_lookup_sees_noscript_fallback_markup(self):
         # With scripting DISABLED a browser parses the `<noscript>` body and loads what it

