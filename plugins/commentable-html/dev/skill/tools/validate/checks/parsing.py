@@ -818,6 +818,12 @@ def _browser_attrs_dict(parser, tag, attrs):
 browser_attrs = _browser_attrs
 browser_attrs_dict = _browser_attrs_dict
 
+# A TAG name folds by the same rule, so those tools read it from the same place rather than
+# keeping a second copy of clause 7: they derive their scanners from `BrowserTagNames` (through
+# the same shim) and name each element with its `_browser_tag()`.
+ascii_lower = _ascii_lower
+BrowserTagNames = _BrowserTagNames
+
 # The same package-shared TEXT decode, for the one scanner OUTSIDE this package that parses a whole
 # document (`cmhval/contrast.py`). None when the host's `goahead` cannot be re-bound; the shim beside
 # the tools passes its own default in that case.

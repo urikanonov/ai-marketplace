@@ -197,7 +197,8 @@ class _ActiveContentScanner(_browser_boundaries.BrowserBoundaries):
             # render - both are RCE/egress vectors, so fail closed on them.
             if ns != "html" or "svg" in self._stack:
                 self.errors.append("deck: <script> inside <svg> is not allowed in the deck body")
-            if any((n or "").lower() in ("src", "href", "xlink:href") for n, _ in attrs):
+            if any(_browser_attrs.ascii_lower(n) in ("src", "href", "xlink:href")
+                   for n, _ in attrs):
                 self.errors.append("deck: external <script> (src/href) is not allowed in the deck body")
             return
         if tag == "meta":
@@ -205,7 +206,7 @@ class _ActiveContentScanner(_browser_boundaries.BrowserBoundaries):
                 self.errors.append("deck: <meta http-equiv=refresh> (redirect) is not allowed in the deck body")
         egress = _EGRESS_ATTRS.get(tag, set())
         for raw_name, raw_value in attrs:
-            name = (raw_name or "").lower()
+            name = _browser_attrs.ascii_lower(raw_name)
             value = raw_value or ""
             if name.startswith("on"):
                 self.errors.append(f"deck: inline event-handler attribute ({name}=) in the deck body")

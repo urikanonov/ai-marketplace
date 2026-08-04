@@ -76,13 +76,14 @@ class Element:
 def _attrs_map(attrs):
     out = {}
     for name, value in attrs:
-        key = (name or "").lower()
+        # ASCII-only, as a browser folds an attribute name (CMH-VAL-21 clause 7).
+        key = _browser_attrs.ascii_lower(name)
         if key not in out:
             out[key] = value if value is not None else ""
     return out
 
 
-class _StructureParser(HTMLParser):
+class _StructureParser(_browser_attrs.BrowserTagNames):
     # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
     # in prose resolves to U+FFFD instead of raising, so this tool reads the same document
     # every validator parse reads (issue #946).
@@ -110,7 +111,7 @@ class _StructureParser(HTMLParser):
             return start
 
     def handle_starttag(self, tag, attrs):
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         start = self._off()
         end = self._tag_end(start)
         elem = Element(tag, attrs, start, end)
@@ -123,7 +124,7 @@ class _StructureParser(HTMLParser):
             self.stack.append(elem)
 
     def handle_startendtag(self, tag, attrs):
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         start = self._off()
         end = self._tag_end(start)
         elem = Element(tag, attrs, start, end, self_closing=True)
@@ -134,7 +135,7 @@ class _StructureParser(HTMLParser):
             self.errors.append("<%s/> is not a valid document container" % tag)
 
     def handle_endtag(self, tag):
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         start = self._off()
         end = self.text.find(">", start)
         end = len(self.text) if end < 0 else end + 1
@@ -429,7 +430,7 @@ def _drop_attr(attrs, name):
 def _class_with_cm_skip(attrs):
     current = ""
     for name, value in attrs:
-        if name.lower() == "class":
+        if _browser_attrs.ascii_lower(name) == "class":
             current = value or ""
             break
     classes = current.split()
@@ -482,7 +483,8 @@ def _matches_selector(elem, selector):
         return elem.attr_map.get("id") == selector[1:]
     if selector.startswith("."):
         return selector[1:] in (elem.attr_map.get("class") or "").split()
-    return elem.tag == selector.lower()
+    # An HTML type selector matches ASCII-case-insensitively, as the element name folds.
+    return elem.tag == _browser_attrs.ascii_lower(selector)
 
 
 def _apply_skip_selectors(text, selectors):

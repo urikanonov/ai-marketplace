@@ -62,7 +62,7 @@ def cmh_section_hash(text):
     return _to_base36(h)
 
 
-class _SectionParser(HTMLParser):
+class _SectionParser(_browser_attrs.BrowserTagNames):
     """Collect the content-root text with cm-skip / script / style subtrees excluded, and record
     each heading's (id, level, start-offset, end-offset). convert_charrefs=True so entities arrive
     decoded, like DOM textContent."""
@@ -93,7 +93,7 @@ class _SectionParser(HTMLParser):
         return bool(self._stack) and self._stack[-1]["skip"]
 
     def handle_starttag(self, tag, attrs):
-        tag_l = tag.lower()
+        tag_l = self._browser_tag(tag)
         # A void element opens no subtree (it has no end tag); it also contributes no text, so it is
         # simply ignored - pushing it would corrupt the stack for every following sibling.
         if tag_l in _VOID_ELEMENTS:
@@ -129,7 +129,7 @@ class _SectionParser(HTMLParser):
         pass  # void / self-closing element: opens no subtree
 
     def handle_endtag(self, tag):
-        tag_l = tag.lower()
+        tag_l = self._browser_tag(tag)
         for i in range(len(self._stack) - 1, -1, -1):
             if self._stack[i]["tag"] == tag_l:
                 for entry in self._stack[i:]:

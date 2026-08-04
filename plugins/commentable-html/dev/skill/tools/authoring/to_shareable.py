@@ -146,7 +146,11 @@ def _consume_eol(html, at):
 
 
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
-_RAW_TEXT_BODY_RE = re.compile(r"(<(script|style)\b[^>]*>)([\s\S]*?)(</\2\s*[^>]*>)", re.IGNORECASE)
+# A tag NAME folds ASCII-only and ends at HTML whitespace, `/` or `>` (CMH-VAL-21 clause 7), so
+# `<\u017fcript>` is not a `<script>` and `<script\u212a>` is not one either.
+_RAW_TEXT_BODY_RE = re.compile(
+    r"(<(script|style)(?![^\t\n\f\r />])[^>]*>)([\s\S]*?)(</\2\s*[^>]*>)",
+    re.IGNORECASE | re.A)
 
 
 def _blank(text):
@@ -189,8 +193,9 @@ def _apply_edits(html, edits):
 
 
 _DESCRIPTOR_RE = re.compile(
-    r'(<script\b[^>]*\sid\s*=\s*(["\'])commentableHtmlLayer\2[^>]*>)([\s\S]*?)(</script>)',
-    re.IGNORECASE)
+    r'(<script(?![^\t\n\f\r />])[^>]*\sid\s*=\s*(["\'])commentableHtmlLayer\2[^>]*>)'
+    r'([\s\S]*?)(</script\s*[^>]*>)',
+    re.IGNORECASE | re.A)
 _MODE_VALUE_RE = re.compile(r'("mode"\s*:\s*)"(?:nonshareable|nonportable)"')
 
 
@@ -279,17 +284,27 @@ _COMPANION_ELEMENT_RE = {
     # The end tag is matched as `</script` plus anything up to `>`, not `</script>`: HTML lets an
     # end tag carry (ignored) attributes and trailing space, so `</script >` and `</script foo>`
     # both really close the element, and a regex that missed them would stop recognizing the
-    # element (CodeQL "bad HTML filtering regexp").
-    "style": re.compile(r"<link\b[^>]*>", re.IGNORECASE),
-    "script": re.compile(r"<script\b[^>]*>[ \t\r\n]*</script\s*[^>]*>", re.IGNORECASE),
+    # element (CodeQL "bad HTML filtering regexp"). A companion always carries an attribute
+    # (`href=` / `src=`), so the tag NAME is required to end on an HTML terminator character that
+    # is CONSUMED here rather than on `\b`, and `re.A` keeps IGNORECASE ASCII-only as a browser
+    # folds a name (CMH-VAL-21 clause 7): bare `re.I` reads `<lin\u212a>` as a `<link>` (U+212A
+    # KELVIN SIGN lowercases to "k"), and `\b` under `re.A` would in turn accept `<link\u212a>`.
+    # This pass REWRITES what it matches, so it needs both. The CLOSER keeps the tolerant
+    # `\s*[^>]*>` tail (`</script >` and `</script foo>` really do close the element): a span is
+    # only entered through a real opening tag, so a closer that matches slightly more than a
+    # browser ends that span early rather than rewriting an element a browser does not have.
+    "style": re.compile(r"<link[\t\n\f\r /][^>]*>", re.IGNORECASE | re.A),
+    "script": re.compile(r"<script[\t\n\f\r /][^>]*>[ \t\r\n]*"
+                         r"</script\s*[^>]*>", re.IGNORECASE | re.A),
 }
 # `(?<![-\w])` so `data-href="commentable-html.css"` on an element pointing somewhere else is
-# not read as the companion reference - `\b` matches inside `data-href`.
+# not read as the companion reference - `\b` matches inside `data-href`. The NAME is spelled out
+# per character instead of relying on IGNORECASE, because Python's Unicode fold reads
+# `\u017frc=` as `src=` and `data-\u212aey` as `data-key` where a browser keeps them distinct
+# (CMH-VAL-21 clause 7), and this pass REWRITES the value it finds.
 _URL_ATTR_RE = {
-    "style": re.compile(r"""(?<![-\w])href\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))""",
-                        re.IGNORECASE),
-    "script": re.compile(r"""(?<![-\w])src\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))""",
-                         re.IGNORECASE),
+    "style": re.compile(r"""(?<![-\w])[hH][rR][eE][fF]\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))"""),
+    "script": re.compile(r"""(?<![-\w])[sS][rR][cC]\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))"""),
 }
 
 

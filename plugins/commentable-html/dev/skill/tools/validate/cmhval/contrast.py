@@ -643,11 +643,13 @@ def _parse_selector_compound(raw):
             inner = raw[i + 1:end].strip()
             if "=" in inner:
                 name, value = inner.split("=", 1)
-                name = name.strip().lower()
+                # ASCII-only, like the element and attribute names the DOM view carries, so a
+                # selector and the node it is matched against fold by the same rule (clause 7).
+                name = _browser_attrs.ascii_lower(name.strip())
                 value = value.strip().strip('"').strip("'")
                 token["attrs"].append((name, value))
             else:
-                token["attrs"].append((inner.lower(), None))
+                token["attrs"].append((_browser_attrs.ascii_lower(inner), None))
             i = end + 1
             continue
         if ch == ":":
@@ -655,7 +657,7 @@ def _parse_selector_compound(raw):
         m = re.match(r"[A-Za-z][A-Za-z0-9_-]*", raw[i:])
         if not m:
             return None
-        token["tag"] = m.group(0).lower()
+        token["tag"] = _browser_attrs.ascii_lower(m.group(0))
         i += len(m.group(0))
     return token
 

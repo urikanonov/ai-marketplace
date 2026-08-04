@@ -26,6 +26,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _browser_attrs  # noqa: E402
 import _browser_boundaries  # noqa: E402
 
 # Attribute-token matcher for editing an already-located <pre ...> start tag's
@@ -104,7 +105,7 @@ def _add_cm_skip(tag_text):
     attribute untouched."""
     matches = list(_ATTR_RE.finditer(tag_text))
     for m in matches[1:]:  # matches[0] is the tag name token itself
-        if m.group(1).lower() != "class" or m.group(3) is None:
+        if _browser_attrs.ascii_lower(m.group(1)) != "class" or m.group(3) is None:
             continue
         value_tok = m.group(3)
         if value_tok[0] in "\"'":

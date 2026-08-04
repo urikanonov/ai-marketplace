@@ -75,7 +75,7 @@ def has_nonshareable_marker(html):
 _KIND_META_NAME = "commentable-html-kind"
 
 
-class _KindMetaFinder(HTMLParser):
+class _KindMetaFinder(_browser_attrs.BrowserTagNames):
     """Detect a <meta name="commentable-html-kind"> regardless of attribute order."""
 
     # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
@@ -88,10 +88,11 @@ class _KindMetaFinder(HTMLParser):
         self.found = False
 
     def _check(self, tag, attrs):
-        if tag.lower() != "meta":
+        if self._browser_tag(tag) != "meta":
             return
         for k, v in attrs:
-            if (k or "").lower() == "name" and (v or "").strip().lower() == _KIND_META_NAME:
+            if (_browser_attrs.ascii_lower(k) == "name"
+                    and (v or "").strip().lower() == _KIND_META_NAME):
                 self.found = True
 
     def handle_starttag(self, tag, attrs):
@@ -101,7 +102,7 @@ class _KindMetaFinder(HTMLParser):
         self._check(tag, attrs)
 
 
-class _RootSourceFinder(HTMLParser):
+class _RootSourceFinder(_browser_attrs.BrowserTagNames):
     # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
     # in prose resolves to U+FFFD instead of raising, so this tool reads the same document
     # every validator parse reads (issue #946).
@@ -125,7 +126,8 @@ class _RootSourceFinder(HTMLParser):
         first_id = next((v for k, v in attrs if k == "id"), None)
         has_source = any(k == "data-doc-source" for k, _v in attrs)
         is_root = first_id == "commentRoot"
-        is_body_fallback = tag.lower() == "body" and self.body_result is None
+        is_body_fallback = (self._browser_tag(tag) == "body"
+                            and self.body_result is None)
         if not is_root and not is_body_fallback:
             return
         line, column = self.getpos()
@@ -157,7 +159,7 @@ def _raw_tag_attributes(tag):
         if pos == name_start:
             pos += 1
             continue
-        name = tag[name_start:pos].lower()
+        name = _browser_attrs.ascii_lower(tag[name_start:pos])
         while pos < len(tag) and tag[pos].isspace():
             pos += 1
         value_start = value_end = None
@@ -464,9 +466,13 @@ def _mask_html_comments(s):
                 k += 1
             out.append(s[i:k])
             i = k
-            if m.group(1).lower() in _RAWTEXT_ELEMENTS:
+            if _browser_attrs.ascii_lower(m.group(1)) in _RAWTEXT_ELEMENTS:
+                # `re.A` so the closer folds ASCII-only too (CMH-VAL-21 clause 7): a
+                # Unicode fold lets `</\u017fcript>` end a `<script>` that a browser
+                # leaves open, and the unclosed region would then mask real markup out
+                # of this pass.
                 close = re.compile(r"</" + re.escape(m.group(1)) + r"(?=[\t\n\f\r />])",
-                                   re.IGNORECASE).search(s, i)
+                                   re.IGNORECASE | re.A).search(s, i)
                 end = close.start() if close else n
                 out.append(s[i:end])   # raw-text body: no comment recognition inside
                 i = end

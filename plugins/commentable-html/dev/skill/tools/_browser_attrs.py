@@ -9,14 +9,19 @@ occurrence as HTML5 does. The same package also owns the start-tag PARSER that r
 whose tag extent is scanned by a vendored tokenizer and whose numeric decode is bounded, so an
 oversized reference resolves to U+FFFD instead of raising; the contrast scanner reads that parser
 from here too (`StartTagParser`), which is the start-tag parse only - the wider element boundaries
-and ASCII-only tag-name folding stay each consumer's own.
+stay each consumer's own. It also folds a tag or attribute NAME ASCII-only, as a browser does
+(CMH-VAL-21 clause 7): U+212A KELVIN SIGN is the one character outside ASCII whose `str.lower()`
+is an ASCII letter ("k"), so the host's Unicode fold reads `<lin\u212a>` as a `<link>`,
+`</mar\u212a>` as a `<mark>` closer and `data-cmh-chec\u212alist` as `data-cmh-checklist`.
 
 The deck validator, the contrast scanner and the authoring tools each used to keep their own
-host-trusting attribute dict, so the same document was read one way by the validator and another
-way by the tool beside it (CMH-VAL-21). They all read the rule from here instead.
+host-trusting attribute dict and their own `tag.lower()`, so the same document was read one way by
+the validator and another way by the tool beside it (CMH-VAL-21). They all read the rule from here
+instead: `attrs()` / `attrs_dict()` for the attribute view, and the `BrowserTagNames` base (whose
+`_browser_tag()` names each element) for the tag.
 
-A partial install (the `validate` tool missing) falls back to the host's own list and the host's own
-`HTMLParser` rather than failing: a degraded parse is better than a tool that cannot run, and the
+A partial install (the `validate` tool missing) falls back to the host's own list, fold and
+`HTMLParser` rather than failing: a degraded read is better than a tool that cannot run, and the
 fallback is WARNED about once, the way every other optional-tool import in the skill is.
 """
 import html as _html
@@ -97,24 +102,48 @@ else:
 
 _shared_attrs = getattr(_parsing, "browser_attrs", None)
 _shared_attrs_dict = getattr(_parsing, "browser_attrs_dict", None)
+_shared_ascii_lower = getattr(_parsing, "ascii_lower", None)
+_shared_tag_names = getattr(_parsing, "BrowserTagNames", None)
+
+
+def ascii_lower(name):
+    """`name` folded the way a BROWSER folds a tag or attribute name: ASCII-only."""
+    if _shared_ascii_lower is None:
+        return (name or "").lower()
+    return _shared_ascii_lower(name or "")
+
+
+class _FallbackTagNames(HTMLParser):
+    """The degraded base: only a broken/partial install gets here, and a scanner that names a tag
+    with the host's Unicode fold still works - it just carries clause 7's differential."""
+
+    def _browser_tag(self, tag):
+        return (tag or "").lower()
+
+
+# Every scanner outside the `checks` package derives from this, so the tag name it keys on is the
+# name a browser gives the element.
+BrowserTagNames = _shared_tag_names or _FallbackTagNames
 
 
 def _start_tag_parser(parsing_module):
-    """The shared start-tag parser base, or the host's own `HTMLParser` when it is unavailable.
+    """The shared start-tag parser base, or the degraded tag-name base when it is unavailable.
 
     Kept a function so the degraded install has a reachable, tested path: the class itself is
-    bound once at import, as every consumer subclasses it at import time too."""
+    bound once at import, as every consumer subclasses it at import time too. The fallback is
+    `_FallbackTagNames`, not a bare `HTMLParser`, so a consumer can still name an element with
+    `_browser_tag()` on a broken install rather than raising."""
     base = getattr(parsing_module, "browser_start_tag_parser", None)
     if isinstance(base, type) and issubclass(base, HTMLParser):
         return base
-    return HTMLParser
+    return _FallbackTagNames
 
 
 # The start-tag base for a consumer outside `checks` that needs the tag EXTENT and the bounded
 # numeric decode, not only the attribute rule - today the contrast scanner (`cmhval/contrast.py`),
-# the one such scanner inside the validator. It shares the START TAG parse only: the wider element
-# boundaries (`_BrowserBoundaries`) and ASCII-only tag-name folding are still each consumer's own
-# (CMH-VAL-21).
+# the one such scanner inside the validator. It shares the START TAG parse and the ASCII-only
+# tag-name fold (it derives from the same `BrowserTagNames` base); the wider element boundaries
+# (`_BrowserBoundaries`) are still each consumer's own (CMH-VAL-21).
 StartTagParser = _start_tag_parser(_parsing)
 
 
@@ -122,8 +151,8 @@ def attrs(parser, tag, raw_attrs):
     """The start tag's `(name, value)` pairs, browser-decoded. `parser` is the HTMLParser
     currently handling the start tag (its raw start-tag text is what the rule is applied to)."""
     if _shared_attrs is None:
-        return [((k or "").lower(), v) for k, v in raw_attrs]
-    return _shared_attrs(parser, (tag or "").lower(), raw_attrs)
+        return [(ascii_lower(k), v) for k, v in raw_attrs]
+    return _shared_attrs(parser, ascii_lower(tag), raw_attrs)
 
 
 def attrs_dict(parser, tag, raw_attrs):
@@ -131,8 +160,8 @@ def attrs_dict(parser, tag, raw_attrs):
     if _shared_attrs_dict is None:
         d = {}
         for k, v in raw_attrs:
-            kl = (k or "").lower()
+            kl = ascii_lower(k)
             if kl not in d:
                 d[kl] = v if v is not None else ""
         return d
-    return _shared_attrs_dict(parser, (tag or "").lower(), raw_attrs)
+    return _shared_attrs_dict(parser, ascii_lower(tag), raw_attrs)

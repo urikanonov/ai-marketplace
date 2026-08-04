@@ -22,7 +22,9 @@ import json
 import os
 import re
 import sys
-from html.parser import HTMLParser
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _browser_attrs  # noqa: E402
 
 _BUNDLE_RE = re.compile(r"^\s*NOTES_STATE_JSON:\s*(\{.*\})\s*$", re.MULTILINE)
 _TRAILER_OPEN_RE = re.compile(
@@ -32,7 +34,7 @@ _VOID = frozenset(
     "area base br col embed hr img input link meta param source track wbr".split())
 
 
-class _NoteScanner(HTMLParser):
+class _NoteScanner(_browser_attrs.BrowserTagNames):
     """Record each data-cmh-note element's inner-content char span (end of its start tag to the
     start of its MATCHING end tag), tracking nesting so a same-named child does not close it."""
 
@@ -48,30 +50,28 @@ class _NoteScanner(HTMLParser):
         lineno, col = self.getpos()
         return self._offsets[lineno - 1] + col
 
-    def _attrs(self, attrs):
-        d = {}
-        for k, v in attrs:
-            kl = (k or "").lower()
-            if kl not in d:
-                d[kl] = v if v is not None else ""
-        return d
+    def _attrs(self, tag, attrs):
+        # The SHARED browser view (CMH-VAL-21): names folded ASCII-only, values decoded the way
+        # a browser decodes them, first occurrence of a duplicate winning.
+        return _browser_attrs.attrs_dict(self, tag, attrs)
 
     def handle_starttag(self, tag, attrs):
-        d = self._attrs(attrs)
+        tag = self._browser_tag(tag)
+        d = self._attrs(tag, attrs)
         note = None
-        if "data-cmh-note" in d and tag.lower() not in _VOID:
+        if "data-cmh-note" in d and tag not in _VOID:
             starttag = self.get_starttag_text() or ""
             note = {"id": d.get("data-cmh-note") or "", "start": self._idx() + len(starttag), "end": None}
             self.notes.append(note)
-        if tag.lower() not in _VOID:
-            self._stack.append({"tag": tag.lower(), "note": note})
+        if tag not in _VOID:
+            self._stack.append({"tag": tag, "note": note})
 
     def handle_startendtag(self, tag, attrs):
         # A self-closing note has no inner content; ignore it (the validator forbids this shape).
         pass
 
     def handle_endtag(self, tag):
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         for i in range(len(self._stack) - 1, -1, -1):
             if self._stack[i]["tag"] == tag:
                 popped = self._stack[i:]

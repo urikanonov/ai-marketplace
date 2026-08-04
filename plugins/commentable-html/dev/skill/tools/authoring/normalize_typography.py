@@ -25,7 +25,9 @@ import argparse
 import os
 import re
 import sys
-from html.parser import HTMLParser
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _browser_attrs  # noqa: E402
 
 # Unicode "smart" characters AI tools emit, mapped to their plain-ASCII replacement. Kept as \u
 # escapes so this source stays pure ASCII. Mirrors AI_CHARACTERS in scripts/validate_markdown.py; an
@@ -67,7 +69,7 @@ _RAW_RE = re.compile(
 )
 
 
-class _ProseSpans(HTMLParser):
+class _ProseSpans(_browser_attrs.BrowserTagNames):
     """Collect the exact source spans of PROSE text nodes (data outside any verbatim element).
 
     Using the standard-library HTML tokenizer instead of a regex makes the scan quote-aware (a `>`
@@ -94,7 +96,7 @@ class _ProseSpans(HTMLParser):
             self._verbatim.append(tag)
 
     def handle_starttag(self, tag, attrs):
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         if tag not in _VOID:
             self._open(tag)
 
@@ -102,7 +104,7 @@ class _ProseSpans(HTMLParser):
         # HTML ignores a trailing "/" on a non-void element (it is an OPEN tag). A void self-close
         # has no content. So a self-closing verbatim (`<pre/>`, `<code/>`) opens protection, matching
         # the browser, while a void self-close opens nothing.
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         if tag not in _VOID:
             self._open(tag)
 
@@ -110,7 +112,7 @@ class _ProseSpans(HTMLParser):
         # Only close the innermost verbatim element when the end tag matches it. An end tag that does
         # not match the top of the verbatim stack (misnested, or a non-verbatim tag) is ignored, so
         # protection is conservative (never dropped early) and never scans a deep stack.
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         if self._verbatim and self._verbatim[-1] == tag:
             self._verbatim.pop()
 

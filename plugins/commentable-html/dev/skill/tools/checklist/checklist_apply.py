@@ -23,7 +23,9 @@ import json
 import os
 import re
 import sys
-from html.parser import HTMLParser
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _browser_attrs  # noqa: E402
 
 STATES = ("blank", "check", "cross", "question")
 _BUNDLE_RE = re.compile(r"^\s*CHECKLIST_STATE_JSON:\s*(\{.*\})\s*$", re.MULTILINE)
@@ -34,7 +36,7 @@ _VOID = frozenset(
     "area base br col embed hr img input link meta param source track wbr".split())
 
 
-class _ChecklistScanner(HTMLParser):
+class _ChecklistScanner(_browser_attrs.BrowserTagNames):
     """Record each checklist item's start-tag char span and its stable key, scoped to the
     innermost open data-cmh-checklist container (mirrors the runtime's ownership filter)."""
 
@@ -51,13 +53,11 @@ class _ChecklistScanner(HTMLParser):
         lineno, col = self.getpos()
         return self._offsets[lineno - 1] + col
 
-    def _attrs(self, attrs):
-        d = {}
-        for k, v in attrs:
-            kl = (k or "").lower()
-            if kl not in d:
-                d[kl] = v if v is not None else ""
-        return d
+    def _attrs(self, tag, attrs):
+        # The SHARED browser view (CMH-VAL-21): names folded ASCII-only, so
+        # `data-cmh-chec\u212alist` is not `data-cmh-checklist`, values decoded as a browser
+        # decodes them, and the FIRST occurrence of a duplicate winning as HTML5 says.
+        return _browser_attrs.attrs_dict(self, tag, attrs)
 
     def _record_item(self, d):
         if not self._containers:
@@ -77,20 +77,21 @@ class _ChecklistScanner(HTMLParser):
         })
 
     def handle_starttag(self, tag, attrs):
-        d = self._attrs(attrs)
+        tag = self._browser_tag(tag)
+        d = self._attrs(tag, attrs)
         self._record_item(d)
         is_container = "data-cmh-checklist" in d
         if is_container:
             self._containers.append({"id": d.get("data-cmh-checklist") or "", "counter": 0})
-        if tag.lower() not in _VOID:
-            self._elems.append((tag.lower(), is_container))
+        if tag not in _VOID:
+            self._elems.append((tag, is_container))
 
     def handle_startendtag(self, tag, attrs):
         # A self-closing item opens and closes at once: record it, push no context.
-        self._record_item(self._attrs(attrs))
+        self._record_item(self._attrs(self._browser_tag(tag), attrs))
 
     def handle_endtag(self, tag):
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         for i in range(len(self._elems) - 1, -1, -1):
             if self._elems[i][0] == tag:
                 popped = self._elems[i:]

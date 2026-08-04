@@ -54,7 +54,6 @@ real validation failure. Output goes to stdout unless --out is given.
 import argparse
 import hashlib
 import html as _html
-import html.parser as _html_parser
 import importlib.util
 import os
 from pathlib import Path
@@ -135,7 +134,7 @@ _VOID_ELEMENTS = frozenset((
 _LEDE_CLASS_RE = re.compile(r'(^|\s)cmh-lede(\s|$)')
 
 
-class _TitleDetector(_html_parser.HTMLParser):
+class _TitleDetector(_browser_attrs.BrowserTagNames):
     """Detect a genuine, rendered document title at the TOP level of a content fragment:
     a top-level <h1> or a top-level element carrying the cmh-lede class. Parsing (rather
     than a raw-text scan) means an <h1> inside an HTML comment, <script>, or <style> is not
@@ -145,7 +144,7 @@ class _TitleDetector(_html_parser.HTMLParser):
     # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
     # in prose resolves to U+FFFD instead of raising, so this tool reads the same document
     # every validator parse reads (issue #946).
-    goahead = _browser_attrs.text_goahead(_html_parser.HTMLParser.goahead)
+    goahead = _browser_attrs.text_goahead(_browser_attrs.BrowserTagNames.goahead)
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -163,15 +162,16 @@ class _TitleDetector(_html_parser.HTMLParser):
             self.found = True
 
     def handle_starttag(self, tag, attrs):
+        tag = self._browser_tag(tag)
         self._check_top_level(tag, attrs)
         if tag not in _VOID_ELEMENTS:
             self.depth += 1
 
     def handle_startendtag(self, tag, attrs):
-        self._check_top_level(tag, attrs)
+        self._check_top_level(self._browser_tag(tag), attrs)
 
     def handle_endtag(self, tag):
-        if tag not in _VOID_ELEMENTS and self.depth > 0:
+        if self._browser_tag(tag) not in _VOID_ELEMENTS and self.depth > 0:
             self.depth -= 1
 
 
@@ -238,15 +238,18 @@ def _parse_attrs(interior):
 
 
 def _set_attr(attrs, name, value):
+    # ASCII-only name folding, as a browser folds an attribute name (CMH-VAL-21 clause 7).
+    target = _browser_attrs.ascii_lower(name)
     for i, (k, _v) in enumerate(attrs):
-        if k.lower() == name.lower():
+        if _browser_attrs.ascii_lower(k) == target:
             attrs[i] = (k, value)
             return
     attrs.append((name, value))
 
 
 def _drop_attr(attrs, name):
-    attrs[:] = [(k, v) for (k, v) in attrs if k.lower() != name.lower()]
+    target = _browser_attrs.ascii_lower(name)
+    attrs[:] = [(k, v) for (k, v) in attrs if _browser_attrs.ascii_lower(k) != target]
 
 
 def _build_main_tag(interior, key, label, source, generated=None):
