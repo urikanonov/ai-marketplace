@@ -5,10 +5,9 @@ import html as html_lib
 import os
 import re
 import sys
-from html.parser import HTMLParser
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
-import _browser_attrs  # noqa: E402
+import _browser_boundaries  # noqa: E402
 
 HEADING_TAGS = {"h2", "h3"}
 VOID_TAGS = {
@@ -21,48 +20,76 @@ SLUG_RE = re.compile(r"[^a-z0-9]+")
 SECTION_NUMBER_RE = re.compile(r"^(?:\d+(?:\.\d+)*[.)]|\d+\.\d+(?:\.\d+)*)\s+")
 
 
-def _line_starts(text):
-    starts = [0]
-    for match in re.finditer("\n", text):
-        starts.append(match.end())
-    return starts
-
-
 def _has_class(attrs, class_name):
     return class_name in set((attrs.get("class") or "").split())
 
 
-def _end_tag_end(text, start):
-    end = text.find(">", start)
-    if end == -1:
-        return start
-    return end + 1
+class _TocParser(_browser_boundaries.BrowserBoundaries):
+    """Collect the headings a reader sees, and the extent of any existing `nav.cm-toc`.
 
-
-class _TocParser(HTMLParser):
-    # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
-    # in prose resolves to U+FFFD instead of raising, so this tool reads the same document
-    # every validator parse reads (issue #946).
-    goahead = _browser_attrs.text_goahead(HTMLParser.goahead)
+    Derives from the SHARED element boundaries (CMH-VAL-21), so a heading, an id or a `nav` a
+    reader only SEES quoted inside a raw-text body (`<textarea>`, `<title>`, `<noscript>`, ...),
+    inside a comment or behind a bogus `<![CDATA[` marked section contributes no element - the same
+    view the validator's heading and id checks take, on every interpreter. The element stack runs
+    parallel to the shared namespace stack, so no truncation path can leave the two out of step.
+    """
 
     def __init__(self, text):
-        super().__init__(convert_charrefs=True)
+        super().__init__(text)
         self._text = text
-        self._starts = _line_starts(text)
         self.stack = []
         self.root_depth = None
         self.root_closed = False
         self.root_start_end = None
         self.all_ids = []
         self.headings = []
-        self.toc_spans = []
+        self.toc_spans = []            # spans a rewrite may replace (own end tag closed them)
+        self.toc_unclosed_spans = []   # spans an ancestor's closer or EOF ended; read-only
         self._heading = None
-        self._toc_depth = 0
+        self._heading_index = None
+        self._toc_index = None
         self._toc_start = None
+        self._end_tag = False     # the truncation below came from an end TAG, not an implicit close
 
-    def _idx(self):
-        line, col = self.getpos()
-        return self._starts[line - 1] + col
+    def _truncate_stacks(self, depth):
+        # EVERY close runs through here - the element's own end tag, an ANCESTOR's end tag, HTML5's
+        # implicit `</p>` / `</li>`, a foreign-content breakout, and end of input - so state keyed
+        # on a stack index can never be left open past the element a browser closed. Only the
+        # element's OWN end tag is part of it: an ancestor's `</div>` closes it at the START of that
+        # tag, so the span must not swallow it (this tool REPLACES those bytes).
+        if self._heading is not None and self._heading_index >= depth:
+            self._finish_heading()
+        if self._toc_start is not None and self._toc_index >= depth:
+            # Only a region the browser closed with its OWN end tag has a span that can be
+            # REPLACED: one an ancestor's closer (or end of input) ended runs past every following
+            # sibling, and deleting it would take the document's body with it. The extent is still
+            # recorded - it is the browser's - but as an UNCLOSED span the rewriter must not edit.
+            own = self._end_tag and depth == self._toc_index
+            span = (self._toc_start,
+                    _browser_boundaries.end_tag_end(self._text, self._off()) if own
+                    else self._off())
+            (self.toc_spans if own else self.toc_unclosed_spans).append(span)
+            self._toc_start = None
+            self._toc_index = None
+        if self.root_depth is not None and depth <= self.root_depth:
+            # Closing #commentRoot (or an ancestor of it) ends the root subtree for good, so
+            # headings/refs in a later sibling container are not collected.
+            self.root_closed = True
+        super()._truncate_stacks(depth)
+        del self.stack[depth:]
+
+    def _finish_heading(self):
+        text = re.sub(r"\s+", " ", "".join(self._heading["text_parts"])).strip()
+        if text:
+            self.headings.append({
+                "tag": self._heading["tag"],
+                "id": self._heading["id"],
+                "text": text,
+                "start": self._heading["start"],
+                "start_text": self._heading["start_text"],
+            })
+        self._heading = None
+        self._heading_index = None
 
     def _in_template(self):
         return any(tag == "template" for tag, _skip in self.stack)
@@ -75,19 +102,21 @@ class _TocParser(HTMLParser):
                 and len(self.stack) > self.root_depth)
 
     def handle_starttag(self, tag, attrs):
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         # The shared browser attribute decode (CMH-VAL-21): the id this tool reads (and links
         # the table of contents at) is the id a browser gives the element.
-        attrs_dict = _browser_attrs.attrs_dict(self, tag, attrs)
+        attrs_dict = self._attrs_dict(tag, attrs)
+        ns = self._child_namespace(tag, attrs_dict)
+        if ns == "html":
+            self._implicit_close(tag)
         own_skip = _has_class(attrs_dict, "cm-skip")
-        start = self._idx()
+        opens = tag not in VOID_TAGS or ns != "html"
+        start = self._off()
         start_text = self.get_starttag_text() or ""
-        if tag == "nav" and self._toc_depth:
-            self._toc_depth += 1
-        elif (tag == "nav" and self._inside_root() and not self._in_template()
-              and _has_class(attrs_dict, "cm-toc")):
+        if (tag == "nav" and opens and self._toc_start is None and self._inside_root()
+                and not self._in_template() and _has_class(attrs_dict, "cm-toc")):
             self._toc_start = start
-            self._toc_depth = 1
+            self._toc_index = len(self.stack)
 
         if not self._in_template():
             element_id = attrs_dict.get("id")
@@ -106,16 +135,22 @@ class _TocParser(HTMLParser):
                 "start": start,
                 "start_text": start_text,
             }
+            self._heading_index = len(self.stack)
 
-        if tag not in VOID_TAGS:
+        if opens:
             self.stack.append((tag, own_skip))
+            self._push_ns(tag, ns, attrs_dict)
+        self._enter_raw_text(tag, ns)
 
     def handle_startendtag(self, tag, attrs):
-        if tag.lower() not in VOID_TAGS:
+        # HTML5 ignores a trailing slash on a non-void HTML tag (it opens an element) and on a VOID
+        # one (it was already terminal), so both go through the start-tag path - which is also
+        # where the implicit `</p>` close lives. Only a FOREIGN element really self-closes.
+        tag = self._browser_tag(tag)
+        attrs_dict = self._attrs_dict(tag, attrs)
+        if not self._foreign_self_closes(self._child_namespace(tag, attrs_dict)):
             self.handle_starttag(tag, attrs)
             return
-        tag = tag.lower()
-        attrs_dict = _browser_attrs.attrs_dict(self, tag, attrs)
         if not self._in_template():
             element_id = attrs_dict.get("id")
             if element_id:
@@ -128,39 +163,27 @@ class _TocParser(HTMLParser):
             self._heading["text_parts"].append(data)
 
     def handle_endtag(self, tag):
-        tag = tag.lower()
-        if self._heading is not None and tag == self._heading["tag"]:
-            text = re.sub(r"\s+", " ", "".join(self._heading["text_parts"])).strip()
-            if text:
-                self.headings.append({
-                    "tag": self._heading["tag"],
-                    "id": self._heading["id"],
-                    "text": text,
-                    "start": self._heading["start"],
-                    "start_text": self._heading["start_text"],
-                })
-            self._heading = None
-
-        if tag == "nav" and self._toc_depth:
-            self._toc_depth -= 1
-            if self._toc_depth == 0:
-                self.toc_spans.append((self._toc_start, _end_tag_end(self._text, self._idx())))
-                self._toc_start = None
-
+        tag = self._browser_tag(tag)
         for index in range(len(self.stack) - 1, -1, -1):
             if self.stack[index][0] == tag:
-                # Closing #commentRoot (or an ancestor of it) ends the root subtree for
-                # good, so headings/refs in a later sibling container are not collected.
-                if self.root_depth is not None and index <= self.root_depth:
-                    self.root_closed = True
-                del self.stack[index:]
+                self._end_tag = True
+                try:
+                    self._truncate_stacks(index)
+                finally:
+                    self._end_tag = False
                 return
+        # An end tag with no open element is ignored, exactly as a browser ignores it.
+
+    def close(self):
+        super().close()
+        # A browser renders a heading (or a `nav.cm-toc`) still open at end of input, so it is
+        # finalized rather than dropped.
+        self._truncate_stacks(0)
 
 
 def _parse(html):
     parser = _TocParser(html)
-    parser.feed(html)
-    parser.close()
+    parser.parse_document(html)
     return parser
 
 

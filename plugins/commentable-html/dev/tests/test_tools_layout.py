@@ -15,7 +15,7 @@ import _paths  # noqa: E402  adds the tool buckets to sys.path via the shipped t
 # bucket imports (`_toolpath`) and the shared browser attribute decode the tools outside the
 # validator's `checks` package read (`_browser_attrs`, CMH-VAL-21). A module here must be
 # importable from ANY bucket, which is exactly why it cannot live in one.
-ROOT_SHARED_MODULES = ("_toolpath.py", "_browser_attrs.py")
+ROOT_SHARED_MODULES = ("_toolpath.py", "_browser_attrs.py", "_browser_boundaries.py")
 
 # The intended bucket layout. Every shipped tool module is listed exactly once under its topic.
 EXPECTED = {

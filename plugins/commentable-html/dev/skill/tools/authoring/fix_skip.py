@@ -24,57 +24,78 @@ import argparse
 import os
 import re
 import sys
-from html.parser import HTMLParser
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
-import _browser_attrs  # noqa: E402
+import _browser_boundaries  # noqa: E402
 
 # Attribute-token matcher for editing an already-located <pre ...> start tag's
 # source text in place: name, then an optional ="quoted"/'quoted'/bare value.
 _ATTR_RE = re.compile(r'([^\s"\'>/=]+)(\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+))?')
 
+_VOID = frozenset((
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link",
+    "meta", "param", "source", "track", "wbr",
+))
 
-class _MermaidPreLocator(HTMLParser):
+
+class _MermaidPreLocator(_browser_boundaries.BrowserBoundaries):
     """Locate real <pre class="mermaid"> start tags missing cm-skip.
 
-    Only tags the tolerant HTML parser itself resolves as real start tags are
-    considered, so a `mermaid` class written inside an HTML comment, inside a
-    <script>/<style> body, or inside a quoted attribute string never counts.
+    Derives from the SHARED element boundaries (CMH-VAL-21), so only a tag a BROWSER resolves as a
+    start tag - identically on every interpreter - is considered: a `mermaid` class written inside
+    a comment, inside a raw-text body (`<textarea>`, `<title>`, `<noscript>`, ...), inside a quoted
+    attribute string or behind a bogus `<![CDATA[` marked section never counts. This tool REWRITES
+    the bytes of every tag it reports, so an element a browser never builds would put a `cm-skip`
+    token into text a reader sees verbatim.
     """
 
     def __init__(self, html):
-        super().__init__(convert_charrefs=False)
-        self._offsets = [0]
-        for m in re.finditer("\n", html):
-            self._offsets.append(m.end())
+        super().__init__(html)
+        self.stack = []
         self.spans = []  # (start, end) char offsets of each tag needing the fix
 
-    def _idx(self):
-        lineno, col = self.getpos()
-        return self._offsets[lineno - 1] + col
+    def _truncate_stacks(self, depth):
+        super()._truncate_stacks(depth)
+        del self.stack[depth:]
 
-    def _attrs_dict(self, tag, attrs):
+    def _check(self, tag, ad):
+        if tag != "pre":
+            return
         # The shared browser attribute decode (CMH-VAL-21): HTML5 keeps the FIRST occurrence of
         # a duplicated attribute, and a named character reference resolves only on an exact
         # match - so `class="mermaid &nbspcm-skip"` carries ONE literal token, not a `cm-skip`
         # the author never wrote (which made a block look already fixed).
-        return _browser_attrs.attrs_dict(self, tag, attrs)
-
-    def _check(self, tag, attrs):
-        if tag.lower() != "pre":
-            return
-        ad = self._attrs_dict(tag.lower(), attrs)
         classes = set((ad.get("class") or "").split())
         if "mermaid" in classes and "cm-skip" not in classes:
-            start = self._idx()
-            text = self.get_starttag_text()
-            self.spans.append((start, start + len(text)))
+            start = self._off()
+            self.spans.append((start, self._start_tag_end()))
 
     def handle_starttag(self, tag, attrs):
-        self._check(tag, attrs)
+        tag = self._browser_tag(tag)
+        ad = self._attrs_dict(tag, attrs)
+        ns = self._child_namespace(tag, ad)
+        if ns == "html":
+            self._implicit_close(tag)
+        self._check(tag, ad)
+        if tag not in _VOID or ns != "html":
+            self.stack.append(tag)
+            self._push_ns(tag, ns, ad)
+        self._enter_raw_text(tag, ns)
 
     def handle_startendtag(self, tag, attrs):
-        self._check(tag, attrs)
+        tag = self._browser_tag(tag)
+        ad = self._attrs_dict(tag, attrs)
+        if self._foreign_self_closes(self._child_namespace(tag, ad)):
+            self._check(tag, ad)
+            return
+        self.handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag):
+        tag = self._browser_tag(tag)
+        for i in range(len(self.stack) - 1, -1, -1):
+            if self.stack[i] == tag:
+                self._truncate_stacks(i)
+                return
 
 
 def _add_cm_skip(tag_text):
@@ -104,8 +125,7 @@ def fix(html):
     """
     locator = _MermaidPreLocator(html)
     try:
-        locator.feed(html)
-        locator.close()
+        locator.parse_document(html)
     except Exception:
         pass
     if not locator.spans:

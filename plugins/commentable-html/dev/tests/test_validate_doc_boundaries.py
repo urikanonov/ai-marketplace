@@ -1196,10 +1196,16 @@ class DocParserAttributeValueTests(unittest.TestCase):
 
     def test_a_document_the_contrast_scan_cannot_read_is_reported_not_skipped(self):
         # Both shapes are bounded now: the scan's START TAGS through the shared start-tag base,
-        # and its TEXT through the shared bounded decode (issue #946). So the document is READ -
-        # its authored override is judged like any other - and the "could not be read for
-        # contrast" report that stood in for the refusal is gone with the refusal.
+        # and its TEXT through the shared bounded decode (issue #946) - which this scan now
+        # inherits along with the element BOUNDARIES. So the document is READ, its authored
+        # override is judged like any other, and the "could not be read for contrast" report
+        # that stood in for the refusal is gone with the refusal.
         ref = "&#%s;" % ("9" * 5000)
+        attr_errors, _aw = theme_contrast.check_theme_contrast(
+            '<div id="a%s"></div><style>:root{--cp-text:#fff;}</style>' % ref)
+        self.assertEqual(attr_errors, [])
+        # And the same in the document's TEXT, which used to raise there: the override is
+        # judged rather than the whole check being disabled by one reference.
         errors, _warnings = theme_contrast.check_theme_contrast(
             "<p>a%sb</p><style>:root{--cp-text:#eeeeee;--cp-bg:#ffffff;}</style>" % ref)
         self.assertTrue(any("body text" in e for e in errors), errors)

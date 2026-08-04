@@ -31,12 +31,10 @@ least one top-level <h2> block is unwrapped.
 """
 import argparse
 import os
-import re
 import sys
-from html.parser import HTMLParser
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
-import _browser_attrs  # noqa: E402
+import _browser_boundaries  # noqa: E402
 
 _VOID = frozenset((
     "area", "base", "br", "col", "embed", "hr", "img", "input", "link",
@@ -44,61 +42,70 @@ _VOID = frozenset((
 ))
 
 
-class _TopLevelLocator(HTMLParser):
+class _TopLevelLocator(_browser_boundaries.BrowserBoundaries):
     """Locate direct-child <h2> start tags (and any direct-child <section>) in a fragment.
 
-    Only start tags the tolerant parser itself resolves count, so an <h2> or <section>
-    written inside an HTML comment, a <script>/<style> body, or a quoted attribute string
-    is never mistaken for a real element. Offsets are exact character positions in the
-    input string.
+    The SHARED element boundaries decide what an element even is (CMH-VAL-21), so an <h2> or
+    <section> a reader only SEES quoted inside a raw-text body (`<textarea>`, `<title>`,
+    `<noscript>`, ...), inside a comment or behind a bogus `<![CDATA[` marked section is text,
+    exactly as it is to a browser and to the validator - and the same on every interpreter. That
+    matters more here than in a read-only check: this tool INSERTS bytes at the offsets it reports,
+    so an element a browser never builds would move the edit into someone's prose.
+
+    The element stack is kept parallel to the shared namespace stack (pushed through `_push_ns()`,
+    truncated through `_truncate_stacks()`), so the two views can never drift apart.
     """
 
     def __init__(self, html):
-        super().__init__(convert_charrefs=False)
-        self._offsets = [0]
-        for m in re.finditer("\n", html):
-            self._offsets.append(m.end())
+        super().__init__(html)
         self.stack = []          # open non-void tag names
         self.h2_starts = []      # [(start_offset, id_or_None)] for direct-child <h2>
         self.has_top_section = False
 
-    def _idx(self):
-        lineno, col = self.getpos()
-        return self._offsets[lineno - 1] + col
+    def _truncate_stacks(self, depth):
+        super()._truncate_stacks(depth)
+        del self.stack[depth:]
 
-    def _attrs_dict(self, tag, attrs):
-        # The shared browser attribute decode (CMH-VAL-21), so the id this tool copies into the
-        # generated `aria-labelledby` is the id a browser gives the heading.
-        return _browser_attrs.attrs_dict(self, tag, attrs)
-
-    def _record(self, tag, attrs):
-        tag = tag.lower()
-        if len(self.stack) == 0:  # direct child of the scope root
+    def _record(self, tag, ad):
+        if not self.stack:  # direct child of the scope root
             if tag == "h2":
-                ad = self._attrs_dict(tag, attrs)
-                self.h2_starts.append((self._idx(), ad.get("id")))
+                self.h2_starts.append((self._off(), ad.get("id")))
             elif tag == "section":
                 self.has_top_section = True
 
     def handle_starttag(self, tag, attrs):
-        self._record(tag, attrs)
-        if tag.lower() not in _VOID:
-            self.stack.append(tag.lower())
+        tag = self._browser_tag(tag)
+        # The shared browser attribute decode (CMH-VAL-21), so the id this tool copies into the
+        # generated `aria-labelledby` is the id a browser gives the heading.
+        ad = self._attrs_dict(tag, attrs)
+        ns = self._child_namespace(tag, ad)
+        if ns == "html":
+            self._implicit_close(tag)
+        self._record(tag, ad)
+        # A VOID element has no content and no end tag, so it is never pushed; a FOREIGN element
+        # is never void (`<svg><rect/>` is self-closing markup, handled below).
+        if tag not in _VOID or ns != "html":
+            self.stack.append(tag)
+            self._push_ns(tag, ns, ad)
+        self._enter_raw_text(tag, ns)
 
     def handle_startendtag(self, tag, attrs):
-        # A trailing slash on a non-void tag is ignored by browsers (treated as an open
-        # start tag); only true void tags are terminal.
-        if tag.lower() in _VOID:
-            self._record(tag, attrs)
-        else:
-            self.handle_starttag(tag, attrs)
+        # A trailing slash on a non-void HTML tag is ignored by browsers (it opens an element);
+        # a self-closed FOREIGN element really is closed at once.
+        tag = self._browser_tag(tag)
+        ad = self._attrs_dict(tag, attrs)
+        if self._foreign_self_closes(self._child_namespace(tag, ad)):
+            self._record(tag, ad)
+            return
+        self.handle_starttag(tag, attrs)
 
     def handle_endtag(self, tag):
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         for i in range(len(self.stack) - 1, -1, -1):
             if self.stack[i] == tag:
-                del self.stack[i:]
-                break
+                self._truncate_stacks(i)
+                return
+        # An end tag with no open element is ignored, exactly as a browser ignores it.
 
 
 def wrap_fragment(html):
@@ -110,8 +117,7 @@ def wrap_fragment(html):
     """
     locator = _TopLevelLocator(html)
     try:
-        locator.feed(html)
-        locator.close()
+        locator.parse_document(html)
     except Exception:
         return html, 0
     if locator.has_top_section or not locator.h2_starts:
@@ -130,58 +136,82 @@ def wrap_fragment(html):
     return "".join(out), len(starts)
 
 
-class _ContentRootLocator(HTMLParser):
+class _ContentRootLocator(_browser_boundaries.BrowserBoundaries):
     """Locate the inner-HTML span of the #commentRoot element in a full document.
 
-    Records the offset immediately after the #commentRoot start tag and the offset of its
-    matching end tag, tracking tag depth so a nested element of the same tag name does not
-    close the region early. Robust to same-name nesting because it counts depth rather than
-    matching on the first close tag.
+    Records the offset immediately after the #commentRoot start tag and the offset of the end tag
+    that closes it, tracking the element stack so a nested element of the same tag name does not
+    close the region early - and so an ANCESTOR's end tag, which a browser closes the root with
+    too, does.
+
+    The SHARED element boundaries (CMH-VAL-21) decide which start tags exist at all, so a decoy
+    `<main id="commentRoot">` a reader only sees quoted inside a raw-text body, a comment or a
+    bogus `<![CDATA[` marked section is not the content root and the wrapping stays scoped to the
+    element a browser calls #commentRoot.
     """
 
     def __init__(self, html):
-        super().__init__(convert_charrefs=False)
-        self._offsets = [0]
-        for m in re.finditer("\n", html):
-            self._offsets.append(m.end())
-        self._depth = 0
-        self._root_depth = None
+        super().__init__(html)
+        self.stack = []
+        self._root_index = None
         self.inner_start = None
         self.inner_end = None
 
-    def _idx(self):
-        lineno, col = self.getpos()
-        return self._offsets[lineno - 1] + col
+    def _truncate_stacks(self, depth):
+        super()._truncate_stacks(depth)
+        del self.stack[depth:]
+
+    def _before_truncate(self, depth):
+        # The root can also be closed WITHOUT its own end tag: HTML5's implicit `</p>` / `</li>`
+        # close, or a breakout start tag popping foreign content. A browser ends the root's content
+        # right there, so the region does too - otherwise the wrapping would rewrite the sibling
+        # content a browser puts OUTSIDE the root.
+        if (self._root_index is not None and self.inner_end is None
+                and depth <= self._root_index):
+            self.inner_end = self._off()
 
     def handle_starttag(self, tag, attrs):
-        if tag.lower() in _VOID:
+        tag = self._browser_tag(tag)
+        # HTML5 keeps the FIRST `id`, so a decoy `<main id="decoy" id="commentRoot">` is NOT the
+        # content root.
+        ad = self._attrs_dict(tag, attrs)
+        ns = self._child_namespace(tag, ad)
+        if ns == "html":
+            self._implicit_close(tag)
+        is_void = tag in _VOID and ns == "html"
+        # A void element has no inner HTML, so it can never be the content root.
+        is_root = not is_void and self.inner_start is None and ad.get("id") == "commentRoot"
+        if not is_void:
+            if is_root:
+                self._root_index = len(self.stack)
+                self.inner_start = self._start_tag_end()
+            self.stack.append(tag)
+            self._push_ns(tag, ns, ad)
+        self._enter_raw_text(tag, ns)
+
+    def handle_startendtag(self, tag, attrs):
+        tag = self._browser_tag(tag)
+        ad = self._attrs_dict(tag, attrs)
+        if self._foreign_self_closes(self._child_namespace(tag, ad)):
             return
-        # The browser's own attribute view (CMH-VAL-21): HTML5 keeps the FIRST `id`, so a decoy
-        # `<main id="decoy" id="commentRoot">` is NOT the content root and the wrapping stays
-        # scoped to the element a browser calls #commentRoot.
-        is_root = self.inner_start is None and (
-            _browser_attrs.attrs_dict(self, tag.lower(), attrs).get("id") == "commentRoot")
-        self._depth += 1
-        if is_root:
-            self._root_depth = self._depth
-            text = self.get_starttag_text() or ""
-            self.inner_start = self._idx() + len(text)
+        self.handle_starttag(tag, attrs)
 
     def handle_endtag(self, tag):
-        if tag.lower() in _VOID:
-            return
-        if (self._root_depth is not None and self.inner_end is None
-                and self._depth == self._root_depth):
-            self.inner_end = self._idx()
-        self._depth -= 1
+        tag = self._browser_tag(tag)
+        for i in range(len(self.stack) - 1, -1, -1):
+            if self.stack[i] == tag:
+                if (self._root_index is not None and self.inner_end is None
+                        and i <= self._root_index):
+                    self.inner_end = self._off()
+                self._truncate_stacks(i)
+                return
 
 
 def _locate_content_region(html):
     """Return (inner_start, inner_end) of the #commentRoot body, or None if not found."""
     loc = _ContentRootLocator(html)
     try:
-        loc.feed(html)
-        loc.close()
+        loc.parse_document(html)
     except Exception:
         return None
     if loc.inner_start is None or loc.inner_end is None or loc.inner_end <= loc.inner_start:

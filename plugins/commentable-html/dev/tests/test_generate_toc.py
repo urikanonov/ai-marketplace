@@ -15,6 +15,7 @@ ROOT = _paths.PKG
 TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
 import generate_toc  # noqa: E402
+import _browser_boundaries  # noqa: E402
 
 GENERATE_TOC_PY = os.path.join(TOOLS, "authoring", "generate_toc.py")
 
@@ -199,7 +200,10 @@ class GenerateTocTests(unittest.TestCase):
             generate_toc.rewrite_html("<html><body><h2>Alpha</h2></body></html>")
 
     def test_private_position_helpers_cover_malformed_inputs(self):
-        self.assertEqual(generate_toc._end_tag_end("</nav", 0), 0)
+        # The end-tag extent is the SHARED browser scan now (CMH-VAL-21): an unterminated end tag
+        # yields its own start, and a `>` inside a quoted attribute value does not end it.
+        self.assertEqual(_browser_boundaries.end_tag_end("</nav", 0), 0)
+        self.assertEqual(_browser_boundaries.end_tag_end('</nav a=">">', 0), 12)
         self.assertEqual(generate_toc._id_insert_pos(10, "<h2"), 13)
         self.assertEqual(generate_toc._id_insert_pos(0, "<h2 />"), 4)
 

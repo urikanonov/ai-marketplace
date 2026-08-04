@@ -29,8 +29,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 import _toolpath  # noqa: E402
 _toolpath.ensure()
 import _browser_attrs  # noqa: E402
+import _browser_boundaries  # noqa: E402
 from deck_common import SLIDE_ID_RE  # noqa: E402
-from html.parser import HTMLParser  # noqa: E402
 from cmhval import contrast  # noqa: E402
 
 PKG = Path(_toolpath.SKILL_ROOT)
@@ -124,39 +124,67 @@ def _srcset_urls(value):
     return [part.strip().split()[0] for part in value.split(",") if part.strip()]
 
 
-class _ActiveContentScanner(HTMLParser):
+class _ActiveContentScanner(_browser_boundaries.BrowserBoundaries):
     """Collect active-content / egress violations from parsed tags and attributes.
 
-    Attribute values are decoded by the SHARED browser rule (`_browser_attrs`, CMH-VAL-21), not
-    by the host, so this scan reads the same values the validator does on every interpreter and
-    a duplicated attribute resolves the way a browser resolves it. <script>/<style> bodies are
-    treated as CDATA, so a chart's init script or the inlined CSS never trips a check.
+    Derives from the SHARED element boundaries AND the shared attribute rule (CMH-VAL-21), so this
+    scan reads the same document the validator does on every interpreter: a duplicated attribute
+    resolves the way a browser resolves it, raw-text bodies (`<script>`, `<style>`, `<textarea>`,
+    ...) are text so a chart's init script or the inlined CSS never trips a check, and a
+    `<![CDATA[` in HTML content is the BOGUS COMMENT a browser makes of it - which ends at the
+    first `>`, leaving whatever follows LIVE. That last one is the direction that fails OPEN: the
+    host consumes the whole marked section, so a remote `<img>` the deck really does fetch was
+    invisible to this scan.
+
+    `_fallback` selects the SCRIPTING-DISABLED reading of the same body, in which `<noscript>` is
+    TRANSPARENT rather than raw text. `_active_content_errors()` runs both and unions the findings,
+    because a reader is on one side or the other and this scan must see what EITHER of them loads.
     """
 
-    # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
-    # in prose resolves to U+FFFD instead of raising, so this tool reads the same document
-    # every validator parse reads (issue #946).
-    goahead = _browser_attrs.text_goahead(HTMLParser.goahead)
-
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
+    def __init__(self, html="", _fallback=False):
+        super().__init__(html)
         self.errors = []
-        self._svg_depth = 0
+        self._stack = []
+        self._fallback = _fallback   # read the body as a scripting-DISABLED browser reads it
+
+    def _truncate_stacks(self, depth):
+        super()._truncate_stacks(depth)
+        del self._stack[depth:]
+
+    def _enter_raw_text(self, tag, ns):
+        if tag == "noscript" and self._fallback:
+            return   # scripting is off in this pass, so <noscript> holds markup, not text
+        super()._enter_raw_text(tag, ns)
 
     def handle_starttag(self, tag, attrs):
-        if tag.lower() == "svg":
-            self._svg_depth += 1
-        self._scan(tag, attrs)
+        tag = self._browser_tag(tag)
+        ad = self._attrs_dict(tag, attrs)
+        ns = self._child_namespace(tag, ad)
+        if ns == "html":
+            self._implicit_close(tag)
+        self._scan(tag, attrs, ad, ns)
+        if tag not in _VOID_TAGS or ns != "html":
+            self._stack.append(tag)
+            self._push_ns(tag, ns, ad)
+        self._enter_raw_text(tag, ns)
 
     def handle_endtag(self, tag):
-        if tag.lower() == "svg" and self._svg_depth > 0:
-            self._svg_depth -= 1
+        tag = self._browser_tag(tag)
+        for i in range(len(self._stack) - 1, -1, -1):
+            if self._stack[i] == tag:
+                self._truncate_stacks(i)
+                return
 
     def handle_startendtag(self, tag, attrs):
-        self._scan(tag, attrs)
+        tag = self._browser_tag(tag)
+        ad = self._attrs_dict(tag, attrs)
+        ns = self._child_namespace(tag, ad)
+        if self._foreign_self_closes(ns):
+            self._scan(tag, attrs, ad, ns)
+            return
+        self.handle_starttag(tag, attrs)
 
-    def _scan(self, tag, raw_attrs):
-        tag = tag.lower()
+    def _scan(self, tag, raw_attrs, attr_map, ns):
         # Every pair, browser-decoded: the SCAN reads them all (a duplicate is still an authored
         # attribute an author must clean up), while the single-valued question below reads the
         # first-wins dict a browser resolves to.
@@ -167,13 +195,12 @@ class _ActiveContentScanner(HTMLParser):
             # An inline HTML <script> (no src) is allowed for chart init; an EXTERNAL script
             # (src/href) fetches and runs remote code, and an SVG-nested <script> executes on
             # render - both are RCE/egress vectors, so fail closed on them.
-            if self._svg_depth > 0:
+            if ns != "html" or "svg" in self._stack:
                 self.errors.append("deck: <script> inside <svg> is not allowed in the deck body")
             if any((n or "").lower() in ("src", "href", "xlink:href") for n, _ in attrs):
                 self.errors.append("deck: external <script> (src/href) is not allowed in the deck body")
             return
         if tag == "meta":
-            attr_map = _browser_attrs.attrs_dict(self, tag, raw_attrs)
             if attr_map.get("http-equiv", "").lower() == "refresh":
                 self.errors.append("deck: <meta http-equiv=refresh> (redirect) is not allowed in the deck body")
         egress = _EGRESS_ATTRS.get(tag, set())
@@ -195,14 +222,39 @@ class _ActiveContentScanner(HTMLParser):
 
 
 def _active_content_errors(body: str):
-    scanner = _ActiveContentScanner()
-    try:
-        scanner.feed(body)
-        scanner.close()
-    except Exception:  # pragma: no cover - HTMLParser is lenient; fail closed if it ever raises
-        return ["deck: could not parse the deck body for active-content checks"]
+    if not _browser_boundaries.IS_SHARED:
+        # A broken/partial install leaves this scan on the HOST's boundaries, which consume a whole
+        # `<![CDATA[ ... ]]>` in every context and so HIDE the markup a browser leaves live after
+        # the bogus comment. For an egress question "could not look" must never read as "nothing to
+        # find", so the degraded scan reports rather than passes.
+        return ["deck: could not check the deck body for active content - the shared element "
+                "boundaries are unavailable (broken or partial install); re-install the skill"]
+    errors = []
+    # TWO readings of the same body, unioned: a browser with scripting ON (in which a `<noscript>`
+    # body is raw TEXT) and one with scripting OFF (in which it is live markup that really is
+    # fetched). A reader is on one side or the other, so the scan must see what EITHER loads.
+    # Reading the WHOLE body a second time - rather than re-parsing the `<noscript>` body a
+    # scripting-enabled tokenizer carved out - is what closes the seam between the two views: the
+    # enabled tokenizer ends that body at the first `</noscript`, which a disabled one may never
+    # reach (it can sit inside a quoted attribute value, or inside a comment that swallows it), and
+    # markup straddling the seam then belonged to neither reading.
+    #
+    # `<noscript>` is the ONLY element the two readings treat differently, so a body that does not
+    # name one at all is read once. The test is a plain substring on purpose: a tag name folds
+    # ASCII-case-insensitively, so no element a browser calls `noscript` can be spelled without it,
+    # and a `<noscript` that turns out to be inert only costs a second pass it did not need.
+    passes = (False, True) if "<noscript" in (body or "").lower() else (False,)
+    for fallback in passes:
+        scanner = _ActiveContentScanner(body, _fallback=fallback)
+        try:
+            scanner.parse_document(body)
+        except Exception:  # pragma: no cover - HTMLParser is lenient; fail closed if it ever raises
+            errors.extend(scanner.errors)
+            errors.append("deck: could not parse the deck body for active-content checks")
+            break
+        errors.extend(scanner.errors)
     seen, out = set(), []
-    for e in scanner.errors:
+    for e in errors:
         if e not in seen:
             seen.add(e)
             out.append(e)
@@ -210,10 +262,13 @@ def _active_content_errors(body: str):
 
 
 class _AuthoredContentRegion:
-    def __init__(self, kind, label, depth, elements=0):
+    def __init__(self, kind, label, index, elements=0):
         self.kind = kind
         self.label = label
-        self.depth = depth
+        # The element-stack INDEX this region's own element occupies. The region ends when the
+        # stack is truncated to that index or below - which is what a browser does whether the
+        # element's own end tag, an ancestor's end tag or end of input closes it.
+        self.index = index
         self.lines = 0
         self.elements = elements
 
@@ -235,82 +290,116 @@ def _estimated_lines(text, line_chars):
     return total
 
 
-class _AuthoredContentScanner(HTMLParser):
-    # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
-    # in prose resolves to U+FFFD instead of raising, so this tool reads the same document
-    # every validator parse reads (issue #946).
-    goahead = _browser_attrs.text_goahead(HTMLParser.goahead)
+class _AuthoredContentScanner(_browser_boundaries.BrowserBoundaries):
+    """Advisory per-slide / per-card content counts.
 
-    def __init__(self, line_chars):
-        super().__init__(convert_charrefs=True)
+    Derives from the SHARED element boundaries (CMH-VAL-21) so an advisory count is never taken
+    from a document the validator disagrees with: markup a reader only SEES quoted inside a
+    raw-text body contributes nothing, and markup a browser leaves LIVE after a bogus `<![CDATA[`
+    is counted (the host swallowed the whole marked section). Each region is keyed on the element
+    stack INDEX of the element that opened it, so an ancestor's end tag - or end of input - closes
+    it exactly where a browser closes it.
+    """
+
+    def __init__(self, line_chars, html=""):
+        super().__init__(html)
         self.line_chars = max(1, line_chars)
         self.regions = []
+        self._stack = []
+        self._skip = []       # stack indices of the open _SKIP_AUTHORED_CONTENT_TAGS elements
         self._active = []
-        self._skip_depth = 0
         self._slide_count = 0
         self._card_count = 0
 
-    def handle_starttag(self, tag, attrs):
-        tag = tag.lower()
-        self._start(tag, attrs, self_closing=tag in _VOID_TAGS)
-
-    def handle_startendtag(self, tag, attrs):
-        self._start(tag.lower(), attrs, self_closing=True)
-
-    def handle_endtag(self, tag):
-        tag = tag.lower()
-        if tag in _SKIP_AUTHORED_CONTENT_TAGS and self._skip_depth > 0:
-            self._skip_depth -= 1
-        closed = []
-        for region in self._active:
-            region.depth -= 1
-            if region.depth <= 0:
-                closed.append(region)
+    def _truncate_stacks(self, depth):
+        super()._truncate_stacks(depth)
+        del self._stack[depth:]
+        while self._skip and self._skip[-1] >= depth:
+            self._skip.pop()
+        closed = [region for region in self._active if region.index >= depth]
         if closed:
             self.regions.extend(closed)
-            self._active = [region for region in self._active if region.depth > 0]
+            self._active = [region for region in self._active if region.index < depth]
+
+    def _in_skip(self):
+        # A stack of indices rather than a scan of the open elements, so a deeply nested (or
+        # hostile) deck body does not make this an O(n^2) walk - it is asked per element AND per
+        # text chunk.
+        return bool(self._skip)
+
+    def handle_starttag(self, tag, attrs):
+        tag = self._browser_tag(tag)
+        # The same shared browser decode the active-content scan uses, so an advisory count is
+        # never taken from a value the validator disagrees with (CMH-VAL-21).
+        ad = self._attrs_dict(tag, attrs)
+        ns = self._child_namespace(tag, ad)
+        if ns == "html":
+            self._implicit_close(tag)
+        opens = tag not in _VOID_TAGS or ns != "html"
+        self._element(tag, ad, opens)
+        if opens:
+            if tag in _SKIP_AUTHORED_CONTENT_TAGS:
+                self._skip.append(len(self._stack))
+            self._stack.append(tag)
+            self._push_ns(tag, ns, ad)
+        self._enter_raw_text(tag, ns)
+
+    def handle_startendtag(self, tag, attrs):
+        tag = self._browser_tag(tag)
+        ad = self._attrs_dict(tag, attrs)
+        if self._foreign_self_closes(self._child_namespace(tag, ad)):
+            self._element(tag, ad, opens=False)
+            return
+        self.handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag):
+        tag = self._browser_tag(tag)
+        for i in range(len(self._stack) - 1, -1, -1):
+            if self._stack[i] == tag:
+                self._truncate_stacks(i)
+                return
+
+    def close(self):
+        super().close()
+        # A region still open at end of input is a region a browser still renders, so it is
+        # reported rather than dropped.
+        self._truncate_stacks(0)
 
     def handle_data(self, data):
-        if self._skip_depth:
+        if self._in_skip():
             return
         lines = _estimated_lines(data, self.line_chars)
         if lines:
             for region in self._active:
                 region.lines += lines
 
-    def _start(self, tag, raw_attrs, self_closing):
-        # The same shared browser decode the active-content scan uses, so an advisory count is
-        # never taken from a value the validator disagrees with (CMH-VAL-21).
-        attrs = _browser_attrs.attrs_dict(self, tag, raw_attrs)
-        countable = not self._skip_depth and _authored_element_count(tag, attrs)
-        for region in self._active:
-            region.depth += 1
-            if countable:
+    def _element(self, tag, attrs, opens):
+        countable = not self._in_skip() and _authored_element_count(tag, attrs)
+        if countable:
+            for region in self._active:
                 region.elements += 1
-        if tag in _SKIP_AUTHORED_CONTENT_TAGS:
-            self._skip_depth += 1
 
-        is_slide = tag == "section" and "slide" in _classes(attrs)
-        is_card = "data-cm-part" in attrs
-        if is_slide:
+        index = len(self._stack)
+        opened = []
+        if tag == "section" and "slide" in _classes(attrs):
             self._slide_count += 1
             label = attrs.get("data-slide-id") or f"#{self._slide_count}"
-            self._active.append(_AuthoredContentRegion("slide", label, 1))
-        if is_card:
+            opened.append(_AuthoredContentRegion("slide", label, index))
+        if "data-cm-part" in attrs:
             self._card_count += 1
             label = attrs.get("data-cm-part-label") or attrs.get("data-cm-part") or f"#{self._card_count}"
-            self._active.append(_AuthoredContentRegion("board card", label, 1, 1 if countable else 0))
-
-        if self_closing:
-            self.handle_endtag(tag)
+            opened.append(_AuthoredContentRegion("board card", label, index,
+                                                 1 if countable else 0))
+        # A region on an element that never opens (a void or self-closed foreign element) has no
+        # content, so it is complete the moment it is created.
+        (self._active if opens else self.regions).extend(opened)
 
 
 def _content_overload_warnings(body, max_slide_lines, max_slide_elements,
                                max_board_card_lines, max_board_card_elements, line_chars):
-    scanner = _AuthoredContentScanner(line_chars)
+    scanner = _AuthoredContentScanner(line_chars, body)
     try:
-        scanner.feed(body)
-        scanner.close()
+        scanner.parse_document(body)
     except Exception:  # pragma: no cover - HTMLParser is lenient; advisory checks never fail closed
         return []
     warnings = []

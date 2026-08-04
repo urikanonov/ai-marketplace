@@ -15,12 +15,10 @@ import argparse
 import html as html_lib
 import math
 import os
-import re
 import sys
-from html.parser import HTMLParser
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
-import _browser_attrs  # noqa: E402
+import _browser_boundaries  # noqa: E402
 
 DEFAULT_WPM = 200
 STATS_ATTR = "data-cmh-doc-stats"
@@ -32,38 +30,27 @@ VOID_TAGS = {
 SKIP_TAGS = {"script", "style", "template"}
 
 
-def _line_starts(text):
-    starts = [0]
-    for match in re.finditer("\n", text):
-        starts.append(match.end())
-    return starts
-
-
 def _has_class(attrs, class_name):
     return class_name in set((attrs.get("class") or "").split())
-
-
-def _end_tag_end(text, start):
-    end = text.find(">", start)
-    if end == -1:
-        return start
-    return end + 1
 
 
 def _is_word(token):
     return any(ch.isalnum() for ch in token)
 
 
-class _StatsParser(HTMLParser):
-    # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
-    # in prose resolves to U+FFFD instead of raising, so this tool reads the same document
-    # every validator parse reads (issue #946).
-    goahead = _browser_attrs.text_goahead(HTMLParser.goahead)
+class _StatsParser(_browser_boundaries.BrowserBoundaries):
+    """Count the sections and words a reader sees.
+
+    Derives from the SHARED element boundaries (CMH-VAL-21), so an `<h2>` a reader only SEES quoted
+    inside a raw-text body (`<textarea>`, `<title>`, `<noscript>`, ...), inside a comment or behind
+    a bogus `<![CDATA[` marked section is not a section of the document - the same view the
+    validator takes, and the same on every interpreter. The element stack runs parallel to the
+    shared namespace stack.
+    """
 
     def __init__(self, text):
-        super().__init__(convert_charrefs=True)
+        super().__init__(text)
         self._text = text
-        self._starts = _line_starts(text)
         self.stack = []                 # [(tag, opens_skip_subtree)]
         self.root_depth = None
         self.root_closed = False
@@ -74,11 +61,35 @@ class _StatsParser(HTMLParser):
         self.title_container_end = None
         self.stats_start = None
         self.stats_end = None
+        self.stats_own_close = False
         self._stats_index = None
+        self._end_tag = False     # the truncation below came from an end TAG, not an implicit close
 
-    def _idx(self):
-        line, col = self.getpos()
-        return self._starts[line - 1] + col
+    def _truncate_stacks(self, depth):
+        # EVERY close runs through here - the element's own end tag, an ANCESTOR's end tag, HTML5's
+        # implicit `</p>` / `</li>`, a foreign-content breakout, and end of input - so a span keyed
+        # on a stack index can never run past the element a browser closed. That matters here
+        # because `doc_stats` REPLACES the bytes between `stats_start` and `stats_end`. Only the
+        # element's OWN end tag belongs to it: an ancestor's `</section>` closes it at the START of
+        # that tag, so the span must not swallow the ancestor's closer.
+        if (self._title_index is not None and self.title_container_end is None
+                and depth <= self._title_index):
+            self.title_container_end = self._extent_end(depth == self._title_index)
+        if (self._stats_index is not None and self.stats_end is None
+                and depth <= self._stats_index):
+            own = self._end_tag and depth == self._stats_index
+            self.stats_end = self._extent_end(own)
+            # Only a strip the browser closed with its OWN end tag has a span a rewrite may
+            # REPLACE: one an ancestor's closer (or end of input) ended runs past every following
+            # sibling, so replacing it would take the document's body with it.
+            self.stats_own_close = own
+        if self.root_depth is not None and depth <= self.root_depth:
+            self.root_closed = True
+        super()._truncate_stacks(depth)
+        del self.stack[depth:]
+
+    def _extent_end(self, own):
+        return _browser_boundaries.end_tag_end(self._text, self._off()) if (self._end_tag and own) else self._off()
 
     def _inside_root(self):
         return (self.root_depth is not None and not self.root_closed
@@ -88,12 +99,16 @@ class _StatsParser(HTMLParser):
         return any(skip for _tag, skip in self.stack)
 
     def handle_starttag(self, tag, attrs):
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         # The shared browser attribute decode (CMH-VAL-21), so a class token this tool reads is
         # the token a browser sees - and the one the validator sees.
-        attrs_dict = _browser_attrs.attrs_dict(self, tag, attrs)
-        start = self._idx()
+        attrs_dict = self._attrs_dict(tag, attrs)
+        ns = self._child_namespace(tag, attrs_dict)
+        if ns == "html":
+            self._implicit_close(tag)
+        start = self._off()
         start_text = self.get_starttag_text() or ""
+        opens = tag not in VOID_TAGS or ns != "html"
         is_stats = STATS_ATTR in attrs_dict
         own_skip = (
             _has_class(attrs_dict, "cm-skip")
@@ -108,7 +123,6 @@ class _StatsParser(HTMLParser):
 
         inside_root = self._inside_root()
         skip_ancestor = self._skip_ancestor()
-        is_direct_child = inside_root and len(self.stack) == self.root_depth + 1
 
         if (tag == "h2" and inside_root and not own_skip and not skip_ancestor):
             self.section_count += 1
@@ -119,17 +133,23 @@ class _StatsParser(HTMLParser):
             # index, whether that is the <h1> itself or a wrapper (e.g. header.cmh-lede).
             self._title_index = self.root_depth + 1
 
-        if is_stats and self.stats_start is None:
+        # A VOID element has no body, so it can never be the strip this tool replaces.
+        if is_stats and opens and self.stats_start is None:
             self.stats_start = start
             self._stats_index = len(self.stack)
 
-        if tag not in VOID_TAGS:
+        if opens:
             self.stack.append((tag, own_skip))
-        # A direct child kept for symmetry; is_direct_child is consumed above via _title_index.
-        _ = is_direct_child
+            self._push_ns(tag, ns, attrs_dict)
+        self._enter_raw_text(tag, ns)
 
     def handle_startendtag(self, tag, attrs):
-        if tag.lower() not in VOID_TAGS:
+        # HTML5 ignores a trailing slash on a non-void HTML tag (it opens an element) and on a VOID
+        # one (it was already terminal), so both go through the start-tag path - which is also
+        # where the implicit `</p>` close lives, and `<hr/>` really does close an open `<p>`.
+        tag = self._browser_tag(tag)
+        attrs_dict = self._attrs_dict(tag, attrs)
+        if not self._foreign_self_closes(self._child_namespace(tag, attrs_dict)):
             self.handle_starttag(tag, attrs)
 
     def handle_data(self, data):
@@ -137,27 +157,32 @@ class _StatsParser(HTMLParser):
             self.text_parts.append(data)
 
     def handle_endtag(self, tag):
-        tag = tag.lower()
+        tag = self._browser_tag(tag)
         for index in range(len(self.stack) - 1, -1, -1):
             if self.stack[index][0] == tag:
-                if self._title_index is not None and index == self._title_index and self.title_container_end is None:
-                    self.title_container_end = _end_tag_end(self._text, self._idx())
-                if self._stats_index is not None and index == self._stats_index and self.stats_end is None:
-                    self.stats_end = _end_tag_end(self._text, self._idx())
-                if self.root_depth is not None and index <= self.root_depth:
-                    self.root_closed = True
-                del self.stack[index:]
+                self._end_tag = True
+                try:
+                    self._truncate_stacks(index)
+                finally:
+                    self._end_tag = False
                 return
+        # An end tag with no open element is ignored, exactly as a browser ignores it.
 
     def word_count(self):
         tokens = " ".join(self.text_parts).split()
         return sum(1 for token in tokens if _is_word(token))
 
+    def close(self):
+        super().close()
+        # A browser closes whatever is still open at end of input, so a title container or a
+        # doc-stats strip left unclosed ends there rather than never - otherwise a re-run inserted
+        # a SECOND strip and left the stale one behind.
+        self._truncate_stacks(0)
+
 
 def _parse(html):
     parser = _StatsParser(html)
-    parser.feed(html)
-    parser.close()
+    parser.parse_document(html)
     return parser
 
 
@@ -232,7 +257,10 @@ def rewrite_html(html, wpm=DEFAULT_WPM):
     newline = _dominant_newline(html)
     block = block.replace("\n", newline)
 
-    if parser.stats_start is not None and parser.stats_end is not None:
+    # An UNCLOSED strip is not replaced: its extent runs past every following sibling, so the
+    # replace would delete the document's body. The non-destructive anchor insert is used instead.
+    if (parser.stats_start is not None and parser.stats_end is not None
+            and parser.stats_own_close):
         return html[:parser.stats_start] + block + html[parser.stats_end:]
 
     anchor = parser.title_container_end
