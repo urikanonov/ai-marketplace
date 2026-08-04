@@ -1375,6 +1375,83 @@ class RuntimeParityTests(unittest.TestCase):
         # after one is really a path segment.
         ("file://C:foo/x.js", False), ("file://c|foo", False), ("file://a:8080/x.js", False),
         ("file://c:evil.example/x.js", False), ("file:////C:foo/x.js", False),
+        # A PERCENT-ENCODED `localhost` is the same local file, because the URL parser percent-decodes
+        # a file host and lowercases it BEFORE the file-host state compares it (checked in a real
+        # WHATWG parser: `file://local%68ost/x` parses to href `file:///x` with an empty host). A
+        # literal `localhost` test therefore deleted an author's local reference and left the gate
+        # rejecting a file with no egress at all. Both hex ROWS are covered, since `%4c` decodes to
+        # `L` and domain-to-ASCII lowercases it, and a `/i` regex folds `%6c` onto `%6C` but never
+        # onto `%4c`.
+        ("file://local%68ost/x.js", False), ("file://%6Cocalhost/x.js", False),
+        ("file://%4cocalhost/x.js", False), ("file://LOCALHOS%54/x.js", False),
+        ("file://localhos%74", False), ("file://%6c%6F%43%41%4c%68%4F%53%74/x.js", False),
+        # The COMPLEMENTARY hex case for every letter. Without this row four of the nine per-letter
+        # classes are pinned on one row only: a mutation run confirmed that narrowing `%[46]8`,
+        # `%[46]3`, `%[46]1` or `%[57]3` to a single row produced ZERO corpus mismatches, so the
+        # change's own "both hex rows per letter" claim went untested for `h`, `c`, `a` and `s`.
+        ("file://%4C%4F%63%61%4C%48%6F%73%54/x.js", False),
+        ("file:////local%68ost/x.js", False), ("file://///local%68ost/x.js", False),
+        # ...but only when the whole host decodes to exactly `localhost`. `%2F` and `%00` are
+        # forbidden host code points (both were checked failing to parse), and a decoded host that
+        # merely STARTS with `localhost` is a different machine, so all three keep the network
+        # verdict - the exclusion can never be used to smuggle a host past the gate.
+        ("file://localhost%2Fevil.example/x.js", True), ("file://localhost%00/x.js", True),
+        ("file://local%68ostx/x.js", True), ("file://%68ost/x.js", True),
+        # A TRAILING DOT is deliberately NOT excluded, and that is the parser-faithful reading rather
+        # than an accepted over-detection: the file-host state special-cases the exact string
+        # `localhost`, and `localhost.` is not it, so `file://localhost./x` keeps a NON-EMPTY host
+        # (checked: href stays `file://localhost./x`) and on Windows resolves to the SMB path
+        # `\\localhost.\x`. That is the same call the `\\localhost\C$\x` row below makes - an
+        # authority-bearing share is egress even to the loopback - so excluding it would be the
+        # inconsistency. The percent-encoded spellings of the dot and of the host agree.
+        ("file://localhost./x.js", True), ("file://localhost.", True),
+        ("file://localhost%2E/x.js", True), ("file://%6Cocalhost./x.js", True),
+        ("file:////localhost./x.js", True), ("file://///localhost./x.js", True),
+        # A SECOND slash after the host is not a local path - it is the four-separator UNC form
+        # wearing a `localhost` disguise. The host is emptied and `//not-a-host/x.js` stays as the
+        # PATH, so the value canonicalizes to `file:////not-a-host/x.js` (checked), which the rows
+        # above already reject. A DOT SEGMENT reaches the same place from further along the path -
+        # `/.//x.js` and `/a/..//x.js` both canonicalize to `file:////x.js`, and a `..` inside the
+        # four-separator form pops the `localhost` segment itself out - so every spelling of a
+        # double-dot segment the parser recognizes is here. A bare `[/?#]` terminator called all of
+        # these LOCAL on both sides, which is an egress MISS, the dangerous direction.
+        ("file://localhost//not-a-host/x.js", True),
+        ("file://local%68ost//not-a-host/x.js", True),
+        ("file://localhost/\\not-a-host/x.js", True),
+        ("file:////localhost//not-a-host/x.js", True),
+        ("file://localhost/.//x.js", True), ("file://localhost/a/..//x.js", True),
+        ("file://localhost/%2e//x.js", True), ("file://localhost/a/%2E%2e//x.js", True),
+        ("file://localhost/a/.%2e//x.js", True), ("file://local%68ost/.//x.js", True),
+        ("file:////localhost/../not-a-host/x.js", True),
+        # ...and the same class reaches the predicate from a value the separator arms never look at:
+        # a THREE-slash or slash-less `file:` URL whose path canonicalizes onto the leading `//`.
+        # `file:///..//x.js` and `file:/a/..//x.js` both become `file:////x.js`, and
+        # `file:////C:/../x.js` pops the DRIVE LETTER the other exclusion matched. So an empty path
+        # segment is its own arm and a double-dot segment overrides both exclusions.
+        ("file:///..//x.js", True), ("file:/..//x.js", True), ("file:///.//x.js", True),
+        ("file:////C:/../x.js", True), ("file://///C:/.%2e/x.js", True),
+        # The cost of that, recorded rather than hidden: each of these canonicalizes to something
+        # LOCAL and is now over-reported. Fail-CLOSED is the trade this predicate takes everywhere
+        # else, and the spellings are absurd; pinning them here is what keeps the trade from silently
+        # growing or shrinking on one side. The controls beside them must stay local - a single dot
+        # segment cannot reduce into a leading `//` on its own, and a `//` after `?` is in the query,
+        # which cannot change the path.
+        ("file://localhost//C:/local/x.js", True), ("file://localhost//", True),
+        ("file://localhost/a/../x.js", True), ("file://localhost/a//b.js", True),
+        ("file:///C:/a//b.png", True), ("file://localhost/...//x.js", True),
+        ("file://localhost/not-a-host/x.js", False), ("file://localhost/a/./b.js", False),
+        ("file://localhost/a/b/c.js", False), ("file://localhost/x.js?q//h", False),
+        ("file:///C:/local/a.js", False), ("file:///local/a/b.js", False),
+        # An IDNA/UTS-46-mapped spelling is an ACCEPTED, deliberate over-detection: each of these
+        # parses to href `file:///x.js` with an empty host (measured), so a browser reads them as the
+        # same local file, and both predicates still call them network. Modelling UTS-46 in a regex
+        # the two engines agree on is not possible - and Python's `re.IGNORECASE` folds `s` onto
+        # U+017F where a JS `/i` never does, so ATTEMPTING it is how they drift - and over-detecting
+        # costs a rare reference while under-detecting is a beacon the gate blesses. Pinned here so
+        # the boundary cannot move on one side only, and so dropping `re.ASCII` (which would fold the
+        # bare `s` onto U+017F in Python alone) goes red instead of drifting silently.
+        ("file://\uff4cocalhost/x.js", True), ("file://%EF%BD%8Cocalhost/x.js", True),
+        ("file://LOCALHO\u017FT/x.js", True), ("file://local%C2%ADhost/x.js", True),
         # A SINGLE leading slash or backslash is a path, not an authority, and a backslash deeper
         # inside a relative reference leaves it relative.
         ("\\relative\\x.js", False), ("/root\\relative.js", False), ("file:x.js", False),
@@ -1492,7 +1569,9 @@ class RuntimeParityTests(unittest.TestCase):
         end = source.find("\n}", end)
         self.assertNotEqual(end, -1, "could not find the end of _offlineSrcsetHasNetwork")
         region = source[start:end + 2]
-        for name in ("_OFFLINE_NETWORK_URL_RE", "_offlineIsNetworkUrl", "_OFFLINE_SRCSET_WS_RE",
+        for name in ("_OFFLINE_PCT_LOCALHOST", "_OFFLINE_PCT_LOCALHOST_END",
+                     "_OFFLINE_NETWORK_URL_RE", "_offlineIsNetworkUrl",
+                     "_OFFLINE_SRCSET_WS_RE",
                      "_offlineSrcsetCandidateUrl", "_offlineSrcsetCandidateUrls"):
             self.assertIn(name, region,
                           "%s is no longer inside the extracted network-URL region, so the parity "
@@ -1511,6 +1590,71 @@ class RuntimeParityTests(unittest.TestCase):
                          "the extracted network-URL region has unbalanced braces, so it was cut "
                          "mid-function and the parity check would evaluate a truncated copy")
         return region
+
+    def _js_string_literal(self, js_name, literal):
+        """The VALUE of a JS double-quoted literal, with its escapes decoded.
+
+        Decoded rather than read raw, because a regex source carries backslashes: the JS literal
+        `"\\\\."` is the two characters `\\.`, and comparing the raw source text to the Python
+        pattern would report a drift that is not there (or, worse, hide one that is).
+        """
+        try:
+            return json.loads(literal)
+        except ValueError:
+            self.fail("the runtime's %s carries a string escape this parity check cannot decode "
+                      "(%r); JSON-compatible escapes keep the two sides comparable"
+                      % (js_name, literal))
+
+    def test_the_python_and_js_localhost_host_patterns_are_textually_identical(self):
+        """Pin the shared `localhost` sub-patterns as TEXT, not only by their verdicts.
+
+        The corpus below proves the two predicates AGREE on the values it carries, which is not the
+        same as proving they are the same pattern: a per-letter hex class that drifted on one side
+        only shows up on a spelling the corpus happens to list, and a nine-character alternation has
+        far more spellings than any corpus can carry. The repo already draws this distinction for the
+        navigation patterns (`test_the_python_and_js_scripted_navigation_patterns_agree`), and the
+        same reasoning applies here: hand-copied literals in two languages need a byte-for-byte pin.
+        Both halves are pinned - the host spelling and the terminator that decides what may follow it
+        - because a drift in either is a CMH-OFFLINE-04 failure (the terminator is what keeps
+        `file://localhost//evil.example/x.js` egress on both sides).
+        """
+        source = self._read("68-export-offline.js")
+        for js_name, py_value in (("_OFFLINE_PCT_LOCALHOST", resources._PCT_LOCALHOST),
+                                  ("_OFFLINE_PCT_LOCALHOST_END", resources._PCT_LOCALHOST_END),
+                                  ("_OFFLINE_FILE_DOTDOT_SEGMENT", resources._FILE_DOTDOT_SEGMENT),
+                                  ("_OFFLINE_FILE_EMPTY_SEGMENT", resources._FILE_EMPTY_SEGMENT)):
+            # The body is lazy up to a `;` at END of line, not "anything but a `;`": a pattern that
+            # legitimately contained a semicolon would otherwise be extracted as a prefix and
+            # compared as if the rest were missing.
+            m = re.search(r"^const %s =\n?((?:.|\n)+?);$" % re.escape(js_name),
+                          source, re.MULTILINE)
+            self.assertIsNotNone(
+                m, "the runtime no longer defines %s as a single const initializer; the parity "
+                   "extraction is stale and must be re-pointed at whatever replaced it" % js_name)
+            initializer = m.group(1).strip()
+            # The initializer must be string LITERALS joined by `+` and nothing else. Reading the
+            # quoted fragments alone would let a `+ someVariable` change the runtime pattern while
+            # this assertion still passed on the literal half - a drift the test exists to catch.
+            self.assertRegex(
+                initializer, r'^"(?:[^"\\]|\\.)*"(?:\s*\+\s*"(?:[^"\\]|\\.)*")*$',
+                "the runtime's %s is no longer a concatenation of plain string literals (%r), so "
+                "reading its literals would compare only part of the pattern" % (js_name, initializer))
+            js_value = "".join(
+                self._js_string_literal(js_name, lit)
+                for lit in re.findall(r'"(?:[^"\\]|\\.)*"', initializer))
+            self.assertTrue(
+                js_value, "could not read any string literal out of the runtime's %s" % js_name)
+            # Compared in the PYTHON -> JS direction, and only for `\Z`: Python's `$` also matches
+            # before a trailing newline where a JS `$` matches only at the end of input, so the two
+            # spellings are equivalent exactly when every Python `\Z` is a JS `$`. Going the other
+            # way (replacing `$` with `\Z`) would also rewrite a `$` that a future edit put inside a
+            # character class or escaped, and would silently bless it.
+            self.assertEqual(
+                py_value.replace(r"\Z", "$"), js_value,
+                "the runtime's %s and the validator's copy are not the same pattern (%r vs %r). "
+                "Matching verdicts over the corpus cannot see a drift on a spelling the corpus "
+                "does not carry, so this is the assertion that keeps the two provably in step."
+                % (js_name, js_value, py_value))
 
     def test_the_python_and_js_network_url_predicates_agree(self):
         """Run the runtime's own network-URL predicate in node and require the expected verdicts.

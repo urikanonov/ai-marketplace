@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.677.0" />
+<meta name="commentable-html-version" content="1.678.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.677.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.678.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable Visuals Matrix</title>
 
@@ -4580,7 +4580,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.677.0";
+const CMH_VERSION = "1.678.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -18053,13 +18053,26 @@ function _offlineNormalizeUrlValue(v) {
 // Chromium (checked, not assumed) reads exactly two OR four-or-more as an authority, while THREE is
 // the empty host of an ordinary local path (`file:///C:/x`), so `file:////host/x.js` really
 // does fetch and a `(?!/)` test alone called it local. Two host spellings that stay on the machine
-// are excluded whatever the separator count: `localhost`, which is the local machine by definition,
+// are excluded whatever the separator count: `localhost` - in every PERCENT-ENCODED and CASE
+// spelling, see `_OFFLINE_PCT_LOCALHOST` below for what that does and does not cover -
 // and a Windows DRIVE LETTER, which the file-host state turns into a path rather than a host,
 // because reporting either would delete an author's local reference and make the gate reject a file
-// with no egress. The drive-letter test deliberately does NOT require a separator after the `:` or
+// with no egress. The percent-tolerance is right for the FOUR-or-more-slash arm too, even though
+// there is no host there to decode: that arm's UNC name comes out of the PATH, and a real Chromium
+// was measured percent-decoding a `file:` path before it touches the filesystem (a directory named
+// `loc alhost` opened through `loc%20alhost`), so `file:////local%68ost/x.js` reaches the same local
+// name that `file:////localhost/x.js` does. The drive-letter test deliberately does NOT require a separator after the `:` or
 // `|`: a real Chromium resolves EVERY `file://` authority that STARTS with one to a local drive
 // path, so `file://C:/x`, `file://C:foo/x` and even `file://c:not-a-host/x` are all the local file
 // `file:///C:/...` with an empty host, and demanding the separator over-detected the last two.
+// A TRAILING DOT is deliberately outside the localhost exclusion, and that is the parser-faithful
+// reading rather than an accepted over-detection: the file-host state special-cases the exact string
+// `localhost`, and `localhost.` is not it, so `file://localhost./x` keeps a NON-EMPTY host (checked:
+// the href stays `file://localhost./x`) and on Windows resolves to the SMB path `\\localhost.\x` -
+// the same call the scheme-relative `\\localhost\C$\x` gets, since an authority-bearing share is
+// egress even to the loopback. Percent-encoding cannot reach the DRIVE-LETTER exclusion the way it
+// reaches the host one: that test reads the raw buffer the file-host state reads, and `%3A`/`%7C`
+// decode to forbidden host code points that fail to parse at all.
 // The `(?!/)` after the long run stops the engine BACKTRACKING out of those exclusions: a greedy
 // `/{4,}` alone matches five slashes, fails the `localhost` lookahead, gives a slash back and then
 // matches on the four-slash reading, so `file://///localhost/x` (local) came out network.
@@ -18084,7 +18097,68 @@ function _offlineNormalizeUrlValue(v) {
 // in the CMH-OFFLINE-04 spec row with the tests that re-run them; `tests/test_vendored_libs.py`
 // holds this predicate and the validator's to the same verdicts, so a widening has to move both
 // sides at once.
-const _OFFLINE_NETWORK_URL_RE = /^(?:(?:https?:\/*|\/{2,})[^/?#]|file:(?:\/\/(?!\/)|\/{4,}(?!\/))(?![?#]|$)(?!localhost(?:[/?#]|$))(?![A-Za-z][:|]))/i;
+// `localhost` as the URL PARSER compares a file host, not as a literal: the parser percent-decodes
+// the host and lowercases it through domain-to-ASCII BEFORE the file-host state turns the exact
+// string `localhost` into the EMPTY host, so `file://local%68ost/x` parses to href `file:///x` in a
+// real WHATWG parser, exactly like `file://localhost/x`. A literal test reported that local
+// reference as egress, which strips the author's value and leaves the gate rejecting a file with no
+// egress at all. One alternation per character, with BOTH hex rows per letter, because a `/i` regex
+// folds `%6c` onto `%6C` but never onto `%4c` - and `%4c` decodes to `L`, which domain-to-ASCII
+// lowercases back. Nothing that decodes to anything OTHER than `localhost` can match, so this
+// cannot smuggle a host past the strip: `%2F` and `%00` are forbidden host code points that fail to
+// parse (both checked), and a host that merely STARTS with `localhost` is stopped by the terminator
+// that follows. Mirrored character for character in the validator's `_PCT_LOCALHOST`, and pinned to
+// it by a TEXT-equality parity assertion (matching verdicts over a corpus cannot see a drift on a
+// spelling the corpus does not carry).
+// It covers PERCENT-ENCODING and CASE, which is the half of canonicalization a regex can model. It
+// does NOT model the IDNA/UTS-46 half, so a spelling that only IDNA maps onto `localhost` is an
+// ACCEPTED, deliberate over-detection: `file://\uFF4Cocalhost/x`, its percent-encoded UTF-8
+// `file://%EF%BD%8Cocalhost/x`, `file://LOCALHO\u017FT/x` and the soft-hyphen
+// `file://local%C2%ADhost/x` all parse to href `file:///x` (measured) and are still stripped here.
+// That residual is deliberate: UTS-46 mapping cannot be written as a regex either side would agree
+// on, and Python's `re.IGNORECASE` folds `s` onto U+017F where a JS `/i` never does, so ATTEMPTING
+// it is how the two engines drift. Over-detecting costs the author's rare reference; under-detecting
+// is a beacon the gate blesses, so the boundary is drawn on the safe side.
+const _OFFLINE_PCT_LOCALHOST =
+  "(?:l|%[46]c)(?:o|%[46]f)(?:c|%[46]3)(?:a|%[46]1)(?:l|%[46]c)"
+  + "(?:h|%[46]8)(?:o|%[46]f)(?:s|%[57]3)(?:t|%[57]4)";
+// What may FOLLOW that host for the exclusion to fire: the end of the value, a `?` or `#`, or a
+// SINGLE path slash. A second slash is an egress MISS, not a local path:
+// `file://localhost//not-a-host/x.js` empties the host and keeps `//not-a-host/x.js` as the PATH, so
+// the parser canonicalizes it to `file:////not-a-host/x.js` (measured) - which the four-or-more-slash
+// arm above calls an off-machine SMB load. The backslash spelling `file://localhost/\not-a-host/x.js`
+// reaches it too, since the cleanup maps `\` onto `/`. The cost is that `file://localhost//C:/x.js`,
+// canonically the LOCAL `file:////C:/x.js`, is over-reported; that is the fail-CLOSED direction this
+// predicate takes everywhere else.
+const _OFFLINE_PCT_LOCALHOST_END = "(?:[?#]|$|/(?!/))";
+// The rule both of the following exist to keep is CANONICALIZATION STABILITY: a value and the href
+// the URL parser canonicalizes it to must get the SAME verdict, or a spelling hides an authority
+// that only the parser sees. Two shapes broke it, and neither is reachable by a test that reads only
+// the START of the value, because the parser's path state runs AFTER the host is emptied.
+// (1) A DOUBLE-DOT segment pops the segment before it - including the very label an exclusion just
+// matched. `file:////localhost/../not-a-host/x` and `file:////C:/../x.js` both canonicalize onto the
+// four-separator UNC form with a different leading label, so a `..` anywhere in the path makes the
+// arm match REGARDLESS of the exclusions. Every spelling the parser treats as a double-dot segment
+// is covered - `..`, `.%2e`, `%2e.`, `%2e%2e`, case-insensitively.
+// (2) An EMPTY path segment IS the four-separator form: `file:///.//x.js` and `file:/a/..//x.js`
+// canonicalize to `file:////x.js` from a THREE-slash or even slash-less value the arms above never
+// look at, so it needs an arm of its own that ignores the leading separator count entirely. The
+// leading `/*(?!/)` consumes the whole separator run unbacktrackably, so only a `//` in the PATH
+// counts, and `[^?#]` stops at the query, which cannot change the path.
+// A fuzz of 421,560 values against a real URL parser measured the result: ZERO remain where the
+// predicate says local while the value's own canonical form is egress. The cost is over-detection in
+// the safe direction (93,789 of those values, all absurd spellings): an authored
+// `file:///C:/a//b.png` or `file://localhost/a/../b.js` is now reported.
+const _OFFLINE_FILE_DOTDOT_SEGMENT = "(?:\\.|%2e)(?:\\.|%2e)";
+const _OFFLINE_FILE_EMPTY_SEGMENT = "file:/*(?!/)[^?#]*?//";
+const _OFFLINE_NETWORK_URL_RE = new RegExp(
+  "^(?:(?:https?:/*|/{2,})[^/?#]"
+  + "|file:(?://(?!/)|/{4,}(?!/))(?![?#]|$)"
+  + "(?:(?=[^?#]*/" + _OFFLINE_FILE_DOTDOT_SEGMENT + "(?:[/?#]|$))"
+  + "|(?!" + _OFFLINE_PCT_LOCALHOST + _OFFLINE_PCT_LOCALHOST_END + ")(?![A-Za-z][:|]))"
+  + "|" + _OFFLINE_FILE_EMPTY_SEGMENT + ")",
+  "i");
+
 function _offlineIsNetworkUrl(v) {
   return _OFFLINE_NETWORK_URL_RE.test(_offlineNormalizeUrlValue(v));
 }
