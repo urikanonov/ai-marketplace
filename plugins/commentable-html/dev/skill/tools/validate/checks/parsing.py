@@ -8,6 +8,7 @@ from html import unescape
 from html.entities import html5 as _HTML5_ENTITIES
 from html.parser import HTMLParser
 from types import MappingProxyType
+from typing import NamedTuple
 
 REGIONS = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"]
 
@@ -947,6 +948,12 @@ class _BrowserBoundaries(_BrowserStartTag):
         self._starts = _line_starts(html)
         self._ns = []         # [(tag, namespace, is_integration_point)], parallel to the stack
         self._comment_raw = None      # source of the REAL comment being handled (see below)
+        # Whether the input ran out inside a comment / declaration / marked section, which a
+        # browser resolves by consuming the rest of the document. Recorded because a caller
+        # parsing a FRAGMENT of a larger document (the `<noscript>` fallback body) needs to know
+        # that the fragment did not end in the DATA state, and so cannot be reconciled with the
+        # surrounding parse.
+        self.eof_unterminated = False
 
     def parse_document(self, html):
         """Parse a COMPLETE document. Feeding the whole string at once is what lets an
@@ -1168,6 +1175,7 @@ class _BrowserBoundaries(_BrowserStartTag):
         """A construct with no closer: a browser consumes the rest of the document."""
         if not self._final:
             return -1   # more data may still arrive; the base class re-tries
+        self.eof_unterminated = True
         handler(self.rawdata[start:])
         return len(self.rawdata)
 
@@ -2261,14 +2269,30 @@ class _TagAttrParser(_BrowserBoundaries):
         self._stack = []   # open element tags, parallel to the namespace stack
         self._fallback = _fallback   # this is the scripting-disabled pass over a <noscript> body
         self._noscript = None        # buffered raw text of the <noscript> body being read
+        self._cur_style = None       # (attrs, depth, [body parts]) while inside a fallback <style>
         self.found = {}
         self.noscript_found = {}
+        self.styles = []             # {"attrs", "body"} per <style> seen by a fallback pass
+        self.noscript_styles = []    # the same, lifted out of this document's <noscript> bodies
         self.failed = False
         self.eof_in_tag = False
+        self.eof_raw_text_elem = None  # raw-text element still open when the input ran out
 
     def _truncate_stacks(self, depth):
+        if self._cur_style is not None and depth <= self._cur_style[1]:
+            self._flush_style()
         super()._truncate_stacks(depth)
         del self._stack[depth:]
+
+    def _flush_style(self):
+        """Record the `<style>` body being buffered by a scripting-DISABLED pass. Only that pass
+        buffers one: the document's own style bodies are read off `_DocParser`, and re-collecting
+        them here would keep a second copy of the whole layer stylesheet per cached document."""
+        if self._cur_style is None:
+            return
+        ad, _depth, parts = self._cur_style
+        self.styles.append({"attrs": ad, "body": "".join(parts)})
+        self._cur_style = None
 
     def _record(self, tag, ad):
         self.found.setdefault(tag, []).append(ad)
@@ -2276,6 +2300,8 @@ class _TagAttrParser(_BrowserBoundaries):
     def handle_data(self, data):
         if self._noscript is not None:
             self._noscript.append(data)
+        if self._cur_style is not None:
+            self._cur_style[2].append(data)
 
     def _enter_raw_text(self, tag, ns):
         if tag == "noscript" and self._fallback:
@@ -2287,7 +2313,7 @@ class _TagAttrParser(_BrowserBoundaries):
             self.eof_in_tag = True
         return super()._drop_if_truncated(k)
 
-    def _flush_noscript(self):
+    def _flush_noscript(self, at_eof=False):
         """Index the buffered `<noscript>` body as the MARKUP a scripting-disabled browser sees."""
         parts, self._noscript = self._noscript, None
         body = "".join(parts or ())
@@ -2307,9 +2333,35 @@ class _TagAttrParser(_BrowserBoundaries):
         # the browser EOF rule correctly discards, leaving a live resource in NEITHER index. It
         # cannot be resolved from the buffered text, so it is REPORTED instead of dropped.
         self.failed = self.failed or inner.failed or inner.eof_in_tag
+        # The same seam, reached from a state the fallback parse could not leave. The body's END
+        # is decided by the scripting-ENABLED tokenizer at the first `</noscript`, but a
+        # scripting-DISABLED browser reaches that point in whatever state its own parse of the
+        # fallback markup put it in. Unless that state is DATA, the two tokenizers disagree about
+        # the REST OF THE DOCUMENT, and the disagreement cannot be reconciled from the buffered
+        # text - so the document is REPORTED rather than certified.
+        #
+        # Both non-data end states are live bypasses, not theory:
+        #   `<noscript><style>/* </noscript> */ body{background:url(...)}</style></noscript>`
+        #     - the sheet runs on past the seam and its CSS fetches;
+        #   `<noscript><title></noscript><!-- </title><img src="..."> --></noscript>`
+        #     - the disabled reader leaves the raw text at a closer written AFTER the seam and is
+        #       back in markup, where the enabled view only has a comment;
+        #   `<noscript><!-- </noscript><textarea> --><img src="..."></textarea></noscript>`
+        #     - the mirror image, the disabled reader in a comment across the seam.
+        # In each the live reference is in NEITHER index, which is why the guard is the tokenizer
+        # STATE and not the identity of the element that happens to hold it.
+        #
+        # Only when a real `</noscript>` drew the seam: a body that ran to end of document has no
+        # disagreement to report - it is the end of the document for both views.
+        if not at_eof and (inner.eof_raw_text_elem is not None or inner.eof_unterminated):
+            self.failed = True
         for source in (inner.found, inner.noscript_found):
             for tag, ads in source.items():
                 self.noscript_found.setdefault(tag, []).extend(ads)
+        # A nested `<noscript>` is transparent in the fallback pass, so `inner.noscript_styles` is
+        # empty there; it is merged anyway so the two indexes are lifted by the same rule.
+        self.noscript_styles.extend(inner.styles)
+        self.noscript_styles.extend(inner.noscript_styles)
 
     def handle_starttag(self, tag, attrs):
         tag = self._browser_tag(tag)
@@ -2318,6 +2370,10 @@ class _TagAttrParser(_BrowserBoundaries):
         if ns == "html":
             self._implicit_close(tag)
         self._record(tag, ad)
+        if self._fallback and tag == "style":
+            # Recorded BEFORE the push, so the depth is the index this element occupies and any
+            # truncation that removes it (its own end tag, an ancestor's, a breakout) flushes it.
+            self._cur_style = (ad, len(self._stack), [])
         # A VOID element has no content and no end tag, so it is never pushed. (A foreign
         # element is never void: `<svg><rect/>` is self-closing markup, handled below.)
         if tag not in VOID or ns != "html":
@@ -2350,17 +2406,34 @@ class _TagAttrParser(_BrowserBoundaries):
 
     def close(self):
         # The base flushes the tail of an UNCLOSED raw-text element first, so a `<noscript>` that
-        # never closes still contributes its fallback markup (a browser runs it to EOF too).
+        # never closes still contributes its fallback markup (a browser runs it to EOF too), and
+        # an unclosed `<style>` still contributes the body a browser reads to EOF as CSS. Record
+        # that the input ENDED in raw text before the base clears the mode: the caller of a
+        # fallback parse needs it to tell a body a `</noscript>` ended from one that ran out, and
+        # to tell CSS (which fetches) from inert text.
+        self.eof_raw_text_elem = self.cdata_elem
         super().close()
+        self._flush_style()
         if self._noscript is not None:
-            self._flush_noscript()
+            self._flush_noscript(at_eof=True)
+
+
+class _TagIndex(NamedTuple):
+    """The shared per-document tag index. NAMED rather than a bare tuple because its consumers
+    read it by position and one of them - `_tag_attrs_failed()` reading `failed` - is the
+    fail-CLOSED guard the whole self-contained guarantee rests on: a later field inserted ahead of
+    it would silently make that guard read the wrong slot instead of raising."""
+    found: dict
+    noscript_found: dict
+    noscript_styles: tuple
+    failed: bool
 
 
 @functools.lru_cache(maxsize=32)
 def _tag_attr_index(html):
-    """`(found, noscript_found, failed)` for `html`: every start tag mapped to its
-    browser-decoded attribute dicts, the `<noscript>` fallback markup indexed separately, and
-    whether the parse blew up.
+    """A `_TagIndex` for `html`: every start tag mapped to its browser-decoded attribute dicts,
+    the `<noscript>` fallback markup indexed separately, the `<style>` bodies that fallback markup
+    declares, and whether the parse blew up.
 
     Cached like `code_block_spans`, because one validation run asks the same (multi-megabyte)
     document about a dozen different tags. Room for more than the last document, because a check
@@ -2380,8 +2453,13 @@ def _tag_attr_index(html):
         failed = True
     found = p.found if p is not None else {}
     noscript_found = p.noscript_found if p is not None else {}
+    noscript_styles = p.noscript_styles if p is not None else []
     failed = failed or (p is not None and p.failed)
-    return (_freeze_tag_attrs(found), _freeze_tag_attrs(noscript_found), failed)
+    return _TagIndex(
+        _freeze_tag_attrs(found), _freeze_tag_attrs(noscript_found),
+        tuple(MappingProxyType({"attrs": MappingProxyType(s["attrs"]), "body": s["body"]})
+              for s in noscript_styles),
+        failed)
 
 def _freeze_tag_attrs(found):
     return {tag: tuple(MappingProxyType(ad) for ad in ads) for tag, ads in found.items()}
@@ -2390,7 +2468,7 @@ def _freeze_tag_attrs(found):
 def _find_tag_attrs(html, tag):
     """The attribute dict of every occurrence of `tag`, as a browser with scripting ENABLED sees
     the document - the view a PRESENCE question must ask ("does this document declare X?")."""
-    found, _noscript_found, _failed = _tag_attr_index(html or "")
+    found = _tag_attr_index(html or "").found
     return [dict(ad) for ad in found.get(_ascii_lower(tag), ())]
 
 
@@ -2399,10 +2477,35 @@ def _find_tag_attrs_egress(html, tag):
     loads - the view an EGRESS question must ask ("does this document load anything over the
     network?"). Deliberately a separate function rather than a flag on the one above: a missed
     argument would be a silent hole in one direction and a fail-open policy check in the other."""
-    found, noscript_found, _failed = _tag_attr_index(html or "")
+    idx = _tag_attr_index(html or "")
+    found, noscript_found = idx.found, idx.noscript_found
     key = _ascii_lower(tag)
     return ([dict(ad) for ad in found.get(key, ())]
             + [dict(ad) for ad in noscript_found.get(key, ())])
+
+
+def _find_noscript_styles(html):
+    """The `<style>` bodies a `<noscript>` fallback declares, as [{"attrs", "body"}].
+
+    The EGRESS-only complement to `_DocParser.styles`: with scripting ENABLED a `<noscript>` body
+    is raw TEXT, so the document view holds no style element for it at all, but with scripting OFF
+    a browser parses that body and its `@import` / `url(...)` really are fetched. Returned as its
+    own list rather than folded into the document view, so the offline CSS scans opt in the way
+    every other egress lookup does and a PRESENCE question keeps reading the browser's view.
+
+    Like every other egress lookup this reads the SHARED index, so a caller must already have
+    consulted `_tag_attrs_failed(html)`: an empty result on a failed parse means "could not
+    look", not "no styles"."""
+    return [{"attrs": dict(s["attrs"]), "body": s["body"]}
+            for s in _tag_attr_index(html or "").noscript_styles]
+
+
+def _find_noscript_inline_styles(html):
+    """The `style=` attributes a `<noscript>` fallback declares, as [{"tag", "value"}] - the same
+    EGRESS-only complement, for `_DocParser.inline_styles`."""
+    noscript_found = _tag_attr_index(html or "").noscript_found
+    return [{"tag": tag, "value": ad.get("style", "")}
+            for tag, ads in noscript_found.items() for ad in ads if "style" in ad]
 
 
 def _is_event_handler_attr(name):
@@ -2432,7 +2535,8 @@ def _find_event_handler_attrs_egress(html):
     consulted `_tag_attrs_failed(html)`: on a parse that blew up the index is partial, and an
     empty result here means "could not look", not "no handlers".
     """
-    found, noscript_found, _failed = _tag_attr_index(html or "")
+    idx = _tag_attr_index(html or "")
+    found, noscript_found = idx.found, idx.noscript_found
     handlers = []
     for source in (found, noscript_found):
         for tag, ads in source.items():
@@ -2446,7 +2550,7 @@ def _find_event_handler_attrs_egress(html):
 def _tag_attrs_failed(html):
     """Whether the shared tag index could not be built, so every lookup on this document is
     incomplete and its consumers must fail CLOSED rather than read a partial answer as clean."""
-    return _tag_attr_index(html or "")[2]
+    return _tag_attr_index(html or "").failed
 
 
 
