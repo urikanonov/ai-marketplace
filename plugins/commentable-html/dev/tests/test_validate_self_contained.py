@@ -725,6 +725,77 @@ class NewCheckTests(unittest.TestCase):
         self.assertEqual(errors, [], errors)
         self.assertEqual(warnings, [], warnings)
 
+    # An SVG `feImage` fetches exactly like an SVG `<image>` or `<use>` - both of which the offline
+    # media list already covers - but the filter primitive was in neither the list nor the export
+    # strip, so a document carrying one rode into a zero-network export and `--strict` certified it
+    # clean (#992). `HTMLParser` lowercases the tag, so the gate looks it up as `feimage`.
+    def test_offline_mode_rejects_an_feimage_that_loads_over_the_network(self):
+        for attr in ("href", "xlink:href"):
+            for url in ("https://evil.example/x.png", "//evil.example/x.png",
+                        " \t https://evil.example/x.png"):
+                with self.subTest(attr=attr, url=url):
+                    svg = '<svg><filter id="f"><feImage %s="%s"/></filter></svg>' % (attr, url)
+                    errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, svg))))
+                    self.assertTrue(any("offline mode" in e and "<feimage %s" % attr in e
+                                        for e in errors), (attr, url, errors))
+
+    # The control: a relative or `data:` primitive resolves inside the file and is left alone, so
+    # widening the media list cannot start rejecting a document with no egress at all.
+    def test_offline_mode_accepts_a_relative_or_data_feimage_reference(self):
+        svg = ('<svg><filter id="f1"><feImage href="local-tile.png"/></filter>'
+               '<filter id="f2"><feImage xlink:href="data:image/gif;base64,R0lGODlhAQABAAAAACw="/>'
+               "</filter></svg>")
+        errors, warnings = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, svg))))
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    # Hyperlink auditing: a click POSTs to every URL in `ping`, and neither the export strip nor
+    # this gate looked at the attribute (#992). CSP Level 3 folds auditing into `connect-src`,
+    # which the offline policy does set to `'none'`, so a current browser most likely absorbs it -
+    # but the strip and the gate are the layer that must not DEPEND on the CSP, and the `ping-src`
+    # history makes that coverage version-dependent. EVERY ping goes, network target or not: the
+    # exporter removes the attribute whatever it names (the meta-refresh precedent), so a gate that
+    # accepted a relative one would bless a file an export would change.
+    def test_offline_mode_rejects_hyperlink_auditing(self):
+        for tag, markup in (
+                ("a", '<a href="#s" ping="https://evil.example/audit">x</a>'),
+                ("a", '<a href="#s" ping="local-audit">x</a>'),
+                ("area", '<map name="m"><area shape="rect" coords="0,0,1,1" href="#s" '
+                         'ping="https://evil.example/audit"></map>')):
+            with self.subTest(markup=markup):
+                errors, _ = self._errs_warns(
+                    with_offline_mode(build(body=self._body(MAIN, markup))))
+                self.assertTrue(any("offline mode" in e and "<%s ping" % tag in e for e in errors),
+                                (markup, errors))
+        network, _ = self._errs_warns(with_offline_mode(build(body=self._body(
+            MAIN, '<a href="#s" ping="https://evil.example/audit">x</a>'))))
+        self.assertTrue(any("evil.example" in e for e in network), network)
+
+    # An empty `ping` names no URL, so a browser sends nothing and the strip has nothing to take
+    # away; an ordinary link with no auditing at all is the other control.
+    def test_offline_mode_accepts_a_link_without_hyperlink_auditing(self):
+        markup = '<a href="#s" ping="">x</a> <a href="#s">y</a>'
+        errors, warnings = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, markup))))
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    # The boundary that decides whether a ping names anything is HTML's own tokenization - ASCII
+    # whitespace ONLY - not either engine's whitespace class. `str.strip()` here and `String.trim()`
+    # in the exporter disagree about NBSP, U+FEFF and U+001C-U+001F, so a trimming gate would drift
+    # from the strip in BOTH directions: it would call an NBSP ping empty and bless it, though a
+    # browser resolves it as a relative target and POSTs to `/%C2%A0`, and it would leave a
+    # U+001C-only value that the exporter's own trim called empty. Only a value made of ASCII
+    # whitespace (or nothing at all) is a no-op on both sides.
+    def test_offline_mode_reads_a_ping_list_the_way_html_tokenizes_it(self):
+        for value, rejected in (("\u00a0", True), ("\ufeff", True), ("\u001c", True),
+                                ("\u000b", True), (" \t\n\f\r ", False), ("", False)):
+            with self.subTest(value=repr(value)):
+                markup = '<a href="#s" ping="%s">x</a>' % value
+                errors, _ = self._errs_warns(
+                    with_offline_mode(build(body=self._body(MAIN, markup))))
+                hit = any("offline mode" in e and "<a ping" in e for e in errors)
+                self.assertEqual(hit, rejected, (repr(value), errors))
+
     # A browser normalizes several spellings INTO a network URL before it fetches (issue #923), so
     # the gate must read the value the way the URL parser does. Both implementations used to test
     # the raw literal and call every one of these local, which is under-detection rather than a
