@@ -45,7 +45,31 @@ const firstCells = (page, selector) =>
   page.$$eval(selector, (tds) => tds.map((t) => t.textContent.trim()));
 const outerOrder = (page) => firstCells(page, "#outer > tbody > tr > td:first-child");
 const westOrder = (page) => firstCells(page, "#west > tbody > tr > td:first-child");
-const sortCtrl = (page, id) => page.locator(`#${id} > thead > tr > th:nth-child(1) .cmh-sort-ctrl`);
+const sortCtrl = (page, id, col = 1) => page.locator(`#${id} > thead > tr > th:nth-child(${col}) .cmh-sort-ctrl`);
+
+// An outer table sorted on the column that HOLDS the nested tables: which row wins depends on the
+// nested tables' own row order, so replaying the persisted sorts outer-first and innermost-first
+// give different answers.
+const NESTED_SORT_KEY_TABLES = [
+  "<h1>Hosts</h1>",
+  '<table id="outer">',
+  "  <thead><tr><th>Group</th><th>Hosts</th></tr></thead>",
+  "  <tbody>",
+  "    <tr><td>Alpha</td><td>",
+  '      <table id="n1">',
+  "        <thead><tr><th>Host</th><th>Load</th></tr></thead>",
+  "        <tbody><tr><td>zz</td><td>2</td></tr><tr><td>aa</td><td>1</td></tr></tbody>",
+  "      </table>",
+  "    </td></tr>",
+  "    <tr><td>Beta</td><td>",
+  '      <table id="n2">',
+  "        <thead><tr><th>Host</th><th>Load</th></tr></thead>",
+  "        <tbody><tr><td>mm</td><td>1</td></tr><tr><td>nn</td><td>2</td></tr></tbody>",
+  "      </table>",
+  "    </td></tr>",
+  "  </tbody>",
+  "</table>",
+].join("\n");
 
 async function serviceOrder(page) {
   return page.$$eval("#commentRoot table.cmh-sortable tbody tr td:first-child", (tds) => tds.map((t) => t.textContent.trim()));
@@ -181,12 +205,15 @@ test.describe("copy buttons + sortable tables", () => {
     // Register the download waiter BEFORE the click, or it could time out on an export that really
     // did produce a file and the assertion would hold for the wrong reason.
     const downloaded = page.waitForEvent("download", { timeout: 2000 }).then(() => true).catch(() => false);
-    await clickSidebarExport(page, "#btnSaveHtml");
-    expect(await downloaded).toBe(false);   // the export really did fail
-    expect(await page.evaluate(() => window.__cmhWalkerThrows)).toBeGreaterThan(0);
-    // The throw landed BETWEEN the unsort and the restore: the tables were in authored order then.
-    expect(await page.evaluate(() => window.__cmhOrderAtThrow)).toEqual(["West", "East"]);
-    await page.evaluate(() => { window.__cmhWalkerBoom = false; });
+    try {
+      await clickSidebarExport(page, "#btnSaveHtml");
+      expect(await downloaded).toBe(false);   // the export really did fail
+      expect(await page.evaluate(() => window.__cmhWalkerThrows)).toBeGreaterThan(0);
+      // The throw landed BETWEEN the unsort and the restore: the tables were in authored order then.
+      expect(await page.evaluate(() => window.__cmhOrderAtThrow)).toEqual(["West", "East"]);
+    } finally {
+      await page.evaluate(() => { window.__cmhWalkerBoom = false; });
+    }
 
     expect(await outerOrder(page)).toEqual(["East", "West"]);
     expect(await westOrder(page)).toEqual(["wa", "wb"]);
@@ -213,26 +240,36 @@ test.describe("copy buttons + sortable tables", () => {
     expect(Object.keys(anchoredText)).toHaveLength(2);
 
     // Throw on the SECOND comment's mark walk, so the first comment's offsets have already been
-    // rewritten into authored coordinates when the pass unwinds.
+    // rewritten into authored coordinates when the pass unwinds. Count the FIRST comment's walks
+    // too: without that sentinel the test would still pass if the pass threw before touching any
+    // comment, which is not the state the revert exists to undo.
     const cids = before.map((c) => c[0]);
-    await page.evaluate((secondCid) => {
+    await page.evaluate(([firstCid, secondCid]) => {
       const orig = document.createTreeWalker.bind(document);
       window.__cmhWalkerBoom = true;
       window.__cmhWalkerThrows = 0;
+      window.__cmhFirstWalks = 0;
       document.createTreeWalker = function (node, ...rest) {
-        if (window.__cmhWalkerBoom && node && node.nodeType === 1
-            && node.dataset && node.dataset.cid === secondCid) {
+        const cid = window.__cmhWalkerBoom && node && node.nodeType === 1 && node.dataset
+          ? node.dataset.cid : null;
+        if (cid === firstCid) window.__cmhFirstWalks++;
+        if (cid === secondCid) {
           window.__cmhWalkerThrows++;
           throw new Error("recompute boom");
         }
         return orig(node, ...rest);
       };
-    }, cids[1]);
+    }, [cids[0], cids[1]]);
     const downloaded = page.waitForEvent("download", { timeout: 2000 }).then(() => true).catch(() => false);
-    await clickSidebarExport(page, "#btnSaveHtml");
-    expect(await downloaded).toBe(false);
-    expect(await page.evaluate(() => window.__cmhWalkerThrows)).toBeGreaterThan(0);
-    await page.evaluate(() => { window.__cmhWalkerBoom = false; });
+    try {
+      await clickSidebarExport(page, "#btnSaveHtml");
+      expect(await downloaded).toBe(false);
+      expect(await page.evaluate(() => window.__cmhWalkerThrows)).toBeGreaterThan(0);
+      // The first comment really was re-anchored before the throw, so the revert had work to do.
+      expect(await page.evaluate(() => window.__cmhFirstWalks)).toBeGreaterThan(0);
+    } finally {
+      await page.evaluate(() => { window.__cmhWalkerBoom = false; });
+    }
     expect(await outerOrder(page)).toEqual(["East", "West"]);
 
     // Any ordinary next action persists the whole in-memory set, so a corrupted offset would be
@@ -247,6 +284,36 @@ test.describe("copy buttons + sortable tables", () => {
     expect(await outerOrder(page)).toEqual(["East", "West"]);
     const marks = await page.$$eval("mark.cm-hl", (ms) => ms.map((m) => [m.dataset.cid, m.textContent]));
     expect(Object.fromEntries(marks.filter((m) => cids.includes(m[0])))).toEqual(anchoredText);
+  });
+
+  // #976: an outer table sorted on the column that HOLDS the nested tables ranks its rows by that
+  // cell's text, so replaying the persisted sorts outer-first would rank it against nested tables
+  // that are not back in their own order yet.
+  test("persisted sorts replay innermost-first, so an outer sort keyed on a nested table survives a reload (CMH-CONTENT-08)", async ({ page }) => {
+    const staged = stageContent(NESTED_SORT_KEY_TABLES, { key: "cmh-nested-sort-key" });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    expect(await outerOrder(page)).toEqual(["Alpha", "Beta"]);
+
+    // Sort the nested table FIRST (aa now leads its cell), then the outer table on the Hosts
+    // column: "aa..." now ranks before "mm...", so Alpha leads.
+    await sortCtrl(page, "n1").click();
+    expect(await firstCells(page, "#n1 > tbody > tr > td:first-child")).toEqual(["aa", "zz"]);
+    await sortCtrl(page, "outer", 2).click();
+    expect(await outerOrder(page)).toEqual(["Alpha", "Beta"]);
+
+    // Replaying outer-first would compare the authored "zz..." cell and put Beta on top.
+    await page.reload();
+    await ready(page);
+    expect(await firstCells(page, "#n1 > tbody > tr > td:first-child")).toEqual(["aa", "zz"]);
+    expect(await outerOrder(page)).toEqual(["Alpha", "Beta"]);
+
+    // The export borrows the authored order and must hand back the order it borrowed, not one
+    // re-derived by re-sorting (which would compare the same cells all over again).
+    await addTextComment(page, "#commentRoot h1", "title note");
+    await Promise.all([page.waitForEvent("download"), clickSidebarExport(page, "#btnSaveHtml")]);
+    expect(await outerOrder(page)).toEqual(["Alpha", "Beta"]);
+    expect(await firstCells(page, "#n1 > tbody > tr > td:first-child")).toEqual(["aa", "zz"]);
   });
 
   test("each code block has an always-visible Copy button that copies its exact text", async ({ page }) => {
