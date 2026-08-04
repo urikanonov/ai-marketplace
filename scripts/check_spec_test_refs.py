@@ -11,14 +11,16 @@ Four directions are checked:
   accepts: the `*.test.*` suites and the `*regressions*.spec.*` files. So a target waiting to
   graduate is never a hiding place for an unowned id; it is only excused from citations.
   A target graduates once every feature id its tests carry is owned and cited by its spec, which
-  is a spec cleanup rather than a code change. EVERY shipped target is there now: the site and
+  is a spec cleanup rather than a code change. EVERY shipped JS target is there now: the site and
   demo-video targets graduated in #800, and commentable-html followed in #853. That cleanup was 32
   violations: 23 uses of 14 VESTIGIAL labels (a test title carried an id no row owned while an
   existing row already described that behavior AND cited that very test, so the titles were
   normalized onto the owning id rather than minting parallel ids), plus 9 titles whose id DID have
   a row that simply did not cite them, which gained the citation. The set stays as the mechanism,
-  not as a standing exemption: a NEW target that must start restricted is registered in
-  `INTENTIONALLY_RESTRICTED_SPECS`, a reviewed one-line edit rather than a silent omission.
+  not as a standing exemption: a target that must be restricted is registered in
+  `INTENTIONALLY_RESTRICTED_SPECS`, a reviewed one-line edit rather than a silent omission. The
+  flat Python target `scripts/SPEC.md` is listed there permanently rather than pending a cleanup -
+  see the target-shapes paragraph at the end of this docstring.
   A `describe(...)` suite title gets the OWNERSHIP half only; a row cannot CITE a suite title
   (issue #629), so demanding a citation for one would be unsatisfiable.
   Unlike the duplicate direction below, this one does NOT skip an id whose area no row owns: a

@@ -1077,9 +1077,12 @@ class SpecTestReferenceTests(unittest.TestCase):
         )
 
     def test_every_spec_target_is_fully_reverse_mapped(self):
-        # No shipped target is still restricted to the `*.test.*` / regressions subset. A target
-        # that genuinely must start restricted registers itself in `INTENTIONALLY_RESTRICTED_SPECS`
-        # (empty today), so the exemption is a reviewed one-line edit, not a silent omission.
+        # No shipped JS target is still restricted to the `*.test.*` / regressions subset, and a
+        # target that genuinely must be restricted registers itself in
+        # `INTENTIONALLY_RESTRICTED_SPECS`, so the exemption is a reviewed one-line edit rather
+        # than a silent omission. One target is listed today: the flat Python `scripts/SPEC.md`,
+        # whose `Class.method` test names cannot carry a hyphenated feature id, so it has no
+        # reverse citation to graduate to.
         restricted = {spec.resolve() for spec, _base in refs.SPEC_TARGETS
                       if spec.resolve() not in refs.FULLY_REVERSE_MAPPED_SPECS}
 
