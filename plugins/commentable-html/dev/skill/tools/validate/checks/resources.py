@@ -40,12 +40,46 @@ OFFLINE_CSP_REQUIRED = {
     "frame-ancestors": ("'none'",),
 }
 
-# A network URL in a CSS `url(...)`. This keeps the slashes-required `(?:https?:)?//` shape on
-# purpose, unlike the meta-refresh gate below: a CSS fetch is closed by the offline CSP, and the
-# pattern is mirrored by the exporter's own CSS strip in `assets/js/68-export-offline.js`, so
-# widening this copy ALONE would make the gate reject a file the exporter just produced. Issue #961
-# widens both sides together; see the CMH-VAL-08 spec row.
-CSS_NETWORK_URL_RE = re.compile(r"url\(\s*(['\"]?)(?:https?:)?//", re.IGNORECASE)
+# A network URL in a CSS `url(...)`, and the `@import` form beside it, recognized in the prefixes a
+# browser resolves to a network host: scheme plus slashes, protocol-relative, and SCHEME-ONLY -
+# `url(https:evil.example/x.png)` with NO slashes after the colon, which the URL parser's
+# special-authority states resolve to the same host as `url(https://evil.example/x.png)`. Requiring
+# the two slashes left the whole CSS channel open to a one-token spelling change. Those states
+# IGNORE any run of `/` after the scheme, which is why the run is consumed rather than counted, and
+# they need a non-empty HOST, which is why one host character is required: `url(https://)` and
+# `url(//)` are parse failures that fetch nothing, and reporting one would reject a file with no
+# egress at all (the exporter's strips never touched them either, so the gate used to reject what
+# the strip left behind). That one character is an APPROXIMATION of the URL parser's host state, in
+# the fail-CLOSED direction: a malformed authority is still reported, because a gate whose miss is a
+# beacon should over-report rather than under-report - the same trade `META_REFRESH_NETWORK_URL_RE`
+# makes below.
+# Whitespace is spelled out as the ASCII set rather than written `\s` for the reason the srcset
+# tokenizer below spells it out: the exporter's mirror runs in a JavaScript engine whose `\s` also
+# takes U+00A0 and U+FEFF where Python's (under `re.ASCII`) does not, and neither is CSS whitespace,
+# so a `\s` on both sides would classify `url(<U+FEFF>https:host/x)` differently in the two engines.
+# `re.ASCII` for the reason `NETWORK_URL_RE` carries it: `re.IGNORECASE` would otherwise fold `s`
+# onto U+017F and flag a `url(http<U+017F>://host)` a JS `/i` never matches. Both are mirrored by
+# the exporter's own `_offlineCssNoNetwork` in `assets/js/68-export-offline.js` - the two sides move
+# TOGETHER (issue #961), or the gate rejects a file the exporter just produced (the CMH-OFFLINE-04
+# drift); `tests/test_vendored_libs.py` pins the pair by running the exporter's strip in the real JS
+# engine over a shared corpus. What NEITHER side reads is a CSS ESCAPE (`url(https:\65 vil/x)`) or a
+# comment between the at-keyword and its URL, so they agree there too; issue #1029 tracks giving
+# both a CSS-token-aware reader.
+_CSS_WS = r"[\t\n\f\r ]"
+# The at-keyword's separator: whitespace, OR nothing at all when a quote follows. `@import"x.css";`
+# is valid CSS - a `"` cannot continue an ident, so the at-keyword ends there - and really fetches,
+# while a whitespace-only separator read it as unremarkable text. The lookahead is what keeps a
+# DIFFERENT at-keyword (`@importurl(...)`) from matching.
+_CSS_AT_SEP = _CSS_WS + r"+|(?=['\"])"
+_CSS_NETWORK_PREFIX = r"(?:https?:/*|/{2,})"
+_CSS_HOST_CHAR = r"[^/?#'\")\t\n\f\r ]"
+CSS_NETWORK_URL_RE = re.compile(
+    r"url\(" + _CSS_WS + r"*(?:['\"]" + _CSS_WS + r"*)?" + _CSS_NETWORK_PREFIX + _CSS_HOST_CHAR,
+    re.IGNORECASE | re.ASCII)
+CSS_NETWORK_IMPORT_RE = re.compile(
+    r"@import(?:" + _CSS_AT_SEP + r")(?:url\(" + _CSS_WS + r"*)?(?:['\"]" + _CSS_WS + r"*)?("
+    + _CSS_NETWORK_PREFIX + _CSS_HOST_CHAR + r"[^;'\")]*)",
+    re.IGNORECASE | re.ASCII)
 
 # A network URL in an attribute value, read AFTER the URL parser's own input cleanup (see
 # `normalize_url_value` below), so the spellings a browser normalizes into a network load - an
@@ -84,11 +118,13 @@ CSS_NETWORK_URL_RE = re.compile(r"url\(\s*(['\"]?)(?:https?:)?//", re.IGNORECASE
 # `\Z` rather than `$` in those lookaheads: Python's `$` also matches before a trailing newline
 # where a JS `$` matches only at the end of input, so `$` here would be a silent engine drift for
 # any caller that reached the pattern without `normalize_url_value` (which removes newlines) first.
-# The http/https arm still requires the `//`, unlike the meta-refresh gate below: an attribute fetch
-# is closed by the offline CSP, and widening only this copy would reject a file the exporter just
-# produced. Issue #961 moves both sides together; see the CMH-VAL-08 spec row.
+# The http/https arm reads the slash run rather than counting it, so the scheme-only
+# `https:host/x.js` and the single-slash `https:/host/x.js` - which the special-authority states
+# resolve to the same host as `https://host/x.js` - are network URLs too, and one host character is
+# required so an empty authority stays local. That widening landed with the CSS gates and the
+# exporter's CSS strips it mirrors, both sides at once (issue #961); see the CMH-VAL-08 spec row.
 NETWORK_URL_RE = re.compile(
-    r"(?:(?:https?:)?//(?![?#]|\Z)"
+    r"(?:(?:https?:/*|/{2,})[^/?#]"
     r"|file:(?://(?!/)|/{4,}(?!/))(?![?#]|\Z)(?!localhost(?:[/?#]|\Z))(?![A-Za-z][:|]))",
     re.IGNORECASE | re.ASCII)
 
@@ -482,8 +518,11 @@ def meta_refresh_target(content):
 # Widening here introduces no exporter/validator drift: offline mode rejects EVERY
 # `meta[http-equiv=refresh]` (as the strip removes every one), and this predicate only decides
 # WHICH of the two messages that rejection carries - the one that names a network beacon.
-# The NEIGHBOURING `(?:https?:)?//` gates deliberately keep the slashes (issue #961) - see the
-# CMH-VAL-08 spec row.
+# The NEIGHBOURING CSS and attribute gates no longer differ in the way this comment used to record:
+# `CSS_NETWORK_URL_RE`, `CSS_NETWORK_IMPORT_RE` and `NETWORK_URL_RE` all consume the slash run after
+# a special scheme too (issue #961), so what is left of the difference is that this pattern also
+# accepts a BACKSLASH separator (its input is not run through `normalize_url_value`, which maps them)
+# and reads exactly two leading separators for the scheme-relative arm - see the CMH-VAL-08 spec row.
 META_REFRESH_NETWORK_URL_RE = re.compile(
     r"(?:https?:[/\\]*"
     r"|file:[/\\]{2}(?![/\\])(?!localhost(?:[/\\?#]|$))"

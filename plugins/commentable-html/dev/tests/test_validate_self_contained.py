@@ -345,6 +345,59 @@ class NewCheckTests(unittest.TestCase):
             self.assertTrue(any("offline mode" in e and "url(" in e and needle in e for e in errors),
                             "expected offline CSS url error for %s, got %r" % (needle, errors))
 
+    def test_offline_mode_rejects_a_scheme_only_css_url_and_import(self):
+        # `url(https:evil.example/x.png)` carries NO slashes after the scheme, and the URL parser's
+        # special-authority states ignore whatever run of slashes follows a special scheme's colon,
+        # so a browser resolves it to the same host as `url(https://evil.example/x.png)` and really
+        # does fetch it from a `file://` document. While the gates required the two slashes the
+        # whole CSS channel was open to a one-token spelling change and `--strict` certified such a
+        # file as offline-clean. The exporter's own CSS strips move with them (issue #961), so the
+        # gate never rejects what the strip leaves behind.
+        cases = [
+            ("<style>body { background: url(https:evil.example/x.png); }</style>",
+             "style block contains a network url"),
+            ("<style>body { background: url(https:/evil.example/x.png); }</style>",
+             "style block contains a network url"),
+            ('<style>@import "https:evil.example/t.css";</style>', "@import"),
+            ("<style>@import url(HTTP:/evil.example/t.css);</style>", "@import"),
+            ('<div style="background:url(https:evil.example/inline.png)">f</div>',
+             "inline style on <div> contains a network url"),
+        ]
+        for markup, needle in cases:
+            with self.subTest(markup=markup):
+                errors, _ = self._errs_warns(
+                    with_offline_mode(build(body=self._body(MAIN, markup))))
+                self.assertTrue(any("offline mode" in e and needle in e for e in errors),
+                                "expected %r for %r: %r" % (needle, markup, errors))
+
+    def test_offline_mode_still_accepts_the_css_the_scheme_only_widening_must_not_reach(self):
+        # The widening must not turn a local stylesheet into an error. A relative or `data:`
+        # reference is the whole control case, and an authority terminated at once by the end of
+        # the value is an EMPTY host a special scheme cannot even parse - `url(https://)` and
+        # `url(//)` fetch nothing at all, and the exporter's strips leave both alone, so reporting
+        # either would reject a file with no egress.
+        markup = ("<style>@import url(theme.css); @import './local.css'; "
+                  ".a { background: url(x.png); } .b { background: url('./img/y.png'); } "
+                  ".c { background: url(data:image/png;base64,AAAA); } "
+                  ".d { background: url(https://); } .e { background: url(//); }</style>"
+                  '<div style="background:url(x.png)">f</div>')
+        errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, markup))))
+        self.assertEqual([e for e in errors if "url(" in e or "@import" in e], [], errors)
+
+    def test_offline_mode_rejects_a_scheme_only_attribute_reference(self):
+        # The attribute predicate moved with the CSS gates (issue #961), so the same slash-less
+        # spelling is caught in a reference a browser LOADS. The empty-authority control stays
+        # local: a special scheme with no host is a parse failure that fetches nothing, and the
+        # export leaves it alone, so reporting it would reject a file with no egress.
+        for markup, expected in (('<img src="https:evil.example/x.png" alt="x">', True),
+                                 ('<img src="https:/evil.example/y.png" alt="y">', True),
+                                 ('<img src="https://" alt="empty">', False)):
+            with self.subTest(markup=markup):
+                errors, _ = self._errs_warns(
+                    with_offline_mode(build(body=self._body(MAIN, markup))))
+                hit = any("loads over the network" in e or "evil.example" in e for e in errors)
+                self.assertEqual(hit, expected, (markup, errors))
+
     def test_offline_mode_allows_non_fetching_network_links(self):
         links = (
             '<link rel="canonical" href="https://example.com/report">\n'

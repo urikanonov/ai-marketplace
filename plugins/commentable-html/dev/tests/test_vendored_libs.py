@@ -1302,11 +1302,19 @@ class RuntimeParityTests(unittest.TestCase):
         ("#anchor", False), ("data:text/javascript,void%200", False),
         ("mailto:someone@example.com", False), ("ftp://evil.example/x.js", False),
         ("x https://evil.example/x.js", False),
-        # A single slash after a special scheme IS an authority to the URL parser, and a scheme-only
-        # spelling resolves to the same host - but both sides deliberately still require the two
-        # slashes, because widening the attribute predicate alone would reject a file the exporter
-        # just produced. Issue #961 moves both sides together; these stay False until it does.
-        ("https:/evil.example/x.js", False), ("https:evil.example/x.js", False),
+        # A single slash after a special scheme IS an authority to the URL parser, and a SCHEME-ONLY
+        # spelling resolves to the same host: the special-authority states ignore whatever run of
+        # slashes follows the colon, so `https:evil.example/x.js` and `https:/evil.example/x.js`
+        # both fetch `https://evil.example/x.js` from a `file://` document. Both sides now read the
+        # run rather than counting it (#961 moved the attribute predicate together with the CSS
+        # gates and strips it mirrors), so a one-token spelling change no longer walks past them.
+        ("https:/evil.example/x.js", True), ("https:evil.example/x.js", True),
+        ("HTTPS:EVIL.EXAMPLE/x.js", True), ("https:///evil.example/x.js", True),
+        ("https:/\tevil.example/x.js", True), ("http:evil.example", True),
+        # ...but the run still has to be followed by a HOST. An authority terminated at once by
+        # `?`, `#` or the end of the value is empty, which a special scheme fails to parse at all,
+        # so a bare scheme is left alone rather than reported as a beacon.
+        ("https:", False), ("https:?q", False), ("https:#f", False), ("https:/", False),
         # Case folding is ASCII-only on both sides: Python's `re.IGNORECASE` would otherwise fold
         # `s` onto U+017F, which a JS `/i` regex never does (and which no browser resolves as a
         # scheme either), so the gate would flag a value the strip keeps.
@@ -1521,6 +1529,242 @@ class RuntimeParityTests(unittest.TestCase):
                 "on ASCII whitespace only; an engine-whitespace split hides a load from whichever "
                 "side cuts the candidate short."
                 % (value, js_tokens, resources.srcset_candidate_urls(value)))
+
+    # The CSS half of the same decision, and the one the offline CSP is not allowed to stand in
+    # for: the validator's gates (`CSS_NETWORK_URL_RE` and `CSS_NETWORK_IMPORT_RE`) and the
+    # exporter's own strips (`_offlineCssNoNetwork`) are two independent spellings of "this
+    # stylesheet reaches the network", so a drift between them is the CMH-OFFLINE-04 failure mode
+    # in its purest form - the gate rejects a file the exporter has just produced, or blesses one
+    # the strip would have cleaned. Each row carries its EXPECTED verdict rather than only being
+    # compared across the engines, because two copies that under-detect the same spelling agree
+    # perfectly - which is how the scheme-only shape below sat in both of them (#961).
+    _CSS_NETWORK_CORPUS = [
+        ("a { background: url(https://evil.example/x.png); }", True),
+        ('a { background: url("https://evil.example/x.png"); }', True),
+        ("a { background: url('//evil.example/x.png'); }", True),
+        ("a { background: url( //evil.example/x.png ); }", True),
+        # Scheme-only and single-slash: no `//` after the colon, and a browser resolves both to the
+        # same host through the special-authority states, which ignore the slash run entirely.
+        ("a { background: url(https:evil.example/x.png); }", True),
+        ("a { background: url(HTTPS:evil.example/x.png); }", True),
+        ("a { background: url(https:/evil.example/x.png); }", True),
+        ("a { background: url(https:///evil.example/x.png); }", True),
+        ('a { background: url("http:evil.example/x.png"); }', True),
+        ('@import "https://evil.example/t.css";', True),
+        ('@import "https:evil.example/t.css";', True),
+        ("@import url(https:evil.example/t.css);", True),
+        ("@import url('//evil.example/t.css');", True),
+        ("@import url(HTTP:/evil.example/t.css);", True),
+        # The at-rule's PRELUDE runs past the URL, and it does not have to be terminated at all: a
+        # media query, a `layer()` or `supports()` clause, or the end of the sheet ends it just as a
+        # `;` does. The strip used to require the terminator immediately after the URL, so the gate
+        # reported these while the export left them in - the drift this pair exists to prevent.
+        ('@import "https://evil.example/t.css" screen;', True),
+        ('@import "https:evil.example/t.css" layer(base);', True),
+        ('@import url(https:evil.example/t.css) supports(display: grid) print;', True),
+        ('@import "https://evil.example/t.css"', True),
+        ("@import url(https:evil.example/t.css)", True),
+        ('@media print { @import "https:evil.example/t.css" }', True),
+        # A QUOTED value is a CSS string: a `)` or the OTHER quote character inside it belongs to
+        # the URL, so reading one as "anything but a paren or a quote" stopped the strip short while
+        # the gate still reported the value.
+        ('a { background: url("https://evil.example/a)b.png"); }', True),
+        ("a { background: url('https://evil.example/a)b.png'); }", True),
+        ("a { background: url(\"https:evil.example/a'b.png\"); }", True),
+        ('a { background: url(\'https:evil.example/a"b.png\'); }', True),
+        ('@import "https://evil.example/a)b.css";', True),
+        # A token the CSS tokenizer closes but the author did not: an unterminated `url(`, one whose
+        # quote is never closed, and one closed by the OTHER quote. A real Chromium fetches all
+        # three, and the strip's well-formed readings left them behind while the gate reported them.
+        ("a { background: url(https:evil.example/unterm.png", True),
+        ("a { background: url('https:evil.example/untermq.png) }", True),
+        ("a { background: url(\"https:evil.example/mq.png') }", True),
+        # A space inside an UNQUOTED url token makes it a bad-url token a browser does not fetch, so
+        # this is over-detection - but both sides now do it, which is the property that matters: the
+        # gate is a prefix matcher and cannot see the bad token, so the strip is what has to agree.
+        ("a { background: url(https://evil.exa mple/x.png); }", True),
+        # Both strips are BOUNDED so a false hit costs a declaration, never the stylesheet: the
+        # import strip reads a quoted URL as a string (so a `;` inside it cannot cut the at-rule
+        # short and leave a tail that swallows the rules after it) and stops at `;`, `{`, `}` or a
+        # quote; the `url(...)` fallback stops at `;`, `{` and `}`. These two rows pin that a
+        # following rule survives.
+        ('@import "https://evil.example/a;b.css" screen;.keep{color:#010203}', True),
+        ('.a::before{content:"@import https:evil.example/t.css";color:red}.rest{color:blue}', True),
+        # A deletion can bring two halves of the sheet together into a NEW reference, so the strip
+        # runs to convergence: one pass over this leaves a live `@import "https://b.example/x";`.
+        ('@import@import "https://a.example/x"; "https://b.example/x";', True),
+        ('@import "https://evil.example/a}b.css"; .rest{color:blue}', True),
+        # No whitespace after the at-keyword: a `"` cannot continue an ident, so `@import"x.css";`
+        # is a valid at-rule a browser fetches, and a whitespace-only separator read it as text.
+        ('@import"https://evil.example/t.css";.keep{color:red}', True),
+        ("@import'https:evil.example/t.css';.keep{color:red}", True),
+        # An unterminated token - a `url(` closed by a block boundary rather than a `)`, and an
+        # `@import` string that is never closed - has to be consumed too, or the gate reports what
+        # the strip left behind. The block boundary itself survives, and so does a LOCAL `@import`
+        # written after a network one.
+        ("a { background: url(https:evil.example/unterm.png }", True),
+        ("a { background: url(https:evil.example/unterm.png } b {}", True),
+        ('@import "https://evil.example/x', True),
+        ("@import 'https://evil.example/x", True),
+        ('@import "https:evil.example/x.css"\n@import "./local-safe.css";', True),
+        # Deleting a span must never delete a COMMENT's opener and leave its `*/`: that turns
+        # commented-out CSS into live CSS - a fetch created by the strip itself, verified in a real
+        # Chromium. Neither strip crosses a comment boundary now, so the commented-out import below
+        # is removed as text while the comment stays closed, and the rule after it survives.
+        ('@import "https://evil.example/x.css" /* note; @import"https://evil.example/y.css"; */'
+         "\n.rest{color:red}", True),
+        ('/* @import "https://evil.example/x.css" */\n.rest{color:red}', True),
+        # The URL PARSER strips leading spaces from the value, so a padded quoted URL fetches
+        # exactly like an unpadded one - and a pattern that demanded the scheme immediately after
+        # the quote saw a relative reference on both sides.
+        ('a { background: url( " https://evil.example/x.png" ); }', True),
+        ("a { background: url('\t//evil.example/x.png'); }", True),
+        ('@import " https:evil.example/t.css";', True),
+        # Left alone: a relative or `data:` reference is the whole control case, and an authority
+        # terminated at once is an empty host a special scheme cannot even parse - reporting one
+        # would reject a file with no egress at all, and the strip does not touch it either.
+        ("a { background: url(x.png); }", False),
+        ('a { background: url("./img/x.png"); }', False),
+        ("a { background: url(/root-relative.png); }", False),
+        ("a { background: url(data:image/gif;base64,AAAA); }", False),
+        ('a { background: url("data:image/svg+xml,%3Csvg%20//x%3E"); }', False),
+        ("@import url(theme.css);", False),
+        ('@import "./theme.css";', False),
+        ('@import "./theme.css" screen and (min-width: 40em);', False),
+        ("a { background: url(https://); }", False),
+        ("a { background: url(//); }", False),
+        ('@import "https://";', False),
+        ("a { background: url(mailto:someone@example.com); }", False),
+        ("a { background: url(#local-fragment); }", False),
+        # ASCII case folding only: Python's `re.IGNORECASE` would otherwise fold `s` onto U+017F,
+        # which a JS `/i` regex never does and no browser resolves as a scheme, so the gate would
+        # reject a stylesheet the strip keeps verbatim.
+        ("a { background: url(http\u017f://evil.example/x.png); }", False),
+        ('@import "http\u017f://evil.example/t.css";', False),
+        # Neither engine's own whitespace class: a JS `\s` takes U+00A0 and U+FEFF where Python's
+        # (with `re.ASCII`) does not, and neither is CSS whitespace, so writing `\s` on both sides
+        # made the two disagree about exactly these rows. A U+FEFF in the HOST position is a real
+        # fetch (IDNA maps it away, so the host resolves), and must be treated as a host character
+        # by both; one BEFORE the scheme is not, because a value that does not start with an ASCII
+        # scheme letter never parses as a scheme at all and stays a relative reference.
+        ("a { background: url(https:\ufeffevil.example/x.png); }", True),
+        ("a { background: url(\ufeffhttps:evil.example/x.png); }", False),
+        ("a { background: url(\u00a0https://evil.example/x.png); }", False),
+    ]
+
+    def _runtime_css_strip_source(self):
+        """The exporter's CSS strip, as JS source, for evaluation in node.
+
+        The region starts at the shared pattern pieces rather than at the function, because the two
+        compiled patterns live beside it as module-level consts - assembled from strings so the
+        file's own source never carries a dynamic-import shape the export's egress scan would read
+        as egress and delete this very script over.
+        """
+        source = self._read("68-export-offline.js")
+        self.assertEqual(
+            source.count("function _offlineCssNoNetwork("), 1,
+            "the runtime declares _offlineCssNoNetwork more than once, so this extraction could "
+            "evaluate the dead copy; keep exactly one definition")
+        start = source.find("const _OFF_CSS_WS =")
+        self.assertNotEqual(start, -1,
+                            "the runtime no longer declares the shared CSS pattern pieces; the "
+                            "parity extraction is stale and must be re-pointed at what replaced it")
+        m = re.compile(r"function _offlineCssNoNetwork\(css\) \{.*?\n\}", re.S).search(source, start)
+        self.assertIsNotNone(m, "the runtime no longer declares _offlineCssNoNetwork after the "
+                                "shared pattern pieces; the parity extraction is stale")
+        region = source[start:m.end()]
+        for name in ("_OFFLINE_CSS_IMPORT_RE", "_OFFLINE_CSS_URL_RE", "_offlineCssNoNetwork"):
+            self.assertIn(name, region,
+                          "%s is no longer inside the extracted CSS-strip region, so the parity "
+                          "check would run a partial copy of the decision" % name)
+        # A region cut at the first column-0 `}` inside the function would evaluate a TRUNCATED
+        # strip and quietly pass, so require it to be brace-balanced - the same guard the
+        # network-URL extraction above carries.
+        self.assertEqual(region.count("{") - region.count("}"), 0,
+                         "the extracted CSS-strip region has unbalanced braces, so it was cut "
+                         "mid-function and the parity check would evaluate a truncated copy")
+        # A CSS pattern written as a LITERAL here would put the at-keyword's name directly before an
+        # opening paren in this file's own source, which the export's dynamic-import egress scan
+        # reads as a dynamic import - it deleted the layer's whole script, and the export then
+        # failed its own `--strict` run with a missing JS region. The patterns are assembled from
+        # string pieces so that shape never appears; this guard keeps a future edit from writing it
+        # back as a literal.
+        self.assertNotIn(
+            "@" + "import(", source,
+            "the runtime source now carries the at-keyword name directly before a paren, which the "
+            "offline export's dynamic-import egress scan reads as egress and deletes this script "
+            "over; keep the CSS patterns assembled from string pieces")
+        return region
+
+    def test_the_python_and_js_css_network_predicates_agree(self):
+        """The offline CSS strips (JS) and the strict validator's CSS gates (Python) must call the
+        SAME stylesheet a network load.
+
+        Both are literal patterns rather than a URL parse, so the pair only holds while they are
+        moved together: a stylesheet only the GATE calls network is an exported file its own
+        `--strict` run rejects, and one only the STRIP cleans is a file the gate certifies as
+        offline-clean while the export rewrites it. The comparison runs the runtime's own source in
+        node rather than re-implementing it here, because the engines differ about case folding
+        (`re.IGNORECASE` folds `s` onto U+017F; a JS `/i` never does). Skipped when node is absent,
+        like the other node-gated checks.
+        """
+        for css, expected in self._CSS_NETWORK_CORPUS:
+            self.assertEqual(
+                bool(resources.CSS_NETWORK_URL_RE.search(css)
+                     or resources.CSS_NETWORK_IMPORT_RE.search(css)),
+                expected,
+                "the validator's CSS gates call %r %s. A miss is a remote stylesheet fetch the "
+                "gate certifies as offline-clean; a false hit rejects a file the exporter just "
+                "produced." % (css, "local" if expected else "a network load"))
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine parity check needs it")
+        payload = {"corpus": [css for css, _ in self._CSS_NETWORK_CORPUS]}
+        script = (
+            self._runtime_css_strip_source() + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);process.stdout.write(JSON.stringify("
+            "p.corpus.map(s=>_offlineCssNoNetwork(s))));});"
+        )
+        proc = subprocess.run([node, "-e", script], input=json.dumps(payload),
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0,
+                         "node could not evaluate the CSS strip: %s" % proc.stderr)
+        stripped = json.loads(proc.stdout)
+        self.assertEqual(len(stripped), len(self._CSS_NETWORK_CORPUS),
+                         "node returned %d results for %d samples"
+                         % (len(stripped), len(self._CSS_NETWORK_CORPUS)))
+        for (css, expected), out in zip(self._CSS_NETWORK_CORPUS, stripped):
+            self.assertEqual(
+                out != css, expected,
+                "the runtime's _offlineCssNoNetwork %s %r, so the strip and the validator's CSS "
+                "gates have diverged. A stylesheet only one of them calls a network load is "
+                "either a remote fetch the gate blesses, or an exported file its own --strict run "
+                "rejects." % ("rewrote" if out != css else "left", css))
+            if expected:
+                self.assertNotIn(
+                    "evil.example", out,
+                    "the runtime's _offlineCssNoNetwork changed %r but left the remote host "
+                    "behind, so the exported stylesheet still fetches" % css)
+            # A false hit must cost at most the declaration it sits in. Any row that carries a
+            # `.keep`/`.rest` marker after the reference asserts that marker survives, so neither
+            # strip can run away with the rest of the stylesheet.
+            for marker in (".keep{", ".rest{", "local-safe.css"):
+                if marker in css:
+                    self.assertIn(
+                        marker, out,
+                        "the exporter's CSS strip swallowed %r out of %r, so a single reference "
+                        "took unrelated author CSS with it" % (marker, css))
+            # The real contract is a FIXED POINT, not merely "the strip changed something": what
+            # the export emits has to pass the gate it is measured by. Asserting only `out != css`
+            # is satisfied by a strip that removes part of a reference and leaves the rest, which
+            # is exactly the shape an unterminated `url(` used to produce.
+            self.assertFalse(
+                resources.CSS_NETWORK_URL_RE.search(out)
+                or resources.CSS_NETWORK_IMPORT_RE.search(out),
+                "the gate still reports %r after the exporter's own strip ran on %r, so "
+                "`validate.py --strict` would reject the file the export just produced"
+                % (out, css))
 
 
     # Attribute-name spellings the two `^on` predicates must agree about. `once`/`onward` are

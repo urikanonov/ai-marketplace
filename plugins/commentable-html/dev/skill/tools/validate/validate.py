@@ -160,6 +160,7 @@ from checks.parsing import (  # noqa: F401,E402
 )
 from checks.resources import (  # noqa: F401,E402
     CHARTJS_SRC_RE,
+    CSS_NETWORK_IMPORT_RE,
     CSS_NETWORK_URL_RE,
     FETCHING_LINK_RELS,
     META_REFRESH_NETWORK_URL_RE,

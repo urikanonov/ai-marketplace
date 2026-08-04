@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.612.0" />
+<meta name="commentable-html-version" content="1.650.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.612.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.650.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Design review sign-off</title>
 
@@ -4382,7 +4382,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.612.0";
+const CMH_VERSION = "1.650.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -17791,7 +17791,12 @@ function _offlineNormalizeUrlValue(v) {
 // the value fetches nothing (a special scheme cannot even parse it), so `//?q`, `https://` and the
 // Windows extended-length path `\\?\C:\x` - which the backslash mapping turns into `//?/C:/x` - are
 // left alone rather than stripped out of an author's document.
-const _OFFLINE_NETWORK_URL_RE = /^(?:(?:https?:)?\/\/(?![?#]|$)|file:(?:\/\/(?!\/)|\/{4,}(?!\/))(?![?#]|$)(?!localhost(?:[/?#]|$))(?![A-Za-z][:|]))/i;
+// The http/https arm CONSUMES the slash run after the scheme rather than counting it, so the
+// scheme-only `https:host/x.js` and single-slash `https:/host/x.js` - which the special-authority
+// states resolve to the same host as `https://host/x.js` - are network URLs here too, and one host
+// character is required so an empty authority stays local. That widening moved with the CSS strips
+// below and the validator's copies of all three, both sides at once (issue #961).
+const _OFFLINE_NETWORK_URL_RE = /^(?:(?:https?:\/*|\/{2,})[^/?#]|file:(?:\/\/(?!\/)|\/{4,}(?!\/))(?![?#]|$)(?!localhost(?:[/?#]|$))(?![A-Za-z][:|]))/i;
 function _offlineIsNetworkUrl(v) {
   return _OFFLINE_NETWORK_URL_RE.test(_offlineNormalizeUrlValue(v));
 }
@@ -17831,10 +17836,72 @@ function _offlineSrcsetHasNetwork(v) {
     return _offlineIsNetworkUrl(url);
   });
 }
+// The CSS network strips, assembled from string parts rather than written as regex LITERALS. The
+// pieces are shared, so the two patterns cannot drift apart, and - this is the load-bearing reason -
+// the assembled source never contains the at-keyword's name followed directly by an opening paren:
+// this file's own text is scanned by the offline export's dynamic-import egress check, which reads
+// that sequence as a dynamic import and DELETES the script it sits in, which is this one.
+const _OFF_CSS_WS = "[\\t\\n\\f\\r ]";
+const _OFF_CSS_NET = "(?:https?:\\/*|\\/{2,})";
+// One host character, the same approximation the validator's `_CSS_HOST_CHAR` makes.
+const _OFF_CSS_HOST = "[^/?#\"')\\t\\n\\f\\r ]";
+// A run that stops at a comment boundary in either direction (see `_offlineCssNoNetwork`), plus
+// whatever else its caller must not cross.
+const _OFF_CSS_RUN = function (extra) {
+  return "(?:[^" + extra + "/*]|\\/(?!\\*)|\\*(?!\\/))*";
+};
+const _OFF_CSS_QUOTED = function (q) {
+  return q + _OFF_CSS_WS + "*" + _OFF_CSS_NET + _OFF_CSS_HOST + "[^" + q + "]*" + q;
+};
+const _OFFLINE_CSS_IMPORT_RE = new RegExp(
+  "@" + "import" + "(?:" + _OFF_CSS_WS + "+|(?=[\"']))"
+  + "(?:url\\(" + _OFF_CSS_WS + "*)?"
+  + "(?:" + _OFF_CSS_QUOTED("\"") + "|" + _OFF_CSS_QUOTED("'")
+  + "|" + _OFF_CSS_NET + _OFF_CSS_HOST + _OFF_CSS_RUN(";{}\"')")
+  + "|[\"']" + _OFF_CSS_WS + "*" + _OFF_CSS_NET + _OFF_CSS_HOST + _OFF_CSS_RUN(";{}")
+  + ")" + _OFF_CSS_RUN(";{}\"'@") + ";?", "gi");
+const _OFFLINE_CSS_URL_RE = new RegExp(
+  "url\\(" + _OFF_CSS_WS + "*(?:" + _OFF_CSS_QUOTED("\"") + "|" + _OFF_CSS_QUOTED("'")
+  + "|" + _OFF_CSS_NET + _OFF_CSS_HOST + "[^)\"'\\t\\n\\f\\r ]*"
+  + "|(?:[\"']" + _OFF_CSS_WS + "*)?" + _OFF_CSS_NET + _OFF_CSS_HOST + _OFF_CSS_RUN(");{}")
+  + ")(?:" + _OFF_CSS_WS + "*\\)|$|(?=[;{}]))", "gi");
 function _offlineCssNoNetwork(css) {
-  return String(css || "")
-    .replace(/@import\s+(?:url\()?["']?(?:https?:)?\/\/[^;"')]+["']?\)?\s*;/gi, "")
-    .replace(/url\(\s*(["']?)(?:https?:)?\/\/[^)"']+\1\s*\)/gi, 'url("data:,")');
+  // Mirrors the validator's `CSS_NETWORK_IMPORT_RE` / `CSS_NETWORK_URL_RE`, and moves with them
+  // (issue #961): the slash run after a special scheme is CONSUMED rather than counted, so the
+  // scheme-only `url(https:host/x.png)` the URL parser resolves to the same host is stripped too,
+  // and one host character is required so an empty authority - `url(https://)`, `url(//)`, which
+  // fetch nothing - is left in the author's stylesheet rather than rewritten.
+  // Both replaces have to remove EVERYTHING the gate reports, or an export fails its own `--strict`
+  // run. Shapes that used to escape them while the gate flagged them: an at-rule whose URL is
+  // followed by a media query, a `layer()`/`supports()` clause, or nothing at all (the terminator
+  // was required immediately after the URL); a QUOTED value carrying a `)` or the other quote
+  // character; a value or string the CSS tokenizer closes but the author did not; and an at-keyword
+  // with NO whitespace before its quoted URL, which is valid CSS that really fetches. So the at-rule
+  // strip consumes the prelude the way a CSS parser does - to its `;`, its block boundary, or the
+  // end of the sheet - and the value strip reads a quoted value as a CSS STRING.
+  // Whitespace is spelled out as the ASCII set rather than `\s`, because a JS `\s` also takes
+  // U+00A0 and U+FEFF (neither of which is CSS whitespace, and neither of which Python's `\s`
+  // takes under `re.ASCII`), which would classify `url(<U+FEFF>https:host/x)` differently here than
+  // in the gate.
+  // Both are BOUNDED: they stop at `;`, `{`, `}` (and the at-rule tail also at `@`), so a false hit
+  // on `url(`/at-rule text written INSIDE a CSS string costs at most the declaration it sits in
+  // rather than the rest of the stylesheet, and a LOCAL at-rule written after a network one
+  // survives. Neither crosses a comment boundary in either direction: consuming a `/*` would delete
+  // a comment's OPENER and leave its `*/`, turning commented-out CSS into live CSS - a net-new fetch
+  // created by the strip itself, verified in a real Chromium. The cost is that a reference written
+  // inside a comment is left alone while the (raw-text) gate still reports it; that is the shared
+  // raw-text residual issue #1029 tracks, and the only shape where this pair is not a fixed point.
+  // Applied until it converges, and a removed at-rule is replaced by a SPACE rather than by nothing,
+  // because a deletion can otherwise bring two halves of the sheet together into a NEW reference and
+  // the contract the gate holds the export to is a fixed point: what is written out must no longer
+  // match.
+  let out = String(css || "");
+  for (let i = 0; i < 5; i++) {
+    const next = out.replace(_OFFLINE_CSS_IMPORT_RE, " ").replace(_OFFLINE_CSS_URL_RE, 'url("data:,")');
+    if (next === out) break;
+    out = next;
+  }
+  return out;
 }
 function _stripOfflineEventHandlers(doc) {
   // Template-parked too: an `on*` attribute on a fragment a script later adopts and inserts is a
