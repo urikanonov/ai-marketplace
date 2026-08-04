@@ -38,6 +38,24 @@ function cmhSectionHash(text) {
 // (section_hash.py) for every content type, not just plain prose.
 const CMH_SCAN_SKIP_SEL = ".cm-skip, script, style, template, noscript, .cmh-diff, .cmh-kql, .mermaid, canvas, [data-cmh-note]";
 
+// Layer chrome the runtime INJECTED into the content root is excluded by IDENTITY, not by a class.
+// One pass genuinely appends prose there: the print appendix (83-print.js) materializes every open
+// comment as articles at the end of #commentRoot on `beforeprint` and removes them on `afterprint`.
+// Its text is the reviewer's notes, not the document's, so it must not enter the hash - a reader who
+// opened a print preview would otherwise see every hash-derived state (the validated banner, the
+// section review badges) flip for as long as the preview was open. It cannot simply wear `cm-skip`:
+// the print stylesheet hides `body > .cm-skip`, and a document with no `#commentRoot` roots the
+// layer at `<body>`, so that would hide the appendix from the very print it exists for. Identity is
+// also the right test rather than an id/class selector - the Python hasher reads the SOURCE file,
+// which can never contain runtime-injected chrome, so excluding only what the LAYER created can
+// only improve agreement, while an author element wearing the id would be wrongly dropped. The set
+// consulted is CMH_HASH_EXCLUDED, populated only at the site that CREATES the node, never the
+// heuristic export-tail set (see 00-preamble.js).
+function _cmhScanSkip(node) {
+  if (CMH_HASH_EXCLUDED.has(node)) return true;
+  return node.matches(CMH_SCAN_SKIP_SEL);
+}
+
 // True while the reader holds a persisted table sort, i.e. while the DOM row order can differ from
 // the authored source order the stamp and the review markers were taken over.
 function _cmhTableSortActive() {
@@ -48,8 +66,9 @@ function _cmhTableSortActive() {
 // PERSISTED table sort is a runtime-only DOM reorder that neither the validated stamp (hashed from
 // the source file) nor a review marker ever saw, so the scan below reads the rows in the order the
 // author wrote them - recovered from the data-cmh-row index the runtime stamps at load, permuted
-// through the rows' existing slots so the authored whitespace between them stays put (mirroring
-// _reorderBody in 62-sortable-tables.js). This is a pure READ: the DOM is never touched, so a
+// through the rows' existing slots so the authored whitespace between them stays put (the shared
+// cmhPermutedChildNodes in 00-preamble.js, the pure-read twin of the writer _reorderBody uses).
+// This is a pure READ: the DOM is never touched, so a
 // hash or a badge refresh cannot move the reader's rows, drop focus or selection inside a row, or
 // churn observers.
 //
@@ -61,9 +80,9 @@ function _cmhTableSortActive() {
 function _cmhCanonicalChildNodes(el, canonical) {
   const kids = el.childNodes;
   if (!canonical || el.tagName !== "TBODY") return kids;
-  const slots = [], rows = [];
+  const rows = [];
   for (let i = 0; i < kids.length; i++) {
-    if (kids[i].nodeType === 1 && kids[i].tagName === "TR") { slots.push(i); rows.push(kids[i]); }
+    if (kids[i].nodeType === 1 && kids[i].tagName === "TR") rows.push(kids[i]);
   }
   // Only a body the runtime itself indexed is reordered: _indexTableRows stamps every row of a
   // SORTABLE table at load, in source order. An authored data-cmh-row on some other table is not
@@ -74,9 +93,7 @@ function _cmhCanonicalChildNodes(el, canonical) {
   const ordered = rows.slice().sort(function (a, b) {
     return (parseInt(a.getAttribute("data-cmh-row"), 10) || 0) - (parseInt(b.getAttribute("data-cmh-row"), 10) || 0);
   });
-  const out = Array.prototype.slice.call(kids);
-  for (let i = 0; i < slots.length; i++) out[slots[i]] = ordered[i];
-  return out;
+  return cmhPermutedChildNodes(el, ordered) || kids;
 }
 // Walk #commentRoot once (skipping every cm-skip subtree, so the review badge, section caret,
 // and any injected chrome are excluded) and return the concatenated text plus each heading with
@@ -89,7 +106,7 @@ function _cmhScanSections() {
   (function visit(node) {
     if (node.nodeType === 3) { full += node.nodeValue; return; }
     if (node.nodeType !== 1) return;
-    if (node.matches(CMH_SCAN_SKIP_SEL)) return;
+    if (_cmhScanSkip(node)) return;
     if (/^H[1-6]$/i.test(node.tagName)) {
       heads.push({ el: node, level: parseInt(node.tagName.slice(1), 10), offset: full.length });
     }

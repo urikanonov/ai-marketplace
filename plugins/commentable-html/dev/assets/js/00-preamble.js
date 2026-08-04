@@ -18,6 +18,16 @@ const CMH_LAYER_SCRIPT = document.currentScript;
 // host content (which may itself be cm-skip, e.g. a chart <canvas>). See _snapshotWithTail.
 const CMH_INJECTED_CHROME = new Set();
 
+// Layer chrome that must not count as DOCUMENT TEXT. Deliberately SEPARATE from
+// CMH_INJECTED_CHROME above: that set is populated partly by a heuristic sweep (every element
+// sibling following the layer script, in 95-startup.js), which is fine for its job - trimming an
+// export tail - because an over-capture there costs a stale tail. Membership HERE subtracts text
+// from the document content hash, where an over-capture is silent and produces the exact false
+// "not validated" banner the hash exists to prevent, so this set is populated only where the layer
+// CREATES the node, by construction. Today that is the print appendix (83-print.js), the one pass
+// that appends real prose into the content root; every other in-root control is cm-skip.
+const CMH_HASH_EXCLUDED = new Set();
+
 // The layer's OWN interactive chrome, held by IDENTITY. Some of it is injected INSIDE the content
 // root (a sortable-table sort control, a widget "Reset moves", a checklist box), where containment
 // cannot tell it from author content and a class match would let author content spoof its way past
@@ -80,5 +90,59 @@ function cmScrollBehavior() {
     if (typeof window.matchMedia !== "function") return "auto";
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
   } catch (e) { return "auto"; }
+}
+
+// ---- Authored-text preservation: permute children through the slots they ALREADY occupy ----
+// Reordering elements by APPENDING them strands the whitespace text nodes an author leaves between
+// them: the elements end up textually adjacent and the stranded whitespace piles up ahead of them.
+// That is a text change no later "unsort" can undo (unsorting restores element ORDER, not the moved
+// whitespace), so it silently drifted the document and section content hashes and made the same
+// file show the "not validated" banner on one machine and not another (#952). Every reorder inside
+// the content root goes through these helpers instead, so the class cannot reappear in a third copy
+// of the slot math (#977): `ordered` is dropped into the slots its OWN members already occupy and
+// every other child node stays exactly where the author put it.
+//
+// Both fail SAFE. Given anything that is not a permutation of nodes currently parented by `parent`
+// (a foreign node, a duplicate) they decline, because an untouched DOM is always text-neutral while
+// a partial rearrangement is not.
+function _cmhSlotPlan(parent, ordered) {
+  if (!parent || !ordered || ordered.length < 2) return null;
+  const kids = Array.prototype.slice.call(parent.childNodes);
+  const pos = new Map();
+  for (let i = 0; i < kids.length; i++) pos.set(kids[i], i);
+  const slots = [];
+  for (let i = 0; i < ordered.length; i++) {
+    if (!pos.has(ordered[i])) return null;
+    slots.push(pos.get(ordered[i]));
+  }
+  if (new Set(slots).size !== slots.length) return null;
+  slots.sort(function (a, b) { return a - b; });
+  return { kids: kids, slots: slots };
+}
+// Pure READ: a copy of `parent`'s child nodes with `ordered` placed into its members' slots.
+// Returns null when the input is not such a permutation, so a caller can fall back to the live
+// order. Used by the canonical-hash scan, which must never touch the DOM.
+function cmhPermutedChildNodes(parent, ordered) {
+  const plan = _cmhSlotPlan(parent, ordered);
+  if (!plan) return null;
+  const out = plan.kids.slice();
+  for (let i = 0; i < plan.slots.length; i++) out[plan.slots[i]] = ordered[i];
+  return out;
+}
+// WRITE: apply that permutation to the DOM by swapping each member out for a placeholder comment
+// and each placeholder back for the node that belongs in it. Returns true when the DOM changed;
+// an identity reorder returns false without touching anything (the canonical-hash and export passes
+// unsort EVERY sortable table, including ones the reader never sorted).
+function cmhPermuteChildrenInSlots(parent, ordered) {
+  const plan = _cmhSlotPlan(parent, ordered);
+  if (!plan) return false;
+  const members = plan.slots.map(function (s) { return plan.kids[s]; });
+  let same = true;
+  for (let i = 0; i < members.length; i++) if (members[i] !== ordered[i]) { same = false; break; }
+  if (same) return false;
+  const marks = members.map(function () { return document.createComment(""); });
+  members.forEach(function (n, i) { parent.replaceChild(marks[i], n); });
+  marks.forEach(function (m, i) { parent.replaceChild(ordered[i], m); });
+  return true;
 }
 
