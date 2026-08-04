@@ -4,6 +4,49 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.572.0] - 2026-08-04
+
+### Fixed
+
+- The authoring tools, the deck validator and the contrast scanner now draw the SAME element
+  boundaries as the validator, not only the same attribute values (CMH-VAL-21). Their locators and
+  scanners - `wrap_sections` (`_TopLevelLocator`, `_ContentRootLocator`), `generate_toc`,
+  `doc_stats`, `fix_skip`, the deck validator's active-content and authored-content scans and the
+  contrast scanner's style/document scans - were plain `html.parser` subclasses, so a
+  `<main id="commentRoot">`, a `<pre class="mermaid">`, an `<h2>` or a `style=` an author only
+  QUOTED inside a raw-text body (`<textarea>`, `<title>`, `<noscript>`, `<iframe>`, ...) was a real
+  element to the tool and text to the validator - differently on Python 3.12 than on 3.13. That
+  matters more in a tool than in a check: `wrap_sections` and `fix_skip` INSERT bytes at the
+  offsets they report, so an element a browser never builds moved the edit into a reader's prose.
+  They all derive from the shared `_BrowserBoundaries` now, through a new
+  `tools/_browser_boundaries.py` shim that resolves it the same guarded way the attribute shim
+  resolves the decode and degrades to the host's own boundaries, warned about once, on a broken
+  install.
+- The deck's egress scan no longer misses a resource behind a bogus `<![CDATA[`. `html.parser`
+  consumes a whole `<![CDATA[ ... ]]>` marked section in every context, where a browser outside
+  foreign content treats `<![CDATA[` as a bogus comment ending at the first `>` - so
+  `<![CDATA[><img src="//cdn.example/x.png">]]>` left a remote fetch the deck really does perform
+  and the scan never saw. Its `<noscript>` fallback is kept: that body is raw text with scripting
+  ENABLED but live markup with scripting OFF, so the scan reads the WHOLE body twice - once each
+  way - and unions the findings. Reading it twice rather than re-parsing the body the enabled
+  tokenizer carved out is what closes the seam between the two views: that body ends at the first
+  `</noscript`, which a scripting-disabled browser may never reach (it can sit inside a quoted
+  attribute value, or inside a comment that hides it), so markup straddling the seam belonged to
+  neither reading and a remote fetch went unreported. The scan also reports rather than passes when
+  the shared boundaries are unavailable at all (a broken or partial install); the authoring tools
+  deliberately degrade the other way and keep running, because a degraded edit beats a tool that
+  cannot start.
+- State an authoring tool keys on a stack index now ends wherever a BROWSER ends the element - its
+  own end tag, an ancestor's end tag, HTML5's implicit `</p>` / `</li>` close, a foreign-content
+  breakout, or end of input. An implicitly closed `<p id="commentRoot">` used to leave a stale root
+  index, so the section wrapping rewrote the sibling content a browser puts outside the root; a
+  self-closed void tag (`<hr/>`) now closes an open `<p>` instead of being short-circuited, so a
+  `cm-skip` subtree no longer stays open over content a reader can comment on; only the element's
+  OWN end tag is part of its span, so a rewrite no longer deletes an ancestor's closer; and the
+  extent of an end tag comes from the shared quote-aware scan, so `</nav a=">">` ends at the second
+  `>` rather than leaving a stray `">` behind.
+
+
 ## [1.552.0] - 2026-08-04
 
 ### Added

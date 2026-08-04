@@ -6,16 +6,22 @@ import os
 import re
 import sys
 
-# The shared browser parse lives beside the validator's `checks` package; the shim at the tools/
-# root resolves it (and degrades to the host's own parser and list on a partial install). It is
-# reached through the shim rather than imported directly because `cmhval` is a SIBLING package that
-# must stay independently importable, and `checks` already imports `cmhval` - so importing `checks`
-# back from here would be a cycle.
+# The shared browser attribute decode and element boundaries live beside the validator's `checks`
+# package; the shims at the tools/ root resolve them (and degrade to the host's own parser and
+# list on a partial install). They are reached through the shims rather than imported directly
+# because `cmhval` is a SIBLING package that must stay independently importable, and `checks`
+# already imports `cmhval` - so importing `checks` back from here would be a cycle.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import _browser_attrs  # noqa: E402
+import _browser_boundaries  # noqa: E402
 
 DEFAULT_MIN_CONTRAST_RATIO = 4.5
 DEFAULT_MIN_STROKE_CONTRAST_RATIO = 3.0
+
+_VOID_TAGS = frozenset((
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link",
+    "meta", "param", "source", "track", "wbr",
+))
 
 _NAMED_COLORS = {
     "black": (0, 0, 0, 1.0),
@@ -401,91 +407,135 @@ def _background_decl(declarations, items=None):
     return declarations.get("background-color") or declarations.get("background")
 
 
-class _StyleScanner(_browser_attrs.StartTagParser):
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
+class _StyleScanner(_browser_boundaries.BrowserBoundaries):
+    """Collect `<style>` blocks and inline `style=` declarations.
+
+    Derives from the SHARED element boundaries (CMH-VAL-21), which subsume the shared start-tag
+    parse this used to reach through `_browser_attrs`, so this scan sees the elements a BROWSER
+    builds - identically on every interpreter. A `style=` a reader only SEES quoted inside
+    a raw-text body (`<textarea>`, `<title>`, `<noscript>`, ...) styles nothing and is not
+    reported, and a declaration a browser leaves LIVE after a bogus `<![CDATA[` is.
+    """
+
+    def __init__(self, html=""):
+        super().__init__(html)
         self.style_blocks = []
         self.style_media = []
         self.style_is_brand = []
         self.inline_styles = []
+        self._els = []            # open element tags, parallel to the namespace stack
         self._style_attrs = None
+        self._style_index = None
         self._style_body = []
 
-    def _attrs_dict(self, tag, attrs):
+    def _truncate_stacks(self, depth):
+        # A `<style>` is raw text, so nothing inside it can close it early; this fires on its own
+        # end tag, and `close()` covers one left open at end of input (a browser runs that to EOF,
+        # so its rules are live). The `>=` is the same defensive shape every other parallel stack
+        # here uses, so a future truncation path cannot leave the block open.
+        if self._style_index is not None and self._style_index >= depth:
+            self._close_style()
+        super()._truncate_stacks(depth)
+        del self._els[depth:]
+
+    def _close_style(self):
+        self.style_blocks.append("".join(self._style_body))
+        self.style_media.append((self._style_attrs or {}).get("media", ""))
+        self.style_is_brand.append("data-cmh-brand" in (self._style_attrs or {}))
+        self._style_attrs = None
+        self._style_index = None
+        self._style_body = []
+
+    def _element(self, tag, attr_map):
         # The SHARED browser decode (CMH-VAL-21): values re-derived from the raw start tag, and
         # the FIRST occurrence of a duplicated attribute winning as HTML5 says - a dict
         # comprehension kept the last one, so a decoy `style=` could hide the live declaration.
-        return _browser_attrs.attrs_dict(self, tag, attrs)
-
-    def handle_starttag(self, tag, attrs):
-        tag = tag.lower()
-        attr_map = self._attrs_dict(tag, attrs)
         if "style" in attr_map:
             self.inline_styles.append((tag, attr_map, attr_map["style"]))
-        if tag == "style":
+
+    def handle_starttag(self, tag, attrs):
+        tag = self._browser_tag(tag)
+        attr_map = self._attrs_dict(tag, attrs)
+        ns = self._child_namespace(tag, attr_map)
+        if ns == "html":
+            self._implicit_close(tag)
+        self._element(tag, attr_map)
+        if tag == "style" and self._style_attrs is None:
             self._style_attrs = attr_map
+            self._style_index = len(self._els)
             self._style_body = []
+        if tag not in _VOID_TAGS or ns != "html":
+            self._els.append(tag)
+            self._push_ns(tag, ns, attr_map)
+        self._enter_raw_text(tag, ns)
 
     def handle_startendtag(self, tag, attrs):
-        attr_map = self._attrs_dict(tag.lower(), attrs)
-        if "style" in attr_map:
-            self.inline_styles.append((tag.lower(), attr_map, attr_map["style"]))
+        tag = self._browser_tag(tag)
+        attr_map = self._attrs_dict(tag, attrs)
+        if self._foreign_self_closes(self._child_namespace(tag, attr_map)):
+            self._element(tag, attr_map)
+            return
+        self.handle_starttag(tag, attrs)
 
     def handle_data(self, data):
         if self._style_attrs is not None:
             self._style_body.append(data)
 
     def handle_endtag(self, tag):
-        if tag.lower() == "style" and self._style_attrs is not None:
-            self.style_blocks.append("".join(self._style_body))
-            self.style_media.append((self._style_attrs or {}).get("media", ""))
-            self.style_is_brand.append("data-cmh-brand" in (self._style_attrs or {}))
-            self._style_attrs = None
-            self._style_body = []
+        tag = self._browser_tag(tag)
+        for i in range(len(self._els) - 1, -1, -1):
+            if self._els[i] == tag:
+                self._truncate_stacks(i)
+                return
+
+    def close(self):
+        # The base flushes the tail of an UNCLOSED raw-text element first, so a `<style>` that
+        # never closes still contributes its rules (a browser runs it to EOF too).
+        super().close()
+        if self._style_attrs is not None:
+            self._close_style()
 
 
 class _DocumentScanner(_StyleScanner):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, html=""):
+        super().__init__(html)
         self.root = _DomNode("__doc__", {})
         self._stack = [self.root]
         self._order = 0
 
     @staticmethod
     def _node(tag, attrs, order):
-        return _DomNode(tag.lower(), attrs, order=order)
+        return _DomNode(tag, attrs, order=order)
 
-    def _push_node(self, tag, attrs):
-        node = self._node(tag, attrs, self._order)
+    def _truncate_stacks(self, depth):
+        super()._truncate_stacks(depth)
+        # `self._stack[0]` is the synthetic document node, so an element at stack index `i` is
+        # node `i + 1` - the two views stay in step through this one truncation path.
+        del self._stack[depth + 1:]
+
+    def _element(self, tag, attr_map):
+        super()._element(tag, attr_map)
+        node = self._node(tag, attr_map, self._order)
         self._order += 1
         node.parent = self._stack[-1]
         node.parent.children.append(node)
         self._stack.append(node)
-        return node
 
     def handle_starttag(self, tag, attrs):
         super().handle_starttag(tag, attrs)
-        self._push_node(tag, self._attrs_dict(tag.lower(), attrs))
+        if len(self._stack) > len(self._els) + 1:
+            # A VOID or self-closed element is a node but never an open one; drop it back off the
+            # ancestor stack so its siblings are not parented under it.
+            del self._stack[len(self._els) + 1:]
 
     def handle_startendtag(self, tag, attrs):
         super().handle_startendtag(tag, attrs)
-        node = self._node(tag, self._attrs_dict(tag.lower(), attrs), self._order)
-        self._order += 1
-        node.parent = self._stack[-1]
-        node.parent.children.append(node)
+        del self._stack[len(self._els) + 1:]
 
     def handle_data(self, data):
         super().handle_data(data)
         if self._stack:
             self._stack[-1].text_parts.append(data)
-
-    def handle_endtag(self, tag):
-        super().handle_endtag(tag)
-        low = tag.lower()
-        while len(self._stack) > 1:
-            node = self._stack.pop()
-            if node.tag == low:
-                return
 
 
 def _element_source(tag, attrs):
@@ -859,9 +909,8 @@ def _issue_for_pair(source, fg_value, bg_value, variables, threshold):
 
 def find_low_contrast_pairs(html, threshold=DEFAULT_MIN_CONTRAST_RATIO, variable_pairs=(),
                             stroke_threshold=DEFAULT_MIN_STROKE_CONTRAST_RATIO):
-    scanner = _DocumentScanner()
-    scanner.feed(html)
-    scanner.close()
+    scanner = _DocumentScanner(html)
+    scanner.parse_document(html)
     variables = _collect_variables(scanner.style_blocks)
     issues = []
 
@@ -1031,9 +1080,8 @@ def theme_environments(html):
     palette never masquerades as the screen dark palette. Grouped selectors are split on top-level
     commas and each part classified independently. Only custom properties (names starting with
     `--`) are collected. Returns {} when the document declares no custom properties."""
-    scanner = _StyleScanner()
-    scanner.feed(html)
-    scanner.close()
+    scanner = _StyleScanner(html)
+    scanner.parse_document(html)
     base, dark_overlay = {}, {}
     for css, media, is_brand in zip(scanner.style_blocks, scanner.style_media, scanner.style_is_brand):
         if is_brand:
