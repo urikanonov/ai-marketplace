@@ -14,6 +14,7 @@ const CONTENT = `
 <h1>Offline export</h1>
 <p id="offline-note">This paragraph proves embedded comments travel in the offline file.</p>
 <img id="remoteTracker" alt="Remote tracker" src="https://example.com/tracker.png" srcset="https://example.com/tracker-2x.png 2x">
+<link id="remotePreload" rel="preload" as="image" imagesrcset="https://example.com/preload.png 1x" imagesizes="100vw">
 <iframe id="remoteFrame" title="Remote frame" src="https://example.com/beacon.html"></iframe>
 <pre class="mermaid cm-skip">
 flowchart LR
@@ -169,7 +170,7 @@ function mediaLoadAttributes(html) {
   const refs = [];
   const tagRe = /<(script|link|img|source|iframe|video|audio|object|embed|track|image|use|input|meta|base|body|table|td|th|form|button)\b[^>]*>/gi;
   for (const tag of html.matchAll(tagRe)) {
-    for (const attr of tag[0].matchAll(/\s(href|xlink:href|src|srcset|poster|data|background|content|action|formaction)\s*=\s*["']([^"']+)["']/gi)) {
+    for (const attr of tag[0].matchAll(/\s(href|xlink:href|src|srcset|imagesrcset|imagesizes|poster|data|background|content|action|formaction)\s*=\s*["']([^"']+)["']/gi)) {
       refs.push({ tag: tag[1].toLowerCase(), attr: attr[1].toLowerCase(), value: attr[2] });
     }
   }
@@ -179,7 +180,9 @@ function mediaLoadAttributes(html) {
 function networkLoadRefs(html) {
   const refs = [];
   for (const item of mediaLoadAttributes(html)) {
-    const values = item.attr === "srcset" ? item.value.split(",").map((part) => part.trim().split(/\s+/)[0]) : [item.value];
+    const values = (item.attr === "srcset" || item.attr === "imagesrcset")
+      ? item.value.split(",").map((part) => part.trim().split(/\s+/)[0])
+      : [item.value];
     for (const value of values) {
       if (/^(?:https?:)?\/\//i.test(value)) refs.push(value);
     }
@@ -199,6 +202,7 @@ test("Export Offline embeds vendored mermaid and Chart.js for zero-network reope
   expect(networkLoadRefs(CONTENT)).toEqual(expect.arrayContaining([
     "https://example.com/tracker.png",
     "https://example.com/tracker-2x.png",
+    "https://example.com/preload.png",
     "https://example.com/beacon.html",
   ]));
   const staged = stageContent(CONTENT, { key: "cmh-offline-export", source: "offline-export.html" });
@@ -2819,6 +2823,128 @@ test("CMH-OFFLINE-04: hyperlink auditing and an SVG feImage are stripped from an
     await expect.poll(() => external, { timeout: 10000 }).toEqual([controlUrl]);
   } finally {
     if (ctx2) await ctx2.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+// A `<link>` fetches through more than its `href`, and neither the offline strip nor the strict
+// validator read the other two attributes (#999): a preload link carries the URL in `imagesrcset`
+// with NO href at all, and `imagesizes` rides with it. The controls sit beside the decoys - a local
+// candidate list, a `data:` candidate and an ordinary `sizes` value must survive untouched, and
+// every link must keep its identity, since only the fetching value goes.
+const PRELOAD_IMAGESRCSET_CONTENT = [
+  "<h1>Preload links</h1>",
+  '<p id="preload-note">A preload link fetches through imagesrcset, with no href at all.</p>',
+  '<link id="cmh-preload-net" rel="preload" as="image" imagesrcset="https://evil.example/preload.png 1x, https://evil.example/preload-2x.png 2x" imagesizes="(max-width: 600px) 100vw, 50vw">',
+  // One network candidate among local ones is still a fetch, so the whole attribute goes - the
+  // tokenizer decides that, not a whole-value test.
+  '<link id="cmh-preload-mixed" rel="preload" as="image" imagesrcset="local-tile.png 1x, //evil.example/mixed.png 2x">',
+  // `rel`-blind on both sides: the strip clears an ATTRIBUTE rather than removing the element, so
+  // there is no content to lose, and a gate that consulted `rel` would drift from it.
+  '<link id="cmh-preload-norel" imagesrcset="https://evil.example/norel.png 1x">',
+  // `imagesizes` holds media conditions and lengths rather than URLs, so a network value there is
+  // malformed either way - but both sides read it, so neither can bless what the other changes.
+  '<link id="cmh-preload-sizes" rel="preload" as="image" imagesrcset="local-tile.png 1x" imagesizes="https://evil.example/sizes">',
+  // A template-parked one starts preloading the moment a script adopts the fragment, which is why
+  // every load pass walks into templates.
+  '<template id="cmh-preload-template"><link id="cmh-preload-parked" rel="preload" as="image" imagesrcset="https://evil.example/parked.png 1x"></template>',
+  // A <noscript>-parked one is markup a scripting-DISABLED browser really parses and preloads, and
+  // it is the axis where the two sides reach the same element by DIFFERENT mechanisms - the export
+  // strip parses into a DOMParser document (scripting off, so this is a real element) while the
+  // gate reads its own noscript egress view - so it is pinned rather than assumed.
+  '<noscript><link id="cmh-preload-noscript" rel="preload" as="image" imagesrcset="https://evil.example/noscript.png 1x"></noscript>',
+  // The controls: nothing here reaches the network, so nothing here may change.
+  '<link id="cmh-preload-local" rel="preload" as="image" imagesrcset="local-tile.png 1x, local-tile-2x.png 2x" imagesizes="100vw">',
+  '<link id="cmh-preload-data" rel="preload" as="image" imagesrcset="data:image/gif;base64,R0lGODlhAQABAAAAACw= 1x">',
+].join("\n");
+
+test("CMH-OFFLINE-04: a preload link's imagesrcset and imagesizes are stripped from an offline export", async ({ page }) => {
+  test.setTimeout(90000);
+  const staged = stageContent(PRELOAD_IMAGESRCSET_CONTENT, { key: "cmh-offline-preload-imagesrcset", source: "offline-preload-imagesrcset.html" });
+  const outDir = makeTmpDir();
+  try {
+    const attempted = [];
+    await page.route(/^https?:\/\//, async (route) => {
+      attempted.push(route.request().url());
+      await route.abort();
+    });
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    // The shape is LIVE on the source document - a browser really does issue the request from an
+    // attribute neither side used to read - so what follows is about a strip that ran, not about
+    // markup a parser silently dropped.
+    await expect.poll(() => attempted.filter((u) => /evil\.example\/preload/.test(u)), { timeout: 10000 })
+      .not.toEqual([]);
+
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    expect(exportedHtml, "no preload fetch may survive").not.toContain("evil.example");
+    // Neutralized, not deleted: a `rel`/`as` link is metadata the author wrote.
+    for (const id of ["cmh-preload-net", "cmh-preload-mixed", "cmh-preload-norel",
+      "cmh-preload-sizes", "cmh-preload-parked", "cmh-preload-noscript", "cmh-preload-local",
+      "cmh-preload-data"]) {
+      expect(exportedHtml, `${id} must be kept as an element`).toContain(`id="${id}"`);
+    }
+    expect(attrOfId(exportedHtml, "cmh-preload-net", "imagesrcset")).toBeUndefined();
+    expect(attrOfId(exportedHtml, "cmh-preload-mixed", "imagesrcset")).toBeUndefined();
+    expect(attrOfId(exportedHtml, "cmh-preload-norel", "imagesrcset")).toBeUndefined();
+    expect(attrOfId(exportedHtml, "cmh-preload-parked", "imagesrcset")).toBeUndefined();
+    expect(attrOfId(exportedHtml, "cmh-preload-noscript", "imagesrcset")).toBeUndefined();
+    expect(attrOfId(exportedHtml, "cmh-preload-sizes", "imagesizes")).toBeUndefined();
+    // ...and no further. An `imagesizes` that names no URL is left exactly as authored even on the
+    // link whose `imagesrcset` went: it fetches nothing on its own, and removing it would be
+    // content loss the gate cannot ask for.
+    expect(attrOfId(exportedHtml, "cmh-preload-net", "imagesizes")).toBe("(max-width: 600px) 100vw, 50vw");
+    expect(attrOfId(exportedHtml, "cmh-preload-sizes", "imagesrcset")).toBe("local-tile.png 1x");
+    expect(attrOfId(exportedHtml, "cmh-preload-local", "imagesrcset")).toBe("local-tile.png 1x, local-tile-2x.png 2x");
+    expect(attrOfId(exportedHtml, "cmh-preload-local", "imagesizes")).toBe("100vw");
+    expect(attrOfId(exportedHtml, "cmh-preload-data", "imagesrcset")).toBe("data:image/gif;base64,R0lGODlhAQABAAAAACw= 1x");
+    expect(networkLoadRefs(exportedHtml)).toEqual([]);
+
+    const exportedPath = path.join(outDir, "offline-preload-imagesrcset.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    // The gate must agree with the strip: a file the exporter cleans is offline-clean to --strict.
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+    // ...and the other direction, which the clean file alone cannot prove: re-inject each shape and
+    // the gate must reject it, so a hand-authored offline document cannot keep what the strip takes.
+    const reinjections = [
+      ['<link id="cmh-preload-reinjected" rel="preload" as="image" imagesrcset="https://evil.example/re.png 1x">',
+        /<link imagesrcset="https:\/\/evil\.example\/re\.png">/, "loads over the network"],
+      ['<link id="cmh-preload-reinjected" rel="preload" as="image" imagesrcset="local.png 1x, //evil.example/re2.png 2x">',
+        /<link imagesrcset="\/\/evil\.example\/re2\.png">/, "loads over the network"],
+      ['<link id="cmh-preload-reinjected" imagesrcset="https://evil.example/norel.png 1x">',
+        /<link imagesrcset="https:\/\/evil\.example\/norel\.png">/, "loads over the network"],
+      // `imagesizes` is rejected too, but its message must NOT claim a load: a source-size list
+      // fetches nothing whatever it says. The export clears a network-valued one, so accepting it
+      // would bless a file an export would change - which is what the message says instead.
+      ['<link id="cmh-preload-reinjected" rel="preload" as="image" imagesizes="https://evil.example/sizes">',
+        /<link imagesizes="https:\/\/evil\.example\/sizes">/, "a browser fetches nothing from it"],
+    ];
+    for (const [markup, labelRe, needle] of reinjections) {
+      const reinjectedPath = path.join(outDir, "offline-preload-reinjected.html");
+      const reinjectedHtml = exportedHtml.replace('<p id="preload-note"', markup + '\n<p id="preload-note"');
+      expect(reinjectedHtml, "the shape must actually have been re-injected").not.toEqual(exportedHtml);
+      fs.writeFileSync(reinjectedPath, reinjectedHtml);
+      // Pinned to the rule under test, not merely to a non-zero exit: an exit-code-only assertion
+      // would be satisfied by any future rule that rejected this file for an unrelated reason.
+      let failure = null;
+      try {
+        execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", reinjectedPath], { cwd: SKILL, stdio: "pipe" });
+      } catch (err) {
+        failure = String(err.stdout || "") + String(err.stderr || "");
+      }
+      expect(failure, `--strict must reject ${markup}`).not.toBeNull();
+      expect(failure).toMatch(labelRe);
+      expect(failure).toContain(needle);
+    }
+  } finally {
     fs.rmSync(staged.dir, { recursive: true, force: true });
     fs.rmSync(outDir, { recursive: true, force: true });
   }

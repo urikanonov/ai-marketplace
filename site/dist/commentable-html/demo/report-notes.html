@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.678.0" />
+<meta name="commentable-html-version" content="1.680.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.678.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.680.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Design review sign-off</title>
 
@@ -4460,7 +4460,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.678.0";
+const CMH_VERSION = "1.680.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -18465,6 +18465,14 @@ function _offlineCountKeptNeutralized(doc, neutralized) {
 // mirrored the same blind spot. The set is mirrored by the validator's `SCRIPT_LOAD_ATTRS`, pinned
 // by `test_the_python_and_js_script_load_attributes_agree`.
 const _OFFLINE_SCRIPT_LOAD_ATTRS = ["src", "href", "xlink:href"];
+// A <link> fetches through more than its `href`: a preload link carries the URL in `imagesrcset`
+// with NO href at all - a `rel=preload as=image` link whose `imagesrcset` names an https host was
+// measured requesting it in a real Chromium - and `imagesizes` rides with it. Both were invisible
+// to this strip and to the strict validator alike (#999). Mirrored by the validator's
+// `LINK_IMAGE_ATTRS`, pinned by `test_the_python_and_js_link_image_attributes_agree`. Written
+// without the markup spelled out, because this file's own text is inlined into an export that the
+// gate then reads: a literal tag carrying a network URL in a comment is one the tokenizer sees.
+const _OFFLINE_LINK_IMAGE_ATTRS = ["imagesrcset", "imagesizes"];
 const _OFFLINE_SVG_NS = "http://www.w3.org/2000/svg";
 // The URLs a `ping` list really names, tokenized the way HTML tokenizes it: on ASCII whitespace
 // ONLY (tab, LF, FF, CR, space), written as literal code points because the two engines' whitespace
@@ -18552,7 +18560,7 @@ function _stripOfflineNetworkLoads(doc) {
   const clearAttr = function (el, attr) {
     if (!el.hasAttribute(attr)) return;
     const value = el.getAttribute(attr) || "";
-    const network = attr === "srcset" ? _offlineSrcsetHasNetwork(value) : _offlineIsNetworkUrl(value);
+    const network = (attr === "srcset" || attr === "imagesrcset") ? _offlineSrcsetHasNetwork(value) : _offlineIsNetworkUrl(value);
     if (!network) return;
     if (el.tagName === "IMG" && attr === "src") el.setAttribute("src", "data:image/gif;base64,R0lGODlhAQABAAAAACw=");
     else el.removeAttribute(attr);
@@ -18588,6 +18596,18 @@ function _stripOfflineNetworkLoads(doc) {
       el.removeAttribute("href");
       clearedBases += 1;
     }
+  });
+  // The pass above reads a link's `href`, which is not the only way one fetches: a preload link
+  // carries the URL in `imagesrcset` with NO href at all (a `rel=preload as=image` link whose
+  // `imagesrcset` names an https host was measured requesting it in a real Chromium), and
+  // `imagesizes` rides with it. In an offline export the zero-network CSP still blocks the fetch
+  // (`img-src data:`), but this strip is the layer that must not DEPEND on the CSP, and the strict
+  // validator was blind to the same attributes. Unlike the `href` pass this clears the ATTRIBUTE
+  // rather than removing the element - a `rel`/`as` link is metadata an author may want kept, and
+  // there is no load left once the URL is gone - so it is `rel`-blind, exactly as the validator's
+  // copy is: a value that names a network URL goes whatever the `rel` says.
+  all("link").forEach(function (el) {
+    _OFFLINE_LINK_IMAGE_ATTRS.forEach(function (attr) { clearAttr(el, attr); });
   });
   all("img").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "srcset"); });
   // `srcdoc` carries a WHOLE NESTED DOCUMENT as an attribute VALUE, which no pass here can see

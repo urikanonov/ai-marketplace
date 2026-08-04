@@ -1284,6 +1284,53 @@ class RuntimeParityTests(unittest.TestCase):
                          "exported file its own --strict run rejects."
                          % (runtime_attrs, tuple(resources.SCRIPT_LOAD_ATTRS)))
 
+    # A `<link>` fetches through more than its `href`: a preload link carries the URL in
+    # `imagesrcset` with no href at all, and `imagesizes` rides with it (#999). Same failure mode as
+    # the script set above, so the same pin.
+    def test_the_python_and_js_link_image_attributes_agree(self):
+        source = self._read("68-export-offline.js")
+        m = re.search(r"const _OFFLINE_LINK_IMAGE_ATTRS = \[([^\]]*)\];", source)
+        self.assertIsNotNone(m, "the runtime no longer declares _OFFLINE_LINK_IMAGE_ATTRS; the "
+                                "parity check is stale and must be re-pointed at whatever replaced it")
+        runtime_attrs = tuple(re.findall(r'"([^"]+)"', m.group(1)))
+        self.assertEqual(runtime_attrs, ("imagesrcset", "imagesizes"),
+                         "the runtime's link image attribute set changed. A preload link fetches "
+                         "through `imagesrcset` with no href at all, and `imagesizes` rides with "
+                         "it; update this literal control and the validator's LINK_IMAGE_ATTRS "
+                         "together.")
+        self.assertEqual(runtime_attrs, tuple(resources.LINK_IMAGE_ATTRS),
+                         "the runtime's _OFFLINE_LINK_IMAGE_ATTRS and the validator's "
+                         "LINK_IMAGE_ATTRS have diverged: %r vs %r. An attribute only one of them "
+                         "reads is either an unstripped preload fetch the gate blesses, or an "
+                         "exported file its own --strict run rejects."
+                         % (runtime_attrs, tuple(resources.LINK_IMAGE_ATTRS)))
+        # The constants alone are not the whole contract: either side could keep the constant and
+        # then hard-code its own list at the point of USE, which would pass the equality above while
+        # the two implementations diverged. So pin the USE too - the strip's link pass must iterate
+        # the runtime constant, and the gate's link attribute tuple must be built from the Python
+        # one.
+        self.assertIn("_OFFLINE_LINK_IMAGE_ATTRS.forEach", source,
+                      "the offline strip no longer iterates _OFFLINE_LINK_IMAGE_ATTRS in its link "
+                      "pass, so the constant this test pins is no longer what the strip reads")
+        gate_path = os.path.join(_paths.DEV, "skill", "tools", "validate", "checks",
+                                 "layer_parts", "20-resources.py")
+        with open(gate_path, "r", encoding="utf-8", newline="") as fh:
+            gate = fh.read()
+        self.assertIn('("link", ("href",) + LINK_IMAGE_ATTRS)', gate,
+                      "the strict validator's link check no longer builds its attribute tuple from "
+                      "LINK_IMAGE_ATTRS, so the constant this test pins is no longer what the gate "
+                      "reads")
+        # Which of the two is read as a SRCSET is a separate decision on each side, and a list is
+        # not a tokenizer: adding a future srcset-shaped link attribute to both constants would
+        # pass every assertion above while the two sides tokenized it differently. So pin the
+        # treatment too - both must name exactly `imagesrcset` as the candidate-list one.
+        self.assertIn('attr === "srcset" || attr === "imagesrcset"', source,
+                      "the offline strip no longer tokenizes `imagesrcset` as a srcset; a "
+                      "whole-value test would miss a network candidate written beside local ones")
+        self.assertIn('srcset=(attr == "imagesrcset")', gate,
+                      "the strict validator no longer tokenizes `imagesrcset` as a srcset, so it "
+                      "and the export strip would read the same value differently")
+
     # A browser removes leading C0 controls and spaces (U+0000-U+0020) before it parses a URL, so a
     # value padded with those still loads while one padded with NBSP or U+FEFF does not resolve as a
     # URL at all. Both engines must draw that line in the same place: JS `\s` excludes U+001C-U+001F

@@ -48,6 +48,15 @@ def _check_self_contained(html, parser):
         if offline_mode:
             if tag == "script" and attr == "src" and CHARTJS_SRC_RE.search(val):
                 return "offline mode: %s loads Chart.js over the network - inline it or export offline after rendering" % label
+            # `imagesizes` is a source-SIZE list (media conditions and lengths), so a browser
+            # fetches nothing from it however the value is spelled, and saying it "loads over the
+            # network" would name a beacon that does not exist - the mistake the `file:` drive-letter
+            # arm was widened to avoid. It is still rejected, because the export clears a
+            # network-valued one and accepting it here would bless a file an export would change.
+            if tag == "link" and attr == "imagesizes":
+                return ("offline mode: %s names a network URL in a source-size list - a browser "
+                        "fetches nothing from it, but the export clears the value, so remove it "
+                        "here too" % label)
             return "offline mode: %s loads over the network - inline or remove it" % label
         return None
     def _check_network_attr(tag, attrs, attr, srcset=False):
@@ -66,8 +75,13 @@ def _check_self_contained(html, parser):
             if tag == "script" and attr == "src" and CHARTJS_SRC_RE.search(item):
                 continue
             if tag == "link":
-                warnings.append('<link %s="%s"> loads over the network and breaks the self-contained '
-                                "guarantee - inline or remove it" % (attr, item[:80]))
+                if attr == "imagesizes":
+                    warnings.append('<link imagesizes="%s"> names a network URL in a source-size '
+                                    "list - a browser fetches nothing from it, but it does not "
+                                    "belong in a self-contained file" % item[:80])
+                else:
+                    warnings.append('<link %s="%s"> loads over the network and breaks the self-contained '
+                                    "guarantee - inline or remove it" % (attr, item[:80]))
             else:
                 errors.append('<%s %s="%s"> loads over the network and breaks the self-contained guarantee - '
                               "inline or remove it" % (tag, attr, item[:80]))
@@ -100,10 +114,20 @@ def _check_self_contained(html, parser):
     # Parsed once per TAG (not once per tag/attribute pair): `_find_tag_attrs_egress` runs a full
     # pure-Python tokenizer pass over the whole document, and the widened script set would
     # otherwise triple that cost for scripts alone.
-    for tag, attrs in (("link", ("href",)), ("script", SCRIPT_LOAD_ATTRS), ("iframe", ("src",))):
+    # A `<link>` fetches through more than its `href`: a preload link carries the URL in
+    # `imagesrcset` instead, with NO href at all - `<link rel="preload" as="image"
+    # imagesrcset="https://host/a.png 1x">` was measured issuing that request in a real Chromium -
+    # and `imagesizes` rides with it. Both used to be invisible here and to the export strip alike
+    # (#999). `imagesrcset` is tokenized as a SRCSET through the same shared helper the `img` and
+    # `source` checks use, since a candidate carries a descriptor after it and a comma can sit
+    # inside the URL. The `rel` is deliberately NOT consulted for these two, though it is for
+    # `href`: the strip clears the ATTRIBUTE rather than removing the element (a `rel`/`as` link is
+    # not content a reader loses), so it is rel-blind, and a gate that consulted `rel` would drift
+    # from it in both directions.
+    for tag, attrs in (("link", ("href",) + LINK_IMAGE_ATTRS), ("script", SCRIPT_LOAD_ATTRS), ("iframe", ("src",))):
         for el in _find_tag_attrs_egress(html, tag):
             for attr in attrs:
-                _check_network_attr(tag, el, attr)
+                _check_network_attr(tag, el, attr, srcset=(attr == "imagesrcset"))
     # A <base href> is not itself a load, which is why neither this gate nor the export strip used
     # to look at one - and both treat a RELATIVE reference as safe, which is the whole control case.
     # A base element REBASES every relative reference in the document onto the base it names, so the

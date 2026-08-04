@@ -378,6 +378,32 @@ class DeckValidateTests(unittest.TestCase):
                            "refresh")
         self.assertEqual(_errors(_inject(self.html, '<link rel="stylesheet" href="local.css">')), [])
 
+    # A preload link fetches with NO href at all, through `imagesrcset` (issue #999). This gate is
+    # the THIRD reader of "what does a <link> fetch through", beside the offline export strip and
+    # the strict validator, and it carried the same `href`-only blind spot - and worse, because
+    # `imagesrcset` was in neither the URL-attribute set nor the egress map, the dangerous-scheme
+    # and parent-directory rules skipped it too. The value is a SRCSET, so each candidate is tested
+    # separately rather than the whole value.
+    def test_preload_link_imagesrcset_egress_and_scheme_rules_apply(self):
+        for snippet, needle in (
+            ('<link rel="preload" as="image" imagesrcset="https://evil/x.png 1x">',
+             "remote media/resource"),
+            ('<link rel="preload" as="image" imagesrcset="local.png 1x, //evil/x2.png 2x">',
+             "remote media/resource"),
+            ('<link rel="preload" as="image" imagesizes="https://evil/sizes">',
+             "remote media/resource"),
+            ('<link rel="preload" as="image" imagesrcset="javascript:alert(1) 1x">',
+             "dangerous URL scheme"),
+            ('<link rel="preload" as="image" imagesrcset="../up.png 1x">',
+             "parent-directory"),
+        ):
+            with self.subTest(snippet=snippet):
+                self._assert_error(_inject(self.html, snippet), needle)
+        # The control: a local candidate list and an ordinary sizes value reach nothing.
+        self.assertEqual(_errors(_inject(self.html, '<link rel="preload" as="image" '
+                                         'imagesrcset="local.png 1x, local-2x.png 2x" '
+                                         'imagesizes="100vw">')), [])
+
     def test_main_prints_base_warnings_and_strict(self):
         import contextlib
         import io

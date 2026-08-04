@@ -93,7 +93,11 @@ DEFAULT_OVERLOAD_LINE_CHARS = 90
 # cannot bypass them with a solidus attribute separator (<svg/onload=...>), an entity-encoded
 # scheme (&#106;avascript:), an unquoted attribute (<img src=//evil>), or an SVG <image>/<use>.
 _ACTIVE_TAGS = {"iframe", "object", "embed"}
-_URL_ATTRS = {"href", "src", "xlink:href", "poster", "background", "lowsrc", "action", "formaction", "data"}
+_URL_ATTRS = {"href", "src", "xlink:href", "poster", "background", "lowsrc", "action", "formaction", "data", "imagesizes"}
+# Attributes whose value is a SRCSET candidate list rather than one URL, so each candidate is
+# tested separately. `imagesrcset` is here because a preload link fetches through it with NO href
+# at all (issue #999), the same shape the offline strip and the strict validator now read.
+_SRCSET_ATTRS = {"srcset", "imagesrcset"}
 # Elements whose URL attribute triggers a network FETCH on load (egress), not a mere hyperlink.
 # A <link> or <base> with a remote href is egress/redirect just like remote media, so they are
 # included; a plain <a href="https://..."> hyperlink is deliberately NOT (it fetches nothing).
@@ -102,7 +106,7 @@ _EGRESS_ATTRS = {
     "source": {"src", "srcset"}, "track": {"src"}, "input": {"src"},
     "image": {"href", "xlink:href", "src", "srcset"}, "use": {"href", "xlink:href"},
     "iframe": {"src"}, "embed": {"src"}, "object": {"data"},
-    "link": {"href"}, "base": {"href"},
+    "link": {"href", "imagesrcset", "imagesizes"}, "base": {"href"},
 }
 # Legacy presentational URL attributes that fetch on ANY element (a browser rewrites a bare
 # <image> to <img>, and body/table background / img lowsrc still load), independent of tag.
@@ -211,9 +215,9 @@ class _ActiveContentScanner(_browser_boundaries.BrowserBoundaries):
             if name.startswith("on"):
                 self.errors.append(f"deck: inline event-handler attribute ({name}=) in the deck body")
                 continue
-            if name != "srcset" and name not in _URL_ATTRS:
+            if name not in _SRCSET_ATTRS and name not in _URL_ATTRS:
                 continue
-            for cand in (_srcset_urls(value) if name == "srcset" else [value]):
+            for cand in (_srcset_urls(value) if name in _SRCSET_ATTRS else [value]):
                 if _DANGER_SCHEME_RE.match(cand) or _DATA_HTML_RE.match(cand):
                     self.errors.append("deck: dangerous URL scheme (javascript:/vbscript:/data:text/html) in the deck body")
                 if "../" in cand.replace("\\", "/"):

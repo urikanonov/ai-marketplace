@@ -62,9 +62,13 @@ _RESOURCE_TAG_RE = re.compile(
 # Every attribute inside such a tag that can pull in an asset (src/href/xlink:href/poster/data), plus
 # srcset which holds a comma-separated candidate list. All of these on the tags above load an asset -
 # none of them is navigation (that would be <a href>, which is not in the tag list). The attr NAME is
-# captured so only srcset is comma-split (a data: URI legitimately contains a comma).
+# captured so only a srcset-shaped value is comma-split (a data: URI legitimately contains a comma).
+# `imagesrcset` is listed FIRST and the alternation is anchored with a lookbehind rather than `\b`,
+# because a word boundary cannot fall between `e` and `s`, so a `\bsrcset` alternation never matched
+# a preload link's `imagesrcset` (issue #999) - the same blind spot the offline strip and the strict
+# validator had.
 _ASSET_ATTR_RE = re.compile(
-    r'\b(srcset|src|xlink:href|href|poster|data)\s*=\s*["\']([^"\']*)["\']', re.I)
+    r'(?<![\w:-])(imagesrcset|srcset|src|xlink:href|href|poster|data)\s*=\s*["\']([^"\']*)["\']', re.I)
 # CSS url(...) references, scanned only inside <style> blocks and delimiter-aware style="" attributes
 # (again to avoid matching inline JS). A local url(sidecar.png) means the file is not self-contained.
 _STYLE_TAG_RE = re.compile(r'<style\b[^>]*>(.*?)</style>', re.I | re.S)
@@ -90,7 +94,7 @@ def _shareable_companion_refs(html):
     for tag_m in _RESOURCE_TAG_RE.finditer(html):
         for attr_m in _ASSET_ATTR_RE.finditer(tag_m.group(1)):
             name, value = attr_m.group(1).lower(), attr_m.group(2)
-            if name == "srcset":
+            if name in ("srcset", "imagesrcset"):
                 urls = [m.group(1) for m in _SRCSET_URL_RE.finditer(value)]
             else:
                 parts = value.strip().split()
