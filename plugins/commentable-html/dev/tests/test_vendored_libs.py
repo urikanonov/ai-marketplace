@@ -2180,6 +2180,12 @@ class RuntimeParityTests(unittest.TestCase):
         'function (location) { location.href = "https://api.example"; }',
         'function(location) { location.href = "https://api.example"; }',
         'const { location } = opts; location.href = "https://api.example";',
+        # A binding that is NOT the first thing in the window, so the leading boundary has to be
+        # found rather than assumed. Every other sample here puts `location` straight after the
+        # `(` or `{`, where the opener itself is the boundary, so these are what would catch a
+        # narrowing that rejects a later parameter or a renamed-TO `location`.
+        'function f(a, location) { location.href = "https://api.example"; }',
+        'const {href: location} = opts; location.href = "https://api.example";',
         'try { x(); } catch (location) { location.href = "https://api.example"; }',
         # A relative navigation inside the offline file is not egress.
         'location.href = "#section-2";',
