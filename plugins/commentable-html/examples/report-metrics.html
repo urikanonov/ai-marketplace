@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.671.0" />
+<meta name="commentable-html-version" content="1.675.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.671.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.675.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable Visuals Matrix</title>
 
@@ -4580,7 +4580,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.671.0";
+const CMH_VERSION = "1.675.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -18540,7 +18540,155 @@ function _offlineQueryAll(root, selector) {
   walk(root);
   return found;
 }
-function _stripOfflineNetworkLoads(doc) {
+// An `<iframe srcdoc="...">` carries a whole nested DOCUMENT as an attribute VALUE. Every pass in
+// this file reads ELEMENTS and ATTRIBUTES, and the strict validator reads TAGS, so a document
+// parked in `srcdoc` was invisible to both: its `<img src>`, its `<script src>`, its `<base href>`,
+// its inline egress and its `on*` handlers all rode into a zero-network export untouched, and
+// `--strict` certified the file as offline-clean. The exported CSP does absorb the fetch in
+// practice (the nested browsing context inherits `default-src 'none'`), but the strip and the gate
+// are the layer that is not supposed to depend on the CSP.
+//
+// The nested document is SANITIZED rather than deleted, because a srcdoc is content a reader sees
+// and the passes the top-level document already gets are exactly what makes it safe: it is parsed,
+// run through this same strip and the event-handler scrub, and written back. A `srcdoc` inside a
+// `srcdoc` is reached by the recursion for free, and the nested counts land in the same toast.
+// The strict validator recurses the same way over the same bound, so the two agree by
+// construction. Nothing is written back unless a pass CHANGED something, so a clean srcdoc keeps
+// the author's value as the author wrote it (the export's final whitespace normalization still
+// collapses a run of blank lines inside it, as it does everywhere else in the file).
+const _OFFLINE_SRCDOC_MAX_DEPTH = 8;
+// What a browser renders is the STRING, not the DOM this strip cleaned, and serialize-then-reparse
+// is not always a fixed point: the mutation-XSS shapes (a foreign-content `<mglyph>`/`<style>`
+// nesting, a comment whose boundary moves) reparse in a different insertion mode and can
+// MATERIALIZE markup the sanitized DOM never held. So a rewritten value is re-parsed and
+// re-stripped until it settles, exactly as `_offlineCssNoNetwork` runs its own strips to
+// convergence, and a value that will not settle is refused outright. Five passes is the same
+// bound that strip uses; a shape needing more is not one to ship.
+const _OFFLINE_SRCDOC_MAX_PASSES = 5;
+// The passes and the depth bound would otherwise MULTIPLY: each pass at one level re-runs the whole
+// strip of every nested document below it, so five passes at eight levels is 5^8 full parse-strip
+// cycles of the innermost markup - a hang of the author's own export tab, on exactly the hostile
+// markup this feature exists to defend against. One budget is shared by the whole export, and a
+// srcdoc that exhausts it is removed like one that will not settle.
+const _OFFLINE_SRCDOC_MAX_PARSES = 200;
+// A doctype cannot be rebuilt from its parts in every case, and a BROKEN one is not a cosmetic
+// problem: an unterminated quoted id makes the whole declaration a bogus doctype, which forces
+// QUIRKS mode and spills its own tail back into the document as markup. HTML lets a single-quoted
+// legacy id carry a `"` (`<!DOCTYPE html PUBLIC 'a"b'>`), so the quote is CHOSEN per value, and a
+// value that carries both quotes - or a name carrying `<` or `>` - is refused outright (null)
+// rather than written back in a form a parser reads differently. The caller then drops the srcdoc,
+// which is the fail-closed answer; the `compatMode` check below catches whatever this misses.
+function _offlineDoctypeSource(dt) {
+  if (!dt) return "";
+  const name = dt.name || "";
+  if (/[<>"'\s]/.test(name)) return null;
+  const quoted = function (v) {
+    if (/[<>]/.test(v)) return null;
+    if (v.indexOf('"') < 0) return '"' + v + '"';
+    if (v.indexOf("'") < 0) return "'" + v + "'";
+    return null;
+  };
+  let out = "<!DOCTYPE " + name;
+  if (dt.publicId) {
+    const p = quoted(dt.publicId);
+    if (p === null) return null;
+    out += " PUBLIC " + p;
+    if (dt.systemId) {
+      const s = quoted(dt.systemId);
+      if (s === null) return null;
+      out += " " + s;
+    }
+  } else if (dt.systemId) {
+    const s = quoted(dt.systemId);
+    if (s === null) return null;
+    out += " SYSTEM " + s;
+  }
+  return out + ">";
+}
+// `documentElement.outerHTML` serializes the ELEMENT, and a doctype is its SIBLING - which is why
+// `_serializeOfflineDoc` prepends one by hand for the top-level document. Dropping it here would
+// flip the nested browsing context into QUIRKS mode whenever the strip happened to change
+// something, silently changing how reader-visible content lays out, and it would do so
+// inconsistently (a clean srcdoc beside it keeps its doctype). Absence is preserved as carefully
+// as presence: a srcdoc the author deliberately left quirks-mode must not be handed one. A comment
+// written outside `<html>` is a sibling too, and is carried for the same reason. Returns null when
+// the document cannot be written back faithfully at all.
+function _offlineSerializeSrcdocDoc(d) {
+  const head = _offlineDoctypeSource(d.doctype);
+  if (head === null) return null;
+  let before = "";
+  let after = "";
+  let seenRoot = false;
+  Array.prototype.slice.call(d.childNodes || []).forEach(function (n) {
+    if (n === d.documentElement) { seenRoot = true; return; }
+    if (n.nodeType !== 8) return;
+    const text = "<!--" + (n.nodeValue || "") + "-->";
+    if (seenRoot) after += text; else before += text;
+  });
+  return head + before + d.documentElement.outerHTML + after;
+}
+function _offlineStripSrcdocs(doc, depth, budget) {
+  let dropped = 0;
+  let clearedBases = 0;
+  let truncated = 0;
+  _offlineQueryAll(doc, "iframe[srcdoc]").forEach(function (el) {
+    // The emptiness test comes BEFORE the depth test, because that is the order the strict
+    // validator applies them: an empty srcdoc carries no document to read, so neither side has
+    // anything to refuse, and removing it here would both lose the author's "render an empty
+    // document" instruction and hand the gate a file the strip had changed behind its back.
+    const raw = el.getAttribute("srcdoc") || "";
+    if (!raw) return;
+    // Past the bound nothing can be READ, so nothing may be KEPT. The gate refuses a document
+    // nested deeper than this for the same reason, and removing the attribute is what keeps the
+    // two sides agreeing about markup neither of them analyzed. Counted, because a whole nested
+    // document disappears: every destructive pass here reports itself rather than leaving the
+    // author to discover the loss.
+    if (depth + 1 > _OFFLINE_SRCDOC_MAX_DEPTH) { el.removeAttribute("srcdoc"); truncated += 1; return; }
+    let markup = raw;
+    let rewritten = false;
+    let settled = false;
+    let compat = null;
+    // Buffered per srcdoc rather than added as they are found: a value that never settles is
+    // DISCARDED, so counting its intermediate passes would describe work on a nested document the
+    // export does not contain.
+    let innerDropped = 0;
+    let innerBases = 0;
+    let innerTruncated = 0;
+    for (let pass = 0; pass < _OFFLINE_SRCDOC_MAX_PASSES; pass++) {
+      if (budget.parses >= _OFFLINE_SRCDOC_MAX_PARSES) break;
+      budget.parses += 1;
+      let nested = null;
+      try { nested = _offlineDocFromHtml(markup); } catch (e) { nested = null; }
+      if (!nested || !nested.documentElement) break;
+      // Rendering mode is decided by the doctype, so a rewrite that changed it changed how the
+      // nested document LAYS OUT. Compared against the author's own parse rather than assumed from
+      // the doctype text, which is what catches a declaration a parser reads differently from the
+      // way it was rebuilt.
+      if (compat === null) compat = nested.compatMode;
+      const before = _offlineSerializeSrcdocDoc(nested);
+      if (before === null) break;
+      const inner = _stripOfflineNetworkLoads(nested, depth + 1, budget);
+      _stripOfflineEventHandlers(nested);
+      innerDropped += inner.dropped;
+      innerBases += inner.clearedBases;
+      innerTruncated += inner.truncatedSrcdocs;
+      const after = _offlineSerializeSrcdocDoc(nested);
+      if (after === null) break;
+      // This parse of `markup` needed no change, so the string a browser parses really is clean -
+      // whether that is the author's original value or the rewrite of a previous pass.
+      if (after === before) { settled = (nested.compatMode === compat); break; }
+      markup = after;
+      rewritten = true;
+    }
+    if (!settled) { el.removeAttribute("srcdoc"); truncated += 1; return; }
+    dropped += innerDropped;
+    clearedBases += innerBases;
+    truncated += innerTruncated;
+    if (rewritten) el.setAttribute("srcdoc", markup);
+  });
+  return { dropped: dropped, clearedBases: clearedBases, truncatedSrcdocs: truncated };
+}
+function _stripOfflineNetworkLoads(doc, depth, budget) {
   let dropped = 0;
   let clearedBases = 0;
   const all = function (selector) { return _offlineQueryAll(doc, selector); };
@@ -18673,7 +18821,12 @@ function _stripOfflineNetworkLoads(doc) {
     if (next) el.setAttribute("style", next);
     else el.removeAttribute("style");
   });
-  return { dropped: dropped, clearedBases: clearedBases };
+  // Last, so a nested document is sanitized by a strip that has already finished with this one and
+  // the counts it reports are added rather than overwritten.
+  const nested = _offlineStripSrcdocs(doc, depth || 0, budget || { parses: 0 });
+  dropped += nested.dropped;
+  clearedBases += nested.clearedBases;
+  return { dropped: dropped, clearedBases: clearedBases, truncatedSrcdocs: nested.truncatedSrcdocs };
 }
 function _stripOfflineRichRenderers(doc) {
   // On a re-export of an already-offline document, remove any previously inlined library notice
@@ -19284,6 +19437,7 @@ async function _buildOfflineHtml(shareableHtml) {
     html: html,
     droppedScripts: stripped.dropped,
     clearedBases: stripped.clearedBases,
+    truncatedSrcdocs: stripped.truncatedSrcdocs,
     neutralizedScripts: _offlineCountKeptNeutralized(doc, neutralizedScripts),
   };
 }
@@ -19331,7 +19485,16 @@ async function saveOffline() {
   const baseNote = b > 0
     ? " " + b + " <base href> pointing away from this file " + (b === 1 ? "was" : "were") + " cleared, so relative references and links now resolve beside the file."
     : "";
-  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + baseNote + review.note, { center: true });
+  // Removing a srcdoc deletes a whole nested document a reader could see, so it is never silent:
+  // it happens only when the nesting runs past the depth both this strip and the strict gate read
+  // to, or when the sanitized markup will not settle into a form a browser reparses unchanged.
+  const t = built.truncatedSrcdocs;
+  const srcdocNote = t > 0
+    ? " " + t + " <iframe srcdoc> document" + (t === 1 ? " was" : "s were") + " removed because "
+      + (t === 1 ? "it was" : "they were") + " nested too deep to check, or could not be written back "
+      + "as markup a browser reparses unchanged."
+    : "";
+  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + baseNote + srcdocNote + review.note, { center: true });
 }
 ["btnExportOffline", "btnExportOfflineTop"].forEach(function (id) {
   const b = document.getElementById(id);
