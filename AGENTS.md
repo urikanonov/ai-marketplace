@@ -615,7 +615,13 @@ requires a version bump) runs in the required `version-bump` job. The required `
 `check_forbidden_files.py`, which fails if a secret-bearing file (`.env`, `*.pem`, `*.key`, a keystore,
 or a private SSH key) is ever tracked - the enforceable stand-in for a push rule, since GitHub push
 rulesets are unavailable on public user-owned repos. The same guard refuses a committed scratch dump:
-a `*.diff` / `*.patch` anywhere in the tree, and - at the repo ROOT, which is a closed set - anything
+a `*.diff` / `*.patch` anywhere in the tree, an `_`-prefixed file anywhere that does not wear a
+source extension (`_wip_diff.txt`, `_notes.md`, `_out.csv`, a bare `_probe` are all refused, as is
+anything non-source under a `_`-prefixed directory; the `_paths.py` / `_shard.mjs` private-module
+convention - and a private package - stays allowed through `UNDERSCORE_SOURCE_SUFFIXES`, and a
+genuine `_`-prefixed source of a new kind earns a line there),
+and - at the repo ROOT, which is a
+closed set - anything
 that is not one of the documented top-level files, so a probe of any shape (`test_svg_exec.html`,
 `temp.txt`, `screenshot.png`, a bare `x`) cannot be committed there. The top-level DIRECTORIES are
 allowlisted the same way, so a dump cannot dodge the rule by being parked one level down in a new
