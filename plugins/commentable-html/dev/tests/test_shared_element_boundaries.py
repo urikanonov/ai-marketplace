@@ -139,6 +139,15 @@ class GenerateTocBoundaryTests(unittest.TestCase):
         self.assertEqual([h["id"] for h in parser.headings], ["real"])
         self.assertEqual(parser.all_ids, ["commentRoot", "real"])
 
+    def test_a_closer_inside_a_template_does_not_end_a_heading_outside_it(self):
+        # The shared template floor reaches the tools too: `template` scopes an END TAG, so the
+        # `</h2>` parked in one cannot close the author's heading. Without it the TOC entry read
+        # "Real" where a browser (which renders none of the template) shows "RealTail".
+        parser = generate_toc._parse(
+            '<main id="commentRoot"><h2 id="a">Real<template></h2></template>'
+            "Tail</h2></main>")
+        self.assertEqual([(h["id"], h["text"]) for h in parser.headings], [("a", "RealTail")])
+
 
 class DocStatsBoundaryTests(unittest.TestCase):
     """`doc_stats` publishes the section count a reader sees, so a heading held as text must not
@@ -207,6 +216,23 @@ class ContrastScannerBoundaryTests(unittest.TestCase):
         scanner = contrast._DocumentScanner()
         scanner.parse_document('<p id="a">x<div id="b">y</div>')
         self.assertEqual([node.attrs.get("id") for node in scanner.root.children], ["a", "b"])
+
+    def test_a_closer_inside_a_template_does_not_pop_an_ancestor_node(self):
+        # The same floor, seen from the node tree: the `</p>` parked in the template cannot close
+        # the `<p>`, so the element after the template is still that paragraph's CHILD and its
+        # inherited colours resolve against the right parent.
+        scanner = contrast._DocumentScanner()
+        scanner.parse_document('<p id="a"><template></p></template><span id="b">y</span></p>')
+        self.assertEqual([node.attrs.get("id") for node in scanner.root.children], ["a"])
+        self.assertIn("b", _tree_ids(scanner.root))
+
+    def test_a_foreign_template_is_not_a_scope_boundary(self):
+        # Only an HTML-namespace `<template>` scopes an end tag. An SVG element that merely
+        # happens to be called `template` is an ordinary foreign element, so the `</svg>` written
+        # inside it still closes the svg exactly as a browser closes it.
+        scanner = contrast._DocumentScanner()
+        scanner.parse_document('<svg><template>x</svg><p id="after">after</p>')
+        self.assertIn("after", _tree_ids(scanner.root))
 
 
 class ToolTagNameFoldTests(unittest.TestCase):

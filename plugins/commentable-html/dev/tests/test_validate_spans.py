@@ -51,6 +51,17 @@ class CodeBlockSpansTests(unittest.TestCase):
                 self.assertFalse(spans.unclosed,
                                  "%s body must not look like a destroyed structure" % elem)
 
+    def test_a_block_closer_inside_a_template_does_not_end_a_block_outside_it(self):
+        # `template` scopes an END TAG (its contents are a separate DocumentFragment), so a
+        # `</code>`/`</pre>` written inside one cannot close the author's real block. The block
+        # is left open to end of document - the destroyed structure the callers fail CLOSED on -
+        # instead of being handed an inner span that swallows the template's inert markup.
+        html = ('<pre><code class="language-python">real'
+                "<template></code></pre></template>")
+        spans = self._spans(html)
+        self.assertTrue(spans.unclosed)
+        self.assertEqual(self._inners(html), [])
+
     def test_a_raw_text_body_does_not_hide_a_later_block(self):
         html = ('<textarea>see <pre><code class="language-python"></textarea>'
                 '<pre><code class="language-python">real</code></pre>')

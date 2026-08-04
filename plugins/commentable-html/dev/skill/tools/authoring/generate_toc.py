@@ -164,7 +164,7 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
 
     def handle_endtag(self, tag):
         tag = self._browser_tag(tag)
-        for index in range(len(self.stack) - 1, -1, -1):
+        for index in range(len(self.stack) - 1, self._end_tag_floor(tag) - 1, -1):
             if self.stack[index][0] == tag:
                 self._end_tag = True
                 try:
