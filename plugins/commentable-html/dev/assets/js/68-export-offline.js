@@ -633,6 +633,7 @@ function _offlineQueryAll(root, selector) {
 function _stripOfflineNetworkLoads(doc) {
   let dropped = 0;
   let clearedBases = 0;
+  let clearedSrcdocs = 0;
   const all = function (selector) { return _offlineQueryAll(doc, selector); };
   all("script").forEach(function (s) {
     if (_offlineStripScriptLoad(s)) { dropped += 1; }
@@ -709,7 +710,25 @@ function _stripOfflineNetworkLoads(doc) {
     }
   });
   all("img").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "srcset"); });
-  all("iframe").forEach(function (el) { clearAttr(el, "src"); });
+  // `srcdoc` carries a WHOLE NESTED DOCUMENT as an attribute VALUE, which no pass here can see
+  // into: every walk above visits ELEMENTS, and the markup in that string never becomes elements,
+  // so an inline handler, a meta refresh, or a network loader parked inside it rode untouched into
+  // an export - and past the strict validator, whose tag index reads the same string as attribute
+  // text. The offline CSP does not close it either: `frame-src 'none'` blocks a `src` LOAD, but a
+  // srcdoc frame is content the policy is INHERITED into rather than a fetch, and the inherited
+  // policy still allows inline script, which can navigate the top-level document. So an offline
+  // document may not carry one at all (issue #996) - the attribute goes unconditionally, and the
+  // strict validator rejects any that remains, which is what makes the two sides agree by
+  // construction. Recursively parsing the nested document on both sides is the alternative, and
+  // keeping two independent parsers in step is the drift this whole file is written to avoid.
+  // Unconditional, not value-inspected: a nested document is not something the zero-network promise
+  // can judge, and a narrower test would leave the validator rejecting what this kept. The ELEMENT
+  // stays (an author's `title`, sizing, and any local `src` are content); only the nested document
+  // goes. Counted, because unlike a network strip this removes content that WORKED offline.
+  all("iframe").forEach(function (el) {
+    clearAttr(el, "src");
+    if (el.hasAttribute("srcdoc")) { el.removeAttribute("srcdoc"); clearedSrcdocs += 1; }
+  });
   all("video").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "poster"); });
   all("audio").forEach(function (el) { clearAttr(el, "src"); });
   all("source").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "srcset"); });
@@ -763,7 +782,7 @@ function _stripOfflineNetworkLoads(doc) {
     if (next) el.setAttribute("style", next);
     else el.removeAttribute("style");
   });
-  return { dropped: dropped, clearedBases: clearedBases };
+  return { dropped: dropped, clearedBases: clearedBases, clearedSrcdocs: clearedSrcdocs };
 }
 function _stripOfflineRichRenderers(doc) {
   // On a re-export of an already-offline document, remove any previously inlined library notice
@@ -1374,6 +1393,7 @@ async function _buildOfflineHtml(shareableHtml) {
     html: html,
     droppedScripts: stripped.dropped,
     clearedBases: stripped.clearedBases,
+    clearedSrcdocs: stripped.clearedSrcdocs,
     neutralizedScripts: _offlineCountKeptNeutralized(doc, neutralizedScripts),
   };
 }
@@ -1421,7 +1441,14 @@ async function saveOffline() {
   const baseNote = b > 0
     ? " " + b + " <base href> pointing away from this file " + (b === 1 ? "was" : "were") + " cleared, so relative references and links now resolve beside the file."
     : "";
-  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + baseNote + review.note, { center: true });
+  // An `<iframe srcdoc>` renders offline perfectly well, so unlike every network strip this one
+  // removes content that WORKED - a nested document the zero-network promise simply cannot inspect.
+  // Silently emptying the frame would leave the author hunting for their missing content.
+  const s = built.clearedSrcdocs;
+  const srcdocNote = s > 0
+    ? " " + s + " <iframe srcdoc> nested document" + (s === 1 ? " was" : "s were") + " removed - an offline export cannot inspect a document carried inside an attribute."
+    : "";
+  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + baseNote + srcdocNote + review.note, { center: true });
 }
 ["btnExportOffline", "btnExportOfflineTop"].forEach(function (id) {
   const b = document.getElementById(id);

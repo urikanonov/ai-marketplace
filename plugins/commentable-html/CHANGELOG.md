@@ -4,6 +4,32 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.674.0] - 2026-08-04
+
+### Fixed
+
+- An `<iframe srcdoc>` no longer rides through an Offline export, or past `validate.py --strict`
+  in offline mode, carrying a whole nested document (CMH-OFFLINE-04, CMH-OFFLINE-05). A `srcdoc`
+  holds an entire document as an ATTRIBUTE VALUE, and neither side of the offline contract could
+  see inside it: the exporter's `_stripOfflineNetworkLoads` cleared an iframe's `src` and left
+  `srcdoc` untouched, and every walk it makes visits ELEMENTS, so nothing descends into the
+  string; the strict validator's offline resource check read `("iframe", ("src",))` only, and its
+  tag index tokenizes the document, so that nested markup was attribute text and never became
+  tags. An inline event handler, a meta refresh, or a network loader parked inside one therefore
+  travelled into a file that promises zero network AND was certified clean by the gate the export
+  is measured by. The offline CSP does not close the channel either: `frame-src 'none'` blocks a
+  `src` LOAD, but a `srcdoc` frame is content the policy is INHERITED into rather than a fetch,
+  and the inherited policy still allows inline script, which can navigate the top-level document.
+  The direction chosen - the way the meta-refresh case was settled - is that an offline document
+  may not carry `srcdoc` at all: the export now clears the attribute UNCONDITIONALLY (on presence,
+  so an empty or inert one goes too, which is what stops the gate blessing a file an export would
+  still change) and offline `--strict` rejects any that remains, so the two sides agree by
+  construction rather than by keeping two independent nested-document parsers in step. The frame
+  ELEMENT is kept - an author's `title`, sizing and relative `src` are content - and the removal
+  is counted in the export toast, because unlike a network strip this takes away content that
+  worked offline. Both sides judge the same shapes: a `<template>`-parked frame, a `<noscript>`
+  fallback and a self-closed foreign element, namespace-blind.
+
 ## [1.671.0] - 2026-08-04
 
 ### Fixed

@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.671.0" />
+<meta name="commentable-html-version" content="1.674.0" />
 <meta name="commentable-html-kind" content="slides" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.671.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.674.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML Showcase</title>
 
@@ -5383,7 +5383,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.671.0";
+const CMH_VERSION = "1.674.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -19346,6 +19346,7 @@ function _offlineQueryAll(root, selector) {
 function _stripOfflineNetworkLoads(doc) {
   let dropped = 0;
   let clearedBases = 0;
+  let clearedSrcdocs = 0;
   const all = function (selector) { return _offlineQueryAll(doc, selector); };
   all("script").forEach(function (s) {
     if (_offlineStripScriptLoad(s)) { dropped += 1; }
@@ -19422,7 +19423,25 @@ function _stripOfflineNetworkLoads(doc) {
     }
   });
   all("img").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "srcset"); });
-  all("iframe").forEach(function (el) { clearAttr(el, "src"); });
+  // `srcdoc` carries a WHOLE NESTED DOCUMENT as an attribute VALUE, which no pass here can see
+  // into: every walk above visits ELEMENTS, and the markup in that string never becomes elements,
+  // so an inline handler, a meta refresh, or a network loader parked inside it rode untouched into
+  // an export - and past the strict validator, whose tag index reads the same string as attribute
+  // text. The offline CSP does not close it either: `frame-src 'none'` blocks a `src` LOAD, but a
+  // srcdoc frame is content the policy is INHERITED into rather than a fetch, and the inherited
+  // policy still allows inline script, which can navigate the top-level document. So an offline
+  // document may not carry one at all (issue #996) - the attribute goes unconditionally, and the
+  // strict validator rejects any that remains, which is what makes the two sides agree by
+  // construction. Recursively parsing the nested document on both sides is the alternative, and
+  // keeping two independent parsers in step is the drift this whole file is written to avoid.
+  // Unconditional, not value-inspected: a nested document is not something the zero-network promise
+  // can judge, and a narrower test would leave the validator rejecting what this kept. The ELEMENT
+  // stays (an author's `title`, sizing, and any local `src` are content); only the nested document
+  // goes. Counted, because unlike a network strip this removes content that WORKED offline.
+  all("iframe").forEach(function (el) {
+    clearAttr(el, "src");
+    if (el.hasAttribute("srcdoc")) { el.removeAttribute("srcdoc"); clearedSrcdocs += 1; }
+  });
   all("video").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "poster"); });
   all("audio").forEach(function (el) { clearAttr(el, "src"); });
   all("source").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "srcset"); });
@@ -19476,7 +19495,7 @@ function _stripOfflineNetworkLoads(doc) {
     if (next) el.setAttribute("style", next);
     else el.removeAttribute("style");
   });
-  return { dropped: dropped, clearedBases: clearedBases };
+  return { dropped: dropped, clearedBases: clearedBases, clearedSrcdocs: clearedSrcdocs };
 }
 function _stripOfflineRichRenderers(doc) {
   // On a re-export of an already-offline document, remove any previously inlined library notice
@@ -20087,6 +20106,7 @@ async function _buildOfflineHtml(shareableHtml) {
     html: html,
     droppedScripts: stripped.dropped,
     clearedBases: stripped.clearedBases,
+    clearedSrcdocs: stripped.clearedSrcdocs,
     neutralizedScripts: _offlineCountKeptNeutralized(doc, neutralizedScripts),
   };
 }
@@ -20134,7 +20154,14 @@ async function saveOffline() {
   const baseNote = b > 0
     ? " " + b + " <base href> pointing away from this file " + (b === 1 ? "was" : "were") + " cleared, so relative references and links now resolve beside the file."
     : "";
-  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + baseNote + review.note, { center: true });
+  // An `<iframe srcdoc>` renders offline perfectly well, so unlike every network strip this one
+  // removes content that WORKED - a nested document the zero-network promise simply cannot inspect.
+  // Silently emptying the frame would leave the author hunting for their missing content.
+  const s = built.clearedSrcdocs;
+  const srcdocNote = s > 0
+    ? " " + s + " <iframe srcdoc> nested document" + (s === 1 ? " was" : "s were") + " removed - an offline export cannot inspect a document carried inside an attribute."
+    : "";
+  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + baseNote + srcdocNote + review.note, { center: true });
 }
 ["btnExportOffline", "btnExportOfflineTop"].forEach(function (id) {
   const b = document.getElementById(id);
