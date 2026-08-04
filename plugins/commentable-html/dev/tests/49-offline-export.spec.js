@@ -415,7 +415,12 @@ test("Export Offline adds a zero-network CSP and strips loader, media, CSS, and 
 <h1>Offline zero network</h1>
 <style>
 @import "https://evil.example/imported.css";
+@import "https:evil.example/scheme-only-imported.css";
+@import"https://evil.example/nospace-imported.css";
+@import "https://evil.example/media-imported.css" screen;
 .remote-bg { background-image: url("//evil.example/bg.png"); }
+.scheme-only-bg { background-image: url(https:evil.example/scheme-only-bg.png); }
+.quoted-paren-bg { background-image: url("https:evil.example/paren)bg.png"); }
 </style>
 <link rel="prefetch" href="https://evil.example/prefetch.js">
 <link rel="prerender" href="https://evil.example/prerender.html">
@@ -427,7 +432,7 @@ test("Export Offline adds a zero-network CSP and strips loader, media, CSS, and 
 <noscript><button id="noscriptHandlerProbe" onclick="import('https://evil.example/noscript-handler.js')">go</button></noscript>
 <noscript><style id="noscriptStyleProbe">@import "https://evil.example/noscript-imported.css";
 .noscript-bg { background-image: url("//evil.example/noscript-bg.png"); }</style>
-<div id="noscriptInlineStyleProbe" style="background-image:url('//evil.example/noscript-inline.png')">fallback</div></noscript>
+<div id="noscriptInlineStyleProbe" style="background-image:url('https:evil.example/noscript-inline.png')">fallback</div></noscript>
 <svg width="20" height="20" aria-label="remote svg refs">
   <image href="https://evil.example/vector.png" width="20" height="20"></image>
   <use href="https://evil.example/sprite.svg#icon"></use>
@@ -495,8 +500,10 @@ test("Export Offline adds a zero-network CSP and strips loader, media, CSS, and 
       exportedHtml.match(/<div\b[^>]*id="noscriptInlineStyleProbe"[^>]*>/i);
     expect(noscriptInlineStyleTag && noscriptInlineStyleTag[0]).toBeTruthy();
     // The strip NEUTRALIZES a network `url(...)` to `url("data:,")` rather than deleting the
-    // declaration, so assert no NETWORK url remains - not that no `url(` does.
-    expect(noscriptInlineStyleTag[0]).not.toMatch(/url\(\s*(?:&quot;|&#39;|["'])?\s*(?:https?:)?\/\//i);
+    // declaration, so assert no NETWORK url remains - not that no `url(` does. The slash run after
+    // the scheme is optional here for the same reason the gate stopped requiring it (#961): a
+    // scheme-only `url(https:host/x.png)` resolves to the same host.
+    expect(noscriptInlineStyleTag[0]).not.toMatch(/url\(\s*(?:&quot;|&#39;|["'])?\s*(?:https?:\/*|\/\/)/i);
     expect(exportedHtml).not.toContain("evil.example");
     expect(exportedHtml).not.toContain(server.url + "/same-origin.png");
     expect(exportedHtml).not.toMatch(/<link\b[^>]*rel=["'][^"']*(?:prefetch|prerender)/i);

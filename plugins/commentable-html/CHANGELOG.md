@@ -4,6 +4,52 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.650.0] - 2026-08-04
+
+### Fixed
+
+- The offline CSS strips and the strict validator's CSS network-literal gates no longer miss a
+  SCHEME-ONLY URL. `url(https:evil.example/x.png)` and `@import "https:evil.example/t.css"` carry no
+  slashes after the colon, but the URL parser's special-authority states IGNORE whatever run of
+  slashes follows a special scheme, so a browser resolves both to the same host as the `https://`
+  spelling and really does fetch them from a `file://` document - while a `(?:https?:)?//` pattern
+  read them as relative references. Both gates (`CSS_NETWORK_URL_RE` and the `@import` scan, now
+  `CSS_NETWORK_IMPORT_RE`) and both of the exporter's matching strips (`_offlineCssNoNetwork`) now
+  consume that slash run rather than counting it, and the attribute predicate that mirrors them
+  (`NETWORK_URL_RE` / `_OFFLINE_NETWORK_URL_RE`) moves with them, so a one-token spelling change no
+  longer walks past the layer that is not supposed to depend on the CSP. All of them were widened in
+  the SAME change, because a gate that outran the exporter would reject a file the export had just
+  produced. Each now also requires a non-empty HOST, so an authority terminated at once
+  (`url(https://)`, `url(//)`, a bare `https:`) is left in the author's stylesheet instead of being
+  reported as a beacon that fetches nothing - which also closes a small pre-existing drift, where
+  the CSS gate reported `url(//)` and the strip left it alone. A new parity test runs the exporter's
+  own CSS strip in the real JS engine over the corpus the Python gates are held to, so the two
+  copies cannot drift apart again.
+  The same change closes two narrower gate/strip disagreements the multi-duck panel found in the
+  pair while reviewing it, both in the direction where `--strict` rejects a file the export has just
+  produced: an `@import` whose URL is followed by a media query, a `layer()`/`supports()` clause or
+  nothing at all (the strip demanded a terminator immediately after the URL; it now consumes the
+  at-rule's prelude the way a CSS parser does, to its `;`, its block boundary or the end of the
+  sheet), and a QUOTED value carrying a `)` or the other quote character (the strip now reads a
+  quoted value as a CSS string rather than as "anything but a paren or a quote"). A THIRD shape was
+  worse than drift: a `url(` token the CSS tokenizer closes but the author did not - unterminated at
+  the end of the sheet, or with a quote that is never closed or is closed by the other quote - was
+  verified FETCHING in a real Chromium while the strip left it in the exported file, so the strip
+  now consumes such a token to the first `)` or the end of the sheet exactly as a browser does, and
+  the same fallback covers an `@import` string that is never closed. `@import"https://host/x.css"`
+  with NO whitespace after the at-keyword is valid CSS that fetches, and was missed by both sides;
+  both now accept the empty separator. Both strips are BOUNDED - they stop at `;`, `{`, `}`, the
+  next `@`, and either side of a comment boundary - so a false hit on `url(`/`@import` text inside a
+  CSS string costs the declaration it sits in rather than the stylesheet, and consuming a comment's
+  opener can no longer leave its `*/` behind and turn commented-out CSS into live CSS. They also run
+  to CONVERGENCE, replacing a removed at-rule with a space, because a deletion can otherwise splice
+  two inert fragments into a live `@import`.
+  Both sides also now spell their whitespace out as the ASCII set instead of `\s` - a JavaScript
+  `\s` also takes U+00A0 and U+FEFF, neither of which is CSS whitespace, so the two engines
+  classified a BOM-carrying host differently - and both skip the padding the URL parser strips from
+  inside a quoted value, so `url(" https://host/x.png")` is no longer read as a relative reference
+  by either. The parity test now asserts the real contract, a FIXED POINT: after the exporter's own
+  strip has run, the gate must no longer report the stylesheet.
 
 ## [1.612.0] - 2026-08-04
 
