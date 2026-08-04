@@ -13,6 +13,10 @@
 .changelog ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .changelog li { position: relative; padding-left: 18px; color: var(--cp-text-muted); font-size: 0.93rem; }
 .changelog li::before { content: "-"; position: absolute; left: 0; color: var(--cp-accent); }
+/* A changelog bullet is site content, so a routine entry that quotes a tag, a selector, or a path
+   lands a long code span with no break opportunity here. Without a break rule that token widens
+   the whole document on a phone; break inside it instead. */
+.changelog code { overflow-wrap: anywhere; word-break: break-word; }
 .changelog .empty { color: var(--cp-text-soft); }
 .changelog .older-releases { display: flex; flex-direction: column; gap: 18px; }
 .changelog .older-releases > summary {
