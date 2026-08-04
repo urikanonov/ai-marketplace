@@ -644,7 +644,8 @@ function _offlineQueryAll(root, selector) {
 // `srcdoc` is reached by the recursion for free, and the nested counts land in the same toast.
 // The strict validator recurses the same way over the same bound, so the two agree by
 // construction. Nothing is written back unless a pass CHANGED something, so a clean srcdoc keeps
-// the author's exact bytes rather than a re-serialized copy of them.
+// the author's value as the author wrote it (the export's final whitespace normalization still
+// collapses a run of blank lines inside it, as it does everywhere else in the file).
 const _OFFLINE_SRCDOC_MAX_DEPTH = 8;
 // What a browser renders is the STRING, not the DOM this strip cleaned, and serialize-then-reparse
 // is not always a fixed point: the mutation-XSS shapes (a foreign-content `<mglyph>`/`<style>`
@@ -654,24 +655,69 @@ const _OFFLINE_SRCDOC_MAX_DEPTH = 8;
 // convergence, and a value that will not settle is refused outright. Five passes is the same
 // bound that strip uses; a shape needing more is not one to ship.
 const _OFFLINE_SRCDOC_MAX_PASSES = 5;
+// The passes and the depth bound would otherwise MULTIPLY: each pass at one level re-runs the whole
+// strip of every nested document below it, so five passes at eight levels is 5^8 full parse-strip
+// cycles of the innermost markup - a hang of the author's own export tab, on exactly the hostile
+// markup this feature exists to defend against. One budget is shared by the whole export, and a
+// srcdoc that exhausts it is removed like one that will not settle.
+const _OFFLINE_SRCDOC_MAX_PARSES = 200;
+// A doctype cannot be rebuilt from its parts in every case, and a BROKEN one is not a cosmetic
+// problem: an unterminated quoted id makes the whole declaration a bogus doctype, which forces
+// QUIRKS mode and spills its own tail back into the document as markup. HTML lets a single-quoted
+// legacy id carry a `"` (`<!DOCTYPE html PUBLIC 'a"b'>`), so the quote is CHOSEN per value, and a
+// value that carries both quotes - or a name carrying `<` or `>` - is refused outright (null)
+// rather than written back in a form a parser reads differently. The caller then drops the srcdoc,
+// which is the fail-closed answer; the `compatMode` check below catches whatever this misses.
+function _offlineDoctypeSource(dt) {
+  if (!dt) return "";
+  const name = dt.name || "";
+  if (/[<>"'\s]/.test(name)) return null;
+  const quoted = function (v) {
+    if (/[<>]/.test(v)) return null;
+    if (v.indexOf('"') < 0) return '"' + v + '"';
+    if (v.indexOf("'") < 0) return "'" + v + "'";
+    return null;
+  };
+  let out = "<!DOCTYPE " + name;
+  if (dt.publicId) {
+    const p = quoted(dt.publicId);
+    if (p === null) return null;
+    out += " PUBLIC " + p;
+    if (dt.systemId) {
+      const s = quoted(dt.systemId);
+      if (s === null) return null;
+      out += " " + s;
+    }
+  } else if (dt.systemId) {
+    const s = quoted(dt.systemId);
+    if (s === null) return null;
+    out += " SYSTEM " + s;
+  }
+  return out + ">";
+}
 // `documentElement.outerHTML` serializes the ELEMENT, and a doctype is its SIBLING - which is why
 // `_serializeOfflineDoc` prepends one by hand for the top-level document. Dropping it here would
 // flip the nested browsing context into QUIRKS mode whenever the strip happened to change
 // something, silently changing how reader-visible content lays out, and it would do so
 // inconsistently (a clean srcdoc beside it keeps its doctype). Absence is preserved as carefully
-// as presence: a srcdoc the author deliberately left quirks-mode must not be handed one.
+// as presence: a srcdoc the author deliberately left quirks-mode must not be handed one. A comment
+// written outside `<html>` is a sibling too, and is carried for the same reason. Returns null when
+// the document cannot be written back faithfully at all.
 function _offlineSerializeSrcdocDoc(d) {
-  const dt = d.doctype;
-  let head = "";
-  if (dt) {
-    head = "<!DOCTYPE " + dt.name
-      + (dt.publicId ? ' PUBLIC "' + dt.publicId + '"' : "")
-      + (dt.systemId ? (dt.publicId ? "" : " SYSTEM") + ' "' + dt.systemId + '"' : "")
-      + ">";
-  }
-  return head + d.documentElement.outerHTML;
+  const head = _offlineDoctypeSource(d.doctype);
+  if (head === null) return null;
+  let before = "";
+  let after = "";
+  let seenRoot = false;
+  Array.prototype.slice.call(d.childNodes || []).forEach(function (n) {
+    if (n === d.documentElement) { seenRoot = true; return; }
+    if (n.nodeType !== 8) return;
+    const text = "<!--" + (n.nodeValue || "") + "-->";
+    if (seenRoot) after += text; else before += text;
+  });
+  return head + before + d.documentElement.outerHTML + after;
 }
-function _offlineStripSrcdocs(doc, depth) {
+function _offlineStripSrcdocs(doc, depth, budget) {
   let dropped = 0;
   let clearedBases = 0;
   let truncated = 0;
@@ -691,29 +737,48 @@ function _offlineStripSrcdocs(doc, depth) {
     let markup = raw;
     let rewritten = false;
     let settled = false;
+    let compat = null;
+    // Buffered per srcdoc rather than added as they are found: a value that never settles is
+    // DISCARDED, so counting its intermediate passes would describe work on a nested document the
+    // export does not contain.
+    let innerDropped = 0;
+    let innerBases = 0;
+    let innerTruncated = 0;
     for (let pass = 0; pass < _OFFLINE_SRCDOC_MAX_PASSES; pass++) {
+      if (budget.parses >= _OFFLINE_SRCDOC_MAX_PARSES) break;
+      budget.parses += 1;
       let nested = null;
       try { nested = _offlineDocFromHtml(markup); } catch (e) { nested = null; }
       if (!nested || !nested.documentElement) break;
+      // Rendering mode is decided by the doctype, so a rewrite that changed it changed how the
+      // nested document LAYS OUT. Compared against the author's own parse rather than assumed from
+      // the doctype text, which is what catches a declaration a parser reads differently from the
+      // way it was rebuilt.
+      if (compat === null) compat = nested.compatMode;
       const before = _offlineSerializeSrcdocDoc(nested);
-      const inner = _stripOfflineNetworkLoads(nested, depth + 1);
+      if (before === null) break;
+      const inner = _stripOfflineNetworkLoads(nested, depth + 1, budget);
       _stripOfflineEventHandlers(nested);
-      dropped += inner.dropped;
-      clearedBases += inner.clearedBases;
-      truncated += inner.truncatedSrcdocs;
+      innerDropped += inner.dropped;
+      innerBases += inner.clearedBases;
+      innerTruncated += inner.truncatedSrcdocs;
       const after = _offlineSerializeSrcdocDoc(nested);
+      if (after === null) break;
       // This parse of `markup` needed no change, so the string a browser parses really is clean -
       // whether that is the author's original value or the rewrite of a previous pass.
-      if (after === before) { settled = true; break; }
+      if (after === before) { settled = (nested.compatMode === compat); break; }
       markup = after;
       rewritten = true;
     }
     if (!settled) { el.removeAttribute("srcdoc"); truncated += 1; return; }
+    dropped += innerDropped;
+    clearedBases += innerBases;
+    truncated += innerTruncated;
     if (rewritten) el.setAttribute("srcdoc", markup);
   });
   return { dropped: dropped, clearedBases: clearedBases, truncatedSrcdocs: truncated };
 }
-function _stripOfflineNetworkLoads(doc, depth) {
+function _stripOfflineNetworkLoads(doc, depth, budget) {
   let dropped = 0;
   let clearedBases = 0;
   const all = function (selector) { return _offlineQueryAll(doc, selector); };
@@ -848,7 +913,7 @@ function _stripOfflineNetworkLoads(doc, depth) {
   });
   // Last, so a nested document is sanitized by a strip that has already finished with this one and
   // the counts it reports are added rather than overwritten.
-  const nested = _offlineStripSrcdocs(doc, depth || 0);
+  const nested = _offlineStripSrcdocs(doc, depth || 0, budget || { parses: 0 });
   dropped += nested.dropped;
   clearedBases += nested.clearedBases;
   return { dropped: dropped, clearedBases: clearedBases, truncatedSrcdocs: nested.truncatedSrcdocs };
@@ -1516,7 +1581,8 @@ async function saveOffline() {
   const t = built.truncatedSrcdocs;
   const srcdocNote = t > 0
     ? " " + t + " <iframe srcdoc> document" + (t === 1 ? " was" : "s were") + " removed because "
-      + (t === 1 ? "it was" : "they were") + " nested too deep to check, or would not settle into markup a browser reparses unchanged."
+      + (t === 1 ? "it was" : "they were") + " nested too deep to check, or could not be written back "
+      + "as markup a browser reparses unchanged."
     : "";
   showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + baseNote + srcdocNote + review.note, { center: true });
 }

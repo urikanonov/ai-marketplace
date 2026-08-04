@@ -38,12 +38,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   is not always a fixed point - the mutation-XSS shapes reparse in a different insertion mode and
   can MATERIALIZE markup the sanitized DOM never held - so a rewritten value is re-parsed and
   re-stripped until it settles, exactly as the offline CSS strips already run to convergence, and a
-  value that will not settle is removed instead. A rewrite also re-emits the nested DOCTYPE, which
-  serializing `documentElement` alone would drop: that would flip the nested browsing context into
-  quirks mode whenever the strip happened to change something, and leave two srcdocs in one export
-  rendering in different modes. Removing a srcdoc - past the depth bound, or because it would not
-  settle - is counted in the download toast, since a whole nested document a reader could see
-  disappears.
+  value that will not settle is removed instead. The passes and the depth bound would otherwise
+  MULTIPLY (five passes at eight levels is 5^8 full strips of the innermost markup), so one parse
+  budget is shared by the whole export and a srcdoc that exhausts it is removed like one that will
+  not settle. A rewrite also re-emits the nested DOCTYPE, which serializing `documentElement` alone
+  would drop: that would flip the nested browsing context into quirks mode whenever the strip
+  happened to change something, and leave two srcdocs in one export rendering in different modes.
+  Its ids are re-quoted per VALUE rather than always in double quotes, since a single-quoted legacy
+  id may legally carry a `"` and re-emitting that double-quoted would end the id early, make the
+  whole declaration a bogus (force-quirks) doctype and spill its tail back into the document as
+  markup; and because a doctype cannot always be rebuilt from the parts a parser keeps, the
+  rendering mode of the rewritten string is compared against the author's own parse and a rewrite
+  that would change it is refused. Removing a srcdoc - past the depth bound, because it will not
+  settle, or because it cannot be written back faithfully - is counted in the download toast, since
+  a whole nested document a reader could see disappears; the counts of a nested document that is
+  then discarded are discarded with it, so the toast never describes work the export does not
+  carry.
   Two smaller consequences are worth knowing. The gate's nested pass is not offline-only (the
   self-contained guarantee never was, and unlike an offline file a shareable one has no zero-network
   CSP behind it), so a SHAREABLE document whose srcdoc carries a remote reference is now reported

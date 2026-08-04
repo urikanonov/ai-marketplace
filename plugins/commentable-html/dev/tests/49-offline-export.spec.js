@@ -3014,6 +3014,27 @@ const SRCDOC_BOUNDARY_CONTENT = [
       + '<p>cmh-doctype-marker</p><img src="https://evil.example/doctype.png" alt="x">'
       + "</body></html>") + '"></iframe>',
   '<iframe id="cmh-srcdoc-mutation" title="mx" srcdoc="' + asSrcdoc(SRCDOC_MUTATION) + '"></iframe>',
+  // A legacy doctype whose ids are quotable round-trips intact.
+  '<iframe id="cmh-srcdoc-legacy-dt" title="ldt" srcdoc="'
+    + asSrcdoc('<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" '
+      + '"http://www.w3.org/TR/html4/strict.dtd"><html><body>'
+      + '<p>cmh-legacy-doctype-marker</p><img src="https://evil.example/legacy.png" alt="x">'
+      + "</body></html>") + '"></iframe>',
+  // A single-quoted legacy id may carry a `"`, and re-emitting it double-quoted would end the id
+  // early, make the whole declaration a bogus (force-quirks) doctype and spill its tail back into
+  // the document as markup - so the quote is chosen per value rather than hardcoded.
+  '<iframe id="cmh-srcdoc-quote-dt" title="qdt" srcdoc="'
+    + asSrcdoc('<!DOCTYPE html PUBLIC \'a"b\'><html><body>'
+      + '<p>cmh-quote-doctype-marker</p><img src="https://evil.example/quote.png" alt="x">'
+      + "</body></html>") + '"></iframe>',
+  // ...and a declaration a parser reads differently from the way it can be written back is REFUSED
+  // rather than silently re-rendered: a bogus doctype forces quirks mode, but nothing in the parsed
+  // DocumentType records the `foo` that made it bogus, so re-emitting it would hand the nested
+  // document standards mode it never had.
+  '<iframe id="cmh-srcdoc-bogus-dt" title="bdt" srcdoc="'
+    + asSrcdoc("<!DOCTYPE html foo><html><body>"
+      + '<p>cmh-bogus-doctype-marker</p><img src="https://evil.example/bogus.png" alt="x">'
+      + "</body></html>") + '"></iframe>',
 ].join("\n");
 
 test("CMH-OFFLINE-04: the srcdoc strip stops at the shared bound, keeps the doctype, and settles", async ({ page, browser }) => {
@@ -3043,12 +3064,25 @@ test("CMH-OFFLINE-04: the srcdoc strip stops at the shared bound, keeps the doct
     // Only the level PAST the bound goes: the outer frames of that same chain are still read, so
     // they keep their srcdoc, and it is the innermost document that disappears.
     expect(exportedHtml).toMatch(/id="cmh-srcdoc-past-bound"[^>]*\bsrcdoc=/);
-    // Deleting a whole nested document is never silent.
+    // Deleting a whole nested document is never silent. Two go here: the one nested past the
+    // bound, and the one whose doctype cannot be written back faithfully.
     await expect(page.locator("#toast")).toContainText(
-      "1 <iframe srcdoc> document was removed because it was nested too deep to check, or would not settle into markup a browser reparses unchanged.");
-    // A rewritten srcdoc keeps its doctype, so the nested context stays out of quirks mode.
+      "2 <iframe srcdoc> documents were removed because they were nested too deep to check, or could not be written back as markup a browser reparses unchanged.");
+    // A rewritten srcdoc keeps its doctype, so the nested context stays out of quirks mode - and
+    // the legacy PUBLIC/SYSTEM form round-trips with both of its ids.
     expect(exportedHtml).toContain("cmh-doctype-marker");
     expect(exportedHtml).toMatch(/id="cmh-srcdoc-doctype"[^>]*srcdoc="&lt;!DOCTYPE html&gt;/i);
+    expect(exportedHtml).toContain("cmh-legacy-doctype-marker");
+    expect(exportedHtml).toMatch(/id="cmh-srcdoc-legacy-dt"[^>]*srcdoc="&lt;!DOCTYPE HTML PUBLIC &quot;-\/\/W3C\/\/DTD HTML 4\.01\/\/EN&quot; &quot;http:\/\/www\.w3\.org\/TR\/html4\/strict\.dtd&quot;&gt;/i);
+    // A `"` in a legacy id picks the other quote rather than breaking the declaration.
+    expect(exportedHtml).toContain("cmh-quote-doctype-marker");
+    expect(exportedHtml).toMatch(/id="cmh-srcdoc-quote-dt"[^>]*srcdoc="&lt;!DOCTYPE html PUBLIC 'a&quot;b'&gt;/);
+    // The bogus one is REFUSED rather than re-rendered in a mode it never had: the document goes.
+    expect(exportedHtml).not.toContain("cmh-bogus-doctype-marker");
+    expect(exportedHtml).not.toMatch(/id="cmh-srcdoc-bogus-dt"[^>]*\bsrcdoc=/);
+    // The mutation frame, by contrast, SETTLED - so its assertion below is about a live nested
+    // document rather than an empty one the strip happened to delete.
+    expect(exportedHtml).toMatch(/id="cmh-srcdoc-mutation"[^>]*\bsrcdoc=/);
 
     const exportedPath = path.join(outDir, "offline-srcdoc-bounds.html");
     fs.writeFileSync(exportedPath, exportedHtml);
@@ -3076,13 +3110,16 @@ test("CMH-OFFLINE-04: the srcdoc strip stops at the shared bound, keeps the doct
     expect(await page2.evaluate(() => {
       const mx = document.getElementById("cmh-srcdoc-mutation").contentDocument;
       const dt = document.getElementById("cmh-srcdoc-doctype").contentDocument;
+      const legacy = document.getElementById("cmh-srcdoc-legacy-dt").contentDocument;
       return {
-        network: Array.from(mx.querySelectorAll("[src]"))
-          .map((el) => el.getAttribute("src") || "")
-          .filter((v) => /^(?:https?:)?\/\//i.test(v)),
+        network: Array.from(mx.querySelectorAll("[src], [href], [data], [poster], [action]"))
+          .map((el) => el.outerHTML)
+          .filter((v) => /(?:https?:)?\/\/[a-z]/i.test(v)),
         mode: dt.compatMode,
+        legacyMode: legacy.compatMode,
+        legacyKept: !!legacy.querySelector("p"),
       };
-    })).toEqual({ network: [], mode: "CSS1Compat" });
+    })).toEqual({ network: [], mode: "CSS1Compat", legacyMode: "CSS1Compat", legacyKept: true });
     expect(external).toEqual([]);
   } finally {
     if (ctx2) await ctx2.close();
