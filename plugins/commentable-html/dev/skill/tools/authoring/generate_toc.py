@@ -10,6 +10,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 import _browser_boundaries  # noqa: E402
 
 HEADING_TAGS = {"h2", "h3"}
+# Every heading a browser recognizes. Only h2/h3 are LISTED, but HTML5's h1-h6 start-tag rule pops
+# an open heading of ANY level, so an `<h4>` ends an open `<h2>` just as another `<h2>` does.
+ALL_HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
 VOID_TAGS = {
     "area", "base", "br", "col", "embed", "hr", "img", "input",
     "link", "meta", "param", "source", "track", "wbr",
@@ -109,6 +112,15 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
         ns = self._child_namespace(tag, attrs_dict)
         if ns == "html":
             self._implicit_close(tag)
+            # HTML5's h1-h6 start tag POPS an open heading that is the CURRENT node, so
+            # `<h2 id="a">A<h2 id="b">B` is two headings: without this the first one ran on and
+            # swallowed the second's text, and the second's id was never listed at all. The rule
+            # is STRUCTURAL - a browser pops whatever open heading is the current node - so a
+            # heading this tool never LISTS (an h1/h4-h6, a cm-skip one) is popped too. The
+            # validator's _DocParser reads the same boundary (CMH-VAL-21).
+            if (tag in ALL_HEADING_TAGS and self.stack
+                    and self.stack[-1][0] in ALL_HEADING_TAGS):
+                self._truncate_stacks(len(self.stack) - 1)
         own_skip = _has_class(attrs_dict, "cm-skip")
         opens = tag not in VOID_TAGS or ns != "html"
         start = self._off()

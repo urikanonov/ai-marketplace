@@ -101,6 +101,84 @@ class GenerateTocTests(unittest.TestCase):
         self.assertIn("Fish &amp; Chips &lt;ok&gt;", toc)
         self.assertNotIn("Fish & Chips <ok>", toc)
 
+    # CMH-VAL-21: this tool ends a heading exactly where the validator's _DocParser ends it, so a
+    # truncated or ancestor-closed document is ONE document to both. The first three pin boundaries
+    # the shared BrowserBoundaries base already supplies (regression pins); the h1-h6 pop below is
+    # the one this parser was still missing.
+    def test_a_heading_left_open_at_end_of_input_is_still_listed(self):
+        # A browser renders a heading whose end tag never arrives, so it is a real heading and the
+        # last heading of a truncated file must still reach the table of contents.
+        toc = generate_toc.build_toc(
+            '<main id="commentRoot"><h2 id="alpha">Alpha</h2><h2 id="beta">Beta')
+        self.assertIn('<li><a href="#beta">Beta</a></li>', toc)
+
+    def test_an_open_heading_with_no_text_at_end_of_input_is_dropped(self):
+        toc = generate_toc.build_toc('<main id="commentRoot"><h2 id="alpha">Alpha</h2><h2 id="beta">')
+        self.assertNotIn("#beta", toc)
+
+    def test_an_ancestors_end_tag_ends_the_heading(self):
+        # </section> closes over the open h2, so the heading stops there instead of absorbing the
+        # prose after it - and the next heading's text and id.
+        toc = generate_toc.build_toc(doc(
+            '<section><h2 id="alpha">Alpha</section>'
+            "<p>loose prose</p>"
+            '<h2 id="beta">Beta</h2>'))
+        self.assertIn('<li><a href="#alpha">Alpha</a></li>', toc)
+        self.assertIn('<li><a href="#beta">Beta</a></li>', toc)
+        self.assertNotIn("loose prose", toc)
+
+    def test_a_heading_the_comment_root_closed_over_stops_there(self):
+        toc = generate_toc.build_toc(
+            '<main id="commentRoot"><h2 id="alpha">Alpha</main>'
+            "<footer>outside prose</footer>")
+        self.assertIn('<li><a href="#alpha">Alpha</a></li>', toc)
+        self.assertNotIn("outside prose", toc)
+
+    def test_a_new_heading_start_ends_the_open_one(self):
+        # HTML5's h1-h6 start tag pops an open heading that is the current node, so this is two
+        # headings - not one that swallowed the second's text and never saw its id.
+        toc = generate_toc.build_toc(doc('<h2 id="alpha">Alpha<h2 id="beta">Beta</h2>'))
+        self.assertIn('<li><a href="#alpha">Alpha</a></li>', toc)
+        self.assertIn('<li><a href="#beta">Beta</a></li>', toc)
+
+    def test_a_heading_of_another_level_ends_the_open_one_too(self):
+        # The pop is not level-matched: an <h4> ends an open <h2> even though only h2/h3 are
+        # listed, so the listed entry carries its own text and not the h4's.
+        toc = generate_toc.build_toc(doc('<h2 id="alpha">Alpha<h4>Deep</h4><h3 id="gamma">Gamma</h3>'))
+        self.assertIn('<li><a href="#alpha">Alpha</a></li>', toc)
+        self.assertIn('<li class="is-sub"><a href="#gamma">Gamma</a></li>', toc)
+        self.assertNotIn("Deep", toc)
+
+    def test_a_heading_the_toc_did_not_capture_is_still_popped(self):
+        # The pop is STRUCTURAL, not keyed on whether this tool captured the open heading: a
+        # browser pops any open h1-h6 that is the current node. Keyed on capture, an unterminated
+        # cm-skip heading - or one of a level the TOC never lists - stayed on the stack and the
+        # visible heading after it inherited the skip and never reached the table of contents.
+        # Verified in chromium: in each document below `#shown` is a child of the <main>, its
+        # text is "Shown", and `closest(".cm-skip")` is null.
+        for body in ('<h2 class="cm-skip">Hidden<h2 id="shown">Shown</h2>',
+                     '<h4 class="cm-skip">Hidden<h2 id="shown">Shown</h2>',
+                     '<h1>Title<h2 id="shown">Shown</h2>'):
+            with self.subTest(body=body):
+                toc = generate_toc.build_toc(doc(body))
+                self.assertIn('<li><a href="#shown">Shown</a></li>', toc)
+                self.assertNotIn("Hidden", toc)
+
+    def test_a_stray_end_tag_for_a_popped_heading_does_not_end_the_new_one(self):
+        # Once the <h4> is popped the later </h4> matches no open element, so a browser ignores
+        # it and the h2 keeps running to its own end tag.
+        toc = generate_toc.build_toc(doc('<h4>Deep<h2 id="shown">Shown</h2></h4><p>tail</p>'))
+        self.assertIn('<li><a href="#shown">Shown</a></li>', toc)
+
+    def test_a_child_element_inside_a_heading_does_not_end_it(self):
+        toc = generate_toc.build_toc(doc('<h2 id="alpha">Al<em>ph</em>a</h2>'))
+        self.assertIn('<li><a href="#alpha">Alpha</a></li>', toc)
+
+    def test_rewrite_injects_an_id_for_a_heading_left_open_at_end_of_input(self):
+        out = generate_toc.rewrite_html('<main id="commentRoot"><h2>Trailing Title')
+        self.assertIn('<h2 id="trailing-title">Trailing Title', out)
+        self.assertIn('<a href="#trailing-title">Trailing Title</a>', out)
+
     def test_generated_toc_strips_redundant_author_section_numbers(self):
         html = doc('<h2 id="a">1. Executive summary</h2>\n<h2 id="b">2. How the two source plans merge</h2>')
         toc = generate_toc.build_toc(html)

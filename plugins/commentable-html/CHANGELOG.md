@@ -4,6 +4,36 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [1.612.0] - 2026-08-04
+
+### Fixed
+
+- The three tolerant parsers now end a heading where a browser ends it, so a truncated or
+  ancestor-closed document is read the same way by the validator and by the tools that rewrite it
+  (CMH-VAL-21). HTML5's h1-h6 start-tag pop is now STRUCTURAL in all of them - a browser pops
+  whatever open heading is the current node, so a heading a parser never records (one inside a
+  `cm-skip` subtree, or of a level the table of contents does not list) is popped too. Keyed on
+  that record instead, an unterminated `cm-skip` heading stayed open and the VISIBLE heading after
+  it inherited the skip: it vanished from the table of contents, from the section hashes and the
+  document content hash, and from the validator's heading scan, though a browser renders it as an
+  ordinary sibling. `section_hash.py`, which slices the
+  review-tracking sections and the document content hash, gains all three boundaries: a heading
+  still open at end of input is now closed by the PARSER rather than left for each caller to guess;
+  the content root ends when an ANCESTOR of it closes, not only on the root's own end tag, so a
+  document truncated before `</main>` no longer folds the text and the headings a browser puts
+  outside the root into the last section's hash or the document hash - `</body>` and `</html>` are
+  the exception and deliberately do NOT end it, because HTML5 only switches insertion mode on those
+  and appends what follows to the element still open, which in such a document is `#commentRoot`
+  itself (this parser's binding contract is the runtime hash in a real browser, so it follows the
+  browser wherever that parts from the validator); and the h1-h6 pop above, so a heading's own text
+  is its own. The table of contents parser in `generate_toc.py` already ended a heading at end of
+  input and at an ancestor's close, and now takes the pop as well: `<h2 id="a">A<h2 id="b">B` is two
+  entries instead of one that swallowed the second's text and never listed its id, and because the
+  pop is not level-matched an `<h4>` ends an open `<h2>` exactly as a browser does. Every boundary
+  above was settled against a real browser rather than a reading of the spec, and the extracted
+  content-root text is pinned equal to chromium's over a corpus of malformed shapes.
+
 ## [1.602.0] - 2026-08-04
 
 ### Fixed

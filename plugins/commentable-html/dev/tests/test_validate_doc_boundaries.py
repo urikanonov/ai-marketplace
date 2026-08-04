@@ -798,6 +798,28 @@ class DocParserHeadingEofTests(unittest.TestCase):
                 headings = parsing._parse_document(tail).headings
                 self.assertEqual([(h["id"], h["text"]) for h in headings], want)
 
+    def test_a_heading_the_parser_did_not_capture_is_still_popped(self):
+        # The pop is STRUCTURAL: HTML5 pops an open h1-h6 that is the current node whatever it
+        # is, so a heading this parser deliberately skips must be popped too. Keyed on capture
+        # instead, a `cm-skip` heading stayed open and the visible heading after it inherited the
+        # skip and vanished. Verified in chromium: for the first document below the second
+        # heading's parent is the <main>, its text is "Shown" and `closest(".cm-skip")` is null.
+        for html, want in (
+                (self.CR + '<h2 class="cm-skip">Hidden<h2 id="v">Shown</h2>', [("v", "Shown")]),
+                (self.CR + '<h4 class="cm-skip">Hidden<h2 id="v">Shown</h2>', [("v", "Shown")]),
+                (self.CR + '<h4>Deep<h2 id="v">Shown</h2></h4><p>tail</p>',
+                 [(None, "Deep"), ("v", "Shown")])):
+            with self.subTest(html=html):
+                headings = parsing._parse_document(html).headings
+                self.assertEqual([(h["id"], h["text"]) for h in headings], want)
+
+    def test_a_heading_that_is_not_the_current_node_is_not_popped(self):
+        # Verified in chromium: with an open <span> as the current node the new heading nests
+        # inside it (its parentElement is the SPAN), so the outer heading is NOT popped.
+        headings = parsing._parse_document(
+            self.CR + '<h2 id="a">A<span><h2 id="v">V</h2></span>').headings
+        self.assertEqual([(h["id"], h["text"]) for h in headings], [("a", "AV")])
+
     def test_a_child_element_inside_a_heading_does_not_end_it(self):
         # The other side of the boundary: only the heading's OWN level (or above) ends it, so an
         # inline child's end tag, and a void child that is never pushed, keep the text whole.

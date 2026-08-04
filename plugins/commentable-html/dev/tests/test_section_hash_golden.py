@@ -166,5 +166,93 @@ class DocumentContentHashTests(unittest.TestCase):
                             section_hash.document_content_hash(two))
 
 
+class HeadingBoundaryTests(unittest.TestCase):
+    """CMH-VAL-21: the section extractor ends a heading (and the content root it lives in) exactly
+    where the validator's `_DocParser` ends it, so a truncated or ancestor-closed document is ONE
+    document to the validator and to this authoring tool."""
+
+    ROOT = '<main id="commentRoot">%s</main>'
+
+    def test_a_heading_left_open_at_end_of_input_is_closed_by_the_parser(self):
+        # The parser itself owns the end-of-input boundary; a caller must not have to guess it.
+        parser = section_hash._SectionParser()
+        parser.feed(self.ROOT[:-7] % '<h2 id="a">Alpha</h2><h2 id="b">Beta')
+        parser.close()
+        self.assertEqual([h["end"] for h in parser.headings][-1], parser.length)
+
+    def test_an_ancestor_closing_over_the_root_ends_the_section(self):
+        # </section> closes over an unterminated #commentRoot, so the last section stops there
+        # instead of absorbing the text a browser puts outside the root. (Verified in chromium:
+        # `getElementById("commentRoot").textContent` is "keep" for the trailing-prose document.)
+        open_root = '<section><main id="commentRoot"><h2 id="a">Alpha</h2><p>inside</p>'
+        clean = section_hash.extract_sections(open_root + "</section>")
+        trailing = section_hash.extract_sections(
+            open_root + "</section><p>outside trailing prose</p>")
+        self.assertEqual([s["hash"] for s in clean], [s["hash"] for s in trailing])
+
+    def test_a_heading_outside_a_root_an_ancestor_closed_is_not_a_section(self):
+        secs = section_hash.extract_sections(
+            '<section><main id="commentRoot"><h2 id="a">Alpha</h2></section><h2 id="c">Gamma</h2>')
+        self.assertEqual([s["id"] for s in secs], ["a"])
+
+    def test_the_document_hash_stops_where_an_ancestor_closes_the_root(self):
+        open_root = '<section><main id="commentRoot"><p>keep</p>'
+        clean = section_hash.document_content_hash(open_root + "</section>")
+        trailing = section_hash.document_content_hash(open_root + "</section><p>outside</p>")
+        self.assertEqual(clean, trailing)
+
+    def test_an_after_body_end_tag_does_not_end_the_root(self):
+        # HTML5 does not POP for </body> or </html> - they switch the insertion mode, and what
+        # follows is appended to the element still open. Verified in chromium: for
+        # `<body><main id="commentRoot"><p>keep</p></body><p>outside</p>` the root's textContent
+        # is "keepoutside". The runtime hashes that, so this parser must too.
+        open_root = '<body><main id="commentRoot"><p>keep</p>'
+        self.assertEqual(section_hash.document_content_hash(open_root + "</body><p>outside</p>"),
+                         section_hash.cmh_section_hash("keepoutside"))
+        self.assertEqual(section_hash.document_content_hash(
+            '<html><body><main id="commentRoot"><p>keep</p></html><p>outside</p>'),
+            section_hash.cmh_section_hash("keepoutside"))
+
+    def test_a_heading_after_an_after_body_end_tag_is_still_a_section(self):
+        secs = section_hash.extract_sections(
+            '<body><main id="commentRoot"><h2 id="a">Alpha</h2></body><h2 id="c">Gamma</h2>')
+        self.assertEqual([s["id"] for s in secs], ["a", "c"])
+
+    def test_a_heading_the_parser_did_not_hash_is_still_popped(self):
+        # The pop is STRUCTURAL: a browser pops any open h1-h6 that is the current node, so a
+        # heading excluded from the hash still ends there. Keyed on `hidx` instead, an
+        # unterminated cm-skip heading stayed open and the visible heading after it inherited the
+        # skip, dropping its section and its text from the document hash. Verified in chromium:
+        # the root text is "HiddenShown" and `#v.closest(".cm-skip")` is null.
+        for html in ('<main id="commentRoot"><h2 class="cm-skip">Hidden<h2 id="v">Shown</h2></main>',
+                     '<main id="commentRoot"><h4 class="cm-skip">Hidden<h2 id="v">Shown</h2></main>'):
+            with self.subTest(html=html):
+                secs = {s["id"]: s for s in section_hash.extract_sections(html)}
+                self.assertEqual(list(secs), ["v"])
+                self.assertEqual(secs["v"]["headingText"], "Shown")
+                self.assertEqual(section_hash.document_content_hash(html),
+                                 section_hash.cmh_section_hash("Shown"))
+
+    def test_a_heading_that_is_not_the_current_node_is_not_popped(self):
+        # Verified in chromium: with an open <span> as the current node the new heading nests
+        # inside it, so the outer heading is not popped and its text runs on.
+        secs = {s["id"]: s for s in section_hash.extract_sections(
+            '<main id="commentRoot"><h2 id="a">A<span><h2 id="v">V</h2></span></main>')}
+        self.assertEqual(secs["a"]["headingText"], "AV")
+
+    def test_a_new_heading_start_ends_the_open_ones_text(self):
+        # HTML5's h1-h6 rule: a new heading pops an open one, so the first heading's text is its
+        # own - not its own plus everything the unterminated element ran on to collect.
+        secs = {s["id"]: s for s in section_hash.extract_sections(
+            self.ROOT % '<h2 id="a">Alpha<h2 id="b">Beta</h2><p>body</p>')}
+        self.assertEqual(secs["a"]["headingText"], "Alpha")
+        self.assertEqual(secs["b"]["headingText"], "Beta")
+
+    def test_an_ancestors_end_tag_ends_the_headings_own_text(self):
+        secs = {s["id"]: s for s in section_hash.extract_sections(
+            self.ROOT % '<section><h2 id="a">Alpha</section><p>loose prose</p>')}
+        self.assertEqual(secs["a"]["headingText"], "Alpha")
+
+
 if __name__ == "__main__":
     unittest.main()
