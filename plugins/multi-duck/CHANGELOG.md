@@ -4,6 +4,21 @@ All notable changes to the multi-duck plugin are documented here. The format fol
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to semantic
 versioning.
 
+## [1.2.0] - 2026-08-04
+
+### Added
+
+- The panel now respects a project's DECLARED threat model instead of rediscovering its non-goals on
+  every run (MDUCK-SCOPE-12). Bundle assembly collects the repo's written threat model, trust
+  boundaries, and accepted residual risks into `context.md`, together with the list that stays in
+  scope regardless (a weakened enforcement layer, a false positive that breaks benign input, and
+  drift that makes a tool emit output its own validator rejects). Every duck's hard rules forbid
+  reporting a finding whose attacker the project declares trusted, whose effect a named enforcement
+  layer already blocks unconditionally, or which is one more instance of an already-accepted
+  residual; a duck that disagrees with a non-goal raises it under `QUESTIONS:` rather than as a
+  finding. Consolidation records such a finding as `Dismissed-as-out-of-scope` and does not open a
+  follow-up issue for it. This closes the loop where each reviewed fix spawned its own successors.
+
 ## [1.1.0] - 2026-07-25
 
 ### Changed

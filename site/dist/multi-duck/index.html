@@ -90,7 +90,7 @@
           <a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg">View source</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg"><img class="hero-logo" src="../assets/multi-duck.svg" alt="multi-duck logo" /> multi-duck <span class="badge version"><!-- BEGIN:version -->v1.1.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg"><img class="hero-logo" src="../assets/multi-duck.svg" alt="multi-duck logo" /> multi-duck <span class="badge version"><!-- BEGIN:version -->v1.2.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -289,6 +289,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.2.0] - 2026-08-04</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>The panel now respects a project&#x27;s DECLARED threat model instead of rediscovering its non-goals on every run (MDUCK-SCOPE-12). Bundle assembly collects the repo&#x27;s written threat model, trust boundaries, and accepted residual risks into <code>context.md</code>, together with the list that stays in scope regardless (a weakened enforcement layer, a false positive that breaks benign input, and drift that makes a tool emit output its own validator rejects). Every duck&#x27;s hard rules forbid reporting a finding whose attacker the project declares trusted, whose effect a named enforcement layer already blocks unconditionally, or which is one more instance of an already-accepted residual; a duck that disagrees with a non-goal raises it under <code>QUESTIONS:</code> rather than as a finding. Consolidation records such a finding as <code>Dismissed-as-out-of-scope</code> and does not open a follow-up issue for it. This closes the loop where each reviewed fix spawned its own successors.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.1.0] - 2026-07-25</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -299,6 +306,8 @@
               <li>Built-in guidance for repeated panel runs on the same work: rotate/refresh the non-anchor roster each run (and, in prisms mode, which model reviews which aspect) while keeping the top flagships pinned, and increase the duck <code>count</code> when weaker or lighter models are added so extra diversity is additive rather than displacing the flagships.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 3 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.0.2] - 2026-07-19</h3></div>
             <div class="group-label">Changed</div>
@@ -307,8 +316,6 @@
               <li>The commentable-HTML open-comments extractor is now a shipped script (<code>tools/extract_open_comments.py</code>) that the skill runs by resolving the plugin root, rather than a full parser listing rehydrated from SKILL.md on every activation. Behavior is unchanged.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 2 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.0.1] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>

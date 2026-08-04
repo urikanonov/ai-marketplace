@@ -245,6 +245,38 @@ class MultiDuckSkillTests(unittest.TestCase):
         self.assertIn("no infrastructure or deployment/config change", t)
 
 
+class MultiDuckScopeGateTests(unittest.TestCase):
+    def test_the_panel_respects_a_declared_threat_model_and_dismisses_out_of_scope_findings(self):
+        # MDUCK-SCOPE-12: the panel collects the project's declared threat model / non-goals into the
+        # shared bundle, instructs every duck to respect it, and consolidates an out-of-scope finding
+        # as a recorded DISMISSAL instead of a follow-up issue. Without this a review panel
+        # manufactures work faster than it can be done (branching factor 1.83 over issues #623-#1073).
+        t = _read(SKILL)
+        # It is gathered into the bundle...
+        self.assertIn("Declared threat model and non-goals", t)
+        self.assertIn("the declared threat model / non-goals", t)
+        # ...the ducks are told to honor it...
+        self.assertIn("RESPECT THE DECLARED THREAT MODEL AND NON-GOALS", t)
+        self.assertIn("declares TRUSTED", t)
+        self.assertIn("already accepted by design", t)
+        # ...a disagreement is raised as a question, not laundered into a finding...
+        self.assertIn("do not launder it into", t)
+        # ...and consolidation records the dismissal without spawning an issue.
+        self.assertIn("Dismissed-as-out-of-scope", t)
+        self.assertIn("Do NOT open a follow-up issue for a dismissed finding", t)
+
+    def test_the_scope_gate_still_admits_the_findings_that_always_matter(self):
+        # MDUCK-SCOPE-12: the gate is not a blanket silencer - a weakened enforcement layer, a false
+        # positive that breaks benign input, and validator drift stay in scope everywhere it appears.
+        t = _read(SKILL)
+        self.assertEqual(
+            2, t.count("WEAKENS a declared enforcement layer"),
+            "both the duck hard rules and the bundle guidance must keep the always-in-scope list",
+        )
+        self.assertIn("FALSE POSITIVE where a guard breaks or rejects benign input", t)
+        self.assertIn("its own validator rejects", t)
+
+
 class MultiDuckHouseStyleTests(unittest.TestCase):
     def test_docs_are_lf_ascii_and_free_of_forbidden_punctuation(self):
         # MDUCK-STYLE-04: every multi-duck doc uses LF line endings, plain ASCII, and none of the
