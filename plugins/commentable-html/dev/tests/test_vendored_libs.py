@@ -1393,6 +1393,47 @@ class RuntimeParityTests(unittest.TestCase):
         # egress even to the loopback, while the direct `file://localhost/...` spelling is the
         # ordinary way to name a local file and stays local.
         ("\\\\.\\C:\\x", True), ("\\\\localhost\\C$\\x", True),
+        # Every OTHER authority-bearing scheme reads LOCAL on both sides, and that boundary is
+        # EVIDENCE rather than an omission: from a `file:` document a real Chromium produces no
+        # connection at all for any of these, through any attribute or CSS channel the strip covers
+        # (`net::ERR_UNKNOWN_URL_SCHEME` for `ftp:`/`ws:`/`wss:`/a custom scheme with no registered
+        # handler - Chromium removed FTP in 88 and `fetch("ftp://...")` throws `URL scheme "ftp" is
+        # not supported` - and `Not allowed to load local resource` for `filesystem:`), while the
+        # http and https controls in the same document connect. The measurement is re-run on every
+        # CI pass by the `CMH-OFFLINE-04: no authority-bearing scheme but http and https loads from
+        # a file: document` spec, which gives the CONTROL one raw TCP listener per channel - so a
+        # channel that is dead by construction cannot hand every candidate a free zero - and each
+        # candidate one listener for all channels together. So widening either predicate would buy
+        # no egress protection and would cost real content: the exporter would DELETE an author's
+        # reference and the gate would reject a file with no egress at all - the same
+        # over-detection trade the `localhost` and drive-letter exclusions above already record.
+        # These rows exist so the two engines can never drift APART on the boundary either, and so a
+        # deliberate future widening has to move both sides at once.
+        # The slash-run and backslash spellings are carried too, because `ws:`/`wss:`/`ftp:` are
+        # SPECIAL schemes to the URL parser exactly as `https:` is, so `ws:host/x` and
+        # `ftp:\\host\x` normalize the same way the http rows above do - which is precisely how a
+        # half-widened predicate would first show up.
+        # `ftp://evil.example/x.js` itself is already a row above (it predates this block, from when
+        # the boundary was recorded without evidence), so only the spellings the URL parser
+        # normalizes are added here rather than repeating it.
+        ("FTP://EVIL.EXAMPLE/x.js", False),
+        ("ftp:evil.example/x.js", False), ("ftp:/evil.example/x.js", False),
+        ("ftp:\\\\evil.example\\x.js", False), ("ftp:///evil.example/x.js", False),
+        ("ws://evil.example/x.js", False), ("wss://evil.example/x.js", False),
+        ("WS://EVIL.EXAMPLE/x.js", False), ("ws:evil.example/x.js", False),
+        ("wss:/evil.example/x.js", False), ("ws:\\\\evil.example\\x.js", False),
+        ("\u001f wss://evil.example/x.js", False), ("w\tss://evil.example/x.js", False),
+        ("filesystem:https://evil.example/temporary/x.js", False),
+        ("filesystem:http://evil.example/persistent/x.js", False),
+        ("gopher://evil.example/x.js", False), ("x-cmh-probe://evil.example/x.js", False),
+        ("custom-scheme://evil.example/x.js", False),
+        # The near-miss controls for those rows, and they are controls rather than decoration: each
+        # expects TRUE, so a regression that stopped matching the http/https or scheme-relative arm
+        # fails here. An inert scheme NAME appearing as a HOST or inside a path leaves the value
+        # judged by those arms, and a scheme that merely ends in an inert name is not that scheme.
+        ("//ws.evil.example/x.js", True), ("//ftp.evil.example/x.js", True),
+        ("https://ftp.evil.example/x.js", True),
+        ("https://evil.example/ws://x.js", True), ("notftp://evil.example/x.js", False),
     ]
 
     # `srcset` is the one attribute whose value is a LIST, so the candidate boundary is decided
@@ -1660,6 +1701,37 @@ class RuntimeParityTests(unittest.TestCase):
         ("a { background: url(https:\ufeffevil.example/x.png); }", True),
         ("a { background: url(\ufeffhttps:evil.example/x.png); }", False),
         ("a { background: url(\u00a0https://evil.example/x.png); }", False),
+        # The CSS half of the scheme boundary the attribute corpus above pins: every other
+        # authority-bearing scheme reads local here too, and for the same measured reason - from a
+        # `file:` document a real Chromium fetches none of them through a `url(...)` or an at-rule
+        # import either (the per-scheme probe in `tests/49-offline-export.spec.js` drives both
+        # channels, with the at-rule FIRST in its own stylesheet so the CSS parser does not drop
+        # it). Widening the CSS gates alone would be the CMH-OFFLINE-04 drift in its purest form, so
+        # these rows hold the strip and the gate to the same answer. Every scheme the attribute
+        # corpus names is carried here too, through BOTH CSS channels, so the claim that the
+        # boundary is pinned on both sides is not narrower in CSS than in markup. Unlike the
+        # attribute corpus these carry no BACKSLASH spellings: the CSS gates are prefix matchers
+        # over raw stylesheet text and never run `normalize_url_value`, so backslash normalization
+        # is not a property they have on either side.
+        ("a { background: url(ftp://evil.example/x.png); }", False),
+        ('a { background: url("ftp:evil.example/x.png"); }', False),
+        ("a { background: url(ws://evil.example/x.png); }", False),
+        ("a { background: url(wss:/evil.example/x.png); }", False),
+        ("a { background: url(filesystem:https://evil.example/temporary/x.png); }", False),
+        ("a { background: url(x-cmh-probe://evil.example/x.png); }", False),
+        ("a { background: url(gopher://evil.example/x.png); }", False),
+        ('@import "ftp://evil.example/t.css";', False),
+        ("@import url(ws://evil.example/t.css);", False),
+        ('@import "wss:evil.example/t.css";', False),
+        ('@import "filesystem:https://evil.example/temporary/t.css";', False),
+        ("@import url(x-cmh-probe://evil.example/t.css);", False),
+        ('@import "gopher://evil.example/t.css";', False),
+        # The near-miss controls, which expect TRUE so they fail if the CSS gates ever stop matching
+        # what they must: a HOST that merely begins with an inert scheme name is still an http/https
+        # reference, and the scheme-relative arm has to keep firing inside a `url(` token.
+        ("a { background: url(https://ftp.evil.example/x.png); }", True),
+        ("a { background: url(//ws.evil.example/x.png); }", True),
+        ('@import "//ftp.evil.example/t.css";', True),
     ]
 
     def _runtime_css_strip_source(self):

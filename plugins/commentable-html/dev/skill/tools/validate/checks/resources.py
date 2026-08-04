@@ -113,6 +113,8 @@ _CSS_WS = r"[\t\n\f\r ]"
 # while a whitespace-only separator read it as unremarkable text. The lookahead is what keeps a
 # DIFFERENT at-keyword (`@importurl(...)`) from matching.
 _CSS_AT_SEP = _CSS_WS + r"+|(?=['\"])"
+# The same CLOSED scheme set as `NETWORK_URL_RE` below, for the same measured reason: a
+# `url(ftp://host/x)` or `@import "ws://host/t.css"` fetches nothing from a `file:` document.
 _CSS_NETWORK_PREFIX = r"(?:https?:/*|/{2,})"
 _CSS_HOST_CHAR = r"[^/?#'\")\t\n\f\r ]"
 CSS_NETWORK_URL_RE = re.compile(
@@ -165,6 +167,30 @@ CSS_NETWORK_IMPORT_RE = re.compile(
 # resolve to the same host as `https://host/x.js` - are network URLs too, and one host character is
 # required so an empty authority stays local. That widening landed with the CSS gates and the
 # exporter's CSS strips it mirrors, both sides at once (issue #961); see the CMH-VAL-08 spec row.
+# The scheme set is CLOSED at http/https, scheme-relative and `file:`, and that is EVIDENCE rather
+# than an omission: from a `file:` document a current Chromium produces no connection at all for
+# `ftp:`, `ws:`, `wss:`, `filesystem:` or a custom scheme with no registered handler, through any
+# automatic subresource channel this gate reads (`net::ERR_UNKNOWN_URL_SCHEME`; Chromium removed FTP in
+# 88, and `filesystem:` is refused as a local resource), while the http and https controls in the
+# same document connect. Reporting one would therefore reject a file with no egress at all and make
+# the exporter delete the author's reference - the same over-detection trade the `localhost` and
+# drive-letter exclusions make. Four limits are recorded rather than implied, because each is a
+# channel this predicate cannot be the layer for: a SCRIPTED `WebSocket` does reach the network in
+# `ws:`/`wss:`, but no attribute carries it and the export's `connect-src 'none'` closes it
+# (measured with and without the policy); a REGISTERED protocol handler turns a navigation into a
+# fetch of the handler's own https template - one cannot be registered from a `file:` document, so
+# the measured case is the UNREGISTERED one and a reader's pre-installed OS handler stays
+# unmeasured; a
+# `preconnect`/`dns-prefetch` leak is a name resolution rather than a connection (#1076); and the
+# measurement is Chromium's - `ws:`/`wss:`/`filesystem:` were not observed as subresource-fetchable
+# in the engine under test and nothing is claimed for others, while FTP removal is an
+# implementation choice, so that is the row to re-measure. What travels with an already-exported
+# file is the export's own zero-network CSP, which refuses these subresources whatever a future
+# engine decides; this predicate is what keeps a NEW export clean without leaning on it. The
+# probe in `tests/49-offline-export.spec.js` re-runs the measurement on every CI pass with a
+# per-channel control, and the shared corpus in `tests/test_vendored_libs.py` holds this predicate
+# and the exporter's to the same verdicts, so a deliberate widening later has to move both sides at
+# once.
 NETWORK_URL_RE = re.compile(
     r"(?:(?:https?:/*|/{2,})[^/?#]"
     r"|file:(?://(?!/)|/{4,}(?!/))(?![?#]|\Z)(?!localhost(?:[/?#]|\Z))(?![A-Za-z][:|]))",
