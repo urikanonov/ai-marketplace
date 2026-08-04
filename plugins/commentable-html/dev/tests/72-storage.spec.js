@@ -1347,3 +1347,148 @@ test("a deferred editor focus held behind a modal is delivered once the dialog c
   })).not.toBe("stranded");
   await expect(page.locator(".cm-reply-compose textarea")).toHaveCount(1);
 });
+
+// ---- Toast vs modal overlay, and a toast-launched dialog's focus restore (CMH-A11Y-13, #939) ----
+
+// Stage a note write that fails on quota, leaving the "Manage storage" recovery toast on screen
+// with its action button. Mirrors the CMH-STORE-07 note staging.
+async function stageQuotaToast(page, key) {
+  const { html } = stageContent(
+    '<section><p>x</p><div class="cmh-note" data-cmh-note="risk" data-cmh-note-label="Risk">baseline</div></section>',
+    { key, source: key + ".html" });
+  await page.addInitScript((k) => {
+    const bloat = "commentable-html:/reports/" + k + "bloat.html::z";
+    const orig = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (name, value) {
+      if (name === k + "::note" && localStorage.getItem(bloat) !== null) {
+        throw new DOMException("quota", "QuotaExceededError");
+      }
+      return orig.call(this, name, value);
+    };
+  }, key);
+  await page.goto(fileUrl(html));
+  await ready(page);
+  await page.evaluate((k) => localStorage.setItem("commentable-html:/reports/" + k + "bloat.html::z",
+    "\u0001z" + "x".repeat(200)), key);
+  const input = page.locator('[data-cmh-note="risk"] .cmh-note-input');
+  await expect(input).toBeVisible();
+  await input.fill("edited note text");
+  await input.blur();
+  const action = page.locator("#toast .cm-toast-action");
+  await expect(action).toBeVisible();
+  return action;
+}
+
+// Whether the side pane is open, so a test can put the chrome in the state it needs. The two
+// toggles are state-specific: the floating toolbar's is hidden while the pane is open, and the
+// pane's own Hide button goes off screen with it.
+async function setSidebar(page, open) {
+  const isOpen = await page.evaluate(() => document.body.classList.contains("sidebar-open"));
+  if (isOpen !== open) await page.click(open ? "#btnToggleSidebar" : "#btnCloseSidebar");
+  await expect.poll(async () => page.evaluate(() => document.body.classList.contains("sidebar-open"))).toBe(open);
+}
+
+test("a toast paints above a modal overlay instead of behind it (CMH-A11Y-13)", async ({ page }) => {
+  const action = await stageQuotaToast(page, "cmh-a11y-toaststack");
+  // With no dialog up the action is a real, hit-testable control.
+  const reachable = await page.evaluate(() => {
+    const btn = document.querySelector("#toast .cm-toast-action");
+    const r = btn.getBoundingClientRect();
+    return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === btn;
+  });
+  expect(reachable).toBe(true);
+  // The recovery toast is already up when the reviewer opens a dialog. Both used to sit at z-index
+  // 300, so DOM order buried the toast under the scrim - the message a reviewer most needs to read
+  // was the one hidden (issue #939). The toast layer now paints ABOVE the overlay.
+  await openManager(page);
+  const z = await page.evaluate(() => ({
+    toast: Number(getComputedStyle(document.getElementById("toast")).zIndex),
+    overlay: Number(getComputedStyle(document.querySelector(".cm-modal-overlay")).zIndex),
+  }));
+  expect(z.toast).toBeGreaterThan(z.overlay);
+  await expect(page.locator("#toast")).toBeVisible();
+  await expect(action).toHaveCount(1);
+});
+
+test("a toast action cannot be operated or Tab-reached from outside an open dialog (CMH-A11Y-13)", async ({ page }) => {
+  await stageQuotaToast(page, "cmh-a11y-toastsuppress");
+  await openManager(page);
+  // Painting the toast above the overlay must not leave an operable control OUTSIDE an aria-modal
+  // dialog: the dialog traps Tab and hides everything outside itself from assistive tech, so a
+  // mouse-clickable action out here would be unreachable by keyboard and screen reader. It is
+  // removed from the layout, the tab order, and the a11y tree while a dialog is up.
+  await expect(page.locator("#toast .cm-toast-action")).toBeHidden();
+  const inside = () => page.evaluate(() => {
+    const dlg = document.querySelector(".cm-storage-manager");
+    return !!(dlg && dlg.contains(document.activeElement));
+  });
+  for (let i = 0; i < 8; i++) { await page.keyboard.press("Tab"); expect(await inside()).toBe(true); }
+  // Even a synthetic click cannot act through it: the dialog stays open and focus is handed back
+  // INTO its trap rather than being stranded outside by a handler that removed the button and
+  // bailed. Force focus onto the action first so this exercises the hand-back, not a focus that
+  // happened to be inside the dialog already (the reclaim helper leaves a toast alone by design,
+  // so the handler has to blur before asking for it).
+  await page.evaluate(() => {
+    const btn = document.querySelector("#toast .cm-toast-action");
+    btn.style.display = "inline-block";
+    btn.focus();
+    btn.click();
+  });
+  await expect(page.locator(".cm-storage-manager")).toBeVisible();
+  expect(await inside()).toBe(true);
+  // Undo the forced display so the final assertion measures the CSS rule, not the override.
+  await page.evaluate(() => { document.querySelector("#toast .cm-toast-action").style.display = ""; });
+  await expect(page.locator("#toast .cm-toast-action")).toBeHidden();
+  // Closing the dialog hands the action back, so the recovery route is deferred, never lost.
+  await page.locator(".cm-storage-close").click();
+  await expect(page.locator(".cm-storage-manager")).toHaveCount(0);
+  await expect(page.locator("#toast .cm-toast-action")).toBeVisible();
+});
+
+test("a Manage storage opened from a toast action restores focus to a real control (CMH-A11Y-13)", async ({ page }) => {
+  const action = await stageQuotaToast(page, "cmh-a11y-toastfocus");
+  // showToast removes the action button BEFORE running its handler, so the dialog used to snapshot
+  // <body> as its restore target and close() left a keyboard reviewer with no focus at all.
+  await action.click();
+  await expect(page.locator(".cm-storage-manager")).toBeVisible();
+  await page.locator(".cm-storage-close").click();
+  await expect(page.locator(".cm-storage-manager")).toHaveCount(0);
+  await expect(page.locator(":focus")).toBeVisible();
+});
+
+test("the focus-restore fallback skips the off-screen pane and lands on visible chrome (CMH-A11Y-13)", async ({ page }) => {
+  const action = await stageQuotaToast(page, "cmh-a11y-toastfallback");
+  // The side pane is hidden by `transform: translateX(100%)`, so a control inside a CLOSED pane
+  // keeps its box and would pass a bare width/height test while sitting entirely off screen. With
+  // the opener destroyed (a re-render, as renderComments does), the fallback must skip the pane's
+  // More button and take the floating toolbar's - the one actually on screen in this state.
+  await setSidebar(page, false);
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-cmh-note="risk"]');
+    if (el) el.remove();
+  });
+  await action.click();
+  await expect(page.locator(".cm-storage-manager")).toBeVisible();
+  await page.locator(".cm-storage-close").click();
+  await expect(page.locator(".cm-storage-manager")).toHaveCount(0);
+  await expect(page.locator(":focus")).toBeVisible();
+  expect(await page.evaluate(() => document.activeElement && document.activeElement.id)).toBe("btnToolbarMenu");
+});
+test("an authored modal lookalike in the document cannot suppress the toast action (CMH-A11Y-13)", async ({ page }) => {
+  const action = await stageQuotaToast(page, "cmh-a11y-toastspoof");
+  // The annotated document is untrusted author content, so the "is a dialog up" test is anchored to
+  // the ONE shape the runtime builds (body > .cm-modal-overlay > [aria-modal]). A lookalike nested
+  // in the page must not be able to hide the recovery action or make the guard refuse a real one.
+  await page.evaluate(() => {
+    const decoy = document.createElement("div");
+    decoy.className = "cm-modal-overlay";
+    const box = document.createElement("div");
+    box.setAttribute("aria-modal", "true");
+    decoy.appendChild(box);
+    document.getElementById("commentRoot").appendChild(decoy);
+  });
+  await expect(action).toBeVisible();
+  // And it still WORKS: the decoy must not turn the recovery route into a dead button.
+  await action.click();
+  await expect(page.locator(".cm-storage-manager")).toBeVisible();
+});

@@ -114,9 +114,14 @@ function cmhStorageFullToast(key, what) {
 }
 // The "Manage storage" toast action object for a key whose write is pending after a quota failure
 // (else null). Lets a caller with its own message keep the recovery action without double-toasting.
+// showToast hands the handler a focus-restore target, because the action button is gone by the time
+// this runs and the dialog would otherwise snapshot <body> (issue #939).
 function cmhStorageAction(key) {
   return (_cmhPendingWrites.has(key) && typeof openStorageManager === "function")
-    ? { label: "Manage storage", onClick: function () { openStorageManager(); } } : null;
+    ? {
+      label: "Manage storage",
+      onClick: function (restoreFocus) { openStorageManager({ restoreFocus: restoreFocus || undefined }); },
+    } : null;
 }
 function loadComments() {
   const loaded = cmhLoadStored();

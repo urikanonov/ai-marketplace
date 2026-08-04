@@ -8,8 +8,70 @@ function hideToast() {
   const b = toast.querySelector(".cm-toast-action");
   if (b) b.remove();
 }
+// Only the layer's OWN dialogs count as a modal. Every runtime modal is appended in exactly one
+// shape - body > .cm-modal-overlay > [aria-modal="true"] - so the query is anchored to it: the
+// annotated document is untrusted author content, and an authored lookalike nested in the page must
+// not be able to suppress the recovery action or make the click guard refuse a real one. The CSS
+// rule that hides the action is scoped to the same shape.
+function _cmhOwnModalBox() {
+  const boxes = document.querySelectorAll('body > .cm-modal-overlay > [aria-modal="true"]');
+  return boxes.length ? boxes[boxes.length - 1] : null;
+}
+// A control that can really take focus right now: connected, enabled, not inert, and actually ON
+// SCREEN. The rect must INTERSECT the viewport, not merely be non-empty: the side pane is hidden by
+// `transform: translateX(100%)`, so a control inside a closed pane keeps its size and would pass a
+// bare width/height test while sitting entirely off screen - and that pane is marked `inert` while
+// closed, so focus() on anything inside it is a silent no-op even mid-transition. The toast's own
+// button is excluded - it is removed the moment its action runs.
+function _cmhFocusableControl(el) {
+  if (!el || el === document.body || el === document.documentElement) return null;
+  if (!el.isConnected || typeof el.focus !== "function" || el.disabled || el.hidden) return null;
+  if (el.closest && (el.closest(".cm-toast") || el.closest("[inert]"))) return null;
+  if (typeof el.getClientRects === "function" && !el.getClientRects().length) return null;
+  const r = el.getBoundingClientRect();
+  if (!r.width || !r.height) return null;
+  const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+  const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+  if (r.right <= 0 || r.bottom <= 0 || r.left >= vw || r.top >= vh) return null;
+  return el;
+}
+// The ordered controls focus may be handed back to, best first: the caller's preferred target, then
+// the stable chrome triggers that carry "Manage storage" in the first place. The on-screen test
+// above is what picks the RIGHT one of the two menu triggers - exactly one of the side pane's More
+// button and the floating toolbar's is on screen in either pane state.
+function _cmhRestoreCandidates(el) {
+  const out = [];
+  const first = _cmhFocusableControl(el);
+  if (first) out.push(first);
+  const fallbacks = ["#btnMoreMenu", "#btnToolbarMenu", "#btnToggleSidebar"];
+  for (let i = 0; i < fallbacks.length; i++) {
+    const cand = _cmhFocusableControl(document.querySelector(fallbacks[i]));
+    if (cand && out.indexOf(cand) === -1) out.push(cand);
+  }
+  return out;
+}
+// Where focus belongs when a dialog that a toast action opened closes again. hideToast() removes the
+// action button BEFORE the handler runs, so a dialog snapshotting document.activeElement would
+// snapshot <body> and its restore-on-close would be a no-op (issue #939).
+function cmhFocusRestoreTarget(el) {
+  const cands = _cmhRestoreCandidates(el);
+  return cands.length ? cands[0] : null;
+}
+// Hand focus back, CONFIRMING it landed: focus() is silent when its target cannot take it (hidden,
+// inert, or removed since it was chosen), so a candidate that turns out to be unfocusable falls
+// through to the next rather than stranding a keyboard reviewer on <body>.
+function cmhRestoreFocusTo(el) {
+  const cands = _cmhRestoreCandidates(el);
+  for (let i = 0; i < cands.length; i++) {
+    try { cands[i].focus({ preventScroll: true }); } catch (e) { try { cands[i].focus(); } catch (e2) {} }
+    if (document.activeElement === cands[i]) return true;
+  }
+  return false;
+}
 function showToast(msg, opts) {
   opts = opts || {};
+  // Focus as it stood BEFORE the toast, for the action handler's restore target below.
+  const priorFocus = document.activeElement;
   // Set the live-region role/politeness BEFORE mutating the text so the announcement fires. The
   // #toast element also ships as a polite live region (see template.shell.html) so the FIRST toast
   // of the session is announced - a live region added in the same tick as its first text change is
@@ -32,9 +94,24 @@ function showToast(msg, opts) {
     btn.textContent = opts.action.label;
     btn.addEventListener("click", function (e) {
       e.stopPropagation();
+      // An aria-modal dialog owns focus and hides everything outside it from assistive tech, so the
+      // action must not run from out here (the CSS hides it then, and openStorageManager() would
+      // refuse anyway while one is already open, leaving focus stranded on <body> outside the
+      // dialog's trap). Hand focus back INTO the dialog instead of acting. Blur FIRST: the reclaim
+      // helper deliberately leaves focus alone when it is on a surface that paints above the overlay
+      // - a toast is exactly that - so with the button still focused it would do nothing.
+      const modal = _cmhOwnModalBox();
+      if (modal) {
+        try { btn.blur(); } catch (err) { /* best-effort */ }
+        if (typeof _keepModalFocus === "function") _keepModalFocus(modal);
+        return;
+      }
       if (toastTimer) clearTimeout(toastTimer);
+      // Resolve the restore target while focus is still meaningful: hideToast() removes this button
+      // and drops document.activeElement to <body>.
+      const restore = cmhFocusRestoreTarget(_cmhFocusableControl(document.activeElement) || priorFocus);
       hideToast();
-      opts.action.onClick();
+      opts.action.onClick(restore);
     });
     toast.appendChild(btn);
   }

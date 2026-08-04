@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.522.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.525.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,22 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.525.0] - 2026-08-04</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A toast can no longer become invisible-but-operable focus behind a modal dialog. The toast and <code>.cm-modal-overlay</code> both sat at <code>z-index: 300</code>, so which one painted on top was decided purely by DOM order: a toast raised BEFORE a dialog opened was drawn UNDER the dialog&#x27;s scrim while its action button stayed focusable and clickable. The toast layer now sits above the overlay (<code>z-index: 320</code>, still below the tooltip layer), so a recovery toast stays visible and hit-testable on top of a dialog instead of holding focus a reviewer cannot see.</li>
+              <li>A Manage storage dialog opened from a toast action no longer strands keyboard focus. <code>showToast()</code> removes the action button before running its handler, so <code>document.activeElement</code> was <code>&lt;body&gt;</code> by the time the dialog snapshotted it and its restore-on-close was a silent no-op. The toast now resolves a focus-restore target first and hands it to the action, <code>cmhStorageAction()</code> forwards it as <code>restoreFocus</code>, and the manager&#x27;s <code>close()</code> re-resolves it - falling back to the stable chrome triggers (<code>More</code>, the toolbar overflow, the panel toggle) when the snapshot is missing, detached, hidden, or disabled - so closing the dialog always lands on a real, visible control.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.522.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>An injected <code>&lt;base href&gt;</code> can no longer rebase the relative references the Offline export strip and the strict validator both treat as safe. Neither side looked at a base element - it loads nothing itself - and both deliberately leave a RELATIVE reference alone, so a single base element naming a remote host turned every relative image and SVG script reference in the document into an off-host fetch while passing both checks as local. The export now clears a non-local base <code>href</code> through the same template-walking pass as every other load (a parked base starts rebasing the moment a script adopts the fragment), and <code>validate.py --strict</code> flags the same shape, so the exporter and the gate agree. Three bounds are deliberate. A base is held to a STRICTER predicate than the per-resource passes - the same &quot;non-local reference&quot; rule the import-map check uses (any scheme, or an authority of two slashes or backslashes in either order, after the URL parser&#x27;s own input cleanup) - because one attribute re-points EVERY safe reference in the document, so the slash-less, one-slash, backslash-authority, <code>file://</code> UNC and <code>blob:</code>/<code>data:</code> spellings a browser still resolves to a remote host cannot be left to the CSP the way a single attribute can. The href alone is cleared rather than the element removed: a <code>target</code> is not egress, and a relative base reaches no network at all. And the validator&#x27;s copy is not scoped to offline mode, because the self-contained guarantee is not offline-only and a shareable file has no zero-network CSP behind it. Clearing a base is also the one attribute pass the download toast names, because it re-points references that still work - author links included - and outside offline mode the gate suggests making the base relative rather than simply removing it. The offline CSP&#x27;s <code>base-uri &#x27;none&#x27;</code> covers the same channel as defense in depth, but a policy delivered in a <code>&lt;meta&gt;</code> does not bind a base element the parser already resolved before it, and the strip and the gate are the layer that is not supposed to depend on the CSP anyway.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.521.0] - 2026-08-04</h3></div>
             <div class="group-label">Fixed</div>
@@ -510,8 +520,6 @@
               <li>Opening, closing or saving a comment composer no longer jumps the document. The browser&#x27;s scroll anchoring watched the layout change composer creation makes (the preview marks over the selection, the appended surface) and shifted <code>window.scrollY</code> to keep its own chosen anchor in place - but it did so AFTER the composer had been positioned from the selection&#x27;s rect, so the selected text slid toward the top of the viewport while the fixed composer stayed where it was and the two came apart. The reproduction was position-dependent (an anchor near the middle of the viewport moved, the same anchor near the top or bottom did not), which is what made it feel intermittent. Opening, closing and saving now each run inside a scroll guard that makes the CONTENT ROOT ineligible as a scroll anchor while the document is being mutated, puts back any inline <code>overflow-anchor</code> the host document had, and hands anchoring back once the mutation has been through a layout frame - so the reader keeps their place and scroll anchoring keeps working everywhere else. Closing and saving are covered because they mutate the same document in reverse: guarding only the open path would have moved the jump to the cancel click rather than removing it.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.519.0] - 2026-08-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -541,15 +549,7 @@
               <li>The layer&#x27;s OWN controls injected INSIDE the content root no longer lose the reviewer&#x27;s first click to an open comment dialog. Inverting the dismiss to swallow only clicks in the annotated document gave every surface OUTSIDE the content root its first click back, but a sortable-table sort control, a widget &quot;Reset moves&quot;, a checklist box, an editable note, a code-block Copy, a section caret or review badge, and a rendered diff&#x27;s view toolbar all live inside that root, where containment cannot tell them from author content - so with a dialog open the first click on one of them was spent closing the dialog and the control did nothing. The layer now registers each control it creates in an identity set and carves that set out of the swallow, so the control acts on the FIRST click (in the <code>&lt;body&gt;</code>-fallback mode too). Identity, not class: document content carrying <code>cmh-sort-ctrl</code> or <code>cm-widget-reset</code> is still author content and is still swallowed, so the anti-spoofing property is unchanged. A spared click then behaves exactly as it does with no dialog open - the carve-out restores the normal click rather than making the control modal - and a behavior the runtime attaches to AUTHOR content (clicking a commented image to jump to its card, clicking a collapsed section&#x27;s heading rather than its caret) is not an injected control and is still swallowed.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.514.0] - 2026-08-03</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Sorting a table no longer changes the document&#x27;s text. Rows are now permuted through their existing slots instead of being appended to the table body, so the whitespace an author leaves BETWEEN rows stays where it is. Previously one sort stranded all of that whitespace ahead of the rows, making them textually adjacent - a change unsorting could not undo - so the document and section content hashes drifted permanently. Because a sort is remembered per browser profile, the same file then showed the amber &quot;This document was not validated in its current form&quot; banner on the computer where a table had been sorted and not on another, and a sorted table could flip an already-reviewed section to &quot;changed&quot;.</li>
-              <li>Section review state now hashes the same canonical (authored source-order) content the validation banner does, so a reader&#x27;s persisted table sort can no longer flip an already-reviewed section to &quot;changed&quot; (and a section marked reviewed while a table was sorted no longer flips when the sort is cleared). The canonical order is read from the stamped row indices rather than restored by moving rows, so a badge refresh never disturbs the reader&#x27;s sorted view, focus, or text selection. One upgrade note: a section marked reviewed by an older build WHILE a table was sorted was recorded against the sorted order, so it shows &quot;changed&quot; once after this upgrade; re-marking it stores the canonical hash and it stays reviewed from then on.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">283 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">284 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

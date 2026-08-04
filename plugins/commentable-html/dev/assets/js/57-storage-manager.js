@@ -473,6 +473,15 @@ function openStorageManager(opts) {
     // The COMMENT quota episode is over once the comment slot's pending write is resolved; re-arm the
     // auto-open for the next full -> free -> full cycle.
     if (!_cmhPendingWrites.has(CMH_STORE_KEY)) _cmhQuotaEpisode = false;
+    // Restore focus BEFORE any recovery toast below: showToast snapshots document.activeElement as
+    // the restore target for its OWN action, so announcing first would snapshot <body> and make a
+    // repeat recovery round-trip drift off the real opener (issue #939).
+    // Re-resolve rather than trusting the snapshot: it can go stale while the dialog is open (the
+    // pane re-renders, the opener is removed) and a toast-launched open never had a live one, so
+    // focus() would be a silent no-op leaving a keyboard reviewer on <body>. The helper confirms
+    // focus actually landed and falls through to the next candidate when it did not.
+    if (typeof cmhRestoreFocusTo === "function") cmhRestoreFocusTo(prevFocus);
+    else if (prevFocus && typeof prevFocus.focus === "function") prevFocus.focus();
     // If ANY write is still pending (the reviewer closed without freeing enough space), warn with the
     // recovery action so nothing unsaved - a comment OR a note/checklist/section-review edit that
     // routed the reviewer here via its own "Manage storage" toast - is lost silently on reload.
@@ -486,7 +495,6 @@ function openStorageManager(opts) {
         + "Copy all / Export as Shareable to keep it.",
         { alert: true, duration: 8000, action: cmhStorageAction(anyKey) });
     }
-    if (prevFocus && typeof prevFocus.focus === "function") prevFocus.focus();
   }
   const popup = { isOpen: function () { return _cmhStorageOpen; }, close: close };
   if (window.__cmhRegisterEscapePopup) _unregisterEscape = window.__cmhRegisterEscapePopup(popup);
