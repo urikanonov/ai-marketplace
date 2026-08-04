@@ -115,13 +115,17 @@ class SharedDecodeShimTests(unittest.TestCase):
 
     def test_the_degraded_path_falls_back_to_the_host_parser(self):
         # A partial install must still give a tool a usable parser class, for the same reason the
-        # attribute fallback exists: degraded beats unable to run.
-        self.assertIs(_browser_attrs._start_tag_parser(None), HTMLParser)
+        # attribute fallback exists: degraded beats unable to run. The fallback is the shim's own
+        # `_FallbackTagNames` rather than a bare `HTMLParser`, so a consumer can still name an
+        # element with `_browser_tag()` there instead of raising (CMH-VAL-21 clause 7).
+        fallback = _browser_attrs._FallbackTagNames
+        self.assertTrue(issubclass(fallback, HTMLParser))
+        self.assertIs(_browser_attrs._start_tag_parser(None), fallback)
         self.assertIs(_browser_attrs._start_tag_parser(types.ModuleType("checks.parsing")),
-                      HTMLParser)
+                      fallback)
         not_a_parser = types.ModuleType("checks.parsing")
         not_a_parser.browser_start_tag_parser = object
-        self.assertIs(_browser_attrs._start_tag_parser(not_a_parser), HTMLParser)
+        self.assertIs(_browser_attrs._start_tag_parser(not_a_parser), fallback)
 
     def test_a_decoder_from_an_unexpected_origin_is_refused(self):
         # `import checks.parsing` resolves through sys.modules first, so a host process that

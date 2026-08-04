@@ -23,7 +23,9 @@ import json
 import os
 import re
 import sys
-from html.parser import HTMLParser
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _browser_attrs  # noqa: E402
 
 SAFE_ID_RE = re.compile(r"^c[a-z0-9]{6,63}$")
 _BUNDLE_RE = re.compile(r"HANDLED_IDS_JSON:\s*(\[[^\]]*\])")
@@ -33,7 +35,7 @@ _TRAILER_OPEN_RE = re.compile(
 _TRAILER_CLOSE_RE = re.compile(r"^=== END CMH MACHINE TRAILER ===", re.MULTILINE)
 
 
-class _HandledLocator(HTMLParser):
+class _HandledLocator(_browser_attrs.BrowserTagNames):
     """Locate the REAL <script id="handledCommentIds"> content range with the tolerant
     HTML parser, so a decoy inside an HTML comment (parsed as a comment, never a start
     tag) or a quoted '>' in the tag cannot fool the locator the way a raw regex would.
@@ -54,17 +56,15 @@ class _HandledLocator(HTMLParser):
         return self._offsets[lineno - 1] + col
 
     def _is_target(self, tag, attrs):
-        if tag.lower() != "script":
+        if tag != "script":
             return False
-        d = {}
-        for k, v in attrs:
-            kl = (k or "").lower()
-            if kl not in d:
-                d[kl] = v if v is not None else ""
-        return d.get("id") == "handledCommentIds"
+        # The SHARED browser view (CMH-VAL-21): the id this locator rewrites the body of is the
+        # id a browser gives the element.
+        return _browser_attrs.attrs_dict(self, tag, attrs).get("id") == "handledCommentIds"
 
     def handle_starttag(self, tag, attrs):
-        if tag.lower() == "template":
+        tag = self._browser_tag(tag)
+        if tag == "template":
             # <template> contents are an inert DocumentFragment: getElementById (and
             # so the runtime) never sees a script inside one, so skip it here too.
             self._template_depth += 1
@@ -81,16 +81,17 @@ class _HandledLocator(HTMLParser):
     # must NOT leave _template_depth incremented (that would wrongly hide a following
     # handledCommentIds script as if it were inside a live <template>).
     def handle_startendtag(self, tag, attrs):
-        if tag.lower() == "template":
+        if self._browser_tag(tag) == "template":
             return
         self.handle_starttag(tag, attrs)
 
     def handle_endtag(self, tag):
-        if tag.lower() == "template":
+        tag = self._browser_tag(tag)
+        if tag == "template":
             if self._template_depth > 0:
                 self._template_depth -= 1
             return
-        if self._active and tag.lower() == "script":
+        if self._active and tag == "script":
             self.spans.append((self._content_start, self._idx()))
             self._active = False
 

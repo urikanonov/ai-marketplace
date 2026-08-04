@@ -27,7 +27,12 @@ MONO_STACK = '"Cascadia Code","Consolas","Fira Code",ui-monospace,monospace'
 
 REMOTE_FONT_HOST_RE = re.compile(
     r"(?:fonts\.googleapis\.com|fonts\.gstatic\.com|api\.fontshare\.com)", re.I)
-LINK_RE = re.compile(r"[ \t]*<link\b[^>]*>\s*(?:\r?\n)?", re.I)
+# A tag NAME ends at HTML whitespace, `/` or `>` - asserted explicitly rather than with `\b`, and
+# with `re.A` so IGNORECASE folds ASCII-only, as a browser folds a name (CMH-VAL-21 clause 7).
+# Bare `re.I` reads `<lin\u212a>` as a `<link>` (U+212A KELVIN SIGN lowercases to "k"), and `\b`
+# under `re.A` would in turn accept `<link\u212a>` (KELVIN is then a non-word character), so this
+# pass - which DELETES what it matches - needs both.
+LINK_RE = re.compile(r"[ \t]*<link(?![^\t\n\f\r />])[^>]*>\s*(?:\r?\n)?", re.I | re.A)
 ATTR_RE = re.compile(r"\b([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)")
 REMOTE_IMPORT_RE = re.compile(r"@import\s+(?:url\(\s*)?['\"]?\s*(?:https?:)?//[^;]+;\s*", re.I)
 FONT_FACE_RE = re.compile(r"@font-face\s*\{[^{}]*\}", re.I | re.S)

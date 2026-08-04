@@ -4,6 +4,37 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.600.0] - 2026-08-04
+
+### Fixed
+
+- The scanners OUTSIDE the validator's `checks` package now fold every TAG and ATTRIBUTE name the
+  way a browser folds it - ASCII-only - instead of with Python's Unicode `str.lower()` or a bare
+  `re.IGNORECASE`. U+212A KELVIN SIGN is the one character outside ASCII whose `str.lower()` is an
+  ASCII letter ("k") and U+017F LONG S is the one that lowercases to "s", so the checklist and
+  notes appliers, the favicon detection the retrofit and upgrade tools inject from, and the
+  remaining authoring passes each read `<lin\u212a>` as a `<link>`, `</mar\u212a>` as a `<mark>`
+  closer and `data-cmh-chec\u212alist` as `data-cmh-checklist` - names a browser keeps distinct.
+  That produced edits no browser can justify: an element treated as void so a note span or a
+  checklist container never closed, a favicon that is not one, and a `data-comment-\u212aey`
+  lookalike absorbing the write meant for the real attribute. They now derive from the same
+  `BrowserTagNames` base the `checks` package uses, re-exported through the
+  `tools/_browser_attrs.py` shim, and the few attribute maps and CSS selectors a tool still builds
+  itself fold their names through the shim's `ascii_lower()`.
+- The passes that REWRITE markup on a REGEX name match rather than through a parser now fold
+  ASCII-only too, and assert the HTML name terminator instead of `\b`: the deck font fixer's
+  remote-`<link>` strip, the Shareable conversion's companion, raw-text and layer-descriptor
+  scans, and the upgrade masker's raw-text closer. Bare `re.IGNORECASE` let all of them delete or
+  rewrite a `<lin\u212a>` a browser loads nothing for, and an ASCII `\b` would in turn have
+  accepted `<link\u212a>` (U+212A is a non-word character under `re.ASCII`) - the same over-match
+  in the mirror direction. A closer keeps its tolerant tail, since a span is only entered through
+  a real opening tag and an over-matching closer ends it early rather than rewriting an element
+  a browser does not have. The guards that only REFUSE to write, or escape MORE, keep the wider
+  Unicode fold, because over-matching costs nothing there while a pass that over-matches corrupts
+  the document. A structural gate fails a NEW scanner outside `checks` that derives straight from
+  `html.parser.HTMLParser` without supplying the fold itself, so the host fold cannot come back.
+  Completes CMH-VAL-21 clause 7 across the whole tool surface.
+
 ## [1.581.0] - 2026-08-04
 
 ### Fixed

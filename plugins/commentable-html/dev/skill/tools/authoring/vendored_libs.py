@@ -26,12 +26,12 @@ could ship without a payload its exporter then demands, so a test pins them toge
 """
 import os
 import re
-from html.parser import HTMLParser
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
 
+import _browser_attrs  # noqa: E402
 import new_document  # noqa: E402
 
 BLOB_ID = "cmhVendoredRichLibs"
@@ -49,7 +49,7 @@ _VOID = frozenset((
     "param", "source", "track", "wbr"))
 
 
-class _DocScan(HTMLParser):
+class _DocScan(_browser_attrs.BrowserTagNames):
     """One parser pass that answers everything this module needs.
 
     A regex CANNOT do this correctly, and the difference is not academic - review found three
@@ -70,7 +70,7 @@ class _DocScan(HTMLParser):
     """
 
     def __init__(self, html):
-        HTMLParser.__init__(self, convert_charrefs=False)
+        _browser_attrs.BrowserTagNames.__init__(self, convert_charrefs=False)
         self._html = html
         self._line_offsets = [0]
         for line in html.split("\n")[:-1]:
@@ -99,6 +99,7 @@ class _DocScan(HTMLParser):
 
     # -- handlers ------------------------------------------------------------
     def handle_starttag(self, tag, attrs):
+        tag = self._browser_tag(tag)
         attrs = dict(attrs)
         classes = set((attrs.get("class") or "").split())
         if tag == "main" and attrs.get("id") == "commentRoot" and self._root_inner_start is None:
@@ -134,10 +135,12 @@ class _DocScan(HTMLParser):
 
     def handle_startendtag(self, tag, attrs):
         self.handle_starttag(tag, attrs)
+        tag = self._browser_tag(tag)
         if tag not in _VOID and self._stack and self._stack[-1][0] == tag:
             self._stack.pop()
 
     def handle_endtag(self, tag):
+        tag = self._browser_tag(tag)
         if tag == "script" and self._pending_blob:
             # Find the REAL end of the closing tag rather than assuming `len("</script>")`:
             # `</script   >` is valid and a hardcoded length would leave orphaned bytes behind

@@ -14,7 +14,8 @@ regex so that: attributes are parsed exactly (a `data-rel` / `data-href` is neve
 comment does NOT count; and adversarial input (unterminated comments/tags) cannot trigger the
 quadratic backtracking a two-stage regex scan is prone to. Detection is head-scoped: only links
 before the document's body (the `<body>` tag, a `</head>`, or the first flow-content element that
-implicitly ends the head) are considered.
+implicitly ends the head) are considered. Names and values come from the SHARED browser view
+(CMH-VAL-21), so `<lin\u212a>` is the unknown element a browser sees, not a `<link>`.
 """
 from html.parser import HTMLParser
 import os
@@ -35,7 +36,7 @@ def rel_is_favicon(rel_value):
     return "icon" in (rel_value or "").lower().split()
 
 
-class _FaviconFinder(HTMLParser):
+class _FaviconFinder(_browser_attrs.BrowserTagNames):
     """Collect the raw text of each favicon `<link>` start tag found in the head, in order."""
 
     # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
@@ -56,22 +57,18 @@ class _FaviconFinder(HTMLParser):
             return
         if tag != "link":
             return
-        ad = {}
-        for k, v in attrs:
-            k = (k or "").lower()
-            if k not in ad:
-                ad[k] = v or ""
+        ad = _browser_attrs.attrs_dict(self, tag, attrs)
         if rel_is_favicon(ad.get("rel")) and (ad.get("href") or "").strip():
             self.tags.append(self.get_starttag_text())
 
     def handle_starttag(self, tag, attrs):
-        self._consider(tag.lower(), attrs)
+        self._consider(self._browser_tag(tag), attrs)
 
     def handle_startendtag(self, tag, attrs):
-        self._consider(tag.lower(), attrs)
+        self._consider(self._browser_tag(tag), attrs)
 
     def handle_endtag(self, tag):
-        if tag.lower() == "head":
+        if self._browser_tag(tag) == "head":
             self._head_ended = True
 
 

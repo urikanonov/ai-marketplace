@@ -29,16 +29,17 @@ import json
 import os
 import re
 import sys
-from html.parser import HTMLParser
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _browser_attrs  # noqa: E402
 import section_hash  # noqa: E402
 
 SAFE_ID_RE = re.compile(r"^[A-Za-z][\w.:-]{0,199}$")
 SAFE_HASH_RE = re.compile(r"^[0-9a-z]{1,16}$")
 
 
-class _BlockLocator(HTMLParser):
+class _BlockLocator(_browser_attrs.BrowserTagNames):
     """Locate the real <script id="reviewedSections"> content range (comments/templates excluded)."""
 
     def __init__(self, text, block_id):
@@ -57,17 +58,15 @@ class _BlockLocator(HTMLParser):
         return self._offsets[lineno - 1] + col
 
     def _is_target(self, tag, attrs):
-        if tag.lower() != "script":
+        if tag != "script":
             return False
-        d = {}
-        for k, v in attrs:
-            kl = (k or "").lower()
-            if kl not in d:
-                d[kl] = v if v is not None else ""
-        return d.get("id") == self._block_id
+        # The SHARED browser view (CMH-VAL-21): the id this locator rewrites the body of is the
+        # id a browser gives the element.
+        return _browser_attrs.attrs_dict(self, tag, attrs).get("id") == self._block_id
 
     def handle_starttag(self, tag, attrs):
-        if tag.lower() == "template":
+        tag = self._browser_tag(tag)
+        if tag == "template":
             self._template_depth += 1
             return
         if self._template_depth == 0 and self._is_target(tag, attrs):
@@ -75,16 +74,17 @@ class _BlockLocator(HTMLParser):
             self._active = True
 
     def handle_startendtag(self, tag, attrs):
-        if tag.lower() == "template":
+        if self._browser_tag(tag) == "template":
             return
         self.handle_starttag(tag, attrs)
 
     def handle_endtag(self, tag):
-        if tag.lower() == "template":
+        tag = self._browser_tag(tag)
+        if tag == "template":
             if self._template_depth > 0:
                 self._template_depth -= 1
             return
-        if self._active and tag.lower() == "script":
+        if self._active and tag == "script":
             self.spans.append((self._content_start, self._idx()))
             self._active = False
 
