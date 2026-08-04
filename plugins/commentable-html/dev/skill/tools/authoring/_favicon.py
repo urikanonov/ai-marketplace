@@ -17,6 +17,11 @@ before the document's body (the `<body>` tag, a `</head>`, or the first flow-con
 implicitly ends the head) are considered.
 """
 from html.parser import HTMLParser
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _browser_attrs  # noqa: E402
 
 # Elements allowed in <head>; the first START tag outside this set (and every `<body>` /
 # closing `</head>`) ends the head, matching how a browser stops head parsing.
@@ -32,6 +37,11 @@ def rel_is_favicon(rel_value):
 
 class _FaviconFinder(HTMLParser):
     """Collect the raw text of each favicon `<link>` start tag found in the head, in order."""
+
+    # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
+    # in prose resolves to U+FFFD instead of raising, so this tool reads the same document
+    # every validator parse reads (issue #946).
+    goahead = _browser_attrs.text_goahead(HTMLParser.goahead)
 
     def __init__(self):
         super().__init__(convert_charrefs=True)

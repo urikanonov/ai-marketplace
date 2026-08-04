@@ -40,6 +40,11 @@ def _end_tag_end(text, start):
 
 
 class _TocParser(HTMLParser):
+    # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
+    # in prose resolves to U+FFFD instead of raising, so this tool reads the same document
+    # every validator parse reads (issue #946).
+    goahead = _browser_attrs.text_goahead(HTMLParser.goahead)
+
     def __init__(self, text):
         super().__init__(convert_charrefs=True)
         self._text = text

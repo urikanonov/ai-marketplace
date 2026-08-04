@@ -133,6 +133,11 @@ class _ActiveContentScanner(HTMLParser):
     treated as CDATA, so a chart's init script or the inlined CSS never trips a check.
     """
 
+    # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
+    # in prose resolves to U+FFFD instead of raising, so this tool reads the same document
+    # every validator parse reads (issue #946).
+    goahead = _browser_attrs.text_goahead(HTMLParser.goahead)
+
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.errors = []
@@ -231,6 +236,11 @@ def _estimated_lines(text, line_chars):
 
 
 class _AuthoredContentScanner(HTMLParser):
+    # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
+    # in prose resolves to U+FFFD instead of raising, so this tool reads the same document
+    # every validator parse reads (issue #946).
+    goahead = _browser_attrs.text_goahead(HTMLParser.goahead)
+
     def __init__(self, line_chars):
         super().__init__(convert_charrefs=True)
         self.line_chars = max(1, line_chars)

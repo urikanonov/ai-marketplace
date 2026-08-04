@@ -18,7 +18,26 @@ import re  # noqa: E402
 from html.parser import HTMLParser  # noqa: E402
 from unittest import mock  # noqa: E402
 
-from checks import checklist, density, notes, parsing, theme_contrast  # noqa: E402
+from checks import checklist, density, kind, notes, parsing, theme_contrast  # noqa: E402
+from cmhval import contrast  # noqa: E402
+import _browser_attrs  # noqa: E402
+import _favicon  # noqa: E402
+import deck_validate  # noqa: E402
+import doc_stats  # noqa: E402
+import generate_toc  # noqa: E402
+import new_document  # noqa: E402
+import retrofit  # noqa: E402
+import section_hash  # noqa: E402
+import upgrade  # noqa: E402
+
+# Every parser OUTSIDE the checks package that reads a whole document's text. They share the same
+# bounded decode through the `_browser_attrs` shim, so a document the validator reads is one the
+# tools beside it can also stamp, hash, count, index, retrofit and upgrade (CMH-VAL-21).
+_TOOL_PARSERS = (contrast._StyleScanner, doc_stats._StatsParser, generate_toc._TocParser,
+                 section_hash._SectionParser, new_document._TitleDetector,
+                 retrofit._StructureParser, upgrade._KindMetaFinder, upgrade._RootSourceFinder,
+                 _favicon._FaviconFinder, deck_validate._ActiveContentScanner,
+                 deck_validate._AuthoredContentScanner)
 
 # Every HTML raw-text / RCDATA element: its CONTENT is text a reader SEES, never markup.
 RAW_TEXT_ELEMENTS = ("script", "style", "textarea", "title", "xmp", "iframe",
@@ -1176,16 +1195,16 @@ class DocParserAttributeValueTests(unittest.TestCase):
             any("oversized numeric character reference" in e for e in errors), errors)
 
     def test_a_document_the_contrast_scan_cannot_read_is_reported_not_skipped(self):
-        # The scan's start tags are now bounded, but its TEXT still goes through the host's
-        # `convert_charrefs` decode, which raises on an oversized reference exactly as the
-        # document parse does (issue #946). Through `validate()` such a document never reaches
-        # this check - `_parse()` fails first and the run reports `_PARSE_FAIL` - so this report
-        # is for a DIRECT caller of the standalone check, which would otherwise be handed an
-        # empty finding list for a document nothing read.
+        # Both shapes are bounded now: the scan's START TAGS through the shared start-tag base,
+        # and its TEXT through the shared bounded decode (issue #946). So the document is READ -
+        # its authored override is judged like any other - and the "could not be read for
+        # contrast" report that stood in for the refusal is gone with the refusal.
         ref = "&#%s;" % ("9" * 5000)
         errors, _warnings = theme_contrast.check_theme_contrast(
-            "<p>a%sb</p><style>:root{--cp-text:#fff;}</style>" % ref)
-        self.assertTrue(any("oversized numeric character reference" in e for e in errors), errors)
+            "<p>a%sb</p><style>:root{--cp-text:#eeeeee;--cp-bg:#ffffff;}</style>" % ref)
+        self.assertTrue(any("body text" in e for e in errors), errors)
+        self.assertFalse(
+            any("oversized numeric character reference" in e for e in errors), errors)
         self.assertEqual(theme_contrast.check_theme_contrast("<div id=a></div>")[0], [])
 
     def test_the_raw_tag_path_dispatches_each_tag_exactly_once(self):
@@ -1301,6 +1320,204 @@ class _StaleRawTagParser:
 
     def attrs_for(self, tag, attrs):
         return parsing._browser_attrs_dict(self, tag, attrs)
+
+
+class DocParserTextCharrefTests(unittest.TestCase):
+    """The document's TEXT character references, decoded by the same BROWSER rule the attribute
+    path uses (CMH-VAL-21).
+
+    With `convert_charrefs=True` the host decodes each text run inside `goahead()` with
+    `html.unescape()`, which is not the browser rule: it DELETES the code points it deems
+    invalid and RAISES on a numeric reference past Python's integer conversion limit. That
+    `ValueError` escaped `feed()`, and every parse entry point swallows an exception into a
+    truncated parse - so ONE oversized reference in PROSE reported the whole document as
+    unparseable and hid every finding in it, where a browser renders U+FFFD and reads on.
+    """
+
+    # The three shapes the host cannot decode: a decimal run past its integer conversion limit,
+    # a hex run (no limit, but a big integer built and thrown away), and the same decimal run
+    # with no closing semicolon - a reference resolves without one.
+    OVERSIZED = ("&#%s;" % ("9" * 5000), "&#x%s;" % ("f" * 5000), "&#%s" % ("9" * 5000))
+
+    def _texts(self, html):
+        probe = _EventProbe()
+        probe.parse_document(html)
+        return [e[1] for e in probe.events if e[0] == "data"]
+
+    def test_an_oversized_reference_in_text_resolves_to_the_replacement_character(self):
+        for ref in self.OVERSIZED:
+            with self.subTest(ref=ref):
+                html = '<p id="p">x%sy</p><div id="after"></div>' % ref
+                self.assertEqual(self._texts(html), ["x\ufffdy"])
+                self.assertEqual(_ids(html), ["p", "after"])
+
+    def test_an_oversized_reference_in_text_does_not_fail_the_document(self):
+        # The validator's own entry point: the parse used to blow up here, so the document was
+        # reported as unparseable instead of validated. Every parser the run builds must read it,
+        # including the contrast scan's own (which is not built on the shared base), or the
+        # document is still refused - just with a different diagnostic.
+        html = _validate_html_with("x%sy" % self.OVERSIZED[0])
+        self.assertTrue(validate._parse(html)[1], "the document parse still fails closed")
+        errors, warnings = _validate_text(html)
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+        self.assertEqual(theme_contrast.check_theme_contrast(
+            "<p>x%sy</p><style>:root{--cp-text:#fff;}</style>" % self.OVERSIZED[0]), ([], []))
+
+    def test_an_oversized_reference_in_text_keeps_the_raw_offset_views_exact(self):
+        # `code_block_spans()` and `content_marker_scan()` read RAW offsets into the ORIGINAL
+        # document, so the decode must never move a single character of it.
+        ref = self.OVERSIZED[0]
+        html = ('<p>x%sy</p>\n<pre id="code"><code class="language-python">print(1)</code></pre>'
+                "\n<script>var quoted = \"<!-- END: commentable-html - CSS -->\";</script>" % ref)
+        parsing.code_block_spans.cache_clear()
+        parsing.content_marker_scan.cache_clear()
+        try:
+            spans = parsing.code_block_spans(html)
+            scan = parsing.content_marker_scan(html)
+        finally:
+            parsing.code_block_spans.cache_clear()
+            parsing.content_marker_scan.cache_clear()
+        self.assertFalse(spans.failed)
+        start, end = spans.pres[0]["codes"][0]["inner"]
+        self.assertEqual(html[start:end], "print(1)")
+        self.assertEqual(len(scan), len(html))
+        self.assertEqual(scan.index("<pre"), html.index("<pre"))
+        # The raw-text body is blanked in place, so the quoted region marker is not a boundary.
+        self.assertNotIn("END: commentable-html - CSS", scan)
+
+    def test_a_text_reference_follows_the_browser_rule_not_html_unescape(self):
+        # The same end state the attribute path applies: a control character and a noncharacter
+        # are KEPT (`html.unescape` deletes them), the null character, a surrogate and anything
+        # past U+10FFFF are U+FFFD, and the C1 table is applied.
+        for source, expected in (("a&#1;b", "a\x01b"), ("a&#x1;b", "a\x01b"),
+                                 ("a&#x7f;b", "a\x7fb"), ("a&#x8d;b", "a\x8db"),
+                                 ("a&#xfdd0;b", "a\ufdd0b"), ("a&#xffff;b", "a\uffffb"),
+                                 ("a&#0;b", "a\ufffdb"), ("a&#xd800;b", "a\ufffdb"),
+                                 ("a&#x110000;b", "a\ufffdb"), ("a&#128;b", "a\u20acb"),
+                                 ("a&#65;b", "aAb"), ("a&#x41;b", "aAb")):
+            with self.subTest(source=source):
+                self.assertEqual(self._texts("<p>%s</p>" % source), [expected])
+                self.assertEqual(parsing._unescape_text(source), expected)
+
+    def test_a_named_text_reference_keeps_the_hosts_longest_match_rule(self):
+        # TEXT resolves a named reference by longest match (`&notit;` is `\u00ac` + `it;`), which
+        # is what `html.unescape` already does and is NOT the attribute rule (there the same
+        # source stays literal). Only the numeric branch diverges from the host, so a
+        # differential run over the named shapes must agree with it exactly.
+        for source in ("a&amp;b", "a&notit;b", "a&not-it;b", "a&nota;b", "a&not=b",
+                       "a&unknownref;b", "a & b", "plain text", "&", "&#", "&#x", "&;",
+                       "a&%s;b" % ("z" * 40), "&amp;&amp;", "&lt;div&gt;"):
+            with self.subTest(source=source):
+                self.assertEqual(parsing._unescape_text(source), _html.unescape(source))
+                self.assertEqual(self._texts("<p>%s</p>" % source), [_html.unescape(source)])
+
+    def test_every_shared_parser_reads_text_through_the_bounded_decode(self):
+        # One decode for the whole checks package: a parser that kept the host's would make the
+        # same document readable to one check and unparseable to another.
+        self.assertTrue(parsing._TEXT_CHARREF_BOUNDED,
+                        "the host's goahead no longer resolves `unescape` as a global")
+        for cls in (parsing._DocParser, parsing._CodeSpanParser, parsing._RawTextSpanParser,
+                    parsing._TagAttrParser, density._DensityParser, notes._NotesParser):
+            with self.subTest(cls=cls.__name__):
+                self.assertIs(cls.goahead, parsing._BrowserTagNames.goahead)
+                self.assertIsNot(cls.goahead, HTMLParser.goahead)
+        # The contrast scan builds its own parser OUTSIDE the checks package, and reads the same
+        # decode through the shim beside the tools.
+        self.assertIs(contrast._StyleScanner.goahead, parsing._BrowserTagNames.goahead)
+
+    def test_every_document_reading_tool_reads_the_same_text(self):
+        # A document the validator now READS must also be one the tools beside it can stamp,
+        # hash, count, index and upgrade - otherwise it validates clean and then cannot be
+        # finalized, which is the same defect one step later.
+        for cls in _TOOL_PARSERS:
+            with self.subTest(cls=cls.__name__):
+                self.assertIs(cls.goahead, parsing._BrowserTagNames.goahead)
+
+    def test_the_authoring_tools_survive_an_oversized_reference_in_text(self):
+        # Exercised through the real entry points, not just the class attribute.
+        ref = self.OVERSIZED[0]
+        html = ('<main id="commentRoot"><h2 id="s">Head</h2><p>x%sy</p></main>' % ref)
+        self.assertIn("s", section_hash.extract_section_hashes(html))
+        self.assertTrue(section_hash.document_content_hash(html))
+        self.assertEqual(doc_stats.count_sections(html), 1)
+        self.assertTrue(generate_toc.build_toc(html))
+
+    def test_an_invisible_title_does_not_satisfy_the_title_requirement(self):
+        # A control character or a zero-width space renders NOTHING, so a heading made only of
+        # them is not a title a reader can see. They reach the check at all because a text
+        # reference is now decoded by the browser rule instead of being deleted by
+        # `html.unescape`, so without this an `<h1>&#1;</h1>` would satisfy a report's title.
+        # U+FFFD and a character assigned in a NEWER Unicode than the host's are visible: a
+        # browser draws both, and deciding by "unassigned here" would give one document two
+        # verdicts depending on the interpreter's Unicode version.
+        for title, ok in (("Real title", True), ("&#1;", False), ("&#x7f;", False),
+                          ("&#xfffe;", False), ("&#xfdd0;", False), ("\u200b", False),
+                          ("&#xfffd;", True), ("\U0001fa89", True),
+                          (" \u200b Real \u200b ", True)):
+            with self.subTest(title=title):
+                doc = build(kind="report",
+                            body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(),
+                                  MAIN.replace("<p>content</p>",
+                                               "<h1>%s</h1><p>content</p>" % title),
+                                  JS_REGION])
+                errors, _warnings = _validate_text(doc)
+                title_errors = [e for e in errors if "requires a top-level <h1> title" in e]
+                self.assertEqual(not title_errors, ok, errors)
+
+    def test_the_visible_text_rule_is_the_same_one_every_check_asks(self):
+        # The contrast scan asks the same question ("does this element SHOW text?"), so it must
+        # get the same answer - otherwise an invisible character is not a title to one check and
+        # is text worth a contrast finding to the other, in the SAME run.
+        self.assertIs(kind.visible_text, parsing.visible_text)
+
+        def _element_findings(body):
+            doc = ('<style>:root{--cp-bg:#ffffff;--cp-text:#f6f6f6;}'
+                   ".x{color:var(--cp-text);background:var(--cp-bg);}</style>"
+                   '<span class="x">%s</span>' % body)
+            return [f for f in contrast.find_low_contrast_pairs(doc)
+                    if f.source.startswith("element")]
+
+        self.assertTrue(_element_findings("real text"))
+        for source in ("", "&#1;", "&#x7f;", "&#xfffe;", "\u200b"):
+            with self.subTest(source=source):
+                self.assertEqual(_element_findings(source), [])
+
+    def test_the_bounded_decode_degrades_instead_of_breaking_a_partial_install(self):
+        # Both fallbacks the fix promises: a host whose `goahead` cannot be re-bound keeps the
+        # host's own method, and a tool that cannot import the decoder keeps its own.
+        def _no_unescape(self, end):    # a stand-in host whose goahead never names `unescape`
+            return 0
+
+        with mock.patch.object(parsing.HTMLParser, "goahead", _no_unescape):
+            self.assertIsNone(parsing._bind_text_goahead())
+        sentinel = object()
+        with mock.patch.object(_browser_attrs, "_parsing", None):
+            self.assertIs(_browser_attrs.text_goahead(sentinel), sentinel)
+            self.assertEqual(_browser_attrs.visible_text("a\x01b"), "a\x01b")
+            self.assertEqual(_browser_attrs.unescape_text("a&amp;b"), "a&b")
+            self.assertEqual(_browser_attrs.unescape_attr_value("a&amp;b"), "a&b")
+
+    def test_the_bounded_decode_leaves_the_hosts_tokenizer_alone(self):
+        # Only the DECODE of a text run is replaced; the run boundaries, the positions and the
+        # dispatch stay the host's own, so a document with no character reference at all is
+        # delivered exactly as the host delivers it.
+        source = ('<div id="a">one</div><!-- c --><textarea>raw <b> text</textarea>'
+                  "<script>var x = 1;</script><p>two</p>")
+
+        class _Host(_EventProbe):
+            goahead = HTMLParser.goahead
+
+        ours, host = _EventProbe(), _Host()
+        ours.parse_document(source)
+        host.parse_document(source)
+        self.assertEqual(ours.events, host.events)
+
+
+def _validate_html_with(prose):
+    """A minimal valid document whose CONTENT region carries `prose`."""
+    return build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(),
+                       MAIN.replace("<p>content</p>", "<p>%s</p>" % prose), JS_REGION])
 
 
 class DocParserStartTagExtentTests(unittest.TestCase):

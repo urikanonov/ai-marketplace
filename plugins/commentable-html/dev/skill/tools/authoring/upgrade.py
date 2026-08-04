@@ -36,6 +36,7 @@ from html.parser import HTMLParser
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import _browser_attrs  # noqa: E402
 import _favicon  # noqa: E402
 import doc_stamp  # noqa: E402
 SKILL_ROOT = _toolpath.SKILL_ROOT
@@ -77,6 +78,11 @@ _KIND_META_NAME = "commentable-html-kind"
 class _KindMetaFinder(HTMLParser):
     """Detect a <meta name="commentable-html-kind"> regardless of attribute order."""
 
+    # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
+    # in prose resolves to U+FFFD instead of raising, so this tool reads the same document
+    # every validator parse reads (issue #946).
+    goahead = _browser_attrs.text_goahead(HTMLParser.goahead)
+
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.found = False
@@ -96,6 +102,11 @@ class _KindMetaFinder(HTMLParser):
 
 
 class _RootSourceFinder(HTMLParser):
+    # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
+    # in prose resolves to U+FFFD instead of raising, so this tool reads the same document
+    # every validator parse reads (issue #946).
+    goahead = _browser_attrs.text_goahead(HTMLParser.goahead)
+
     def __init__(self, html):
         super().__init__(convert_charrefs=True)
         self._line_offsets = []
@@ -187,7 +198,7 @@ def _normalize_source_provenance(html):
         if attr[0] == "data-doc-source" and attr[1] is not None
     ]
     for _name, value_start, value_end, quote in reversed(source_attrs):
-        source = _html.unescape(tag[value_start:value_end])
+        source = _browser_attrs.unescape_attr_value(tag[value_start:value_end])
         basename = doc_stamp.source_basename(source)
         if basename == source:
             continue

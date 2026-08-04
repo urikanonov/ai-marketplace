@@ -16,7 +16,12 @@ Two public entry points:
     cm-skip subtrees, <script>, and <style> excluded - mirroring the runtime's DOM walk.
 """
 import re
+import os
+import sys
 from html.parser import HTMLParser
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _browser_attrs  # noqa: E402
 
 # Whitespace class collapsed to a single space, matching the runtime REVIEW_WS_RE
 # (/[ \t\n\r\f\v\u00a0]+/). \v is \x0b and \f is \x0c.
@@ -61,6 +66,11 @@ class _SectionParser(HTMLParser):
     """Collect the content-root text with cm-skip / script / style subtrees excluded, and record
     each heading's (id, level, start-offset, end-offset). convert_charrefs=True so entities arrive
     decoded, like DOM textContent."""
+
+    # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
+    # in prose resolves to U+FFFD instead of raising, so this tool reads the same document
+    # every validator parse reads (issue #946).
+    goahead = _browser_attrs.text_goahead(HTMLParser.goahead)
 
     def __init__(self, single_root=False):
         super().__init__(convert_charrefs=True)

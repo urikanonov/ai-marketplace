@@ -24,6 +24,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
+import _browser_attrs  # noqa: E402
 _toolpath.ensure()
 import highlight_code  # noqa: E402
 import kql_highlight  # noqa: E402
@@ -68,7 +69,11 @@ def highlight_document(html):
             return m.group(0)  # already highlighted or carries markup - leave it alone
         if not inner.strip():
             return m.group(0)
-        code = _html.unescape(inner)
+        # The SHARED text decode (CMH-VAL-21): `html.unescape` RAISES on an oversized numeric
+        # reference (so highlighting a document the validator now reads would crash) and DELETES
+        # the code points a browser keeps - and this is the one path that WRITES the decoded text
+        # back, so a deletion here is permanent.
+        code = _browser_attrs.unescape_text(inner)
         # KQL keeps its own tokenizer and its own cmh-kql-* class vocabulary (bare
         # function names, hyphenated keywords, @"..." strings); only the DISPATCH is
         # shared, so the document path and the KQL tool can never diverge.
