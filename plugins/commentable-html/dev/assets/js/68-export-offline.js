@@ -646,26 +646,72 @@ function _offlineQueryAll(root, selector) {
 // construction. Nothing is written back unless a pass CHANGED something, so a clean srcdoc keeps
 // the author's exact bytes rather than a re-serialized copy of them.
 const _OFFLINE_SRCDOC_MAX_DEPTH = 8;
+// What a browser renders is the STRING, not the DOM this strip cleaned, and serialize-then-reparse
+// is not always a fixed point: the mutation-XSS shapes (a foreign-content `<mglyph>`/`<style>`
+// nesting, a comment whose boundary moves) reparse in a different insertion mode and can
+// MATERIALIZE markup the sanitized DOM never held. So a rewritten value is re-parsed and
+// re-stripped until it settles, exactly as `_offlineCssNoNetwork` runs its own strips to
+// convergence, and a value that will not settle is refused outright. Five passes is the same
+// bound that strip uses; a shape needing more is not one to ship.
+const _OFFLINE_SRCDOC_MAX_PASSES = 5;
+// `documentElement.outerHTML` serializes the ELEMENT, and a doctype is its SIBLING - which is why
+// `_serializeOfflineDoc` prepends one by hand for the top-level document. Dropping it here would
+// flip the nested browsing context into QUIRKS mode whenever the strip happened to change
+// something, silently changing how reader-visible content lays out, and it would do so
+// inconsistently (a clean srcdoc beside it keeps its doctype). Absence is preserved as carefully
+// as presence: a srcdoc the author deliberately left quirks-mode must not be handed one.
+function _offlineSerializeSrcdocDoc(d) {
+  const dt = d.doctype;
+  let head = "";
+  if (dt) {
+    head = "<!DOCTYPE " + dt.name
+      + (dt.publicId ? ' PUBLIC "' + dt.publicId + '"' : "")
+      + (dt.systemId ? (dt.publicId ? "" : " SYSTEM") + ' "' + dt.systemId + '"' : "")
+      + ">";
+  }
+  return head + d.documentElement.outerHTML;
+}
 function _offlineStripSrcdocs(doc, depth) {
   let dropped = 0;
   let clearedBases = 0;
+  let truncated = 0;
   _offlineQueryAll(doc, "iframe[srcdoc]").forEach(function (el) {
+    // The emptiness test comes BEFORE the depth test, because that is the order the strict
+    // validator applies them: an empty srcdoc carries no document to read, so neither side has
+    // anything to refuse, and removing it here would both lose the author's "render an empty
+    // document" instruction and hand the gate a file the strip had changed behind its back.
+    const raw = el.getAttribute("srcdoc") || "";
+    if (!raw) return;
     // Past the bound nothing can be READ, so nothing may be KEPT. The gate refuses a document
     // nested deeper than this for the same reason, and removing the attribute is what keeps the
-    // two sides agreeing about markup neither of them analyzed.
-    if (depth + 1 > _OFFLINE_SRCDOC_MAX_DEPTH) { el.removeAttribute("srcdoc"); return; }
-    let nested = null;
-    try { nested = _offlineDocFromHtml(el.getAttribute("srcdoc") || ""); } catch (e) { nested = null; }
-    if (!nested || !nested.documentElement) { el.removeAttribute("srcdoc"); return; }
-    const before = nested.documentElement.outerHTML;
-    const inner = _stripOfflineNetworkLoads(nested, depth + 1);
-    _stripOfflineEventHandlers(nested);
-    dropped += inner.dropped;
-    clearedBases += inner.clearedBases;
-    const after = nested.documentElement.outerHTML;
-    if (after !== before) el.setAttribute("srcdoc", after);
+    // two sides agreeing about markup neither of them analyzed. Counted, because a whole nested
+    // document disappears: every destructive pass here reports itself rather than leaving the
+    // author to discover the loss.
+    if (depth + 1 > _OFFLINE_SRCDOC_MAX_DEPTH) { el.removeAttribute("srcdoc"); truncated += 1; return; }
+    let markup = raw;
+    let rewritten = false;
+    let settled = false;
+    for (let pass = 0; pass < _OFFLINE_SRCDOC_MAX_PASSES; pass++) {
+      let nested = null;
+      try { nested = _offlineDocFromHtml(markup); } catch (e) { nested = null; }
+      if (!nested || !nested.documentElement) break;
+      const before = _offlineSerializeSrcdocDoc(nested);
+      const inner = _stripOfflineNetworkLoads(nested, depth + 1);
+      _stripOfflineEventHandlers(nested);
+      dropped += inner.dropped;
+      clearedBases += inner.clearedBases;
+      truncated += inner.truncatedSrcdocs;
+      const after = _offlineSerializeSrcdocDoc(nested);
+      // This parse of `markup` needed no change, so the string a browser parses really is clean -
+      // whether that is the author's original value or the rewrite of a previous pass.
+      if (after === before) { settled = true; break; }
+      markup = after;
+      rewritten = true;
+    }
+    if (!settled) { el.removeAttribute("srcdoc"); truncated += 1; return; }
+    if (rewritten) el.setAttribute("srcdoc", markup);
   });
-  return { dropped: dropped, clearedBases: clearedBases };
+  return { dropped: dropped, clearedBases: clearedBases, truncatedSrcdocs: truncated };
 }
 function _stripOfflineNetworkLoads(doc, depth) {
   let dropped = 0;
@@ -805,7 +851,7 @@ function _stripOfflineNetworkLoads(doc, depth) {
   const nested = _offlineStripSrcdocs(doc, depth || 0);
   dropped += nested.dropped;
   clearedBases += nested.clearedBases;
-  return { dropped: dropped, clearedBases: clearedBases };
+  return { dropped: dropped, clearedBases: clearedBases, truncatedSrcdocs: nested.truncatedSrcdocs };
 }
 function _stripOfflineRichRenderers(doc) {
   // On a re-export of an already-offline document, remove any previously inlined library notice
@@ -1416,6 +1462,7 @@ async function _buildOfflineHtml(shareableHtml) {
     html: html,
     droppedScripts: stripped.dropped,
     clearedBases: stripped.clearedBases,
+    truncatedSrcdocs: stripped.truncatedSrcdocs,
     neutralizedScripts: _offlineCountKeptNeutralized(doc, neutralizedScripts),
   };
 }
@@ -1463,7 +1510,15 @@ async function saveOffline() {
   const baseNote = b > 0
     ? " " + b + " <base href> pointing away from this file " + (b === 1 ? "was" : "were") + " cleared, so relative references and links now resolve beside the file."
     : "";
-  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + baseNote + review.note, { center: true });
+  // Removing a srcdoc deletes a whole nested document a reader could see, so it is never silent:
+  // it happens only when the nesting runs past the depth both this strip and the strict gate read
+  // to, or when the sanitized markup will not settle into a form a browser reparses unchanged.
+  const t = built.truncatedSrcdocs;
+  const srcdocNote = t > 0
+    ? " " + t + " <iframe srcdoc> document" + (t === 1 ? " was" : "s were") + " removed because "
+      + (t === 1 ? "it was" : "they were") + " nested too deep to check, or would not settle into markup a browser reparses unchanged."
+    : "";
+  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + baseNote + srcdocNote + review.note, { center: true });
 }
 ["btnExportOffline", "btnExportOfflineTop"].forEach(function (id) {
   const b = document.getElementById(id);

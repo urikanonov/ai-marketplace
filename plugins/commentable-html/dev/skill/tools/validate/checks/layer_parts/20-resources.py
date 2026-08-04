@@ -88,8 +88,17 @@ def _check_self_contained(html, parser, *, srcdoc_depth=0, inherited_offline=Non
                                   "tools/inline_images.py (external images break self-contained use and shareability)"
                                   % src[:80])
             elif not re.match(r"[a-z][a-z0-9+.\-]*:", src, re.I):
-                warnings.append('<img src="%s"> is a local path - run tools/inline_images.py to embed '
-                                "it as a data: URI so the image travels with the file" % src[:80])
+                # Inside a srcdoc the named tool cannot help: `inline_images.py` rewrites document
+                # ELEMENTS and has no notion of markup carried in an attribute value, and the
+                # offline strip deliberately leaves a relative reference alone. Naming it there
+                # would be an unclearable finding pointing at a fix that does not reach, so the
+                # nested wording names the edit the author can actually make.
+                warnings.append('<img src="%s"> is a local path - %s so the image travels with '
+                                "the file"
+                                % (src[:80],
+                                   "write it out as a data: URI inside the srcdoc value"
+                                   if srcdoc_depth else
+                                   "run tools/inline_images.py to embed it as a data: URI"))
         _check_network_attr("img", img, "srcset", srcset=True)
     # An SVG <script> never uses `src`: it loads through `href` (SVG2) or the legacy `xlink:href`,
     # and its body is empty, so neither this loader check nor the inline egress scan below saw it
@@ -298,10 +307,13 @@ def _check_self_contained(html, parser, *, srcdoc_depth=0, inherited_offline=Non
     # narrower copy of its rules: every rule above applies to markup a browser really parses and
     # really loads, and a hand-written subset is exactly the drift the offline gate keeps paying
     # for. The offline strip sanitizes a srcdoc through its own full strip for the same reason, so
-    # the two sides stay in step. The findings are PREFIXED, because the remediation each message
-    # names ("inline it with tools/inline_images.py") is about a reference the author has to reach
-    # inside an attribute value to edit, and an unmarked message would send them looking for an
-    # element the document does not contain.
+    # the two sides stay in step - including the ORDER of the two guards below: an EMPTY srcdoc
+    # carries no document to read, so it is skipped before the depth test on both sides (the strip
+    # would otherwise remove an attribute this gate had just certified, and removing it loses the
+    # author's "render an empty document" instruction).
+    # The findings are MARKED once per level, because the remediation each message names is about
+    # a reference the author has to reach inside an attribute value to edit, and an unmarked
+    # message would send them looking for an element the document does not contain.
     for el in _find_tag_attrs_egress(html, "iframe"):
         nested = el.get("srcdoc", "")
         if not nested:
@@ -316,7 +328,12 @@ def _check_self_contained(html, parser, *, srcdoc_depth=0, inherited_offline=Non
             nested, _parse_document(nested), srcdoc_depth=srcdoc_depth + 1,
             inherited_offline=offline_mode)
         errors.extend("inside an <iframe srcdoc>: " + e for e in nested_errors)
-        warnings.extend("inside an <iframe srcdoc>: " + w for w in nested_warnings)
+        # A WARNING is marked at its END rather than its front, because the advisory split
+        # (`validate.py`'s `is_advisory`) classifies a warning by its leading text: a prefix would
+        # move an advisory marker off the front and silently promote a finding the author cannot
+        # clear into one that fails `--strict`. No warning here is advisory today, so this costs
+        # nothing now and keeps the next one that is from being a trap.
+        warnings.extend(w + " (inside an <iframe srcdoc>)" for w in nested_warnings)
     return errors, warnings
 
 

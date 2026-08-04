@@ -18,7 +18,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   and its `on*` handlers, with `--strict` certifying the file as offline-clean. The exported CSP
   does absorb such a fetch in practice, because a nested browsing context inherits `default-src
   'none'` - but the strip and the gate are the layer that is not supposed to depend on the CSP,
-  which is the same argument the `<base href>` rule (1.667.0) was built on.
+  which is the same argument the `<base href>` rule (#924) was built on.
   The export now parses each `srcdoc`, runs the SAME network-load strip and event-handler scrub
   over the nested document, and writes it back; the validator runs its OWN full self-contained
   check over the same decoded markup rather than a narrower second copy of the rules, since a
@@ -30,10 +30,27 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   the file, so the two agree about markup neither of them read. A nested document declares no layer
   descriptor and no CSP of its own, so it inherits the enclosing document's mode - otherwise its
   offline rules would never run - and is never asked for a policy of its own. And a nested finding
-  is prefixed with `inside an <iframe srcdoc>:` per level, because the remediation each message
-  names is about a reference the author has to reach inside an attribute value to edit. Nested
-  counts are added to the enclosing export's own, so a base cleared inside a srcdoc is named in the
-  same download toast.
+  is marked `inside an <iframe srcdoc>` per level, because the remediation each message names is
+  about a reference the author has to reach inside an attribute value to edit. Nested counts are
+  added to the enclosing export's own, so a base cleared inside a srcdoc is named in the same
+  download toast.
+  What a browser renders is the STRING, not the DOM the strip cleaned, and serialize-then-reparse
+  is not always a fixed point - the mutation-XSS shapes reparse in a different insertion mode and
+  can MATERIALIZE markup the sanitized DOM never held - so a rewritten value is re-parsed and
+  re-stripped until it settles, exactly as the offline CSS strips already run to convergence, and a
+  value that will not settle is removed instead. A rewrite also re-emits the nested DOCTYPE, which
+  serializing `documentElement` alone would drop: that would flip the nested browsing context into
+  quirks mode whenever the strip happened to change something, and leave two srcdocs in one export
+  rendering in different modes. Removing a srcdoc - past the depth bound, or because it would not
+  settle - is counted in the download toast, since a whole nested document a reader could see
+  disappears.
+  Two smaller consequences are worth knowing. The gate's nested pass is not offline-only (the
+  self-contained guarantee never was, and unlike an offline file a shareable one has no zero-network
+  CSP behind it), so a SHAREABLE document whose srcdoc carries a remote reference is now reported
+  too. And a relative image inside a srcdoc is still reported as a local path, but with wording that
+  names an edit the author can make: `tools/inline_images.py` rewrites document elements and cannot
+  reach inside an attribute value, so naming it there would have been an unclearable finding
+  pointing at a fix that does not apply.
 
 ## [1.671.0] - 2026-08-04
 

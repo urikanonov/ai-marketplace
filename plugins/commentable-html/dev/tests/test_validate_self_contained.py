@@ -1137,6 +1137,22 @@ class NewCheckTests(unittest.TestCase):
                     any(e.startswith("inside an <iframe srcdoc>: ") for e in errors),
                     (markup, errors))
 
+    # How the srcdoc attribute itself is SPELLED must not decide whether it is read: a browser
+    # decodes a single-quoted, an unquoted, and a character-reference-smuggled value the same way,
+    # so this gate's tokenizer has to as well or the spelling becomes the bypass.
+    def test_offline_mode_reads_a_srcdoc_however_the_attribute_is_quoted(self):
+        egress = "&lt;img src=&quot;https://evil.example/x.png&quot; alt=&quot;x&quot;&gt;"
+        for iframe in ("<iframe title=\"q\" srcdoc='%s'></iframe>" % egress.replace("&quot;", "&#34;"),
+                       '<iframe title="q" srcdoc=%s></iframe>'
+                       % egress.replace("&quot;", "&#34;").replace(" ", "&#32;"),
+                       '<iframe title="q" SRCDOC="%s"></iframe>' % egress):
+            with self.subTest(iframe=iframe):
+                doc = with_offline_mode(build(body=self._body(MAIN, iframe)))
+                errors, _ = self._errs_warns(doc)
+                self.assertTrue(
+                    any(e.startswith("inside an <iframe srcdoc>: ") and "evil.example" in e
+                        for e in errors), (iframe, errors))
+
     # A srcdoc document can carry its own srcdoc, so the walk recurses - and the finding is marked
     # once per level, so an author can tell how deep the reference they must edit is buried.
     def test_offline_mode_rejects_a_network_load_nested_two_srcdocs_deep(self):
@@ -1193,6 +1209,39 @@ class NewCheckTests(unittest.TestCase):
         errors, _ = self._errs_warns(doc)
         self.assertTrue(any("evil.example" in e for e in errors), errors)
         self.assertFalse(any("nested more than" in e for e in errors), errors)
+
+    # An EMPTY srcdoc carries no document, so the emptiness test has to come BEFORE the depth test -
+    # on both sides. It used to come first here and second in the strip, so a chain nested past the
+    # bound whose innermost value was empty passed this gate while the strip removed the attribute:
+    # the "gate blesses a file the strip takes apart" direction, in miniature.
+    def test_an_empty_srcdoc_past_the_bound_is_not_refused(self):
+        markup = ""
+        for _ in range(resources.OFFLINE_SRCDOC_MAX_DEPTH + 1):
+            markup = self._srcdoc(markup)
+        doc = with_offline_mode(build(body=self._body(MAIN, markup)))
+        errors, warnings = self._errs_warns(doc)
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    # A relative image inside a srcdoc still breaks the self-contained guarantee, so it is still
+    # reported - but `tools/inline_images.py` rewrites document ELEMENTS and cannot reach inside an
+    # attribute value, so naming it there would be an unclearable finding pointing at a fix that
+    # does not apply. The nested wording names the edit the author can actually make. The marker
+    # goes at the END of a warning, because `validate.py` classifies an advisory by its LEADING
+    # text and a prefix would silently promote one into a `--strict` failure.
+    def test_a_local_path_image_inside_a_srcdoc_names_a_fix_that_reaches_it(self):
+        doc = with_offline_mode(build(body=self._body(
+            MAIN, self._srcdoc('<img src="pic.png" alt="x">'))))
+        errors, warnings = self._errs_warns(doc)
+        self.assertEqual(errors, [], errors)
+        nested = [w for w in warnings if w.endswith(" (inside an <iframe srcdoc>)")]
+        self.assertTrue(nested, warnings)
+        self.assertIn("write it out as a data: URI inside the srcdoc value", nested[0])
+        self.assertNotIn("inline_images.py", nested[0])
+        # ...and the top-level wording is unchanged, so the tool is still named where it works.
+        main = MAIN.replace("<p>content</p>", '<p>content</p>\n  <img src="pic.png" alt="x">')
+        _, top = self._errs_warns(with_offline_mode(build(body=self._body(main))))
+        self.assertTrue(any("tools/inline_images.py" in w for w in top), top)
 
 
     def test_external_stylesheet_link_warns(self):
