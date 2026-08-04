@@ -4,13 +4,14 @@
 Content conventions ask authors to build real layouts (tables, lists, figures, diffs, charts,
 diagrams), not stacked walls of prose. This dedicated HTMLParser pass warns when a report/plan
 section is a run of consecutive LONG paragraphs with no layout-bearing block breaking it up. It is
-scoped to `#commentRoot`, ignores `cm-skip` subtrees, and is exempt for slides/board (which do not
-use section cards). All findings are non-fatal warnings, matching the section-wrapping advisory
+scoped to `#commentRoot`, ignores `cm-skip` subtrees and inert `<template>` content (but not a
+declarative shadow root, which a browser renders), and is exempt for slides/board (which do not use
+section cards). All findings are non-fatal warnings, matching the section-wrapping advisory
 (CMH-VAL-14) precedent.
 """
 import re
 
-from .parsing import _BrowserStartTag, _browser_attrs_dict
+from .parsing import _BrowserBoundaries, _ascii_lower, _browser_attrs_dict
 
 MIN_LONG_PARAGRAPH_CHARS = 240
 MAX_CONSECUTIVE_LONG = 4
@@ -35,11 +36,27 @@ _BLOCK_TAGS = frozenset((
 _LAYOUT_TAGS = frozenset("table ul ol dl figure pre blockquote canvas".split())
 _LAYOUT_CLASSES = ("cmh-diff", "mermaid", "cmh-mermaid", "cmh-chart", "cmh-kql")
 _LAYOUT_ATTRS = ("data-cmh-checklist", "data-cm-widget")
+# A declarative-shadow-root template is the one <template> a browser DOES render: it is consumed
+# at parse time and its children become the host's shadow tree. Only these two modes attach one,
+# so any other value (or no attribute) leaves the fragment inert.
+_SHADOW_ROOT_MODES = frozenset(("open", "closed"))
 
 
-class _DensityParser(_BrowserStartTag):
-    def __init__(self, min_chars, max_run):
-        super().__init__(convert_charrefs=True)
+def _frame(root=False, skip=False, layout=False, section=False, template=False, shadow=False):
+    """The per-element contributions an open frame gives back when it closes."""
+    return {"root": root, "skip": skip, "layout": layout, "section": section,
+            "template": template, "shadow": shadow, "shadow_used": False}
+
+
+class _DensityParser(_BrowserBoundaries):
+    def __init__(self, html, min_chars, max_run):
+        # The SHARED element boundaries, not the host's: the raw-text / RCDATA set, the
+        # `</name` + whitespace/`/`/`>` closer, and the EOF rules are what decide whether a
+        # `<template>` written inside <title>/<textarea>/<noscript> TEXT is a tag at all, and
+        # html.parser answers that differently per interpreter (CMH-VAL-21). This pass has no
+        # namespace stack, so it reads every element as HTML (see the foreign-content gap
+        # recorded against this parser).
+        super().__init__(html)
         self.min_chars = min_chars
         self.max_run = max_run
         self.kind = ""
@@ -47,6 +64,17 @@ class _DensityParser(_BrowserStartTag):
         self.root_depth = 0
         self.skip_depth = 0
         self.layout_depth = 0
+        # Indices into `_stack` of the OPEN <template> frames, innermost last. A template's
+        # contents are an inert DocumentFragment a browser never renders, so the whole pass is
+        # gated off inside one. Kept as indices rather than a bare counter for two reasons: the
+        # innermost index IS the end-tag unwind floor, so no end tag has to rescan the stack to
+        # find it, and the depth is DERIVED from the frames on the stack, so the two can never
+        # drift apart. A template left open at end of input keeps the rest of the document
+        # inert, exactly as a browser leaves it in the fragment.
+        self._template_floors = []
+        # Open declarative-shadow-root frames. Their content IS rendered, so it counts as prose,
+        # but it lives in a shadow tree the document's own metadata rules do not reach.
+        self.shadow_depth = 0
         self.run = 0
         # Heading stack so a nested or trailing section is labeled by its OWN heading, and a
         # headless/nested section restores the parent heading on close.
@@ -61,6 +89,33 @@ class _DensityParser(_BrowserStartTag):
     @property
     def current_heading(self):
         return self._sections[-1] if self._sections else self._root_heading
+
+    @property
+    def template_depth(self):
+        return len(self._template_floors)
+
+    def _push_template(self):
+        self._template_floors.append(len(self._stack))
+        self._stack.append(("template", _frame(template=True)))
+
+    def _attaches_shadow_root(self, d):
+        """Whether this `<template>` really becomes the parent's rendered shadow tree.
+
+        Two conditions a browser applies, both of which decide RENDERED vs inert here. The
+        `shadowrootmode` value is an ENUMERATED attribute, so it is matched ASCII-case-insensitively
+        and EXACTLY - `" open"` is not `open`, and a browser leaves that template inert. And a host
+        element gets only ONE declarative shadow root: a second `template[shadowrootmode]` under the
+        same parent stays an ordinary inert template.
+        """
+        if _ascii_lower(d.get("shadowrootmode") or "") not in _SHADOW_ROOT_MODES:
+            return False
+        if not self._stack:
+            return False        # no open host element for the shadow tree to attach to
+        host = self._stack[-1][1]
+        if host.get("shadow_used"):
+            return False
+        host["shadow_used"] = True
+        return True
 
     def _attrs(self, tag, attrs):
         # Browser attribute-value decoding, shared with the document parser, so the content
@@ -94,14 +149,40 @@ class _DensityParser(_BrowserStartTag):
         self.run = 0
 
     def _note_kind(self, d):
-        # Keep the FIRST kind meta (matching the main parser), so a later duplicate or an inert
-        # template copy cannot flip the scope.
+        # Keep the FIRST kind meta (matching the main parser), so a later duplicate cannot flip
+        # the scope. A template-parked copy never reaches here at all - `handle_starttag` returns
+        # before the meta branch inside an inert fragment - and one inside a declarative SHADOW
+        # tree is skipped too: a browser renders that content but never applies a shadow tree's
+        # metadata to the document, so it must not decide whether this advisory runs.
+        if self.shadow_depth:
+            return
         if not self.kind and (d.get("name") or "").lower() == _KIND_META_NAME:
             self.kind = (d.get("content") or "").strip().lower()
 
     def handle_starttag(self, tag, attrs):
         tag = self._browser_tag(tag)
+        if self.template_depth > 0:
+            # Inert fragment: nothing inside contributes prose, a heading, a section, a layout
+            # break, or the kind. Only the nesting is tracked, so `</template>` lands on the
+            # right frame. A nested declarative shadow root is inert too - its host is inside a
+            # fragment a browser never renders, so no shadow tree is ever attached.
+            if tag == "template":
+                self._push_template()
+            elif tag not in _VOID:
+                self._stack.append((tag, _frame()))
+            self._enter_raw_text(tag, "html")
+            return
         d = self._attrs(tag, attrs)
+        is_shadow = tag == "template" and self._attaches_shadow_root(d)
+        if tag == "template" and not is_shadow:
+
+            # A <template>'s contents live in a DocumentFragment a browser never renders, so the
+            # element itself is invisible too: it neither counts as prose nor breaks a run (its
+            # own attributes cannot make it a layout block either). A DECLARATIVE SHADOW ROOT is
+            # the exception - a browser renders that content - so it falls through and is read as
+            # the ordinary transparent container it displays as.
+            self._push_template()
+            return
         if tag == "meta":
             self._note_kind(d)
         is_root = self._is_root(tag, d)
@@ -140,16 +221,30 @@ class _DensityParser(_BrowserStartTag):
             self._p_text = []
         if tag in _VOID:
             return
-        self._stack.append((tag, {"root": is_root, "skip": is_skip, "layout": is_layout,
-                                  "section": pushes_section}))
+        self._stack.append((tag, _frame(root=is_root, skip=is_skip, layout=is_layout,
+                                        section=pushes_section, shadow=is_shadow)))
         if is_root:
             self.root_depth += 1
         if is_skip:
             self.skip_depth += 1
         if is_layout:
             self.layout_depth += 1
+        if is_shadow:
+            self.shadow_depth += 1
+        self._enter_raw_text(tag, "html")
+
+    def handle_startendtag(self, tag, attrs):
+        # HTML5 ignores a trailing slash on a non-void HTML tag, so `<template/>` OPENS the inert
+        # fragment rather than opening and closing it. Every other tag keeps the base behavior.
+        tag = self._browser_tag(tag)
+        if tag == "template":
+            self.handle_starttag(tag, attrs)
+            return
+        super().handle_startendtag(tag, attrs)
 
     def handle_data(self, data):
+        if self.template_depth > 0:
+            return  # a browser renders none of a template's text
         if self._p_prose and self.skip_depth == 0 and self.layout_depth == 0:
             self._p_text.append(data)
         if self._heading_capture:
@@ -178,8 +273,26 @@ class _DensityParser(_BrowserStartTag):
             # back through _break_run (the paragraph is already closed).
             self.run = 0
 
+    def _end_inside_template(self, tag):
+        # Unwind only WITHIN the innermost open template: an end tag inside an inert fragment
+        # must never close an element that opened outside it (a parked `</main>` cannot retire
+        # the live content root). The floor is read off `_template_floors` in O(1) rather than
+        # rescanned, so closing well-nested markup inside a template costs the same as closing it
+        # anywhere else. An end tag with no match inside the fragment is ignored, as a browser
+        # ignores it.
+        floor = self._template_floors[-1]
+        for i in range(len(self._stack) - 1, floor - 1, -1):
+            if self._stack[i][0] == tag:
+                del self._stack[i:]
+                while self._template_floors and self._template_floors[-1] >= i:
+                    self._template_floors.pop()
+                break
+
     def handle_endtag(self, tag):
         tag = self._browser_tag(tag)
+        if self.template_depth > 0:
+            self._end_inside_template(tag)
+            return
         if tag == "p" and self._p_prose:
             self._close_paragraph()
         if tag in _HEADINGS and self._heading_capture:
@@ -204,6 +317,8 @@ class _DensityParser(_BrowserStartTag):
                         self.skip_depth -= 1
                     if contrib["layout"]:
                         self.layout_depth -= 1
+                    if contrib["shadow"]:
+                        self.shadow_depth -= 1
                 break
 
 
@@ -212,10 +327,9 @@ def check_density(html, min_chars=MIN_LONG_PARAGRAPH_CHARS, max_run=MAX_CONSECUT
     `max_run` or more consecutive long paragraphs with no layout-bearing block. Only report/plan
     are checked (slides/board/generic/unknown are exempt); a parse failure degrades to no findings.
     All findings are warnings."""
-    p = _DensityParser(min_chars, max_run)
+    p = _DensityParser(html, min_chars, max_run)
     try:
-        p.feed(html)
-        p.close()
+        p.parse_document(html)
         p._flush_open_paragraph()  # count a paragraph whose </p> and enclosing tags are all omitted
     except Exception:
         return [], []
