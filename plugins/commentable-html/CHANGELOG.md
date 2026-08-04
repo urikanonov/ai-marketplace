@@ -107,6 +107,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   far more spellings than any corpus can list.
 ### Changed
 
+
 ## [1.677.0] - 2026-08-04
 
 ### Changed
