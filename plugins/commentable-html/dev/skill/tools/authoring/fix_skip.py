@@ -92,7 +92,7 @@ class _MermaidPreLocator(_browser_boundaries.BrowserBoundaries):
 
     def handle_endtag(self, tag):
         tag = self._browser_tag(tag)
-        for i in range(len(self.stack) - 1, -1, -1):
+        for i in range(len(self.stack) - 1, self._end_tag_floor(tag) - 1, -1):
             if self.stack[i] == tag:
                 self._truncate_stacks(i)
                 return

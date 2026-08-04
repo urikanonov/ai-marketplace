@@ -84,6 +84,132 @@ class DocParserTemplateRawTextTests(unittest.TestCase):
         self.assertEqual(doc.styles, [])
 
 
+class DocParserTemplateBoundaryTests(unittest.TestCase):
+    """An END TAG written inside an open `<template>` cannot close an element opened OUTSIDE it.
+
+    `template` is a scoping element and its contents are parsed into their own DocumentFragment,
+    so a browser IGNORES such a closer and the markup that follows stays inert inside the
+    template. Matching an ancestor across the boundary popped the template early, which made
+    every template-aware view - prose, ids, headings, anchors, the layer/marker views - read
+    inert markup as live.
+    """
+
+    CR = '<main id="commentRoot">'
+
+    def _doc(self, inner):
+        return parsing._parse_document(self.CR + inner)
+
+    def _prose(self, doc):
+        return [t.strip() for t in doc.commentroot_prose if t.strip()]
+
+    def test_an_explicit_paragraph_closer_does_not_close_an_ancestor(self):
+        doc = self._doc('<p><template>inside</p>'
+                        '<p id="after">See the section below</p></template></main>')
+        self.assertEqual(self._prose(doc), [])
+        self.assertEqual(doc.all_ids, ["commentRoot"])
+
+    def test_an_explicit_list_item_closer_does_not_close_an_ancestor(self):
+        doc = self._doc('<ul><li><template>inside</li>'
+                        '<li id="after">See the section below</li></template></ul></main>')
+        self.assertEqual(self._prose(doc), [])
+        self.assertEqual(doc.all_ids, ["commentRoot"])
+
+    def test_an_ancestor_closer_does_not_end_the_comment_root(self):
+        doc = self._doc('<template>inside</main><p id="after">inert</p></template>'
+                        '<p id="outside">live prose</p></main>')
+        self.assertEqual(self._prose(doc), ["live prose"])
+        self.assertEqual(doc.all_ids, ["commentRoot", "outside"])
+
+    def test_a_heading_behind_an_ignored_closer_is_still_inert(self):
+        doc = self._doc('<p><template>inside</p>'
+                        '<h2 id="h">Heading</h2></template></main>')
+        self.assertEqual([h["text"] for h in doc.headings], [])
+        self.assertEqual(doc.all_ids, ["commentRoot"])
+
+    def test_a_block_start_tag_does_not_implicitly_close_an_ancestor_paragraph(self):
+        # The implicit `</p>` path already stops at the boundary (`template` is in
+        # `_P_CLOSE_BOUNDARY`); pinned so it cannot regress with the explicit one.
+        doc = self._doc('<p><template>inside<p id="after">inert</p></template>'
+                        "live prose</p></main>")
+        self.assertEqual(self._prose(doc), ["live prose"])
+        self.assertEqual(doc.all_ids, ["commentRoot"])
+
+    def test_a_list_item_start_tag_does_not_implicitly_close_an_ancestor_item(self):
+        doc = self._doc('<ul><li><template>inside<li id="after">inert</template>'
+                        "live prose</li></ul></main>")
+        self.assertEqual(self._prose(doc), ["live prose"])
+        self.assertEqual(doc.all_ids, ["commentRoot"])
+
+    def test_the_templates_own_end_tag_still_closes_it(self):
+        doc = self._doc('<p><template><span id="inert"></span></template>'
+                        '<span id="live"></span>live prose</p></main>')
+        self.assertEqual(self._prose(doc), ["live prose"])
+        self.assertEqual(doc.all_ids, ["commentRoot", "live"])
+
+    def test_the_namespace_view_is_not_popped_across_the_boundary(self):
+        # The foreign-content bookkeeping runs PARALLEL to the element stack, so an ignored
+        # closer must leave it alone too. Observed through CDATA: `<![CDATA[` opens a real
+        # section only while the CURRENT NODE is foreign, so with the `<foreignObject>` still
+        # open the payload is TEXT. Popping it made the same payload a bogus comment ending at
+        # its first `>`, which exposed the element written after it as live markup.
+        doc = self._doc('<svg><foreignObject><template>inside</foreignObject></svg></template>'
+                        '<![CDATA[><span id="cdata"></span>]]>'
+                        "</foreignObject></svg></main>")
+        self.assertEqual(doc.all_ids, ["commentRoot"])
+
+    def test_the_tag_index_is_not_popped_across_the_boundary_either(self):
+        # The same shape asked of the resource views' tag index, which the offline / egress
+        # checks read: the element the bogus comment would have exposed is inside a real CDATA
+        # section, so it is TEXT and no resource is indexed.
+        html = ('<svg><foreignObject><template>x</foreignObject></svg></template>'
+                '<![CDATA[><img src="//evil.example/x.png">]]>'
+                "</foreignObject></svg>")
+        self.assertEqual(parsing._find_tag_attrs(html, "img"), [])
+
+    def test_a_head_closer_inside_a_template_does_not_end_the_head(self):
+        # A closer a browser IGNORES must not reach the parser's STATE MACHINES either. This one
+        # ended the head, so the favicon `<link>` a browser keeps IN the head was dropped.
+        doc = parsing._parse_document(
+            '<head><template></head></template><link rel="icon" href="a.ico"></head>'
+            '<body><main id="commentRoot"><p>x</p></main></body>')
+        self.assertEqual([lk["href"] for lk in doc.icon_links], ["a.ico"])
+
+    def test_a_foreign_template_is_not_a_scope_boundary(self):
+        # Only an HTML-namespace `<template>` scopes an end tag. An SVG element that merely
+        # happens to be called `template` is an ordinary foreign element, so the `</svg>` inside
+        # it still closes the svg and the paragraph after it is live, as in a browser.
+        doc = self._doc('<svg><template>x</svg><p id="after">after</p></main>')
+        self.assertEqual(doc.all_ids, ["commentRoot", "after"])
+        self.assertEqual(self._prose(doc), ["after"])
+
+    def test_a_heading_closer_inside_a_template_does_not_end_the_heading(self):
+        # Same hole, seen from the heading capture: the ignored `</h2>` flushed the heading the
+        # author opened OUTSIDE the template, so its text stopped at the template and the rest
+        # of it was collected as ordinary prose instead.
+        doc = self._doc('<h2 id="h">Before <template></h2></template>After</h2></main>')
+        self.assertEqual([h["text"] for h in doc.headings], ["Before After"])
+        self.assertEqual(self._prose(doc), [])
+
+    def test_a_matched_head_inside_a_template_does_not_end_the_outer_head(self):
+        # The closer MATCHES here - an inner `<head>` really is open inside the template - so the
+        # floor alone does not catch it. What the state machines must key on is the element being
+        # closed, not the tag NAME: the head this ends is the template's own, and the favicon
+        # `<link>` after it is still in the document's head.
+        doc = parsing._parse_document(
+            '<head><template><head></head></template>'
+            '<link rel="icon" href="a.ico"></head>'
+            '<body><main id="commentRoot"><p>x</p></main></body>')
+        self.assertEqual([lk["href"] for lk in doc.icon_links], ["a.ico"])
+
+    def test_a_matched_heading_inside_a_template_does_not_end_the_outer_heading(self):
+        # The mirror image for the heading capture: the `</h2>` closes the template's OWN `<h2>`,
+        # so the heading the author opened outside the template goes on collecting its text.
+        doc = self._doc('<h2 id="h">Before <template><h2>Hidden</h2></template>'
+                        "After</h2></main>")
+        self.assertEqual([h["text"] for h in doc.headings], ["Before After"])
+        self.assertEqual(self._prose(doc), [])
+
+
 class DocParserRawTextTests(unittest.TestCase):
     """The raw-text / RCDATA set, applied explicitly so it does not drift with the host."""
 
@@ -859,7 +985,8 @@ class DocParserScopeCostTests(unittest.TestCase):
                 self._assert_parallel(parser, len(names))
 
     def _assert_parallel(self, parser, depth):
-        views = {"_ns": parser._ns, "_p_stop": parser._p_stop, "_li_stop": parser._li_stop}
+        views = {"_ns": parser._ns, "_p_stop": parser._p_stop, "_li_stop": parser._li_stop,
+                 "_tpl_stop": parser._tpl_stop}
         for attr in ("stack", "_stack", "_anc"):
             current = getattr(parser, attr, None)
             if isinstance(current, list):

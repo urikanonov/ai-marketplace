@@ -4,6 +4,33 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.581.0] - 2026-08-04
+
+### Fixed
+
+- An END TAG can no longer match an ancestor across an open `<template>` boundary (CMH-VAL-21).
+  `template` is a scoping element and its contents are parsed into their own DocumentFragment, so
+  a closer written inside one - an explicit `</p>` or `</li>`, or any ancestor's closer - is
+  IGNORED by a browser and the markup after it stays inert inside the template. The shared
+  `_BrowserBoundaries` base modelled an open template as an ordinary stack entry, so
+  `<main id="commentRoot"><p><template>inside</p><p>See the section below</p>` popped the template
+  early and every template-aware view read inert markup as live: the prose /
+  unlinked-cross-reference view, the element view (ids, canvases, anchors), the heading capture and
+  the layer/marker views. The floor is tracked incrementally beside the namespace stack each parser
+  keeps parallel to its own element stack, so the foreign-content bookkeeping is never truncated
+  across the boundary either and an end tag still costs O(1); `</template>` itself still pops the
+  template. The code-block tokenizer gets the same rule, so a `</code>`/`</pre>` parked in a
+  template leaves the author's real block open for the callers to fail CLOSED on instead of
+  silently ending it. A closer the boundary scopes away now reaches none of the parser's state
+  machines either: a `</head>` parked in a template no longer ends the head (which dropped the
+  favicon `<link>` a browser keeps in it), and a `</h2>` no longer flushes a heading opened
+  outside the template (which stopped that heading's text at the template and collected the rest
+  of it as ordinary prose). Those state machines key on the ELEMENT being closed rather than on
+  the tag NAME, so a same-named element nested inside the template does not end the outer one
+  either. The floor belongs to the shared base, so the tools that derive from it - `generate_toc`,
+  `doc_stats`, `fix_skip`, both `wrap_sections` locators, both deck scanners and the contrast
+  scanners - bound their own end-tag scans by it too, where a table of contents previously read
+  "Real" for a heading a browser shows as "RealTail".
 ## [1.579.0] - 2026-08-04
 
 ### Fixed

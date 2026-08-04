@@ -115,6 +115,13 @@ class _FallbackBoundaries(HTMLParser):
         """No-op: the host has no such rule, and reproducing HTML5 scope here would be a second,
         divergent copy of the very thing this shim exists to share."""
 
+    def _end_tag_floor(self, _tag):
+        """No template scoping: 0 is "search the whole stack", the pre-CMH-VAL-21 behavior.
+
+        Present because every tool's `handle_endtag` now bounds its search by this, so a degraded
+        install must still answer it - degrading to what the tool used to do, not crashing."""
+        return 0
+
     def _enter_raw_text(self, tag, ns):
         """No-op: on this path the host's own `parse_starttag()` has already entered whatever
         raw-text mode it knows about."""

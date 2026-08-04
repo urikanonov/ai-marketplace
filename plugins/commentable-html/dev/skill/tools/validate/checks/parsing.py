@@ -1088,6 +1088,10 @@ class _BrowserBoundaries(_BrowserStartTag):
         # the stack grows answers it in O(1) instead of rescanning the stack per start tag.
         self._p_stop = []
         self._li_stop = []
+        # Parallel to `_ns` too: the index of the nearest enclosing HTML-namespace <template>, or
+        # -1 when there is none. An END TAG may not match an ancestor across it (see
+        # `_end_tag_floor`), and reading it costs the same O(1) as the scope stops above.
+        self._tpl_stop = []
         # tag -> the indices of the open elements with that name, innermost last. An end tag
         # matches the INNERMOST open element of its name, which was a backwards scan of the whole
         # stack per end tag - quadratic on a document that closes many elements it never opened.
@@ -1408,13 +1412,41 @@ class _BrowserBoundaries(_BrowserStartTag):
             p_stops = li_stops = tag in _FOREIGN_SCOPE_BOUNDARY
         self._p_stop.append(depth if p_stops else (self._p_stop[-1] if depth else -1))
         self._li_stop.append(depth if li_stops else (self._li_stop[-1] if depth else -1))
+        self._tpl_stop.append(depth if (ns == "html" and tag == "template")
+                              else (self._tpl_stop[-1] if depth else -1))
+
+    def _end_tag_floor(self, tag):
+        """The lowest stack index an END TAG may match at.
+
+        A `<template>`'s contents are parsed into their own DocumentFragment and `template` is a
+        SCOPING element, so a closer written inside an open template cannot reach an element
+        opened OUTSIDE it: a browser ignores it, and the markup that follows stays inert inside
+        the template. Matching across the boundary popped the template early, which turned every
+        template-aware view - prose, ids, headings, anchors, the layer/marker views - into a view
+        of markup a reader never sees. `</template>` itself really does pop the template, so for
+        that tag the floor IS the template's own index.
+
+        Read off `_tpl_stop`, which is parallel to the namespace stack every subclass keeps
+        parallel to its own element stack, so the foreign-content bookkeeping can never be
+        truncated across the boundary either and the answer stays O(1). Only an HTML-namespace
+        `<template>` scopes: an SVG element that happens to be called `template` is an ordinary
+        foreign element and stops nothing.
+        """
+        i = self._tpl_stop[-1] if self._tpl_stop else -1
+        if i < 0:
+            return 0
+        return i if tag == "template" else i + 1
 
     def _innermost_open(self, tag):
-        """The index of the innermost open element named `tag`, or -1 when none is open. This is
-        the element an end tag matches, so every subclass's `handle_endtag` reads it instead of
-        walking the stack."""
+        """The index of the innermost open element named `tag` an end tag may MATCH, or -1 when
+        there is none. This is the element an end tag closes, so every subclass's `handle_endtag`
+        reads it instead of walking the stack. A match BELOW the template floor is not one a
+        browser would make, so it is reported as no match at all."""
         open_at = self._open_by_tag.get(tag)
-        return open_at[-1] if open_at else -1
+        if not open_at:
+            return -1
+        i = open_at[-1]
+        return i if i >= self._end_tag_floor(tag) else -1
 
     def _truncate_stacks(self, depth):
         """Truncate every parallel element stack to `depth`. Subclasses extend this with their
@@ -1429,6 +1461,7 @@ class _BrowserBoundaries(_BrowserStartTag):
         del self._ns[depth:]
         del self._p_stop[depth:]
         del self._li_stop[depth:]
+        del self._tpl_stop[depth:]
 
     def _before_truncate(self, depth):
         """Hook: the elements from `depth` up are about to be popped WITHOUT their own end tag."""
@@ -1869,7 +1902,17 @@ class _DocParser(_BrowserBoundaries):
 
     def handle_endtag(self, tag):
         tag = self._browser_tag(tag)
-        if tag == "head":
+        i = self._innermost_open(tag)
+        if i < 0 and self._end_tag_floor(tag) > 0:
+            # A closer an open `<template>` scopes away is one a browser IGNORES, so it must not
+            # reach the STATE MACHINES either. Both holes were live: a `</head>` parked in a
+            # template ended the head, dropping the favicon `<link>` a browser keeps IN it, and a
+            # `</h2>` flushed a heading the author opened OUTSIDE the template - stopping that
+            # heading's text at the template and collecting the rest of it as ordinary prose.
+            return
+        if tag == "head" and not self._in_template():
+            # The head a `</head>` inside a template ends is the TEMPLATE's own; ending the
+            # document's head there dropped the favicon `<link>` written after it.
             self._head_ended = True
         if tag == "script" and self._cur_script is not None:
             pos, ad = self._cur_script
@@ -1883,10 +1926,10 @@ class _DocParser(_BrowserBoundaries):
             self._cur_body = []
         if self._cur_tpl_raw is not None and tag == self._cur_tpl_raw[0]:
             self._flush_template_raw()
-        if self._cur_heading is not None and tag == self._cur_heading[0]:
-            self._flush_heading()
-        i = self._innermost_open(tag)
         if i >= 0:
+            # The heading ends where the ELEMENT being closed ends, which `_truncate_stacks()`
+            # decides by DEPTH. Flushing on the tag NAME alone let a same-named heading nested
+            # inside a `<template>` end the one the author opened outside it.
             self._truncate_stacks(i)
 
     def handle_comment(self, data):
