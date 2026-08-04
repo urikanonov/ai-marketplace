@@ -1148,6 +1148,10 @@ function setupDeck() {
   try { deckMode = normalizeDeckMode(localStorage.getItem(DECK_MODE_KEY)); } catch (e) { deckMode = "closed"; }
   applyDeckMode(false);
 
+  // "Comments off" is only valid with zero comments, so a comment landing while it is selected must
+  // surface the panel even when "Auto-open panel on comment" is off (see 06-preferences.js).
+  window.__cmhForcePanelOnComment = function () { return deckMode === "off"; };
+
   const nav = document.createElement("div");
   nav.className = "cm-skip cmh-deck-nav";
   const prev = document.createElement("button");

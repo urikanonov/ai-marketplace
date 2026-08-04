@@ -660,7 +660,10 @@ function saveComposerElementInner(el) {
   const saved = saveComments();
   renderComments();
   closeComposerElement(el);
-  openSidebar();
+  // "Auto-open panel on comment" (the More menu Preferences group) decides whether saving reveals
+  // the panel. Off leaves it exactly where the reviewer put it - the comment is still saved and
+  // highlighted, and every explicit Show/panel action still opens it.
+  if (autoOpenPanelEnabled() || cmhPanelForcedOnComment()) openSidebar();
   // A quota failure on this explicit Save opens the storage manager so the reviewer can free space
   // and the pending write is retried. Deferred to a microtask so it runs AFTER closeComposerElement
   // has moved focus. If the manager cannot open (already open, or a prior episode is unresolved),

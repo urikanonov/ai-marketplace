@@ -4,6 +4,31 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.552.0] - 2026-08-04
+
+### Added
+
+- An `Auto-open panel on comment` preference in the comments panel's `More` menu, with a
+  cross-document default and a per-document override. The panel has always opened when a comment
+  is saved, which is the right default but leaves a reviewer who reads full width with the panel
+  collapsed no way to turn it off. `More` now opens a `Preferences` group holding two
+  `role="menuitemcheckbox"` rows: `Auto-open panel on comment` writes the DEFAULT for every
+  commentable-html document in this browser, and the indented `Override for this document` row
+  under it decides the scope - unchecked, this document follows the default; checked, it pins the
+  value that differs from the default and its label carries that document-local state
+  (`Override for this document: Off`) while the default row keeps showing the untouched default, so
+  the two scopes never look like the same setting. Unchecking the override drops the per-document
+  key and the document re-inherits. With the preference off a saved comment is still stored, still
+  highlighted, and still carded - only the panel stays where the reviewer left it; every explicit
+  Show/panel action and the storage manager's pending-quota auto-open are unaffected, and the deck
+  runtime honors it too (its present-only `Comments off` lock still surfaces the panel for a
+  comment that lands there, so none is ever stranded). Nothing stored means ON, so an existing
+  document behaves exactly as it did. Both rows toggle in place without closing the menu, expose
+  `aria-checked`, are keyboard operable, and take part in a new roving focus (Arrow Up/Down,
+  Home/End) across the `More` menu. Every read and write of both keys is `try/catch` guarded, so a
+  browser that denies storage degrades to the ON default instead of throwing
+  (`CMH-MENU-PREF-01..07`).
+
 ## [1.540.0] - 2026-08-04
 
 ### Changed

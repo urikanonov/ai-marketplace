@@ -1,0 +1,52 @@
+/* ---------- Reviewer preferences (scoped: a cross-document default + a per-document override) ----------
+   Today's only preference is "Auto-open panel on comment". The comments panel opens when a comment
+   is saved, which is the right default; a reviewer who reads full width with the panel collapsed
+   turns it off. The DEFAULT is cross-document (AUTO_OPEN_PANEL_KEY); a document that must differ
+   pins its own value in AUTO_OPEN_PANEL_DOC_KEY, and dropping that key re-inherits the default.
+   Every read and write is try/catch guarded, so a browser that denies storage (private mode) simply
+   degrades to the ON default instead of throwing. */
+const CMH_PREF_ON = "1";
+const CMH_PREF_OFF = "0";
+
+function cmhReadPref(key) {
+  try { return localStorage.getItem(key); } catch (e) { return null; }
+}
+function cmhWritePref(key, value) {
+  try { localStorage.setItem(key, value); return true; } catch (e) { return false; }
+}
+function cmhClearPref(key) {
+  try { localStorage.removeItem(key); return true; } catch (e) { return false; }
+}
+
+// The cross-document default. ON unless a stored value explicitly says otherwise.
+function autoOpenPanelDefault() {
+  return cmhReadPref(AUTO_OPEN_PANEL_KEY) !== CMH_PREF_OFF;
+}
+function setAutoOpenPanelDefault(on) {
+  return cmhWritePref(AUTO_OPEN_PANEL_KEY, on ? CMH_PREF_ON : CMH_PREF_OFF);
+}
+// The per-document override: true/false when pinned, null when the document inherits the default.
+function autoOpenPanelOverride() {
+  const raw = cmhReadPref(AUTO_OPEN_PANEL_DOC_KEY);
+  if (raw === CMH_PREF_ON) return true;
+  if (raw === CMH_PREF_OFF) return false;
+  return null;
+}
+function setAutoOpenPanelOverride(value) {
+  if (value === null) return cmhClearPref(AUTO_OPEN_PANEL_DOC_KEY);
+  return cmhWritePref(AUTO_OPEN_PANEL_DOC_KEY, value ? CMH_PREF_ON : CMH_PREF_OFF);
+}
+// What this document actually does: its own pinned value, else the cross-document default.
+function autoOpenPanelEnabled() {
+  const pinned = autoOpenPanelOverride();
+  return pinned === null ? autoOpenPanelDefault() : pinned;
+}
+// The deck's "Comments off" state is a present-only lock that is only valid with ZERO comments, so a
+// comment landing there must still surface the panel (issue #659) even when auto-open is off -
+// otherwise that comment is stranded behind a lock that now contradicts it. The deck registers this
+// hook at startup; a flow document has none.
+function cmhPanelForcedOnComment() {
+  try {
+    return typeof window.__cmhForcePanelOnComment === "function" && !!window.__cmhForcePanelOnComment();
+  } catch (e) { return false; }
+}

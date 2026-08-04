@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.540.0" />
+<meta name="commentable-html-version" content="1.552.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.540.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.552.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>NYC Taxi 2014 Report</title>
 
@@ -878,7 +878,9 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   box-shadow: var(--cp-shadow);
 }
 .cm-sidebar-export-menu[hidden] { display: none; }
-.cm-sidebar-more-menu { left: auto; right: 0; }
+/* Anchored to its toggle's right edge, and capped to the panel so the longer Preferences labels
+   wrap instead of pushing the menu past the header ribbon at the sidebar's minimum width. */
+.cm-sidebar-more-menu { left: auto; right: 0; max-width: min(18rem, calc(var(--cm-sidebar-w, 25rem) - 4rem)); }
 /* In the primary row the Export button is the right-hand action, so its menu opens from the right
    edge (extending left into the sidebar) rather than off the right of the viewport. */
 .cm-sidebar .head-primary .cm-sidebar-export-menu { left: auto; right: 0; }
@@ -909,6 +911,22 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-sidebar-more-menu .cm-menu-group { padding: 0.3rem 0.45rem 0.15rem; font-size: var(--cp-chrome-tiny-font); letter-spacing: 0.08em; text-transform: uppercase; color: var(--cp-text-soft); font-weight: 700; }
 .cm-sidebar-more-menu button.danger { color: var(--cp-danger); }
 .cm-sidebar-more-menu button.danger:hover { background: var(--cp-danger-soft); color: var(--cp-danger); }
+/* Preference rows (role=menuitemcheckbox): a square box that fills with a tick when checked, and a
+   label that WRAPS rather than widening the menu past the panel (the Manage actions keep nowrap).
+   The override row is indented so it reads as nested under the default it can override. */
+.cm-sidebar .cm-sidebar-more-menu button.cm-menu-check { white-space: normal; overflow: visible; text-overflow: clip; align-items: flex-start; }
+.cm-menu-check-box {
+  flex: none; width: 0.85rem; height: 0.85rem; margin-top: 0.1rem;
+  border: 1px solid var(--cp-border-strong, var(--cp-border)); border-radius: 0.25rem;
+  background: var(--cp-surface); position: relative;
+}
+.cm-menu-check[aria-checked="true"] .cm-menu-check-box { background: var(--cp-accent); border-color: var(--cp-accent); }
+.cm-menu-check[aria-checked="true"] .cm-menu-check-box::after {
+  content: ""; position: absolute; left: 0.24rem; top: 0.04rem;
+  width: 0.22rem; height: 0.45rem; border: solid var(--cp-bg-elevated);
+  border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.cm-sidebar .cm-sidebar-more-menu button.cm-menu-check-sub { padding-left: calc(var(--cp-chrome-action-x) + 0.9rem); }
 
 /* Comment search / filter row: a single text field with a leading magnifier, a clear (X)
    button, and a shown/total count. Filtered-out cards are hidden with an explicit class
@@ -3951,8 +3969,11 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
       <button type="button" id="btnSearchToggle" class="cm-ribbon-btn cm-search-toggle" title="Search and filter comments" aria-controls="cmSearchRow" aria-expanded="false"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><span class="cm-ribbon-cap">Search</span></button>
       <button type="button" id="btnSort" class="cm-ribbon-btn cm-sort-cycle" aria-label="Sort comments" title="Sorted by document position. Click to sort newest first."><span class="cm-ribbon-ico" id="cmSortIcon"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M7 4l-3 3M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3"/></svg></span><span class="cm-ribbon-cap">Sort</span></button>
       <div class="cm-sidebar-more">
-        <button type="button" id="btnMoreMenu" class="cm-ribbon-btn cm-sidebar-more-toggle" title="More: manage storage and clear all comments" aria-controls="sidebarMoreMenu" aria-expanded="false"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><circle cx="12" cy="5" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="19" r="1.7" fill="currentColor"/></svg><span class="cm-ribbon-cap">More</span></button>
+        <button type="button" id="btnMoreMenu" class="cm-ribbon-btn cm-sidebar-more-toggle" title="More: panel preferences, manage storage, and clear all comments" aria-controls="sidebarMoreMenu" aria-expanded="false"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><circle cx="12" cy="5" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="19" r="1.7" fill="currentColor"/></svg><span class="cm-ribbon-cap">More</span></button>
         <div id="sidebarMoreMenu" class="cm-sidebar-export-menu cm-sidebar-more-menu" hidden>
+          <div class="cm-menu-group">Preferences</div>
+          <button type="button" id="btnAutoOpenPanel" class="cm-menu-check" role="menuitemcheckbox" aria-checked="true" title="Open the comments panel automatically whenever you save a comment. This is the default for every commentable-html document in this browser."><span class="cm-menu-check-box" aria-hidden="true"></span><span class="cm-menu-check-label">Auto-open panel on comment</span></button>
+          <button type="button" id="btnAutoOpenPanelOverride" class="cm-menu-check cm-menu-check-sub" role="menuitemcheckbox" aria-checked="false" title="Give this document its own setting instead of following the default above. Uncheck it to follow the default again."><span class="cm-menu-check-box" aria-hidden="true"></span><span class="cm-menu-check-label">Override for this document</span></button>
           <div class="cm-menu-group">Manage</div>
           <button type="button" id="btnStorage" aria-label="Manage storage" title="View and delete the comment data every commentable-html document has stored in this browser, to free up local storage"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3z M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6 M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg><span>Manage storage</span></button>
           <button type="button" id="btnClearAll" class="danger" title="Delete every comment (asks for confirmation first)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16 M9 7V5h6v2 M6 7l1 13h10l1-13"/></svg><span>Clear all comments</span></button>
@@ -4557,6 +4578,11 @@ if (CMH_DENSITY === "compact" || CMH_DENSITY === "comfortable") {
   document.body.removeAttribute("data-cm-density");
 }
 const SIDEBAR_WIDTH_KEY = "commentable-html::sidebarWidth";
+// "Auto-open panel on comment": the cross-document DEFAULT (ON when unset, so an existing document
+// behaves exactly as it always has) plus an optional per-document override that pins one document
+// to its own value. See 06-preferences.js for the accessors.
+const AUTO_OPEN_PANEL_KEY = "commentable-html::autoOpenPanel";
+const AUTO_OPEN_PANEL_DOC_KEY = COMMENT_KEY + "::autoOpenPanel";
 // The comment array is persisted in a modern slot COMMENT_KEY + "::z" holding either a compressed
 // (framed) payload or plain JSON, whichever is smaller (see 05-persistence.js). COMMENT_KEY itself
 // is only READ, as a legacy fallback for files last saved before this slot existed; the modern
@@ -4574,6 +4600,7 @@ const CMH_MAX_STORE_CHARS = 8000000;
 const CMH_SUBKEY_SUFFIXES = [
   "::z", "::deleted", "::diffLayout", "::diffSyntax", "::cl", "::note",
   "::commentSort", "::tableSort", "::reviews", "::reviews::deleted", "::deckMode",
+  "::autoOpenPanel",
 ];
 // Shared registry index of every commentable-html document seen in this browser (best-effort
 // presentation metadata only - the storage manager's delete authority is the owned-key shape, never
@@ -4587,7 +4614,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.540.0";
+const CMH_VERSION = "1.552.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -5426,6 +5453,58 @@ function getEmbeddedComments() {
   }
 }
 
+/* ---------- Reviewer preferences (scoped: a cross-document default + a per-document override) ----------
+   Today's only preference is "Auto-open panel on comment". The comments panel opens when a comment
+   is saved, which is the right default; a reviewer who reads full width with the panel collapsed
+   turns it off. The DEFAULT is cross-document (AUTO_OPEN_PANEL_KEY); a document that must differ
+   pins its own value in AUTO_OPEN_PANEL_DOC_KEY, and dropping that key re-inherits the default.
+   Every read and write is try/catch guarded, so a browser that denies storage (private mode) simply
+   degrades to the ON default instead of throwing. */
+const CMH_PREF_ON = "1";
+const CMH_PREF_OFF = "0";
+
+function cmhReadPref(key) {
+  try { return localStorage.getItem(key); } catch (e) { return null; }
+}
+function cmhWritePref(key, value) {
+  try { localStorage.setItem(key, value); return true; } catch (e) { return false; }
+}
+function cmhClearPref(key) {
+  try { localStorage.removeItem(key); return true; } catch (e) { return false; }
+}
+
+// The cross-document default. ON unless a stored value explicitly says otherwise.
+function autoOpenPanelDefault() {
+  return cmhReadPref(AUTO_OPEN_PANEL_KEY) !== CMH_PREF_OFF;
+}
+function setAutoOpenPanelDefault(on) {
+  return cmhWritePref(AUTO_OPEN_PANEL_KEY, on ? CMH_PREF_ON : CMH_PREF_OFF);
+}
+// The per-document override: true/false when pinned, null when the document inherits the default.
+function autoOpenPanelOverride() {
+  const raw = cmhReadPref(AUTO_OPEN_PANEL_DOC_KEY);
+  if (raw === CMH_PREF_ON) return true;
+  if (raw === CMH_PREF_OFF) return false;
+  return null;
+}
+function setAutoOpenPanelOverride(value) {
+  if (value === null) return cmhClearPref(AUTO_OPEN_PANEL_DOC_KEY);
+  return cmhWritePref(AUTO_OPEN_PANEL_DOC_KEY, value ? CMH_PREF_ON : CMH_PREF_OFF);
+}
+// What this document actually does: its own pinned value, else the cross-document default.
+function autoOpenPanelEnabled() {
+  const pinned = autoOpenPanelOverride();
+  return pinned === null ? autoOpenPanelDefault() : pinned;
+}
+// The deck's "Comments off" state is a present-only lock that is only valid with ZERO comments, so a
+// comment landing there must still surface the panel (issue #659) even when auto-open is off -
+// otherwise that comment is stranded behind a lock that now contradicts it. The deck registers this
+// hook at startup; a flow document has none.
+function cmhPanelForcedOnComment() {
+  try {
+    return typeof window.__cmhForcePanelOnComment === "function" && !!window.__cmhForcePanelOnComment();
+  } catch (e) { return false; }
+}
 /* ---------- Text-offset helpers ---------- */
 function getTextNodes() {
   if (typeof window !== "undefined" && window.__cmhPerf) window.__cmhPerf.textScans = (window.__cmhPerf.textScans || 0) + 1;
@@ -11896,7 +11975,10 @@ function saveComposerElementInner(el) {
   const saved = saveComments();
   renderComments();
   closeComposerElement(el);
-  openSidebar();
+  // "Auto-open panel on comment" (the More menu Preferences group) decides whether saving reveals
+  // the panel. Off leaves it exactly where the reviewer put it - the comment is still saved and
+  // highlighted, and every explicit Show/panel action still opens it.
+  if (autoOpenPanelEnabled() || cmhPanelForcedOnComment()) openSidebar();
   // A quota failure on this explicit Save opens the storage manager so the reviewer can free space
   // and the pending write is retried. Deferred to a microtask so it runs AFTER closeComposerElement
   // has moved focus. If the manager cannot open (already open, or a prior episode is unresolved),
@@ -14014,7 +14096,7 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
   });
 })();
 
-/* ---------- Sidebar More menu (manage storage + clear) ---------- */
+/* ---------- Sidebar More menu (preferences + manage storage + clear) ---------- */
 (function () {
   const btn = document.getElementById("btnMoreMenu");
   const menu = document.getElementById("sidebarMoreMenu");
@@ -14027,6 +14109,7 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
       if (other) other.hidden = true;
       const otherBtn = document.getElementById("btnSidebarExportMenu");
       if (otherBtn) otherBtn.setAttribute("aria-expanded", "false");
+      syncPrefRows();
       if (window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
     }
   }
@@ -14042,6 +14125,64 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
   menu.addEventListener("click", () => setOpen(false));
   document.addEventListener("click", (e) => {
     if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
+  });
+
+  /* Preferences group: "Auto-open panel on comment" is the CROSS-DOCUMENT default, and the nested
+     "Override for this document" row decides the scope. Unchecked, this document follows the row
+     above it; checked, it pins the value that DIFFERS from the default (the only override a
+     reviewer can act on) and its label carries that document-local state, while the default row
+     keeps showing the untouched default. Both rows are role=menuitemcheckbox, so activation
+     toggles in place and the menu stays open for the second scope. Older files carry a More menu
+     without these rows, so every lookup is guarded. */
+  const prefDefault = document.getElementById("btnAutoOpenPanel");
+  const prefOverride = document.getElementById("btnAutoOpenPanelOverride");
+  function syncPrefRows() {
+    if (prefDefault) prefDefault.setAttribute("aria-checked", autoOpenPanelDefault() ? "true" : "false");
+    if (!prefOverride) return;
+    const pinned = autoOpenPanelOverride();
+    prefOverride.setAttribute("aria-checked", pinned === null ? "false" : "true");
+    const label = prefOverride.querySelector(".cm-menu-check-label");
+    if (label) {
+      label.textContent = pinned === null
+        ? "Override for this document"
+        : ("Override for this document: " + (pinned ? "On" : "Off"));
+    }
+  }
+  function wirePrefRow(el, toggle) {
+    if (!el) return;
+    el.addEventListener("click", (e) => {
+      // Keep the menu open: a reviewer often sets the default and the override in one visit.
+      e.stopPropagation();
+      toggle();
+      syncPrefRows();
+    });
+  }
+  wirePrefRow(prefDefault, () => setAutoOpenPanelDefault(!autoOpenPanelDefault()));
+  wirePrefRow(prefOverride, () => {
+    setAutoOpenPanelOverride(autoOpenPanelOverride() === null ? !autoOpenPanelDefault() : null);
+  });
+  syncPrefRows();
+
+  // Roving focus across the menu's items (Up/Down/Home/End), the arrow behavior a menu is expected
+  // to have once it holds checkable rows. Tab order is untouched, so every item stays tabbable too.
+  function items() {
+    return Array.prototype.slice.call(menu.querySelectorAll("button:not([disabled])"))
+      .filter((el) => el.offsetParent !== null || el === document.activeElement);
+  }
+  function focusItem(list, index) {
+    if (!list.length) return;
+    const el = list[(index + list.length) % list.length];
+    try { el.focus(); } catch (e) { /* focus can be refused while the menu is closing */ }
+  }
+  menu.addEventListener("keydown", (e) => {
+    if (menu.hidden) return;
+    const list = items();
+    if (!list.length) return;
+    const cur = list.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") { e.preventDefault(); focusItem(list, cur < 0 ? 0 : cur + 1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); focusItem(list, cur < 0 ? list.length - 1 : cur - 1); }
+    else if (e.key === "Home") { e.preventDefault(); focusItem(list, 0); }
+    else if (e.key === "End") { e.preventDefault(); focusItem(list, list.length - 1); }
   });
 })();
 /* ---------- Copy all + Clear all ---------- */
@@ -14421,7 +14562,7 @@ const CMH_BANNER_PREFIX = "commentable-html::assetBannerDismissed::";
 // preferences). The shared registry index (CMH_INDEX_KEY) is deliberately EXCLUDED: it is internal
 // ownership metadata, not a user preference, and deleting it would strand custom-key documents
 // whose only ownership proof is the index (see CMH-STORE-10). It is skipped entirely in the grouping.
-const CMH_GLOBAL_KEYS = [SIDEBAR_WIDTH_KEY, CMH_AUTHOR_KEY];
+const CMH_GLOBAL_KEYS = [SIDEBAR_WIDTH_KEY, CMH_AUTHOR_KEY, AUTO_OPEN_PANEL_KEY];
 
 function _cmhReadIndex() {
   // A null-prototype map, with own properties copied from the parsed blob, so a document whose
@@ -19255,7 +19396,9 @@ function showHelp(restoreEl) {
           '<li>The <strong>Comments</strong> heading carries a <strong>count bubble</strong> showing how many items still need attention: open comment threads plus any unresolved review-note and checklist changes (each top-level thread counts once, not its individual replies). The shareability badge and version sit at the right of the same row.</li>' +
           '<li>Below it, a row of captioned buttons - <strong>Search</strong>, <strong>Sort</strong>, <strong>More</strong>, <strong>Help</strong>, and <strong>Hide</strong>. <strong>Help</strong> opens this dialog; <strong>Hide</strong> collapses the panel, leaving a small floating toolbar to bring it back.</li>' +
           '<li><strong>Copy all</strong> (the primary button) copies every comment as a Markdown bundle to paste back to the agent; beside it, the <strong>Export</strong> button opens the file-format menu. The <strong>Search</strong> button in the ribbon reveals a search field (hidden by default) that filters the list by each comment\'s note text.</li>' +
-          '<li><strong>More</strong> opens a menu with <strong>Manage storage</strong> and <strong>Clear all comments</strong>. While the panel is collapsed, the floating toolbar\'s overflow <kbd>...</kbd> menu holds the export actions, Manage storage, ' + (hasToolbarClear ? '<strong>Clear all comments</strong> (the same confirmed clear), ' : '') + 'and <strong>Help &amp; About</strong>.</li>' +
+          '<li><strong>More</strong> opens a menu with a <strong>Preferences</strong> group and the <strong>Manage storage</strong> and <strong>Clear all comments</strong> actions. While the panel is collapsed, the floating toolbar\'s overflow <kbd>...</kbd> menu holds the export actions, Manage storage, ' + (hasToolbarClear ? '<strong>Clear all comments</strong> (the same confirmed clear), ' : '') + 'and <strong>Help &amp; About</strong>.</li>' +
+          '<li><strong>Auto-open panel on comment</strong> (in <em>More &gt; Preferences</em>) decides whether saving a comment reveals this panel. It is <strong>on</strong> by default and is your setting for <em>every</em> commentable-html document in this browser, so turning it off once lets you read full width and dip into the panel only when you want it. Your comment is still saved and still highlighted either way, and <strong>Comments</strong> in the floating toolbar always brings the panel back.</li>' +
+          '<li><strong>Override for this document</strong>, indented under it, is the exception: leave it unchecked and this document follows the default above; check it and this document keeps its own setting (the label then shows it, for example <em>Override for this document: Off</em>) no matter how you later change the default. Unchecking it makes the document follow the default again.</li>' +
         '</ul>') +
       T('Shareable or Not shareable',
         '<p>A bubble at the top of the panel shows whether this file is safe to share as-is:</p>' +
@@ -22430,6 +22573,10 @@ function setupDeck() {
   // Apply the persisted selection (default "closed": comments on, panel shut).
   try { deckMode = normalizeDeckMode(localStorage.getItem(DECK_MODE_KEY)); } catch (e) { deckMode = "closed"; }
   applyDeckMode(false);
+
+  // "Comments off" is only valid with zero comments, so a comment landing while it is selected must
+  // surface the panel even when "Auto-open panel on comment" is off (see 06-preferences.js).
+  window.__cmhForcePanelOnComment = function () { return deckMode === "off"; };
 
   const nav = document.createElement("div");
   nav.className = "cm-skip cmh-deck-nav";

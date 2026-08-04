@@ -167,6 +167,11 @@ if (CMH_DENSITY === "compact" || CMH_DENSITY === "comfortable") {
   document.body.removeAttribute("data-cm-density");
 }
 const SIDEBAR_WIDTH_KEY = "commentable-html::sidebarWidth";
+// "Auto-open panel on comment": the cross-document DEFAULT (ON when unset, so an existing document
+// behaves exactly as it always has) plus an optional per-document override that pins one document
+// to its own value. See 06-preferences.js for the accessors.
+const AUTO_OPEN_PANEL_KEY = "commentable-html::autoOpenPanel";
+const AUTO_OPEN_PANEL_DOC_KEY = COMMENT_KEY + "::autoOpenPanel";
 // The comment array is persisted in a modern slot COMMENT_KEY + "::z" holding either a compressed
 // (framed) payload or plain JSON, whichever is smaller (see 05-persistence.js). COMMENT_KEY itself
 // is only READ, as a legacy fallback for files last saved before this slot existed; the modern
@@ -184,6 +189,7 @@ const CMH_MAX_STORE_CHARS = 8000000;
 const CMH_SUBKEY_SUFFIXES = [
   "::z", "::deleted", "::diffLayout", "::diffSyntax", "::cl", "::note",
   "::commentSort", "::tableSort", "::reviews", "::reviews::deleted", "::deckMode",
+  "::autoOpenPanel",
 ];
 // Shared registry index of every commentable-html document seen in this browser (best-effort
 // presentation metadata only - the storage manager's delete authority is the owned-key shape, never
@@ -197,7 +203,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.540.0";
+const CMH_VERSION = "1.552.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

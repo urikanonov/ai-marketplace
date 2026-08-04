@@ -10,7 +10,7 @@ const CMH_BANNER_PREFIX = "commentable-html::assetBannerDismissed::";
 // preferences). The shared registry index (CMH_INDEX_KEY) is deliberately EXCLUDED: it is internal
 // ownership metadata, not a user preference, and deleting it would strand custom-key documents
 // whose only ownership proof is the index (see CMH-STORE-10). It is skipped entirely in the grouping.
-const CMH_GLOBAL_KEYS = [SIDEBAR_WIDTH_KEY, CMH_AUTHOR_KEY];
+const CMH_GLOBAL_KEYS = [SIDEBAR_WIDTH_KEY, CMH_AUTHOR_KEY, AUTO_OPEN_PANEL_KEY];
 
 function _cmhReadIndex() {
   // A null-prototype map, with own properties copied from the parsed blob, so a document whose
