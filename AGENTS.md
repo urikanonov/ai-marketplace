@@ -54,8 +54,10 @@ reading or investigating and will never make a change.
    assign it to yourself. An issue exists on GitHub the moment you file it - decoupled from any branch,
    worktree, or PR - so, unlike the old committed Backlog.md task files, work can never be lost if a
    worktree is discarded or a PR is abandoned, and filing it is a single `gh` command with no separate
-   creation PR. NEVER start work that is not tracked by an issue, and capture any follow-up or newly
-   discovered work as its own issue the moment it comes up so nothing lives only in the chat session.
+   creation PR. NEVER start work that is not tracked by an issue. Record any follow-up or newly
+   discovered work the moment it comes up so nothing lives only in the chat session - but FILE it as
+   an issue only once it clears the reachability and confirmation gate in "GitHub Issues workflow"
+   below; a finding that fails that gate is dismissed in one line in the PR body instead.
    Prefer the in-repo task-management skill, which wraps these `gh` calls. See "GitHub Issues workflow"
    for the full workflow.
 3. **Write the test first, then the code (TDD).** Every feature or user-visible behavior change ships with a
@@ -968,10 +970,14 @@ finding (your own, a reviewer's, or a multi-duck panel's), it must clear this ba
    whose attacker is a party the spec already declares TRUSTED, or whose effect an enforcement layer
    already blocks unconditionally, is not a defect. For commentable-html this is written down in
    `CMH-SEC-06` (the offline threat model) and `CMH-SEC-01` (authored content is trusted, unsanitized
-   HTML): the zero-network CSP - not the parser-level strip - is what enforces fetch egress, so a new
-   way to SPELL a subresource URL is not a vulnerability; and a document's own author already runs
-   arbitrary inline script by design, so a "bypass" granting them capability they already have is not
-   a finding.
+   HTML): for the subresource-fetch classes the CSP actually covers, the zero-network CSP - not the
+   parser-level strip - is what enforces egress, so a new way to SPELL such a fetch is not a
+   vulnerability; and a document's own author already runs arbitrary inline script by design, so a
+   "bypass" granting them capability they already have is not a finding. Read the row for the LIMITS
+   of that reasoning before citing it: a few channels (the speculative-connection link rels
+   `preconnect` / `dns-prefetch` / `prefetch` / `prerender`, and `<base href>`) are STRIP-ENFORCED
+   because no CSP directive governs them, so a gap there is a real egress bug and is never
+   dismissible on these grounds.
 2. **Is it a new defect, or another INSTANCE of an already-declared residual?** A residual the spec
    acknowledges (top-level scripted navigation, `CMH-SEC-06` / `CMH-OFFLINE-05`) does not generate a
    fresh issue per newly discovered spelling. Undecidable problems have infinitely many instances;

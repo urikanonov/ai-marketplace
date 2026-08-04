@@ -16,6 +16,12 @@ SEC_SPEC = os.path.join(_paths.DEV, "spec", "50-security.md")
 # The directives the threat model leans on. Each one is what makes a whole class of "a new way to
 # spell a subresource URL" unreachable, so weakening any of them must fail this suite rather than
 # quietly reopen the class.
+#
+# `base-uri` and `frame-ancestors` are deliberately NOT here even though the export stamps them: a
+# meta-delivered policy does not bind a `<base>` the parser already resolved (see the `<base>` pass
+# in 68-export-offline.js, which neutralizes it for exactly that reason) and `frame-ancestors` is
+# ignored in a meta policy outright. Asserting them would let the threat model claim an enforcement
+# the browser does not actually provide - the overclaim this suite exists to prevent.
 ENFORCING_DIRECTIVES = (
     "default-src 'none'",
     "connect-src 'none'",
@@ -23,9 +29,13 @@ ENFORCING_DIRECTIVES = (
     "object-src 'none'",
     "img-src data:",
     "font-src data:",
-    "base-uri 'none'",
     "form-action 'none'",
 )
+
+# Channels no stamped directive governs, where the parser-level strip is the ONLY enforcement. A gap
+# in these is a real egress bug, so the threat model must keep naming them as in-scope rather than
+# folding them into the "the CSP already blocks it" dismissal.
+STRIP_ENFORCED_CHANNELS = ("preconnect", "dns-prefetch", "prefetch", "prerender", "base")
 
 
 def _read(path):
@@ -83,7 +93,7 @@ class OfflineThreatModelTests(unittest.TestCase):
                 " cite it when dismissing a finding.",
             )
 
-    def test_the_threat_model_names_scripted_navigation_as_the_one_residual(self):
+    def test_the_threat_model_names_both_non_csp_coverable_residuals(self):
         """CMH-SEC-06: navigation and WebRTC are the acknowledged non-CSP-coverable residuals."""
         row = _sec_06_row()
         self.assertIn("CMH-OFFLINE-05", row)
@@ -99,6 +109,27 @@ class OfflineThreatModelTests(unittest.TestCase):
         row = _sec_06_row()
         self.assertIn("EVIDENCE THAT AN ENFORCEMENT CLAIM IN THIS ROW IS INACCURATE", row)
         self.assertIn("never dismissed by citing this row", row)
+
+    def test_strip_enforced_channels_are_named_and_really_are_strip_enforced(self):
+        """CMH-SEC-06: channels no CSP directive covers stay in scope, and the strip still drops them."""
+        row = _sec_06_row()
+        self.assertIn("STRIP-ENFORCED", row)
+        self.assertIn("never be dismissed by citing this row", row)
+        for channel in STRIP_ENFORCED_CHANNELS:
+            self.assertIn(
+                channel, row,
+                "CMH-SEC-06 must name '" + channel + "' as strip-enforced: no stamped CSP directive"
+                " governs it, so a strip gap there is a real egress bug, not a dismissible spelling.",
+            )
+        # The claim is only true while the strip actually removes them, so pin that too - otherwise
+        # the row would document an enforcement that had silently gone away.
+        src = _read(EXPORT_OFFLINE)
+        for rel in ("preconnect", "dns-prefetch", "prefetch", "prerender"):
+            self.assertIn(
+                '"' + rel + '"', src,
+                "the offline link[href] pass no longer removes rel=" + rel + ", so the"
+                " strip-enforced claim in CMH-SEC-06 is no longer true",
+            )
 
 
 if __name__ == "__main__":

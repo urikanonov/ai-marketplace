@@ -268,8 +268,9 @@ class MultiDuckScopeGateTests(unittest.TestCase):
         self.assertIn("RESPECT THE DECLARED THREAT MODEL AND NON-GOALS", t)
         self.assertIn("declares TRUSTED", t)
         self.assertIn("already accepted by design", t)
-        # ...a disagreement is raised as a question, not laundered into a finding...
-        self.assertIn("do not launder it into", t)
+        # ...a POLICY disagreement is raised as a question, not laundered into a finding...
+        self.assertIn("never laundered into `FINDINGS:` as if it were a bug", t)
+        self.assertIn("The split is by KIND OF CLAIM", t)
         # ...and consolidation records the dismissal without spawning an issue.
         self.assertIn("Dismissed-as-out-of-scope", t)
         self.assertIn("Do NOT open a follow-up issue for a dismissed finding", t)
