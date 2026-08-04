@@ -71,6 +71,7 @@
   "58-help-terminology.spec.js": 7679,
   "58-reserved-block-region.spec.js": 29334,
   "59-checklist.spec.js": 17029,
+  "59-region-marker-parity.spec.js": 1445,
   "60-comment-search.spec.js": 11097,
   "60-diagram-syntax.spec.js": 8388,
   "61-code-highlight-fallback.spec.js": 11373,

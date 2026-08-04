@@ -69,6 +69,13 @@ function _cmhRegionMarkerMatches(html, kind, name) {
   });
   return out;
 }
+// Exposed for deterministic tests: locating a region marker is pure, and
+// tests/fixtures/region_marker_parity.json pins this answer against the three Python copies of
+// the same rule (CMH-VAL-22), which cannot share one helper across the build tool, the shipped
+// validator package and the shipped authoring tools.
+window.__cmhRegionMarkerMatches = function (html, kind, name) {
+  return _cmhRegionMarkerMatches(html, kind, name).map(function (m) { return m.index; });
+};
 function _assertSingleRegionMarkers(html, name) {
   const begins = _cmhRegionMarkerMatches(html, "BEGIN", name);
   const ends = _cmhRegionMarkerMatches(html, "END", name);

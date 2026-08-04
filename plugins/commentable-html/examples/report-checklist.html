@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.531.0" />
+<meta name="commentable-html-version" content="1.540.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.531.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.540.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Release readiness review</title>
 
@@ -4262,6 +4262,72 @@ function cmhWarnUnresolvedBlock(id) {
       ? "this document has more than one element with the content-root id, so the layer cannot tell its own blocks from authored content."
       : "they are inside the content root, where authored content lives. Move the block above the content root."));
 }
+// The other half of that diagnosis: a document carrying MORE THAN ONE block the layer owns for a
+// reserved DATA id. The reader reads the first (cmhLayerBlock) and the embedded-comments export
+// rewrites that same first one, so the others are stale on load and never updated on save - comment
+// data that is half ignored, silently and forever. Reading the first still WORKS (refusing would
+// strand the reader's comments and block the export that would save them), so this is a report, not
+// a refusal. validate.py rejects the duplicate id outright; this is the runtime half, for a file
+// that never met the validator, and the reader is told because someone opening a shared HTML has no
+// console. The reader's half is DEFERRED and AGGREGATED into one message: there is a single #toast
+// and each call replaces the last, so reporting per id inside startup would have the second id wipe
+// the first (and a later startup toast wipe them both).
+const _CMH_AMBIGUOUS_BLOCKS = [];
+let _cmhAmbiguousFlushQueued = false;
+function cmhWarnAmbiguousBlock(id, count) {
+  if (_CMH_WARNED_BLOCKS[id]) return;
+  _CMH_WARNED_BLOCKS[id] = true;
+  try {
+    console.warn("commentable-html: this file carries " + count + " " + id + " blocks outside its"
+      + " content root; only the first is read, and the rest are ignored.");
+  } catch (e) { /* console is optional */ }
+  _CMH_AMBIGUOUS_BLOCKS.push(count + " " + id);
+  if (_cmhAmbiguousFlushQueued) return;
+  _cmhAmbiguousFlushQueued = true;
+  setTimeout(function () {
+    _cmhAmbiguousFlushQueued = false;
+    // Consume the queue, so a later id reports itself rather than re-listing what was shown.
+    const found = _CMH_AMBIGUOUS_BLOCKS.splice(0, _CMH_AMBIGUOUS_BLOCKS.length);
+    if (typeof showToast !== "function" || !found.length) return;
+    // A damaged document is exactly the population this warning targets, and its COMMENT UI region
+    // (where the toast element lives) may be part of the damage - so never let the report itself
+    // throw out of the timer.
+    try {
+      showToast("This file carries duplicate commentable-html data blocks outside its content root ("
+        + found.join(", ") + "). Only the first of each is read, so the rest are ignored - and the"
+        + " comments block the export rewrites is that same first one. Run validate.py on the file.",
+      { alert: true, duration: 10000 });
+    } catch (e) { /* no toast surface on a damaged document; the console half already reported */ }
+  }, 0);
+}
+// The ids the layer has READ through cmhReadLayerBlock, so they can be asked again once the whole
+// document exists.
+const _CMH_READ_BLOCK_IDS = [];
+// A block that sits AFTER the layer's own script had not been parsed yet when the read happened, so
+// the read-time count cannot see it. Ask again once the parser is done, or a duplicate placed in the
+// document's tail would be exactly the silent state this rule exists to close.
+function _cmhAuditReadBlocks() {
+  _CMH_READ_BLOCK_IDS.forEach(function (id) {
+    const blocks = cmhLayerBlocks(document, id);
+    if (blocks.length > 1) cmhWarnAmbiguousBlock(id, blocks.length);
+  });
+}
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", _cmhAuditReadBlocks, { once: true });
+} else {
+  setTimeout(_cmhAuditReadBlocks, 0);
+}
+// The block the layer READS for a reserved data id, with both states a reader must be told about
+// diagnosed in one place, so no data block can resolve to nothing (or to one of several) in
+// silence. The descriptor deliberately does NOT come through here: an export that declares a mode
+// maintains additional descriptor copies on purpose (CMH-EXP-18), so more than one is not a fault.
+function cmhReadLayerBlock(id) {
+  if (_CMH_READ_BLOCK_IDS.indexOf(id) === -1) _CMH_READ_BLOCK_IDS.push(id);
+  const blocks = cmhLayerBlocks(document, id);
+  if (!blocks.length) { cmhWarnUnresolvedBlock(id); return null; }
+  if (blocks.length > 1) cmhWarnAmbiguousBlock(id, blocks.length);
+  return blocks[0];
+}
 function _docSourceBasename(source) {
   const value = String(source == null ? "" : source);
   const withoutSuffix = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(value)
@@ -4314,7 +4380,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.531.0";
+const CMH_VERSION = "1.540.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -5140,8 +5206,10 @@ function mergeCommentSets(a, b) {
 function getEmbeddedComments() {
   // Resolved against the content-root boundary (cmhLayerBlock), the same way the exporter
   // resolves the block it writes, so a document can never read one block and export another.
-  const el = cmhLayerBlock(document, "embeddedComments");
-  if (!el) { cmhWarnUnresolvedBlock("embeddedComments"); return []; }
+  // A SECOND block the boundary accepts is reported rather than silently ignored (CMH-EXP-20):
+  // the first is read and rewritten, so the rest would be stale on load and never saved.
+  const el = cmhReadLayerBlock("embeddedComments");
+  if (!el) return [];
   try {
     const arr = JSON.parse((el.textContent || "").trim() || "[]");
     return Array.isArray(arr) ? arr : [];
@@ -16926,23 +16994,128 @@ async function saveHtml() {
 // descriptor copies in the layer's region (CMH-EXP-18), and a "plain" copy that still declares
 // itself a commentable-html document with a mode would be a silent leak.
 const _CMH_PLAIN_DATA_IDS = ["handledCommentIds", "embeddedComments", "reviewedSections", "commentableHtmlLayer"];
-function _cmhPlainLeakedState(html) {
+// The region whose strip is supposed to take each block with it. The descriptor has none: it sits
+// outside every region and is removed by its own strip, so "outside the region" is not a fault for
+// it and the diagnosis below says so instead.
+const _CMH_PLAIN_BLOCK_REGION = {
+  handledCommentIds: "HANDLED IDS",
+  embeddedComments: "EMBEDDED COMMENTS",
+  reviewedSections: "EMBEDDED COMMENTS",
+  commentableHtmlLayer: "",
+};
+// Where a surviving block sits relative to the region that should have carried it away, judged on
+// the SOURCE document rather than the stripped copy: a strip that worked leaves no markers behind,
+// so the copy itself can no longer answer the question. "inside" (every block the layer owns for
+// that id was between the markers, so the region TEXT could not be matched), "outside" (at least
+// one sits beyond the region, where no region strip can reach it), or "unresolved" (the source does
+// not carry exactly one ordered pair of that region's markers as HTML comments, so nothing can be
+// attributed to the region at all). The DESCRIPTOR has no region of its own, so it is asked the
+// same question against EVERY region rather than being declared region-less on trust: an extra
+// descriptor copy the layer maintains may legitimately sit inside one (CMH-EXP-18), and only the
+// EMBEDDED COMMENTS / HANDLED IDS / COMMENT UI / JS regions are stripped.
+function _cmhPlainLeakSite(sourceHtml, id, region) {
+  // The trusted document string, in the same shape every other round-trip uses (CMH-EXP-14): no
+  // comment or state data ever enters this parse.
+  const src = String(sourceHtml == null ? "" : sourceHtml);
+  let doc;
+  try { doc = new DOMParser().parseFromString(src, "text/html"); }
+  catch (e) { return { site: "unattributable", region: region, sole: false }; }
+  const owners = cmhLayerBlocks(doc, id);
+  if (!region) {
+    // SOME copy inside a region, not every copy: an export that declares a mode maintains extra
+    // descriptor copies, so a document can legitimately hold one inside a region and one outside,
+    // and claiming "outside every region" of that document would be false.
+    let held = "";
+    CMH_REGION_NAMES.forEach(function (name) {
+      if (held) return;
+      const bounds = _cmhRegionCommentBounds(doc, name);
+      if (!bounds || bounds.state !== "ok") return;
+      if (owners.some(function (el) { return _cmhNodeInRegion(el, bounds); })) held = name;
+    });
+    return held
+      ? { site: "descriptor-inside", region: held, sole: owners.length === 1 }
+      : { site: "descriptor", region: "", sole: owners.length === 1 };
+  }
+  const bounds = _cmhRegionCommentBounds(doc, region);
+  if (!bounds || bounds.state !== "ok") return { site: "unresolved", region: region, sole: false };
+  // No block the boundary accepts in the SOURCE, yet one survived in the copy: the two documents
+  // disagree about their own boundary (a second content root inside a region the strip removed, for
+  // example), which is not a marker problem and must not be reported as one.
+  if (!owners.length) return { site: "unattributable", region: region, sole: false };
+  return {
+    site: owners.every(function (el) { return _cmhNodeInRegion(el, bounds); }) ? "inside" : "outside",
+    region: region,
+    sole: owners.length === 1,
+  };
+}
+function _cmhPlainLeakedBlocks(html, sourceHtml) {
   const src = String(html == null ? "" : html);
   // Cheap probe on the bare ids (not a quoted-attribute pattern, which an unquoted `id=...` would
   // slip past), so the ordinary export never pays for a second parse.
   if (!/handledCommentIds|embeddedComments|reviewedSections|commentableHtmlLayer/.test(src)) {
-    return { leaked: false, contested: false };
+    return { leak: null, contested: false };
   }
   const doc = new DOMParser().parseFromString(src, "text/html");
   const state = cmhContentRootState(doc);
-  const leaked = _CMH_PLAIN_DATA_IDS.some(function (id) {
+  let leak = null;
+  _CMH_PLAIN_DATA_IDS.forEach(function (id) {
+    if (leak) return;
     const owners = cmhLayerIdOwners(doc, id);
     // A contested boundary cannot tell the layer's blocks from content, so every owner counts:
     // fail closed rather than ship comment data in a copy that claims to carry none.
-    if (state.contested) return owners.length > 0;
-    return owners.some(function (node) { return !(state.root && state.root.contains(node)); });
+    const leaked = state.contested ? owners : owners.filter(function (node) {
+      return !(state.root && state.root.contains(node));
+    });
+    if (!leaked.length) return;
+    // A contested boundary has its own wording, so do not pay for the placement parse there.
+    if (state.contested) { leak = { id: id, region: "", site: "contested", sole: false }; return; }
+    const placed = _cmhPlainLeakSite(sourceHtml, id, _CMH_PLAIN_BLOCK_REGION[id] || "");
+    leak = { id: id, region: placed.region, site: placed.site, sole: placed.sole };
   });
-  return { leaked: leaked, contested: state.contested };
+  return { leak: leak, contested: state.contested };
+}
+// Name the block that survived and WHERE it survived. "Malformed markers?" was a guess that sent
+// the author after the one cause the layer had not checked, and misnamed the commonest one: a
+// block that was never inside the region at all, which no region strip could ever remove.
+function _cmhPlainLeakMessage(leak) {
+  const quoted = '"' + leak.id + '"';
+  if (leak.site === "descriptor") {
+    return "Plain export aborted: the layer descriptor block " + quoted + " is still in the copy. It"
+      + " sits outside every commentable-html region, so only the descriptor strip could remove it;"
+      + " run validate.py on the document, then export again.";
+  }
+  if (leak.site === "descriptor-inside") {
+    return "Plain export aborted: the layer descriptor block " + quoted + " is still in the copy, and"
+      + " this document keeps a descriptor copy inside its " + leak.region + " region. The descriptor"
+      + " is removed by its own strip rather than by a region strip, and that strip could not resolve"
+      + " this copy; run validate.py on the document, then export again.";
+  }
+  if (leak.site === "inside") {
+    return "Plain export aborted: the reserved block " + quoted + " is still in the copy, INSIDE the "
+      + leak.region + " region. That region's markers resolve, so the region text itself could not be"
+      + " matched - each marker must be the only thing in its own HTML comment (apart from `=`"
+      + " padding), with no prose before or after it. Repair the region markers, then export again.";
+  }
+  if (leak.site === "outside") {
+    // The remedy depends on whether this document has another block of the same id. Telling the
+    // author to MOVE a duplicate into the region could put it AHEAD of the real block, which would
+    // hand the reader and the next export that stale copy - the very swap this rule exists to stop.
+    return "Plain export aborted: the reserved block " + quoted + " is still in the copy, OUTSIDE the "
+      + leak.region + " region, where no region strip can remove it. "
+      + (leak.sole
+        ? "Move it into the " + leak.region + " region (or give that element a different id), then export again."
+        : "This document already has another " + leak.id + " block, so remove this one (or give that"
+          + " element a different id) rather than moving it, then export again.");
+  }
+  if (leak.site === "unattributable") {
+    return "Plain export aborted: the reserved block " + quoted + " is still in the copy, and this"
+      + " document does not expose it as one of the layer's own blocks (the content-root boundary"
+      + " disagrees between the document and the copy the strip produced), so it cannot be attributed"
+      + " to the " + leak.region + " region. Run validate.py on the document, then export again.";
+  }
+  return "Plain export aborted: the reserved block " + quoted + " is still in the copy, and this"
+    + " document does not carry exactly one ordered pair of " + leak.region + " region markers as HTML"
+    + " comments, so nothing can be attributed to that region. Repair the markers, then export again.";
 }
 // Remove every descriptor copy the layer owns, by verified OFFSETS rather than a first-match text
 // replace: an export that declares a mode may leave more than one, and a text replace would either
@@ -17025,13 +17198,13 @@ function _buildPlainHtml(baseHtml) {
   // CONTENT-ROOT BOUNDARY rather than the document text: a script inside the content root that
   // borrows a reserved id is authored content (CMH-EXP-19), which no region strip can remove and
   // which must not make a legitimate export abort.
-  const leak = _cmhPlainLeakedState(t);
-  if (leak.leaked) {
-    // Name the actual cause. A contested boundary is not a marker problem, and sending the author
-    // after malformed markers when the fix is a duplicate id wastes their time.
-    throw new Error(leak.contested
-      ? _CMH_CONTESTED_ROOT_ERROR
-      : "Plain export aborted: the comment regions could not be fully removed (malformed markers?).");
+  const leak = _cmhPlainLeakedBlocks(t, baseHtml);
+  if (leak.leak) {
+    // Name the actual cause: which block survived, and where it sits relative to the region that
+    // was supposed to carry it away (CMH-EXP-21). A contested boundary is not a marker problem
+    // either, and sending the author after malformed markers when the fix is a duplicate id (or a
+    // block that was never in the region) wastes their time.
+    throw new Error(leak.contested ? _CMH_CONTESTED_ROOT_ERROR : _cmhPlainLeakMessage(leak.leak));
   }
   return t.replace(/\n{3,}/g, "\n\n");
 }
@@ -17138,6 +17311,13 @@ function _cmhRegionMarkerMatches(html, kind, name) {
   });
   return out;
 }
+// Exposed for deterministic tests: locating a region marker is pure, and
+// tests/fixtures/region_marker_parity.json pins this answer against the three Python copies of
+// the same rule (CMH-VAL-22), which cannot share one helper across the build tool, the shipped
+// validator package and the shipped authoring tools.
+window.__cmhRegionMarkerMatches = function (html, kind, name) {
+  return _cmhRegionMarkerMatches(html, kind, name).map(function (m) { return m.index; });
+};
 function _assertSingleRegionMarkers(html, name) {
   const begins = _cmhRegionMarkerMatches(html, "BEGIN", name);
   const ends = _cmhRegionMarkerMatches(html, "END", name);
@@ -20898,8 +21078,10 @@ function showToast(msg, opts) {
 function getHandledIds() {
   // The boundary, not tree order: a handled-ids block planted inside the content root could
   // otherwise name a live comment and have pruneHandled() delete it from the reviewer's store.
-  const el = cmhLayerBlock(document, "handledCommentIds");
-  if (!el) { cmhWarnUnresolvedBlock("handledCommentIds"); return new Set(); }
+  // cmhReadLayerBlock also reports a SECOND block the layer owns, which would otherwise be read by
+  // nothing and rewritten by nothing (CMH-EXP-20).
+  const el = cmhReadLayerBlock("handledCommentIds");
+  if (!el) return new Set();
   try {
     const arr = JSON.parse((el.textContent || "").trim() || "[]");
     return new Set(arr);
