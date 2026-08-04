@@ -211,7 +211,7 @@ function positionWidgetAdd(el) {
   const bw = widgetAddBtn.offsetWidth || 96, bh = widgetAddBtn.offsetHeight || 26;
   const bounds = _floatingBounds(el);
   const widget = el.closest("[data-cm-widget]");
-  const reset = widget && widget.matches("[data-cm-draggable]") ? widget.querySelector(".cm-widget-reset") : null;
+  const reset = widget && widget.matches("[data-cm-draggable]") ? cmhOwnChrome(widget, ":scope > .cm-widget-reset") : null;
   const resetRect = reset && !reset.hidden ? reset.getBoundingClientRect() : null;
   const candidates = [
     { left: visible.right - bw - 6, top: visible.top + 6 },
@@ -332,7 +332,7 @@ function _syncWidgetResetButtons() {
   root.querySelectorAll("[data-cm-widget]").forEach((w) => {
     if (!_widgetResetOptIn(w)) return;
     const has = changed.has(w.getAttribute("data-cm-widget") || "widget");
-    let btn = w.querySelector(":scope > .cm-widget-reset");
+    let btn = cmhOwnChrome(w, ":scope > .cm-widget-reset");
     if (has && !btn) {
       btn = document.createElement("button");
       btn.type = "button";

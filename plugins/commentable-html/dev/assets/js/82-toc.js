@@ -186,7 +186,7 @@ function setupCollapsibleSections() {
     if (sec.closest(".cm-skip")) return;
     const heading = sec.querySelector(":scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6");
     if (!heading || heading.closest(".cm-skip")) return;
-    if (heading.querySelector(".cmh-sec-caret")) return;
+    if (cmhOwnChrome(heading, ":scope > .cmh-sec-caret")) return;
     heading.classList.add("cmh-section-heading");
     const caret = document.createElement("button");
     caret.type = "button";
@@ -214,7 +214,7 @@ function setupCollapsibleSections() {
     // Ignore clicks that are part of a text selection so commenting on an expanded heading
     // is unaffected.
     heading.addEventListener("click", function (e) {
-      if (e.target.closest(".cmh-sec-caret")) return;
+      if (caret.contains(e.target)) return;
       if (!sec.classList.contains("cmh-section-collapsed")) return;
       const sel = window.getSelection();
       if (sel && sel.toString().trim()) return;

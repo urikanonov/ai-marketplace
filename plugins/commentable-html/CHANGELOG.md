@@ -4,6 +4,26 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.651.0] - 2026-08-04
+
+### Fixed
+
+- An author element wearing one of the layer's own control class names no longer SUPPRESSES the
+  real control (CMH-CORE-21). Four modules decided "a control already exists here" from a bare
+  class lookup, so a document that happened to carry `.cmh-sort-ctrl` in a table header, a
+  `.cmh-sec-caret` or `.cmh-review-badge` in a heading, or a `.cm-widget-reset` in a draggable
+  widget made the layer skip creating its own control entirely - the sort button, the section
+  caret, the review badge, and "Reset moves" were silently missing (and the widget clean-up went
+  further and DELETED the author's element). Every such guard now resolves the layer's own control
+  by IDENTITY through `cmhOwnChrome`, against the `cmhMarkLayerChrome` registry, so only a control
+  the layer itself created counts as already present, and the author's markup is neither read,
+  removed, nor mistaken for chrome. The spoofed element gains nothing in exchange: it never enters
+  the registry, so the comment dialog's outside-click guard still swallows a click on it as
+  document content (CMH-CORE-16). This was a denial of the affordance, not a privilege escalation.
+- The sidebar's expand-to-comment path now also restores the section caret's accessible NAME, not
+  just its `aria-expanded` and tooltip, so a caret whose section was manually collapsed and then
+  reopened by jumping to a comment inside it is no longer announced as "Expand section" while its
+  section is open (CMH-CORE-21).
 ## [1.650.0] - 2026-08-04
 
 ### Fixed

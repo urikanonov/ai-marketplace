@@ -580,8 +580,12 @@ function expandCollapsedAncestors(el) {
   let sec = el && el.closest && el.closest("section.cmh-section-collapsed");
   while (sec) {
     sec.classList.remove("cmh-section-collapsed");
-    const caret = sec.querySelector(":scope > .cmh-section-heading .cmh-sec-caret");
-    if (caret) { caret.setAttribute("aria-expanded", "true"); caret.title = "Collapse section"; }
+    const caret = cmhOwnChrome(sec, ":scope > .cmh-section-heading .cmh-sec-caret");
+    if (caret) {
+      caret.setAttribute("aria-expanded", "true");
+      caret.title = "Collapse section";
+      caret.setAttribute("aria-label", "Collapse section");
+    }
     sec = sec.parentElement && sec.parentElement.closest && sec.parentElement.closest("section.cmh-section-collapsed");
   }
 }

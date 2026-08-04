@@ -236,7 +236,7 @@ function setupSortableTables() {
     t.classList.add("cmh-sortable");
     const cur = _tableSortState[key] || null;
     [...hdr.cells].forEach(function (th, ci) {
-      if (th.querySelector(".cmh-sort-ctrl")) return;
+      if (cmhOwnChrome(th, ":scope > .cmh-sort-ctrl")) return;
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "cmh-sort-ctrl cm-skip";
@@ -255,7 +255,7 @@ function setupSortableTables() {
         else { _tableSortState[key] = { col: ci, dir: dir }; _sortRows(body, ci, dir); }
         _saveTableSortState();
         [...hdr.cells].forEach(function (h2, cj) {
-          const b2 = h2.querySelector(".cmh-sort-ctrl");
+          const b2 = cmhOwnChrome(h2, ":scope > .cmh-sort-ctrl");
           if (b2) _reflectSortIco(b2, (dir && ci === cj) ? dir : "");
         });
         recomputeTextOffsets();
