@@ -332,6 +332,19 @@ class RuleETests(unittest.TestCase):
                     "          fetch-depth: ${{ inputs.depth }}\n")
         self.assertEqual(v, [])
 
+    def test_an_absurd_depth_does_not_crash_the_gate(self):
+        # float("1e1000") is inf, and math.floor(inf) raises OverflowError: a checker that
+        # tracebacks reports nothing at all, which is worse than either verdict.
+        for depth in ("1e1000", "-1e1000", ""):
+            self._v("    timeout-minutes: 5\n"
+                    "    steps:\n"
+                    "      - uses: actions/checkout@v4\n"
+                    "        with:\n"
+                    "          fetch-depth: %s\n" % depth)
+        self.assertFalse(cwp._fetch_depth_is_full("1e1000"))
+        self.assertTrue(cwp._fetch_depth_is_full("-1e1000"))
+        self.assertFalse(cwp._fetch_depth_is_full(None))
+
     def test_a_shallow_checkout_may_keep_a_short_budget(self):
         self.assertEqual(
             self._v("    timeout-minutes: 5\n"

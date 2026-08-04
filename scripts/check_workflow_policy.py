@@ -172,13 +172,18 @@ def _fetch_depth_is_full(value):
     garbage all mean full history, and only an expression (unevaluable here) is passed over.
     """
     text = str(value).strip()
-    if not text:
-        return False  # an empty input falls back to the action's default depth of 1
+    if value is None or not text:
+        return False  # an absent or empty input falls back to the action's default depth of 1
     if "${{" in text:
         return False  # an expression cannot be evaluated statically
     if not _NUMBER_RE.match(text):
         return True  # Number("nonsense") is NaN, which the action turns into 0 = full history
-    return math.floor(float(text)) <= 0
+    depth = float(text)
+    if math.isinf(depth):
+        # math.floor(inf) raises OverflowError; a positive infinity is not a full-history fetch,
+        # and a negative one coerces to 0, which is.
+        return depth < 0
+    return math.floor(depth) <= 0
 
 
 def _is_full_history_checkout(step):
