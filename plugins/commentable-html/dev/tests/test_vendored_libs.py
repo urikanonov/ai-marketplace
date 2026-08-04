@@ -44,6 +44,16 @@ MERMAID = '<h1>Diagram</h1>\n<pre class="mermaid cm-skip">graph TD; A--&gt;B;</p
 CHART = ('<h1>Chart</h1>\n<figure class="chart">'
          '<canvas id="c" class="cmh-chart" data-cmh-chart="{}"></canvas></figure>')
 
+# An adversary for the LOCAL-BINDING half of the scripted-navigation predicate, parameterized on
+# the whitespace run it plants. `%s` is the run; everything around it is what makes the predicate
+# actually REACH `OFFLINE_LOCAL_LOCATION_RE` and still answer False: the run is never followed by
+# an identifier, the 450 filler characters keep `location` outside the `[^)]{0,400}` window that
+# follows the `(`, the trailing bare sink is what makes the predicate look for a local binding at
+# all, and the trailing `const location` is the binding it then finds - which drops the verdict to
+# the PREFIXED sinks, of which there are none.
+_NAV_LOCAL_BINDING_EVIL = ('function%s(' + "x" * 450
+                           + ';location.href="//e";const location=1;')
+
 
 class NeedsDetectionTests(unittest.TestCase):
     """CMH-SIZE-01: whether a document can use the blob is decided from its CONTENT only."""
@@ -2059,6 +2069,16 @@ class RuntimeParityTests(unittest.TestCase):
         'const location = {}; window.location.href = "https://evil.example";',
         'const location = {}; top.location.replace("https://evil.example");',
         'const location = {}; window.open("https://evil.example");',
+        # A name that merely CONTAINS `location` declares no binding at all, so an unprefixed sink
+        # beside it still navigates the real document. The shadow rule reads raw source, so it has
+        # to insist on a boundary at BOTH ends of the name and of the keyword: without the leading
+        # one, an ordinary `newLocation` parameter or `currentLocation` destructuring bought the
+        # whole script the shadowed treatment; without a boundary after the keyword, the optional
+        # function-name slot absorbed the tail of a longer word. Either one let this beacon past
+        # with a one-token rename.
+        'function updateLocation(newLocation) { location.href = "https://evil.example"; }',
+        'var { currentLocation } = opts; location.href = "https://evil.example";',
+        'functionx(location); location.href = "https://evil.example";',
         # JS treats U+FEFF as whitespace; Python's `\\s` does not, so a shared class let this
         # valid-JS beacon be stripped by the exporter yet certified clean by the validator.
         'location.href =\ufeff"https://evil.example"',
@@ -2151,6 +2171,14 @@ class RuntimeParityTests(unittest.TestCase):
         'const location = { href: "" }; location.href = "https://api.example";',
         'let location = {}; location.assign("https://api.example");',
         'function f(location) { location.href = "https://api.example"; }',
+        # The ANONYMOUS spellings, which are the branch where the optional function-name group is
+        # SKIPPED rather than taken. Every other `function` sample here is named, so without these
+        # the zero-identifier path of the CURRENT pattern is unpinned and dropping that group's `?`
+        # is a green mutant that deletes an author's script. (The pattern this replaced spelled the
+        # same branch as `{0,100}`, so these were already benign then - what they pin is the
+        # restructuring, not a fixed bug.)
+        'function (location) { location.href = "https://api.example"; }',
+        'function(location) { location.href = "https://api.example"; }',
         'const { location } = opts; location.href = "https://api.example";',
         'try { x(); } catch (location) { location.href = "https://api.example"; }',
         # A relative navigation inside the offline file is not egress.
@@ -2586,6 +2614,22 @@ class RuntimeParityTests(unittest.TestCase):
                 "not the beacon (or the benign value) it is filed as"
                 % (src, result["v"], expected))
 
+    def _assert_reaches_local_binding_pass(self, evil, label):
+        """The local-binding adversary must still ROUTE THROUGH the regex it is aimed at.
+
+        `offline_script_navigates_to_network` answers and returns BEFORE that regex when no sink is
+        found, so an unrelated change to SINK detection would leave this guard fast, green and
+        guarding nothing. Assert the two conditions that put the expensive pass on the path.
+        """
+        self.assertGreaterEqual(
+            resources.offline_nav_sink_index(evil, False), 0,
+            "the %s adversary no longer trips the sink search, so the predicate answers before it "
+            "reaches the local-binding regex and the budget below times nothing" % label)
+        self.assertTrue(
+            resources.OFFLINE_LOCAL_LOCATION_RE.search(evil),
+            "the %s adversary no longer matches the local-binding regex, so it stops covering the "
+            "pass it exists to time" % label)
+
     def test_the_navigation_pattern_cannot_be_made_to_backtrack(self):
         """The scan must stay linear on adversarial input, in BOTH engines.
 
@@ -2602,6 +2646,7 @@ class RuntimeParityTests(unittest.TestCase):
         `test_the_navigation_scan_stays_linear_as_the_near_match_grows` pins the SCALING that a
         single fixed-size input cannot see.
         """
+        local_binding_evil = _NAV_LOCAL_BINDING_EVIL % (" " * 30000)
         evils = [
             "window" + " " * 20000 + "X",
             ("window{0}.{0}top{0}.{0}location{0}.{0}href{0}={0}'not-a-url'").format(" " * 400),
@@ -2619,10 +2664,24 @@ class RuntimeParityTests(unittest.TestCase):
             'location.href = "h' + "\\\r" * 10000,
             'window.location.href = "' + "\\\n" * 10000,
             ('location.href = "' + " " * 200) * 200,
-            # `_OFFLINE_NAV_PREFIXED_RE` carries the same widened tail, so arm it through a PREFIXED
-            # sink too rather than trusting the shared text alone.
+            # The PREFIXED sinks carry the same widened tail, so arm them through a prefixed sink
+            # too rather than trusting the shared tail text alone.
             'window.location.href = "' + " " * 20000,
+            # The shape reported in #973: an almost-matching prefix chain that alternates TWO
+            # global names across wide gaps and never reaches a sink at all. The anchored scan
+            # answers it without a chain walk, but the corpus only ever carried a single-name,
+            # single-space chain, so pin the reported spelling itself.
+            ("window{0}.{0}top{0}.{0}").format(" " * 8) * 2000,
+            # The LOCAL-BINDING regex is the other half of the predicate and runs over the WHOLE
+            # script whenever a sink is found, so it needs its own adversary. Its `function`
+            # alternative joined two unbounded whitespace runs around an OPTIONAL identifier
+            # (`function WS* IDENT{0,100} WS* \(`), which is the `WS*\??WS*\.` shape again: a run
+            # never followed by `(` was split every possible way and each split re-ran the
+            # `[^)]{0,400}location` search. The trailing sink plus `const location` is what makes
+            # the predicate reach that regex and still answer False.
+            local_binding_evil,
         ]
+        self._assert_reaches_local_binding_pass(local_binding_evil, "fixed-size local-binding")
         # Both patterns are fuzzed: they share the tail byte for byte, but only one of them was
         # ever driven with adversarial input, so a divergence in the prefixed copy could hide here.
         for evil in evils:
@@ -2669,11 +2728,21 @@ class RuntimeParityTests(unittest.TestCase):
     #    that an `X` stops from ever qualifying, which is the only path the first two do not walk.
     #    Its steps are smaller again because Python pays a regex call per whitespace character here
     #    (1.3s on 1.7 MB, against 0.2s in node) - linear, but with the largest constant of the three.
+    # The last field says whether the shape must be checked for still ROUTING through the
+    # local-binding pass; it lives in the tuple rather than in a label comparison so renaming a
+    # shape cannot silently drop the check.
     _NAV_SCALING_SHAPES = (
-        ("anchorless near-match", "", "window . ", "x", (2000, 20000, 200000)),
-        ("prefix chain", "$", "frames.", 'location.href="https:"', (500, 5000, 50000)),
+        ("anchorless near-match", "", "window . ", "x", (2000, 20000, 200000), False),
+        ("prefix chain", "$", "frames.", 'location.href="https:"', (500, 5000, 50000), False),
         ("statement-position near-sink", "", "X" + " " * 500 + 'location = "//e"; ', "",
-         (3, 30, 300)),
+         (3, 30, 300), False),
+        # The three above grow the SINK search. This one grows the LOCAL-BINDING search, the other
+        # full-text pass the predicate makes, and it grows the whitespace RUN rather than a repeat
+        # count because that is where its quadratic term lived: cost was one re-search of the
+        # `[^)]{0,400}` window per split of the run, so n repeats of a fixed gap stayed linear and
+        # hid it.
+        ("local-binding whitespace run", _NAV_LOCAL_BINDING_EVIL.split("%s", 1)[0], " ",
+         _NAV_LOCAL_BINDING_EVIL.split("%s", 1)[1], (500, 5000, 50000), True),
     )
     _NAV_SCALING_BUDGET = 1.0
 
@@ -2695,10 +2764,12 @@ class RuntimeParityTests(unittest.TestCase):
         an export that appears to hang is indistinguishable from a broken feature.
         """
         node = shutil.which("node")
-        for label, head, unit, tail, steps in self._NAV_SCALING_SHAPES:
+        for label, head, unit, tail, steps, checks_binding_pass in self._NAV_SCALING_SHAPES:
             elapsed = []
             for n in steps:
                 evil = head + unit * n + tail
+                if checks_binding_pass:
+                    self._assert_reaches_local_binding_pass(evil, label)
                 start = time.monotonic()
                 self.assertFalse(resources.offline_script_navigates_to_network(evil),
                                  "the %s sample must NOT match, or the scan stops early and times "
