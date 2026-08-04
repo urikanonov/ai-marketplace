@@ -136,6 +136,14 @@ pre-push hook mirrors the required checks (validators, changelog sync, version b
 drift guards), so a push that would fail a required check is caught locally first. Do NOT put the version
 in the PR title; describe the change.
 
+Push in BATCHES once the PR is open, not per fix. Every push to an open PR re-runs the required
+checks and cancels the run in progress, so a second push moments later just restarts the first.
+Finish the local verification above, fold in every outstanding review comment, and then push once -
+see the "BATCH YOUR PUSHES TO AN OPEN PR" bullet under "Branch and PR rules" in
+[AGENTS.md](../../../AGENTS.md). Before the PR exists, push freely: a feature-branch push runs no
+required check, and it keeps the work recoverable if the session is interrupted. Fewer rounds means
+pushing fewer times, never skipping or weakening a check.
+
 Before you finish a feature PR, run two rounds of the `multi-duck` review and stamp the PR body
 (`Multi-Duck passed`, or an opted-out box with a reason) - the required `multi-duck-review` check fails an
 unstamped feature PR.

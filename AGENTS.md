@@ -672,6 +672,26 @@ survival check above is still the gate for that. The `pre-commit` hook runs it i
 - After addressing a PR review comment (code fix, doc update, or clarification), resolve that
   comment thread on the PR before pushing so the conversation stays clean and reviewers can see
   what is still open at a glance.
+- BATCH YOUR PUSHES TO AN OPEN PR - each one is a whole CI round. Once a PR is open, every push
+  re-runs the required checks, and nearly all of them cancel the run in progress: `validate.yml`
+  sets concurrency at the WORKFLOW level, so one cancellation takes `validate`, `version-bump`,
+  `dist-in-sync`, `secret-scan`, `actionlint` and all three `cross-platform` jobs with it, and
+  `plugin-tests`, `pwsh-tests`, `site` (`pages.yml`) and `multi-duck-review` cancel too. Only
+  `require-owner-approval` and `All conversations resolved` deliberately serialize instead. So a
+  second push a couple of minutes after the first does not get you two answers - it throws the
+  first one away and starts over. Waiting for checks is the largest single slice of a PR's
+  wall-clock here, well ahead of rebasing. So collect your work: address ALL the outstanding review
+  comments, then push once - do not push once per comment or once per small fix. Verify locally
+  first rather than pushing to see what CI says: the `pre-push` hook runs the FAST deterministic
+  gates in seconds (its test suites are opt-in - see "Validate before you commit"), and the
+  targeted tests that cover your change are cheap. This is only about how MANY times you push,
+  never about skipping anything - do not weaken, skip, or ignore a check to save a round.
+- Before the PR exists, push freely - it costs nothing and it protects your work. `validate.yml`,
+  `plugin-tests.yml`, `pwsh-tests.yml` and `pages.yml` all restrict their `push` trigger to
+  `branches: [main]`, so a push to a feature branch with no open PR runs no required check at all.
+  Keep pushing the branch as you work: the branch stamped on the issue only helps if the remote
+  actually has your commits, or an abandoned session leaves the next worker a branch behind the
+  real state (see "Signal that an issue is actively being worked on").
 - Required status checks on `main` (all must be green to merge): `validate` (schema, script unit
   tests, Markdown, changelog sync, the secret-bearing-file and conflict-marker guards, and the CI
   trust-boundary policy
