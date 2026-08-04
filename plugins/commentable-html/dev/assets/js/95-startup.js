@@ -1150,7 +1150,7 @@ function setupDeck() {
 
   // "Comments off" is only valid with zero comments, so a comment landing while it is selected must
   // surface the panel even when "Auto-open panel on comment" is off (see 06-preferences.js).
-  window.__cmhForcePanelOnComment = function () { return deckMode === "off"; };
+  cmhRegisterForcePanelOnComment(function () { return deckMode === "off"; });
 
   const nav = document.createElement("div");
   nav.className = "cm-skip cmh-deck-nav";
@@ -1218,8 +1218,14 @@ if (prunedCount > 0) {
 // A deck manages its own panel state from the persisted comment-model selection (applyDeckMode);
 // the document-flow auto-open below must not override it (that would force every deck with a
 // comment to open the panel, ignoring the reviewer's "panel closed" choice).
+// The load-time open honors "Auto-open panel on comment" as well: without that, a reviewer who
+// turned the preference off would still find the panel open on every RELOAD of any document they
+// had already commented on - the one reviewer the preference exists for.
 if (!IS_DECK) {
-  if (comments.length || (typeof checklistChanges === "function" && checklistChanges().length) || (typeof notesChanges === "function" && notesChanges().length)) openSidebar();
+  const _cmhHasPending = comments.length
+    || (typeof checklistChanges === "function" && checklistChanges().length)
+    || (typeof notesChanges === "function" && notesChanges().length);
+  if (_cmhHasPending && cmhShouldAutoOpenPanel()) openSidebar();
   else closeSidebar();
 }
 // Signals the nonshareable-mode bootstrap that the external runtime initialized, so

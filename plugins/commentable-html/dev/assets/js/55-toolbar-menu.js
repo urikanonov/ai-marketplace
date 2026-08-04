@@ -107,7 +107,10 @@
   };
   if (window.__cmhRegisterEscapePopup) window.__cmhRegisterEscapePopup(popup);
   btn.addEventListener("click", (e) => { e.stopPropagation(); setOpen(menu.hidden); });
-  menu.addEventListener("click", () => setOpen(false));
+  // A click on a Preferences row FLAGS itself instead of stopping propagation, so the menu stays
+  // open for the second scope without also hiding the click from every other document-level
+  // listener (the selection popup, the deck's click-to-advance bookkeeping).
+  menu.addEventListener("click", (e) => { if (!e.__cmhKeepMenuOpen) setOpen(false); });
   document.addEventListener("click", (e) => {
     if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
   });
@@ -117,10 +120,11 @@
      above it; checked, it pins the value that DIFFERS from the default (the only override a
      reviewer can act on) and its label carries that document-local state, while the default row
      keeps showing the untouched default. Both rows are role=menuitemcheckbox, so activation
-     toggles in place and the menu stays open for the second scope. Older files carry a More menu
-     without these rows, so every lookup is guarded. */
-  const prefDefault = document.getElementById("btnAutoOpenPanel");
-  const prefOverride = document.getElementById("btnAutoOpenPanelOverride");
+     toggles in place and the menu stays open for the second scope. Every lookup is scoped INSIDE
+     the menu and guarded: an older file's COMMENT UI region has no Preferences rows, and authored
+     content carrying the same id must never be mistaken for one. */
+  const prefDefault = menu.querySelector("#btnAutoOpenPanel");
+  const prefOverride = menu.querySelector("#btnAutoOpenPanelOverride");
   function syncPrefRows() {
     if (prefDefault) prefDefault.setAttribute("aria-checked", autoOpenPanelDefault() ? "true" : "false");
     if (!prefOverride) return;
@@ -136,17 +140,28 @@
   function wirePrefRow(el, toggle) {
     if (!el) return;
     el.addEventListener("click", (e) => {
-      // Keep the menu open: a reviewer often sets the default and the override in one visit.
-      e.stopPropagation();
-      toggle();
+      e.__cmhKeepMenuOpen = true;
+      // A refused write is not always private mode: a storage-full browser refuses it too, and
+      // silently snapping the row back would look like a broken control.
+      if (toggle() === false && typeof showToast === "function") {
+        showToast("Could not save that preference - this browser's storage is full or blocked.", {
+          alert: true,
+          action: (typeof cmhStorageAction === "function") ? cmhStorageAction(CMH_STORE_KEY) : null,
+        });
+      }
       syncPrefRows();
     });
   }
   wirePrefRow(prefDefault, () => setAutoOpenPanelDefault(!autoOpenPanelDefault()));
   wirePrefRow(prefOverride, () => {
-    setAutoOpenPanelOverride(autoOpenPanelOverride() === null ? !autoOpenPanelDefault() : null);
+    return setAutoOpenPanelOverride(autoOpenPanelOverride() === null ? !autoOpenPanelDefault() : null);
   });
   syncPrefRows();
+  // Another tab (or another document in this browser) can change the shared default while this
+  // menu is open; refresh the rows so an activation never toggles from a stale state.
+  window.addEventListener("storage", (e) => {
+    if (!e || e.key == null || e.key === AUTO_OPEN_PANEL_KEY || e.key === AUTO_OPEN_PANEL_DOC_KEY) syncPrefRows();
+  });
 
   // Roving focus across the menu's items (Up/Down/Home/End), the arrow behavior a menu is expected
   // to have once it holds checkable rows. Tab order is untouched, so every item stays tabbable too.
@@ -168,5 +183,15 @@
     else if (e.key === "ArrowUp") { e.preventDefault(); focusItem(list, cur < 0 ? list.length - 1 : cur - 1); }
     else if (e.key === "Home") { e.preventDefault(); focusItem(list, 0); }
     else if (e.key === "End") { e.preventDefault(); focusItem(list, list.length - 1); }
+  });
+  // Opening the menu leaves focus on the trigger, so the arrows must reach in from there too -
+  // otherwise the roving focus is only usable after a Tab.
+  btn.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    if (menu.hidden) setOpen(true);
+    const list = items();
+    if (!list.length) return;
+    e.preventDefault();
+    focusItem(list, e.key === "ArrowDown" ? 0 : list.length - 1);
   });
 })();

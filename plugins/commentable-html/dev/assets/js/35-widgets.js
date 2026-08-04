@@ -413,7 +413,7 @@ function _onWidgetMutation() {
     // Surface a newly-detected layout change: open the panel so the state card (which is
     // not counted as a comment) is not missed. Only on the 0 -> >0 transition, so a user
     // who closes the panel is not fought.
-    if (has && !_hadWidgetChanges && !document.body.classList.contains("cmh-deck-comments-off") && typeof openSidebar === "function") openSidebar();
+    if (has && !_hadWidgetChanges && !document.body.classList.contains("cmh-deck-comments-off") && typeof openSidebar === "function" && cmhShouldAutoOpenPanel()) openSidebar();
     _hadWidgetChanges = has;
     _syncWidgetResetButtons();
   };

@@ -169,8 +169,10 @@ if (CMH_DENSITY === "compact" || CMH_DENSITY === "comfortable") {
 const SIDEBAR_WIDTH_KEY = "commentable-html::sidebarWidth";
 // "Auto-open panel on comment": the cross-document DEFAULT (ON when unset, so an existing document
 // behaves exactly as it always has) plus an optional per-document override that pins one document
-// to its own value. See 06-preferences.js for the accessors.
-const AUTO_OPEN_PANEL_KEY = "commentable-html::autoOpenPanel";
+// to its own value. See 06-preferences.js for the accessors. The default key deliberately does NOT
+// end in the per-document suffix below: a document whose data-comment-key is literally
+// "commentable-html" would otherwise own the cross-document key and reset every other document.
+const AUTO_OPEN_PANEL_KEY = "commentable-html::autoOpenPanelDefault";
 const AUTO_OPEN_PANEL_DOC_KEY = COMMENT_KEY + "::autoOpenPanel";
 // The comment array is persisted in a modern slot COMMENT_KEY + "::z" holding either a compressed
 // (framed) payload or plain JSON, whichever is smaller (see 05-persistence.js). COMMENT_KEY itself

@@ -182,3 +182,5 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-MENU-PREF-05 | opt-out: keyboard and roving-focus a11y of the menu rows, not a capability a reader has to be taught | opt-out: menu keyboard behavior, with nothing for a viewer to see on a slide |
 | CMH-MENU-PREF-06 | opt-out: private-mode robustness of the preference reads and writes, not a reader-facing capability | opt-out: a storage-denied robustness invariant, with nothing for a viewer to see on a slide |
 | CMH-MENU-PREF-07 | help | opt-out: the deck runtime simply honors the same preference; a slide would show the panel NOT opening, which is nothing to see |
+| CMH-MENU-PREF-08 | help | opt-out: the panel simply not opening itself on load or on a first note/checklist change; there is nothing for a viewer to see on a slide |
+| CMH-MENU-PREF-09 | opt-out: storage-accounting registration behind the preference, not a reader-facing capability | opt-out: a storage-reclaim invariant, with nothing for a viewer to see on a slide |

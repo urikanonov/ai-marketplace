@@ -239,8 +239,10 @@ if (CMH_DENSITY === "compact" || CMH_DENSITY === "comfortable") {
 const SIDEBAR_WIDTH_KEY = "commentable-html::sidebarWidth";
 // "Auto-open panel on comment": the cross-document DEFAULT (ON when unset, so an existing document
 // behaves exactly as it always has) plus an optional per-document override that pins one document
-// to its own value. See 06-preferences.js for the accessors.
-const AUTO_OPEN_PANEL_KEY = "commentable-html::autoOpenPanel";
+// to its own value. See 06-preferences.js for the accessors. The default key deliberately does NOT
+// end in the per-document suffix below: a document whose data-comment-key is literally
+// "commentable-html" would otherwise own the cross-document key and reset every other document.
+const AUTO_OPEN_PANEL_KEY = "commentable-html::autoOpenPanelDefault";
 const AUTO_OPEN_PANEL_DOC_KEY = COMMENT_KEY + "::autoOpenPanel";
 // The comment array is persisted in a modern slot COMMENT_KEY + "::z" holding either a compressed
 // (framed) payload or plain JSON, whichever is smaller (see 05-persistence.js). COMMENT_KEY itself
@@ -1157,12 +1159,23 @@ function autoOpenPanelEnabled() {
 }
 // The deck's "Comments off" state is a present-only lock that is only valid with ZERO comments, so a
 // comment landing there must still surface the panel (issue #659) even when auto-open is off -
-// otherwise that comment is stranded behind a lock that now contradicts it. The deck registers this
-// hook at startup; a flow document has none.
+// otherwise that comment is stranded behind a lock that now contradicts it. The deck registers its
+// predicate here at startup; a flow document never registers one. This is a CLOSURE variable, not a
+// window global: the partials share one IIFE scope, so nothing outside the runtime can define it
+// and force the panel open against the reviewer's preference.
+let _cmhForcePanelPredicate = null;
+function cmhRegisterForcePanelOnComment(fn) {
+  _cmhForcePanelPredicate = (typeof fn === "function") ? fn : null;
+}
 function cmhPanelForcedOnComment() {
-  try {
-    return typeof window.__cmhForcePanelOnComment === "function" && !!window.__cmhForcePanelOnComment();
-  } catch (e) { return false; }
+  try { return !!(_cmhForcePanelPredicate && _cmhForcePanelPredicate()); } catch (e) { return false; }
+}
+// The single question every "should the panel open itself?" site asks: a saved comment, the
+// load-time restore, and the first note/checklist/widget change that raises a card. An EXPLICIT
+// Show/panel action never goes through here, and neither does the storage manager's pending-quota
+// auto-open.
+function cmhShouldAutoOpenPanel() {
+  return autoOpenPanelEnabled() || cmhPanelForcedOnComment();
 }
 /* ---------- Text-offset helpers ---------- */
 function getTextNodes() {
@@ -4995,7 +5008,7 @@ function _onWidgetMutation() {
     // Surface a newly-detected layout change: open the panel so the state card (which is
     // not counted as a comment) is not missed. Only on the 0 -> >0 transition, so a user
     // who closes the panel is not fought.
-    if (has && !_hadWidgetChanges && !document.body.classList.contains("cmh-deck-comments-off") && typeof openSidebar === "function") openSidebar();
+    if (has && !_hadWidgetChanges && !document.body.classList.contains("cmh-deck-comments-off") && typeof openSidebar === "function" && cmhShouldAutoOpenPanel()) openSidebar();
     _hadWidgetChanges = has;
     _syncWidgetResetButtons();
   };
@@ -5198,7 +5211,7 @@ function _clAfterChange() {
   // Surface a newly-detected change: open the panel once on the 0 -> >0 transition so the
   // per-list card (which is not a comment) is not missed, matching the widget state card.
   const has = checklistChanges().length > 0;
-  if (has && !_clHadChanges && !document.body.classList.contains("cmh-deck-comments-off") && typeof openSidebar === "function") openSidebar();
+  if (has && !_clHadChanges && !document.body.classList.contains("cmh-deck-comments-off") && typeof openSidebar === "function" && cmhShouldAutoOpenPanel()) openSidebar();
   _clHadChanges = has;
 }
 function _clCycleItem(item) {
@@ -5456,7 +5469,7 @@ function _noteSyncUi() {
   _noteHadChanges = has;
   if (typeof updateDocTypeUi === "function") updateDocTypeUi();
   if (typeof updateCopyAllState === "function") updateCopyAllState();
-  if (has && !document.body.classList.contains("cmh-deck-comments-off") && typeof openSidebar === "function") openSidebar();
+  if (has && !document.body.classList.contains("cmh-deck-comments-off") && typeof openSidebar === "function" && cmhShouldAutoOpenPanel()) openSidebar();
 }
 // The expensive half of a note change: renderComments() runs two full-document tree walks (a
 // getTextNodes walk per changed note plus the section-review scan), so it is O(document) and must
@@ -7637,7 +7650,7 @@ function saveComposerElementInner(el) {
   // "Auto-open panel on comment" (the More menu Preferences group) decides whether saving reveals
   // the panel. Off leaves it exactly where the reviewer put it - the comment is still saved and
   // highlighted, and every explicit Show/panel action still opens it.
-  if (autoOpenPanelEnabled() || cmhPanelForcedOnComment()) openSidebar();
+  if (cmhShouldAutoOpenPanel()) openSidebar();
   // A quota failure on this explicit Save opens the storage manager so the reviewer can free space
   // and the pending write is retried. Deferred to a microtask so it runs AFTER closeComposerElement
   // has moved focus. If the manager cannot open (already open, or a prior episode is unresolved),
@@ -9781,7 +9794,10 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
   };
   if (window.__cmhRegisterEscapePopup) window.__cmhRegisterEscapePopup(popup);
   btn.addEventListener("click", (e) => { e.stopPropagation(); setOpen(menu.hidden); });
-  menu.addEventListener("click", () => setOpen(false));
+  // A click on a Preferences row FLAGS itself instead of stopping propagation, so the menu stays
+  // open for the second scope without also hiding the click from every other document-level
+  // listener (the selection popup, the deck's click-to-advance bookkeeping).
+  menu.addEventListener("click", (e) => { if (!e.__cmhKeepMenuOpen) setOpen(false); });
   document.addEventListener("click", (e) => {
     if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
   });
@@ -9791,10 +9807,11 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
      above it; checked, it pins the value that DIFFERS from the default (the only override a
      reviewer can act on) and its label carries that document-local state, while the default row
      keeps showing the untouched default. Both rows are role=menuitemcheckbox, so activation
-     toggles in place and the menu stays open for the second scope. Older files carry a More menu
-     without these rows, so every lookup is guarded. */
-  const prefDefault = document.getElementById("btnAutoOpenPanel");
-  const prefOverride = document.getElementById("btnAutoOpenPanelOverride");
+     toggles in place and the menu stays open for the second scope. Every lookup is scoped INSIDE
+     the menu and guarded: an older file's COMMENT UI region has no Preferences rows, and authored
+     content carrying the same id must never be mistaken for one. */
+  const prefDefault = menu.querySelector("#btnAutoOpenPanel");
+  const prefOverride = menu.querySelector("#btnAutoOpenPanelOverride");
   function syncPrefRows() {
     if (prefDefault) prefDefault.setAttribute("aria-checked", autoOpenPanelDefault() ? "true" : "false");
     if (!prefOverride) return;
@@ -9810,17 +9827,28 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
   function wirePrefRow(el, toggle) {
     if (!el) return;
     el.addEventListener("click", (e) => {
-      // Keep the menu open: a reviewer often sets the default and the override in one visit.
-      e.stopPropagation();
-      toggle();
+      e.__cmhKeepMenuOpen = true;
+      // A refused write is not always private mode: a storage-full browser refuses it too, and
+      // silently snapping the row back would look like a broken control.
+      if (toggle() === false && typeof showToast === "function") {
+        showToast("Could not save that preference - this browser's storage is full or blocked.", {
+          alert: true,
+          action: (typeof cmhStorageAction === "function") ? cmhStorageAction(CMH_STORE_KEY) : null,
+        });
+      }
       syncPrefRows();
     });
   }
   wirePrefRow(prefDefault, () => setAutoOpenPanelDefault(!autoOpenPanelDefault()));
   wirePrefRow(prefOverride, () => {
-    setAutoOpenPanelOverride(autoOpenPanelOverride() === null ? !autoOpenPanelDefault() : null);
+    return setAutoOpenPanelOverride(autoOpenPanelOverride() === null ? !autoOpenPanelDefault() : null);
   });
   syncPrefRows();
+  // Another tab (or another document in this browser) can change the shared default while this
+  // menu is open; refresh the rows so an activation never toggles from a stale state.
+  window.addEventListener("storage", (e) => {
+    if (!e || e.key == null || e.key === AUTO_OPEN_PANEL_KEY || e.key === AUTO_OPEN_PANEL_DOC_KEY) syncPrefRows();
+  });
 
   // Roving focus across the menu's items (Up/Down/Home/End), the arrow behavior a menu is expected
   // to have once it holds checkable rows. Tab order is untouched, so every item stays tabbable too.
@@ -9842,6 +9870,16 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
     else if (e.key === "ArrowUp") { e.preventDefault(); focusItem(list, cur < 0 ? list.length - 1 : cur - 1); }
     else if (e.key === "Home") { e.preventDefault(); focusItem(list, 0); }
     else if (e.key === "End") { e.preventDefault(); focusItem(list, list.length - 1); }
+  });
+  // Opening the menu leaves focus on the trigger, so the arrows must reach in from there too -
+  // otherwise the roving focus is only usable after a Tab.
+  btn.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    if (menu.hidden) setOpen(true);
+    const list = items();
+    if (!list.length) return;
+    e.preventDefault();
+    focusItem(list, e.key === "ArrowDown" ? 0 : list.length - 1);
   });
 })();
 /* ---------- Copy all + Clear all ---------- */
@@ -15056,7 +15094,7 @@ function showHelp(restoreEl) {
           '<li>Below it, a row of captioned buttons - <strong>Search</strong>, <strong>Sort</strong>, <strong>More</strong>, <strong>Help</strong>, and <strong>Hide</strong>. <strong>Help</strong> opens this dialog; <strong>Hide</strong> collapses the panel, leaving a small floating toolbar to bring it back.</li>' +
           '<li><strong>Copy all</strong> (the primary button) copies every comment as a Markdown bundle to paste back to the agent; beside it, the <strong>Export</strong> button opens the file-format menu. The <strong>Search</strong> button in the ribbon reveals a search field (hidden by default) that filters the list by each comment\'s note text.</li>' +
           '<li><strong>More</strong> opens a menu with a <strong>Preferences</strong> group and the <strong>Manage storage</strong> and <strong>Clear all comments</strong> actions. While the panel is collapsed, the floating toolbar\'s overflow <kbd>...</kbd> menu holds the export actions, Manage storage, ' + (hasToolbarClear ? '<strong>Clear all comments</strong> (the same confirmed clear), ' : '') + 'and <strong>Help &amp; About</strong>.</li>' +
-          '<li><strong>Auto-open panel on comment</strong> (in <em>More &gt; Preferences</em>) decides whether saving a comment reveals this panel. It is <strong>on</strong> by default and is your setting for <em>every</em> commentable-html document in this browser, so turning it off once lets you read full width and dip into the panel only when you want it. Your comment is still saved and still highlighted either way, and <strong>Comments</strong> in the floating toolbar always brings the panel back.</li>' +
+          '<li><strong>Auto-open panel on comment</strong> (in <em>More &gt; Preferences</em>) decides whether this panel opens <em>itself</em>. It is <strong>on</strong> by default and is your setting for <em>every</em> commentable-html document in this browser, so turning it off once lets you read full width and dip into the panel only when you want it: saving a comment, reopening a document you have already commented on, and a first review-note or checklist change all leave the panel exactly where you put it. Your comment is still saved and still highlighted either way, and <strong>Comments</strong> in the floating toolbar always brings the panel back.</li>' +
           '<li><strong>Override for this document</strong>, indented under it, is the exception: leave it unchecked and this document follows the default above; check it and this document keeps its own setting (the label then shows it, for example <em>Override for this document: Off</em>) no matter how you later change the default. Unchecking it makes the document follow the default again.</li>' +
         '</ul>') +
       T('Shareable or Not shareable',
@@ -18235,7 +18273,7 @@ function setupDeck() {
 
   // "Comments off" is only valid with zero comments, so a comment landing while it is selected must
   // surface the panel even when "Auto-open panel on comment" is off (see 06-preferences.js).
-  window.__cmhForcePanelOnComment = function () { return deckMode === "off"; };
+  cmhRegisterForcePanelOnComment(function () { return deckMode === "off"; });
 
   const nav = document.createElement("div");
   nav.className = "cm-skip cmh-deck-nav";
@@ -18303,8 +18341,14 @@ if (prunedCount > 0) {
 // A deck manages its own panel state from the persisted comment-model selection (applyDeckMode);
 // the document-flow auto-open below must not override it (that would force every deck with a
 // comment to open the panel, ignoring the reviewer's "panel closed" choice).
+// The load-time open honors "Auto-open panel on comment" as well: without that, a reviewer who
+// turned the preference off would still find the panel open on every RELOAD of any document they
+// had already commented on - the one reviewer the preference exists for.
 if (!IS_DECK) {
-  if (comments.length || (typeof checklistChanges === "function" && checklistChanges().length) || (typeof notesChanges === "function" && notesChanges().length)) openSidebar();
+  const _cmhHasPending = comments.length
+    || (typeof checklistChanges === "function" && checklistChanges().length)
+    || (typeof notesChanges === "function" && notesChanges().length);
+  if (_cmhHasPending && cmhShouldAutoOpenPanel()) openSidebar();
   else closeSidebar();
 }
 // Signals the nonshareable-mode bootstrap that the external runtime initialized, so

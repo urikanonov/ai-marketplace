@@ -43,10 +43,21 @@ function autoOpenPanelEnabled() {
 }
 // The deck's "Comments off" state is a present-only lock that is only valid with ZERO comments, so a
 // comment landing there must still surface the panel (issue #659) even when auto-open is off -
-// otherwise that comment is stranded behind a lock that now contradicts it. The deck registers this
-// hook at startup; a flow document has none.
+// otherwise that comment is stranded behind a lock that now contradicts it. The deck registers its
+// predicate here at startup; a flow document never registers one. This is a CLOSURE variable, not a
+// window global: the partials share one IIFE scope, so nothing outside the runtime can define it
+// and force the panel open against the reviewer's preference.
+let _cmhForcePanelPredicate = null;
+function cmhRegisterForcePanelOnComment(fn) {
+  _cmhForcePanelPredicate = (typeof fn === "function") ? fn : null;
+}
 function cmhPanelForcedOnComment() {
-  try {
-    return typeof window.__cmhForcePanelOnComment === "function" && !!window.__cmhForcePanelOnComment();
-  } catch (e) { return false; }
+  try { return !!(_cmhForcePanelPredicate && _cmhForcePanelPredicate()); } catch (e) { return false; }
+}
+// The single question every "should the panel open itself?" site asks: a saved comment, the
+// load-time restore, and the first note/checklist/widget change that raises a card. An EXPLICIT
+// Show/panel action never goes through here, and neither does the storage manager's pending-quota
+// auto-open.
+function cmhShouldAutoOpenPanel() {
+  return autoOpenPanelEnabled() || cmhPanelForcedOnComment();
 }
