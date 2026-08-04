@@ -1315,16 +1315,33 @@ class _BrowserBoundaries(_BrowserStartTag):
                 # fixed host drops them, so the same document read two ways.
                 return len(rawdata)
             return -1   # more input may still finish the tag
+        if not _TAG_NAME_START_RE.match(rawdata, i + 2):
+            # `</` followed by anything that is not an ASCII letter NEVER opens an end tag: a
+            # browser's end-tag-open state takes EOF as the TEXT `</`, `</>` as nothing at all,
+            # and everything else - `</ p>`, `<//>` - into the BOGUS COMMENT state, which ends at
+            # the first `>`. Resolved here rather than delegated, because the host disagrees with
+            # itself: `endtagfind` allowed whitespace after `</` before 3.13, so a terminated
+            # `</ main>` CLOSED an element on an older interpreter and was a comment on a newer
+            # one - the same document with a different element stack, and so a different cm-skip
+            # ancestry, `#commentRoot` scope and raw-text bookkeeping.
+            if i + 2 >= len(rawdata):
+                if not self._final:
+                    return -1       # more input may still name the tag
+                # TEXT, not an unterminated CONSTRUCT: the characters are emitted rather than
+                # swallowing the rest of the document, so `eof_unterminated` stays off here.
+                self.handle_data(rawdata[i:])   # a bare `</` at EOF is TEXT
+                return len(rawdata)
+            if rawdata.startswith("</>", i):
+                return i + 3        # "missing-end-tag-name": nothing is emitted at all
+            gt = rawdata.find(">", i + 2)
+            if gt < 0:
+                return self._unterminated(i + 2, self.handle_comment)
+            self.handle_comment(rawdata[i + 2:gt])
+            return gt + 1
         k = super().parse_endtag(i)
         if k >= 0 or not self._final:
             return k
-        if _TAG_NAME_START_RE.match(rawdata, i + 2):
-            return len(rawdata)         # EOF inside a real end tag: the tag is discarded
-        if i + 2 >= len(rawdata):
-            self.handle_data(rawdata[i:])       # a bare `</` at EOF is TEXT
-            return len(rawdata)
-        self.handle_comment(rawdata[i + 2:])    # `</` + junk opens a BOGUS COMMENT
-        return len(rawdata)
+        return len(rawdata)         # EOF inside a real end tag: the tag is discarded
 
     def _enter_cdata_mode(self, tag):
         # Off: this family enters raw text from its own handle_starttag (`_enter_raw_text`),

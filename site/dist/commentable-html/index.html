@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.660.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.661.1<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.661.1] - 2026-08-04</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The validator&#x27;s shared element boundaries no longer read a terminated <code>&lt;/</code> + whitespace end tag differently per interpreter (CMH-VAL-21). A browser&#x27;s end-tag-open state accepts only an ASCII letter as a tag name, so <code>&lt;/ p&gt;</code> and <code>&lt;//&gt;</code> open a BOGUS COMMENT that ends at the first <code>&gt;</code> and close nothing at all. <code>html.parser</code> agreed only from 3.13: before it, <code>endtagfind</code> allowed whitespace after <code>&lt;/</code>, and <code>_BrowserBoundaries.parse_endtag</code> delegated the terminated case to the host - so a stray <code>&lt;/ main&gt;</code> CLOSED an element on an older interpreter and was a comment on a newer one, which is one document with two element stacks, and so two cm-skip ancestries, two <code>#commentRoot</code> scopes and two raw-text bookkeepings. The case is now resolved explicitly (EOF is the text <code>&lt;/</code>, <code>&lt;/&gt;</code> emits nothing, everything else is a bogus comment), so every check that reads the element stack sees the same document on every host. An unterminated one (<code>&lt;/ x</code> at end of input) now also raises <code>eof_unterminated</code>, as every other unterminated construct already did.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.660.0] - 2026-08-04</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -505,6 +512,8 @@
               <li>The head boundary this check uses is now the one the HTML parser draws, in all three directions. Non-whitespace character data in the head pops the head and opens the body, so a policy <code>&lt;meta&gt;</code> written after it is a body child whose pragma never runs (and only ASCII whitespace counts, since a browser ends the head on a NBSP); an end tag named <code>body</code>, <code>html</code> or <code>br</code> is &quot;anything else&quot; in both the &quot;in head&quot; and &quot;after head&quot; modes and ends it the same way, while every other end tag in those modes is ignored and must not; and <code>&lt;/head&gt;</code> does not end it either, because the &quot;after head&quot; mode re-pushes the head element for a <code>base</code>/<code>link</code>/<code>meta</code>/<code>script</code>/<code>style</code>/<code>title</code>/ <code>template</code> start tag, so a meta written there really is a head child and discarding it would report a document that has a policy as having none.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.651.0] - 2026-08-04</h3></div>
             <div class="group-label">Fixed</div>
@@ -513,8 +522,6 @@
               <li>The sidebar&#x27;s expand-to-comment path now also restores the section caret&#x27;s accessible NAME, not just its <code>aria-expanded</code> and tooltip, so a caret whose section was manually collapsed and then reopened by jumping to a comment inside it is no longer announced as &quot;Expand section&quot; while its section is open (CMH-CORE-21).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.650.0] - 2026-08-04</h3></div>
             <div class="group-label">Fixed</div>
@@ -544,15 +551,7 @@
               <li>A <code>&lt;style&gt;</code> body a foreign-content BREAKOUT popped, or one that contains another <code>&lt;style&gt;</code>, no longer disappears from the CSS the offline and self-contained gates read (CMH-VAL-21). Once a foreign <code>&lt;script&gt;</code>/<code>&lt;style&gt;</code> holds markup, one can contain another and a breakout start tag can pop one before its own end tag arrives - and with one scalar capture per kind the inner element silently replaced the outer, so <code>&lt;svg&gt;&lt;style&gt;@import url(&quot;//evil.example/a.css&quot;);&lt;img&gt;</code> followed by an innocent <code>&lt;style&gt;</code> recorded only the innocent rule while a browser still fetched the import. Each capture is now depth-keyed on a stack, finalized wherever a browser ends the element (its own end tag, an ancestor&#x27;s, a breakout, end of input) rather than by end-tag NAME, so a stray <code>&lt;/style&gt;</code> no longer ends a capture no element of it ever opened either. Each capture collects only the text a browser reads as its OWN (the element must be the current node), the recorded bodies are restored to document order, the template-parked view is a depth-keyed stack finalized the same way - so a script NESTED in a parked one is recorded with its own attributes, where folding it into the outer inert record let the offline gate skip a network import the exporter really carries - and the NonShareable watchdog token now counts only from a script that OPENED outside the content region, so one an author left open across the content-end marker cannot stand in for the layer&#x27;s.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.600.0] - 2026-08-04</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The scanners OUTSIDE the validator&#x27;s <code>checks</code> package now fold every TAG and ATTRIBUTE name the way a browser folds it - ASCII-only - instead of with Python&#x27;s Unicode <code>str.lower()</code> or a bare <code>re.IGNORECASE</code>. U+212A KELVIN SIGN is the one character outside ASCII whose <code>str.lower()</code> is an ASCII letter (&quot;k&quot;) and U+017F LONG S is the one that lowercases to &quot;s&quot;, so the checklist and notes appliers, the favicon detection the retrofit and upgrade tools inject from, and the remaining authoring passes each read <code>&lt;lin\u212a&gt;</code> as a <code>&lt;link&gt;</code>, <code>&lt;/mar\u212a&gt;</code> as a <code>&lt;mark&gt;</code> closer and <code>data-cmh-chec\u212alist</code> as <code>data-cmh-checklist</code> - names a browser keeps distinct. That produced edits no browser can justify: an element treated as void so a note span or a checklist container never closed, a favicon that is not one, and a <code>data-comment-\u212aey</code> lookalike absorbing the write meant for the real attribute. They now derive from the same <code>BrowserTagNames</code> base the <code>checks</code> package uses, re-exported through the <code>tools/_browser_attrs.py</code> shim, and the few attribute maps and CSS selectors a tool still builds itself fold their names through the shim&#x27;s <code>ascii_lower()</code>.</li>
-              <li>The passes that REWRITE markup on a REGEX name match rather than through a parser now fold ASCII-only too, and assert the HTML name terminator instead of <code>\b</code>: the deck font fixer&#x27;s remote-<code>&lt;link&gt;</code> strip, the Shareable conversion&#x27;s companion, raw-text and layer-descriptor scans, and the upgrade masker&#x27;s raw-text closer. Bare <code>re.IGNORECASE</code> let all of them delete or rewrite a <code>&lt;lin\u212a&gt;</code> a browser loads nothing for, and an ASCII <code>\b</code> would in turn have accepted <code>&lt;link\u212a&gt;</code> (U+212A is a non-word character under <code>re.ASCII</code>) - the same over-match in the mirror direction. A closer keeps its tolerant tail, since a span is only entered through a real opening tag and an over-matching closer ends it early rather than rewriting an element a browser does not have. The guards that only REFUSE to write, or escape MORE, keep the wider Unicode fold, because over-matching costs nothing there while a pass that over-matches corrupts the document. A structural gate fails a NEW scanner outside <code>checks</code> that derives straight from <code>html.parser.HTMLParser</code> without supplying the fold itself, so the host fold cannot come back. Completes CMH-VAL-21 clause 7 across the whole tool surface.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">300 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">301 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -427,25 +427,13 @@ class DocParserMarkerProvenanceTests(unittest.TestCase):
                 self.seen.append((data, self.comment_raw, self.comment_is_bogus))
                 super().handle_comment(data)
 
-        bogus_here = ("<!x>", "<?x>", "<![CDATA[x]]>",
+        bogus_here = ("<!x>", "<?x>", "<![CDATA[x]]>", "</ x>", "<//>",
                       "<!x", "<?x", "</ x")     # the last three are unterminated at EOF
         for html in bogus_here:
             with self.subTest(html=html):
                 p = _Recorder(html)
                 p.parse_document(html)
                 self.assertTrue(p.seen, "%r must still produce a comment node" % html)
-                for _data, raw, is_bogus in p.seen:
-                    self.assertIsNone(raw, "%r must carry no comment source" % html)
-                    self.assertTrue(is_bogus)
-
-        # A TERMINATED `</` + junk is resolved by the HOST, which differs: before 3.13
-        # `endtagfind` allows whitespace after `</`, so `</ x>` is an END TAG there and no
-        # comment node exists at all (tracked separately). Either reading is safe here - what
-        # must hold is that a comment one of them DOES produce still carries no source.
-        for html in ("</ x>", "<//>"):
-            with self.subTest(html=html):
-                p = _Recorder(html)
-                p.parse_document(html)
                 for _data, raw, is_bogus in p.seen:
                     self.assertIsNone(raw, "%r must carry no comment source" % html)
                     self.assertTrue(is_bogus)
@@ -694,6 +682,149 @@ class DocParserEofTests(unittest.TestCase):
         self.assertEqual(parsing._parse_document(html).all_ids, ["live"])
         self.assertEqual(parsing._end_tag_close('</p a="x>y">z', 0), len('</p a="x>y">'))
         self.assertEqual(parsing._end_tag_close('</p a="x', 0), -1)
+
+
+_PRE_3_13_ENDTAGFIND = re.compile(r"</\s*([a-zA-Z][-.a-zA-Z0-9:_]*)\s*>")
+
+
+def _pre_3_13_parse_endtag(self, i):
+    """`html.parser`'s pre-3.13 END TAG reading, as a stub BASE.
+
+    `endtagfind` used to allow whitespace after `</`, so a terminated `</ x>` was an END TAG
+    there and a bogus COMMENT from 3.13 on. It is reproduced as the base METHOD rather than
+    mocked at module level because the host's internals were renamed in that same release
+    (`endtagfind` gave way to `endtagopen` + `locatetagend`), so patching either name pins the
+    behavior on one interpreter only. What is host-independent is the DELEGATION itself.
+
+    Only the `endtagfind` reading is reproduced, so this is a SENTINEL base, not a faithful
+    3.12: a shape a real 3.12 already resolved as a browser does (`<//>` reached its bogus
+    comment, `</>` its `i+3`) is answered here with `-1`. That is deliberate - the point is that
+    NOTHING in the `</` + non-letter family may reach the base at all, so any delegation of it
+    shows up as a wrong answer on every interpreter, not only on the one that got it wrong.
+    """
+    m = _PRE_3_13_ENDTAGFIND.match(self.rawdata, i)
+    if not m:
+        return -1
+    self.handle_endtag(m.group(1).lower())
+    self.clear_cdata_mode()
+    return m.end()
+
+
+class DocParserEndTagOpenTests(unittest.TestCase):
+    """`</` + anything that is not an ASCII letter never closes an element (CMH-VAL-21).
+
+    A browser's end-tag-open state takes only an ASCII letter as a tag name: `</>` emits
+    nothing, EOF emits the TEXT `</`, and everything else - `</ p>`, `<//>` - opens a BOGUS
+    COMMENT that ends at the first `>`. `html.parser` agreed only from 3.13; before it,
+    `endtagfind` allowed whitespace after `</`, so a stray `</ main>` CLOSED an element on an
+    older interpreter and was a comment on a newer one. That is one document with two element
+    stacks - and so two cm-skip ancestries, two `#commentRoot` scopes and two raw-text
+    bookkeepings - which is exactly the divergence this parser exists to remove.
+    """
+
+    CR = '<main id="commentRoot">'
+
+    class _Recorder(parsing._DocParser):
+        def __init__(self, html):
+            super().__init__(html)
+            self.comments_seen = []
+            self.end_tags_seen = []
+
+        def handle_comment(self, data):
+            self.comments_seen.append(data)
+            super().handle_comment(data)
+
+        def handle_endtag(self, tag):
+            self.end_tags_seen.append(tag)
+            super().handle_endtag(tag)
+
+    def _parse(self, html):
+        p = self._Recorder(html)
+        p.parse_document(html)
+        return p
+
+    def test_a_terminated_invalid_end_tag_open_is_a_bogus_comment(self):
+        # Driven with the PRE-3.13 reading installed as the base, so this is red on ANY host if
+        # `parse_endtag` goes back to delegating the terminated case - not just on the one
+        # interpreter whose own tables happen to disagree.
+        cases = (("</ x>", " x"), ("<//>", "/"), ("</ p>", " p"),
+                 ("</ BEGIN: commentable-html - CONTENT>", " BEGIN: commentable-html - CONTENT"))
+        with mock.patch.object(HTMLParser, "parse_endtag", _pre_3_13_parse_endtag):
+            for html, data in cases:
+                with self.subTest(html=html):
+                    p = self._parse(html)
+                    self.assertEqual(p.comments_seen, [data])
+                    self.assertEqual(p.end_tags_seen, [])
+                    self.assertFalse(p.content_region_opened)
+
+    def test_a_missing_end_tag_name_emits_nothing_and_does_not_stall(self):
+        # `</>` is the one invalid shape a browser drops silently: no comment, no end tag, and
+        # the markup after it is still live. The prose assertion pins the exact step - stopping
+        # one character late would eat the `b`.
+        with mock.patch.object(HTMLParser, "parse_endtag", _pre_3_13_parse_endtag):
+            p = self._parse(self.CR + '<p>a</>b</p><div id="live"></div></main>')
+        self.assertEqual(p.comments_seen, [])
+        self.assertEqual(p.all_ids, ["commentRoot", "live"])
+        self.assertEqual([t for t in p.commentroot_prose if t.strip()], ["a", "b"])
+        self.assertIn("p", p.end_tags_seen)
+
+    def test_markup_after_a_terminated_bogus_end_tag_is_live(self):
+        # The bogus comment ends at the FIRST `>`, so what follows is parsed, not swallowed.
+        with mock.patch.object(HTMLParser, "parse_endtag", _pre_3_13_parse_endtag):
+            p = self._parse('</ junk><div id="live"></div>')
+        self.assertEqual(p.comments_seen, [" junk"])
+        self.assertEqual(p.all_ids, ["live"])
+
+    def test_a_spaced_end_tag_does_not_close_the_comment_root(self):
+        # The browser-visible cost of the divergence, through the public parse: on a pre-3.13
+        # host `</ main>` closed the root and everything after it stopped being reviewable prose.
+        # Under the sentinel base, so it is red on ANY host - unmocked it passes on a 3.13 host
+        # whose own tables already agree, which would leave the user-visible clause unguarded.
+        html = self.CR + "inside</ main><p>still inside</p></main><p>outside</p>"
+        with mock.patch.object(HTMLParser, "parse_endtag", _pre_3_13_parse_endtag):
+            doc = parsing._parse_document(html)
+        self.assertEqual([t.strip() for t in doc.commentroot_prose if t.strip()],
+                         ["inside", "still inside"])
+
+    def test_an_unterminated_bogus_end_tag_runs_to_the_end_and_is_flagged(self):
+        # No `>` ever arrives, so the comment consumes the rest of the document - and, like every
+        # other unterminated construct (`<?x`, `<!x`, `<!-- x`), it raises `eof_unterminated`,
+        # which the noscript reconciliation reads to refuse a truncated document.
+        with mock.patch.object(HTMLParser, "parse_endtag", _pre_3_13_parse_endtag):
+            p = self._parse(self.CR + "hi</ x <div id='lost'")
+        self.assertEqual(p.comments_seen, [" x <div id='lost'"])
+        self.assertEqual(p.all_ids, ["commentRoot"])
+        self.assertTrue(p.eof_unterminated)
+
+    def test_an_incomplete_invalid_end_tag_open_waits_for_more_input(self):
+        # The EOF rules above are END-OF-INPUT rules; mid-stream the parser must still ask for
+        # more data, or an incremental caller loses a `</ x>` merely split across two feed()
+        # chunks. A TERMINATED one is not held back - it lands as soon as its `>` arrives.
+        with mock.patch.object(HTMLParser, "parse_endtag", _pre_3_13_parse_endtag):
+            for rawdata in ("</", "</ x"):
+                with self.subTest(rawdata=rawdata):
+                    p = self._Recorder("")
+                    p.rawdata = rawdata
+                    self.assertEqual(p.parse_endtag(0), -1)
+                    self.assertEqual(p.comments_seen, [])
+
+            html = "<p>a</ x>b</p>"
+            fed = self._Recorder(html)
+            for k in range(0, len(html), 2):
+                fed.feed(html[k:k + 2])
+            fed.close()
+        self.assertEqual(fed.comments_seen, [" x"])
+        self.assertEqual(fed.end_tags_seen, ["p"])
+
+    def test_a_spaced_end_tag_does_not_end_a_raw_text_body(self):
+        # The raw-text scan boundary is `</name` + whitespace / `/` / `>`, so `</ script>` never
+        # matches it and stays script BODY; outside raw text the same shape is a bogus comment.
+        html = '<script>a</ script>b</script></ script><div id="live"></div>'
+        with mock.patch.object(HTMLParser, "parse_endtag", _pre_3_13_parse_endtag):
+            p = self._parse(html)
+        self.assertEqual([s["body"] for s in p.scripts], ["a</ script>b"])
+        self.assertEqual(p.comments_seen, [" script"])
+        self.assertEqual(p.all_ids, ["live"])
 
 
 class DocParserHeadingEofTests(unittest.TestCase):
