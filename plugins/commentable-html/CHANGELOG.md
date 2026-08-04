@@ -4,6 +4,40 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.820.0] - 2026-08-07
+
+### Changed
+
+- Corrected the recorded REASON behind the meta-refresh network gate's `file:` separator arithmetic
+  and drive-letter exclusion by MEASURING a real Chromium, and widened the regression corpus that
+  pins it (CMH-VAL-08, CMH-OFFLINE-05). No runtime predicate changed in this release - the gate's
+  behavior was already right, since it reads the shared
+  `is_network_url`, so it inherits both the four-or-more-separator authority arm and the
+  `(?![A-Za-z][:|])` drive-letter exclusion - but the comment explaining WHY said the long run is an
+  empty-host file URL that the platform, not the URL parser, resolves off the machine. Measured in
+  Chromium 149, that is not what happens: `file:////evil.example/x.html` parses to host
+  `evil.example` and re-serializes as `file://evil.example/x.html`, while a spec-conformant parser
+  takes the WHATWG file-host state's EMPTY host and leaves `//evil.example/x.html` as the path. The
+  count is empirical precisely BECAUSE Chromium deviates from the standard here, which is the one
+  thing a future reader has to know before "simplifying" the arm back to `two or more`. Corrected in
+  both predicate comments in the validator and in the exporter's mirror of the same rule. The same
+  measurement also bounds the claim: the two counted arms are NOT an exhaustive enumeration, since
+  Chromium opens an authority at ZERO and ONE separator too (`file:host/x` and `file:/host/x` both
+  parse to host `host`) - but only when parsed ABSOLUTE: against the `file:` base a document
+  actually has, both inherit that base's host and are local, so they carry no authority of their own
+  and the two counted arms are exactly the base-INDEPENDENT set. Every surface now records that
+  bound and points at issue #1229, which tracks whether any surface makes the inherited host
+  reachable, so the arithmetic cannot be re-read as either settled or exhaustive. The
+  meta-refresh corpora now pin both directions with the spellings the rule turns on: the backslash
+  and mixed spellings of the long run (`file:\\\\host\x`, `file:/\/\host/x`), which the bespoke
+  predicate this replaced read as local; a drive letter with NO separator after the `:` or `|`
+  (`file://c:evil.example/x`, `file://C:foo/x`), which it named a beacon and which Chromium resolves
+  to `file:///C:/...`; and a drive letter BEHIND the long run (`file:////C:/x`), so the wide arm
+  cannot smuggle a local path into the beacon message. They also add the controls the claim needs to
+  be falsifiable: the THREE-separator local path the two-versus-four boundary rests on, the long-run
+  `localhost` exclusion at four and five separators (the case the anti-backtracking `(?!/)` exists
+  for) and in its percent-encoded spelling, an empty authority, and a percent-encoded separator.
+
 ## [1.819.0] - 2026-08-06
 
 ### Fixed

@@ -477,14 +477,29 @@ class NewCheckTests(unittest.TestCase):
         # Every refresh is rejected, so what is left to get wrong is WHICH message the rejection
         # carries - and the bespoke pattern that decided it drifted from the shared
         # `is_network_url` every other egress gate reads, in BOTH directions. The
-        # four-or-more-separator `file:` spelling is an EMPTY-host file URL whose UNC-shaped path a
-        # real Chromium on Windows was measured resolving off the machine - the platform, not the
-        # URL parser, opens that authority - so the attribute gate counts it and the bespoke arms,
-        # which read exactly two separators, called it local. In the other direction a Windows DRIVE
-        # LETTER is turned into a path by the file-host state, so `file://C:/x.html` reaches no host
-        # at all and must not be named a beacon.
+        # four-or-more-separator `file:` spelling is a REAL AUTHORITY to Chromium: measured in
+        # Chromium 149, `new URL("file:////evil.example/x.html")` has host `evil.example` and
+        # re-serializes as `file://evil.example/x.html`, where a spec-conformant parser (ada, in
+        # Node 24) takes the WHATWG file-host state's EMPTY host and leaves `//evil.example/x.html`
+        # as the path. That deviation is why the separator arithmetic is empirical and is not "two
+        # or more" - the attribute gate counts the spelling, and the bespoke arms, which read
+        # exactly two separators, called it local. The counted arms are the BASE-INDEPENDENT set:
+        # measured in the same Chromium 149, a ZERO- or ONE-separator spelling reaches host
+        # `evil.example` only when parsed ABSOLUTE, and against the `file:` base a document actually
+        # has it inherits that base's host and is local, so it carries no authority of its own
+        # (issue #1229). The THREE-separator control below pins the boundary that IS claimed. In the
+        # other direction a Windows DRIVE LETTER is
+        # turned into a path, so `file://C:/x.html` reaches no host at all and must not be named a
+        # beacon.
         for content in ("0;url=file:////evil.example/x.html",
-                        "0;url=file://///evil.example/x.html"):
+                        "0;url=file://///evil.example/x.html",
+                        # The BACKSLASH and MIXED spellings of that same long run. A special
+                        # scheme's authority-slash states treat `\` like `/`, so these normalize
+                        # into the four-separator form above - and the bespoke arms, whose only
+                        # backslash handling was a two-separator `[/\\]{2}`, read every one of them
+                        # as local.
+                        r"0;url=file:\\\\evil.example\x.html",
+                        r"0;url=file:/\/\evil.example/x.html"):
             with self.subTest(content=content):
                 doc = with_offline_mode(build(body=self._body(
                     MAIN, '<meta http-equiv="refresh" content="%s">' % content)))
@@ -506,7 +521,52 @@ class NewCheckTests(unittest.TestCase):
                 errors, _ = self._errs_warns(doc)
                 self.assertTrue(any("points at a network URL" in e for e in errors),
                                 "expected the beacon wording for %r, got %r" % (content, errors))
-        for content in ("0;url=file://C:/x.html", "0;url=file://c|/x.html"):
+        for content in ("0;url=file://C:/x.html", "0;url=file://c|/x.html",
+                        # The drive-letter test deliberately does NOT require a separator after the
+                        # `:` or `|`, matching the attribute predicate's `(?![A-Za-z][:|])`: measured
+                        # in Chromium 149, `file://c:evil.example/x.html` is the local file
+                        # `file:///C:/evil.example/x.html` and `file://C:foo/x.html` is
+                        # `file:///C:/foo/x.html` - both empty-host - while a spec-conformant parser
+                        # rejects both outright (neither buffer is a two-code-point drive letter to
+                        # it, and `:` is a forbidden host code point). Demanding the separator
+                        # named every one of them a beacon it never reaches.
+                        "0;url=file://c:evil.example/x.html",
+                        "0;url=file://C:foo/x.html",
+                        "0;url=file://c|foo/x.html",
+                        # A drive letter BEHIND the long run stays a drive letter: the exclusion is
+                        # applied after either separator arm, so the four-or-more spelling above
+                        # does not smuggle a local path into the beacon message.
+                        "0;url=file:////C:/x.html",
+                        "0;url=file://///c|/x.html",
+                        # THREE separators is the control for the claim above: it is the EMPTY host
+                        # of an ordinary local path in both Chromium and a spec-conformant parser,
+                        # so it must stay local even though four is an authority. Without it a
+                        # regression that read the run as `/{3,}` would pass the corpus.
+                        "0;url=file:///evil.example/x.html",
+                        # `localhost` is excluded whatever the separator count, so the long-run arm
+                        # must not name the local machine a beacon. Five separators is the case the
+                        # `(?!/)` after the run exists for: a greedy `/{4,}` that could give a slash
+                        # back would fail the exclusion and report this.
+                        "0;url=file:////localhost/x.html",
+                        "0;url=file://///localhost/x.html",
+                        # The exclusion reads PERCENT-ENCODED spellings too, which is what keeps it
+                        # in step with the parser: Chromium 149 gives `file:////local%68ost/x.html`
+                        # the host `localhost`, the same excluded host as the plain spelling.
+                        "0;url=file:////local%68ost/x.html",
+                        # An authority the value TERMINATES immediately reaches no host, so the arms
+                        # all require a non-empty one. The two shapes differ in the parser and the
+                        # gate treats both as local: `file://` is the empty host of the local root
+                        # (`file:///`), while `file://?q` and `file://#f` are a parse FAILURE in
+                        # Chromium 149 - nothing a browser fetches from either way.
+                        "0;url=file://?q",
+                        "0;url=file://#f",
+                        "0;url=file://",
+                        # A percent-encoded SEPARATOR does not open an authority: `%2F` stays a path
+                        # character, so against a `file:` base Chromium 149 resolves this to
+                        # `file:///C:/docs/%2F%2Fevil.example/x.html`. Both letter cases are pinned
+                        # because the exclusion the arms read is case-insensitive.
+                        "0;url=file:%2F%2Fevil.example/x.html",
+                        "0;url=file:%2f%2fevil.example/x.html"):
             with self.subTest(content=content):
                 doc = with_offline_mode(build(body=self._body(
                     MAIN, '<meta http-equiv="refresh" content="%s">' % content)))
@@ -561,6 +621,8 @@ class NewCheckTests(unittest.TestCase):
                         "0;url=https: ",
                         "0;url=file:///C:/x.html",
                         "0;url=file://localhost/x.html",
+                        # The ZERO-separator control that guards the issue #1229 bound: a widening
+                        # that started counting it would flip this row. Keep it here.
                         "0;url=file:notes.html",
                         "0;url=http\u017f://evil.example"):
             doc = with_offline_mode(build(body=self._body(
