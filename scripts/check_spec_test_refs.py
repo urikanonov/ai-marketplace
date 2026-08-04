@@ -27,8 +27,8 @@ Four directions are checked:
   feature id (`UTF-8`, `SHA-256`), so a title must not carry one incidentally - rename the test.
 - DUPLICATE (`check_duplicate_feature_ids`): a feature id carried by test titles in MORE THAN ONE
   file must have every one of those titles cited by a spec row that owns the id, so a new test
-  cannot quietly borrow an id another file already owns. It reads the WHOLE test corpus, not just
-  the reverse-mapped part. Three rules bound it:
+  cannot quietly borrow an id another file already owns. It reads the WHOLE JS test corpus, not
+  just the reverse-mapped part. Three rules bound it:
   - While an id lives in ONE file this direction demands no citation, unconditionally. That
     relaxation used to be load-bearing (the `*.spec.*` corpus was not reverse-mapped, so nothing
     else asked for those citations). For a FULLY mapped target it is not: the reverse direction
@@ -108,7 +108,7 @@ SPEC_TARGETS = (
 FLAT_PYTHON_SUITES: frozenset[Path] = frozenset({
     (REPO_ROOT / "scripts" / "SPEC.md").resolve(),
 })
-# Specs whose ENTIRE test corpus is reverse-mapped, not just the `*.test.*` / regressions subset.
+# Specs whose ENTIRE JS test corpus is reverse-mapped, not just the `*.test.*` / regressions subset.
 # A spec joins this set once every feature id its tests carry is owned and cited by it; see the
 # module docstring. Every SPEC_TARGETS entry with a JS corpus is listed - the set remains the
 # graduation mechanism for a target added later, not a standing exemption for any shipped one.
@@ -164,6 +164,10 @@ _HEADING_RE = re.compile(r" {0,3}#{1,6}\s+(.*?)\s*#*\s*$")
 _INDENTED_CODE_RE = re.compile(r" {4,}\S")
 _NON_FEATURE_SECTIONS = ("doc-surface registry",)
 _NON_FEATURE_TABLE_HEADERS = ("doc surface",)
+# How a row records coverage that is deliberately not automated (AGENTS.md keeps `manual` for a
+# behavior that cannot be). The marker must OPEN the cell and be followed by a separator or end,
+# so a sentence that merely begins "Manual verification covers ..." is prose, not a declaration.
+_MANUAL_COVERAGE_RE = re.compile(r"^[`*_~]*(?:manual|partial)[`*_~]*\s*(?:[-:;]|$)", re.IGNORECASE)
 _JS_TITLE_RE = re.compile(
     r'(?:test\.describe(?:\.(?:only|skip|fixme|fail|serial|parallel))*|'
     r'(?:test|it|describe)(?:\.(?:only|skip|fixme|fail|serial|parallel))*)\s*\(\s*'
@@ -603,7 +607,8 @@ def _tests_dir(spec_path: Path, base_dir: Path) -> Path | None:
     """
     if _is_flat_python_suite(spec_path):
         parent = spec_path.parent
-        return parent if parent.is_dir() and any(parent.glob(_PY_TEST_GLOB)) else None
+        return parent if any(
+            path.is_file() for path in parent.glob(_PY_TEST_GLOB)) else None
     for candidate in (spec_path.parent / "tests", base_dir / "tests"):
         if candidate.is_dir():
             return candidate
@@ -623,8 +628,11 @@ def _carries_js_titles(path: Path) -> bool:
     a flat `scripts/test_*.py` corpus is full of feature-id-SHAPED fixture strings written for the
     checkers' own unit tests, and a JS fixture embedded in a Python string would be read as a real
     declaration. So both directions are bounded to the files whose grammar they actually parse.
+
+    The suffix is folded to lower case because `_JS_TEST_FILE_RE` admits `foo.spec.JS`: a corpus
+    file the two directions read must not fall out of them on a spelling `_test_corpus` accepts.
     """
-    return path.suffix in _JS_SUFFIXES
+    return path.suffix.lower() in _JS_SUFFIXES
 
 
 def _test_corpus(spec_path: Path, base_dir: Path) -> tuple[Path, ...]:
@@ -877,9 +885,38 @@ def _clause_end(text: str, start: int, default_end: int) -> int:
     return default_end
 
 
+def _check_flat_python_rows(spec_path: Path) -> list[SpecIssue]:
+    """Every feature row of a flat Python target must NAME a test, or declare manual coverage.
+
+    The rest of the forward direction validates the references it FINDS, so a row citing nothing at
+    all passed - the promise-without-coverage the per-suite checks this registry replaced used to
+    refuse. A JS target is caught from the other side: its tests carry the feature id in their
+    titles and the reverse direction demands the citation. A Python test is a `Class.method` name
+    that cannot carry an id, so here the ROW has to carry it. `manual` keeps the documented escape
+    hatch for a behavior that genuinely cannot be automated.
+    """
+    issues: list[SpecIssue] = []
+    for line_no, feature_id, cells, well_formed in _feature_rows(spec_path)[0]:
+        if not well_formed:
+            continue
+        coverage = cells[-1].strip()
+        if _TEST_PATH_RE.search(coverage) or _MANUAL_COVERAGE_RE.match(coverage):
+            continue
+        issues.append(SpecIssue(
+            spec_path,
+            line_no,
+            "row `%s` names no covering test; cite a `scripts/test_*.py` suite followed by ` - ` "
+            "and an exact test method, or record `manual` coverage and list the row under "
+            "\"Coverage gaps\"" % feature_id,
+        ))
+    return issues
+
+
 @_scoped
 def check_spec(spec_path: Path, base_dir: Path) -> list[SpecIssue]:
     issues: list[SpecIssue] = []
+    if _is_flat_python_suite(spec_path):
+        issues.extend(_check_flat_python_rows(spec_path))
     text = _read(spec_path)
     # Scans every table row, not only feature rows, so a citation anywhere in the spec is checked -
     # but through the shared fence state machine, so a sample table inside a code block is never
@@ -917,6 +954,17 @@ def check_spec(spec_path: Path, base_dir: Path) -> list[SpecIssue]:
                 continue
             after_ref = coverage[match.end():]
             if not re.match(r"\s+-\s+", after_ref):
+                if _is_flat_python_suite(spec_path):
+                    # A flat Python target gets NO reverse direction (its `Class.method` names
+                    # cannot carry a feature id), so the citation is the only gate this row has.
+                    # A bare file reference would otherwise pass while naming no test at all -
+                    # exactly what the per-suite checks this registry replaced used to refuse.
+                    issues.append(SpecIssue(
+                        spec_path,
+                        line_no,
+                        "`%s` is cited with no ` - ` clause naming a test; a flat Python target "
+                        "has no reverse direction, so name at least one exact test method" % rel,
+                    ))
                 continue
             next_ref = matches[idx + 1].start() if idx + 1 < len(matches) else len(coverage)
             end = _clause_end(coverage, match.end(), next_ref)

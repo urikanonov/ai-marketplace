@@ -1296,6 +1296,108 @@ class FlatPythonSuiteTests(unittest.TestCase):
         with mock.patch.object(refs, "FLAT_PYTHON_SUITES", frozenset({spec.resolve()})):
             self.assertEqual([], refs.check_duplicate_feature_ids(((spec, self.root),)))
 
+    def test_a_bare_file_citation_with_no_test_names_fails(self):
+        # The gap the per-suite checks this registry replaced used to cover: a row that points at a
+        # real suite but names nothing in it. A JS target is caught from the other side (the
+        # reverse direction demands the citation), but a flat Python target has no other side.
+        spec = self._spec((("GUARD-01", "`scripts/test_check_forbidden_files.py`"),))
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("is cited with no ` - ` clause naming a test", messages[0])
+
+    def test_a_bare_file_citation_is_still_allowed_for_a_js_target(self):
+        # The same shape is legitimate in a JS spec, which records partial or manual coverage that
+        # way ("partial - `tests/16-formatting.spec.js` verifies ..."), so the new demand must not
+        # leak outside the flat Python shape.
+        base = self.sandbox / "js-base"
+        (base / "tests").mkdir(parents=True)
+        (base / "tests" / "demo.spec.js").write_text(
+            "test('a behavior (DEMO-01)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = base / "SPEC.md"
+        spec.write_text(
+            "# Spec\n\n"
+            "| Feature id | Behavior | Covering tests |\n"
+            "| --- | --- | --- |\n"
+            "| DEMO-01 | Demo behavior. | partial - `tests/demo.spec.js` covers the happy path |\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+
+        self.assertEqual([], refs.check_spec(spec, base))
+
+    def test_a_row_that_cites_nothing_at_all_fails(self):
+        # The other half of the same gap: not a bare FILE reference but no reference at all. A JS
+        # target is caught from the other side (its test titles carry the id); a Python
+        # `Class.method` name cannot, so the row itself must name the test.
+        spec = self._spec((("GUARD-01", "Manual verification covers the behavior."),))
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("row `GUARD-01` names no covering test", messages[0])
+
+    def test_a_row_may_still_record_manual_coverage(self):
+        # AGENTS.md keeps `manual` for a behavior that genuinely cannot be automated, so the row
+        # rule must demand a NAMED test rather than forbid the documented escape hatch.
+        spec = self._spec((("GUARD-01", "`manual` - an agent-behavior convention, not automatable"),))
+
+        self.assertEqual([issue.format() for issue in self._check_all(spec)], [])
+
+    def test_a_directory_named_like_a_test_file_is_not_a_suite(self):
+        # `_test_corpus` skips a directory, so accepting one here would hand back an empty corpus
+        # while reporting the target as located - the silent no-op the fail-closed branch exists
+        # to prevent.
+        bare = self.sandbox / "dir-suite"
+        (bare / "test_not_a_file.py").mkdir(parents=True)
+        spec = bare / "SPEC.md"
+        spec.write_text("# Spec\n", encoding="utf-8", newline="\n")
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("no tests directory found for this target", messages[0])
+
+    def test_an_uppercase_extension_still_carries_js_titles(self):
+        # `_JS_TEST_FILE_RE` admits `foo.spec.JS`, so such a file IS in the corpus; bounding the
+        # JS-title directions by a case-SENSITIVE suffix would have let it evade both of them.
+        base = self.sandbox / "shouty"
+        (base / "tests").mkdir(parents=True)
+        carrier = base / "tests" / "loud.SPEC.JS"
+        carrier.write_text(
+            "test('an unowned behavior (ORPHAN-99)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = base / "SPEC.md"
+        spec.write_text(
+            "# Spec\n\n"
+            "| Feature id | Behavior | Covering tests |\n"
+            "| --- | --- | --- |\n"
+            "| DEMO-01 | Demo behavior. | `tests/loud.SPEC.JS` - "
+            "`an unowned behavior (ORPHAN-99)` |\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+
+        self.assertTrue(refs._carries_js_titles(carrier))
+        self.assertIn(
+            "feature id `ORPHAN-99` has no spec row",
+            [issue.message for issue in refs.check_test_id_mappings(spec, base, (carrier,))],
+        )
+
+    def test_every_flat_python_suite_is_a_registered_target(self):
+        # A `FLAT_PYTHON_SUITES` entry that is not also in `SPEC_TARGETS` is dead weight: nothing
+        # would ever ask for its tests directory, so the registration would look done and check
+        # nothing.
+        registered = {spec.resolve() for spec, _base in refs.SPEC_TARGETS}
+
+        self.assertLessEqual(refs.FLAT_PYTHON_SUITES, registered)
+
     def test_the_scripts_spec_is_a_registered_flat_python_target(self):
         spec = (self.root / "scripts" / "SPEC.md").resolve()
 
