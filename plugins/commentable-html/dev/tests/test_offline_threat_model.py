@@ -22,15 +22,15 @@ SEC_SPEC = os.path.join(_paths.DEV, "spec", "50-security.md")
 # in 68-export-offline.js, which neutralizes it for exactly that reason) and `frame-ancestors` is
 # ignored in a meta policy outright. Asserting them would let the threat model claim an enforcement
 # the browser does not actually provide - the overclaim this suite exists to prevent.
-ENFORCING_DIRECTIVES = (
-    "default-src 'none'",
-    "connect-src 'none'",
-    "frame-src 'none'",
-    "object-src 'none'",
-    "img-src data:",
-    "font-src data:",
-    "form-action 'none'",
-)
+ENFORCING_DIRECTIVES = {
+    "default-src": ["'none'"],
+    "connect-src": ["'none'"],
+    "frame-src": ["'none'"],
+    "object-src": ["'none'"],
+    "img-src": ["data:"],
+    "font-src": ["data:"],
+    "form-action": ["'none'"],
+}
 
 # Channels no stamped directive governs, where the parser-level strip is the ONLY enforcement. A gap
 # in these is a real egress bug, so the threat model must keep naming them as in-scope rather than
@@ -54,6 +54,21 @@ def _exported_csp():
     return m.group(1)
 
 
+def _csp_directives():
+    """The stamped policy as {directive: [source, ...]}, so a source list can be checked EXACTLY.
+
+    A substring test is not sufficient here: `connect-src 'none' https:` contains the text
+    "connect-src 'none'" while CSP ignores `'none'` beside another source and allows HTTPS. Since
+    this suite is the backstop for dismissing a whole issue class, the source list must match.
+    """
+    out = {}
+    for clause in _exported_csp().split(";"):
+        parts = clause.split()
+        if parts:
+            out[parts[0].lower()] = parts[1:]
+    return out
+
+
 def _sec_06_row():
     for line in _read(SEC_SPEC).splitlines():
         if line.startswith("| CMH-SEC-06 |"):
@@ -64,15 +79,31 @@ def _sec_06_row():
 class OfflineThreatModelTests(unittest.TestCase):
     def test_the_offline_csp_still_enforces_every_directive_the_threat_model_names(self):
         """CMH-SEC-06: the declared enforcement boundary is the CSP the exporter really stamps."""
-        csp = _exported_csp()
-        for directive in ENFORCING_DIRECTIVES:
+        stamped = _csp_directives()
+        for directive, sources in ENFORCING_DIRECTIVES.items():
             self.assertIn(
-                directive,
-                csp,
-                "CMH-SEC-06 declares fetch egress enforced by the CSP, but the exporter no longer"
-                " stamps " + directive + ". Either restore it or re-open the issue class the"
-                " threat model closed - do not leave the spec claiming an enforcement that is gone.",
+                directive, stamped,
+                "CMH-SEC-06 leans on " + directive + ", but the exporter no longer stamps it."
+                " Either restore it or re-open the issue class the threat model closed - do not"
+                " leave the spec claiming an enforcement that is gone.",
             )
+            self.assertEqual(
+                sources, stamped[directive],
+                "CMH-SEC-06 leans on " + directive + " being exactly " + " ".join(sources) +
+                ", but it is now " + " ".join(stamped[directive]) + ". An extra source silently"
+                " widens the policy (CSP ignores 'none' beside another source), which reopens the"
+                " very class this row dismisses.",
+            )
+
+    def test_the_row_does_not_authorize_regressing_pinned_strip_behavior(self):
+        """CMH-SEC-06: strip behavior a test already pins stays a requirement, not a dismissal."""
+        row = _sec_06_row()
+        # CMH-OFFLINE-05's browser specs deliberately re-test with every CSP meta removed to prove
+        # the strip ALONE. The threat model must refine that contract, never override it.
+        self.assertIn("PRIMARY", row)
+        self.assertIn("NOT a licence to regress", row)
+        self.assertIn("is a REQUIREMENT", row)
+        self.assertIn("defense in depth", row)
 
     def test_the_spec_declares_the_offline_threat_model_and_its_non_goals(self):
         """CMH-SEC-06: the offline threat model and its three non-goals are written down."""
