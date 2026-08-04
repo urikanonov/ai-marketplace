@@ -243,6 +243,163 @@ class DensityAdvisoryTests(unittest.TestCase):
         self.assertTrue(density.check_density(_doc_body(body))[1],
                         "a stray unmatched </section> must not suppress a genuine wall")
 
+    def test_cmh_val_15_template_paragraphs_are_inert(self):
+        # A <template>'s contents live in an inert DocumentFragment a browser never renders, so
+        # parked paragraphs are markup an author is SHOWING, not prose a reader can restructure.
+        inner = "<template>%s</template>" % (_p(LONG) * 6)
+        self.assertEqual(density.check_density(_doc(inner))[1], [],
+                         "paragraphs parked inside a <template> must not count as prose")
+
+    def test_cmh_val_15_unclosed_template_swallows_the_rest(self):
+        # An unclosed <template> is never closed by a browser either: everything to the end of the
+        # input stays in the inert fragment, so nothing after it counts.
+        inner = "<template>%s" % (_p(LONG) * 6)
+        self.assertEqual(density.check_density(_doc(inner))[1], [],
+                         "an unclosed <template> must keep the rest of the input inert")
+
+    def test_cmh_val_15_template_heading_does_not_label_a_wall(self):
+        # A heading parked in a template is not the heading a reader sees, so a real wall after it
+        # keeps the enclosing section's own label.
+        inner = "<template><h2>Parked</h2></template>" + _p(LONG) * 4
+        _errors, warnings = density.check_density(_doc(inner))
+        self.assertTrue(warnings, "the real wall after the template must still be reported")
+        self.assertTrue(all("Parked" not in w for w in warnings),
+                        "a template-parked heading must not label the section")
+
+    def test_cmh_val_15_template_does_not_break_a_real_wall(self):
+        # A template renders nothing, so it cannot visually break up a wall - neither the element
+        # itself nor a layout block or heading parked inside it may reset the run.
+        inner = (_p(LONG) * 2
+                 + "<template><table><tr><td>x</td></tr></table><h3>Sub</h3></template>"
+                 + _p(LONG) * 2)
+        self.assertTrue(density.check_density(_doc(inner))[1],
+                        "an inert template between paragraphs must not break the prose run")
+
+    def test_cmh_val_15_template_end_tag_does_not_close_an_outer_element(self):
+        # An end tag inside the fragment must not reach an element opened outside it: a parked
+        # </main> must not retire the content root and end the run early.
+        inner = "<template></main></template>" + _p(LONG) * 4
+        self.assertTrue(density.check_density(_doc(inner))[1],
+                        "a template-parked end tag must not close the content root")
+
+    def test_cmh_val_15_template_kind_meta_does_not_set_the_scope(self):
+        # The kind meta the browser applies is the live one; an inert copy must not flip the scope
+        # (the same rule the document parser applies).
+        html = (
+            '<!doctype html><html><head><template>'
+            '<meta name="commentable-html-kind" content="slides" /></template>'
+            '<meta name="commentable-html-kind" content="report" /></head>'
+            '<body><main id="commentRoot" data-cmh-content-root><h1>Title</h1>'
+            "<section><h2>Section</h2>%s</section></main></body></html>" % (_p(LONG) * 4)
+        )
+        self.assertTrue(density.check_density(html)[1],
+                        "a template-parked kind meta must not exempt a real report")
+
+    def test_cmh_val_15_self_closed_template_still_opens_the_fragment(self):
+        # HTML5 ignores a trailing slash on a non-void tag, so `<template/>` OPENS the fragment
+        # rather than opening and closing it.
+        inner = "<template/>%s" % (_p(LONG) * 6)
+        self.assertEqual(density.check_density(_doc(inner))[1], [],
+                         "a self-closed <template/> must still open the inert fragment")
+
+    def test_cmh_val_15_mixed_case_template_is_inert(self):
+        inner = "<TEMPLATE>%s</TEMPLATE>" % (_p(LONG) * 6)
+        self.assertEqual(density.check_density(_doc(inner))[1], [],
+                         "a browser folds a tag name ASCII-case-insensitively")
+
+    def test_cmh_val_15_nested_templates_stay_inert_until_both_close(self):
+        # The inner `</template>` must not re-activate the pass while the outer one is open.
+        still_open = "<template><template></template>" + _p(LONG) * 6
+        self.assertEqual(density.check_density(_doc(still_open))[1], [],
+                         "an inner </template> must not close the outer fragment")
+        both_closed = "<template><template></template></template>" + _p(LONG) * 4
+        self.assertTrue(density.check_density(_doc(both_closed))[1],
+                        "prose after BOTH templates close is live again")
+
+    def test_cmh_val_15_stray_close_template_does_not_corrupt_the_stack(self):
+        # A dangling </template> with no matching open must not disturb the live document.
+        inner = "</template>" + _p(LONG) * 4
+        self.assertTrue(density.check_density(_doc(inner))[1],
+                        "a stray unmatched </template> must not suppress a genuine wall")
+
+    def test_cmh_val_15_template_does_not_split_an_open_paragraph(self):
+        # `<p>a<template>x</template>b</p>` is one "ab" paragraph to a browser. Each HALF is
+        # below the long-paragraph floor, so this wall fires only if the two halves stay ONE
+        # paragraph - which pins the deliberate no-flush choice on entering a template.
+        half = LONG[:len(LONG) // 2]
+        para = "<p>%s<template>parked</template>%s</p>" % (half, half)
+        self.assertTrue(density.check_density(_doc(para * 4))[1],
+                        "an inline template must not split the paragraph around it")
+
+    def test_cmh_val_15_template_token_in_raw_text_is_not_a_tag(self):
+        # Raw-text and RCDATA content is prose a reader SEES, so a `<template>` written inside
+        # <title>/<textarea>/<noscript> is text, not a tag, and cannot switch the pass off. The
+        # boundary is installed here rather than taken from the host, whose raw-text table
+        # differs by interpreter (CMH-VAL-21).
+        for parked in ("<title>Using <template> in reports</title>",
+                       "<title>Using <template> in reports</title data-x>",
+                       "<textarea><template></textarea/>",
+                       "<textarea><template></textarea>",
+                       "<noscript><template/></noscript foo>",
+                       "<noscript><template/></noscript>"):
+            inner = parked + _p(LONG) * 4
+            self.assertTrue(density.check_density(_doc(inner))[1],
+                            msg="a <template> token inside %s is text, not a tag" % parked)
+
+        # A raw-text element the author never closed runs to EOF in a browser, so a `<template>`
+        # inside it stays text and there is no live prose left to count either way.
+        self.assertEqual(density.check_density(_doc("<textarea><template>" + _p(LONG) * 4))[1], [],
+                         "an unclosed raw-text element runs to EOF")
+
+    def test_cmh_val_15_template_parked_script_body_does_not_close_the_fragment(self):
+        # A `</template>` inside a parked <script> body is script text, not the fragment's closer.
+        inner = "<template><script>var s='</template>';</script>%s</template>" % (_p(LONG) * 6)
+        self.assertEqual(density.check_density(_doc(inner))[1], [],
+                         "a </template> inside a script body must not close the fragment")
+
+    def test_cmh_val_15_declarative_shadow_root_template_is_not_inert(self):
+        # A declarative shadow root is the one <template> a browser DOES render: it is attached
+        # as the host's shadow tree, so its prose is a wall a reader actually sees.
+        for mode in ("open", "closed", "OPEN", "op&#x65;n"):
+            inner = '<template shadowrootmode="%s">%s</template>' % (mode, _p(LONG) * 4)
+            self.assertTrue(density.check_density(_doc(inner))[1],
+                            msg="shadowrootmode=%s renders, so its prose counts" % mode)
+        # `shadowrootmode` is an ENUMERATED attribute: an unrecognized value, or one padded with
+        # whitespace, attaches nothing, so the fragment stays inert.
+        for mode in ("nope", " open", "open ", "open\u00a0"):
+            inner = '<template shadowrootmode="%s">%s</template>' % (mode, _p(LONG) * 6)
+            self.assertEqual(density.check_density(_doc(inner))[1], [],
+                             msg="shadowrootmode=%r attaches nothing and stays inert" % mode)
+
+    def test_cmh_val_15_only_the_first_shadow_root_on_a_host_renders(self):
+        # A host element gets ONE declarative shadow root; a second template[shadowrootmode]
+        # under the same parent stays an ordinary inert template, so its prose is not a wall.
+        inner = ('<div><template shadowrootmode="open"><p>short</p></template>'
+                 '<template shadowrootmode="open">%s</template></div>' % (_p(LONG) * 6))
+        self.assertEqual(density.check_density(_doc(inner))[1], [],
+                         "only the first declarative shadow root on a host is rendered")
+
+    def test_cmh_val_15_shadow_root_inside_a_template_stays_inert(self):
+        # Its host is itself inside a fragment a browser never renders, so no shadow tree is
+        # ever attached.
+        inner = '<template><div><template shadowrootmode="open">%s</template></div></template>' % (
+            _p(LONG) * 6)
+        self.assertEqual(density.check_density(_doc(inner))[1], [],
+                         "a shadow root parked inside an inert template is inert too")
+
+    def test_cmh_val_15_shadow_root_kind_meta_does_not_set_the_scope(self):
+        # A browser renders a shadow tree but never applies its metadata to the document, so a
+        # kind meta parked in one must not decide whether the advisory runs.
+        html = (
+            '<!doctype html><html><head><div><template shadowrootmode="open">'
+            '<meta name="commentable-html-kind" content="slides" /></template></div>'
+            '<meta name="commentable-html-kind" content="report" /></head>'
+            '<body><main id="commentRoot" data-cmh-content-root><h1>Title</h1>'
+            "<section><h2>Section</h2>%s</section></main></body></html>" % (_p(LONG) * 4)
+        )
+        self.assertTrue(density.check_density(html)[1],
+                        "a shadow-tree kind meta must not exempt a real report")
+
     def test_cmh_val_15_wired_into_validate(self):
         import tempfile
         sys.path.insert(0, os.path.join(_paths.TOOLS, "validate"))

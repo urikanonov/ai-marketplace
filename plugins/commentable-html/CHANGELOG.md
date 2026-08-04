@@ -4,6 +4,45 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.579.0] - 2026-08-04
+
+### Fixed
+
+- The wall-of-prose density advisory (CMH-VAL-15) no longer reads inert `<template>` content. A
+  `<template>`'s contents live in a DocumentFragment a browser never renders, but the density
+  check's own parser had no template awareness, so paragraphs parked inside
+  `<main id="commentRoot"><template>...</template></main>` were counted as prose and could even be
+  labelled by the template's own inner heading. An author who merely SHOWED a markup fragment with
+  four or more long paragraphs got a warning no edit to the rendered page could clear. The parser
+  now gates the whole pass off inside a template: parked paragraphs, headings, sections, layout
+  blocks, and a parked kind meta all contribute nothing, the element itself never breaks a prose
+  run (it renders nothing, so it cannot visually break up a wall), an end tag inside the fragment
+  can never close an element opened outside it, and a template left unclosed at end of input - or
+  a self-closed `<template/>`, which HTML5 opens like any other non-void tag - keeps the rest of
+  the input inert, exactly as a browser leaves it in the fragment. This is the same class of leak
+  1.437.0 closed for the prose and cross-reference pass.
+
+  Two `<template>`s a browser DOES render are carved out, so the fix cannot hide a real wall: a
+  declarative shadow root (`<template shadowrootmode="open">` or `"closed"`) is attached as the
+  host's shadow tree at parse time, so it is read as the ordinary transparent container it
+  displays as; and a `<template>` written inside raw-text or RCDATA content (`<title>`,
+  `<textarea>`, `<noscript>`, `<script>`, ...) is prose a reader SEES, not a tag, so it cannot
+  open the fragment. `shadowrootmode` is matched as the enumerated attribute it is (`" open"` is
+  not `open`), and only the FIRST declarative shadow root on a given host attaches - a second one
+  under the same parent, or one parked inside an ordinary template, stays inert - so the carve-out
+  cannot invent a wall a reader never sees either. A kind meta inside the shadow tree does not set
+  the document kind: a browser renders a shadow tree but never applies its metadata to the
+  document, so it must not decide whether this advisory runs at all.
+
+- The wall-of-prose density pass draws its element boundaries from the SHARED browser base
+  (`_BrowserBoundaries`) instead of the host parser, so the raw-text and RCDATA set, the
+  `</name` + whitespace/`/`/`>` closer, and the end-of-input rules are the same on every
+  interpreter (CMH-VAL-21). `html.parser` knows only `script`/`style` before Python 3.13, knows
+  `noscript` on no version, and before 3.13 refuses to end a raw-text region at a closer carrying
+  attributes - so on the Python CI pins, a `<template>` or `</title data-x>` written in
+  `<title>`/`<textarea>`/`<noscript>` TEXT used to be read as markup and could silently switch the
+  whole advisory off for the rest of a document that warns correctly on 3.13.
+
 ## [1.574.0] - 2026-08-04
 
 ### Fixed
