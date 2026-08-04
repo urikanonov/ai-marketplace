@@ -300,6 +300,16 @@ def _line_starts(html):
 # xmp/iframe/noembed/noframes/textarea/title, and knows `noscript` on no version) - so the
 # boundary is identical on every Python the skill runs on. `noscript` is raw text in a
 # scripting-ENABLED browser, which is the only mode a commentable document ever runs in.
+#
+# The set applies in the HTML namespace ONLY: NOTHING is raw text inside FOREIGN content. HTML5's
+# "in foreign content" insertion mode takes a `<script>` or `<style>` start tag through "any other
+# start tag", which inserts a FOREIGN element and leaves the TOKENIZER in the data state, so the
+# content is MARKUP, not text (an SVG `<title>` is not HTML's RCDATA `<title>` either). Chromium
+# confirms it - `<svg><script><img src=...></script>` really does build the `img`, because `img` is
+# a breakout tag that pops the open foreign elements and inserts it in the HTML namespace. Reading
+# such a body as raw text hid that live, network-loading element from the tag lookup AND the
+# document parse, which is the exact pair the self-contained and offline resource gates read - so a
+# document that fetches was certified self-contained. `_enter_raw_text()` refuses OUTRIGHT there.
 _RAW_TEXT_ELEMENTS = frozenset((
     "script", "style", "textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript",
     "plaintext",
@@ -309,10 +319,6 @@ _RAW_TEXT_ELEMENTS = frozenset((
 # tag or not, is text to the end of the document. html.parser enters that mode only from 3.13, so
 # it is switched on here too and its region is deliberately given no closer.
 _PLAINTEXT = "plaintext"
-
-# Only script and style stay raw text inside FOREIGN content; the rest are ordinary parsed
-# elements there (an SVG `<title>` is not HTML's RCDATA `<title>`).
-_FOREIGN_RAW_TEXT_ELEMENTS = frozenset(("script", "style"))
 
 # A comment ends at `-->` or at the legacy `--!>` (the HTML comment-end-bang state), and a
 # `<!-->` / `<!--->` closes abruptly. A whitespace-separated `-- >` does NOT close one, which is
@@ -1070,7 +1076,8 @@ class _BrowserBoundaries(_BrowserStartTag):
     Python is running. Every boundary the host interpreter gets wrong is applied here:
 
       - the whole raw-text / RCDATA set is raw text (html.parser knows only `script`/`style`
-        before 3.13, and `noscript` on no version);
+        before 3.13, and `noscript` on no version), and NOTHING is raw text inside FOREIGN
+        content, where even a `<script>` or `<style>` body is markup a browser builds;
       - a raw-text element closes on `</name` followed by whitespace, `/` or `>`;
       - a comment closes at `-->`, at the legacy `--!>`, and abruptly at `<!-->` / `<!--->` -
         and at nothing else, in particular NOT at `-- >`;
@@ -1192,12 +1199,12 @@ class _BrowserBoundaries(_BrowserStartTag):
         # runs on to the document's next canonical closer - swallowing the authored markup
         # between. parse_endtag below then consumes the whole end tag from that point.
         # The guard also REFUSES the base parser's own call (which fires right after
-        # handle_starttag on 3.13 for its RCDATA table): inside FOREIGN content only script and
-        # style are raw text, so an SVG `<title>` must be parsed, not swallowed as text.
+        # handle_starttag on 3.13 for its RCDATA table): NOTHING is raw text inside FOREIGN
+        # content, so an SVG `<title>` - and an SVG `<script>` or `<style>` - must be parsed,
+        # not swallowed as text.
         if self._ns:
             tag, ns, _integration = self._ns[-1]
-            if (tag == elem.lower() and ns != "html"
-                    and elem.lower() not in _FOREIGN_RAW_TEXT_ELEMENTS):
+            if tag == elem.lower() and ns != "html":
                 return
         # The host's `escapable` argument is dropped on purpose: 3.13 decodes character
         # references inside RCDATA (`title`/`textarea`) and 3.12 has no such notion at all, so
@@ -1337,8 +1344,9 @@ class _BrowserBoundaries(_BrowserStartTag):
     def _enter_raw_text(self, tag, ns):
         """Switch a raw-text / RCDATA element's CONTENT to text, as a browser does. Called by
         the subclass AFTER the element is pushed, so the foreign carve-out can see it."""
-        raw = _RAW_TEXT_ELEMENTS if ns == "html" else _FOREIGN_RAW_TEXT_ELEMENTS
-        if tag in raw:
+        if ns != "html":
+            return   # nothing is raw text inside foreign content (see _RAW_TEXT_ELEMENTS)
+        if tag in _RAW_TEXT_ELEMENTS:
             self.set_cdata_mode(tag)
 
     # -- foreign content ---------------------------------------------------- #
@@ -1578,12 +1586,20 @@ class _DocParser(_BrowserBoundaries):
         self.mermaid_blocks = []         # [{"cm_skip": bool, "has_svg": bool}] for pre/div.mermaid
         self.cm_skip_code_blocks = []    # [{"kind": "<pre>"|"<pre><code>"}] for direct cm-skip misuse
         self._mermaid_stack = []         # parallel to self.stack: current mermaid block index, or None
-        self._cur_script = None   # (pos, attrs_dict) while inside a <script>
-        self._cur_style = None    # (pos, attrs_dict) while inside a <style>
+        # Open `<script>`/`<style>` captures, innermost LAST: [{"tag", "pos", "attrs", "depth",
+        # "parts"}]. A STACK rather than one scalar per kind because outside the HTML namespace
+        # those two hold MARKUP, so one really can contain another (`<svg><style><style>`) and a
+        # BREAKOUT start tag can pop one before its own end tag ever arrives. With a scalar, the
+        # inner element silently replaced the outer capture and the outer body - the CSS a browser
+        # still applies, `@import url(...)` included - never reached `styles`, hiding egress from
+        # the offline gate that reads it. Each capture is finalized from `_truncate_stacks()`, so
+        # every close a browser performs (its own end tag, an ancestor's, a breakout, EOF) records
+        # it, and DATA is appended to every open capture: a superset of the element's own text
+        # nodes, which fails closed.
+        self._raw_captures = []
         self._cur_tpl_raw = None  # (tag, attrs_dict, [body parts]) while inside a TEMPLATE-parked
-                                  # <script>/<style>; kept apart from the two above so template
+                                  # <script>/<style>; kept apart from the above so template
                                   # content never leaks into a check that must ignore it.
-        self._cur_body = []
         self.commentroot_prose = []  # #commentRoot text NOT inside <a> or a cm-skip element
         self._cr_depth = None        # stack depth at which #commentRoot was entered
         self._cr_closed = False      # True once #commentRoot (or an ancestor) has closed
@@ -1636,15 +1652,50 @@ class _DocParser(_BrowserBoundaries):
     def _note_ready_token(self, text):
         """Record the NonShareable bootstrap watchdog token, but ONLY from the body of an
         executable <script> belonging to the LAYER - outside the authored CONTENT region (and, by
-        construction of `_cur_script`, outside an inert <template>). The watchdog IS such a script,
-        so authored prose, a reviewer note in the embedded-comments JSON, or a template that merely
-        contains the token must not stand in for it."""
-        if self.layer_ready_token or self._cur_script is None:
+        construction of the capture stack, outside an inert <template>). The watchdog IS such a
+        script, so authored prose, a reviewer note in the embedded-comments JSON, or a template that
+        merely contains the token must not stand in for it. The script must be the CURRENT NODE and
+        must itself have been OPENED outside the content region, so text a browser reads as some
+        other element's - or a script the author opened inside their own content and left open past
+        the end marker - cannot stand in for the layer's watchdog either."""
+        if self.layer_ready_token:
             return
-        if not _is_executable_js(self._cur_script[1]):
+        cap = self._current_raw_capture()
+        if cap is None or cap["tag"] != "script" or cap["in_content"]:
+            return
+        if not _is_executable_js(cap["attrs"]):
             return
         if READY_TOKEN in (text or "") and not self._in_commentable_content():
             self.layer_ready_token = True
+
+    def _open_raw_capture(self, tag, ad):
+        """Start collecting a `<script>`/`<style>` body. Recorded BEFORE the element is pushed, so
+        its `depth` is the index it occupies and any truncation that removes it finalizes it."""
+        self._raw_captures.append({"tag": tag, "pos": self._off(), "attrs": ad,
+                                   "depth": len(self.stack), "parts": [],
+                                   "in_content": self._in_commentable_content()})
+
+    def _flush_raw_captures(self, depth):
+        """Finalize every capture the element at `depth` (or an ancestor of it) closed, innermost
+        first, so an element a browser closed implicitly still contributes its body."""
+        while self._raw_captures and self._raw_captures[-1]["depth"] >= depth:
+            cap = self._raw_captures.pop()
+            sink = self.scripts if cap["tag"] == "script" else self.styles
+            sink.append({"pos": cap["pos"], "attrs": cap["attrs"],
+                         "body": "".join(cap["parts"])})
+
+    def _current_raw_capture(self):
+        """The open `<script>`/`<style>` whose element is the CURRENT NODE, if any.
+
+        A browser reads an element's script or CSS from its own CHILD text nodes, so text under a
+        nested element belongs to that element, not to the ancestor holding it - only reachable in
+        foreign content, where these two hold markup. Crediting it to the ancestor would let text
+        no browser treats as the outer element's source satisfy a PRESENCE check (a required
+        `[hidden]` rule, a chart's `.getContext(`), which fails OPEN."""
+        if not self._raw_captures:
+            return None
+        cap = self._raw_captures[-1]
+        return cap if cap["depth"] == len(self.stack) - 1 else None
 
     def _flush_template_raw(self):
         """Record a template-parked <script>/<style> body in its own view and clear the state."""
@@ -1663,6 +1714,7 @@ class _DocParser(_BrowserBoundaries):
         # be concatenated onto it into a body no browser would ever see.
         if self._cur_tpl_raw is not None and depth <= self._cur_tpl_raw[3]:
             self._flush_template_raw()
+        self._flush_raw_captures(depth)
         # Closing #commentRoot (or an ancestor of it) ends the root subtree for
         # good, so headings/prose in a later sibling container are not collected.
         if self._cr_depth is not None and depth <= self._cr_depth:
@@ -1771,12 +1823,8 @@ class _DocParser(_BrowserBoundaries):
             idx = self._mermaid_stack[-1]
             if idx is not None:
                 self.mermaid_blocks[idx]["has_svg"] = True
-        if tag == "script" and not self._in_template():
-            self._cur_script = (self._off(), ad)
-            self._cur_body = []
-        if tag == "style" and not self._in_template():
-            self._cur_style = (self._off(), ad)
-            self._cur_body = []
+        if tag in ("script", "style") and not self._in_template():
+            self._open_raw_capture(tag, ad)
         if tag in ("script", "style") and self._in_template() and self._cur_tpl_raw is None:
             # The stack DEPTH is carried so the state can never outlive its template: html.parser
             # keeps a raw-text element open to EOF, which matches a browser, but if any future path
@@ -1846,11 +1894,10 @@ class _DocParser(_BrowserBoundaries):
         # flag lets the checker skip it.
         if self._mermaid_stack and self._mermaid_stack[-1] is not None:
             self.mermaid_blocks[self._mermaid_stack[-1]].setdefault("src_parts", []).append(data)
-        if self._cur_script is not None:
-            self._cur_body.append(data)
-            return
-        if self._cur_style is not None:
-            self._cur_body.append(data)
+        if self._raw_captures:
+            cap = self._current_raw_capture()
+            if cap is not None:
+                cap["parts"].append(data)
             return
         if self._cur_heading is not None:
             # Same inertness rule as the prose branch below: a browser renders none of a
@@ -1896,15 +1943,14 @@ class _DocParser(_BrowserBoundaries):
         runs FIRST so any buffered trailing data reaches `handle_data` before either flush.
         """
         super().close()
-        for cur, sink in ((self._cur_script, self.scripts), (self._cur_style, self.styles)):
-            if cur is not None:
-                pos, ad = cur
-                sink.append({"pos": pos, "attrs": ad, "body": "".join(self._cur_body)})
-        self._cur_script = None
-        self._cur_style = None
-        self._cur_body = []
+        self._flush_raw_captures(0)
         self._flush_template_raw()
         self._flush_heading()
+        # Nested captures finalize innermost FIRST (only reachable in foreign content), so restore
+        # DOCUMENT order, which is what every consumer of these two reads them in. A no-op for an
+        # ordinary document, where one element closes before the next opens.
+        self.scripts.sort(key=lambda s: s["pos"])
+        self.styles.sort(key=lambda s: s["pos"])
 
     def handle_endtag(self, tag):
         tag = self._browser_tag(tag)
@@ -1920,23 +1966,17 @@ class _DocParser(_BrowserBoundaries):
             # The head a `</head>` inside a template ends is the TEMPLATE's own; ending the
             # document's head there dropped the favicon `<link>` written after it.
             self._head_ended = True
-        if tag == "script" and self._cur_script is not None:
-            pos, ad = self._cur_script
-            self.scripts.append({"pos": pos, "attrs": ad, "body": "".join(self._cur_body)})
-            self._cur_script = None
-            self._cur_body = []
-        if tag == "style" and self._cur_style is not None:
-            pos, ad = self._cur_style
-            self.styles.append({"pos": pos, "attrs": ad, "body": "".join(self._cur_body)})
-            self._cur_style = None
-            self._cur_body = []
-        if self._cur_tpl_raw is not None and tag == self._cur_tpl_raw[0]:
-            self._flush_template_raw()
         if i >= 0:
             # The heading ends where the ELEMENT being closed ends, which `_truncate_stacks()`
             # decides by DEPTH. Flushing on the tag NAME alone let a same-named heading nested
             # inside a `<template>` end the one the author opened outside it.
             self._truncate_stacks(i)
+        # An end tag with no open element is IGNORED, as a browser ignores it - which is why the
+        # `<script>`/`<style>` captures are finalized from `_truncate_stacks()` and not by name
+        # here: a stray `</style>` must not end a capture no element of it ever opened. A
+        # template-parked `<script>`/`<style>` is finalized the same way, so an INNER closer (only
+        # reachable in foreign content, where those two hold markup) cannot end the outer block
+        # early and drop the CSS or code a browser still reads from it.
 
     def handle_comment(self, data):
         # A region marker is a comment the AUTHORING TOOLS wrote, so only a REAL comment whose
@@ -2532,7 +2572,12 @@ class _TagAttrParser(_BrowserBoundaries):
         self._stack = []   # open element tags, parallel to the namespace stack
         self._fallback = _fallback   # this is the scripting-disabled pass over a <noscript> body
         self._noscript = None        # buffered raw text of the <noscript> body being read
-        self._cur_style = None       # (attrs, depth, [body parts]) while inside a fallback <style>
+        self._cur_style = []         # open fallback <style> captures: [(attrs, depth, [parts])],
+                                     # a STACK for the same reason `_DocParser` keeps one: outside
+                                     # the HTML namespace a `<style>` holds MARKUP, so one can
+                                     # contain another and a breakout can pop one early. With a
+                                     # scalar the outer body - CSS a browser still applies - was
+                                     # dropped, hiding its egress from the offline gate.
         self.found = {}
         self.noscript_found = {}
         self.styles = []             # {"attrs", "body"} per <style> seen by a fallback pass
@@ -2542,20 +2587,18 @@ class _TagAttrParser(_BrowserBoundaries):
         self.eof_raw_text_elem = None  # raw-text element still open when the input ran out
 
     def _truncate_stacks(self, depth):
-        if self._cur_style is not None and depth <= self._cur_style[1]:
-            self._flush_style()
+        self._flush_style(depth)
         super()._truncate_stacks(depth)
         del self._stack[depth:]
 
-    def _flush_style(self):
-        """Record the `<style>` body being buffered by a scripting-DISABLED pass. Only that pass
-        buffers one: the document's own style bodies are read off `_DocParser`, and re-collecting
-        them here would keep a second copy of the whole layer stylesheet per cached document."""
-        if self._cur_style is None:
-            return
-        ad, _depth, parts = self._cur_style
-        self.styles.append({"attrs": ad, "body": "".join(parts)})
-        self._cur_style = None
+    def _flush_style(self, depth=0):
+        """Record each `<style>` body the element at `depth` (or an ancestor) closed, innermost
+        first. Only the scripting-DISABLED pass buffers one: the document's own style bodies are
+        read off `_DocParser`, and re-collecting them here would keep a second copy of the whole
+        layer stylesheet per cached document."""
+        while self._cur_style and self._cur_style[-1][1] >= depth:
+            ad, _depth, parts = self._cur_style.pop()
+            self.styles.append({"attrs": ad, "body": "".join(parts)})
 
     def _record(self, tag, ad):
         self.found.setdefault(tag, []).append(ad)
@@ -2563,8 +2606,12 @@ class _TagAttrParser(_BrowserBoundaries):
     def handle_data(self, data):
         if self._noscript is not None:
             self._noscript.append(data)
-        if self._cur_style is not None:
-            self._cur_style[2].append(data)
+        # Only the capture whose element is the CURRENT NODE, for the reason `_DocParser`'s
+        # `_current_raw_capture()` gives: a browser reads a `<style>`'s CSS from its own child
+        # text nodes, and text under a nested element (reachable only in foreign content) is that
+        # element's, not the ancestor's.
+        if self._cur_style and self._cur_style[-1][1] == len(self._stack) - 1:
+            self._cur_style[-1][2].append(data)
 
     def _enter_raw_text(self, tag, ns):
         if tag == "noscript" and self._fallback:
@@ -2636,7 +2683,7 @@ class _TagAttrParser(_BrowserBoundaries):
         if self._fallback and tag == "style":
             # Recorded BEFORE the push, so the depth is the index this element occupies and any
             # truncation that removes it (its own end tag, an ancestor's, a breakout) flushes it.
-            self._cur_style = (ad, len(self._stack), [])
+            self._cur_style.append((ad, len(self._stack), []))
         # A VOID element has no content and no end tag, so it is never pushed. (A foreign
         # element is never void: `<svg><rect/>` is self-closing markup, handled below.)
         if tag not in VOID or ns != "html":
