@@ -157,6 +157,7 @@ from checks.parsing import (  # noqa: F401,E402
     code_block_spans,
     content_marker_scan,
     layer_regions_text,
+    raw_text_spans,
 )
 from checks.resources import (  # noqa: F401,E402
     CHARTJS_SRC_RE,
@@ -331,7 +332,7 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET, html=None)
             errors += e
             warnings += w
         if charts:
-            e, w, _n = check_charts(html, parser)
+            e, w, _n = check_charts(html, parser, marker_provenance=not layer)
             errors += e
             warnings += w
         if layer:
@@ -359,6 +360,7 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET, html=None)
         code_block_spans.cache_clear()
         layer_regions_text.cache_clear()
         content_marker_scan.cache_clear()
+        raw_text_spans.cache_clear()
         _tag_attr_index.cache_clear()
     return errors, warnings
 

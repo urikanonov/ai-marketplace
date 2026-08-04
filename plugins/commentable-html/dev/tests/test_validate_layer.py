@@ -910,6 +910,212 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
         doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN, js])
         self.assertOkNoWarn(doc)
 
+    def test_a_region_marker_parked_in_a_template_is_refused(self):
+        # CMH-VAL-20: the region-marker COUNT view is TEXT and knows nothing about an inert
+        # <template>, while no live parse sees a marker parked in one (template content does not
+        # run, does not load, and getElementById never sees it). A document could therefore
+        # satisfy the region check with a marker that is not a boundary, and every parse-driven
+        # check keyed on that marker - the chart-init guard (E5) above all - then silently
+        # skipped. The two views must agree: refuse rather than fail open.
+        js = JS_REGION.replace(
+            "<!-- END: commentable-html - JS -->",
+            "<template>\n<!-- END: commentable-html - JS -->\n</template>", 1)
+        doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN, js])
+        self.assertEqual(doc.count("END: commentable-html - JS"), 1,
+                         "fixture premise: exactly one END marker, and it is inside the template")
+        self.assertError(doc, "inside an inert <template>")
+
+    def test_a_region_marker_parked_in_a_cdata_section_is_refused(self):
+        # The same divergence, reached without a <template>: a CDATA section in foreign content
+        # is character data, so a browser builds no comment node from a marker written inside it,
+        # while the text count view counts it exactly as before. The parser premise is asserted
+        # directly, so a future interpreter that DID build a comment node there fails loudly here
+        # rather than silently retiring the guard.
+        js = JS_REGION.replace(
+            "<!-- END: commentable-html - JS -->",
+            "<svg><![CDATA[\n<!-- END: commentable-html - JS -->\n]]></svg>", 1)
+        doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN, js])
+        self.assertEqual(doc.count("END: commentable-html - JS"), 1,
+                         "fixture premise: exactly one END marker, and it is inside the CDATA")
+        parser, ok = validate._parse(doc)
+        self.assertTrue(ok, "fixture premise: the document parses")
+        pos = doc.index("END: commentable-html - JS")
+        self.assertFalse(any(s <= pos < e for s, e in parser.marker_comment_spans),
+                         "fixture premise: the parse builds no comment node inside the CDATA")
+        self.assertError(doc, "does not parse as a comment at all")
+
+    def test_the_cross_check_survives_crlf_and_nonshareable(self):
+        # The cross-check is OFFSET based, so CRLF (where a naive line split shifts every
+        # position) and NonShareable mode (a different active-region set, and CSS markers that
+        # really are HTML comments there) are the two places a silent regression would hide.
+        js = JS_REGION.replace(
+            "<!-- END: commentable-html - JS -->",
+            "<template>\n<!-- END: commentable-html - JS -->\n</template>", 1)
+        doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN, js])
+        errors, _warnings = _validate_text(doc, crlf=True)
+        self.assertTrue(any("inside an inert <template>" in e for e in errors), errors)
+
+        clean = build_nonshareable()
+        # The companion files do not exist beside the temp document, so only assert the marker
+        # cross-check stays quiet - that is what this test pins.
+        self.assertFalse(any("COUNTED as text" in e for e in _validate_text(clean)[0]),
+                         "fixture premise: the NonShareable document's markers are all live")
+        marker = "<!-- END: commentable-html - JS -->"
+        self.assertIn(marker, clean)
+        parked = clean.replace(marker, "<template>\n%s\n</template>" % marker, 1)
+        errors, _warnings = _validate_text(parked)
+        self.assertTrue(any("inside an inert <template>" in e for e in errors), errors)
+
+    def test_a_region_marker_parked_in_a_raw_text_body_is_refused(self):
+        # And again without a <template> or CDATA: a raw-text body holds TEXT a reader sees, so a
+        # marker written in one is no boundary either. This one is why the cross-check counts in
+        # the RAW document rather than in content_marker_scan's view - the scan blanks exactly
+        # these bodies, so counting there would skip the marker the region check just accepted.
+        for tag in ("script", "textarea", "title", "noscript"):
+            with self.subTest(tag=tag):
+                js = JS_REGION.replace(
+                    "<!-- END: commentable-html - JS -->",
+                    "<%s>\n<!-- END: commentable-html - JS -->\n</%s>" % (tag, tag), 1)
+                doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN, js])
+                self.assertEqual(doc.count("END: commentable-html - JS"), 1,
+                                 "fixture premise: exactly one END marker, inside the raw text")
+                errors, _warnings = _validate_text(doc)
+                self.assertTrue(any("inside a raw-text body" in e for e in errors),
+                                "%s: %r" % (tag, errors))
+
+    def test_a_marker_comment_the_boundary_reader_rejects_is_refused(self):
+        # The count view reads a marker LINE out of a comment; the chart-init guard's boundary
+        # reader accepts only the marker itself (optionally on its own line and `=`-decorated,
+        # closed with `-->`). A comment carrying decoration or prose around the marker, or closed
+        # with the legacy `--!>`, satisfies the first and not the second - which is exactly how
+        # `js_end_marker_pos` stayed None while the region check passed and E5 was skipped.
+        for label, comment in (
+                ("decorated", "<!--\n=====\n== END: commentable-html - JS ==\n=====\n-->"),
+                ("prose", "<!-- intro\nEND: commentable-html - JS\noutro -->"),
+                ("legacy close", "<!--\nEND: commentable-html - JS\n--!>")):
+            with self.subTest(shape=label):
+                js = JS_REGION.replace("<!-- END: commentable-html - JS -->", comment, 1)
+                doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN, js])
+                errors, _warnings = _validate_text(doc)
+                self.assertTrue(any("boundary reader" in e for e in errors),
+                                "%s: %r" % (label, errors))
+
+    def test_a_decorated_begin_marker_comment_is_accepted(self):
+        # The counterweight: the shipped documents write their BEGIN markers inside a decorated
+        # comment (a rule of `=` lines plus prose). The cross-check asks whether the PARSE has a
+        # comment there, not whether the comment source is byte-canonical, so those stay clean -
+        # demanding a canonical source would refuse every real document.
+        rich = ("<!-- ==========\n     BEGIN: commentable-html - JS\n     ==========\n"
+                "     Prose the authoring tools write here.\n-->")
+        js = JS_REGION.replace("<!--\nBEGIN: commentable-html - JS\n-->", rich, 1)
+        self.assertNotEqual(js, JS_REGION, "fixture premise: the BEGIN marker comment was replaced")
+        self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN, js]))
+
+    def test_every_region_marker_parked_in_a_template_is_refused(self):
+        # The blind spot is not specific to the JS region: any region marker a <template> can
+        # carry counts in the text view and is invisible to the parse.
+        from checks.parsing import REGIONS
+        for region in REGIONS:
+            if region == "CSS":
+                continue  # the CSS markers are /* */ comments inside <style>, not HTML comments
+            marker = "<!-- END: commentable-html - %s -->" % region
+            with self.subTest(region=region):
+                doc = build()
+                self.assertIn(marker, doc, "fixture premise: %r region END marker present" % region)
+                doc = doc.replace(marker, "<template>\n%s\n</template>" % marker, 1)
+                errors, _warnings = _validate_text(doc)
+                self.assertTrue(any("inside an inert <template>" in e for e in errors),
+                                "region %r: %r" % (region, errors))
+
+    def test_a_template_without_a_region_marker_is_still_clean(self):
+        # The guard must fire on a PARKED MARKER, not on templates: a document that legitimately
+        # parks markup in a <template> (and one whose real markers are all live) stays clean.
+        js = JS_REGION.replace(
+            "<!-- END: commentable-html - JS -->",
+            "<template><p>parked <!-- an ordinary comment --></p></template>\n"
+            "<!-- END: commentable-html - JS -->", 1)
+        self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN, js]))
+
+    def test_the_shareable_css_region_markers_in_style_are_not_flagged(self):
+        # The one sanctioned exception: the Shareable CSS region's markers are `/* ... */`
+        # comments inside <style>, which a browser never turns into comment NODES. Matching them
+        # against parsed comments would flag every valid Shareable document, so they are matched
+        # against the <style> body they must live in - and a CSS-comment marker for the CSS region
+        # written somewhere else is still refused.
+        self.assertOkNoWarn(build())
+        css_in_script = JS_REGION.replace(
+            "<script>\n", "<script>\n/*\nEND: commentable-html - CSS\n*/\n", 1)
+        doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN, css_in_script])
+        errors, _warnings = _validate_text(doc)
+        self.assertTrue(any("region 'CSS'" in e and "raw-text body" in e for e in errors), errors)
+
+    def test_the_css_exemption_does_not_accept_a_template_parked_style(self):
+        # A <style> parked inside an inert <template> is not a live stylesheet, so it must not be
+        # allowed to host the CSS region's markers either: taking "any <style> body" let a whole
+        # DEAD CSS region validate clean while the live stylesheet carried no markers at all -
+        # and upgrade.py would then write its new stylesheet into the dead fragment.
+        bare_css = ":root { --cp-bg: #ffffff; --cp-text: #000000; }\n" \
+                   ".cm-skip[hidden], .cm-skip [hidden] { display: none !important; }"
+        decoy = ("<template><style>\n/*\nBEGIN: commentable-html - CSS\n*/\n"
+                 "/*\nEND: commentable-html - CSS\n*/\n</style></template>")
+        doc = build(css=bare_css,
+                    body=[decoy, HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN, JS_REGION])
+        errors, _warnings = _validate_text(doc)
+        self.assertTrue(any("region 'CSS'" in e and "COUNTED as text" in e for e in errors), errors)
+
+    def test_a_marker_only_the_blanked_view_counts_is_refused(self):
+        # The other direction of the same disagreement: blanking a raw-text body deletes whatever
+        # closed an open comment state in the RAW view, so the scan `layer_regions_text` counts in
+        # can see a bare marker line the raw view rejects. That silently empties the layer-region
+        # allow-list - a check that stops existing, exactly the #975 failure mode.
+        main = MAIN.replace(
+            "  <p>content</p>",
+            "  <p>/* decoy</p>\n  <textarea>*/</textarea>\nBEGIN: commentable-html - JS")
+        doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION])
+        from checks.parsing import content_marker_scan, _region_marker_matches
+        self.assertEqual(len(_region_marker_matches(doc, "BEGIN", "JS")), 1,
+                         "fixture premise: the raw view counts one BEGIN marker")
+        self.assertEqual(len(_region_marker_matches(content_marker_scan(doc), "BEGIN", "JS")), 2,
+                         "fixture premise: the blanked view counts two")
+        errors, _warnings = _validate_text(doc)
+        self.assertTrue(any("count disagrees between the raw document" in e for e in errors), errors)
+
+    def test_a_template_parked_marker_cannot_silence_the_chart_init_guard(self):
+        # The end-to-end exploit: a full valid document whose only `END: commentable-html - JS`
+        # marker sits inside a <template> counted for the region check, so the layer passed -
+        # while `js_end_marker_pos` stayed None and check_charts SKIPPED E5 entirely (skipping is
+        # deliberate for a document with no marker at all, see test_e5_skipped_without_marker).
+        # A `new Chart(` before the region end was therefore not reported and the whole document
+        # validated with zero errors and zero warnings. Every shape that leaves the parse without
+        # a boundary must be refused, or the guard is lost the same way.
+        chart = (
+            '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" '
+            'integrity="sha384-x" crossorigin="anonymous"></script>\n'
+            '<div class="chart-wrap cm-skip"><canvas id="c" role="img" aria-label="a"></canvas></div>\n'
+            '<script>if (typeof Chart === "undefined") {} else { '
+            'new Chart(document.getElementById("c"), {}); }</script>'
+        )
+        shapes = {
+            "template": "<template>\n<!-- END: commentable-html - JS -->\n</template>",
+            "cdata": "<svg><![CDATA[\n<!-- END: commentable-html - JS -->\n]]></svg>",
+            "raw text": "<textarea>\n<!-- END: commentable-html - JS -->\n</textarea>",
+            "decorated": "<!--\n=====\n== END: commentable-html - JS ==\n=====\n-->",
+        }
+        for label, replacement in shapes.items():
+            with self.subTest(shape=label):
+                js = JS_REGION.replace("<!-- END: commentable-html - JS -->", replacement, 1)
+                doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN, chart, js])
+                errors, _warnings = _validate_text(doc)
+                self.assertNotEqual(errors, [], "%s: the payload must not validate clean" % label)
+                self.assertTrue(any("still COUNTED as text" in e or "boundary reader" in e
+                                    for e in errors), "%s: %r" % (label, errors))
+        # The same document with a LIVE marker is the control: E5 fires there, which is the
+        # finding a marker the parse cannot see used to swallow.
+        live = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN, chart, JS_REGION])
+        live_errors, _w = _validate_text(live)
+        self.assertTrue(any("chart init (`new Chart(`) appears before the" in e for e in live_errors),
+                        live_errors)
+
     def test_the_marker_scan_keeps_comments_while_blanking_script_bodies(self):
         # The marker scan blanks raw-text BODIES but must NOT blank comments (the CONTENT
         # markers ARE comments), which is the opposite of every view that hides quoted markup.

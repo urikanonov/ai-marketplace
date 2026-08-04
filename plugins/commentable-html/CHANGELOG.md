@@ -4,6 +4,38 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.666.0] - 2026-08-04
+
+### Fixed
+
+- A region marker that a browser never parses as a boundary can no longer satisfy the validator's
+  region check. The marker COUNT view is text and has no notion of an inert `<template>` (whose
+  content does not run, does not load, and which `getElementById` never sees), of a CDATA section
+  in foreign content, or of a raw-text body (`<script>`, `<style>`, `<textarea>`, `<title>`,
+  `<noscript>`, ...), so it counts a marker written in any of them while no live parse builds a
+  comment node there - a document could pass the layer's region check with a marker that is not a
+  boundary, and every parse-driven check keyed on that region then failed OPEN. The chart-init
+  guard was where that bit: it skips when the parse found no `END: commentable-html - JS` comment
+  (deliberately, so a plain chart page is not flagged), so a `new Chart(` placed before such a
+  marker was not reported and the whole document validated with zero errors and zero warnings.
+  The parser now records the spans of every comment that mentions the marker text, split by
+  whether it sits inside a `<template>`, and the layer check cross-checks the markers the region
+  count ACCEPTED against them, naming the template or the raw-text body in the diagnostic. The
+  Shareable CSS region's `/* ... */` markers inside a LIVE `<style>` are matched against that
+  `<style>` body instead, since a browser never turns them into comment nodes - a `<style>` parked
+  in a `<template>` does not qualify, so a whole inert CSS region can no longer validate clean. A
+  count that is HIGHER in the blanked view than in the raw document is refused too, since a stray
+  comment delimiter a raw-text body closes lets one view see a boundary the other does not. A
+  decorated BEGIN comment of the shape the authoring tools emit is still a live boundary. The
+  counted JS END marker must in addition be the same comment the chart guard's boundary reader
+  accepts, so a comment carrying decoration or prose around the marker - or closed with the legacy
+  `--!>` - is refused rather than silently leaving the guard's boundary unset. The chart-ONLY path
+  (`--charts-only`, `validate_charts`), where the layer checks never run, now makes the same
+  refusal itself, so the exploit is not simply reachable through a different entry point; a
+  document with no counted marker at all remains the sanctioned skip, so a plain chart page is
+  unaffected (CMH-VAL-20, CMH-CHART-02).
+
+
 ## [1.664.0] - 2026-08-04
 
 ### Fixed

@@ -142,10 +142,24 @@ JS_END_MARKER_TEXT = "END: commentable-html - JS"
 # other character Python calls whitespace, so a comment padded with one read as the marker here
 # while the count view saw only the canonical one - two views disagreeing about which comment is
 # the boundary, which is what lets a forged one stand in for it.
-_JS_END_MARKER_COMMENT_RE = re.compile(
-    r"<!--[ \t]*(?:\r?\n[ \t]*)?(?:=+[ \t]*)?"
-    + re.escape(JS_END_MARKER_TEXT)
-    + r"[ \t]*(?:=+[ \t]*)?(?:\r?\n[ \t]*)?-->")
+@functools.lru_cache(maxsize=None)
+def _region_marker_comment_re(kind, region):
+    return re.compile(
+        r"<!--[ \t]*(?:\r?\n[ \t]*)?(?:=+[ \t]*)?"
+        + re.escape("%s: commentable-html - %s" % (kind, region))
+        + r"[ \t]*(?:=+[ \t]*)?(?:\r?\n[ \t]*)?-->")
+
+
+# The JS end marker is one of those, built from the same shape so the boundary `check_charts`
+# reads and the boundary the layer check accepts can never drift apart.
+_JS_END_MARKER_COMMENT_RE = _region_marker_comment_re("END", "JS")
+
+# The two halves every region marker comes in.
+MARKER_KINDS = ("BEGIN", "END")
+
+# The text a comment must mention before it can be a region marker. A cheap gate that keeps the
+# per-comment bookkeeping below off every ordinary comment in a document.
+_MARKER_HINT = "commentable-html - "
 
 # JSON <script> ids owned by the commentable layer, not chart data.
 LAYER_JSON_IDS = {"handledCommentIds", "embeddedComments", LAYER_DESCRIPTOR_ID}
@@ -1620,6 +1634,15 @@ class _DocParser(_BrowserBoundaries):
         self.template_inline_styles = []
         self.has_comment_root = False
         self.js_end_marker_pos = None
+        # Every real comment that could carry a region marker, as `(start, end)` spans into the
+        # document, split by whether a browser parses it as part of the document. The marker COUNT
+        # view (`_region_marker_matches`) is TEXT: it counts a marker written where a browser
+        # builds no comment node at all - inside an inert `<template>`, inside a CDATA section,
+        # inside a raw-text body - so a document could satisfy the layer's region check with a
+        # marker that is not a boundary, and every parse-driven check keyed on that region then
+        # failed OPEN. `check_layer` cross-checks the counted markers against these spans.
+        self.marker_comment_spans = []      # real comments a browser parses
+        self.template_comment_spans = []    # the same, parked inside an inert <template>
         self.all_ids = []        # every element id value, in document order
         # The LAYER's own markup: everything the parser sees OUTSIDE the authored CONTENT region
         # (`_in_commentable_content()`). A document about commentable-html can DEMONSTRATE the
@@ -2122,6 +2145,8 @@ class _DocParser(_BrowserBoundaries):
         if (self.js_end_marker_pos is None and not self._in_template()
                 and _JS_END_MARKER_COMMENT_RE.fullmatch(raw)):
             self.js_end_marker_pos = self._off()
+        if _MARKER_HINT in raw:
+            self._record_region_marker_comment(raw)
         if not self._in_template():
             if raw == CONTENT_BEGIN and self._in_comment_root():
                 self._in_content_region = True
@@ -2130,6 +2155,21 @@ class _DocParser(_BrowserBoundaries):
                 if self._in_content_region:
                     self.content_region_closed = True
                 self._in_content_region = False
+
+    def _record_region_marker_comment(self, raw):
+        # Any REAL comment that could carry a region marker, recorded as a span. The layer check
+        # asks only "does the parse have a comment here?", because the shipped documents write
+        # their BEGIN markers inside a decorated comment (a rule of `=` lines plus prose) that the
+        # count view happily reads a marker line out of - so demanding a byte-canonical comment
+        # source would refuse every real document. `_in_template()` (not the namespace-aware form)
+        # is deliberate: it is the predicate the parse-driven consumers above use, and the whole
+        # contract here is that this list and they agree about which comments are live.
+        off = self._off()
+        span = (off, off + len(raw))
+        if self._in_template():
+            self.template_comment_spans.append(span)
+        else:
+            self.marker_comment_spans.append(span)
 
 
 # --------------------------------------------------------------------------- #
@@ -2327,18 +2367,25 @@ class _RawTextSpanParser(_CodeSpanParser):
 
     def __init__(self, html):
         super().__init__(html)
-        self._raw = None          # (tag, body_start) while inside a raw-text element
+        self._raw = None          # (tag, body_start, in_template) while inside a raw-text element
         self._length = len(html)
         self.raw_spans = []
+
+    def _raw_in_template(self):
+        # The HTML-template floor `_end_tag_floor()` reads, answered in O(1). A raw-text body
+        # parked inside an inert `<template>` is not live content, and one caller - the CSS
+        # region's `/* */` marker exemption - must not accept a `<style>` that a browser never
+        # applies.
+        return bool(self._tpl_stop) and self._tpl_stop[-1] >= 0
 
     def handle_starttag(self, tag, attrs):
         super().handle_starttag(tag, attrs)
         if self._raw is None and self.cdata_elem is not None:
-            self._raw = (self.cdata_elem, self._start_tag_end())
+            self._raw = (self.cdata_elem, self._start_tag_end(), self._raw_in_template())
 
     def handle_endtag(self, tag):
         if self._raw is not None and self._browser_tag(tag) == self._raw[0]:
-            self.raw_spans.append((self._raw[1], self._off()))
+            self.raw_spans.append((self._raw[1], self._off(), self._raw[0], self._raw[2]))
             self._raw = None
         super().handle_endtag(tag)
 
@@ -2346,8 +2393,23 @@ class _RawTextSpanParser(_CodeSpanParser):
         super().close()
         if self._raw is not None:
             # A browser runs an unclosed raw-text element to the end of the document.
-            self.raw_spans.append((self._raw[1], self._length))
+            self.raw_spans.append((self._raw[1], self._length, self._raw[0], self._raw[2]))
             self._raw = None
+
+
+@functools.lru_cache(maxsize=1)
+def raw_text_spans(html):
+    """`((body_start, body_end, tag, in_template), ...)` for every real raw-text / RCDATA
+    element, or None when the parse blew up. The TAG and the template flag matter to one caller:
+    the Shareable CSS region's markers are `/* ... */` comments inside a LIVE `<style>`, which a
+    browser never turns into comment NODES, so that - and only that - raw-text body may
+    legitimately hold a counted region marker."""
+    p = _RawTextSpanParser(html)
+    try:
+        p.parse_document(html)
+    except Exception:
+        return None
+    return tuple(p.raw_spans)
 
 
 @functools.lru_cache(maxsize=1)
@@ -2365,13 +2427,11 @@ def content_marker_scan(html):
     an author can see and act on, whereas an empty view would silently report a document that
     has its markers as having none.
     """
-    p = _RawTextSpanParser(html)
-    try:
-        p.parse_document(html)
-    except Exception:
+    spans = raw_text_spans(html)
+    if spans is None:
         return html
     out = list(html)
-    for start, end in p.raw_spans:
+    for start, end, _tag, _in_tpl in spans:
         for k in range(start, end):
             if out[k] not in "\r\n":
                 out[k] = " "

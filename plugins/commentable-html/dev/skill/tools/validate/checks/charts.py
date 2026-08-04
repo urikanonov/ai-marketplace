@@ -3,7 +3,7 @@ chart-data JSON validity."""
 
 import re
 import json
-from .parsing import LAYER_JSON_IDS, _is_executable_js, _is_json_attrs, _js_scan
+from .parsing import LAYER_JSON_IDS, _is_executable_js, _is_json_attrs, _js_scan, _region_marker_matches
 from .resources import CHARTJS_SRC_RE
 
 
@@ -27,9 +27,30 @@ NEW_CHART_RE = re.compile(r"\bnew\s+(?:Chart|(?:window|globalThis|self)\.Chart)\
 CANVAS_RENDER_RE = re.compile(r"\.getContext\s*\(")
 
 
-def check_charts(html, parser):
+def _js_end_marker_divergence(html):
+    """E5 skips when the PARSE found no `END: commentable-html - JS` comment, which is what keeps
+    a plain chart page (not a commentable-html document at all) from being flagged. That skip is
+    only honest while "no marker parsed" also means "no marker there": the COUNT view is TEXT and
+    counts a marker written where a browser builds no boundary - inside an inert `<template>`, a
+    CDATA section or a raw-text body, or in a comment this reader does not accept - so a document
+    could carry a marker, lose the guard, and validate clean. The layer check reports this on the
+    full path; this is the same refusal for the chart-only path, where it never runs."""
+    if not _region_marker_matches(html, "END", "JS"):
+        return []  # no marker at all: not a commentable-html document, so the skip is correct
+    return ["the document carries an `END: commentable-html - JS` marker that a browser never "
+            "reads as a boundary (it sits inside an inert <template>, a CDATA section or a "
+            "raw-text body, or in a comment carrying decoration or prose around the marker, or "
+            "one closed with the legacy `--!>`), so the chart-init guard cannot run against it - "
+            "write it as its own `<!-- END: commentable-html - JS -->` comment"]
+
+
+def check_charts(html, parser, marker_provenance=True):
     """Return (errors, warnings, n_canvas). No-op (0 canvas) when the document
-    embeds no <canvas>. Assumes `parser` already fed `html` successfully."""
+    embeds no <canvas>. Assumes `parser` already fed `html` successfully.
+
+    `marker_provenance` reports a counted JS END marker the parse does not read as a boundary.
+    The full validation path passes False because `check_layer` already cross-checks every region
+    marker; the chart-only path passes True, since nothing else would."""
     errors, warnings = [], []
 
     n_canvas = len(parser.canvases)
@@ -121,6 +142,8 @@ def check_charts(html, parser):
 
     # E5) Chart init must come AFTER the JS END marker comment (Save-as-plain
     # keeps it) AND after the Chart.js loader (or Chart is undefined when it runs).
+    if marker_pos is None and marker_provenance:
+        errors.extend(_js_end_marker_divergence(html))
     if marker_pos is not None:
         if any(pos < marker_pos for pos in new_chart_positions):
             errors.append("chart init (`new Chart(`) appears before the `END: commentable-html - JS` "
