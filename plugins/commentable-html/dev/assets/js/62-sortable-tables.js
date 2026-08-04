@@ -51,13 +51,24 @@ function _tableKey(t, idx) {
 // so no reader loses a persisted sort.
 const _tableKeyBinding = new WeakMap();
 function _bindTableKeys() {
-  _sortableTables().forEach(function (t, i) { _tableKeyBinding.set(t, _tableKey(t, i)); });
+  // Never re-key a table that is already bound: a later pass would see the SORTED document order
+  // and overwrite the canonical key this binding exists to hold still.
+  _sortableTables().forEach(function (t, i) {
+    if (!_tableKeyBinding.has(t)) _tableKeyBinding.set(t, _tableKey(t, i));
+  });
 }
 // The bound key, falling back to the positional one for a table the binding never saw (a table
 // added after startup, or a caller that runs before `applyPersistedTableSorts`).
 function _tableKeyFor(t, idx) {
   const bound = _tableKeyBinding.get(t);
   return bound === undefined ? _tableKey(t, idx) : bound;
+}
+// Persisted sort state is reader-owned `localStorage` and can be absent, stale, or corrupt, so
+// every consumer accepts only a state it can actually apply. The load path and the export restore
+// share this predicate: a state one of them silently ignored while the other applied it would sort
+// a table the reader never sorted.
+function _validSortState(st) {
+  return !!st && typeof st.col === "number" && (st.dir === "asc" || st.dir === "desc");
 }
 function _parseNum(s) {
   if (s == null) return null;
@@ -212,33 +223,52 @@ function _canonicalCommentsForExport() {
     return comments.map(function (c) { return Object.assign({}, c); });
   }
   const savedState = JSON.parse(JSON.stringify(_tableSortState));
-  // Resolve every table's key and body BEFORE the first unsort: the unsort itself moves a nested
-  // sortable table to a different document index, so anything re-derived from position afterwards
-  // would describe a different table.
+  // Resolve every table's key, body and state BEFORE the first unsort: the unsort itself moves a
+  // nested sortable table to a different document index, so anything re-derived from position
+  // afterwards would describe a different table.
   const sorts = _sortableTables().map(function (t, i) {
-    return { body: _tableBody(t), state: savedState[_tableKeyFor(t, i)] };
+    const st = savedState[_tableKeyFor(t, i)];
+    return { body: _tableBody(t), state: _validSortState(st) ? st : null, unsorted: false };
   });
-  let restored = false;
-  function restoreSorts() {
-    if (restored) return;
-    restored = true;
-    sorts.forEach(function (s) {
-      if (s.state) _sortRows(s.body, s.state.col, s.state.dir);
+  // The recompute below rewrites live comment offsets into AUTHORED-row coordinates. Snapshot them
+  // so a throw part-way through cannot leave the reader holding offsets that no longer describe the
+  // restored (sorted) view: the next ordinary save would persist that mismatch and the reload after
+  // it would land the highlight on an unrelated row.
+  const liveOffsets = comments.map(function (c) { return { c: c, start: c.start, end: c.end }; });
+  let completed = false;
+  function restoreRows() {
+    // Innermost-first, so an outer table is re-sorted only once the nested tables its cells hold
+    // are back in the order the reader's own sort click compared them in. Only tables this pass
+    // actually unsorted are put back, and one that throws never blocks the rest.
+    sorts.slice().reverse().forEach(function (s) {
+      if (!s.unsorted) return;
+      s.unsorted = false;
+      if (!s.state) return;
+      try { _sortRows(s.body, s.state.col, s.state.dir); } catch (e) { /* restore the rest */ }
+    });
+  }
+  function revertOffsets() {
+    liveOffsets.forEach(function (o) {
+      if (o.start === undefined) delete o.c.start; else o.c.start = o.start;
+      if (o.end === undefined) delete o.c.end; else o.c.end = o.end;
     });
   }
   try {
-    sorts.forEach(function (s) { _unsortRows(s.body); });
+    sorts.forEach(function (s) { _unsortRows(s.body); s.unsorted = true; });
     recomputeTextOffsets(false);
     const snap = comments.map(function (c) { return Object.assign({}, c); });
-    restoreSorts();
+    restoreRows();
     recomputeTextOffsets(false);
+    completed = true;
     return snap;
   } finally {
-    // A throw above must never leave the reader looking at a permanently unsorted document; on the
-    // happy path this is a no-op because the restore already ran. Only the ROW ORDER is put back
-    // here - re-running the offset recompute while unwinding could throw again and replace the
-    // failure the caller is about to report.
-    restoreSorts();
+    // A throw above must never leave the reader looking at a permanently unsorted document, nor
+    // holding the canonical pass's offsets. On the happy path both are no-ops: every table was put
+    // back already and the recompute above realigned the offsets with it. The offsets are RESTORED
+    // from the snapshot rather than recomputed, so unwinding cannot throw a second time and replace
+    // the failure the caller is about to report.
+    restoreRows();
+    if (!completed) revertOffsets();
   }
 }
 function _exportableComments() {
@@ -250,11 +280,15 @@ function applyPersistedTableSorts() {
   _loadTableSortState();
   _indexTableRows();
   _bindTableKeys();
-  _sortableTables().forEach(function (t, i) {
-    const st = _tableSortState[_tableKeyFor(t, i)];
-    if (st && typeof st.col === "number" && (st.dir === "asc" || st.dir === "desc")) {
-      _sortRows(_tableBody(t), st.col, st.dir);
-    }
+  // Innermost-first (document order reversed, since a nested table always follows its ancestor):
+  // an outer table sorted on a column whose cells HOLD a nested table compares that cell's text,
+  // so the nested table has to be in its own persisted order first or the outer table comes back
+  // in a different order than the reader left it.
+  const pending = _sortableTables().map(function (t, i) {
+    return { body: _tableBody(t), state: _tableSortState[_tableKeyFor(t, i)] };
+  });
+  pending.reverse().forEach(function (p) {
+    if (_validSortState(p.state)) _sortRows(p.body, p.state.col, p.state.dir);
   });
 }
 function _reflectSortIco(btn, dir) {

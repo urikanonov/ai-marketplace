@@ -1,5 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { openInline, ready, lastCopied, addTextComment, stageContent, fileUrl, clickSidebarExport } from "./helpers.js";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import { openInline, ready, lastCopied, addTextComment, stageContent, fileUrl, clickSidebarExport, readDownload, storedComments } from "./helpers.js";
 
 // Requests column values in the template demo table, keyed by Service, so a test can
 // assert numeric (not lexicographic) ordering.
@@ -98,13 +101,17 @@ test.describe("copy buttons + sortable tables", () => {
   // #976: the export pass canonicalizes comments by unsorting EVERY sortable table and then putting
   // each one back. The table key is positional, so a sortable table nested in a sorted table's cell
   // must not be looked up by an index the unsort itself changed.
-  test("a sortable table nested in a sorted table keeps its own sort across an export (CMH-CONTENT-08)", async ({ page }) => {
+  test("a sortable table nested in a sorted table keeps its own sort across an export (CMH-CONTENT-08)", async ({ page, browser }) => {
     const staged = stageContent(NESTED_TABLES, { key: "cmh-nested-sort-export" });
     await page.goto(fileUrl(staged.html));
     await ready(page);
     expect(await outerOrder(page)).toEqual(["West", "East"]);
     expect(await westOrder(page)).toEqual(["wb", "wa"]);
-    await addTextComment(page, "#commentRoot p", "regional note");
+    // Anchor the comment INSIDE the nested table, so its exported offsets differ between the
+    // reader's sorted view and the authored order the export must serialize.
+    await addTextComment(page, "#west > tbody > tr > td:first-child", "nested note", 0);
+    const markText = await page.$eval("mark.cm-hl", (m) => m.textContent.trim());
+    expect(markText).toBe("wb");
 
     // Sort the OUTER table so the nested tables swap document position, then reload: the persisted
     // sort is re-applied BEFORE the sort controls are wired, so from here the live document order
@@ -118,7 +125,7 @@ test.describe("copy buttons + sortable tables", () => {
     await sortCtrl(page, "west").click();
     expect(await westOrder(page)).toEqual(["wa", "wb"]);
 
-    await Promise.all([page.waitForEvent("download"), clickSidebarExport(page, "#btnSaveHtml")]);
+    const [dl] = await Promise.all([page.waitForEvent("download"), clickSidebarExport(page, "#btnSaveHtml")]);
     expect(await westOrder(page)).toEqual(["wa", "wb"]);
     expect(await outerOrder(page)).toEqual(["East", "West"]);
 
@@ -127,6 +134,19 @@ test.describe("copy buttons + sortable tables", () => {
     await ready(page);
     expect(await outerOrder(page)).toEqual(["East", "West"]);
     expect(await westOrder(page)).toEqual(["wa", "wb"]);
+
+    // The exported file anchors correctly for a recipient with no sort state of their own: the
+    // canonical pass only produces authored-order offsets if the nested table was really unsorted
+    // while the snapshot was taken.
+    const p = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cmh_nested_")), "doc.html");
+    fs.writeFileSync(p, await readDownload(dl));
+    const ctx2 = await browser.newContext();
+    const p2 = await ctx2.newPage();
+    await p2.goto(fileUrl(p));
+    await ready(p2);
+    await expect(p2.locator("mark.cm-hl")).toHaveCount(1);
+    expect(await p2.$eval("mark.cm-hl", (m) => m.textContent.trim())).toBe("wb");
+    await ctx2.close();
   });
 
   // #976: the canonical pass unsorts first, so a throw between the unsort and the restore would
@@ -142,7 +162,8 @@ test.describe("copy buttons + sortable tables", () => {
     expect(await westOrder(page)).toEqual(["wa", "wb"]);
 
     // Make the offset recompute inside the canonical pass throw: it walks the content root, and
-    // nothing else in an export click does.
+    // nothing else in an export click does. Record the live row order AT THE THROW, so the test
+    // cannot go green on a throw that fires before the pass ever unsorted anything.
     await page.evaluate(() => {
       const orig = document.createTreeWalker.bind(document);
       window.__cmhWalkerThrows = 0;
@@ -150,19 +171,82 @@ test.describe("copy buttons + sortable tables", () => {
       document.createTreeWalker = function (node, ...rest) {
         if (window.__cmhWalkerBoom && node && node.id === "commentRoot") {
           window.__cmhWalkerThrows++;
+          window.__cmhOrderAtThrow = [...document.querySelectorAll("#outer > tbody > tr > td:first-child")]
+            .map((td) => td.textContent.trim());
           throw new Error("recompute boom");
         }
         return orig(node, ...rest);
       };
     });
+    // Register the download waiter BEFORE the click, or it could time out on an export that really
+    // did produce a file and the assertion would hold for the wrong reason.
+    const downloaded = page.waitForEvent("download", { timeout: 2000 }).then(() => true).catch(() => false);
     await clickSidebarExport(page, "#btnSaveHtml");
-    // The export really did fail: no file is produced when the canonical pass throws.
-    await expect(page.waitForEvent("download", { timeout: 2000 })).rejects.toThrow();
+    expect(await downloaded).toBe(false);   // the export really did fail
     expect(await page.evaluate(() => window.__cmhWalkerThrows)).toBeGreaterThan(0);
+    // The throw landed BETWEEN the unsort and the restore: the tables were in authored order then.
+    expect(await page.evaluate(() => window.__cmhOrderAtThrow)).toEqual(["West", "East"]);
     await page.evaluate(() => { window.__cmhWalkerBoom = false; });
 
     expect(await outerOrder(page)).toEqual(["East", "West"]);
     expect(await westOrder(page)).toEqual(["wa", "wb"]);
+  });
+
+  // #976: the canonical pass rewrites live comment offsets into authored-row coordinates. A throw
+  // part-way through must not leave those offsets behind for the next ordinary save to persist.
+  test("a failed export leaves the reader's live comment offsets untouched (CMH-CONTENT-08)", async ({ page }) => {
+    const staged = stageContent(NESTED_TABLES, { key: "cmh-sort-export-offsets" });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    // Two comments inside the OUTER table's moving rows, so their offsets differ between the
+    // reader's sorted view and the authored order.
+    await addTextComment(page, "#outer > tbody > tr > td:first-child", "west note", 0);
+    await addTextComment(page, "#outer > tbody > tr > td:first-child", "east note", 1);
+    await sortCtrl(page, "outer").click();
+    expect(await outerOrder(page)).toEqual(["East", "West"]);
+    const before = (await storedComments(page)).map((c) => [c.id, c.start, c.end]);
+    expect(before).toHaveLength(2);
+    // The exact text each comment is anchored on, so the reload assertion below is independent of
+    // how much of the cell the selection helper grabbed.
+    const anchoredText = Object.fromEntries(
+      await page.$$eval("mark.cm-hl", (ms) => ms.map((m) => [m.dataset.cid, m.textContent])));
+    expect(Object.keys(anchoredText)).toHaveLength(2);
+
+    // Throw on the SECOND comment's mark walk, so the first comment's offsets have already been
+    // rewritten into authored coordinates when the pass unwinds.
+    const cids = before.map((c) => c[0]);
+    await page.evaluate((secondCid) => {
+      const orig = document.createTreeWalker.bind(document);
+      window.__cmhWalkerBoom = true;
+      window.__cmhWalkerThrows = 0;
+      document.createTreeWalker = function (node, ...rest) {
+        if (window.__cmhWalkerBoom && node && node.nodeType === 1
+            && node.dataset && node.dataset.cid === secondCid) {
+          window.__cmhWalkerThrows++;
+          throw new Error("recompute boom");
+        }
+        return orig(node, ...rest);
+      };
+    }, cids[1]);
+    const downloaded = page.waitForEvent("download", { timeout: 2000 }).then(() => true).catch(() => false);
+    await clickSidebarExport(page, "#btnSaveHtml");
+    expect(await downloaded).toBe(false);
+    expect(await page.evaluate(() => window.__cmhWalkerThrows)).toBeGreaterThan(0);
+    await page.evaluate(() => { window.__cmhWalkerBoom = false; });
+    expect(await outerOrder(page)).toEqual(["East", "West"]);
+
+    // Any ordinary next action persists the whole in-memory set, so a corrupted offset would be
+    // written to storage here and mis-anchor on the next load.
+    await addTextComment(page, "#commentRoot p", "later note");
+    const after = (await storedComments(page)).filter((c) => cids.includes(c.id))
+      .map((c) => [c.id, c.start, c.end]);
+    expect(after).toEqual(before);
+
+    await page.reload();
+    await ready(page);
+    expect(await outerOrder(page)).toEqual(["East", "West"]);
+    const marks = await page.$$eval("mark.cm-hl", (ms) => ms.map((m) => [m.dataset.cid, m.textContent]));
+    expect(Object.fromEntries(marks.filter((m) => cids.includes(m[0])))).toEqual(anchoredText);
   });
 
   test("each code block has an always-visible Copy button that copies its exact text", async ({ page }) => {
