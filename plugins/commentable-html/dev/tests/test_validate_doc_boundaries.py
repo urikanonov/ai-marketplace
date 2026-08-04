@@ -1705,6 +1705,134 @@ class TagAttrLookupBoundaryTests(unittest.TestCase):
                         "</noscript>" % (quote, quote))
                 self.assertTrue(parsing._tag_attrs_failed(html))
 
+    def test_the_fallback_view_carries_the_css_a_noscript_body_declares(self):
+        # The element index alone could not answer the CSS egress question: a `<style>` element's
+        # attributes say nothing about the `@import` / `url(...)` in its BODY, and the document
+        # view holds no style element for a `<noscript>` at all (its body is raw TEXT there).
+        html = ('<style>.doc { color: #123456; }</style>'
+                '<noscript><style>@import url(//evil.example/x.css);</style>'
+                '<div style="background:url(//evil.example/x.png)"></div></noscript>')
+        self.assertEqual([s["body"] for s in parsing._find_noscript_styles(html)],
+                         ["@import url(//evil.example/x.css);"])
+        self.assertEqual(parsing._find_noscript_inline_styles(html),
+                         [{"tag": "div", "value": "background:url(//evil.example/x.png)"}])
+
+    def test_an_unclosed_noscript_style_still_contributes_its_css(self):
+        # A browser runs an unclosed raw-text element to end of document, so this stylesheet is
+        # live for a scripting-disabled reader exactly as a closed one would be.
+        html = '<noscript><style>@import url(//evil.example/x.css);'
+        self.assertEqual([s["body"] for s in parsing._find_noscript_styles(html)],
+                         ["@import url(//evil.example/x.css);"])
+
+    def test_a_nested_noscript_style_does_not_drop_out_of_the_fallback_view(self):
+        html = ("<noscript>" * 3) + "<style>@import url(//evil.example/x.css);</style>" \
+            + ("</noscript>" * 3)
+        self.assertEqual([s["body"] for s in parsing._find_noscript_styles(html)],
+                         ["@import url(//evil.example/x.css);"])
+        self.assertFalse(parsing._tag_attrs_failed(html))
+
+    def test_the_scripting_enabled_pass_buffers_no_style_body(self):
+        # The fallback view is a COMPLEMENT to `_DocParser.styles`, not a second copy of it: the
+        # document's own (multi-megabyte) stylesheet must not be buffered again per cached
+        # document, and a caller must not be able to double-count it.
+        html = '<style>.doc { background: url(//evil.example/x.png); }</style>'
+        self.assertEqual(parsing._find_noscript_styles(html), [])
+        self.assertEqual([s["body"] for s in parsing._parse_document(html).styles],
+                         [".doc { background: url(//evil.example/x.png); }"])
+
+    def test_a_noscript_closer_inside_fallback_raw_text_is_reported(self):
+        # The body's END is decided by the scripting-ENABLED tokenizer (the first `</noscript`),
+        # but inside a `<style>`/`<script>` body a scripting-DISABLED browser is still in RAW
+        # TEXT, so that closer is just CSS to it and the stylesheet runs on past it. The two
+        # views then disagree about where the body stops: everything after the seam is CSS to
+        # that browser and ordinary markup to this pass, so the network `url(...)` lands in
+        # NEITHER view. It cannot be resolved from the buffered text, so it is REPORTED.
+        for seam in ("/* </noscript> */", 'a::after{content:"</noscript>"}',
+                     "/* </noscript data-x> */", "/* </noscript > */", "/* </noscript/ */",
+                     'a::after{content:"</NOSCRIPT>"}'):
+            with self.subTest(seam=seam):
+                parsing._tag_attr_index.cache_clear()
+                html = ("<noscript><style>%s body{background:url(//evil.example/x.png)}"
+                        "</style></noscript>" % seam)
+                self.assertTrue(parsing._tag_attrs_failed(html))
+
+    def test_a_fallback_style_left_open_at_end_of_document_is_not_reported(self):
+        # The mirror image: when the `<noscript>` itself runs to end of document there is no
+        # seam to disagree about - the unclosed `<style>` is unclosed for BOTH views, and its
+        # body is exactly what a scripting-disabled browser reads, so it is collected, not
+        # reported as unreadable.
+        html = '<noscript><style>@import url(//evil.example/x.css);'
+        self.assertFalse(parsing._tag_attrs_failed(html))
+        self.assertEqual([s["body"] for s in parsing._find_noscript_styles(html)],
+                         ["@import url(//evil.example/x.css);"])
+
+    def test_two_fallback_styles_are_two_separate_bodies(self):
+        # The buffer must not leak from one `<style>` into the next: concatenated bodies would
+        # read a `url(...)` out of a block that never declared one (and, worse, could let a
+        # closing brace from the first block swallow the second).
+        html = ('<noscript><style>a{color:#123456}</style><p>x</p>'
+                "<style>@import url(//evil.example/x.css);</style></noscript>")
+        self.assertEqual([s["body"] for s in parsing._find_noscript_styles(html)],
+                         ["a{color:#123456}", "@import url(//evil.example/x.css);"])
+
+    def test_the_shared_tag_index_cannot_be_mutated_by_a_caller(self):
+        # The index is LRU-cached and shared by every check in a run, so a caller that could
+        # write into it would corrupt what a later check reads.
+        html = '<noscript><style>@import url(//evil.example/x.css);</style></noscript>'
+        entry = parsing._tag_attr_index(html).noscript_styles[0]
+        with self.assertRaises(TypeError):
+            entry["body"] = "mutated"
+        with self.assertRaises(TypeError):
+            entry["attrs"]["id"] = "mutated"
+
+    def test_a_non_data_seam_state_is_reported_whatever_holds_it(self):
+        # The seam is resolvable only when the fallback parse ended in the DATA state. In any
+        # other state the two tokenizers disagree about the REST OF THE DOCUMENT: the
+        # scripting-disabled reader leaves its raw text (or its comment) at a closer written
+        # AFTER the seam and is back in live markup, exactly where the scripting-enabled view
+        # has only a comment - so the resource is in neither index. Each of these really does
+        # load for a scripting-disabled reader.
+        for html in (
+                '<noscript><title></noscript><!-- </title><img src="//evil.example/x.png"> -->'
+                "</noscript>",
+                '<noscript><textarea></noscript><!-- </textarea>'
+                '<img src="//evil.example/x.png"> --></noscript>',
+                "<noscript><script>//</noscript><!-- </script>"
+                "<style>@import url(//evil.example/x.css);</style> --></noscript>",
+                '<noscript><!-- </noscript><textarea> --><img src="//evil.example/x.png">'
+                "</textarea></noscript>",
+                "<noscript><!-- </noscript><textarea> -->"
+                "<style>@import url(//evil.example/x.css);</style></textarea></noscript>"):
+            with self.subTest(html=html):
+                parsing._tag_attr_index.cache_clear()
+                self.assertTrue(parsing._tag_attrs_failed(html))
+
+    def test_the_fallback_parse_records_its_end_state_before_the_base_clears_it(self):
+        # The seam guard reads `cdata_elem` at the TOP of `close()`, because the base clears the
+        # mode on its way out. Pinned directly, not only through the end-to-end symptom: an edit
+        # that moved the snapshot after `super().close()` would silently fail OPEN and bring the
+        # whole bypass back with every end-to-end test still green.
+        p = parsing._TagAttrParser("", _fallback=True)
+        p.parse_document("<style>/* </noscript")
+        self.assertEqual(p.eof_raw_text_elem, "style")
+        q = parsing._TagAttrParser("", _fallback=True)
+        q.parse_document("<!-- </noscript")
+        self.assertIsNone(q.eof_raw_text_elem)
+        self.assertTrue(q.eof_unterminated)
+        r = parsing._TagAttrParser("", _fallback=True)
+        r.parse_document("<p>plain</p>")
+        self.assertIsNone(r.eof_raw_text_elem)
+        self.assertFalse(r.eof_unterminated)
+
+    def test_a_fallback_body_that_ends_in_the_data_state_is_not_reported(self):
+        # The control: an ordinary fallback leaves the parse in the DATA state at the seam, so
+        # both views agree about the rest of the document and nothing is reported.
+        html = ('<noscript><style>a{color:#123456}</style><p>enable scripting</p></noscript>'
+                '<img src="local.png">')
+        self.assertFalse(parsing._tag_attrs_failed(html))
+        self.assertEqual([d.get("src") for d in parsing._find_tag_attrs(html, "img")],
+                         ["local.png"])
+
     def test_the_tag_lookup_ends_a_raw_text_region_at_an_attributed_closer(self):
         html = ('<script>var u = "<img src=\'quoted.png\'>";</script data-x>'
                 '<img src="real.png"><script>var a = 1;</script>')

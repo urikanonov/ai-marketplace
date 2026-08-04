@@ -4,6 +4,33 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.530.0] - 2026-08-04
+
+### Fixed
+
+- The strict validator's OFFLINE mode now sees CSS inside a `<noscript>` fallback. A `<noscript>`
+  body is raw TEXT only while scripting is ENABLED; with scripting off a browser parses it and
+  really does fetch what its CSS names. The element lookups already asked that EGRESS question,
+  but the CSS scans still read the scripting-enabled document view, so
+  `<noscript><style>@import url(https://evil.example/x.css)</style></noscript>` and a network
+  `url(...)` in a `style=` attribute inside a fallback both passed `--strict` as offline-clean -
+  live egress for exactly the reader who cannot run the layer. The shared tag index now also
+  collects the `<style>` bodies its scripting-disabled pass parses, and the offline `@import`,
+  style-block `url(...)` and inline-style `url(...)` scans read that fallback view alongside the
+  document and template views. PRESENCE checks are unchanged: they keep reading the browser's
+  scripting-enabled view, so a CSP `<meta>` buried in a `<noscript>` still cannot satisfy a
+  requirement no reader of the layer can see. The two views can also disagree about the REST OF
+  THE DOCUMENT after a fallback body: its end is decided by the scripting-enabled tokenizer at the
+  first `</noscript`, but a scripting-disabled browser arrives there in whatever state its own
+  parse of the fallback markup left it in. Unless that state is the data state - it is still
+  inside a `<style>`, another raw-text element, or a comment - the two tokenizers part company and
+  a reference after the seam is live for that reader while being invisible to both views. Such a
+  document is now REPORTED ("could not parse the document for the self-contained resource checks")
+  rather than certified offline-clean. A `<noscript>` that simply runs to the end of the document
+  is unaffected. The trade is that a fallback stylesheet containing a literal `</noscript` (in a
+  `content:` string, say) can no longer be certified either; encode it (`\3C\2F noscript`) or
+  split it, since a browser cannot tell the two apart at that point either.
+
 ## [1.527.0] - 2026-08-04
 
 ### Fixed

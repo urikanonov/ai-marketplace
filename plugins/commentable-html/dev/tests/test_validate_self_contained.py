@@ -243,6 +243,66 @@ class NewCheckTests(unittest.TestCase):
         errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, fallback))))
         self.assertTrue(any("evil.example/x.png" in e for e in errors), errors)
 
+    def test_offline_mode_rejects_css_egress_inside_a_noscript_fallback(self):
+        # The ELEMENT lookups already ask the egress question, but the CSS scans read the
+        # scripting-ENABLED document view, which sees a `<noscript>` body as raw TEXT. A browser
+        # with scripting OFF parses that body and really does fetch what its CSS names, so the
+        # stylesheet `@import`, the `url(...)` in a `<style>` body and the one in a `style=`
+        # attribute below are all live for exactly the reader who cannot run the layer.
+        cases = [
+            ('<noscript><style>@import url(https://evil.example/x.css);</style></noscript>',
+             "@import"),
+            ('<noscript><style>body { background: url(//evil.example/x.png); }</style></noscript>',
+             "style block contains a network url"),
+            ('<noscript><div style="background:url(//evil.example/x.png)">f</div></noscript>',
+             "inline style on <div> contains a network url"),
+        ]
+        for fallback, needle in cases:
+            with self.subTest(fallback=fallback):
+                errors, _ = self._errs_warns(
+                    with_offline_mode(build(body=self._body(MAIN, fallback))))
+                self.assertTrue(any("offline mode" in e and needle in e for e in errors),
+                                "expected %r for %r: %r" % (needle, fallback, errors))
+
+    def test_offline_mode_accepts_an_ordinary_noscript_fallback(self):
+        # The egress widening must not turn a legitimate fallback - one whose CSS references
+        # nothing over the network - into an error.
+        fallback = ('<noscript><style>.cmh-fallback { color: #123456; '
+                    'background: url(data:image/png;base64,AAAA); }</style>'
+                    '<p class="cmh-fallback" style="color:#123456">enable scripting</p></noscript>')
+        errors, warnings = self._errs_warns(
+            with_offline_mode(build(body=self._body(MAIN, fallback))))
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    def test_offline_mode_reports_a_noscript_closer_smuggled_into_fallback_css(self):
+        # The scripting-ENABLED tokenizer ends the `<noscript>` body at the first `</noscript`,
+        # but inside the fallback's `<style>` body a scripting-DISABLED browser is still in raw
+        # text, so the stylesheet runs on past that closer and really does fetch. Neither view
+        # holds the CSS after the seam, so the document must be REPORTED as unreadable rather
+        # than certified offline-clean.
+        fallback = ('<noscript><style>/* </noscript> */ '
+                    "body { background: url(//evil.example/x.png); }</style></noscript>")
+        errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, fallback))))
+        self.assertTrue(any("could not parse the document" in e for e in errors), errors)
+
+    def test_the_fallback_css_view_matches_what_the_document_view_already_does(self):
+        # The fallback view is the SAME rule applied to a second source of truth, so a shape must
+        # be judged the same wherever it sits. Both of these are deliberate and pre-date this
+        # view: `<template>`-parked CSS is checked because the offline export walks into templates
+        # (so a file keeping it is a file an export would change), and a `<style>` is checked
+        # whatever its `type` for the same parity reason. Pinning the pair together is what stops
+        # the two views from drifting into different policies.
+        for parked in ("<template><style>@import url(//evil.example/x.css);</style></template>",
+                       '<style type="text/plain">@import url(//evil.example/x.css);</style>'):
+            with self.subTest(parked=parked):
+                in_doc, _ = self._errs_warns(
+                    with_offline_mode(build(body=self._body(MAIN, parked))))
+                in_fallback, _ = self._errs_warns(with_offline_mode(
+                    build(body=self._body(MAIN, "<noscript>%s</noscript>" % parked))))
+                self.assertTrue(in_doc, "expected the document view to report %r" % parked)
+                self.assertEqual(in_fallback, in_doc)
+
     def test_a_document_whose_tag_index_fails_is_reported_not_passed(self):
         # "Could not look" must not read like "nothing more to find": the self-contained
         # guarantee is derived from the tag index, so a failed index is its own error.

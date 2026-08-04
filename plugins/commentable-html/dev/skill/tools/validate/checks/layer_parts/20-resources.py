@@ -13,9 +13,10 @@ def _check_self_contained(html, parser, nonshareable):
     #      check_charts); mermaid CDN imports are handled by check_mermaid_renders.
     #      Offline mode is stricter: no network-loading resource is allowed.
     #      Every ELEMENT lookup below asks the EGRESS question, so each reads the `<noscript>`
-    #      fallback markup a scripting-disabled browser parses and really does load. (The CSS
-    #      egress scans further down read `_DocParser`'s styles, which do not see inside a
-    #      `<noscript>` - tracked separately.)
+    #      fallback markup a scripting-disabled browser parses and really does load. The CSS
+    #      egress scans further down do the same, through `_find_noscript_styles()` /
+    #      `_find_noscript_inline_styles()`, because a fallback stylesheet's `@import` and
+    #      `url(...)` are live for exactly the reader who cannot run the layer.
     def _is_network(v):
         return is_network_url(v)
     descriptor = _layer_descriptor_data(parser) or {}
@@ -169,7 +170,7 @@ def _check_self_contained(html, parser, nonshareable):
                           "CSP allows inline script and cannot stop a navigation, so remove or "
                           "rename the attribute here too"
                           % (handler.get("tag", "element"), handler.get("attr", "on...")))
-        for style in parser.styles + parser.template_styles:
+        for style in parser.styles + parser.template_styles + _find_noscript_styles(html):
             # Slashes-required on purpose, and mirrored by the exporter's own `@import` strip: a
             # stylesheet fetch is closed by the offline CSP, and widening this copy alone would
             # reject a file the exporter just produced (issue #961, spec row CMH-VAL-08).
@@ -177,7 +178,8 @@ def _check_self_contained(html, parser, nonshareable):
                 errors.append('offline mode: @import "%s" loads over the network - inline or remove it' % m.group(1)[:80])
             if CSS_NETWORK_URL_RE.search(style.get("body", "")):
                 errors.append("offline mode: style block contains a network url(...) - inline or remove it")
-        for style in parser.inline_styles + parser.template_inline_styles:
+        for style in (parser.inline_styles + parser.template_inline_styles
+                      + _find_noscript_inline_styles(html)):
             if CSS_NETWORK_URL_RE.search(style.get("value", "")):
                 errors.append("offline mode: inline style on <%s> contains a network url(...) - inline or remove it"
                               % style.get("tag", "element"))
