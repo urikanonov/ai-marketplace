@@ -512,6 +512,16 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
         doc = build().replace('<span id="sidebarMoreMenu" class="cm-skip"></span>', "")
         self.assertError(doc, 'required element id="sidebarMoreMenu" is missing')
 
+    def test_missing_required_id_auto_open_panel(self):
+        # The Preferences rows are wired by 55-toolbar-menu.js; without them the reviewer silently
+        # loses "Auto-open panel on comment" while the document still validates as current.
+        doc = build().replace('<span id="btnAutoOpenPanel" class="cm-skip"></span>', "")
+        self.assertError(doc, 'required element id="btnAutoOpenPanel" is missing')
+
+    def test_missing_required_id_auto_open_panel_override(self):
+        doc = build().replace('<span id="btnAutoOpenPanelOverride" class="cm-skip"></span>', "")
+        self.assertError(doc, 'required element id="btnAutoOpenPanelOverride" is missing')
+
     def test_missing_required_id_search_toggle(self):
         doc = build().replace('<span id="btnSearchToggle" class="cm-skip"></span>', "")
         self.assertError(doc, 'required element id="btnSearchToggle" is missing')

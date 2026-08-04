@@ -42,6 +42,7 @@ REQUIRED_IDS = [
     "btnCloseSidebar", "menuComment",
     "btnToolbarMenu", "toolbarMenu",
     "btnMoreMenu", "sidebarMoreMenu", "btnSearchToggle",
+    "btnAutoOpenPanel", "btnAutoOpenPanelOverride",
     "btnSaveHtml", "btnSaveHtmlTop", "btnSavePlain", "btnSavePlainTop",
     "btnExportOffline", "btnExportOfflineTop",
     "btnStorage", "btnStorageTop",

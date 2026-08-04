@@ -110,7 +110,7 @@ test("CMH-MENU-PREF-02: with the preference off a quota failure still opens the 
     try { localStorage.setItem(k, "0"); } catch (e) { /* ignore */ }
     const real = Storage.prototype.setItem;
     Storage.prototype.setItem = function (key, value) {
-      if (typeof key === "string" && key.indexOf("::z") === key.length - 3) {
+      if (typeof key === "string" && key.slice(-3) === "::z") {
         const err = new Error("quota");
         err.name = "QuotaExceededError";
         throw err;
@@ -178,7 +178,7 @@ test("CMH-MENU-PREF-06: a refused preference write reports itself instead of sil
   await page.addInitScript(() => {
     const real = Storage.prototype.setItem;
     Storage.prototype.setItem = function (key, value) {
-      if (typeof key === "string" && key.indexOf("autoOpenPanel") >= 0) {
+      if (typeof key === "string" && key.indexOf("autoOpenPanel") !== -1) {
         const err = new Error("quota");
         err.name = "QuotaExceededError";
         throw err;
