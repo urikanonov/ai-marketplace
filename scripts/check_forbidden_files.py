@@ -63,6 +63,34 @@ SCRATCH_GLOBS = (
     "*.patch",
 )
 
+# An `_`-prefixed name means one of exactly two things here: a PRIVATE MODULE (the `_paths.py`,
+# `_shard.mjs`, `__init__.py` convention - eighteen are tracked, every one of them .py or .mjs),
+# or a scratch dump. `_t1.txt`, `_t2.txt` and `_review_diff1.txt` reached main that way, and
+# `_diff_record.txt`, `_diff_script.txt` and `_wip_diff.txt` were left behind while #927 was in
+# flight; the root allowlist below refuses them at the root, but a SUBDIRECTORY - where an
+# agent's cwd usually is - saw only the diff/patch rule above.
+#
+# So the rule here is an ALLOWLIST, for the same reason the repo root is one: a denylist of dump
+# extensions cannot keep up with what the next probe is named (`_notes.md`, `_out.csv`,
+# `_probe.html`, a bare `_wip`), and getting it wrong means the dump lands silently. An
+# `_`-prefixed file is scratch unless it wears a SOURCE extension. Adding a genuine `_`-prefixed
+# source of a new kind means adding its extension here - a rare, reviewable event.
+UNDERSCORE_SOURCE_SUFFIXES = (
+    ".py",
+    ".pyi",
+    ".js",
+    ".mjs",
+    ".cjs",
+    ".ts",
+    ".d.ts",
+    ".mts",
+    ".cts",
+    ".css",
+    ".sh",
+    ".ps1",
+    ".psm1",
+)
+
 # The repository ROOT is a CLOSED set: these are the only files that legitimately live there.
 # An agent's one-off probe lands beside AGENTS.md as `test_svg_exec.html`, `temp.txt`,
 # `local.js`, `screenshot.png`, or a bare `x` - shapes the tree-wide diff/patch rule never saw,
@@ -136,10 +164,40 @@ def is_root_scratch(path: str) -> bool:
     return head not in ROOT_ALLOWED
 
 
+def _is_source_module(name: str) -> bool:
+    """Return True when the lowercased basename `name` is a source file, not a dump."""
+    # Longest suffix first, so `_types.d.ts` is judged on `.d.ts` rather than on `.ts`.
+    for suffix in sorted(UNDERSCORE_SOURCE_SUFFIXES, key=len, reverse=True):
+        if name.endswith(suffix):
+            # A dump can wear a source suffix on top of its own (`_t1.txt.py`, `_wip.diff.py`),
+            # so what remains has to be a plain name: `__init__` qualifies, `_t1.txt` does not.
+            return "." not in name[: -len(suffix)]
+    return False
+
+
+def is_underscore_scratch(path: str) -> bool:
+    """Return True when `path` is an `_`-prefixed dump rather than private source.
+
+    The whole index path is judged, not just the basename: `scripts/_scratch/wip.txt` is the same
+    dump parked one directory down. A `_`-prefixed DIRECTORY is not itself an offence, though -
+    a private package (`scripts/_helpers/__init__.py`) is the same convention as a private
+    module - so what decides is whether the FILE is source. `/` is the only separator a git index
+    path has, so a literal backslash stays part of the NAME; translating one would let
+    `scripts/_wip\\notes.txt` show a basename of `notes.txt` and skip the rule entirely.
+    """
+    segments = path.split("/")
+    name = segments[-1].lower()
+    if not name.startswith("_") and not any(seg.startswith("_") for seg in segments[:-1]):
+        return False
+    return not _is_source_module(name)
+
+
 def is_scratch_artifact(path: str) -> bool:
     """Return True when the file looks like a committed scratch dump."""
-    name = path.replace("\\", "/").rsplit("/", 1)[-1].lower()
+    name = path.rsplit("/", 1)[-1].lower()
     if any(fnmatch.fnmatchcase(name, pattern) for pattern in SCRATCH_GLOBS):
+        return True
+    if is_underscore_scratch(path):
         return True
     return is_root_scratch(path)
 
@@ -248,9 +306,11 @@ def main() -> int:
             print(f"  - {display_path(path)}")
         print("Write them to the gitignored tmp/ instead, with an absolute or tmp/-prefixed path.")
         print(
-            "A diff/patch dump is refused anywhere; at the repo ROOT only the entries listed in "
-            "ROOT_ALLOWED / ROOT_DIR_ALLOWED in this script are allowed - add a real top-level "
-            "file or directory there."
+            "A diff/patch dump is refused anywhere, as is an `_`-prefixed file that is not a "
+            "source module; at the repo ROOT only the entries listed in ROOT_ALLOWED / "
+            "ROOT_DIR_ALLOWED in this script are allowed - add a real top-level file or directory "
+            "there. If an `_`-prefixed file above is a genuine private source of a kind this repo "
+            "has not tracked before, add its extension to UNDERSCORE_SOURCE_SUFFIXES instead."
         )
         status = 1
     if status == 0:
