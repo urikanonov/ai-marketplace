@@ -4,6 +4,25 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.664.0] - 2026-08-04
+
+### Fixed
+
+- A sortable table nested in another sortable table's cell no longer loses its own sort when the
+  reader exports. A table's persisted key is positional, and a nested table changes document index
+  whenever the outer table's rows move, so the three call sites disagreed about which key belonged
+  to it: `applyPersistedTableSorts` reads the UNSORTED startup DOM, `setupSortableTables` runs after
+  the persisted sorts have been applied (an already-sorted DOM), and the export's canonical pass
+  re-derived keys around its own unsort. A reader who sorted a nested table therefore persisted it
+  under a key neither the next reload nor the export looked it up by, and the export silently left
+  that table unsorted. Each table's key is now bound ONCE, on the unsorted startup DOM, and looked
+  up by element from then on, so a click, a reload, and an export all agree; the key VALUES are
+  unchanged for a document with no nested sortable table, so no reader loses a persisted sort.
+- The export's canonical pass now restores the reader's sorted view from a `finally`, and resolves
+  every table's key and body BEFORE its first unsort. The pass unsorts every table to canonicalize
+  comment offsets, so a throw in between (an offset recompute that fails) previously left the reader
+  looking at a permanently unsorted document rather than at a failed export.
+
 ## [1.663.0] - 2026-08-04
 
 ### Fixed

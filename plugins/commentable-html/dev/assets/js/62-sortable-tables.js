@@ -40,6 +40,25 @@ function _tableKey(t, idx) {
   const sig = hdr ? [...hdr.cells].map(c => (c.textContent || "").trim()).join("|") : "";
   return idx + "::" + sig.slice(0, 120);
 }
+// `_tableKey` numbers the sortable tables in DOCUMENT order, and a sortable table nested in another
+// table's cell CHANGES that number whenever the outer table's rows move. The three call sites
+// therefore saw three different orders: `applyPersistedTableSorts` reads the UNSORTED startup DOM,
+// `setupSortableTables` runs AFTER the persisted sorts are applied (so an already-sorted one), and
+// the export pass re-derives keys around its own unsort. A reader who sorted a nested table then
+// persisted it under a key neither reload nor export looked it up by (#976). So bind each table's
+// key ONCE, on the unsorted startup DOM, and look it up by ELEMENT from then on. For a document
+// with no nested sortable table the bound value is exactly what every call site computed anyway,
+// so no reader loses a persisted sort.
+const _tableKeyBinding = new WeakMap();
+function _bindTableKeys() {
+  _sortableTables().forEach(function (t, i) { _tableKeyBinding.set(t, _tableKey(t, i)); });
+}
+// The bound key, falling back to the positional one for a table the binding never saw (a table
+// added after startup, or a caller that runs before `applyPersistedTableSorts`).
+function _tableKeyFor(t, idx) {
+  const bound = _tableKeyBinding.get(t);
+  return bound === undefined ? _tableKey(t, idx) : bound;
+}
 function _parseNum(s) {
   if (s == null) return null;
   const t = String(s).replace(/[\s,$%]/g, "");
@@ -193,15 +212,34 @@ function _canonicalCommentsForExport() {
     return comments.map(function (c) { return Object.assign({}, c); });
   }
   const savedState = JSON.parse(JSON.stringify(_tableSortState));
-  _sortableTables().forEach(function (t) { _unsortRows(_tableBody(t)); });
-  recomputeTextOffsets(false);
-  const snap = comments.map(function (c) { return Object.assign({}, c); });
-  _sortableTables().forEach(function (t, i) {
-    const st = savedState[_tableKey(t, i)];
-    if (st) _sortRows(_tableBody(t), st.col, st.dir);
+  // Resolve every table's key and body BEFORE the first unsort: the unsort itself moves a nested
+  // sortable table to a different document index, so anything re-derived from position afterwards
+  // would describe a different table.
+  const sorts = _sortableTables().map(function (t, i) {
+    return { body: _tableBody(t), state: savedState[_tableKeyFor(t, i)] };
   });
-  recomputeTextOffsets(false);
-  return snap;
+  let restored = false;
+  function restoreSorts() {
+    if (restored) return;
+    restored = true;
+    sorts.forEach(function (s) {
+      if (s.state) _sortRows(s.body, s.state.col, s.state.dir);
+    });
+  }
+  try {
+    sorts.forEach(function (s) { _unsortRows(s.body); });
+    recomputeTextOffsets(false);
+    const snap = comments.map(function (c) { return Object.assign({}, c); });
+    restoreSorts();
+    recomputeTextOffsets(false);
+    return snap;
+  } finally {
+    // A throw above must never leave the reader looking at a permanently unsorted document; on the
+    // happy path this is a no-op because the restore already ran. Only the ROW ORDER is put back
+    // here - re-running the offset recompute while unwinding could throw again and replace the
+    // failure the caller is about to report.
+    restoreSorts();
+  }
 }
 function _exportableComments() {
   return withoutHandled(_canonicalCommentsForExport());
@@ -211,8 +249,9 @@ function _exportableComments() {
 function applyPersistedTableSorts() {
   _loadTableSortState();
   _indexTableRows();
+  _bindTableKeys();
   _sortableTables().forEach(function (t, i) {
-    const st = _tableSortState[_tableKey(t, i)];
+    const st = _tableSortState[_tableKeyFor(t, i)];
     if (st && typeof st.col === "number" && (st.dir === "asc" || st.dir === "desc")) {
       _sortRows(_tableBody(t), st.col, st.dir);
     }
@@ -230,7 +269,7 @@ function _reflectSortIco(btn, dir) {
 }
 function setupSortableTables() {
   _sortableTables().forEach(function (t, i) {
-    const key = _tableKey(t, i);
+    const key = _tableKeyFor(t, i);
     const hdr = _tableHeaderRow(t);
     const body = _tableBody(t);
     t.classList.add("cmh-sortable");

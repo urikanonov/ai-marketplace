@@ -1,9 +1,48 @@
 import { test, expect } from "@playwright/test";
-import { openInline, ready, lastCopied, addTextComment, stageContent, fileUrl } from "./helpers.js";
+import { openInline, ready, lastCopied, addTextComment, stageContent, fileUrl, clickSidebarExport } from "./helpers.js";
 
 // Requests column values in the template demo table, keyed by Service, so a test can
 // assert numeric (not lexicographic) ordering.
 const REQ = { gateway: 1200, auth: 340, catalog: 9800 };
+
+// An OUTER sortable table whose body cells each hold their OWN sortable table. Sorting the outer
+// table moves the nested tables to a different DOCUMENT index, which is exactly what makes a
+// positional table key disagree between the reader's click, a reload, and the export pass (#976).
+const NESTED_TABLES = [
+  "<h1>Regions</h1>",
+  "<p>Regional load overview.</p>",
+  '<table id="outer">',
+  "  <thead>",
+  "    <tr><th>Region</th><th>Hosts</th></tr>",
+  "  </thead>",
+  "  <tbody>",
+  "    <tr><td>West</td><td>",
+  '      <table id="west">',
+  "        <thead><tr><th>West host</th><th>Load</th></tr></thead>",
+  "        <tbody>",
+  "          <tr><td>wb</td><td>2</td></tr>",
+  "          <tr><td>wa</td><td>1</td></tr>",
+  "        </tbody>",
+  "      </table>",
+  "    </td></tr>",
+  "    <tr><td>East</td><td>",
+  '      <table id="east">',
+  "        <thead><tr><th>East host</th><th>Load</th></tr></thead>",
+  "        <tbody>",
+  "          <tr><td>eb</td><td>2</td></tr>",
+  "          <tr><td>ea</td><td>1</td></tr>",
+  "        </tbody>",
+  "      </table>",
+  "    </td></tr>",
+  "  </tbody>",
+  "</table>",
+].join("\n");
+
+const firstCells = (page, selector) =>
+  page.$$eval(selector, (tds) => tds.map((t) => t.textContent.trim()));
+const outerOrder = (page) => firstCells(page, "#outer > tbody > tr > td:first-child");
+const westOrder = (page) => firstCells(page, "#west > tbody > tr > td:first-child");
+const sortCtrl = (page, id) => page.locator(`#${id} > thead > tr > th:nth-child(1) .cmh-sort-ctrl`);
 
 async function serviceOrder(page) {
   return page.$$eval("#commentRoot table.cmh-sortable tbody tr td:first-child", (tds) => tds.map((t) => t.textContent.trim()));
@@ -54,6 +93,76 @@ test.describe("copy buttons + sortable tables", () => {
       .toHaveText(["Bravo", "Alpha", "Charlie"]);
     expect(await shape()).toBe(shapeBefore);
     expect(await text()).toBe(textBefore);
+  });
+
+  // #976: the export pass canonicalizes comments by unsorting EVERY sortable table and then putting
+  // each one back. The table key is positional, so a sortable table nested in a sorted table's cell
+  // must not be looked up by an index the unsort itself changed.
+  test("a sortable table nested in a sorted table keeps its own sort across an export (CMH-CONTENT-08)", async ({ page }) => {
+    const staged = stageContent(NESTED_TABLES, { key: "cmh-nested-sort-export" });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    expect(await outerOrder(page)).toEqual(["West", "East"]);
+    expect(await westOrder(page)).toEqual(["wb", "wa"]);
+    await addTextComment(page, "#commentRoot p", "regional note");
+
+    // Sort the OUTER table so the nested tables swap document position, then reload: the persisted
+    // sort is re-applied BEFORE the sort controls are wired, so from here the live document order
+    // and the authored order disagree about which index each nested table has.
+    await sortCtrl(page, "outer").click();
+    expect(await outerOrder(page)).toEqual(["East", "West"]);
+    await page.reload();
+    await ready(page);
+    expect(await outerOrder(page)).toEqual(["East", "West"]);
+
+    await sortCtrl(page, "west").click();
+    expect(await westOrder(page)).toEqual(["wa", "wb"]);
+
+    await Promise.all([page.waitForEvent("download"), clickSidebarExport(page, "#btnSaveHtml")]);
+    expect(await westOrder(page)).toEqual(["wa", "wb"]);
+    expect(await outerOrder(page)).toEqual(["East", "West"]);
+
+    // And the reader's own sorts still survive the next reload.
+    await page.reload();
+    await ready(page);
+    expect(await outerOrder(page)).toEqual(["East", "West"]);
+    expect(await westOrder(page)).toEqual(["wa", "wb"]);
+  });
+
+  // #976: the canonical pass unsorts first, so a throw between the unsort and the restore would
+  // leave the reader looking at a permanently unsorted document.
+  test("a throw during the export canonical pass never strands the reader's tables unsorted (CMH-CONTENT-08)", async ({ page }) => {
+    const staged = stageContent(NESTED_TABLES, { key: "cmh-sort-export-throw" });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await addTextComment(page, "#commentRoot p", "regional note");
+    await sortCtrl(page, "outer").click();
+    await sortCtrl(page, "west").click();
+    expect(await outerOrder(page)).toEqual(["East", "West"]);
+    expect(await westOrder(page)).toEqual(["wa", "wb"]);
+
+    // Make the offset recompute inside the canonical pass throw: it walks the content root, and
+    // nothing else in an export click does.
+    await page.evaluate(() => {
+      const orig = document.createTreeWalker.bind(document);
+      window.__cmhWalkerThrows = 0;
+      window.__cmhWalkerBoom = true;
+      document.createTreeWalker = function (node, ...rest) {
+        if (window.__cmhWalkerBoom && node && node.id === "commentRoot") {
+          window.__cmhWalkerThrows++;
+          throw new Error("recompute boom");
+        }
+        return orig(node, ...rest);
+      };
+    });
+    await clickSidebarExport(page, "#btnSaveHtml");
+    // The export really did fail: no file is produced when the canonical pass throws.
+    await expect(page.waitForEvent("download", { timeout: 2000 })).rejects.toThrow();
+    expect(await page.evaluate(() => window.__cmhWalkerThrows)).toBeGreaterThan(0);
+    await page.evaluate(() => { window.__cmhWalkerBoom = false; });
+
+    expect(await outerOrder(page)).toEqual(["East", "West"]);
+    expect(await westOrder(page)).toEqual(["wa", "wb"]);
   });
 
   test("each code block has an always-visible Copy button that copies its exact text", async ({ page }) => {
