@@ -376,6 +376,59 @@ class RuleETests(unittest.TestCase):
             self.assertTrue(v)
             self.assertIn("changes", v[0])
 
+    def test_a_case_variant_of_the_action_name_does_not_evade_the_rule(self):
+        # GitHub resolves owner/repo case-insensitively, so Actions/Checkout is the same action.
+        for name in ("Actions/Checkout@v4", "ACTIONS/CHECKOUT@v4"):
+            v = self._v("    timeout-minutes: 5\n"
+                        "    steps:\n"
+                        "      - uses: %s\n"
+                        "        with:\n"
+                        "          fetch-depth: 0\n" % name)
+            self.assertTrue(v, name)
+
+
+class ChangesJobCheckoutTests(unittest.TestCase):
+    """The `changes` job's checkout must stay CHEAP, not merely generously budgeted (issue #951).
+
+    RULE E only guards the timeout. The blobless filter and the rename-free diff are what make the
+    job fast in the first place, and dropping either would silently restore the historical-blob
+    fetch (or add a lazy promisor fetch for rename detection) while leaving every test green.
+    """
+
+    _WORKFLOW = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        ".github", "workflows", "plugin-tests.yml")
+
+    def _changes_job(self):
+        import yaml
+        with open(self._WORKFLOW, "r", encoding="utf-8") as fh:
+            doc = yaml.safe_load(fh)
+        job = doc["jobs"]["changes"]
+        self.assertIsInstance(job, dict, "plugin-tests.yml has no `changes` job")
+        return job
+
+    def test_the_checkout_is_blobless(self):
+        job = self._changes_job()
+        checkouts = [s for s in job["steps"] if cwp._is_full_history_checkout(s)]
+        self.assertTrue(checkouts, "the changes job no longer takes a full-history checkout")
+        for step in checkouts:
+            self.assertEqual(
+                str(step["with"].get("filter", "")).strip(), "blob:none",
+                "the changes job must clone blobless: its diff reads trees only, and the "
+                "historical blobs are what made the clone lose a race with its own timeout")
+
+    def test_the_diff_disables_rename_detection(self):
+        job = self._changes_job()
+        runs = [s.get("run", "") for s in job["steps"] if isinstance(s, dict)]
+        diffs = [r for r in runs if "git diff" in r]
+        self.assertTrue(diffs, "the changes job no longer runs a git diff")
+        for run in diffs:
+            self.assertIn(
+                "--no-renames", run,
+                "rename detection compares blob CONTENT, which in a blobless clone means a lazy "
+                "promisor fetch; --no-renames keeps the diff tree-only (and errs toward running "
+                "the suites, since a rename shows up as a delete plus an add)")
+
 
 class SpecCoverageTest(unittest.TestCase):
     """`scripts/SPEC.md`'s CI-POLICY rows must name tests that exist in this suite.

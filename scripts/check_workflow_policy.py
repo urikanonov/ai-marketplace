@@ -158,7 +158,7 @@ def _iter_run_scripts(doc):
 # Observed spurious cancellations sat at 5m under runner contention, so 5 is not a budget - it is
 # a coin flip. Ten minutes leaves the clone room while still catching a genuinely hung job.
 FULL_HISTORY_MIN_TIMEOUT = 10
-_CHECKOUT_STEP_RE = re.compile(r"^actions/checkout(?:@|$)")
+_CHECKOUT_STEP_RE = re.compile(r"^actions/checkout(?:@|$)", re.IGNORECASE)
 # A plain decimal number, the only shape we resolve statically; anything else is treated the way
 # JavaScript's Number() treats it - NaN - which actions/checkout turns into a full-history fetch.
 _NUMBER_RE = re.compile(r"^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$")
@@ -187,7 +187,11 @@ def _fetch_depth_is_full(value):
 
 
 def _is_full_history_checkout(step):
-    """True when a step is an actions/checkout that asks for the whole history."""
+    """True when a step is an actions/checkout that asks for the whole history.
+
+    The name is matched case-INSENSITIVELY: GitHub resolves `Actions/Checkout@v7` to the same
+    action, so a case variant must not be a way past the rule.
+    """
     if not isinstance(step, dict):
         return False
     uses = step.get("uses")
