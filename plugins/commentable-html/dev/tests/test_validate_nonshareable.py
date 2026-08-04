@@ -37,6 +37,94 @@ class NonShareableTests(unittest.TestCase):
         html = build_nonshareable().replace('"mode":"nonshareable"', '"mode":"offline"', 1)
         self.assertNonShareableError(html, 'commentableHtmlLayer.mode must be "nonshareable"')
 
+    # -- the offline gate follows the DECLARED mode, not the lineage --------- #
+    # The exporter runs the offline strips on whatever it stamps `mode: offline`, and the
+    # NonShareable path reaches them too (`_buildStandaloneHtml` inlines the companions first).
+    # Scoping the offline rules with `not nonshareable` keyed the GATE to a classification the
+    # STRIPS never consult, so a document stamped offline that still carried a companion
+    # reference switched every offline-only rule OFF. The descriptor rule failed such a file
+    # anyway, so what was lost was the REPORT, not the verdict: the offline-only errors were not
+    # named at all and the egress that was named carried the shareable wording.
+    def _offline_lineage_doc(self, csp=False):
+        html = build_nonshareable().replace('"mode":"nonshareable"', '"mode":"offline"', 1)
+        if csp:
+            html = html.replace(
+                "<head>\n",
+                '<head>\n<meta http-equiv="Content-Security-Policy" content="%s">\n' % OFFLINE_CSP,
+                1)
+        return html.replace(
+            "<p>content</p>",
+            '<p>content</p>\n'
+            '  <button id="go" onclick="location.href=\'https://evil.example/x\'">go</button>\n'
+            '  <img src="https://evil.example/beacon.png" alt="x">\n'
+            '  <iframe src="https://evil.example/f.html"></iframe>')
+
+    def test_offline_rules_run_on_a_nonshareable_lineage_offline_document(self):
+        errors, _ = self._validate(self._offline_lineage_doc())
+        # The event-handler gate: the export scrubs every `on*`, so a file it would change must
+        # not be certified. This is the shape the issue names in dist/NONSHAREABLE.html.
+        self.assertTrue(any("the export scrubs it" in e for e in errors), errors)
+        # The zero-network CSP requirement.
+        self.assertTrue(any("missing Content-Security-Policy meta tag" in e for e in errors), errors)
+        # Egress is reported with the OFFLINE wording (an error with no Chart.js exemption),
+        # not the shareable self-contained wording.
+        for ref in ("beacon.png", "f.html"):
+            self.assertTrue(any("offline mode:" in e and ref in e for e in errors), (ref, errors))
+        # The descriptor rule still fires alongside them, so both problems are reported at once.
+        self.assertTrue(any('mode must be "nonshareable"' in e for e in errors), errors)
+
+    def test_offline_media_and_active_data_rules_run_on_a_nonshareable_lineage_document(self):
+        # A second, independent offline-only family (media egress and the importmap rule), so the
+        # coverage is not pinned to the one attribute the issue happened to name. This one carries
+        # a VALID offline CSP, so the rules are shown to run on their own rather than riding along
+        # with the missing-policy error - which is why the absence of that error is asserted too
+        # (it also pins that the `csp=True` insertion really took effect).
+        html = self._offline_lineage_doc(csp=True).replace(
+            "<p>content</p>",
+            '<p>content</p>\n'
+            '  <video src="https://evil.example/v.mp4"></video>\n'
+            '  <script type="importmap">{"imports": {"lib": "https://evil.example/lib.js"}}</script>')
+        errors, _ = self._validate(html)
+        self.assertFalse(any("missing Content-Security-Policy" in e for e in errors), errors)
+        self.assertTrue(any("offline mode:" in e and "v.mp4" in e for e in errors), errors)
+        self.assertTrue(any("import map" in e for e in errors), errors)
+
+    def test_a_nonshareable_document_that_is_not_offline_keeps_its_own_rules(self):
+        # The control the direction rests on: the offline rules key off the DECLARED mode, so a
+        # legitimate NonShareable document is untouched by this change. Its companion `<link>` and
+        # `<script src>` stay local references, its bootstrap dismiss button keeps its `onclick`,
+        # and nothing gains an `offline mode:` error.
+        html = self._offline_lineage_doc().replace('"mode":"offline"', '"mode":"nonshareable"', 1)
+        errors, _ = self._validate(html)
+        self.assertFalse(any("offline mode:" in e for e in errors), errors)
+        self.assertFalse(any("the export scrubs it" in e for e in errors), errors)
+        # It is not silently clean either - the shareable self-contained guarantee still applies.
+        self.assertTrue(any("self-contained" in e and "f.html" in e for e in errors), errors)
+
+    def test_a_nonshareable_document_may_carry_an_inline_event_handler(self):
+        # Both places a NonShareable document legitimately carries an `on*`: the shipped bootstrap
+        # dismiss button (which `_inlineNonShareableAssets` deletes with the whole NONSHAREABLE
+        # BOOTSTRAP block before any export) and an authored one in the CONTENT region (which
+        # survives the standalone rebuild and is removed by the offline build's
+        # `_stripOfflineEventHandlers`). Neither is an offline document, so the handler gate must
+        # not reach either.
+        html = build_nonshareable().replace(
+            "<p>content</p>",
+            '<p>content</p>\n  <button type="button" onclick="this.hidden = true;">X</button>')
+        html = html.replace(
+            '<div id="cmhAssetBanner" class="cm-skip" role="alert" hidden>missing</div>',
+            '<div id="cmhAssetBanner" class="cm-skip" role="alert" hidden>missing'
+            '<button type="button" onclick="var b=this.closest(\'#cmhAssetBanner\');'
+            ' if (b) b.hidden=true;">X</button></div>')
+        # Both rewrites are string replacements against the helper's markup, so pin that each one
+        # landed - otherwise a helper change makes one silently no-op and the test keeps passing
+        # while covering half of what it claims.
+        self.assertIn('onclick="this.hidden = true;"', html)
+        self.assertIn("this.closest('#cmhAssetBanner')", html)
+        errors, warnings = self._validate(html)
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
     def test_real_nonshareable_template_is_clean(self):
         eco = os.path.join(ROOT, "dist", "NONSHAREABLE.html")
         self.assertTrue(os.path.exists(eco), "dist/NONSHAREABLE.html not found - run python tools/build.py")
