@@ -93,8 +93,8 @@ _CSP_ASCII_WS_RE = re.compile(r"[\t\n\f\r ]+")
 # egress at all (the exporter's strips never touched them either, so the gate used to reject what
 # the strip left behind). That one character is an APPROXIMATION of the URL parser's host state, in
 # the fail-CLOSED direction: a malformed authority is still reported, because a gate whose miss is a
-# beacon should over-report rather than under-report - the same trade `META_REFRESH_NETWORK_URL_RE`
-# makes below.
+# beacon should over-report rather than under-report - the same trade `NETWORK_URL_RE` below
+# makes.
 # Whitespace is spelled out as the ASCII set rather than written `\s` for the reason the srcset
 # tokenizer below spells it out: the exporter's mirror runs in a JavaScript engine whose `\s` also
 # takes U+00A0 and U+FEFF where Python's (under `re.ASCII`) does not, and neither is CSS whitespace,
@@ -578,47 +578,36 @@ def meta_refresh_target(content):
     return url
 
 
-# The refresh TARGET as a network literal, read after the URL parser's own input cleanup (ASCII
-# tab and newline removed anywhere, leading AND trailing C0-or-space removed) so neither a padded
-# nor a tab-split spelling passes as relative, and a value that is only `https:` plus padding is
-# still the host-less parse failure a browser makes of it. The literal is recognized in the
-# prefixes a browser resolves to a network host: scheme plus slashes, protocol-relative (slashes
-# only), and SCHEME-ONLY - `https:evil.example` with NO slashes after the colon, which the URL
-# parser sends through the special-authority states and resolves to the same host as
-# `https://evil.example`. Requiring the slashes left the channel open to a one-token spelling
-# change. Those states IGNORE any run of `/` or `\` after the scheme, which is why the slash run is
-# consumed rather than counted, and they need a non-empty HOST, which is why one host character is
-# required: `url=https:` and `url=https://` are parse FAILURES a browser does not navigate on, and
-# reporting them as network URLs would reject an offline file that has no egress at all. That host
-# test is a one-character approximation of the URL parser's, so a MALFORMED authority
-# (`https://:80`) is still reported - the fail-CLOSED direction, and the right one for a gate whose
-# miss is a beacon. An authority written with BACKSLASHES counts too (`\\host`, `/\host`): a
-# special scheme's relative-slash state treats the two alike, so on a `file://` document those
-# resolve to `file://host/...` - a UNC fetch off the machine, and a top-level navigation the CSP
-# cannot stop either. The same host reached through an EXPLICIT `file:` scheme counts for the same
-# reason, with the two spellings that stay on the machine excluded: a third slash means an empty
-# host (`file:///C:/x`) and `localhost` is the local machine by definition. A SINGLE leading slash
-# or backslash is a path, not an authority, so it stays local.
-# `re.ASCII` is on so `re.IGNORECASE`
-# cannot fold U+017F onto `s` and report a relative `http<U+017F>:x.html` as a network URL.
-# Widening here introduces no exporter/validator drift: offline mode rejects EVERY
-# `meta[http-equiv=refresh]` (as the strip removes every one), and this predicate only decides
-# WHICH of the two messages that rejection carries - the one that names a network beacon.
-# The NEIGHBOURING CSS and attribute gates no longer differ in the way this comment used to record:
-# `CSS_NETWORK_URL_RE`, `CSS_NETWORK_IMPORT_RE` and `NETWORK_URL_RE` all consume the slash run after
-# a special scheme too (issue #961), so what is left of the difference is that this pattern also
-# accepts a BACKSLASH separator (its input is not run through `normalize_url_value`, which maps them)
-# and reads exactly two leading separators for the scheme-relative arm - see the CMH-VAL-08 spec row.
-META_REFRESH_NETWORK_URL_RE = re.compile(
-    r"(?:https?:[/\\]*"
-    r"|file:[/\\]{2}(?![/\\])(?!localhost(?:[/\\?#]|$))"
-    r"|[/\\][/\\])[^/\\?#]",
-    re.IGNORECASE | re.ASCII)
-
+# The refresh TARGET as a network literal, decided by the SHARED `is_network_url` every other
+# egress gate reads rather than by a pattern of this rule's own. A bespoke copy had no way to stay
+# in step: it read exactly two leading separators, so the four-or-more-separator `file:` spelling
+# the attribute predicate counts was read as local (that one is an EMPTY-host file URL whose
+# UNC-shaped path a real Chromium on Windows was measured resolving off the machine, not an
+# authority the URL parser opens - the platform resolves it, which is why the attribute gate counts
+# it), and so was every slash run of three or more, which the shared `/{2,}` arm counts
+# deliberately - what `///host` resolves to depends on the BASE (that host from a document served
+# over http/https, where the special-authority states ignore the run; an empty-host local path from
+# a `file:` one, where the file-host state takes the empty buffer), so counting it is the
+# fail-CLOSED reading. In the other direction a Windows DRIVE LETTER - a path, not a host, to the
+# file-host state - was named a network beacon it never reaches. One predicate cannot drift from
+# itself, so the separator counts, the `localhost` and drive-letter exclusions and the
+# non-empty-authority rule are all inherited. The backslash spellings the bespoke arms carried
+# explicitly are inherited too, through `normalize_url_value`, which maps every backslash onto a
+# slash for exactly the reason those arms existed: for a special scheme the parser's relative and
+# authority-slash states treat the two alike, so `https:\\evil.example` and `\\evil.example` open
+# an authority. Widening or narrowing here introduces no exporter/validator drift: offline mode
+# rejects EVERY `meta[http-equiv=refresh]` (as the strip removes every one), and this predicate
+# only decides WHICH of the two messages that rejection carries - the one that names a network
+# beacon.
 def meta_refresh_navigates_to_network(content):
-    """True when a refresh meta's `content` names a network URL a browser would navigate to."""
-    url = _URL_INNER_REMOVE_RE.sub("", meta_refresh_target(content))
-    return bool(META_REFRESH_NETWORK_URL_RE.match(url.strip(_URL_LEADING_TRAILING_STRIP)))
+    """True when a refresh meta's `content` names a target the SHARED egress predicate calls network.
+
+    That predicate is deliberately fail-CLOSED rather than an exact model of what a browser resolves
+    from this document's base, so a shape it over-reports (a slash run of three or more, which is a
+    host only from an http/https base) reads True here too. Since offline mode rejects every refresh
+    whatever its target, the cost of that is the WORDING of a rejection, never the rejection itself.
+    """
+    return is_network_url(meta_refresh_target(content))
 
 # Script types that are ACTIVE without being JavaScript, so `_is_executable_js` never looked at
 # them. They get different rules, mirroring `_offlineActiveDataScriptType` /
