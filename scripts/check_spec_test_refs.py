@@ -65,6 +65,18 @@ BEGIN a line (`_js_test_titles`), so `page.test(...)` is correctly ignored - but
 declaration buried mid-line (`if (cond) test("x (AREA-99)", ...)`) or a title assembled by
 concatenation. There are none in the corpus today; that is the residual escape hatch, and it is a
 grammar limit rather than an exemption.
+
+Two TARGET SHAPES are registered. The usual one owns a `tests/` directory of JS/TS specs. The
+other is a FLAT PYTHON SUITE (`FLAT_PYTHON_SUITES`, issue #1002): `test_*.py` files sitting beside
+the code they cover, which is what `scripts/SPEC.md` owns and what `run_script_tests.py` runs. For
+that shape `_tests_dir` answers with the spec's own directory (only when it really holds such a
+suite, so a mistyped registration still fails closed) and `_test_corpus` collects its `test_*.py`
+files. A flat target gets the FORWARD and DUPLICATE-ROW directions in full; the two JS-title
+directions are bounded to files that carry JS titles (`_carries_js_titles`), because a Python test
+is a `Class.method` name that cannot spell a hyphenated feature id, and because such a corpus is
+full of feature-id-SHAPED fixture strings written for these checkers' own unit tests. That is why
+`scripts/SPEC.md` is registered in `INTENTIONALLY_RESTRICTED_SPECS` rather than waiting to
+graduate.
 """
 
 from __future__ import annotations
@@ -85,21 +97,38 @@ SPEC_TARGETS = (
     (REPO_ROOT / "site" / "tests" / "SPEC.md", REPO_ROOT),
     (REPO_ROOT / ".github" / "skills" / "demo-video" / "SPEC.md",
      REPO_ROOT / ".github" / "skills" / "demo-video"),
+    (REPO_ROOT / "scripts" / "SPEC.md", REPO_ROOT),
 )
+# Targets whose tests are a FLAT `test_*.py` set sitting BESIDE the code they cover, rather than a
+# `tests/` directory of JS specs (issue #1002). The repo-guard spec is that shape: its suites are
+# `scripts/test_*.py`, so the `<spec dir>/tests` / `<base>/tests` lookup found nothing and the
+# target failed closed with "no tests directory found". Membership is declared, not sniffed, so a
+# new flat target is a reviewed edit; the directory is the spec's own, and it counts only when it
+# really holds a suite, so a mistyped registration still fails closed.
+FLAT_PYTHON_SUITES: frozenset[Path] = frozenset({
+    (REPO_ROOT / "scripts" / "SPEC.md").resolve(),
+})
 # Specs whose ENTIRE test corpus is reverse-mapped, not just the `*.test.*` / regressions subset.
 # A spec joins this set once every feature id its tests carry is owned and cited by it; see the
-# module docstring. Every SPEC_TARGETS entry is listed - the set remains the graduation mechanism
-# for a target added later, not a standing exemption for any shipped one.
+# module docstring. Every SPEC_TARGETS entry with a JS corpus is listed - the set remains the
+# graduation mechanism for a target added later, not a standing exemption for any shipped one.
 FULLY_REVERSE_MAPPED_SPECS = frozenset({
     (REPO_ROOT / "plugins" / "commentable-html" / "dev" / "SPEC.md").resolve(),
     (REPO_ROOT / "site" / "tests" / "SPEC.md").resolve(),
     (REPO_ROOT / ".github" / "skills" / "demo-video" / "SPEC.md").resolve(),
 })
 # The targets deliberately left OUT of the set above, i.e. still restricted to the `*.test.*` /
-# regressions subset. Empty today. A new target that genuinely needs to start restricted and
-# graduate later is registered HERE, which is a reviewed one-line edit rather than a silent
-# omission - `test_every_spec_target_is_fully_reverse_mapped` compares the two.
-INTENTIONALLY_RESTRICTED_SPECS: frozenset[Path] = frozenset()
+# regressions subset. A new target that genuinely needs to start restricted and graduate later is
+# registered HERE, which is a reviewed one-line edit rather than a silent omission -
+# `test_every_spec_target_is_fully_reverse_mapped` compares the two.
+# `scripts/SPEC.md` is here for a reason that will not change with a cleanup: a Python test is a
+# `Class.method` name, and an identifier cannot carry a hyphenated feature id, so there is no
+# reverse citation to demand. Its corpus is also full of feature-id-SHAPED fixture strings
+# (`CMH-FOO-01`, `DEMO-01`, `ORPHAN-99`) written for the checkers' own unit tests, which a reverse
+# scan would read as real ids. The FORWARD and DUPLICATE-ROW directions do gate it.
+INTENTIONALLY_RESTRICTED_SPECS: frozenset[Path] = frozenset({
+    (REPO_ROOT / "scripts" / "SPEC.md").resolve(),
+})
 
 # One grammar for "a JS/TS test file" everywhere. Playwright's default testMatch is
 # `**/*.@(spec|test).?(c|m)[jt]s`, so the corpus the reverse and duplicate directions read must
@@ -111,6 +140,9 @@ _TEST_PATH_RE = re.compile(
     r"`((?:tests|site/tests/tests)/[^`]+\.(?:py|%s)|scripts/test_[^`]+\.py)`" % _JS_TEST_SUFFIX
 )
 _JS_TEST_FILE_RE = re.compile(r"\.(?:spec|test)\.%s$" % _JS_TEST_SUFFIX, re.IGNORECASE)
+# The flat Python suite grammar, matching what `run_script_tests.py` discovers: `test_*.py`.
+_PY_TEST_FILE_RE = re.compile(r"test_[^/\\]*\.py$")
+_PY_TEST_GLOB = "test_*.py"
 _JS_TEST_ONLY_FILE_RE = re.compile(r"\.test\.%s$" % _JS_TEST_SUFFIX, re.IGNORECASE)
 _REGRESSION_FILE_RE = re.compile(
     r"regressions[^/\\]*\.spec\.%s$" % _JS_TEST_SUFFIX, re.IGNORECASE)
@@ -550,15 +582,28 @@ def _looks_like_test_reference(name: str, test_path: Path) -> bool:
     return False
 
 
+def _is_flat_python_suite(spec_path: Path) -> bool:
+    """Whether this target's tests are a flat `test_*.py` set beside the code (see the registry)."""
+    return spec_path.resolve() in FLAT_PYTHON_SUITES
+
+
 def _tests_dir(spec_path: Path, base_dir: Path) -> Path | None:
     """The tests directory a spec owns.
 
-    `<spec dir>/tests` is tried FIRST because it is the unambiguous one: it resolves `dev/tests`,
-    `.github/skills/demo-video/tests`, and `site/tests/tests` alike. Preferring `<base>/tests`
-    would let a future repo-root `tests/` shadow the site target's real corpus and silently stop
-    checking it. `<base>/tests` stays as the fallback for a target whose spec does not sit beside
-    its tests.
+    A registered FLAT PYTHON target has no `tests/` directory at all - its `test_*.py` files sit
+    beside the code they cover - so its own directory is the answer, and only when that directory
+    really holds such a suite. A mistyped registration therefore still fails closed, exactly as a
+    mistyped base does.
+
+    Otherwise `<spec dir>/tests` is tried FIRST because it is the unambiguous one: it resolves
+    `dev/tests`, `.github/skills/demo-video/tests`, and `site/tests/tests` alike. Preferring
+    `<base>/tests` would let a future repo-root `tests/` shadow the site target's real corpus and
+    silently stop checking it. `<base>/tests` stays as the fallback for a target whose spec does
+    not sit beside its tests.
     """
+    if _is_flat_python_suite(spec_path):
+        parent = spec_path.parent
+        return parent if parent.is_dir() and any(parent.glob(_PY_TEST_GLOB)) else None
     for candidate in (spec_path.parent / "tests", base_dir / "tests"):
         if candidate.is_dir():
             return candidate
@@ -570,13 +615,29 @@ def _is_reverse_mapped(name: str) -> bool:
     return bool(_JS_TEST_ONLY_FILE_RE.search(name) or _REGRESSION_FILE_RE.search(name))
 
 
+def _carries_js_titles(path: Path) -> bool:
+    """Whether the JS title grammar can say anything about this file.
+
+    The reverse and duplicate directions read `test(...)` / `it(...)` / `describe(...)` titles, a
+    JS/TS construct. Running that scanner over a Python suite is not merely useless, it is unsafe:
+    a flat `scripts/test_*.py` corpus is full of feature-id-SHAPED fixture strings written for the
+    checkers' own unit tests, and a JS fixture embedded in a Python string would be read as a real
+    declaration. So both directions are bounded to the files whose grammar they actually parse.
+    """
+    return path.suffix in _JS_SUFFIXES
+
+
 def _test_corpus(spec_path: Path, base_dir: Path) -> tuple[Path, ...]:
-    """Every JS test file under the spec's tests dir, recursively.
+    """Every test file under the spec's tests dir, recursively.
 
     Recursive, not flat: the forward direction accepts a nested citation
     (`tests/sub/x.spec.js`), so a flat scan would let a test one directory down fall out of the
     reverse and duplicate directions while still being a valid citation - and still RUNNING in CI.
     One walk filtered by name, rather than a walk per glob, keeps the added cost negligible.
+
+    A registered FLAT PYTHON target's corpus is its `test_*.py` files instead - the shape
+    `run_script_tests.py` discovers - so "the tests this spec owns" means the same thing for both
+    shapes.
 
     The WHOLE corpus is returned; `check_all` decides which half of the reverse direction each
     file gets (`_is_reverse_mapped`), so the split lives in one place instead of here as well.
@@ -584,10 +645,14 @@ def _test_corpus(spec_path: Path, base_dir: Path) -> tuple[Path, ...]:
     tests_dir = _tests_dir(spec_path, base_dir)
     if tests_dir is None:
         return ()
+    flat_python = _is_flat_python_suite(spec_path)
     found: list[Path] = []
     for path in tests_dir.rglob("*"):
         name = path.name
-        if not _JS_TEST_FILE_RE.search(name) or not path.is_file():
+        matches = (
+            _PY_TEST_FILE_RE.match(name) if flat_python else _JS_TEST_FILE_RE.search(name)
+        )
+        if not matches or not path.is_file():
             continue
         found.append(path)
     return tuple(sorted(set(found), key=lambda path: path.as_posix()))
@@ -896,6 +961,8 @@ def check_test_id_mappings(
 
     issues: list[SpecIssue] = []
     for test_path in test_paths:
+        if not _carries_js_titles(test_path):
+            continue
         text = _read(test_path)
         rel = _coverage_rel(base_dir, test_path)
         test_titles = _js_test_titles(text, _JS_TEST_ONLY_RE)
@@ -959,6 +1026,8 @@ def check_duplicate_feature_ids(
     uses: dict[str, list[tuple[Path, str, int, bool]]] = {}
     for spec_path, base_dir in targets:
         for test_path in _test_corpus(spec_path, base_dir):
+            if not _carries_js_titles(test_path):
+                continue
             text = _read(test_path)
             test_only = _js_test_titles(text, _JS_TEST_ONLY_RE)
             for title in sorted(_js_test_titles(text, _JS_TITLE_RE)):
@@ -1023,8 +1092,9 @@ def check_duplicate_spec_rows(
     `SITE-NAV-02` in the site spec. Each spec's "Renamed feature ids" section records where a
     renamed behavior went, since released `CHANGELOG.md` history still cites the old id.
 
-    Scope note: this is enforced over `SPEC_TARGETS` (commentable-html, the site, and demo-video),
-    not over every `SPEC.md` in the repository; a new target joins by being registered there.
+    Scope note: this is enforced over `SPEC_TARGETS` (commentable-html, the site, demo-video, and
+    the repo-guard scripts), not over every `SPEC.md` in the repository; a new target joins by
+    being registered there.
     """
     issues: list[SpecIssue] = []
     for spec_path, _base_dir in targets:
@@ -1075,12 +1145,17 @@ def check_all(
         if _tests_dir(spec_path, base_dir) is None:
             # Fail CLOSED: with no tests directory the reverse and duplicate directions are silent
             # no-ops, so a mistyped base would look like a clean target forever.
+            looked_in = (
+                "`%s` (no `test_*.py` beside the spec)" % _display(spec_path.parent)
+                if _is_flat_python_suite(spec_path)
+                else "`%s` and `%s`"
+                % (_display(spec_path.parent / "tests"), _display(base_dir / "tests"))
+            )
             issues.append(SpecIssue(
                 spec_path,
                 1,
-                "no tests directory found for this target (looked in `%s` and `%s`), so the "
-                "reverse and duplicate directions would check nothing"
-                % (_display(spec_path.parent / "tests"), _display(base_dir / "tests")),
+                "no tests directory found for this target (looked in %s), so the "
+                "reverse and duplicate directions would check nothing" % looked_in,
             ))
             continue
         fully_mapped = spec_path.resolve() in fully_reverse_mapped

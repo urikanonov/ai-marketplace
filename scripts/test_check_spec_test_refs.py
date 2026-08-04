@@ -1170,6 +1170,143 @@ class SpecTestReferenceTests(unittest.TestCase):
         self.assertEqual([], [issue.format() for issue in issues])
 
 
+class FlatPythonSuiteTests(unittest.TestCase):
+    """A target whose tests are a FLAT `test_*.py` set beside the code, not a `tests/` directory.
+
+    `scripts/SPEC.md` is that shape (issue #1002). Before it was taught, `_tests_dir` looked only
+    at `<spec dir>/tests` and `<base>/tests`, so `check_all` failed closed with "no tests directory
+    found" and the spec had to be held to a second, per-suite copy of the same check. Registering
+    the shape is what lets the ONE registry gate it.
+    """
+
+    def setUp(self):
+        self.root = Path(__file__).resolve().parent.parent
+        self.sandbox = Path(tempfile.mkdtemp(prefix="flat-py-"))
+        self.addCleanup(shutil.rmtree, self.sandbox, ignore_errors=True)
+        # A real `test_*.py` beside the spec, so the registered directory holds a suite. The
+        # CITATIONS point at the repository's own `scripts/` suites, which is the spelling a flat
+        # target uses - `_resolve_test_path` resolves a `scripts/` path from the repo root.
+        (self.sandbox / "test_sandbox_guard.py").write_text(
+            "import unittest\n\n\nclass SandboxTests(unittest.TestCase):\n"
+            "    def test_ok(self):\n        pass\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+
+    def _spec(self, rows):
+        spec = self.sandbox / "SPEC.md"
+        spec.write_text(
+            "# Spec\n\n"
+            "| Feature id | Behavior | Covering tests |\n"
+            "| --- | --- | --- |\n"
+            + "".join(
+                "| %s | Demo behavior. | %s |\n" % (feature_id, coverage)
+                for feature_id, coverage in rows
+            ),
+            encoding="utf-8",
+            newline="\n",
+        )
+        return spec
+
+    def _check_all(self, spec, flat=None):
+        registered = frozenset({spec.resolve()}) if flat is None else flat
+        with mock.patch.object(refs, "FLAT_PYTHON_SUITES", registered):
+            return refs.check_all(((spec, self.root),), frozenset())
+
+    def test_a_flat_python_suite_target_is_located_and_passes(self):
+        spec = self._spec(((
+            "GUARD-01",
+            "`scripts/test_check_forbidden_files.py` - `IsForbiddenTest.test_allows_safe_files`",
+        ),))
+
+        self.assertEqual([issue.format() for issue in self._check_all(spec)], [])
+
+    def test_a_missing_cited_file_fails(self):
+        spec = self._spec((
+            ("GUARD-01", "`scripts/test_not_a_real_suite.py` - `SandboxTests.test_ok`"),
+        ))
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("missing test file `scripts/test_not_a_real_suite.py`", messages[0])
+
+    def test_a_renamed_method_fails(self):
+        spec = self._spec(((
+            "GUARD-01",
+            "`scripts/test_check_forbidden_files.py` - `IsForbiddenTest.test_renamed_away`",
+        ),))
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn(
+            "`IsForbiddenTest.test_renamed_away` not found in "
+            "`scripts/test_check_forbidden_files.py`",
+            messages[0],
+        )
+
+    def test_a_duplicate_row_fails(self):
+        cell = ("`scripts/test_check_forbidden_files.py` - "
+                "`IsForbiddenTest.test_allows_safe_files`")
+        spec = self._spec((("GUARD-01", cell), ("GUARD-01", cell)))
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("feature id `GUARD-01` is the id cell of 2 spec rows", messages[0])
+
+    def test_a_registered_directory_with_no_python_suite_fails_closed(self):
+        bare = self.sandbox / "bare"
+        bare.mkdir()
+        spec = bare / "SPEC.md"
+        spec.write_text("# Spec\n", encoding="utf-8", newline="\n")
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("no tests directory found for this target", messages[0])
+        self.assertIn("test_*.py", messages[0])
+
+    def test_the_corpus_is_the_flat_python_suite(self):
+        spec = (self.root / "scripts" / "SPEC.md").resolve()
+
+        corpus = {path.name for path in refs._test_corpus(spec, self.root)}
+
+        self.assertIn("test_check_forbidden_files.py", corpus)
+        self.assertIn("test_check_workflow_policy.py", corpus)
+        self.assertNotIn("check_forbidden_files.py", corpus)
+
+    def test_the_js_grammar_directions_skip_a_python_file(self):
+        # A flat Python corpus is FULL of feature-id-shaped fixture strings (`CMH-FOO-01`,
+        # `DEMO-01`, `ORPHAN-99`, `HTTP-404`) written for the checkers' own unit tests. Reading a
+        # `.py` file with the JS title grammar would turn every one of them into a bogus
+        # "has no spec row", so the reverse and duplicate directions read JS/TS files only.
+        carrier = self.sandbox / "test_carrier.py"
+        carrier.write_text(
+            "FIXTURE = '''\n"
+            "test('a borrowed behavior (ORPHAN-99)', async () => {});\n"
+            "'''\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec((("GUARD-01", "prose only"),))
+
+        self.assertEqual([], refs.check_test_id_mappings(spec, self.root, (carrier,)))
+        with mock.patch.object(refs, "FLAT_PYTHON_SUITES", frozenset({spec.resolve()})):
+            self.assertEqual([], refs.check_duplicate_feature_ids(((spec, self.root),)))
+
+    def test_the_scripts_spec_is_a_registered_flat_python_target(self):
+        spec = (self.root / "scripts" / "SPEC.md").resolve()
+
+        self.assertIn(spec, {path.resolve() for path, _base in refs.SPEC_TARGETS})
+        self.assertIn(spec, refs.FLAT_PYTHON_SUITES)
+        # A Python method name cannot carry a hyphenated feature id, so there is no reverse
+        # citation to demand; the target is registered restricted with that reason recorded.
+        self.assertIn(spec, refs.INTENTIONALLY_RESTRICTED_SPECS)
+        self.assertEqual(refs._tests_dir(spec, self.root), self.root / "scripts")
+
+
 class DuplicateSpecRowTests(unittest.TestCase):
     """One feature id owns exactly ONE spec row (issue #904).
 
