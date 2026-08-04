@@ -316,12 +316,35 @@ OFFLINE_NAV_PREFIX_NAMES = ("window", "self", "top", "parent", "globalThis", "do
 # `location`, further down.
 
 # A LOCAL binding named `location` - a declaration keyword, a destructuring declaration naming it,
-# a function parameter, or a catch binding. Every quantifier is bounded, so it cannot backtrack.
+# a function parameter, or a catch binding. It decides whether the UNPREFIXED sinks still count, so
+# matching text that declares nothing WEAKENS the navigation check: every place the name can appear
+# therefore needs a boundary on BOTH sides. The keyword needs one because the `function` arm's
+# optional identifier would otherwise absorb the rest of a longer word (`functionx(location)`), and
+# the name needs one because a bounded window ending in `location` otherwise accepts any identifier
+# that merely ENDS in it - `function f(newLocation)` and `var {currentLocation}` are ordinary
+# spellings that used to buy a script the shadowed treatment and let a bare
+# `location.href = <url>` through. What that closes is the ACCIDENTAL disarm. A DELIBERATE one
+# survives, because the window is a character range over RAW SOURCE: a `location` merely MENTIONED
+# in a comment, a string or a parameter default inside it (`function f(a /* location */)`,
+# `function f(q = location)`) still suppresses the unprefixed sinks, and so does a non-ASCII
+# identifier character in the boundary slot, since the class is deliberately ASCII. Neither is
+# closed here - an allowlist of boundary characters was tried and rejects the legitimate
+# `const {href: location}` rename, and widening the class to non-ASCII breaks a real
+# `var location<NBSP>= 1` and, in the identifier run, would let whitespace be consumed two ways
+# again. An author who writes one of those already has the cheaper aliasing bypass the
+# CMH-OFFLINE-05 residual accepts, so both stay listed there rather than papered over.
+# Every repetition either is bounded or is the only one that can consume its run: the `function`
+# arm binds its optional identifier and that identifier's OWN trailing whitespace inside one group,
+# so a whitespace run never followed by `(` has a single parse. Spelled as two adjacent runs around
+# an optional part (`function WS* IDENT{0,100} WS* \(`) it was the `WS*\??WS*\.` shape again - the
+# engine split the run every possible way and re-ran the `[^)]{0,400}` search at each split, which
+# cost QUADRATIC time in the run's length (0.13s at 5 KB, 22.5s at 80 KB) on a document that plants
+# one.
 OFFLINE_LOCAL_LOCATION_RE = re.compile(
     r"(?:^|[^.A-Za-z0-9_$])(?:(?:var|let|const|function|class)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+location(?![A-Za-z0-9_$])|(?:var|let|const)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"[{\[][^}\]]{0,400}location(?![A-Za-z0-9_$])|function[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"[A-Za-z0-9_$]{0,100}[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"\([^)]{0,400}location(?![A-Za-z0-9_$])|catch[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"[{\[](?:[^}\]]{0,399}[^}\]A-Za-z0-9_$])?location(?![A-Za-z0-9_$])|function(?![A-Za-z0-9_$])[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
+    r"(?:[A-Za-z0-9_$]{1,100}[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?"
+    r"\((?:[^)]{0,399}[^)A-Za-z0-9_$])?location(?![A-Za-z0-9_$])|catch[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
     r"\([ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
     r"location(?![A-Za-z0-9_$]))",
     re.IGNORECASE | re.ASCII)

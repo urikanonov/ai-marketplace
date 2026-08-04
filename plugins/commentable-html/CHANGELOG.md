@@ -4,6 +4,42 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.663.0] - 2026-08-04
+
+### Fixed
+
+- The offline scripted-navigation check is no longer QUADRATIC on a long whitespace run in front
+  of a `(` (CMH-OFFLINE-05). The sink search was made a linear anchored scan earlier, but the
+  other full-text pass the predicate makes - the LOCAL-BINDING regex that decides whether a
+  script declares its own `location`, and so which sinks still count - kept the shape that class
+  of stall comes from: its `function` alternative joined two unbounded whitespace runs around an
+  OPTIONAL identifier (`function WS* IDENT{0,100} WS* \(`), so a run never followed by an
+  identifier was split every possible way and each split re-ran the bounded `[^)]{0,400}location`
+  search. Through the public predicate that measured 0.13s at 5 KB, 1.4s at 20 KB and 22.5s at
+  80 KB - four times the time for twice the input. The optional identifier and its own trailing
+  run are now bound inside one group, so a whitespace run has a single parse and a failing split
+  costs nothing; the recognized language is unchanged (the old spelling with zero identifier
+  characters is the new group skipped, confirmed against the previous pattern over 415k crossed
+  strings). Both callers feed this predicate unbounded document-supplied text and one of them
+  inflates a compressed payload first, so an authored document could stall `validate.py --strict`
+  and hang Export Offline in the reviewer's own browser tab for a few hundred bytes.
+- The same local-binding regex no longer treats a name that merely CONTAINS `location` as a
+  declaration of one (CMH-OFFLINE-05). It decides whether the UNPREFIXED navigation sinks still
+  count, so matching text that declares nothing WEAKENS the egress check - and it needed a
+  boundary at both ends of the name and of the keyword. Its bounded windows ended in a bare
+  `location`, so any identifier ENDING in it counted (`function f(newLocation)`,
+  `var {currentLocation}`), and the optional function-name slot absorbed the tail of a longer word
+  (`functionx(location)`). Each of those is an ordinary spelling, and a one-token rename from any
+  script, that bought the whole script the shadowed treatment and let a bare
+  `location.href = "https://evil"` beacon past both the exporter and `validate.py --strict`. The
+  three shapes are pinned as navigating, and the ANONYMOUS `function (location)` spelling - the
+  branch where the optional name is skipped - is pinned as benign, so neither direction can
+  regress. What this closes is the ACCIDENTAL disarm; the rule still decides on a character window
+  over raw source, so a `location` merely MENTIONED in a comment, a string or a parameter default
+  inside that window, or a non-ASCII identifier character in the boundary slot, still suppresses
+  the unprefixed sinks. Both stay listed in the CMH-OFFLINE-05 residual, where the reason they are
+  tolerable is unchanged - an author who writes one already has the cheaper aliasing bypass that
+  residual accepts - and closing them needs the parameter list parsed rather than matched.
 ## [1.661.1] - 2026-08-04
 
 ### Fixed
