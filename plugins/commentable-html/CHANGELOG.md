@@ -4,6 +4,30 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.668.0] - 2026-08-04
+
+### Fixed
+
+- The offline validator's meta-refresh gate now reads its target with the SHARED network-URL
+  predicate instead of a pattern of its own (CMH-VAL-08, CMH-OFFLINE-05). Offline mode already
+  rejects every `<meta http-equiv="refresh">` whatever its target, so the target parser only
+  decides WHICH message the rejection carries - the one that names a beacon, or the generic one -
+  and a bespoke copy that only picks a message is exactly the code nobody re-widens when the
+  shared predicate moves. It had already drifted in both directions: it read exactly two leading
+  separators, so the four-or-more-separator `file:////host` the attribute gate counts (an
+  empty-host file URL whose UNC-shaped path Chromium on Windows was measured resolving off the
+  machine, which is why the separator arithmetic is empirical and is not "two or more") was
+  reported as local, and so was every slash run of three or more, which the shared `/{2,}` arm
+  counts deliberately - what `///host` resolves to depends on the base (that host from a document
+  served over http/https, an empty-host local path from a `file:` one), so counting it is the
+  fail-closed reading and costs only wording here. In the other direction a Windows DRIVE LETTER -
+  which the file-host state turns into a path, so it reaches no host at all - was named a network
+  beacon that does not exist. The target now goes through `normalize_url_value` and
+  `is_network_url`, so the separator arithmetic, the `localhost` and drive-letter exclusions, the
+  empty-authority rule and the backslash spellings are all inherited from the one predicate the
+  rest of the egress gates read, and one predicate cannot drift from itself. Exporter/validator
+  agreement is unchanged in both directions, since the export removes every refresh regardless.
+
 ## [1.667.0] - 2026-08-04
 
 ### Changed

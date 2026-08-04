@@ -345,8 +345,11 @@ class NewCheckTests(unittest.TestCase):
             doc = with_offline_mode(build(body=self._body(
                 MAIN, '<meta http-equiv="refresh" content="%s">' % content)))
             errors, _ = self._errs_warns(doc)
-            self.assertTrue(any("offline mode" in e and "meta refresh" in e for e in errors),
-                            "expected an offline meta refresh error for %r, got %r" % (content, errors))
+            # The BEACON wording, not merely "some refresh error": since every refresh is rejected,
+            # a generic-message assertion would pass even if the target parser stopped extracting
+            # the URL at all, which is exactly what this test exists to pin.
+            self.assertTrue(any("points at a network URL" in e for e in errors),
+                            "expected an offline meta refresh beacon for %r, got %r" % (content, errors))
 
     def test_offline_mode_rejects_a_meta_refresh_with_a_remote_file_authority(self):
         # A special scheme's relative-slash state treats `\` like `/`, so on a `file://` document
@@ -361,8 +364,8 @@ class NewCheckTests(unittest.TestCase):
             doc = with_offline_mode(build(body=self._body(
                 MAIN, '<meta http-equiv="refresh" content="%s">' % content)))
             errors, _ = self._errs_warns(doc)
-            self.assertTrue(any("offline mode" in e and "meta refresh" in e for e in errors),
-                            "expected an offline meta refresh error for %r, got %r" % (content, errors))
+            self.assertTrue(any("points at a network URL" in e for e in errors),
+                            "expected an offline meta refresh beacon for %r, got %r" % (content, errors))
 
     def test_offline_mode_rejects_a_scheme_only_meta_refresh(self):
         # A browser resolves `https:evil.example` against a file:// document exactly as it
@@ -375,8 +378,51 @@ class NewCheckTests(unittest.TestCase):
             doc = with_offline_mode(build(body=self._body(
                 MAIN, '<meta http-equiv="refresh" content="%s">' % content)))
             errors, _ = self._errs_warns(doc)
-            self.assertTrue(any("offline mode" in e and "meta refresh" in e for e in errors),
-                            "expected an offline meta refresh error for %r, got %r" % (content, errors))
+            self.assertTrue(any("points at a network URL" in e for e in errors),
+                            "expected an offline meta refresh beacon for %r, got %r" % (content, errors))
+
+    def test_offline_mode_reads_a_meta_refresh_target_with_the_shared_network_predicate(self):
+        # Every refresh is rejected, so what is left to get wrong is WHICH message the rejection
+        # carries - and the bespoke pattern that decided it drifted from the shared
+        # `is_network_url` every other egress gate reads, in BOTH directions. The
+        # four-or-more-separator `file:` spelling is an EMPTY-host file URL whose UNC-shaped path a
+        # real Chromium on Windows was measured resolving off the machine - the platform, not the
+        # URL parser, opens that authority - so the attribute gate counts it and the bespoke arms,
+        # which read exactly two separators, called it local. In the other direction a Windows DRIVE
+        # LETTER is turned into a path by the file-host state, so `file://C:/x.html` reaches no host
+        # at all and must not be named a beacon.
+        for content in ("0;url=file:////evil.example/x.html",
+                        "0;url=file://///evil.example/x.html"):
+            with self.subTest(content=content):
+                doc = with_offline_mode(build(body=self._body(
+                    MAIN, '<meta http-equiv="refresh" content="%s">' % content)))
+                errors, _ = self._errs_warns(doc)
+                self.assertTrue(any("points at a network URL" in e for e in errors),
+                                "expected the beacon wording for %r, got %r" % (content, errors))
+        # A slash run of THREE or more is where the shared predicate deliberately over-reports, and
+        # inheriting that is the point of the change rather than an accident of it. What such a
+        # reference resolves to depends on the BASE: from a document served over http/https (the
+        # marketplace site publishes these reports that way) the special-authority states ignore the
+        # run and `///host` is that host, while from a `file:` base the file-host state takes an
+        # empty host and it is a local path. The `/{2,}` arm counts both, the fail-CLOSED reading a
+        # gate whose miss is a beacon should make - and the cost here is only wording, since the
+        # refresh is rejected either way. The backslash spellings normalize into the same run.
+        for content in ("0;url=///evil.example/out", "0;url=\\//evil.example/out"):
+            with self.subTest(content=content):
+                doc = with_offline_mode(build(body=self._body(
+                    MAIN, '<meta http-equiv="refresh" content="%s">' % content)))
+                errors, _ = self._errs_warns(doc)
+                self.assertTrue(any("points at a network URL" in e for e in errors),
+                                "expected the beacon wording for %r, got %r" % (content, errors))
+        for content in ("0;url=file://C:/x.html", "0;url=file://c|/x.html"):
+            with self.subTest(content=content):
+                doc = with_offline_mode(build(body=self._body(
+                    MAIN, '<meta http-equiv="refresh" content="%s">' % content)))
+                errors, _ = self._errs_warns(doc)
+                self.assertFalse(any("points at a network URL" in e for e in errors),
+                                 "unexpected beacon wording for %r: %r" % (content, errors))
+                self.assertTrue(any("whatever its target" in e for e in errors),
+                                "expected the generic wording for %r: %r" % (content, errors))
 
     def test_offline_mode_rejects_a_local_meta_refresh_too(self):
         # The exporter removes EVERY `meta[http-equiv=refresh]` whatever its target, so a file
