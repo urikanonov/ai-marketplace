@@ -106,6 +106,210 @@ class NewCheckTests(unittest.TestCase):
         errors, _ = self._errs_warns(weak)
         self.assertTrue(any("form-action 'none'" in e for e in errors), errors)
 
+    def test_offline_mode_rejects_a_widened_fetch_directive(self):
+        # Exclusivity used to be enforced only for the directives whose required token is `'none'`,
+        # so a hand-authored policy could add a HOST SOURCE to the four FETCH directives and still
+        # pass --strict. That is the premise the CSS and attribute network-literal gates lean on
+        # (CMH-VAL-08 criterion 3: "the offline CSP closes those fetch channels"), so while it went
+        # unenforced a permissive policy plus a slashless reference was arbitrary remote code in a
+        # file certified as offline-clean.
+        for directive, required in (("script-src", "'unsafe-inline'"),
+                                    ("style-src", "'unsafe-inline'"),
+                                    ("img-src", "data:"),
+                                    ("font-src", "data:")):
+            pair = "%s %s" % (directive, required)
+            doc = with_offline_mode(build()).replace(
+                pair, pair + " https://evil.example", 1)
+            errors, _ = self._errs_warns(doc)
+            self.assertTrue(any(directive in e and "evil.example" in e for e in errors),
+                            "%s: %r" % (directive, errors))
+
+    def test_offline_mode_rejects_a_fetch_source_that_grants_a_network_load(self):
+        # None of these is a host source, and each still reaches the network: `'self'` on a
+        # `file://` document is unspecified (an opaque origin) and has historically meant the
+        # containing directory, a HASH source matches an EXTERNAL script carrying `integrity` in
+        # CSP3, and `'strict-dynamic'` (with the nonce that usually accompanies it) grants whatever
+        # an already-trusted script loads. A scheme or wildcard source is a network source outright.
+        for token in ("'self'", "'strict-dynamic'", "'sha256-YWJj'", "'nonce-YWJj'", "https:", "*"):
+            doc = with_offline_mode(build()).replace(
+                "script-src 'unsafe-inline'", "script-src 'unsafe-inline' %s" % token, 1)
+            errors, _ = self._errs_warns(doc)
+            self.assertTrue(any("script-src" in e and token in e for e in errors),
+                            "%s: %r" % (token, errors))
+
+    def test_offline_mode_accepts_a_policy_whose_extra_sources_cannot_fetch(self):
+        # The rule is an ALLOWLIST of source expressions that provably cannot fetch, not an exact
+        # match on the exporter's own string, so a legitimate hand-authored policy is not rejected
+        # for no reason. Source expressions are ASCII case-insensitive, which `DATA:` pins.
+        doc = with_offline_mode(build())
+        doc = doc.replace("script-src 'unsafe-inline'",
+                          "script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'", 1)
+        doc = doc.replace("style-src 'unsafe-inline'",
+                          "style-src 'unsafe-inline' 'unsafe-hashes' 'report-sample'", 1)
+        doc = doc.replace("img-src data:", "img-src DATA: blob:", 1)
+        doc = doc.replace("font-src data:", "font-src data: blob:", 1)
+        errors, warnings = self._errs_warns(doc)
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    def test_a_csp_meta_a_browser_never_applies_does_not_satisfy_the_offline_policy(self):
+        # A `<template>`'s contents live in an inert DocumentFragment, and the HTML pragma
+        # directives are processed only for a meta the head holds - so neither placement is ever
+        # the document's policy, and reading either suppressed the missing-CSP error outright.
+        parked = ('<template><meta http-equiv="Content-Security-Policy" content="%s"></template>\n'
+                  % OFFLINE_CSP)
+        doc = with_offline_mode(build(body=self._body(MAIN)), csp=False)
+        errors, _ = self._errs_warns(doc.replace("<head>\n", "<head>\n" + parked, 1))
+        self.assertTrue(any("missing Content-Security-Policy" in e for e in errors), errors)
+        in_body = '<meta http-equiv="Content-Security-Policy" content="%s">' % OFFLINE_CSP
+        errors, _ = self._errs_warns(
+            with_offline_mode(build(body=self._body(MAIN, in_body)), csp=False))
+        self.assertTrue(any("missing Content-Security-Policy" in e for e in errors), errors)
+
+    def test_a_repeated_csp_directive_is_read_the_way_a_browser_reads_it(self):
+        # A browser IGNORES every occurrence of a directive after the first, so the FIRST copy is
+        # the policy. Reading the LAST one (a plain dict build) let a permissive first copy be
+        # masked by a strict repeat written after it.
+        doc = with_offline_mode(build()).replace(
+            "script-src 'unsafe-inline'",
+            "script-src 'unsafe-inline' https://evil.example; script-src 'unsafe-inline'", 1)
+        errors, _ = self._errs_warns(doc)
+        self.assertTrue(any("script-src" in e and "evil.example" in e for e in errors), errors)
+
+    def test_offline_mode_rejects_a_directive_the_offline_contract_does_not_require(self):
+        # The required set is not the whole policy. CSP3's more-specific fetch directives OVERRIDE
+        # the ones this contract pins when they are present (`script-src-elem` beats `script-src`
+        # for a <script src> load, `style-src-elem` beats `style-src`), and `worker-src` /
+        # `media-src` / `manifest-src` are safe today only because they are ABSENT and fall back to
+        # `default-src 'none'`. A reporting endpoint is worse still: it is live network egress out
+        # of a document that promises none, carrying whatever the violation report names.
+        for extra in ("script-src-elem https://evil.example",
+                      "style-src-elem https://evil.example",
+                      "worker-src https://evil.example",
+                      "child-src https://evil.example",
+                      "prefetch-src https://evil.example",
+                      "media-src https://evil.example",
+                      "manifest-src https://evil.example",
+                      "report-uri https://evil.example/collect",
+                      "report-to https://evil.example/collect"):
+            name = extra.split()[0]
+            doc = with_offline_mode(build()).replace(
+                "script-src 'unsafe-inline'", "script-src 'unsafe-inline'; " + extra, 1)
+            errors, _ = self._errs_warns(doc)
+            self.assertTrue(any(name in e for e in errors), "%s: %r" % (name, errors))
+
+    def test_offline_mode_accepts_an_extra_directive_that_can_only_tighten(self):
+        # The rule is "an extra directive may only tighten", not "no extra directive": a source
+        # list of exactly 'none', or none at all, cannot widen anything, and the directives that
+        # carry no source list at all (a sink group, a policy name, a sandbox flag) are named
+        # rather than run through a source-list test their grammar does not have.
+        doc = with_offline_mode(build()).replace(
+            "script-src 'unsafe-inline'",
+            "script-src 'unsafe-inline'; worker-src 'none'; upgrade-insecure-requests; "
+            "require-trusted-types-for 'script'; trusted-types cmh", 1)
+        errors, warnings = self._errs_warns(doc)
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    def test_offline_mode_accepts_an_empty_source_list_where_none_is_required(self):
+        # A directive with NO sources matches nothing, so it is exactly as strict as `'none'`.
+        # Reporting it as missing its required token would reject a browser-equivalent policy.
+        doc = with_offline_mode(build()).replace("connect-src 'none'", "connect-src", 1)
+        errors, warnings = self._errs_warns(doc)
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    def test_a_head_end_tag_that_opens_the_body_moves_the_csp_meta_out_of_the_head(self):
+        # "in head" and "after head" both treat an end tag named body, html or br as "anything
+        # else": the head is popped and a <body> is inserted, so the policy <meta> written after
+        # one is a BODY child whose pragma never runs. Tracking the boundary on start tags and
+        # character data alone recorded it as the document's policy.
+        for closer in ("</body>", "</html>", "</br>"):
+            doc = with_offline_mode(build()).replace("<head>\n", "<head>\n" + closer + "\n", 1)
+            errors, _ = self._errs_warns(doc)
+            self.assertTrue(any("missing Content-Security-Policy" in e for e in errors),
+                            "%s: %r" % (closer, errors))
+        # The control, and the reason the list must not be widened: every OTHER end tag in those
+        # two modes is ignored, so a policy written after one is still a head child.
+        doc = with_offline_mode(build()).replace("<head>\n", "<head>\n</div>\n", 1)
+        errors, _ = self._errs_warns(doc)
+        self.assertEqual(errors, [], errors)
+
+    def test_offline_mode_accepts_a_csp_meta_a_non_fetching_element_precedes(self):
+        # Lateness is decided by CAPABILITY, not by tag name: a `rel=canonical` link loads nothing
+        # and a `type=application/json` block neither runs nor loads, so a policy written after one
+        # still covers the whole document. Rejecting it would be a false rejection carrying a
+        # message that claims something the element cannot do.
+        doc = with_offline_mode(build()).replace(
+            "<head>\n",
+            '<head>\n<link rel="canonical" href="#top">\n'
+            '<script type="application/json" id="cmhDemoData">{"a":1}</script>\n', 1)
+        errors, warnings = self._errs_warns(doc)
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    def test_offline_mode_reads_the_policy_the_way_csp_tokenizes_it(self):
+        # CSP splits a policy on ASCII whitespace only, so a NON-ASCII space between a directive
+        # name and its value leaves a browser with one unrecognized directive name and NO policy at
+        # all. Python's `str.split()` is Unicode-aware and read it as a well-formed directive, so
+        # the whole policy could be neutralized with one character per directive while the gate
+        # reported it complete.
+        doc = with_offline_mode(build()).replace(
+            "default-src 'none'", "default-src\u00a0'none'", 1)
+        errors, _ = self._errs_warns(doc)
+        self.assertTrue(any("default-src" in e for e in errors), errors)
+
+    def test_offline_mode_rejects_a_csp_meta_a_fetching_element_already_preceded(self):
+        # A meta-delivered policy is NOT retroactive: it governs only what the parser reaches after
+        # it. A fetch or an execution written above it happens with no policy in force, which is
+        # exactly the channel the slashless attribute spellings ride.
+        doc = with_offline_mode(build()).replace(
+            "<head>\n", "<head>\n<script>void 0;</script>\n", 1)
+        errors, _ = self._errs_warns(doc)
+        self.assertTrue(any("Content-Security-Policy" in e for e in errors), errors)
+
+    def test_offline_mode_accepts_a_csp_meta_only_inert_elements_precede(self):
+        # The control for the rule above: a charset meta, a title and a base cannot fetch or
+        # execute, so a policy written after them still covers the whole document.
+        doc = with_offline_mode(build()).replace(
+            "<head>\n", '<head>\n<meta charset="utf-8">\n<title>t</title>\n<base href="./">\n', 1)
+        errors, warnings = self._errs_warns(doc)
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    def test_non_whitespace_head_text_moves_the_csp_meta_out_of_the_head(self):
+        # A non-whitespace character token in "in head" pops the head and opens the body, so the
+        # <meta> written after it is a child of BODY - and the HTML pragma directives return early
+        # for a meta that is not a head child. Tracking the head on start tags alone recorded it.
+        doc = with_offline_mode(build()).replace("<head>\n", "<head>\nZZZ\n", 1)
+        errors, _ = self._errs_warns(doc)
+        self.assertTrue(any("missing Content-Security-Policy" in e for e in errors), errors)
+
+    def test_a_csp_meta_written_after_the_head_is_still_the_documents_policy(self):
+        # The other direction, and the reason `</head>` must NOT end this view: the "after head"
+        # insertion mode re-pushes the head element for a base/link/meta/script/style/title/template
+        # start tag, so this meta really is a head child and a browser really does apply it.
+        # Dropping it would report a document that HAS a policy as having none. Here it is reported
+        # only for being LATE (this fixture's own <link>, <script> and <style> precede it), which is
+        # itself the proof it was read as the document's policy rather than discarded.
+        meta = '<meta http-equiv="Content-Security-Policy" content="%s">\n' % OFFLINE_CSP
+        doc = with_offline_mode(build(), csp=False).replace("</head>\n", "</head>\n" + meta, 1)
+        errors, _ = self._errs_warns(doc)
+        self.assertFalse(any("missing Content-Security-Policy" in e for e in errors), errors)
+        self.assertTrue(any("not retroactive" in e for e in errors), errors)
+
+    def test_any_applied_csp_policy_that_meets_the_contract_clears_the_check(self):
+        # CSP enforcement across several policies is CONJUNCTIVE - a resource must be allowed by
+        # every one - so a compliant policy beside a permissive one still bounds the document.
+        weak = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'">\n'
+        doc = with_offline_mode(build()).replace("<head>\n", "<head>\n" + weak, 1)
+        errors, _ = self._errs_warns(doc)
+        self.assertEqual(errors, [], errors)
+        # ...and when NO applied policy meets it, the FIRST one's shortfalls are what is reported.
+        doc = with_offline_mode(build(), csp=False).replace("<head>\n", "<head>\n" + weak, 1)
+        errors, _ = self._errs_warns(doc)
+        self.assertTrue(any("must include script-src 'unsafe-inline'" in e for e in errors), errors)
+
     def test_offline_mode_rejects_network_form_actions(self):
         main = MAIN.replace(
             "<p>content</p>",

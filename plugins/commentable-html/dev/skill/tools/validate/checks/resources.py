@@ -9,7 +9,7 @@ import tempfile
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 from urllib.request import url2pathname
-from .parsing import REGIONS, _DocParser, _find_tag_attrs, _parse_document
+from .parsing import REGIONS, FETCHING_LINK_RELS, _DocParser, _ascii_lower, _parse_document
 
 # A Chart.js loader filename, as a whole path segment: chart(.umd)?(.min)?.js,
 # optionally followed by a query string / fragment; OR the bare pinned form
@@ -20,11 +20,8 @@ CHARTJS_SRC_RE = re.compile(
     r"|(?:^|/)chart\.js@\d+\.\d+\.\d+(?:$|[/?#])",
     re.IGNORECASE)
 
-FETCHING_LINK_RELS = {
-    "stylesheet", "preload", "modulepreload", "prefetch", "prerender",
-    "preconnect", "dns-prefetch", "icon", "apple-touch-icon",
-    "apple-touch-icon-precomposed", "manifest",
-}
+# `FETCHING_LINK_RELS` is imported above rather than defined here: the parser needs the same set for
+# its own "can this element fetch before the policy?" test, and two copies would drift.
 
 OFFLINE_CSP_REQUIRED = {
     "default-src": ("'none'",),
@@ -39,6 +36,51 @@ OFFLINE_CSP_REQUIRED = {
     "form-action": ("'none'",),
     "frame-ancestors": ("'none'",),
 }
+
+# What each required directive may carry BESIDES its required token. "The token is present" was
+# never the question a fetch directive answers - a browser reads the whole source list, so
+# `script-src 'unsafe-inline' https://evil.example` allows inline script AND remote script. The
+# `'none'` directives were already exclusive; these four were not, which left `--strict` certifying
+# a document as offline-clean while a real browser fetched and executed a remote script (issue
+# #968). It matters beyond the direct hole, because the recorded reason for leaving the CSS and
+# attribute network-literal gates at their slashes-required shape (CMH-VAL-08) is that this policy
+# closes those fetch channels.
+#
+# The rule is an ALLOWLIST of source expressions that provably cannot cause a fetch, not an exact
+# match on the string the exporter emits, so a legitimate hand-authored policy is not rejected for
+# no reason. Each listed token permits inline content, evaluation, or a URL whose bytes are already
+# in the file. Four shapes that LOOK inert are deliberately NOT listed:
+#   'self'           - a `file://` document has an opaque origin, so what it matches is unspecified
+#                      and has historically meant the containing directory: a fetch off the file.
+#   'sha256-...'     - CSP3 matches a hash against an EXTERNAL script carrying `integrity`, so a
+#                      hash in script-src is a network source.
+#   'strict-dynamic' - grants whatever an already-trusted script loads, network included.
+#   'nonce-...'      - only meaningful for markup the author controls, and it propagates trust
+#                      through 'strict-dynamic'; an offline file has no use for one.
+OFFLINE_CSP_ALLOWED = {
+    "script-src": frozenset(("'unsafe-inline'", "'unsafe-eval'", "'wasm-unsafe-eval'",
+                             "'unsafe-hashes'", "'report-sample'")),
+    "style-src": frozenset(("'unsafe-inline'", "'unsafe-hashes'", "'report-sample'")),
+    "img-src": frozenset(("data:", "blob:")),
+    "font-src": frozenset(("data:", "blob:")),
+}
+
+# Directives that carry no SOURCE LIST at all, so the "may only tighten" test below cannot be asked
+# of them: their values are a sink group, a policy name, or a sandbox flag, and none of the three
+# can name a network host. `upgrade-insecure-requests` and `block-all-mixed-content` take no value.
+# `sandbox` is IGNORED in a meta-delivered policy, and the Trusted Types pair only tightens the
+# document, so tolerating all five costs the offline guarantee nothing and stops the gate rejecting
+# a hand-authored file that layers on extra hardening. `report-uri`/`report-to` are deliberately
+# absent - see the extra-directive loop for why.
+OFFLINE_CSP_NON_FETCH = frozenset((
+    "upgrade-insecure-requests", "block-all-mixed-content",
+    "require-trusted-types-for", "trusted-types", "sandbox",
+))
+
+# HTML/CSP's own whitespace set: TAB, LF, FF, CR and SPACE, and nothing else. See `_csp_directives`
+# for why Python's Unicode-aware `str.strip()`/`str.split()` cannot be used to tokenize a policy.
+_CSP_ASCII_WS = "\t\n\f\r "
+_CSP_ASCII_WS_RE = re.compile(r"[\t\n\f\r ]+")
 
 # A network URL in a CSS `url(...)`, and the `@import` form beside it, recognized in the prefixes a
 # browser resolves to a network host: scheme plus slashes, protocol-relative, and SCHEME-ONLY -
@@ -634,23 +676,29 @@ def _link_loads(attrs):
 
 
 def _csp_directives(content):
+    """The directives of one policy, as a browser reads them: the FIRST occurrence of a directive
+    name wins and every later copy is IGNORED. A plain dict build kept the LAST one, which let a
+    permissive first copy be masked by a strict repeat written after it - the browser enforces the
+    permissive one. Names are ASCII case-insensitive, so they are folded with `_ascii_lower` rather
+    than `str.lower()` (a Unicode fold could map a look-alike onto a real directive name).
+
+    Tokenized on ASCII whitespace ONLY, which is what CSP splits a policy on. Python's `str.split()`
+    is Unicode-aware, so a NON-ASCII space - a NBSP, say - separated a directive from its value
+    here while a browser read the whole run as ONE unrecognized directive name and enforced nothing
+    at all: one character per directive neutralized the policy while this gate reported it
+    complete. Tokenizing the browser's way leaves the mangled name unmatched, so the required
+    directive is simply MISSING and the document is rejected."""
     directives = {}
     for part in (content or "").split(";"):
-        bits = part.strip().split()
+        bits = [t for t in _CSP_ASCII_WS_RE.split(part.strip(_CSP_ASCII_WS)) if t]
         if bits:
-            directives[bits[0].lower()] = bits[1:]
+            directives.setdefault(_ascii_lower(bits[0]), bits[1:])
     return directives
 
 
-def _offline_csp_errors(html):
-    csp = [
-        meta.get("content", "")
-        for meta in _find_tag_attrs(html, "meta")
-        if (meta.get("http-equiv") or "").lower() == "content-security-policy"
-    ]
-    if not csp:
-        return ["offline mode: missing Content-Security-Policy meta tag with restrictive offline directives"]
-    directives = _csp_directives(csp[0])
+def _offline_csp_policy_errors(content):
+    """How one policy falls short of the offline contract, as a list of messages."""
+    directives = _csp_directives(content)
     errors = []
     for name, required_tokens in OFFLINE_CSP_REQUIRED.items():
         values = directives.get(name)
@@ -658,13 +706,99 @@ def _offline_csp_errors(html):
             errors.append("offline mode: Content-Security-Policy must include %s %s"
                           % (name, " ".join(required_tokens)))
             continue
-        missing = [token for token in required_tokens if token not in values]
+        if not values:
+            # A directive with NO sources matches nothing, so it is exactly as strict as `'none'`.
+            # Reporting it as missing its required token would reject a browser-equivalent policy.
+            continue
+        # Source expressions are ASCII case-insensitive too (`DATA:` is `data:`), and folding them
+        # the same way is what keeps a look-alike from passing for an allowlisted token.
+        lowered = [_ascii_lower(v) for v in values]
+        missing = [token for token in required_tokens if token not in lowered]
         if missing:
             errors.append("offline mode: Content-Security-Policy %s must include %s"
                           % (name, " ".join(missing)))
-        if "'none'" in required_tokens and values != ["'none'"]:
-            errors.append("offline mode: Content-Security-Policy %s must be exactly 'none'" % name)
+        allowed = OFFLINE_CSP_ALLOWED.get(name)
+        if allowed is None:
+            if lowered != list(required_tokens):
+                errors.append("offline mode: Content-Security-Policy %s must be exactly 'none'" % name)
+        else:
+            extra = [v for v, low in zip(values, lowered) if low not in allowed]
+            if extra:
+                errors.append(
+                    "offline mode: Content-Security-Policy %s carries the source expression %s, "
+                    "which a browser can load over the network (or can grant something that does) "
+                    "- an offline document promises zero network, so %s may name only %s"
+                    % (name, ", ".join(extra), name, " ".join(sorted(allowed))))
+    # The required set is not the whole policy, and an EXTRA directive may only TIGHTEN. CSP's more
+    # specific fetch directives OVERRIDE the ones pinned above whenever they are present:
+    # `script-src-elem` decides a `<script src>` load rather than `script-src`, `style-src-elem`
+    # decides a stylesheet, and `worker-src`/`child-src`/`media-src`/`manifest-src`/`prefetch-src`
+    # are safe here only while they are ABSENT and fall back to `default-src 'none'`. Closing the
+    # NAME set - rather than enumerating the dangerous names - is the only shape that stays
+    # fail-CLOSED against the next directive CSP adds, which is the whole reason for the rule.
+    # A source list of exactly `'none'`, or none at all, cannot widen anything, so it passes; and
+    # the directives that carry no SOURCE LIST at all are named in `OFFLINE_CSP_NON_FETCH` instead,
+    # because running a sink group, a policy name or a sandbox flag through a source-list test asks
+    # a question their grammar does not have (and would reject a document that layers on Trusted
+    # Types hardening). `report-uri`/`report-to` are deliberately NOT in that set: a meta-delivered
+    # policy IGNORES them, so they enforce nothing and a document promising zero network has no use
+    # for a reporting endpoint - rejecting them keeps the emitted policy and the accepted one the
+    # same shape. That inertness is also what makes the multi-policy short-circuit in
+    # `_offline_csp_errors` sound: every effect a second policy could add is either conjunctive
+    # (loads only narrow) or ignored in a `<meta>`.
+    for name, values in directives.items():
+        if name in OFFLINE_CSP_REQUIRED or name in OFFLINE_CSP_NON_FETCH:
+            continue
+        lowered = [_ascii_lower(v) for v in values]
+        if lowered and lowered != ["'none'"]:
+            errors.append(
+                "offline mode: Content-Security-Policy carries the directive %s %s, which the "
+                "offline contract does not pin - a more specific fetch directive overrides the "
+                "one it does pin, so an extra directive may only tighten (a source list of "
+                "exactly 'none', or none at all)"
+                % (name, " ".join(values)))
     return errors
+
+
+def _offline_csp_errors(doc):
+    """The offline CSP contract, read off the policies a browser really APPLIES.
+
+    `doc` is an already-parsed `_DocParser` (the normal path) or raw html. The parser view is what
+    scopes this to a real policy: the shared tag index records EVERY start tag, so a policy meta
+    parked in an inert `<template>` - or written once the document has left the head, where the
+    HTML pragma directives are not processed at all - used to satisfy the requirement while
+    enforcing nothing. (A `<noscript>` body was already excluded, since a scripting-enabled browser
+    never creates the element inside it.)
+
+    A policy meta is also useless if it arrives LATE. A meta-delivered policy is not retroactive -
+    it governs only what the parser reaches after it - so a fetch or an execution written above it
+    happens with no policy in force, which is exactly the channel the slashless attribute spellings
+    ride. Such a policy is not read at all; it is reported instead.
+
+    Enforcement across several policies is CONJUNCTIVE - a resource must be allowed by every one -
+    so a document is offline-clean as soon as ANY applied policy meets the contract, and adding
+    more policies can only narrow what loads. When none does, the FIRST policy's shortfalls are
+    reported, since that is the one an author wrote to be the document's policy."""
+    policies = _as_parser(doc).csp_metas
+    if not policies:
+        return ["offline mode: missing Content-Security-Policy meta tag with restrictive offline "
+                "directives in the document head (a policy parked in a <template> or <noscript>, "
+                "or written once the document has left the head, is one a browser never applies)"]
+    first = None
+    for policy in policies:
+        if policy["late"]:
+            continue
+        errors = _offline_csp_policy_errors(policy["content"])
+        if not errors:
+            return []
+        if first is None:
+            first = errors
+    if first is not None:
+        return first
+    return ["offline mode: the Content-Security-Policy meta tag is written after an element that "
+            "can fetch or execute - a meta-delivered policy is not retroactive, so it does not "
+            "cover what precedes it; put it at the top of the head, where the Offline export puts "
+            "it"]
 
 
 # NonShareable companion references are detected by parsing real link/script/meta

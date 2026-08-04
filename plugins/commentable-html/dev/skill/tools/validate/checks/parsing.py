@@ -171,6 +171,47 @@ _HEADING_TAGS = frozenset(("h1", "h2", "h3", "h4", "h5", "h6"))
 _HEAD_TAGS = frozenset(("html", "head", "base", "link", "meta", "title", "noscript", "style",
                         "script", "template"))
 
+# Elements a Content-Security-Policy <meta> may follow and still be the whole document's policy. A
+# meta-delivered policy is NOT retroactive: it governs only what the parser reaches after it, so
+# anything that fetches or executes above it happens with no policy in force. Membership here is
+# only the FIRST test - `_csp_predecessor_fetches` decides a <link> and a <script> by CAPABILITY
+# instead, because a `rel=canonical` link loads nothing and a `type=application/json` block neither
+# runs nor loads, and rejecting a policy written after one would be a false rejection carrying a
+# message that claims something the element cannot do. The six listed here can do neither whatever
+# their attributes: the two wrappers, another <meta>, the <title>'s RCDATA, a <base>, which only
+# resolves references later elements make, and a <template>, whose contents are inert. `meta` is
+# safe because the one meta that DOES reach the network - a `http-equiv=refresh` - has its own
+# offline gate that rejects every one of them; that gate is what makes this entry sound, so do not
+# weaken it without revisiting this.
+_CSP_INERT_PREDECESSORS = frozenset(("html", "head", "meta", "title", "base", "template"))
+
+# Link relations that make a <link> FETCH. Defined here, beside the parser's own "can this element
+# fetch before the policy?" test, and re-exported by the resource checks (`_link_loads`), so the two
+# readers of the same question cannot drift apart.
+FETCHING_LINK_RELS = frozenset((
+    "stylesheet", "preload", "modulepreload", "prefetch", "prerender",
+    "preconnect", "dns-prefetch", "icon", "apple-touch-icon",
+    "apple-touch-icon-precomposed", "manifest",
+))
+
+# The head-content set for the CSP view. `_HEAD_TAGS` above deliberately mirrors
+# `tools/authoring/_favicon.py`, so the three obsolete elements the "in head" insertion mode also
+# holds are added here rather than there: without them a `<basefont>`/`<bgsound>`/`<noframes>`
+# would end this view early and a policy written after one would be dropped as unapplied.
+_CSP_HEAD_TAGS = _HEAD_TAGS | frozenset(("basefont", "bgsound", "noframes"))
+
+# The end tags that END the CSP head view. "in head" and "after head" both treat an end tag named
+# body, html or br as "anything else": the head is popped and a <body> is inserted, so a policy
+# <meta> written after one is a BODY child whose pragma never runs. Every OTHER end tag in those
+# modes is IGNORED and leaves a following meta in the head, which is why this set must not be
+# widened - and why `</head>` is absent (see `csp_metas`).
+_CSP_HEAD_CLOSERS = frozenset(("body", "html", "br"))
+
+# HTML's own whitespace set. Deliberately not `str.strip()`/`str.isspace()`, which also take
+# U+00A0 and the rest of Unicode: a browser ends the head on a NBSP character token, so treating
+# one as whitespace would keep the head open for exactly the character that closes it.
+_HTML_WHITESPACE = "\t\n\f\r "
+
 # A start tag that implicitly closes an open <p> (a pragmatic HTML5 subset).
 P_CLOSERS = {
     "address", "article", "aside", "blockquote", "details", "div", "dl",
@@ -1579,6 +1620,21 @@ class _DocParser(_BrowserBoundaries):
         self.content_region_closed = False
         self.anchors = []        # [{"href", "target", "skip", "in_root"}] for every <a> element
         self.metas = {}          # {meta name (lowercased): content} for <meta name content>
+        # Every <meta http-equiv=content-security-policy> a browser really APPLIES, in document
+        # order, as {"content", "late"}. Collected here rather than off the shared tag index
+        # because that index deliberately records EVERY start tag: a policy parked in an inert
+        # <template> satisfied the offline CSP requirement while enforcing nothing. `_record`
+        # already drops template content; `_csp_head_over` is the head test the HTML pragma
+        # directives require, and `late` says a fetch- or execute-capable element already preceded
+        # the policy, so it cannot be the document's guarantee.
+        self.csp_metas = []
+        # NOT `_head_ended`: the "after head" insertion mode RE-PUSHES the head element for a
+        # base/link/meta/script/style/title/template start tag, so a `</head>` does not stop a meta
+        # from being a head child, and dropping one written there would reject a clean document.
+        # What does end it is a start tag the head cannot hold (a <body>, or any flow content), or
+        # non-whitespace text (see `handle_data`).
+        self._csp_head_over = False
+        self._csp_fetch_seen = False
         self.icon_links = []     # [{"rel": str, "href": str}] for every head <link rel~="icon">
         self._head_ended = False # True once the head is over (a <body>/</head>/first flow element)
         self.comment_root_attrs = None   # attrs dict of the id=commentRoot element
@@ -1759,6 +1815,20 @@ class _DocParser(_BrowserBoundaries):
             nm = (ad.get("name") or "").strip().lower()
             if nm and nm not in self.metas:
                 self.metas[nm] = ad.get("content") or ""
+        if not self._csp_head_over and (tag == "body" or tag not in _CSP_HEAD_TAGS):
+            self._csp_head_over = True
+        if tag == "meta" and not self._csp_head_over:
+            # `_ascii_lower`, not `str.lower()`: a Unicode fold can map a non-ASCII look-alike onto
+            # an ASCII letter, and here that direction is fail-OPEN - it would read a policy off a
+            # meta whose http-equiv a browser never matches, and bless a document that has none.
+            # No trimming, for the same reason and to match the exporter's own literal test: the
+            # pragma is looked up by the attribute value EXACTLY, so ` content-security-policy` is
+            # not one.
+            if _ascii_lower(ad.get("http-equiv") or "") == "content-security-policy":
+                self.csp_metas.append({"content": ad.get("content") or "",
+                                       "late": self._csp_fetch_seen})
+        if not self._csp_fetch_seen and _csp_predecessor_fetches(tag, ad):
+            self._csp_fetch_seen = True
         if tag == "link" and not self._head_ended:
             # Head-scoped: only a <link rel~="icon"> in the head is a favicon a browser tab honors,
             # so a body-level icon link does not satisfy the favicon check.
@@ -1899,6 +1969,16 @@ class _DocParser(_BrowserBoundaries):
 
     def handle_data(self, data):
         self._note_ready_token(data)
+        # A non-whitespace character token in "in head" POPS the head and opens the body, so a
+        # <meta> written after it is a child of BODY - and the HTML pragma directives return early
+        # for a meta that is not a head child. Tracking the head on start tags alone recorded such
+        # a policy as the document's, which is the same bypass class the head test exists to close.
+        # Scoped to text at html/head level so a <title>/<script>/<style> body - legal head
+        # content, and raw text to the tokenizer - does not end it.
+        if (not self._csp_head_over and data.strip(_HTML_WHITESPACE)
+                and not self._in_template()
+                and (not self.stack or self.stack[-1][0] in ("html", "head"))):
+            self._csp_head_over = True
         # A template-parked <script>/<style> body is collected ALONGSIDE the ordinary flow (never
         # instead of it), so adding this view cannot change what any existing check sees.
         if self._tpl_captures and self._tpl_captures[-1]["depth"] == len(self.stack) - 1:
@@ -1988,6 +2068,13 @@ class _DocParser(_BrowserBoundaries):
             # The head a `</head>` inside a template ends is the TEMPLATE's own; ending the
             # document's head there dropped the favicon `<link>` written after it.
             self._head_ended = True
+        if (not self._csp_head_over and tag in _CSP_HEAD_CLOSERS
+                and not self._in_template()):
+            # `</body>`, `</html>` and `</br>` are "anything else" in both "in head" and "after
+            # head": the head is popped and a <body> is inserted, so a policy <meta> written after
+            # one is a BODY child whose pragma never runs. `</head>` deliberately does NOT do this
+            # (see `csp_metas`), and no other end tag does either - both modes ignore the rest.
+            self._csp_head_over = True
         if i >= 0:
             # The heading ends where the ELEMENT being closed ends, which `_truncate_stacks()`
             # decides by DEPTH. Flushing on the tag NAME alone let a same-named heading nested
@@ -2327,6 +2414,27 @@ _JS_TYPES = frozenset(
 
 def _is_executable_js(ad):
     return (ad.get("type", "") or "").split(";")[0].strip().lower() in _JS_TYPES
+
+
+def _csp_predecessor_fetches(tag, ad):
+    """Whether an element parsed BEFORE a policy `<meta>` can fetch or execute, which is what makes
+    that policy too late to be the document's guarantee (a meta-delivered policy is not
+    retroactive).
+
+    Decided by CAPABILITY rather than by tag name wherever the tag alone cannot answer it: a
+    `rel=canonical` link loads nothing and a `type=application/json` block neither runs nor loads,
+    so treating either as a fetch would reject a clean document with a message claiming something
+    the element cannot do. A `<script>` still counts when it carries any of the load attributes the
+    self-contained gate reads (`src`, and the SVG spellings, since an SVG script uses no `src` at
+    all), or when its type is one a browser RUNS - which is the exporter's own `_JS_TYPES` set, so
+    the two agree about what executes."""
+    if tag in _CSP_INERT_PREDECESSORS:
+        return False
+    if tag == "link":
+        return bool(set((ad.get("rel") or "").lower().split()) & FETCHING_LINK_RELS)
+    if tag == "script":
+        return bool(ad.get("src") or ad.get("href") or ad.get("xlink:href")) or _is_executable_js(ad)
+    return True
 
 
 _REGEX_KEYWORDS = frozenset((
