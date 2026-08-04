@@ -6,23 +6,128 @@
 // descriptor copies in the layer's region (CMH-EXP-18), and a "plain" copy that still declares
 // itself a commentable-html document with a mode would be a silent leak.
 const _CMH_PLAIN_DATA_IDS = ["handledCommentIds", "embeddedComments", "reviewedSections", "commentableHtmlLayer"];
-function _cmhPlainLeakedState(html) {
+// The region whose strip is supposed to take each block with it. The descriptor has none: it sits
+// outside every region and is removed by its own strip, so "outside the region" is not a fault for
+// it and the diagnosis below says so instead.
+const _CMH_PLAIN_BLOCK_REGION = {
+  handledCommentIds: "HANDLED IDS",
+  embeddedComments: "EMBEDDED COMMENTS",
+  reviewedSections: "EMBEDDED COMMENTS",
+  commentableHtmlLayer: "",
+};
+// Where a surviving block sits relative to the region that should have carried it away, judged on
+// the SOURCE document rather than the stripped copy: a strip that worked leaves no markers behind,
+// so the copy itself can no longer answer the question. "inside" (every block the layer owns for
+// that id was between the markers, so the region TEXT could not be matched), "outside" (at least
+// one sits beyond the region, where no region strip can reach it), or "unresolved" (the source does
+// not carry exactly one ordered pair of that region's markers as HTML comments, so nothing can be
+// attributed to the region at all). The DESCRIPTOR has no region of its own, so it is asked the
+// same question against EVERY region rather than being declared region-less on trust: an extra
+// descriptor copy the layer maintains may legitimately sit inside one (CMH-EXP-18), and only the
+// EMBEDDED COMMENTS / HANDLED IDS / COMMENT UI / JS regions are stripped.
+function _cmhPlainLeakSite(sourceHtml, id, region) {
+  // The trusted document string, in the same shape every other round-trip uses (CMH-EXP-14): no
+  // comment or state data ever enters this parse.
+  const src = String(sourceHtml == null ? "" : sourceHtml);
+  let doc;
+  try { doc = new DOMParser().parseFromString(src, "text/html"); }
+  catch (e) { return { site: "unattributable", region: region, sole: false }; }
+  const owners = cmhLayerBlocks(doc, id);
+  if (!region) {
+    // SOME copy inside a region, not every copy: an export that declares a mode maintains extra
+    // descriptor copies, so a document can legitimately hold one inside a region and one outside,
+    // and claiming "outside every region" of that document would be false.
+    let held = "";
+    CMH_REGION_NAMES.forEach(function (name) {
+      if (held) return;
+      const bounds = _cmhRegionCommentBounds(doc, name);
+      if (!bounds || bounds.state !== "ok") return;
+      if (owners.some(function (el) { return _cmhNodeInRegion(el, bounds); })) held = name;
+    });
+    return held
+      ? { site: "descriptor-inside", region: held, sole: owners.length === 1 }
+      : { site: "descriptor", region: "", sole: owners.length === 1 };
+  }
+  const bounds = _cmhRegionCommentBounds(doc, region);
+  if (!bounds || bounds.state !== "ok") return { site: "unresolved", region: region, sole: false };
+  // No block the boundary accepts in the SOURCE, yet one survived in the copy: the two documents
+  // disagree about their own boundary (a second content root inside a region the strip removed, for
+  // example), which is not a marker problem and must not be reported as one.
+  if (!owners.length) return { site: "unattributable", region: region, sole: false };
+  return {
+    site: owners.every(function (el) { return _cmhNodeInRegion(el, bounds); }) ? "inside" : "outside",
+    region: region,
+    sole: owners.length === 1,
+  };
+}
+function _cmhPlainLeakedBlocks(html, sourceHtml) {
   const src = String(html == null ? "" : html);
   // Cheap probe on the bare ids (not a quoted-attribute pattern, which an unquoted `id=...` would
   // slip past), so the ordinary export never pays for a second parse.
   if (!/handledCommentIds|embeddedComments|reviewedSections|commentableHtmlLayer/.test(src)) {
-    return { leaked: false, contested: false };
+    return { leak: null, contested: false };
   }
   const doc = new DOMParser().parseFromString(src, "text/html");
   const state = cmhContentRootState(doc);
-  const leaked = _CMH_PLAIN_DATA_IDS.some(function (id) {
+  let leak = null;
+  _CMH_PLAIN_DATA_IDS.forEach(function (id) {
+    if (leak) return;
     const owners = cmhLayerIdOwners(doc, id);
     // A contested boundary cannot tell the layer's blocks from content, so every owner counts:
     // fail closed rather than ship comment data in a copy that claims to carry none.
-    if (state.contested) return owners.length > 0;
-    return owners.some(function (node) { return !(state.root && state.root.contains(node)); });
+    const leaked = state.contested ? owners : owners.filter(function (node) {
+      return !(state.root && state.root.contains(node));
+    });
+    if (!leaked.length) return;
+    // A contested boundary has its own wording, so do not pay for the placement parse there.
+    if (state.contested) { leak = { id: id, region: "", site: "contested", sole: false }; return; }
+    const placed = _cmhPlainLeakSite(sourceHtml, id, _CMH_PLAIN_BLOCK_REGION[id] || "");
+    leak = { id: id, region: placed.region, site: placed.site, sole: placed.sole };
   });
-  return { leaked: leaked, contested: state.contested };
+  return { leak: leak, contested: state.contested };
+}
+// Name the block that survived and WHERE it survived. "Malformed markers?" was a guess that sent
+// the author after the one cause the layer had not checked, and misnamed the commonest one: a
+// block that was never inside the region at all, which no region strip could ever remove.
+function _cmhPlainLeakMessage(leak) {
+  const quoted = '"' + leak.id + '"';
+  if (leak.site === "descriptor") {
+    return "Plain export aborted: the layer descriptor block " + quoted + " is still in the copy. It"
+      + " sits outside every commentable-html region, so only the descriptor strip could remove it;"
+      + " run validate.py on the document, then export again.";
+  }
+  if (leak.site === "descriptor-inside") {
+    return "Plain export aborted: the layer descriptor block " + quoted + " is still in the copy, and"
+      + " this document keeps a descriptor copy inside its " + leak.region + " region. The descriptor"
+      + " is removed by its own strip rather than by a region strip, and that strip could not resolve"
+      + " this copy; run validate.py on the document, then export again.";
+  }
+  if (leak.site === "inside") {
+    return "Plain export aborted: the reserved block " + quoted + " is still in the copy, INSIDE the "
+      + leak.region + " region. That region's markers resolve, so the region text itself could not be"
+      + " matched - each marker must be the only thing in its own HTML comment (apart from `=`"
+      + " padding), with no prose before or after it. Repair the region markers, then export again.";
+  }
+  if (leak.site === "outside") {
+    // The remedy depends on whether this document has another block of the same id. Telling the
+    // author to MOVE a duplicate into the region could put it AHEAD of the real block, which would
+    // hand the reader and the next export that stale copy - the very swap this rule exists to stop.
+    return "Plain export aborted: the reserved block " + quoted + " is still in the copy, OUTSIDE the "
+      + leak.region + " region, where no region strip can remove it. "
+      + (leak.sole
+        ? "Move it into the " + leak.region + " region (or give that element a different id), then export again."
+        : "This document already has another " + leak.id + " block, so remove this one (or give that"
+          + " element a different id) rather than moving it, then export again.");
+  }
+  if (leak.site === "unattributable") {
+    return "Plain export aborted: the reserved block " + quoted + " is still in the copy, and this"
+      + " document does not expose it as one of the layer's own blocks (the content-root boundary"
+      + " disagrees between the document and the copy the strip produced), so it cannot be attributed"
+      + " to the " + leak.region + " region. Run validate.py on the document, then export again.";
+  }
+  return "Plain export aborted: the reserved block " + quoted + " is still in the copy, and this"
+    + " document does not carry exactly one ordered pair of " + leak.region + " region markers as HTML"
+    + " comments, so nothing can be attributed to that region. Repair the markers, then export again.";
 }
 // Remove every descriptor copy the layer owns, by verified OFFSETS rather than a first-match text
 // replace: an export that declares a mode may leave more than one, and a text replace would either
@@ -105,13 +210,13 @@ function _buildPlainHtml(baseHtml) {
   // CONTENT-ROOT BOUNDARY rather than the document text: a script inside the content root that
   // borrows a reserved id is authored content (CMH-EXP-19), which no region strip can remove and
   // which must not make a legitimate export abort.
-  const leak = _cmhPlainLeakedState(t);
-  if (leak.leaked) {
-    // Name the actual cause. A contested boundary is not a marker problem, and sending the author
-    // after malformed markers when the fix is a duplicate id wastes their time.
-    throw new Error(leak.contested
-      ? _CMH_CONTESTED_ROOT_ERROR
-      : "Plain export aborted: the comment regions could not be fully removed (malformed markers?).");
+  const leak = _cmhPlainLeakedBlocks(t, baseHtml);
+  if (leak.leak) {
+    // Name the actual cause: which block survived, and where it sits relative to the region that
+    // was supposed to carry it away (CMH-EXP-21). A contested boundary is not a marker problem
+    // either, and sending the author after malformed markers when the fix is a duplicate id (or a
+    // block that was never in the region) wastes their time.
+    throw new Error(leak.contested ? _CMH_CONTESTED_ROOT_ERROR : _cmhPlainLeakMessage(leak.leak));
   }
   return t.replace(/\n{3,}/g, "\n\n");
 }

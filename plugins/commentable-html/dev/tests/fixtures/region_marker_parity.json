@@ -1,0 +1,221 @@
+{
+  "note": "Canonical corpus pinning every region-marker locator to ONE answer (CMH-VAL-22). The runtime _cmhRegionMarkerMatches (assets/js/67-export-standalone.js) and the three Python _region_marker_matches copies (tools/build_parts/20-nonshareable-regions.py, skill/tools/validate/checks/parsing.py, skill/tools/authoring/upgrade.py) must all return these offsets. tests/test_region_marker_parity.py pins the Python side, tests/59-region-marker-parity.spec.js pins the runtime side. `expected` is the offset of each marker match in `text`. Every case stays inside the Basic Multilingual Plane: JavaScript counts UTF-16 code units and Python counts code points, so an astral character would make one document resolve to two different numbers with both sides right.",
+  "cases": [
+    {
+      "id": "inline-html",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "<!-- BEGIN: commentable-html - CSS -->\n<style></style>\n",
+      "expected": [
+        5
+      ]
+    },
+    {
+      "id": "inline-html-decorated",
+      "kind": "END",
+      "region": "COMMENT UI",
+      "text": "<!-- ===== END: commentable-html - COMMENT UI ===== -->\n",
+      "expected": [
+        11
+      ]
+    },
+    {
+      "id": "bare-inside-block-comment",
+      "kind": "BEGIN",
+      "region": "HANDLED IDS",
+      "text": "<!--\n     BEGIN: commentable-html - HANDLED IDS\n     (notes)\n-->\n",
+      "expected": [
+        10
+      ]
+    },
+    {
+      "id": "bare-outside-comment-is-prose",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "BEGIN: commentable-html - CSS\n",
+      "expected": []
+    },
+    {
+      "id": "bare-after-comment-closed",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "<!-- unrelated -->\nBEGIN: commentable-html - CSS\n",
+      "expected": []
+    },
+    {
+      "id": "css-block-comment",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "/*\n  BEGIN: commentable-html - CSS\n*/\n",
+      "expected": [
+        5
+      ]
+    },
+    {
+      "id": "css-inline-comment",
+      "kind": "END",
+      "region": "CSS",
+      "text": "/* END: commentable-html - CSS */\n",
+      "expected": [
+        3
+      ]
+    },
+    {
+      "id": "crlf-endings",
+      "kind": "BEGIN",
+      "region": "JS",
+      "text": "<!--\r\n  BEGIN: commentable-html - JS\r\n-->\r\n",
+      "expected": [
+        8
+      ]
+    },
+    {
+      "id": "trailing-text-on-line",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "<!-- BEGIN: commentable-html - CSS --> trailing\n",
+      "expected": []
+    },
+    {
+      "id": "two-markers",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "<!-- BEGIN: commentable-html - CSS -->\nx\n<!-- BEGIN: commentable-html - CSS -->\n",
+      "expected": [
+        5,
+        46
+      ]
+    },
+    {
+      "id": "unterminated-comment-then-bare",
+      "kind": "END",
+      "region": "JS",
+      "text": "<!-- opened and never closed\n  END: commentable-html - JS\n",
+      "expected": [
+        31
+      ]
+    },
+    {
+      "id": "tab-padding",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "<!--\n\t\tBEGIN: commentable-html - CSS\t\n-->\n",
+      "expected": [
+        7
+      ]
+    },
+    {
+      "id": "no-trailing-newline",
+      "kind": "END",
+      "region": "JS",
+      "text": "<!-- END: commentable-html - JS -->",
+      "expected": [
+        5
+      ]
+    },
+    {
+      "id": "regex-metacharacters-in-name",
+      "kind": "BEGIN",
+      "region": "A.B*C",
+      "text": "<!-- BEGIN: commentable-html - A.B*C -->\n<!-- BEGIN: commentable-html - AXBYYC -->\n",
+      "expected": [
+        5
+      ]
+    },
+    {
+      "id": "prefixed-by-js-comment",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "<script>\n// <!-- BEGIN: commentable-html - CSS -->\n</script>\n",
+      "expected": []
+    },
+    {
+      "id": "marker-line-inside-script-text",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "<script>\n<!-- BEGIN: commentable-html - CSS -->\n</script>\n",
+      "expected": [
+        14
+      ]
+    },
+    {
+      "id": "comment-closed-and-reopened-on-one-line",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "<!-- a --> <!--\nBEGIN: commentable-html - CSS\n-->\n",
+      "expected": [
+        16
+      ]
+    },
+    {
+      "id": "vertical-tab-in-comment",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "<!--\u000bBEGIN: commentable-html - CSS\u000b-->\n",
+      "expected": []
+    },
+    {
+      "id": "form-feed-in-comment",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "<!--\fBEGIN: commentable-html - CSS\f-->\n",
+      "expected": []
+    },
+    {
+      "id": "file-separator-u001c",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "<!--\u001cBEGIN: commentable-html - CSS\u001c-->\n",
+      "expected": []
+    },
+    {
+      "id": "group-separator-u001d",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "<!--\u001dBEGIN: commentable-html - CSS\u001d-->\n",
+      "expected": []
+    },
+    {
+      "id": "record-separator-u001e",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "<!--\u001eBEGIN: commentable-html - CSS\u001e-->\n",
+      "expected": []
+    },
+    {
+      "id": "next-line-u0085",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "<!--\u0085BEGIN: commentable-html - CSS\u0085-->\n",
+      "expected": []
+    },
+    {
+      "id": "line-separator-u2028",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "<!--\u2028BEGIN: commentable-html - CSS\u2028-->\n",
+      "expected": []
+    },
+    {
+      "id": "paragraph-separator-u2029",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "<!--\u2029BEGIN: commentable-html - CSS\u2029-->\n",
+      "expected": []
+    },
+    {
+      "id": "lone-cr-separators",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "<!--\rBEGIN: commentable-html - CSS\r-->\n",
+      "expected": []
+    },
+    {
+      "id": "trailing-lone-cr",
+      "kind": "BEGIN",
+      "region": "CSS",
+      "text": "<!--\n  BEGIN: commentable-html - CSS\r",
+      "expected": []
+    }
+  ]
+}

@@ -2,8 +2,10 @@
 function getHandledIds() {
   // The boundary, not tree order: a handled-ids block planted inside the content root could
   // otherwise name a live comment and have pruneHandled() delete it from the reviewer's store.
-  const el = cmhLayerBlock(document, "handledCommentIds");
-  if (!el) { cmhWarnUnresolvedBlock("handledCommentIds"); return new Set(); }
+  // cmhReadLayerBlock also reports a SECOND block the layer owns, which would otherwise be read by
+  // nothing and rewritten by nothing (CMH-EXP-20).
+  const el = cmhReadLayerBlock("handledCommentIds");
+  if (!el) return new Set();
   try {
     const arr = JSON.parse((el.textContent || "").trim() || "[]");
     return new Set(arr);

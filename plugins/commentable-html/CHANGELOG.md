@@ -4,6 +4,59 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.540.0] - 2026-08-04
+
+### Changed
+
+- The layer's reserved data blocks now answer to ONE recorded ownership rule, and the one state it
+  used to settle in silence is reported. The content-root boundary decides which element is the
+  layer's own block for the embedded-comments, handled-ids and review-state blocks, on the load
+  path and the export path alike; the review-state block asks for EMBEDDED COMMENTS region
+  ownership on top of that, and the comments and handled-ids blocks deliberately do not, because
+  the failure costs are not symmetric - declining the review state omits an accessory from the copy
+  being written, while declining the comments payload would strand the reader's comments and block
+  the very export that would save them. A document whose region markers no longer resolve therefore
+  still loads and re-exports its comments while its review state is left out with a named reason,
+  and that divergence is now pinned by a test rather than left to be re-derived. A document that
+  carries MORE THAN ONE block the layer owns for a data id is now reported once per id, on the
+  console (and to the reader in one deferred toast that names every affected id, since a single
+  toast surface means a per-id message raised inside startup would be wiped before it was read):
+  the first block is the one read, and for the embedded-comments block it is the one the export
+  rewrites, so the rest were stale on load and never saved, silently and forever. The count is
+  asked again once the document is fully parsed, so a duplicate sitting after the layer's own
+  script is reported too. The layer descriptor is deliberately
+  outside the rule, since an export that declares a mode maintains additional descriptor copies on
+  purpose.
+- The Plain export's data-safety net now names the reserved block that survived the strip and where
+  it sat, instead of always blaming malformed markers: OUTSIDE its region (where no region strip
+  could ever remove it, the commonest cause), INSIDE its region (so the markers resolve and the
+  region text could not be matched - prose before either marker inside its own HTML comment does
+  exactly that, so the message states the requirement both anchors share instead of blaming one),
+  unattributable (the document does not expose the block as one of the layer's own, which is not a
+  marker problem), or "the region markers are not one ordered pair". The remedy is part of the
+  diagnosis: moving a block into its region is only suggested when it is the document's sole block
+  of that id, since moving a duplicate could place it ahead of the real one. The layer descriptor
+  is asked the same question against every region rather than declared region-less on trust, and a
+  contested content root keeps its own wording and pays for no extra parse. The placement is judged
+  on the source document, because a strip that worked leaves no markers in the copy to judge by.
+
+### Fixed
+
+- The four implementations that locate a region marker - the runtime, the validator, the shipped
+  authoring tools and the maintainer-only build tool - are now pinned to one canonical corpus, and
+  the divergence that pinning exposed is fixed: the three Python copies split lines with
+  `str.splitlines()`, which also breaks on `\x0b`, `\x0c`, `\x1c`, `\x1d`, `\x1e`, `\x85`, `\u2028`
+  and `\u2029` and treats a lone `\r` as a terminator, while the runtime's raw-text scan breaks on
+  `\n` only. A marker "line" that existed only after one of those
+  splits was counted by the validator, the build and the upgrade tool and ignored by the runtime
+  that reads the file back - two views disagreeing about which comment IS the boundary. The Python
+  copies now use the runtime's line concept, and share one `_MarkerMatch.start(group)` /
+  `end(group)` signature that refuses any group but 0 or 1 rather than answering a wrong one. Two
+  bounds are recorded rather than papered over: the corpus stays inside the Basic Multilingual
+  Plane (JavaScript indexes UTF-16 code units and Python indexes code points), and `validate.py`
+  and `upgrade.py` still READ their input with Python's universal newlines, so on those CLI paths a
+  lone carriage return is an `\n` before any check sees it.
+
 ## [1.531.0] - 2026-08-04
 
 ### Fixed

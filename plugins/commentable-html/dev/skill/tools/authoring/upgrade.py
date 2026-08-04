@@ -322,10 +322,20 @@ class _MarkerMatch:
         self._marker_start = marker_start
         self._marker_end = marker_end
 
+    # Group 0 and group 1 are DELIBERATELY the same span: the only group this match carries is
+    # the marker itself. Any other group is refused rather than answered with a plausible wrong
+    # offset, so a caller written against a real re.Match fails loudly instead of silently
+    # slicing the wrong text.
+    def _check_group(self, group):
+        if group not in (0, 1):
+            raise IndexError("no such group")
+
     def start(self, group=0):
+        self._check_group(group)
         return self._marker_start
 
     def end(self, group=0):
+        self._check_group(group)
         return self._marker_end
 
 
@@ -368,17 +378,22 @@ def _region_marker_matches(text, kind, name):
     matches = []
     state = ""
     offset = 0
-    for line in (text or "").splitlines(True):
-        body = line[:-1] if line.endswith("\n") else line
-        if body.endswith("\r"):
-            body = body[:-1]
+    # Lines break on "\n" ONLY, the way the runtime - and the browser that opens the document -
+    # sees them. str.splitlines() also breaks on \x0b \x0c \x1c \x1d \x1e \x85 \u2028 \u2029 and
+    # treats a lone \r as a terminator, so a marker "line" that exists only after one of those
+    # splits would be counted here and ignored by the runtime that reads the file back - two
+    # views disagreeing about which comment IS the boundary (CMH-VAL-22).
+    lines = (text or "").split("\n")
+    last = len(lines) - 1
+    for i, line in enumerate(lines):
+        body = line[:-1] if (i < last and line.endswith("\r")) else line
         m = inline.match(body)
         if m is None and state in ("html", "css"):
             m = bare.match(body)
         if m is not None:
             matches.append(_MarkerMatch(offset + m.start(1), offset + m.end(1)))
         state = _advance_comment_state(body, state)
-        offset += len(line)
+        offset += len(line) + (1 if i < last else 0)
     return matches
 
 

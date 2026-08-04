@@ -275,8 +275,10 @@ function mergeCommentSets(a, b) {
 function getEmbeddedComments() {
   // Resolved against the content-root boundary (cmhLayerBlock), the same way the exporter
   // resolves the block it writes, so a document can never read one block and export another.
-  const el = cmhLayerBlock(document, "embeddedComments");
-  if (!el) { cmhWarnUnresolvedBlock("embeddedComments"); return []; }
+  // A SECOND block the boundary accepts is reported rather than silently ignored (CMH-EXP-20):
+  // the first is read and rewritten, so the rest would be stale on load and never saved.
+  const el = cmhReadLayerBlock("embeddedComments");
+  if (!el) return [];
   try {
     const arr = JSON.parse((el.textContent || "").trim() || "[]");
     return Array.isArray(arr) ? arr : [];

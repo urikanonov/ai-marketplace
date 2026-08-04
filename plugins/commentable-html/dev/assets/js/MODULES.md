@@ -17,7 +17,9 @@ Conventions for these partials (they share ONE closure scope after concatenation
   `document.currentScript` before any DOM access, and opens the IIFE. The LAST partial
   (`95-startup.js`) closes the IIFE and runs startup. Do not reorder these two.
 - Shared infrastructure used across modules: the content-root boundary helpers `cmhContentRootState` /
-  `cmhContentRoot` / `cmhLayerIdOwners` / `cmhLayerBlocks` / `cmhLayerBlock` (`01-config.js`),
+  `cmhContentRoot` / `cmhLayerIdOwners` / `cmhLayerBlocks` / `cmhLayerBlock` and the reserved-block
+  reader `cmhReadLayerBlock` (which diagnoses "nothing resolved" and "more than one resolved" in one
+  place, CMH-EXP-20) (`01-config.js`),
   the rich-content selector vocabulary (`03-selectors.js`),
   the viewport vocabulary (`04-viewport.js`),
   the layer-chrome identity registry `cmhMarkLayerChrome` / `cmhClickHitsLayerChrome` (`00-preamble.js`),
@@ -38,7 +40,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | Module | SPEC areas | Purpose |
 | --- | --- | --- |
 | `00-preamble.js` | CMH-CORE, CMH-EXP | IIFE opener; captures `SNAPSHOT_HTML` and `document.currentScript` before any DOM access, and declares the layer-chrome identity registry (`cmhMarkLayerChrome` / `cmhClickHitsLayerChrome`). |
-| `01-config.js` | CMH-CORE, CMH-FWDCOMPAT, CMH-DENSITY, CMH-SEC, CMH-EXP | Auto-discovered config; declares `CMH_VERSION` (build.py stamps it) and the content-root boundary helpers (`cmhContentRootState`, `cmhContentRoot`, `cmhLayerIdOwners`, `cmhLayerBlocks`, `cmhLayerBlock`, `cmhWarnUnresolvedBlock`) every reader and exporter resolves the layer's own reserved data blocks through. |
+| `01-config.js` | CMH-CORE, CMH-FWDCOMPAT, CMH-DENSITY, CMH-SEC, CMH-EXP | Auto-discovered config; declares `CMH_VERSION` (build.py stamps it) and the content-root boundary helpers (`cmhContentRootState`, `cmhContentRoot`, `cmhLayerIdOwners`, `cmhLayerBlocks`, `cmhLayerBlock`, `cmhReadLayerBlock`, `cmhWarnUnresolvedBlock`, `cmhWarnAmbiguousBlock`) every reader and exporter resolves the layer's own reserved data blocks through. |
 | `02-lzstring.js` | CMH-STORE | Vendored lz-string (trimmed `compressToUTF16`/`decompressFromUTF16`, bounded decode) used to pack the comment store. |
 | `03-selectors.js` | CMH-CHART, CMH-MMD, CMH-OFFLINE, CMH-PRINT | The one shared rich-content selector vocabulary (`CMH_MERMAID_SEL`, `CMH_CHART_DATA_SEL`, `CMH_CHART_CANVAS_SEL`, `CMH_RICH_CONTENT_SEL`) the chart renderer, the image layer, the Offline exporter, the print/measure cap in `83-print.js`, and the author-time payload detector all derive from. |
 | `04-viewport.js` | CMH-CORE | The one shared VIEWPORT vocabulary (`cmhViewportBox`, `cmhViewportRect`, `cmhOnViewportChange`): every floating affordance measures the VISUAL viewport through these and subscribes to its `resize`/`scroll` here, so an on-screen keyboard or a pinch zoom cannot leave one of them off screen. Also hosts the shared SCROLL GUARD (`cmhBeginScrollGuard`), which keeps the browser's scroll anchoring from moving the document out from under a surface being opened. |

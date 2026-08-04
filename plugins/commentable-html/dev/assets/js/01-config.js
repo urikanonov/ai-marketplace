@@ -79,6 +79,72 @@ function cmhWarnUnresolvedBlock(id) {
       ? "this document has more than one element with the content-root id, so the layer cannot tell its own blocks from authored content."
       : "they are inside the content root, where authored content lives. Move the block above the content root."));
 }
+// The other half of that diagnosis: a document carrying MORE THAN ONE block the layer owns for a
+// reserved DATA id. The reader reads the first (cmhLayerBlock) and the embedded-comments export
+// rewrites that same first one, so the others are stale on load and never updated on save - comment
+// data that is half ignored, silently and forever. Reading the first still WORKS (refusing would
+// strand the reader's comments and block the export that would save them), so this is a report, not
+// a refusal. validate.py rejects the duplicate id outright; this is the runtime half, for a file
+// that never met the validator, and the reader is told because someone opening a shared HTML has no
+// console. The reader's half is DEFERRED and AGGREGATED into one message: there is a single #toast
+// and each call replaces the last, so reporting per id inside startup would have the second id wipe
+// the first (and a later startup toast wipe them both).
+const _CMH_AMBIGUOUS_BLOCKS = [];
+let _cmhAmbiguousFlushQueued = false;
+function cmhWarnAmbiguousBlock(id, count) {
+  if (_CMH_WARNED_BLOCKS[id]) return;
+  _CMH_WARNED_BLOCKS[id] = true;
+  try {
+    console.warn("commentable-html: this file carries " + count + " " + id + " blocks outside its"
+      + " content root; only the first is read, and the rest are ignored.");
+  } catch (e) { /* console is optional */ }
+  _CMH_AMBIGUOUS_BLOCKS.push(count + " " + id);
+  if (_cmhAmbiguousFlushQueued) return;
+  _cmhAmbiguousFlushQueued = true;
+  setTimeout(function () {
+    _cmhAmbiguousFlushQueued = false;
+    // Consume the queue, so a later id reports itself rather than re-listing what was shown.
+    const found = _CMH_AMBIGUOUS_BLOCKS.splice(0, _CMH_AMBIGUOUS_BLOCKS.length);
+    if (typeof showToast !== "function" || !found.length) return;
+    // A damaged document is exactly the population this warning targets, and its COMMENT UI region
+    // (where the toast element lives) may be part of the damage - so never let the report itself
+    // throw out of the timer.
+    try {
+      showToast("This file carries duplicate commentable-html data blocks outside its content root ("
+        + found.join(", ") + "). Only the first of each is read, so the rest are ignored - and the"
+        + " comments block the export rewrites is that same first one. Run validate.py on the file.",
+      { alert: true, duration: 10000 });
+    } catch (e) { /* no toast surface on a damaged document; the console half already reported */ }
+  }, 0);
+}
+// The ids the layer has READ through cmhReadLayerBlock, so they can be asked again once the whole
+// document exists.
+const _CMH_READ_BLOCK_IDS = [];
+// A block that sits AFTER the layer's own script had not been parsed yet when the read happened, so
+// the read-time count cannot see it. Ask again once the parser is done, or a duplicate placed in the
+// document's tail would be exactly the silent state this rule exists to close.
+function _cmhAuditReadBlocks() {
+  _CMH_READ_BLOCK_IDS.forEach(function (id) {
+    const blocks = cmhLayerBlocks(document, id);
+    if (blocks.length > 1) cmhWarnAmbiguousBlock(id, blocks.length);
+  });
+}
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", _cmhAuditReadBlocks, { once: true });
+} else {
+  setTimeout(_cmhAuditReadBlocks, 0);
+}
+// The block the layer READS for a reserved data id, with both states a reader must be told about
+// diagnosed in one place, so no data block can resolve to nothing (or to one of several) in
+// silence. The descriptor deliberately does NOT come through here: an export that declares a mode
+// maintains additional descriptor copies on purpose (CMH-EXP-18), so more than one is not a fault.
+function cmhReadLayerBlock(id) {
+  if (_CMH_READ_BLOCK_IDS.indexOf(id) === -1) _CMH_READ_BLOCK_IDS.push(id);
+  const blocks = cmhLayerBlocks(document, id);
+  if (!blocks.length) { cmhWarnUnresolvedBlock(id); return null; }
+  if (blocks.length > 1) cmhWarnAmbiguousBlock(id, blocks.length);
+  return blocks[0];
+}
 function _docSourceBasename(source) {
   const value = String(source == null ? "" : source);
   const withoutSuffix = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(value)
@@ -131,7 +197,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.531.0";
+const CMH_VERSION = "1.540.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

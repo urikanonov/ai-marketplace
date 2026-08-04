@@ -434,3 +434,264 @@ test("Plain export removes every descriptor copy the layer owns (CMH-EXP-19)", a
     fs.rmSync(staged.dir, { recursive: true, force: true });
   }
 });
+
+// ---- CMH-EXP-21: the Plain-export safety net names the block and where it survived ----
+
+// Plant a stray reserved block just above the JS region: outside the content root (so the boundary
+// counts it as the layer's) and outside every region (so no region strip can reach it). It must
+// come BEFORE the layer's own script, or the runtime would not have parsed it yet when it reads.
+function strayEmbeddedBlock(html, payload) {
+  const jsBegin = /[ \t]*<!--\s*=*\s*\n?\s*BEGIN: commentable-html - JS/;
+  if (!jsBegin.test(html)) throw new Error("fixture: no JS region to plant above");
+  const stray = OPEN + ' type="application/json" id="embeddedComments">'
+    + JSON.stringify(payload || []) + CLOSE + "\n";
+  return html.replace(jsBegin, (m) => stray + m);
+}
+
+// Put `arr` in the block the EMBEDDED COMMENTS region owns (the one the runtime reads and every
+// export rewrites).
+function regionEmbeddedPayload(html, arr) {
+  const re = /(<script type="application\/json" id="embeddedComments">\n)\[\]\n(<\/script>)/;
+  if (!re.test(html)) throw new Error("fixture: no embeddedComments block to seed");
+  return html.replace(re, (_m, a, b) => a + JSON.stringify(arr) + "\n" + b);
+}
+
+// The bodies of every embeddedComments DATA block in the html, in document order. Bodies that are
+// not JSON are skipped: the inlined runtime's own source spells `id="embeddedComments">` in a string
+// literal, and that text is not one of the document's blocks.
+function embeddedBlockBodies(html) {
+  const out = [];
+  const re = /id="embeddedComments">([\s\S]*?)<\/script>/g;
+  let m;
+  while ((m = re.exec(html))) {
+    try { JSON.parse(m[1].trim() || "[]"); } catch (e) { continue; }
+    out.push(m[1]);
+  }
+  return out;
+}
+
+// Give the EMBEDDED COMMENTS banner comment some prose BEFORE its BEGIN marker. Every marker
+// COUNT view still resolves the region (the marker is a line of its own inside a comment), but the
+// region STRIP anchors on "<!--" + whitespace + "BEGIN:", so the region text no longer matches and
+// the whole region survives - with the markers intact.
+function proseBeforeBeginMarkerOf(html, region) {
+  const marker = "BEGIN: commentable-html - " + region;
+  const at = html.indexOf(marker);
+  if (at < 0) throw new Error("fixture: no " + region + " begin marker");
+  const open = html.lastIndexOf("<!--", at);
+  if (open < 0) throw new Error("fixture: begin marker is not inside a comment");
+  return html.slice(0, open + 4) + " author note about this region\n" + html.slice(open + 4);
+}
+
+function proseBeforeBeginMarker(html) {
+  return proseBeforeBeginMarkerOf(html, "EMBEDDED COMMENTS");
+}
+
+// The same class of damage on the OTHER anchor: prose before the END marker, inside its comment.
+// The count views still resolve the region (the marker is a line of its own inside a comment), but
+// the strip anchors on "<!--" + whitespace + "END:", so this too leaves the region in place with its
+// markers resolving - which is why the diagnosis must not name one marker as the culprit.
+function proseBeforeEndMarker(html) {
+  const end = "<!-- END: commentable-html - EMBEDDED COMMENTS -->";
+  if (html.indexOf(end) < 0) throw new Error("fixture: no EMBEDDED COMMENTS end comment");
+  return html.replace(end, "<!-- author note about this region\n     END: commentable-html - EMBEDDED COMMENTS\n-->");
+}
+
+// Rewrite the region's END marker as a CSS comment. The count views accept that shape, so the
+// document still has exactly one ordered pair as far as they are concerned, but no HTML comment
+// carries the END marker any more - so the region cannot be attributed at all.
+function endMarkerAsCssComment(html) {
+  const end = "<!-- END: commentable-html - EMBEDDED COMMENTS -->";
+  if (html.indexOf(end) < 0) throw new Error("fixture: no EMBEDDED COMMENTS end comment");
+  return html.replace(end, "/* END: commentable-html - EMBEDDED COMMENTS */");
+}
+
+async function plainExportToast(page, staged) {
+  await page.goto(fileUrl(staged.html));
+  await ready(page);
+  // A comment of its own, so the export is the ordinary "save a plain copy of a reviewed file"
+  // flow (and so the sidebar the export menu lives in is open).
+  await addTextComment(page, "#commentRoot p", "plain leak note");
+  let gotDownload = false;
+  page.once("download", () => { gotDownload = true; });
+  await clickSidebarExport(page, "#btnSavePlain");
+  await expect.poll(() => currentToast(page), { timeout: 15000 }).toContain("Plain export aborted");
+  expect(gotDownload).toBe(false);
+  return currentToast(page);
+}
+
+// ---- CMH-EXP-20: a duplicate block the layer owns is reported, never silently ignored ----
+
+test("a damaged region declines the review state but never the comments themselves (CMH-EXP-17)", async ({ page }) => {
+  // The recorded, deliberate divergence: the CONTENT-ROOT BOUNDARY is the ONE ownership rule for
+  // every reserved data block, and the review-state block asks for region ownership ON TOP of it.
+  // The failure costs are not symmetric - declining the review state only omits an accessory from
+  // this copy, while declining the comments payload would strand the reader's comments AND block
+  // the very export that would save them - so this same document must answer both ways at once.
+  const staged = stageInline({ mutate: endMarkerAsCssComment });
+  try {
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await addTextComment(page, "#commentRoot p", "payload survives a damaged region");
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      clickSidebarExport(page, "#btnSaveHtml"),
+    ]);
+    const out = await readDownload(download);
+    expect(out).toContain("payload survives a damaged region");
+    await expect.poll(() => currentToast(page), { timeout: 15000 })
+      .toContain("Section-review state was left out");
+    // And the exported copy reads that comment back.
+    await reopen(page, staged.dir, out, "reopened-damaged-region.html");
+    await expect(page.locator("#sidebar")).toContainText("payload survives a damaged region");
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("a second block the layer owns for a data id is reported (CMH-EXP-20)", async ({ page }) => {
+  // The reader reads the FIRST block the boundary accepts and every export rewrites that same one,
+  // so a second one is stale on load and never updated on save - a document whose comment data is
+  // half ignored, silently, forever. Say so once, on the console and to the reader, and pin that
+  // the FIRST block really is the one both sides use.
+  const now = new Date().toISOString();
+  const staged = stageInline({
+    mutate: (h) => strayEmbeddedBlock(
+      regionEmbeddedPayload(h, [
+        { id: "cregion001", anchorType: "document", note: "region block note", author: "Region", createdAt: now },
+      ]),
+      [{ id: "cstray0001", anchorType: "document", note: "stray block note", author: "Stray", createdAt: now }],
+    ),
+  });
+  try {
+    const warnings = [];
+    page.on("console", (m) => { if (m.type() === "warning") warnings.push(m.text()); });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await expect.poll(() => currentToast(page), { timeout: 15000 }).toContain("embeddedComments");
+    const toast = await currentToast(page);
+    expect(toast).toContain("2");
+    expect(warnings.join("\n")).toContain("embeddedComments");
+    // The first block is the one that is READ: its comment is loaded, the stray's is not.
+    await expect(page.locator("#sidebar")).toContainText("region block note");
+    await expect(page.locator("#sidebar")).not.toContainText("stray block note");
+    // ...and the one that is WRITTEN: a new comment lands in the first block while the stray's
+    // bytes travel untouched, so a reload of the copy reads back what this session saw.
+    await addTextComment(page, "#commentRoot p", "duplicate-block note");
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      clickSidebarExport(page, "#btnSaveHtml"),
+    ]);
+    const out = await readDownload(download);
+    const bodies = embeddedBlockBodies(out);
+    expect(bodies.length).toBe(2);
+    expect(bodies[0]).toContain("duplicate-block note");
+    expect(bodies[0]).toContain("region block note");
+    expect(bodies[1]).toContain("stray block note");
+    expect(bodies[1]).not.toContain("duplicate-block note");
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("the Plain safety net names a block that was never in the region (CMH-EXP-21)", async ({ page }) => {
+  // The commonest real cause, and the one "malformed markers?" always misnamed: the markers are
+  // fine, the region was stripped, and the block that survived was never inside it.
+  const staged = stageInline({ mutate: strayEmbeddedBlock });
+  try {
+    const toast = await plainExportToast(page, staged);
+    expect(toast).toContain('"embeddedComments"');
+    expect(toast).toContain("OUTSIDE the EMBEDDED COMMENTS region");
+    expect(toast).not.toContain("malformed markers?");
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("the Plain safety net says when the surviving block is INSIDE its region (CMH-EXP-21)", async ({ page }) => {
+  const staged = stageInline({ mutate: proseBeforeBeginMarker });
+  try {
+    const toast = await plainExportToast(page, staged);
+    expect(toast).toContain('"embeddedComments"');
+    expect(toast).toContain("INSIDE the EMBEDDED COMMENTS region");
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("the INSIDE diagnosis does not blame one marker for the other's shape (CMH-EXP-21)", async ({ page }) => {
+  // Prose before the END marker breaks the strip exactly as prose before the BEGIN marker does, so
+  // the message must describe the requirement both anchors share rather than naming BEGIN.
+  const staged = stageInline({ mutate: proseBeforeEndMarker });
+  try {
+    const toast = await plainExportToast(page, staged);
+    expect(toast).toContain('"embeddedComments"');
+    expect(toast).toContain("INSIDE the EMBEDDED COMMENTS region");
+    expect(toast).not.toContain("BEGIN marker must be");
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("a duplicate in the document TAIL is reported once the parser is done (CMH-EXP-20)", async ({ page }) => {
+  // A block after the layer's own script did not exist yet when the read happened, so the read-time
+  // count cannot see it. The audit runs again when the document is fully parsed.
+  const staged = stageInline({
+    mutate: (h) => beforeLastBody(h, OPEN + ' type="application/json" id="embeddedComments">[]' + CLOSE),
+  });
+  try {
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await expect.poll(() => currentToast(page), { timeout: 15000 }).toContain("embeddedComments");
+    expect(await currentToast(page)).toContain("2");
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("the OUTSIDE remedy never tells an author to move a duplicate ahead of the real block (CMH-EXP-21)", async ({ page }) => {
+  // Moving a second block into the region could put it BEFORE the real one, which would hand the
+  // reader and the next export the stale copy - the swap the whole rule exists to stop.
+  const staged = stageInline({ mutate: (h) => strayEmbeddedBlock(h, []) });
+  try {
+    const toast = await plainExportToast(page, staged);
+    expect(toast).toContain("OUTSIDE the EMBEDDED COMMENTS region");
+    expect(toast).toContain("already has another embeddedComments block");
+    expect(toast).not.toContain("Move it into the");
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("the Plain safety net places a surviving descriptor copy in its region (CMH-EXP-21)", async ({ page }) => {
+  // A NON-script element carrying the descriptor id is not something the descriptor strip can
+  // remove (it resolves scripts only), and with the COMMENT UI region's strip broken the region it
+  // sits in survives too - so the message must place it rather than claim the descriptor sits
+  // outside every region.
+  const staged = stageInline({
+    mutate: (h) => {
+      const marker = "<!-- END: commentable-html - COMMENT UI -->";
+      if (h.indexOf(marker) < 0) throw new Error("fixture: no COMMENT UI end comment");
+      return proseBeforeBeginMarkerOf(
+        h.replace(marker, '<div id="commentableHtmlLayer" hidden></div>\n' + marker), "COMMENT UI");
+    },
+  });
+  try {
+    const toast = await plainExportToast(page, staged);
+    expect(toast).toContain('"commentableHtmlLayer"');
+    expect(toast).toContain("inside its COMMENT UI region");
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("the Plain safety net says when the region cannot be attributed at all (CMH-EXP-21)", async ({ page }) => {
+  const staged = stageInline({ mutate: endMarkerAsCssComment });
+  try {
+    const toast = await plainExportToast(page, staged);
+    expect(toast).toContain('"embeddedComments"');
+    expect(toast).toContain("exactly one ordered pair of EMBEDDED COMMENTS region markers");
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
