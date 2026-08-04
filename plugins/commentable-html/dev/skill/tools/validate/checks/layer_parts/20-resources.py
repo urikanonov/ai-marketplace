@@ -157,6 +157,30 @@ def _check_self_contained(html, parser):
         for el in _find_tag_attrs_egress(html, "input"):
             if (el.get("type") or "").lower() == "image":
                 _check_network_attr("input", el, "src")
+        # An `<iframe srcdoc>` carries a WHOLE NESTED DOCUMENT as an attribute VALUE, which neither
+        # side of the offline contract can see into: the export's strips walk ELEMENTS, so nothing
+        # descends into the string, and this gate's tag index tokenizes the document, so that markup
+        # is attribute text and never becomes tags. So an inline handler, a meta refresh, or a
+        # network loader used to ride through an export AND past `--strict` - and the offline CSP
+        # does not save it, because a `srcdoc` frame is content the policy is INHERITED into rather
+        # than a fetch `frame-src 'none'` blocks, and the inherited policy still allows inline
+        # script, which can navigate the top-level document. The direction taken (issue #996, the
+        # way #926 settled the meta-refresh one) is that an offline document may not carry `srcdoc`
+        # at all: the export clears the attribute unconditionally and this rejects any that remain,
+        # so the two agree by construction. Parsing the nested document recursively on both sides is
+        # the alternative, and keeping two independent parsers in step is exactly the drift these
+        # rows exist to prevent. PRESENCE is the test, not a network-looking value: the export
+        # clears an empty or inert one too, so anything narrower would bless a file the export
+        # changes. Read off the shared EGRESS index, so a `<template>`-parked frame, a `<noscript>`
+        # fallback, and a self-closed foreign element are all judged the same - and namespace-blind
+        # like every other rule here, matching the exporter's own namespace-blind element walk.
+        for el in _find_tag_attrs_egress(html, "iframe"):
+            if "srcdoc" in el:
+                errors.append('offline mode: <iframe srcdoc="%s"> carries a nested document that '
+                              "neither the offline strips nor this gate can inspect, and the "
+                              "offline CSP is inherited into it rather than blocking it - the "
+                              "export clears the attribute, so remove it here too"
+                              % ((el.get("srcdoc") or "")[:80]))
         for el in _find_tag_attrs_egress(html, "form"):
             _check_network_attr("form", el, "action")
         for tag in ("button", "input"):

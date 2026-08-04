@@ -479,6 +479,54 @@ class NewCheckTests(unittest.TestCase):
             self.assertTrue(any("meta refresh" in e for e in errors),
                             "expected the generic meta refresh error for %r: %r" % (content, errors))
 
+    def test_offline_mode_rejects_an_iframe_srcdoc(self):
+        # A `srcdoc` carries a whole nested DOCUMENT as an attribute VALUE, so neither side of the
+        # offline contract could see inside it: the strip cleared only `src` and its element walk
+        # never descends into a string, and this gate's tokenizer reads the nested markup as
+        # attribute text rather than tags. An inline handler, a meta refresh, or a network loader
+        # therefore rode through an export AND past `--strict`. The direction both sides now take
+        # is that an offline document may not carry one at all.
+        for markup in ('<iframe srcdoc="&lt;img src=//evil.example/x.png&gt;"></iframe>',
+                       '<iframe srcdoc="&lt;body onload=location=String.fromCharCode(47)&gt;"></iframe>',
+                       '<iframe srcdoc=""></iframe>',
+                       '<iframe srcdoc></iframe>'):
+            with self.subTest(markup=markup):
+                doc = with_offline_mode(build(body=self._body(MAIN, markup)))
+                errors, _ = self._errs_warns(doc)
+                self.assertTrue(any("offline mode" in e and "srcdoc" in e for e in errors),
+                                "expected an offline srcdoc error for %r, got %r" % (markup, errors))
+
+    def test_offline_mode_rejects_an_iframe_srcdoc_wherever_it_is_parked(self):
+        # The same shapes every other offline rule is held to: `<template>` content the export
+        # walks into, a `<noscript>` fallback the reader who cannot run the layer really parses,
+        # and a self-closed foreign element the exporter's DOM walk reaches.
+        for markup in ('<template><iframe srcdoc="&lt;p&gt;x&lt;/p&gt;"></iframe></template>',
+                       '<noscript><iframe srcdoc="&lt;p&gt;x&lt;/p&gt;"></iframe></noscript>',
+                       '<svg><iframe srcdoc="&lt;p&gt;x&lt;/p&gt;"/></svg>'):
+            with self.subTest(markup=markup):
+                doc = with_offline_mode(build(body=self._body(MAIN, markup)))
+                errors, _ = self._errs_warns(doc)
+                self.assertTrue(any("offline mode" in e and "srcdoc" in e for e in errors),
+                                "expected an offline srcdoc error for %r, got %r" % (markup, errors))
+
+    def test_offline_mode_accepts_an_iframe_without_a_srcdoc(self):
+        # The control: the rule is about the nested document, not about the element. A legitimate
+        # offline document that frames nothing (or frames a local file) is untouched, and so is an
+        # ordinary `srcdoc`-free document.
+        for markup in ("<iframe></iframe>", '<iframe src="local.html" title="t"></iframe>'):
+            with self.subTest(markup=markup):
+                doc = with_offline_mode(build(body=self._body(MAIN, markup)))
+                errors, warnings = self._errs_warns(doc)
+                self.assertEqual(errors, [], errors)
+                self.assertEqual(warnings, [], warnings)
+
+    def test_a_srcdoc_is_left_alone_outside_offline_mode(self):
+        # Shareable mode makes no zero-network promise and its export runs no offline strip, so
+        # the rule stays scoped to the mode whose contract it belongs to.
+        markup = '<iframe srcdoc="&lt;p&gt;x&lt;/p&gt;"></iframe>'
+        errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+        self.assertFalse(any("srcdoc" in e for e in errors), errors)
+
     def test_offline_mode_rejects_network_resources_inside_noscript(self):
         # A <noscript> body is raw TEXT only while scripting is enabled; with scripting off a
         # browser parses it and really does load what it names. The EGRESS checks must
