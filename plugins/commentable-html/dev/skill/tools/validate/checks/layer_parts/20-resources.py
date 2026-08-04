@@ -140,6 +140,16 @@ def _check_self_contained(html, parser):
             ("object", "data", False), ("embed", "src", False), ("track", "src", False),
             ("image", "href", False), ("image", "xlink:href", False),
             ("use", "href", False), ("use", "xlink:href", False),
+            # An SVG filter primitive fetches exactly like an `<image>` or a `<use>`, but was in
+            # neither this list nor the export strip, so a document carrying one rode into a
+            # zero-network export and `--strict` certified it clean (#992). `HTMLParser` lowercases
+            # the tag, so the lookup key is `feimage` while the export selector spells it
+            # `feImage`: CSS compares a type selector case-SENSITIVELY for an SVG-namespaced
+            # element and case-INSENSITIVELY for an HTML one, so that one portable spelling reaches
+            # both and the two sides stay namespace-blind together (a current Chromium is laxer
+            # still and matches any casing, which is an implementation detail neither side relies
+            # on).
+            ("feimage", "href", False), ("feimage", "xlink:href", False),
         )
         for tag, attr, is_srcset in media_attrs:
             for el in _find_tag_attrs_egress(html, tag):
@@ -152,6 +162,41 @@ def _check_self_contained(html, parser):
         for tag in ("button", "input"):
             for el in _find_tag_attrs_egress(html, tag):
                 _check_network_attr(tag, el, "formaction")
+        # Hyperlink auditing: a click POSTs to every URL in `ping`, so the attribute is egress that
+        # no resource check above looked at. CSP Level 3 folds auditing into `connect-src`, which
+        # the offline policy does set to `'none'`, so a current browser most likely absorbs it -
+        # but this gate and the export strip are the layer that is not supposed to DEPEND on the
+        # CSP, and the directive's `ping-src` history makes that coverage version-dependent.
+        # EVERY ping that names a URL is rejected, not only one naming a NETWORK URL, for the
+        # reason the meta refresh above is: the exporter removes the attribute whatever it names (a
+        # relative ping still POSTs, shows the reader nothing, and is meaningless in a single-file
+        # export), so accepting a relative one would bless a file an export would change - and an
+        # unconditional rule is one the two sides cannot drift apart on. The network wording is
+        # kept for a value that does carry one, so the message still names the beacon.
+        #
+        # What "names a URL" means is read off HTML's own tokenization rather than off either
+        # engine's whitespace class: the list is split on ASCII whitespace ONLY, written as literal
+        # code points with `re.ASCII` for the same reason every other predicate here is. A
+        # `str.strip()` would have drifted from the strip's `String.trim()` in both directions -
+        # they disagree about NBSP, U+FEFF and U+001C-U+001F - and would have blessed an NBSP ping,
+        # which a browser resolves as a relative target and POSTs to (`/%C2%A0`, measured in a real
+        # Chromium). An empty or ASCII-whitespace-only value names nothing, so a browser sends
+        # nothing, and BOTH sides leave those bytes exactly as the author wrote them.
+        for tag in ("a", "area"):
+            for el in _find_tag_attrs_egress(html, tag):
+                targets = [t for t in re.split(r"[\t\n\f\r ]+", el.get("ping") or "", flags=re.ASCII) if t]
+                if not targets:
+                    continue
+                beacon = next((u for u in targets if _is_network(u)), "")
+                label = '<%s ping="%s">' % (tag, (el.get("ping") or "")[:80])
+                if beacon:
+                    errors.append("offline mode: %s POSTs to a network URL (%s) on every click - "
+                                  "remove the attribute" % (label, beacon[:80]))
+                else:
+                    errors.append("offline mode: %s audits every click by POSTing to the URLs it "
+                                  "names, which a single-file export can neither need nor show the "
+                                  "reader, so the export removes it whatever it points at - remove "
+                                  "the attribute here too" % label)
         for el in _find_tag_attrs_egress(html, "meta"):
             if (el.get("http-equiv") or "").lower() != "refresh":
                 continue

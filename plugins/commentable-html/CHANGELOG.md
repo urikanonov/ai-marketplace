@@ -4,6 +4,35 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.670.0] - 2026-08-04
+
+### Fixed
+
+- Closed two egress shapes that neither the Offline export strip nor the strict validator looked at,
+  so a document carrying either rode into a zero-network export and `--strict` certified it clean.
+  Hyperlink auditing (`<a ping>` / `<area ping>`) POSTs to every URL the attribute names on every
+  click; the export now removes the attribute through the same template-walking pass as the other
+  load attributes, and the gate rejects one in an offline document. It goes whatever it names, the
+  way a meta refresh does: a relative ping still POSTs, shows the reader nothing, and is meaningless
+  in a single-file export, so accepting one would bless a file an export would change - and an
+  unconditional rule is one the two sides cannot drift apart on. What counts as "names no URL" is
+  read off HTML's own tokenization rather than off either engine's whitespace class - the list is
+  split on ASCII whitespace ONLY - so an empty or ASCII-whitespace-only value is left untouched by
+  both (the strip has no write path for it at all), while an NBSP or U+FEFF value, which a browser
+  resolves as a relative target and POSTs to, is caught by both. Trimming instead would have drifted
+  them in both directions, since `String.trim()` and Python's `str.strip()` disagree about exactly
+  those characters. (CSP Level 3 folds auditing into
+  `connect-src`, which the offline policy does set to `'none'`, so a current browser most likely
+  absorbs it - but the strip and the gate are the layer that is not supposed to DEPEND on the CSP,
+  and the directive's `ping-src` history makes that coverage version-dependent.) The SVG filter
+  primitive `<feImage href>` / `xlink:href` fetches exactly like the SVG `<image>` and `<use>` the
+  media list already covered, so it joins that list on both sides; a relative or `data:` reference
+  is left untouched. One selector spelling reaches both namespaces - CSS compares a type selector
+  case-sensitively for an SVG-namespaced element and case-insensitively for an HTML one, so
+  `feImage` matches the SVG primitive and an `<feimage>` authored outside `<svg>` alike (a current
+  Chromium is laxer still and matches any casing, which neither side relies on) - which keeps the
+  strip namespace-blind, exactly as the validator's flat tokenizer is forced to be.
+
 ## [1.669.0] - 2026-08-04
 
 ### Fixed

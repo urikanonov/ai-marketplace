@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.669.0" />
+<meta name="commentable-html-version" content="1.670.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.669.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.670.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>NYC Taxi 2014 Report</title>
 
@@ -4630,7 +4630,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.669.0";
+const CMH_VERSION = "1.670.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -18548,6 +18548,16 @@ function _offlineCountKeptNeutralized(doc, neutralized) {
 // by `test_the_python_and_js_script_load_attributes_agree`.
 const _OFFLINE_SCRIPT_LOAD_ATTRS = ["src", "href", "xlink:href"];
 const _OFFLINE_SVG_NS = "http://www.w3.org/2000/svg";
+// The URLs a `ping` list really names, tokenized the way HTML tokenizes it: on ASCII whitespace
+// ONLY (tab, LF, FF, CR, space), written as literal code points because the two engines' whitespace
+// classes disagree exactly where this boundary decides whether a beacon is live. Mirrored by the
+// validator's own split, so an empty or ASCII-whitespace-only value is a no-op on BOTH sides while
+// an NBSP or U+FEFF value - which a browser resolves as a relative target and POSTs to - is a real
+// one on both. Returns the count, so a caller can ask "does this name anything?" without repeating
+// the split.
+function _offlinePingTargets(value) {
+  return (value || "").split(/[\t\n\f\r ]+/).filter(function (t) { return t !== ""; }).length;
+}
 // Take the load away, and take no more than that. `src` loads on any script, and an `href` /
 // `xlink:href` loads on an SVG one, so those elements go (dropping just the attribute from an SVG
 // script would start EXECUTING a body SVG2 says is ignored while `href` is present). On an HTML
@@ -18666,6 +18676,37 @@ function _stripOfflineNetworkLoads(doc) {
   all("track").forEach(function (el) { clearAttr(el, "src"); });
   all("image").forEach(function (el) { clearAttr(el, "href"); clearAttr(el, "xlink:href"); });
   all("use").forEach(function (el) { clearAttr(el, "href"); clearAttr(el, "xlink:href"); });
+  // An SVG filter primitive fetches exactly like the `image` and `use` above, and was in neither
+  // this list nor the strict validator's, so one rode into a zero-network export the gate then
+  // certified clean (#992). One spelling reaches both namespaces: CSS compares a type selector
+  // case-SENSITIVELY for an SVG-namespaced element and case-INSENSITIVELY for an HTML one, so
+  // `feImage` is the portable spelling that matches both the SVG primitive and an `<feimage>`
+  // authored outside `<svg>` (a current Chromium is laxer still and matches any casing, which is an
+  // implementation detail nothing here relies on). That keeps this pass namespace-blind, exactly as
+  // the validator's flat tokenizer is forced to be.
+  all("feImage").forEach(function (el) { clearAttr(el, "href"); clearAttr(el, "xlink:href"); });
+  // Hyperlink auditing: a click POSTs to every URL in `ping`. The offline CSP most likely absorbs
+  // it (CSP Level 3 folds auditing into `connect-src`, which the offline policy sets to `'none'`),
+  // but this strip is the layer that must not DEPEND on the CSP, and the directive's `ping-src`
+  // history makes that coverage version-dependent. The attribute goes whatever it names, the way a
+  // meta refresh does: a relative ping still POSTs, it shows the reader nothing, and it is
+  // meaningless in a single-file export - and an unconditional rule is one this strip and the gate
+  // cannot drift apart on. Scoped to the two elements HTML gives the attribute any meaning on (an
+  // SVG anchor included, which the tag-name selector matches in either namespace), so an author's
+  // `ping` bookkeeping on some other element is not silently deleted; the validator scopes it the
+  // same way, which its tokenizer can do exactly since it reads tag NAMES.
+  //
+  // A value that names NO URL is left byte-identical instead, and what that means is read off
+  // HTML's own tokenization rather than off either engine's idea of whitespace: the list is split
+  // on ASCII whitespace ONLY. `String.trim()` and Python's `str.strip()` disagree about NBSP,
+  // U+FEFF and U+001C-U+001F, so trimming would drift the two sides in both directions - an NBSP
+  // ping is a live relative beacon (it POSTs to `/%C2%A0`) that a trimming gate would call empty
+  // and bless, and an empty-after-trim value is one a trimming strip would remove from a file the
+  // gate had certified byte-clean.
+  all("a[ping], area[ping]").forEach(function (el) {
+    if (!_offlinePingTargets(el.getAttribute("ping"))) return;
+    el.removeAttribute("ping");
+  });
   all("input[src]").forEach(function (el) {
     if ((el.getAttribute("type") || "").toLowerCase() === "image") clearAttr(el, "src");
   });
