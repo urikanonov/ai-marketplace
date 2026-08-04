@@ -4,6 +4,37 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.675.0] - 2026-08-04
+
+### Fixed
+
+
+- A document carried in an `<iframe srcdoc>` is no longer invisible to the Offline export strip and
+  the strict validator. Every pass on both sides reads ELEMENTS and ATTRIBUTES - the strip through
+  `querySelectorAll`, the gate through its tag index - and neither parsed the markup a `srcdoc`
+  carries as an attribute VALUE, so a whole nested document rode into a zero-network export
+  untouched: its `<img src>`, its `<script src>` (and an SVG script's `href`/`xlink:href`), its
+  `<base href>`, its inline remote imports and scripted navigations, its CSS `@import`/`url(...)`
+  and its `on*` handlers, with `--strict` certifying the file as offline-clean. The exported CSP
+  does absorb such a fetch in practice, because a nested browsing context inherits `default-src
+  'none'` - but the strip and the gate are the layer that is not supposed to depend on the CSP,
+  which is the same argument the `<base href>` rule (1.667.0) was built on.
+  The export now parses each `srcdoc`, runs the SAME network-load strip and event-handler scrub
+  over the nested document, and writes it back; the validator runs its OWN full self-contained
+  check over the same decoded markup rather than a narrower second copy of the rules, since a
+  hand-written subset is the drift this whole area keeps paying for. Four bounds are deliberate.
+  The nested document is SANITIZED rather than deleted, because a srcdoc is content a reader sees,
+  and nothing is written back unless a pass CHANGED something, so a clean srcdoc keeps the author's
+  exact bytes. The recursion (a `srcdoc` can carry its own) is BOUNDED at a depth both sides carry
+  and a parity test pins together; past it the export removes the attribute and the gate refuses
+  the file, so the two agree about markup neither of them read. A nested document declares no layer
+  descriptor and no CSP of its own, so it inherits the enclosing document's mode - otherwise its
+  offline rules would never run - and is never asked for a policy of its own. And a nested finding
+  is prefixed with `inside an <iframe srcdoc>:` per level, because the remediation each message
+  names is about a reference the author has to reach inside an attribute value to edit. Nested
+  counts are added to the enclosing export's own, so a base cleared inside a srcdoc is named in the
+  same download toast.
+
 ## [1.671.0] - 2026-08-04
 
 ### Fixed

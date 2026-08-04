@@ -1284,6 +1284,32 @@ class RuntimeParityTests(unittest.TestCase):
                          "exported file its own --strict run rejects."
                          % (runtime_attrs, tuple(resources.SCRIPT_LOAD_ATTRS)))
 
+    def test_the_python_and_js_srcdoc_depth_bounds_agree(self):
+        """The offline strip (JS) and the strict validator (Python) must stop following an
+        `<iframe srcdoc>` at the SAME depth.
+
+        A srcdoc carries a whole nested document as an attribute value and that document may carry
+        its own, so both sides recurse - over markup the document supplies, which is why the
+        recursion is bounded at all. The bound is where they agree about markup NEITHER of them
+        analyzed: past it the strip removes the attribute and the gate refuses the file. A gate that
+        looked deeper than the strip would reject a file the exporter just produced; one that looked
+        less deep would certify a nested document the strip had taken apart.
+        """
+        source = self._read("68-export-offline.js")
+        m = re.search(r"const _OFFLINE_SRCDOC_MAX_DEPTH = (\d+);", source)
+        self.assertIsNotNone(m, "the runtime no longer declares _OFFLINE_SRCDOC_MAX_DEPTH; the "
+                                "parity check is stale and must be re-pointed at whatever replaced it")
+        runtime_depth = int(m.group(1))
+        # The literal control is written out rather than derived from either side, so lowering the
+        # bound on BOTH cannot quietly delete its own coverage.
+        self.assertEqual(runtime_depth, 8,
+                         "the runtime's srcdoc recursion bound changed. Move this literal control "
+                         "and the validator's OFFLINE_SRCDOC_MAX_DEPTH together.")
+        self.assertEqual(runtime_depth, resources.OFFLINE_SRCDOC_MAX_DEPTH,
+                         "the runtime's _OFFLINE_SRCDOC_MAX_DEPTH and the validator's "
+                         "OFFLINE_SRCDOC_MAX_DEPTH have diverged: %r vs %r."
+                         % (runtime_depth, resources.OFFLINE_SRCDOC_MAX_DEPTH))
+
     # A browser removes leading C0 controls and spaces (U+0000-U+0020) before it parses a URL, so a
     # value padded with those still loads while one padded with NBSP or U+FEFF does not resolve as a
     # URL at all. Both engines must draw that line in the same place: JS `\s` excludes U+001C-U+001F

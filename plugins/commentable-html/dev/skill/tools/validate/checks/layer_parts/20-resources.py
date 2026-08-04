@@ -1,4 +1,4 @@
-def _check_self_contained(html, parser):
+def _check_self_contained(html, parser, *, srcdoc_depth=0, inherited_offline=None):
     errors, warnings = [], []
     # The whole guarantee is read off the shared tag index, so a parse that could not be built
     # must be REPORTED rather than read as "this document loads nothing" (a partial index would
@@ -39,6 +39,11 @@ def _check_self_contained(html, parser):
     # to offline would only add wrong `offline mode:` errors to an ordinary shareable document
     # whose descriptor failed to parse, and none of them validates clean either way.
     offline_mode = (descriptor.get("mode") == "offline")
+    # A NESTED document (one an `<iframe srcdoc>` carries) declares no layer descriptor of its own,
+    # so it inherits the enclosing document's mode rather than being read as a shareable file whose
+    # offline rules never run.
+    if inherited_offline is not None:
+        offline_mode = inherited_offline
     def _network_values(value, srcset=False):
         if srcset:
             return srcset_candidate_urls(value)
@@ -133,7 +138,10 @@ def _check_self_contained(html, parser):
         # A parse that could not be built was already reported at the top of this function, so the
         # lookups below are best-effort on a PARTIAL index rather than gated on it - they can only
         # add to a report that already says the document could not be read.
-        errors.extend(_offline_csp_errors(parser))
+        # The CSP is the ENCLOSING document's, and a nested browsing context inherits it, so only
+        # the top-level document is asked for one.
+        if inherited_offline is None:
+            errors.extend(_offline_csp_errors(parser))
         media_attrs = (
             ("video", "src", False), ("video", "poster", False),
             ("audio", "src", False), ("source", "src", False), ("source", "srcset", True),
@@ -277,6 +285,38 @@ def _check_self_contained(html, parser):
                               "document (reviewer comments included) and no CSP directive in a "
                               "<meta> can stop it; remove the navigation, or reword the comment or "
                               "string literal that matches it")
+    # An `<iframe srcdoc="...">` carries a whole nested DOCUMENT as an attribute VALUE. Every
+    # lookup above reads ELEMENTS and ATTRIBUTES off a tag index built from this document's own
+    # markup, so a document parked in `srcdoc` was invisible to all of them: its `<img src>`, its
+    # `<script src>`, its `<base href>`, its inline egress and its `on*` handlers rode into a
+    # zero-network export untouched and `--strict` certified the file as offline-clean. The
+    # exported CSP does absorb the fetch in practice (the nested context inherits `default-src
+    # 'none'`), but this gate and the export strip are the layer that is not supposed to depend on
+    # the CSP - the same argument the `<base href>` rule above is built on.
+    #
+    # The nested document is checked by THIS function, recursively, rather than by a second
+    # narrower copy of its rules: every rule above applies to markup a browser really parses and
+    # really loads, and a hand-written subset is exactly the drift the offline gate keeps paying
+    # for. The offline strip sanitizes a srcdoc through its own full strip for the same reason, so
+    # the two sides stay in step. The findings are PREFIXED, because the remediation each message
+    # names ("inline it with tools/inline_images.py") is about a reference the author has to reach
+    # inside an attribute value to edit, and an unmarked message would send them looking for an
+    # element the document does not contain.
+    for el in _find_tag_attrs_egress(html, "iframe"):
+        nested = el.get("srcdoc", "")
+        if not nested:
+            continue
+        if srcdoc_depth + 1 > OFFLINE_SRCDOC_MAX_DEPTH:
+            errors.append("<iframe srcdoc> documents are nested more than %d deep - neither this "
+                          "check nor the offline export reads that far, and the export removes the "
+                          "attribute rather than shipping markup it did not analyze; flatten the "
+                          "nesting" % OFFLINE_SRCDOC_MAX_DEPTH)
+            continue
+        nested_errors, nested_warnings = _check_self_contained(
+            nested, _parse_document(nested), srcdoc_depth=srcdoc_depth + 1,
+            inherited_offline=offline_mode)
+        errors.extend("inside an <iframe srcdoc>: " + e for e in nested_errors)
+        warnings.extend("inside an <iframe srcdoc>: " + w for w in nested_warnings)
     return errors, warnings
 
 

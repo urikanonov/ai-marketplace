@@ -630,7 +630,44 @@ function _offlineQueryAll(root, selector) {
   walk(root);
   return found;
 }
-function _stripOfflineNetworkLoads(doc) {
+// An `<iframe srcdoc="...">` carries a whole nested DOCUMENT as an attribute VALUE. Every pass in
+// this file reads ELEMENTS and ATTRIBUTES, and the strict validator reads TAGS, so a document
+// parked in `srcdoc` was invisible to both: its `<img src>`, its `<script src>`, its `<base href>`,
+// its inline egress and its `on*` handlers all rode into a zero-network export untouched, and
+// `--strict` certified the file as offline-clean. The exported CSP does absorb the fetch in
+// practice (the nested browsing context inherits `default-src 'none'`), but the strip and the gate
+// are the layer that is not supposed to depend on the CSP.
+//
+// The nested document is SANITIZED rather than deleted, because a srcdoc is content a reader sees
+// and the passes the top-level document already gets are exactly what makes it safe: it is parsed,
+// run through this same strip and the event-handler scrub, and written back. A `srcdoc` inside a
+// `srcdoc` is reached by the recursion for free, and the nested counts land in the same toast.
+// The strict validator recurses the same way over the same bound, so the two agree by
+// construction. Nothing is written back unless a pass CHANGED something, so a clean srcdoc keeps
+// the author's exact bytes rather than a re-serialized copy of them.
+const _OFFLINE_SRCDOC_MAX_DEPTH = 8;
+function _offlineStripSrcdocs(doc, depth) {
+  let dropped = 0;
+  let clearedBases = 0;
+  _offlineQueryAll(doc, "iframe[srcdoc]").forEach(function (el) {
+    // Past the bound nothing can be READ, so nothing may be KEPT. The gate refuses a document
+    // nested deeper than this for the same reason, and removing the attribute is what keeps the
+    // two sides agreeing about markup neither of them analyzed.
+    if (depth + 1 > _OFFLINE_SRCDOC_MAX_DEPTH) { el.removeAttribute("srcdoc"); return; }
+    let nested = null;
+    try { nested = _offlineDocFromHtml(el.getAttribute("srcdoc") || ""); } catch (e) { nested = null; }
+    if (!nested || !nested.documentElement) { el.removeAttribute("srcdoc"); return; }
+    const before = nested.documentElement.outerHTML;
+    const inner = _stripOfflineNetworkLoads(nested, depth + 1);
+    _stripOfflineEventHandlers(nested);
+    dropped += inner.dropped;
+    clearedBases += inner.clearedBases;
+    const after = nested.documentElement.outerHTML;
+    if (after !== before) el.setAttribute("srcdoc", after);
+  });
+  return { dropped: dropped, clearedBases: clearedBases };
+}
+function _stripOfflineNetworkLoads(doc, depth) {
   let dropped = 0;
   let clearedBases = 0;
   const all = function (selector) { return _offlineQueryAll(doc, selector); };
@@ -763,6 +800,11 @@ function _stripOfflineNetworkLoads(doc) {
     if (next) el.setAttribute("style", next);
     else el.removeAttribute("style");
   });
+  // Last, so a nested document is sanitized by a strip that has already finished with this one and
+  // the counts it reports are added rather than overwritten.
+  const nested = _offlineStripSrcdocs(doc, depth || 0);
+  dropped += nested.dropped;
+  clearedBases += nested.clearedBases;
   return { dropped: dropped, clearedBases: clearedBases };
 }
 function _stripOfflineRichRenderers(doc) {
