@@ -85,6 +85,31 @@ def _check_self_contained(html, parser, nonshareable):
         for el in _find_tag_attrs_egress(html, tag):
             for attr in attrs:
                 _check_network_attr(tag, el, attr)
+    # A <base href> is not itself a load, which is why neither this gate nor the export strip used
+    # to look at one - and both treat a RELATIVE reference as safe, which is the whole control case.
+    # A base element REBASES every relative reference in the document onto the base it names, so the
+    # very relative image or script reference both sides read as local fetches off-host while
+    # passing every check above. That blast radius is why it is held to the stricter
+    # `offline_is_non_local_ref` (any scheme, or an authority of two slashes/backslashes in either
+    # order, after the URL parser's own input cleanup) rather than the `//`-requiring
+    # `NETWORK_URL_RE` the per-resource checks use: a browser resolves a slash-less `https:host/`
+    # and a backslash-authority `https:/\host/` to a remote host too, and for a base that would
+    # defeat the check outright. The export strip clears exactly this set, so the two agree. Not
+    # scoped to offline mode: the self-contained guarantee is not offline-only, and unlike offline a
+    # shareable file has no zero-network CSP behind it. A relative base is left alone - it reaches
+    # no network at all (the ordinary local-path rules already cover where it points).
+    for el in _find_tag_attrs_egress(html, "base"):
+        val = el.get("href", "")
+        if val and offline_is_non_local_ref(val):
+            label = '<base href="%s">' % val[:80]
+            if offline_mode:
+                errors.append("offline mode: %s rebases every relative reference in the document "
+                              "onto a base the file cannot resolve on its own - remove it" % label)
+            else:
+                errors.append("%s rebases every relative reference in the document onto a base the "
+                              "file cannot resolve on its own and breaks the self-contained "
+                              "guarantee - make the base relative, or drop it and write the "
+                              "affected href/src values out in full" % label)
     if offline_mode:
         # A parse that could not be built was already reported at the top of this function, so the
         # lookups below are best-effort on a PARTIAL index rather than gated on it - they can only
