@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.670.0" />
+<meta name="commentable-html-version" content="1.671.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.670.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.671.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Design review sign-off</title>
 
@@ -4125,6 +4125,16 @@ const CMH_LAYER_SCRIPT = document.currentScript;
 // host content (which may itself be cm-skip, e.g. a chart <canvas>). See _snapshotWithTail.
 const CMH_INJECTED_CHROME = new Set();
 
+// Layer chrome that must not count as DOCUMENT TEXT. Deliberately SEPARATE from
+// CMH_INJECTED_CHROME above: that set is populated partly by a heuristic sweep (every element
+// sibling following the layer script, in 95-startup.js), which is fine for its job - trimming an
+// export tail - because an over-capture there costs a stale tail. Membership HERE subtracts text
+// from the document content hash, where an over-capture is silent and produces the exact false
+// "not validated" banner the hash exists to prevent, so this set is populated only where the layer
+// CREATES the node, by construction. Today that is the print appendix (83-print.js), the one pass
+// that appends real prose into the content root; every other in-root control is cm-skip.
+const CMH_HASH_EXCLUDED = new Set();
+
 // The layer's OWN interactive chrome, held by IDENTITY. Some of it is injected INSIDE the content
 // root (a sortable-table sort control, a widget "Reset moves", a checklist box), where containment
 // cannot tell it from author content and a class match would let author content spoof its way past
@@ -4187,6 +4197,60 @@ function cmScrollBehavior() {
     if (typeof window.matchMedia !== "function") return "auto";
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
   } catch (e) { return "auto"; }
+}
+
+// ---- Authored-text preservation: permute children through the slots they ALREADY occupy ----
+// Reordering elements by APPENDING them strands the whitespace text nodes an author leaves between
+// them: the elements end up textually adjacent and the stranded whitespace piles up ahead of them.
+// That is a text change no later "unsort" can undo (unsorting restores element ORDER, not the moved
+// whitespace), so it silently drifted the document and section content hashes and made the same
+// file show the "not validated" banner on one machine and not another (#952). Every reorder inside
+// the content root goes through these helpers instead, so the class cannot reappear in a third copy
+// of the slot math (#977): `ordered` is dropped into the slots its OWN members already occupy and
+// every other child node stays exactly where the author put it.
+//
+// Both fail SAFE. Given anything that is not a permutation of nodes currently parented by `parent`
+// (a foreign node, a duplicate) they decline, because an untouched DOM is always text-neutral while
+// a partial rearrangement is not.
+function _cmhSlotPlan(parent, ordered) {
+  if (!parent || !ordered || ordered.length < 2) return null;
+  const kids = Array.prototype.slice.call(parent.childNodes);
+  const pos = new Map();
+  for (let i = 0; i < kids.length; i++) pos.set(kids[i], i);
+  const slots = [];
+  for (let i = 0; i < ordered.length; i++) {
+    if (!pos.has(ordered[i])) return null;
+    slots.push(pos.get(ordered[i]));
+  }
+  if (new Set(slots).size !== slots.length) return null;
+  slots.sort(function (a, b) { return a - b; });
+  return { kids: kids, slots: slots };
+}
+// Pure READ: a copy of `parent`'s child nodes with `ordered` placed into its members' slots.
+// Returns null when the input is not such a permutation, so a caller can fall back to the live
+// order. Used by the canonical-hash scan, which must never touch the DOM.
+function cmhPermutedChildNodes(parent, ordered) {
+  const plan = _cmhSlotPlan(parent, ordered);
+  if (!plan) return null;
+  const out = plan.kids.slice();
+  for (let i = 0; i < plan.slots.length; i++) out[plan.slots[i]] = ordered[i];
+  return out;
+}
+// WRITE: apply that permutation to the DOM by swapping each member out for a placeholder comment
+// and each placeholder back for the node that belongs in it. Returns true when the DOM changed;
+// an identity reorder returns false without touching anything (the canonical-hash and export passes
+// unsort EVERY sortable table, including ones the reader never sorted).
+function cmhPermuteChildrenInSlots(parent, ordered) {
+  const plan = _cmhSlotPlan(parent, ordered);
+  if (!plan) return false;
+  const members = plan.slots.map(function (s) { return plan.kids[s]; });
+  let same = true;
+  for (let i = 0; i < members.length; i++) if (members[i] !== ordered[i]) { same = false; break; }
+  if (same) return false;
+  const marks = members.map(function () { return document.createComment(""); });
+  members.forEach(function (n, i) { parent.replaceChild(marks[i], n); });
+  marks.forEach(function (m, i) { parent.replaceChild(ordered[i], m); });
+  return true;
 }
 
 /* ---------- Config (auto-discovered, never edit per-doc) ---------- */
@@ -4396,7 +4460,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.670.0";
+const CMH_VERSION = "1.671.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -16082,11 +16146,21 @@ function setupTableScroll() {
    comments and the applied sort. The sort is re-applied on load BEFORE restore so the
    stored offsets always match the displayed order. */
 const CMH_TABLE_SORT_KEY = COMMENT_KEY + "::tableSort";
-let _tableSortState = {};
+// Null-prototype at every assignment site, matching the checklist/notes convention (CMH-SEC-02):
+// a JSON.parse'd map still chains to Object.prototype, so a crafted "<key>::tableSort" payload
+// keyed "__proto__"/"constructor" would let a plain property READ fall through to the prototype.
+// The live keys here are "<idx>::<header-sig>", so this is defense in depth rather than a hole -
+// the point is that the runtime has ONE convention for a document-reachable state map, not two.
+let _tableSortState = Object.create(null);
+function _tsNullProto(obj) {
+  return (obj && typeof obj === "object" && !Array.isArray(obj))
+    ? Object.assign(Object.create(null), obj) : Object.create(null);
+}
 function _loadTableSortState() {
-  try { _tableSortState = JSON.parse(localStorage.getItem(CMH_TABLE_SORT_KEY) || "{}"); }
-  catch (e) { _tableSortState = {}; }
-  if (!_tableSortState || typeof _tableSortState !== "object") _tableSortState = {};
+  let parsed = null;
+  try { parsed = JSON.parse(localStorage.getItem(CMH_TABLE_SORT_KEY) || "{}"); }
+  catch (e) { parsed = null; }
+  _tableSortState = _tsNullProto(parsed);
 }
 function _saveTableSortState() {
   try { localStorage.setItem(CMH_TABLE_SORT_KEY, JSON.stringify(_tableSortState)); } catch (e) { /* private mode */ }
@@ -16160,27 +16234,17 @@ function _parseNum(s) {
 // unsort can undo (unsorting restores row ORDER, not the stranded whitespace). That silently drifted
 // the document/section content hashes the moment a reader sorted a table, and because the sort is
 // persisted per browser profile the same file then showed the "not validated" banner on one machine
-// and not another (#952). Swapping through placeholders keeps every non-row node exactly where the
-// author put it, so a sort (and its unsort) is text-neutral.
+// and not another (#952). The slot swap itself now lives in ONE place - cmhPermuteChildrenInSlots in
+// 00-preamble.js, shared with the canonical-hash reader - so the append class cannot come back in a
+// third copy of the math (#977).
 //
-// The slots come from `body.rows` - the same collection every caller derives `rows` from - so the
-// two are the same set by construction. A caller that ever breaks that (a different length, or a
-// row that is not currently a child of this body) gets a no-op rather than the append that caused
-// #952: leaving the DOM untouched is always text-neutral, while re-appending would silently revive
-// the bug. The identity fast path matters because the canonical-hash and export passes unsort EVERY
-// sortable table, including ones the reader never sorted.
+// The rows a caller passes must be exactly this body's row set. A caller that ever breaks that (a
+// different length, a duplicate, or a row that is not currently a child of this body) gets a no-op
+// rather than the append that caused #952: leaving the DOM untouched is always text-neutral, while
+// re-appending would silently revive the bug.
 function _reorderBody(body, rows) {
-  const slots = Array.prototype.slice.call(body.rows);
-  if (slots.length !== rows.length) return;
-  let same = true;
-  for (let i = 0; i < rows.length; i++) {
-    if (rows[i].parentNode !== body) return;
-    if (rows[i] !== slots[i]) same = false;
-  }
-  if (same) return;
-  const marks = slots.map(function () { return document.createComment(""); });
-  slots.forEach(function (r, i) { body.replaceChild(marks[i], r); });
-  marks.forEach(function (m, i) { body.replaceChild(rows[i], m); });
+  if (!body || !rows || body.rows.length !== rows.length) return;
+  cmhPermuteChildrenInSlots(body, rows);
 }
 // A cell's sortable text, EXCLUDING cm-skip UI (e.g. a code-block Copy button) so layer
 // chrome never pollutes the sort key or flips numeric detection to lexicographic.
@@ -20310,36 +20374,58 @@ function _renderPrintComment(c, index) {
     + repliesHtml
     + '</article>';
 }
+// Resolve the appendix by IDENTITY (a private reference to the element this module created), never
+// by `getElementById`. An author element that happens to carry `id="cmhPrintComments"` would
+// otherwise be treated as ours: its content overwritten on `beforeprint`, and the element itself
+// DELETED on `afterprint` - or immediately, when the document has no comments to render. It was
+// never registered as layer chrome either, so its authored prose also moved the document content
+// hash. This is the same "resolve the layer's own control by identity" rule as CMH-CORE-21.
+let _printAppendixEl = null;
+function _ownPrintAppendix() {
+  if (_printAppendixEl && root.contains(_printAppendixEl)) return _printAppendixEl;
+  _printAppendixEl = null;
+  return null;
+}
 function materializePrintAppendix() {
   if (IS_DECK) return;
-  let appendix = document.getElementById("cmhPrintComments");
+  let appendix = _ownPrintAppendix();
   const roots = (typeof threadRoots === "function") ? threadRoots(comments) : comments;
   if (!roots.length) {
     if (appendix) {
       CMH_INJECTED_CHROME.delete(appendix);
+      CMH_HASH_EXCLUDED.delete(appendix);
       appendix.remove();
+      _printAppendixEl = null;
     }
     return;
   }
   if (!appendix) {
     appendix = document.createElement("section");
-    appendix.id = "cmhPrintComments";
+    // Keep the historical id, but only when the document is not already using it: creating a
+    // DUPLICATE id would be invalid HTML and would leave an author element and ours
+    // indistinguishable to anything that still resolves by id. The CLASS is the real hook - the
+    // print stylesheet keys off `.cmh-print-comments`, never the id.
+    if (!document.getElementById("cmhPrintComments")) appendix.id = "cmhPrintComments";
     appendix.className = "cmh-print-comments";
     appendix.setAttribute("aria-label", "Review comments");
     root.appendChild(appendix);
     CMH_INJECTED_CHROME.add(appendix);
+    CMH_HASH_EXCLUDED.add(appendix);
+    _printAppendixEl = appendix;
   }
   appendix.innerHTML = '<h2>Review comments</h2>'
     + '<p class="cmh-print-intro">Current in-browser comments at print time.</p>'
     + roots.map(_renderPrintComment).join("");
 }
 function clearPrintAppendix() {
-  const appendix = document.getElementById("cmhPrintComments");
+  const appendix = _ownPrintAppendix();
   if (appendix) {
     // Drop it from the injected-chrome set too, so repeated print/cancel cycles (each of which
     // recreates the appendix) do not accumulate detached nodes that the set keeps alive.
     CMH_INJECTED_CHROME.delete(appendix);
+    CMH_HASH_EXCLUDED.delete(appendix);
     appendix.remove();
+    _printAppendixEl = null;
   }
 }
 function setupPrintAppendix() {
@@ -20678,7 +20764,7 @@ function setupSinglePagePrint() {
       // wide reading column, where a wide chart/diagram can be proportionally taller than at the capped
       // print width, so `cachedH` can exceed the true narrow height - which adds harmless bottom
       // whitespace, never a spill or clip. It also covers a rare very-early print before charts settle.
-      const appendix = document.getElementById("cmhPrintComments");
+      const appendix = _ownPrintAppendix();
       const appendixH = appendix ? Math.ceil(appendix.getBoundingClientRect().height) : 0;
       const h0 = Math.max(measureHeight(), cachedH > 0 ? cachedH + appendixH : 0);
       const w = contentW + PAD * 2;
@@ -20770,6 +20856,24 @@ function cmhSectionHash(text) {
 // (section_hash.py) for every content type, not just plain prose.
 const CMH_SCAN_SKIP_SEL = ".cm-skip, script, style, template, noscript, .cmh-diff, .cmh-kql, .mermaid, canvas, [data-cmh-note]";
 
+// Layer chrome the runtime INJECTED into the content root is excluded by IDENTITY, not by a class.
+// One pass genuinely appends prose there: the print appendix (83-print.js) materializes every open
+// comment as articles at the end of #commentRoot on `beforeprint` and removes them on `afterprint`.
+// Its text is the reviewer's notes, not the document's, so it must not enter the hash - a reader who
+// opened a print preview would otherwise see every hash-derived state (the validated banner, the
+// section review badges) flip for as long as the preview was open. It cannot simply wear `cm-skip`:
+// the print stylesheet hides `body > .cm-skip`, and a document with no `#commentRoot` roots the
+// layer at `<body>`, so that would hide the appendix from the very print it exists for. Identity is
+// also the right test rather than an id/class selector - the Python hasher reads the SOURCE file,
+// which can never contain runtime-injected chrome, so excluding only what the LAYER created can
+// only improve agreement, while an author element wearing the id would be wrongly dropped. The set
+// consulted is CMH_HASH_EXCLUDED, populated only at the site that CREATES the node, never the
+// heuristic export-tail set (see 00-preamble.js).
+function _cmhScanSkip(node) {
+  if (CMH_HASH_EXCLUDED.has(node)) return true;
+  return node.matches(CMH_SCAN_SKIP_SEL);
+}
+
 // True while the reader holds a persisted table sort, i.e. while the DOM row order can differ from
 // the authored source order the stamp and the review markers were taken over.
 function _cmhTableSortActive() {
@@ -20780,8 +20884,9 @@ function _cmhTableSortActive() {
 // PERSISTED table sort is a runtime-only DOM reorder that neither the validated stamp (hashed from
 // the source file) nor a review marker ever saw, so the scan below reads the rows in the order the
 // author wrote them - recovered from the data-cmh-row index the runtime stamps at load, permuted
-// through the rows' existing slots so the authored whitespace between them stays put (mirroring
-// _reorderBody in 62-sortable-tables.js). This is a pure READ: the DOM is never touched, so a
+// through the rows' existing slots so the authored whitespace between them stays put (the shared
+// cmhPermutedChildNodes in 00-preamble.js, the pure-read twin of the writer _reorderBody uses).
+// This is a pure READ: the DOM is never touched, so a
 // hash or a badge refresh cannot move the reader's rows, drop focus or selection inside a row, or
 // churn observers.
 //
@@ -20793,9 +20898,9 @@ function _cmhTableSortActive() {
 function _cmhCanonicalChildNodes(el, canonical) {
   const kids = el.childNodes;
   if (!canonical || el.tagName !== "TBODY") return kids;
-  const slots = [], rows = [];
+  const rows = [];
   for (let i = 0; i < kids.length; i++) {
-    if (kids[i].nodeType === 1 && kids[i].tagName === "TR") { slots.push(i); rows.push(kids[i]); }
+    if (kids[i].nodeType === 1 && kids[i].tagName === "TR") rows.push(kids[i]);
   }
   // Only a body the runtime itself indexed is reordered: _indexTableRows stamps every row of a
   // SORTABLE table at load, in source order. An authored data-cmh-row on some other table is not
@@ -20806,9 +20911,7 @@ function _cmhCanonicalChildNodes(el, canonical) {
   const ordered = rows.slice().sort(function (a, b) {
     return (parseInt(a.getAttribute("data-cmh-row"), 10) || 0) - (parseInt(b.getAttribute("data-cmh-row"), 10) || 0);
   });
-  const out = Array.prototype.slice.call(kids);
-  for (let i = 0; i < slots.length; i++) out[slots[i]] = ordered[i];
-  return out;
+  return cmhPermutedChildNodes(el, ordered) || kids;
 }
 // Walk #commentRoot once (skipping every cm-skip subtree, so the review badge, section caret,
 // and any injected chrome are excluded) and return the concatenated text plus each heading with
@@ -20821,7 +20924,7 @@ function _cmhScanSections() {
   (function visit(node) {
     if (node.nodeType === 3) { full += node.nodeValue; return; }
     if (node.nodeType !== 1) return;
-    if (node.matches(CMH_SCAN_SKIP_SEL)) return;
+    if (_cmhScanSkip(node)) return;
     if (/^H[1-6]$/i.test(node.tagName)) {
       heads.push({ el: node, level: parseInt(node.tagName.slice(1), 10), offset: full.length });
     }

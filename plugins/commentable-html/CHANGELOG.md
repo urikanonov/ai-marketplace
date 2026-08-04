@@ -4,6 +4,45 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.671.0] - 2026-08-04
+
+### Fixed
+
+- The print appendix no longer moves the document content hash, and no longer treats an author's
+  element as its own. `beforeprint` materializes every open comment as real prose at the end of
+  `#commentRoot`, so for as long as a print preview was open the hash - and with it the validated
+  banner and every section review badge - reflected the REVIEWER's notes rather than the document.
+  Runtime-injected chrome is now excluded from the hash scan by IDENTITY (`CMH_HASH_EXCLUDED`, a set kept separate from the heuristic export-tail set so an over-capture there can never subtract document text)
+  rather than by a class: the appendix cannot wear `cm-skip`, because the print stylesheet hides
+  `body > .cm-skip` and a document with no `#commentRoot` roots the layer at `<body>`, which would
+  hide the appendix from the very print it exists for. The appendix is also resolved by identity
+  instead of `getElementById`, so an author element that happens to carry `id="cmhPrintComments"`
+  is no longer overwritten on print, deleted afterwards (or immediately, when the document has no
+  comments), or counted as reviewer chrome in the hash - the same rule as CMH-CORE-21.
+
+### Changed
+
+- Audited every runtime DOM mutation inside the content root for the stranded-authored-text class
+  behind the table-sort bug, and gave the fix behind it a single shared home (CMH-CONTENT-21).
+  Appending elements instead of permuting them through the slots they already occupy strands the
+  whitespace text nodes an author leaves between them, which silently drifts the document and
+  section content hashes and falsely raises the "not validated" banner. The audit checked the
+  draggable widget/triage board, checklist control injection, editable notes, deck mode, the
+  table-scroll wrapper and the code-line gutter against `window.__cmhReview.docHash()` and found
+  all six text-neutral; the one intentional exception is a widget card MOVE on a board that is not
+  `cm-skip`, where the arrangement IS the content, and `Reset moves` now has a test proving it
+  restores the load hash exactly. The slot math itself moved into one place -
+  `cmhPermuteChildrenInSlots` (writer) and `cmhPermutedChildNodes` (pure reader) in the
+  preamble - with the table sorter and the canonical-hash scan rewired onto them, so the class
+  cannot reappear in a third copy. A catch-all test loads every shipped example document and
+  compares its live hash to the Python hash of the file on disk, so a NEW stranding mutation is
+  caught even with no case written for it.
+- The persisted table-sort map is re-homed onto a null-prototype object like the checklist and
+  notes state maps (CMH-SEC-02), so the runtime has one convention for a document-reachable state
+  map rather than two. Its keys are `<idx>::<header-sig>`, so the prototype part is defense in
+  depth; a non-map payload (an array) is now discarded rather than accepted, which used to eat the
+  reader's sort silently because `JSON.stringify` drops string keys written onto an array.
+
 ## [1.670.0] - 2026-08-04
 
 ### Fixed

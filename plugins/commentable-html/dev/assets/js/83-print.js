@@ -73,36 +73,58 @@ function _renderPrintComment(c, index) {
     + repliesHtml
     + '</article>';
 }
+// Resolve the appendix by IDENTITY (a private reference to the element this module created), never
+// by `getElementById`. An author element that happens to carry `id="cmhPrintComments"` would
+// otherwise be treated as ours: its content overwritten on `beforeprint`, and the element itself
+// DELETED on `afterprint` - or immediately, when the document has no comments to render. It was
+// never registered as layer chrome either, so its authored prose also moved the document content
+// hash. This is the same "resolve the layer's own control by identity" rule as CMH-CORE-21.
+let _printAppendixEl = null;
+function _ownPrintAppendix() {
+  if (_printAppendixEl && root.contains(_printAppendixEl)) return _printAppendixEl;
+  _printAppendixEl = null;
+  return null;
+}
 function materializePrintAppendix() {
   if (IS_DECK) return;
-  let appendix = document.getElementById("cmhPrintComments");
+  let appendix = _ownPrintAppendix();
   const roots = (typeof threadRoots === "function") ? threadRoots(comments) : comments;
   if (!roots.length) {
     if (appendix) {
       CMH_INJECTED_CHROME.delete(appendix);
+      CMH_HASH_EXCLUDED.delete(appendix);
       appendix.remove();
+      _printAppendixEl = null;
     }
     return;
   }
   if (!appendix) {
     appendix = document.createElement("section");
-    appendix.id = "cmhPrintComments";
+    // Keep the historical id, but only when the document is not already using it: creating a
+    // DUPLICATE id would be invalid HTML and would leave an author element and ours
+    // indistinguishable to anything that still resolves by id. The CLASS is the real hook - the
+    // print stylesheet keys off `.cmh-print-comments`, never the id.
+    if (!document.getElementById("cmhPrintComments")) appendix.id = "cmhPrintComments";
     appendix.className = "cmh-print-comments";
     appendix.setAttribute("aria-label", "Review comments");
     root.appendChild(appendix);
     CMH_INJECTED_CHROME.add(appendix);
+    CMH_HASH_EXCLUDED.add(appendix);
+    _printAppendixEl = appendix;
   }
   appendix.innerHTML = '<h2>Review comments</h2>'
     + '<p class="cmh-print-intro">Current in-browser comments at print time.</p>'
     + roots.map(_renderPrintComment).join("");
 }
 function clearPrintAppendix() {
-  const appendix = document.getElementById("cmhPrintComments");
+  const appendix = _ownPrintAppendix();
   if (appendix) {
     // Drop it from the injected-chrome set too, so repeated print/cancel cycles (each of which
     // recreates the appendix) do not accumulate detached nodes that the set keeps alive.
     CMH_INJECTED_CHROME.delete(appendix);
+    CMH_HASH_EXCLUDED.delete(appendix);
     appendix.remove();
+    _printAppendixEl = null;
   }
 }
 function setupPrintAppendix() {
@@ -441,7 +463,7 @@ function setupSinglePagePrint() {
       // wide reading column, where a wide chart/diagram can be proportionally taller than at the capped
       // print width, so `cachedH` can exceed the true narrow height - which adds harmless bottom
       // whitespace, never a spill or clip. It also covers a rare very-early print before charts settle.
-      const appendix = document.getElementById("cmhPrintComments");
+      const appendix = _ownPrintAppendix();
       const appendixH = appendix ? Math.ceil(appendix.getBoundingClientRect().height) : 0;
       const h0 = Math.max(measureHeight(), cachedH > 0 ? cachedH + appendixH : 0);
       const w = contentW + PAD * 2;

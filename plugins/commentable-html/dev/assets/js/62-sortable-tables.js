@@ -6,11 +6,21 @@
    comments and the applied sort. The sort is re-applied on load BEFORE restore so the
    stored offsets always match the displayed order. */
 const CMH_TABLE_SORT_KEY = COMMENT_KEY + "::tableSort";
-let _tableSortState = {};
+// Null-prototype at every assignment site, matching the checklist/notes convention (CMH-SEC-02):
+// a JSON.parse'd map still chains to Object.prototype, so a crafted "<key>::tableSort" payload
+// keyed "__proto__"/"constructor" would let a plain property READ fall through to the prototype.
+// The live keys here are "<idx>::<header-sig>", so this is defense in depth rather than a hole -
+// the point is that the runtime has ONE convention for a document-reachable state map, not two.
+let _tableSortState = Object.create(null);
+function _tsNullProto(obj) {
+  return (obj && typeof obj === "object" && !Array.isArray(obj))
+    ? Object.assign(Object.create(null), obj) : Object.create(null);
+}
 function _loadTableSortState() {
-  try { _tableSortState = JSON.parse(localStorage.getItem(CMH_TABLE_SORT_KEY) || "{}"); }
-  catch (e) { _tableSortState = {}; }
-  if (!_tableSortState || typeof _tableSortState !== "object") _tableSortState = {};
+  let parsed = null;
+  try { parsed = JSON.parse(localStorage.getItem(CMH_TABLE_SORT_KEY) || "{}"); }
+  catch (e) { parsed = null; }
+  _tableSortState = _tsNullProto(parsed);
 }
 function _saveTableSortState() {
   try { localStorage.setItem(CMH_TABLE_SORT_KEY, JSON.stringify(_tableSortState)); } catch (e) { /* private mode */ }
@@ -84,27 +94,17 @@ function _parseNum(s) {
 // unsort can undo (unsorting restores row ORDER, not the stranded whitespace). That silently drifted
 // the document/section content hashes the moment a reader sorted a table, and because the sort is
 // persisted per browser profile the same file then showed the "not validated" banner on one machine
-// and not another (#952). Swapping through placeholders keeps every non-row node exactly where the
-// author put it, so a sort (and its unsort) is text-neutral.
+// and not another (#952). The slot swap itself now lives in ONE place - cmhPermuteChildrenInSlots in
+// 00-preamble.js, shared with the canonical-hash reader - so the append class cannot come back in a
+// third copy of the math (#977).
 //
-// The slots come from `body.rows` - the same collection every caller derives `rows` from - so the
-// two are the same set by construction. A caller that ever breaks that (a different length, or a
-// row that is not currently a child of this body) gets a no-op rather than the append that caused
-// #952: leaving the DOM untouched is always text-neutral, while re-appending would silently revive
-// the bug. The identity fast path matters because the canonical-hash and export passes unsort EVERY
-// sortable table, including ones the reader never sorted.
+// The rows a caller passes must be exactly this body's row set. A caller that ever breaks that (a
+// different length, a duplicate, or a row that is not currently a child of this body) gets a no-op
+// rather than the append that caused #952: leaving the DOM untouched is always text-neutral, while
+// re-appending would silently revive the bug.
 function _reorderBody(body, rows) {
-  const slots = Array.prototype.slice.call(body.rows);
-  if (slots.length !== rows.length) return;
-  let same = true;
-  for (let i = 0; i < rows.length; i++) {
-    if (rows[i].parentNode !== body) return;
-    if (rows[i] !== slots[i]) same = false;
-  }
-  if (same) return;
-  const marks = slots.map(function () { return document.createComment(""); });
-  slots.forEach(function (r, i) { body.replaceChild(marks[i], r); });
-  marks.forEach(function (m, i) { body.replaceChild(rows[i], m); });
+  if (!body || !rows || body.rows.length !== rows.length) return;
+  cmhPermuteChildrenInSlots(body, rows);
 }
 // A cell's sortable text, EXCLUDING cm-skip UI (e.g. a code-block Copy button) so layer
 // chrome never pollutes the sort key or flips numeric detection to lexicographic.
