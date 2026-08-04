@@ -168,21 +168,16 @@ def check_theme_contrast(html):
     unexpected failure while resolving the palette degrades to no findings (best-effort) rather
     than aborting the whole validation run for every caller.
 
-    ONE input is exempt from that degrade: this scan's parser shares the validator's start-tag base,
-    so an oversized numeric character reference in an ATTRIBUTE VALUE resolves to U+FFFD and the
-    document is read like any other (CMH-VAL-21) - but one in the document's TEXT still goes through
-    the host's `convert_charrefs` decode, which raises there exactly as the document parse does
-    (issue #946). Through `validate()` that document never reaches this check at all: `_parse()`
-    fails first and the run reports `_PARSE_FAIL`. A DIRECT caller of this standalone check has no
-    such signal, so staying silent would hand it an empty finding list for a document nothing
-    actually read - and that is what the report exists to prevent."""
+    Nothing is exempt from that degrade any more. This scan's parser shares the validator's
+    start-tag base, so an oversized numeric character reference in an ATTRIBUTE VALUE resolves to
+    U+FFFD (CMH-VAL-21), and its TEXT goes through the same shared bounded decode, so one in prose
+    resolves too (issue #946). Neither shape can refuse the document, so the "could not be read for
+    contrast" report that stood in for that refusal is retired with it: the scan simply READS the
+    document, like every other parse in the run."""
+
     try:
         findings = theme_contrast_findings(html)
     except Exception:
-        if parsing._BIG_CHARREF_RE.search(html or ""):
-            return [ERROR_PREFIX + "this document could not be read for contrast: it carries an "
-                    "oversized numeric character reference. Shorten it (a browser resolves it to "
-                    "U+FFFD) so the check is not silently skipped"], []
         return [], []
     errors, warnings = [], []
     for finding in findings:

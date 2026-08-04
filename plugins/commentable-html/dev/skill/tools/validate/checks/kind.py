@@ -2,6 +2,8 @@
 
 import re
 
+from .parsing import visible_text
+
 # Document kind. Every commentable-html document declares its kind in a
 # <meta name="commentable-html-kind" content="..."> so per-type rules can apply and
 # the document is self-describing. Title-bearing kinds (a report or a plan) must carry
@@ -39,7 +41,7 @@ def check_document_kind(parser):
     if kind in _KINDS_REQUIRING_H1:
         # A visible top-level <h1> satisfies the title: either a direct child of #commentRoot,
         # or one wrapped in a top-level <header class="cmh-lede"> (an empty cmh-lede does NOT).
-        has_top_level_h1 = any(h.get("tag") == "h1" and (h.get("text") or "").strip()
+        has_top_level_h1 = any(h.get("tag") == "h1" and visible_text(h.get("text")).strip()
                                and (h.get("top_level") or h.get("in_lede")) for h in parser.headings)
         if not has_top_level_h1:
             return ['kind "%s" requires a top-level <h1> title inside #commentRoot, but the '

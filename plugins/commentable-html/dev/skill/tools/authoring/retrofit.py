@@ -18,6 +18,7 @@ import _toolpath  # noqa: E402
 _toolpath.ensure()
 
 import _brand_profile  # noqa: E402
+import _browser_attrs  # noqa: E402
 import _favicon  # noqa: E402
 import doc_stamp  # noqa: E402
 import new_document  # noqa: E402
@@ -82,6 +83,11 @@ def _attrs_map(attrs):
 
 
 class _StructureParser(HTMLParser):
+    # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
+    # in prose resolves to U+FFFD instead of raising, so this tool reads the same document
+    # every validator parse reads (issue #946).
+    goahead = _browser_attrs.text_goahead(HTMLParser.goahead)
+
     def __init__(self, text):
         super().__init__(convert_charrefs=True)
         self.text = text

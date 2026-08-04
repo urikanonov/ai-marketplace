@@ -787,7 +787,11 @@ def _node_text_content(node):
 def _has_visible_text(node):
     if node.tag in ("style", "script", "svg", "path", "marker"):
         return False
-    return bool(_node_text_content(node).strip())
+    # The SHARED "can a reader SEE this?" rule (CMH-VAL-21). A control character or a
+    # noncharacter reaches here as itself now that text is decoded by the browser rule, and
+    # flagging the contrast of text nobody can see would be a false finding - and would answer
+    # the question differently from the document-title check in the same run.
+    return bool(_browser_attrs.visible_text(_node_text_content(node)).strip())
 
 
 def _connectorish(node):

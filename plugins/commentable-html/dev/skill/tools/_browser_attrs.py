@@ -19,6 +19,7 @@ A partial install (the `validate` tool missing) falls back to the host's own lis
 `HTMLParser` rather than failing: a degraded parse is better than a tool that cannot run, and the
 fallback is WARNED about once, the way every other optional-tool import in the skill is.
 """
+import html as _html
 import os
 import sys
 from html.parser import HTMLParser
@@ -28,6 +29,44 @@ _VALIDATE_ROOT = os.path.join(_TOOLS_ROOT, "validate")
 for _root in (_TOOLS_ROOT, _VALIDATE_ROOT):
     if _root not in sys.path:
         sys.path.insert(0, _root)
+
+_parsing = None
+
+
+def text_goahead(default):
+    """`HTMLParser.goahead` bound to the shared BOUNDED text decode (CMH-VAL-21), so a scanner
+    outside the `checks` package reads a document's TEXT the way the validator's own parsers do:
+    an oversized numeric character reference resolves to U+FFFD instead of raising, and a control
+    character or noncharacter a browser keeps is not deleted.
+
+    Returns `default` (the caller's own `goahead`) on a partial install, or on a host whose
+    `goahead` cannot be re-bound - a degraded decode beats a tool that cannot run.
+
+    Defined ABOVE the decoder import below, and resolving through `_parsing` lazily, because
+    callers use it in a CLASS BODY (at import time), unlike the call-time helpers at the bottom.
+    """
+    return getattr(_parsing, "text_goahead", None) or default
+
+
+def unescape_text(text):
+    """A text run decoded by the browser rule, for a tool that decodes one ITSELF rather than
+    through a parser. Degrades to the host's `html.unescape`."""
+    shared = getattr(_parsing, "_unescape_text", None)
+    return shared(text or "") if shared else _html.unescape(text or "")
+
+
+def unescape_attr_value(value):
+    """An ATTRIBUTE VALUE decoded by the browser rule (a different rule from text: a named
+    reference resolves only on an exact match not followed by `=`). Degrades the same way."""
+    shared = getattr(_parsing, "_unescape_attr_value", None)
+    return shared(value or "") if shared else _html.unescape(value or "")
+
+
+def visible_text(text):
+    """`text` with the characters a reader cannot SEE removed, by the shared rule every check
+    uses. Degrades to `text` unchanged."""
+    shared = getattr(_parsing, "visible_text", None)
+    return shared(text) if shared else (text or "")
 
 # A HARD import, like every other tool's: `_toolpath` sits beside this file, so it resolves in any
 # real install, and the fallback handler below needs it bound to WARN rather than degrade silently.

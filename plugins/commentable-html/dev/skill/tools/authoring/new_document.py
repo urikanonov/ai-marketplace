@@ -68,6 +68,7 @@ import _toolpath  # noqa: E402
 _toolpath.ensure()
 _TOOLS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 import _brand_profile  # noqa: E402
+import _browser_attrs  # noqa: E402
 import doc_stamp  # noqa: E402
 import recommend_kind  # noqa: E402
 
@@ -140,6 +141,11 @@ class _TitleDetector(_html_parser.HTMLParser):
     than a raw-text scan) means an <h1> inside an HTML comment, <script>, or <style> is not
     seen as a tag, and the depth check means a nested h1/lede deep in the body does not
     count as the document's own title."""
+
+    # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
+    # in prose resolves to U+FFFD instead of raising, so this tool reads the same document
+    # every validator parse reads (issue #946).
+    goahead = _browser_attrs.text_goahead(_html_parser.HTMLParser.goahead)
 
     def __init__(self):
         super().__init__(convert_charrefs=True)

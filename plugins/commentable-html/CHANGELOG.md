@@ -4,6 +4,45 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.531.0] - 2026-08-04
+
+### Fixed
+
+- An oversized numeric character reference in the document's TEXT no longer fails the validator's
+  parse closed. The validator's tolerant parsers read text with `convert_charrefs=True`, which hands
+  every text run to `html.unescape()` - and that RAISES on a numeric reference with more digits than
+  Python's integer conversion limit, so one such reference in prose reported the whole document as
+  "could not be parsed as HTML" and hid every finding in it, where a browser simply renders U+FFFD
+  and reads on. The attribute path already resolved the same shape by the browser rule (1.437.0);
+  text now uses the SAME bounded end state, so `&#<5000 nines>;` in prose is U+FFFD and the rest of
+  the document stays live. The same change stops `html.unescape` DELETING the code points it deems
+  invalid from the text the checks read, so a control character or noncharacter a browser keeps
+  (`&#1;`, `&#x7f;`, `&#xfffe;`) reaches the checks as the document really carries it. Named
+  references are unchanged - they keep `html.unescape`'s longest-match rule, which is the text rule
+  (`&notit;` is `\u00ac` + `it;`, deliberately not the attribute rule). Raw offsets are untouched:
+  the fix re-binds the single `unescape` global of the host's own `goahead` rather than rewriting the
+  parser's buffer or changing how text runs are delivered, so the tokenizer stays byte-for-byte the
+  host's and `code_block_spans()` / `content_marker_scan()` still read exact offsets into the
+  original document. The theme-contrast scan reads text through the same bounded decode, and its start
+  tags already shared the validator's start-tag base (1.527.0), so it refuses neither shape any
+  more - and the "could not be read for contrast" error that stood in for that refusal is retired
+  with it. The same binding reaches the authoring and deck tools
+  (`section_hash.py`, `doc_stats.py`, `generate_toc.py`, `new_document.py`, `retrofit.py`,
+  `upgrade.py`, `_favicon.py`, `deck/deck_validate.py`) through the shared shim, so a document that
+  validates clean can also be stamped, hashed, counted, indexed, retrofitted and upgraded instead of
+  failing one step later.
+- The validator's title requirement for a `report`/`plan` now asks for VISIBLE title text: an `<h1>`
+  whose text is only whitespace, controls, format characters (a zero-width space, a bidi mark, a
+  BOM) or unassigned/noncharacter code points no longer satisfies it. Those characters reach the
+  check at all because a text reference is decoded by the browser rule instead of being deleted, so
+  without this an `<h1>&#1;</h1>` would pass as a title nobody can see. U+FFFD still counts as
+  visible, because a browser draws the replacement glyph. The contrast scan asks the same question
+  through the same shared rule, so an element whose only text is invisible is no longer reported as
+  low-contrast text nobody can see, and `highlight_document.py` (the one path that decodes document
+  text and WRITES it back) and `upgrade.py`'s `data-doc-source` decode both read through the shared
+  rules too, so highlighting or upgrading such a document neither crashes nor silently deletes a
+  code point a browser keeps.
+
 ## [1.530.0] - 2026-08-04
 
 ### Fixed

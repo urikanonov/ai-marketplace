@@ -4,10 +4,12 @@ and the constants (regions, ids, regexes) every check builds on."""
 
 import functools
 import re
+import unicodedata
 from html import unescape
+from html import parser as _html_parser
 from html.entities import html5 as _HTML5_ENTITIES
 from html.parser import HTMLParser
-from types import MappingProxyType
+from types import FunctionType, MappingProxyType
 from typing import NamedTuple
 
 REGIONS = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"]
@@ -412,7 +414,112 @@ def _ascii_lower(name):
     return name.translate(_ASCII_LOWER)
 
 
-class _BrowserTagNames(HTMLParser):
+# The document's TEXT character references, decoded by the same BROWSER rule the attribute path
+# uses (CMH-VAL-21). With `convert_charrefs=True` the host decodes each text run inside
+# `goahead()` with `html.unescape()`, which is not that rule: it DELETES the code points it
+# deems invalid (so `&#1;` and `&#xfffe;` vanish from prose a browser keeps) and RAISES on a
+# numeric reference past Python's integer conversion limit. That `ValueError` escapes `feed()`,
+# and every parse entry point swallows an exception into a truncated parse - so ONE oversized
+# reference in prose reported the whole document as unparseable, where a browser renders U+FFFD
+# and reads on.
+#
+# Only the NUMERIC branch diverges from the host; the NAMED branch is html.unescape's own
+# longest-match rule, which IS the text rule (`&notit;` is `\u00ac` + `it;` - deliberately not
+# the attribute rule above, where the same source stays literal).
+_TEXT_CHARREF_RE = re.compile(r"&(#[0-9]+;?|#[xX][0-9a-fA-F]+;?|[^\t\n\f <&#;]{1,32};?)")
+
+
+def _replace_text_charref(m):
+    body = m.group(1)
+    if body[0] == "#":
+        # `_numeric_charref()` (below) is the HTML tokenizer's end state, and it BOUNDS the digit
+        # run before any integer conversion, so an oversized reference is U+FFFD and cheap.
+        return _numeric_charref(body.rstrip(";"))
+    if body in _HTML5_ENTITY_NAMES:
+        return _HTML5_ENTITIES[body]
+    for x in range(len(body) - 1, 1, -1):
+        if body[:x] in _HTML5_ENTITY_NAMES:
+            return _HTML5_ENTITIES[body[:x]] + body[x:]
+    return "&" + body
+
+
+def _unescape_text(text):
+    if "&" not in text:
+        return text
+    return _TEXT_CHARREF_RE.sub(_replace_text_charref, text)
+
+
+# The code points that RENDER NOTHING, for a check asking "is there text a reader can SEE?".
+# `Cc` (the C0/C1 controls and DEL) and `Cf` (the format characters - a zero-width space, a bidi
+# mark, a BOM) are read from the running interpreter's Unicode data, which is safe because an
+# ASSIGNED code point never changes category. The NONCHARACTERS are tested arithmetically rather
+# than as the `Cn` category, because `Cn` also covers everything UNASSIGNED in the host's Unicode
+# version - so a character assigned in a newer Unicode (which a browser on a current OS really
+# draws) would be invisible on one interpreter and visible on the next, the exact
+# one-document-two-verdicts hazard this module exists to close (CMH-VAL-21).
+# U+FFFD is deliberately VISIBLE: a browser draws the replacement glyph.
+_INVISIBLE_CATEGORIES = frozenset(("Cc", "Cf"))
+
+
+def _is_noncharacter(cp):
+    return 0xFDD0 <= cp <= 0xFDEF or (cp & 0xFFFE) == 0xFFFE
+
+
+def visible_text(text):
+    """`text` with the characters a reader cannot SEE removed. Whitespace is KEPT, so a caller
+    decides for itself whether whitespace-only counts as text.
+
+    Shared because more than one check asks the question - the document-title requirement and the
+    contrast scan's "does this element show text?" - and they must answer it identically. It
+    matters at all because a TEXT character reference is decoded by the BROWSER rule rather than
+    deleted by `html.unescape`, so `&#1;` now reaches a check as U+0001 instead of vanishing.
+    """
+    return "".join(c for c in (text or "")
+                   if unicodedata.category(c) not in _INVISIBLE_CATEGORIES
+                   and not _is_noncharacter(ord(c)))
+
+
+def _bind_text_goahead():
+    """The host's OWN `goahead`, with its single `unescape` global rebound to the decode above.
+
+    The two alternatives were both worse. Rewriting `rawdata` is not an option: every check
+    reads RAW offsets into the original document (`code_block_spans()`, `content_marker_scan()`,
+    every span this module reports). Switching to `convert_charrefs=False` would change how
+    every text run is DELIVERED - one `handle_data` per run becomes one per fragment between
+    references - which is a different document to every check that reads text, for a defect that
+    is only about how a run is decoded. Re-binding one global keeps the tokenizer byte-for-byte
+    the host's (same run boundaries, same positions, same dispatch) and replaces only the decode.
+
+    Returns None if the host's `goahead` no longer resolves `unescape` as a global, in which case
+    the parsers keep the host's method and an oversized reference in TEXT fails the parse closed
+    the way it always did (never silently, since the covering tests pin this).
+    """
+    host = HTMLParser.goahead
+    if "unescape" not in host.__code__.co_names or host.__closure__:
+        return None
+    namespace = dict(_html_parser.__dict__)
+    namespace["unescape"] = _unescape_text
+    bound = FunctionType(host.__code__, namespace, host.__name__, host.__defaults__)
+    bound.__kwdefaults__ = host.__kwdefaults__
+    return bound
+
+
+_TEXT_GOAHEAD = _bind_text_goahead()
+_TEXT_CHARREF_BOUNDED = _TEXT_GOAHEAD is not None
+
+
+class _BrowserTextCharrefs(HTMLParser):
+    """Text runs decoded by the BROWSER rule rather than by `html.unescape` (CMH-VAL-21).
+
+    Every parser in this package derives from it, so an oversized reference in prose can no
+    longer report a whole document as unparseable, and a control character or noncharacter a
+    browser keeps is not silently deleted from the text the checks read.
+    """
+
+    goahead = _TEXT_GOAHEAD or HTMLParser.goahead
+
+
+class _BrowserTagNames(_BrowserTextCharrefs):
     """Tag names folded the way a BROWSER folds them: ASCII-only (CMH-VAL-21 clause 7).
 
     Mixed into every parser in this package that keys on a tag name, because `html.parser` folds
@@ -689,6 +796,11 @@ def _browser_attrs_dict(parser, tag, attrs):
 browser_attrs = _browser_attrs
 browser_attrs_dict = _browser_attrs_dict
 
+# The same package-shared TEXT decode, for the one scanner OUTSIDE this package that parses a whole
+# document (`cmhval/contrast.py`). None when the host's `goahead` cannot be re-bound; the shim beside
+# the tools passes its own default in that case.
+text_goahead = _TEXT_GOAHEAD
+
 
 class _BrowserStartTagExtent(_BrowserTagNames):
     """Every start tag's EXTENT, decided by the vendored scanner instead of by the host
@@ -799,8 +911,9 @@ class _BrowserStartTag(_BrowserStartTagExtent):
     handler and dispatch that tag a SECOND time. It also keeps the host from converting a huge
     hex reference (which has no digit limit) whose value is discarded.
 
-    SCOPE: attribute values only. An oversized reference in TEXT is decoded by the host's
-    `goahead()` (`convert_charrefs=True`) and still fails the parse closed, as it always has.
+    SCOPE: attribute values only, because the host decodes them inside `parse_starttag()`. An
+    oversized reference in the document's TEXT is decoded in `goahead()` instead, by the bounded
+    rule `_BrowserTextCharrefs` installs there.
     """
 
     _big_charref_scanned = None   # the rawdata buffer `_big_charref_found` was computed from
