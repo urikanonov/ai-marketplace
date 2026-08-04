@@ -765,3 +765,35 @@ test("the plugin page explains that the rich-content renderer only ships when it
   expect(body).toMatch(/59 percent/i);
   expect(body).toMatch(/out of the head/i);
 });
+
+
+test("a long unbreakable code token in a changelog entry does not overflow the mobile viewport (SITE-PLUGIN-29)", async ({ page }) => {
+  // The plugin page renders every CHANGELOG.md bullet into the document, so changelog prose is
+  // site content: one long code span (a quoted tag, selector, or path) with no break opportunity
+  // used to widen the whole page on a phone. Inject such a token into a real rendered bullet
+  // rather than depending on today's changelog text, which any release can reword.
+  const token = "commentableHtmlRuntimeSelectionAnchorOffsetResolverWithAnExtremelyLongName";
+  for (const p of ["/commentable-html/", "/multi-duck/", "/urikan-ai-marketplace-auto-updater/"]) {
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.goto(p, { waitUntil: "domcontentloaded" });
+    const bullet = page.locator(".changelog li").first();
+    await expect(bullet, p + " has a rendered changelog bullet").toBeVisible();
+    await bullet.evaluate((el, text) => {
+      const code = document.createElement("code");
+      code.id = "cl-overflow-probe";
+      code.textContent = text;
+      el.appendChild(code);
+    }, token);
+    const probe = page.locator("#cl-overflow-probe");
+    await expect(probe).toBeVisible();
+    const fits = await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1
+    );
+    expect(fits, p + " a long changelog code token must not widen the document").toBe(true);
+    // The span itself stays inside the viewport too, so the page is not merely clipping it.
+    const box = await probe.boundingBox();
+    const width = await page.evaluate(() => document.documentElement.clientWidth);
+    expect(box.x, p + " code span starts on-screen").toBeGreaterThanOrEqual(-1);
+    expect(box.x + box.width, p + " code span ends on-screen").toBeLessThanOrEqual(width + 1);
+  }
+});
