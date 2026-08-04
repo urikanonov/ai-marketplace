@@ -100,7 +100,9 @@ test("no layer JS partial hardcodes behavior:\"smooth\" - all scroll sites route
   // Static guard: the runtime tests exercise one scroll path each, but there are ~13 programmatic
   // scroll sites. Rather than click through all of them, assert at the source that (a) no literal
   // smooth behavior is written (any quote style, including template literals) and (b) every
-  // scroll call that passes a `behavior` routes it through the reduced-motion-aware helper. Calls
+  // scroll call that passes a `behavior` routes it through the reduced-motion-aware helper - or
+  // pins it to the explicitly INSTANT value, which is strictly less motion than the preference asks
+  // for and so can never violate it. Calls
   // are single-line in this codebase, so a line-scoped check catches literal, template-literal,
   // and indirect (behavior: someVar) values that would bypass the helper.
   const dir = new URL("../assets/js/", import.meta.url);
@@ -112,7 +114,12 @@ test("no layer JS partial hardcodes behavior:\"smooth\" - all scroll sites route
     if (/function\s+cmScrollBehavior\s*\(/.test(src)) helperDefined = true;
     for (const lit of src.match(/behavior\s*:\s*[`"']smooth[`"']/g) || []) offenders.push(`${f}: ${lit}`);
     for (const line of src.split("\n")) {
-      if (/\.(scrollIntoView|scrollTo|scrollBy)\s*\(/.test(line) && /behavior/.test(line) && !/cmScrollBehavior/.test(line)) {
+      if (/\.(scrollIntoView|scrollTo|scrollBy)\s*\(/.test(line) && /behavior/.test(line)
+          // An explicitly INSTANT scroll is the least-motion option there is, so it can never
+          // violate the preference and does not need the helper (the scroll guard's same-turn
+          // restore pins it so a host `scroll-behavior: smooth` cannot animate it).
+          && !/behavior\s*:\s*[`"']instant[`"']/.test(line)
+          && !/cmScrollBehavior/.test(line)) {
         offenders.push(`${f}: ${line.trim()}`);
       }
     }

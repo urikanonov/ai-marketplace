@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.519.0" />
+<meta name="commentable-html-version" content="1.521.0" />
 <meta name="commentable-html-kind" content="slides" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.519.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.521.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML Showcase</title>
 
@@ -4014,7 +4014,7 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
      content, not a template-owned region.
 -->
 <div class="app">
-<main id="commentRoot" data-cmh-content-root data-comment-key="deck-e0fac5524d" data-doc-label="Commentable HTML Showcase" data-doc-source="deck-showcase.html" data-generated="2026-08-03" data-cmh-mode="deck">
+<main id="commentRoot" data-cmh-content-root data-comment-key="deck-e0fac5524d" data-doc-label="Commentable HTML Showcase" data-doc-source="deck-showcase.html" data-generated="2026-08-04" data-cmh-mode="deck">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
 <style id="cmh-deck-stage">
@@ -5199,7 +5199,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.519.0";
+const CMH_VERSION = "1.521.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -5650,6 +5650,76 @@ function cmhViewportRect(margin) {
     right: b.left + b.width - m,
     bottom: b.top + b.height - m,
   };
+}
+
+/* ---------- Scroll guard (issue #838) ----------
+   Chromium keeps the reader's place across layout changes with SCROLL ANCHORING: it picks an anchor
+   node inside the document and silently shifts `window.scrollY` when a later layout moves that node.
+   Opening a comment composer is exactly such a mutation (it wraps the selection in preview marks and
+   appends a surface), and the browser's adjustment lands a frame AFTER the composer has been placed
+   from the anchor's rect - so the document jumps out from under a `position: fixed` composer that
+   stays put, and the selected text and its composer come apart. Wrap such a mutation in a guard: it
+   makes the CONTENT ROOT ineligible as an anchor (`overflow-anchor` on the document element does not
+   suppress the viewport scroller's anchoring, only excluding the subtree the anchor is picked from
+   does), restores the scroll offset if the browser moved it anyway, and hands anchoring back once
+   the mutation's layout has been through a frame - so the behavior stays available for everything
+   else (content growing above the viewport while images or diagrams render). The guard is for a
+   SYNCHRONOUS mutation: its watchdog lifts the suppression a frame later, so an async caller would
+   lose it mid-mutation. */
+var _cmhScrollGuards = 0;
+var _cmhScrollGuardPrior = null;
+function cmhBeginScrollGuard() {
+  const anchored = root || document.body;
+  const x = window.scrollX, y = window.scrollY;
+  if (_cmhScrollGuards === 0 && anchored && anchored.style) {
+    // The content root is the layer's own element, but the `document.body` fallback is the host
+    // author's - so put back exactly what was there (value and priority) rather than assuming none.
+    _cmhScrollGuardPrior = {
+      value: anchored.style.getPropertyValue("overflow-anchor"),
+      priority: anchored.style.getPropertyPriority("overflow-anchor"),
+    };
+    // `!important` so an author rule cannot out-cascade the suppression and let the jump back in.
+    anchored.style.setProperty("overflow-anchor", "none", "important");
+  }
+  _cmhScrollGuards += 1;
+  let released = false;
+  const restore = function () {
+    // The count is dropped HERE, not when the caller ends its guard, so the suppression is held
+    // until the LAST guard's frames have run: an earlier guard must not strip the property out
+    // from under a composer that opened one frame later.
+    _cmhScrollGuards = Math.max(0, _cmhScrollGuards - 1);
+    if (_cmhScrollGuards !== 0 || !anchored || !anchored.style) return;
+    const prior = _cmhScrollGuardPrior;
+    _cmhScrollGuardPrior = null;
+    if (prior && prior.value) anchored.style.setProperty("overflow-anchor", prior.value, prior.priority);
+    else anchored.style.removeProperty("overflow-anchor");
+  };
+  const release = function (restoreScroll) {
+    if (released) return;
+    released = true;
+    // A same-turn shift (an engine that compensates synchronously) is put straight back. The
+    // DEFERRED adjustment this bug is about is not rewound here - it is prevented by the
+    // suppression above, since a frame later a scroll offset may be the reader's own. The behavior
+    // is pinned instant: a host `scroll-behavior: smooth` would otherwise animate this restore and
+    // land it after the suppression is gone, which is the very fight the guard exists to avoid.
+    if (restoreScroll && (window.scrollX !== x || window.scrollY !== y)) {
+      try { window.scrollTo({ left: x, top: y, behavior: "instant" }); } catch (e) { /* detached */ }
+    }
+    // Hand scroll anchoring back only after the frame that lays the mutation out, since that is the
+    // layout the browser would otherwise compensate for. The second frame is what makes this hold.
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(function () { requestAnimationFrame(restore); });
+    } else {
+      restore();
+    }
+  };
+  // A caller that throws before ending its guard must not leave anchoring off for the session. That
+  // watchdog only lifts the suppression: a frame later a scroll offset is as likely to be the
+  // reader's own as the browser's, so it is never rewound from here. It falls back to a timer where
+  // there is no rAF, so a leaked guard cannot stick there either.
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(function () { release(false); });
+  else if (typeof setTimeout === "function") setTimeout(function () { release(false); }, 0);
+  return function () { release(true); };
 }
 
 // Every subscriber shares ONE set of native listeners, so the layer never registers them more than
@@ -11803,6 +11873,58 @@ function positionComposerNear(el, anchorRect) {
   el.style.top  = top + "px";
 }
 
+// Where a new or edited composer opens from: the anchor's client rect, resolved per mode. An
+// unresolvable anchor (a diagram node or image that is no longer in the document) falls back to a
+// small on-screen box so the composer is always reachable.
+function composerAnchorRect({ mode, range, comment, mermaid, diff, image, widget, link }) {
+  if (mode === "new") return range.getBoundingClientRect();
+  if (mode === "new-mermaid") {
+    const node = findMermaidNode(mermaid.diagramIndex, mermaid.nodeKey);
+    return node ? node.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
+  }
+  if (mode === "new-diff") {
+    const el2 = findDiffLineEls(diff.diffIndex, diff.lineKey)[0];
+    return el2 ? el2.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
+  }
+  if (mode === "new-image") {
+    const imgEl = findImageEl(image.imageIndex);
+    return imgEl ? imgEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
+  }
+  if (mode === "new-link") {
+    const aEl = findLinkEl(link.linkIndex);
+    return aEl ? aEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
+  }
+  if (mode === "new-widget") {
+    const p = findWidgetPart(widget.widget, widget.part);
+    return p ? p.getBoundingClientRect() : { left: 120, top: 100, bottom: 130, right: 320 };
+  }
+  if (mode === "new-document" || mode === "new-slide") {
+    const vp = cmhViewportBox();
+    const cx = Math.max(vp.left + 20, Math.round(vp.left + vp.width / 2) - 190);
+    return { left: cx, top: vp.top + 90, bottom: vp.top + 120, right: cx + 380 };
+  }
+  // A reply inherits its thread root's anchor (it has no anchorType of its own), so resolve
+  // the root and dispatch on ITS anchor type; a text root still resolves by the mark cid.
+  const anchorSrc = comment.parentId
+    ? (comments.find((x) => x.id === comment.parentId) || comment)
+    : comment;
+  let anchorEl = null;
+  if (anchorSrc.anchorType === "mermaid") {
+    anchorEl = findMermaidNode(anchorSrc.diagramIndex, anchorSrc.nodeKey);
+  } else if (anchorSrc.anchorType === "diff") {
+    anchorEl = findDiffLineEls(anchorSrc.diffIndex, anchorSrc.lineKey)[0];
+  } else if (anchorSrc.anchorType === "image") {
+    anchorEl = resolveImageEl(anchorSrc);
+  } else if (anchorSrc.anchorType === "link") {
+    anchorEl = resolveLinkEl(anchorSrc);
+  } else if (anchorSrc.anchorType === "widget") {
+    anchorEl = findWidgetPart(anchorSrc.widget, anchorSrc.part);
+  } else {
+    anchorEl = root.querySelector(`mark.cm-hl[data-cid="${anchorSrc.id}"]`);
+  }
+  return anchorEl ? anchorEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
+}
+
 function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget, slide, link }) {
   // When deck commenting is disabled ("off" present-only state) every "new-*" entry point
   // (selection, document, mermaid, image, diff, widget, heading) must be inert, not just the
@@ -11899,60 +12021,19 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   quoteEl.textContent = el._quote;
   ta.value = comment ? comment.note : "";
 
-  document.body.appendChild(el);
-  cmhAutogrowResize(ta);
-  bringToFront(el);
-
-  let anchorRect;
-  if (mode === "new") {
-    anchorRect = range.getBoundingClientRect();
-  } else if (mode === "new-mermaid") {
-    const node = findMermaidNode(mermaid.diagramIndex, mermaid.nodeKey);
-    anchorRect = node ? node.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
-  } else if (mode === "new-diff") {
-    const el2 = findDiffLineEls(diff.diffIndex, diff.lineKey)[0];
-    anchorRect = el2 ? el2.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
-  } else if (mode === "new-image") {
-    const imgEl = findImageEl(image.imageIndex);
-    anchorRect = imgEl ? imgEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
-  } else if (mode === "new-link") {
-    const aEl = findLinkEl(link.linkIndex);
-    anchorRect = aEl ? aEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
-  } else if (mode === "new-widget") {
-    const p = findWidgetPart(widget.widget, widget.part);
-    anchorRect = p ? p.getBoundingClientRect() : { left: 120, top: 100, bottom: 130, right: 320 };
-  } else if (mode === "new-document") {
-    const vp = cmhViewportBox();
-    const cx = Math.max(vp.left + 20, Math.round(vp.left + vp.width / 2) - 190);
-    anchorRect = { left: cx, top: vp.top + 90, bottom: vp.top + 120, right: cx + 380 };
-  } else if (mode === "new-slide") {
-    const vp = cmhViewportBox();
-    const cx = Math.max(vp.left + 20, Math.round(vp.left + vp.width / 2) - 190);
-    anchorRect = { left: cx, top: vp.top + 90, bottom: vp.top + 120, right: cx + 380 };
-  } else {
-    // A reply inherits its thread root's anchor (it has no anchorType of its own), so resolve
-    // the root and dispatch on ITS anchor type; a text root still resolves by the mark cid.
-    const anchorSrc = comment.parentId
-      ? (comments.find((x) => x.id === comment.parentId) || comment)
-      : comment;
-    let anchorEl = null;
-    if (anchorSrc.anchorType === "mermaid") {
-      anchorEl = findMermaidNode(anchorSrc.diagramIndex, anchorSrc.nodeKey);
-    } else if (anchorSrc.anchorType === "diff") {
-      anchorEl = findDiffLineEls(anchorSrc.diffIndex, anchorSrc.lineKey)[0];
-    } else if (anchorSrc.anchorType === "image") {
-      anchorEl = resolveImageEl(anchorSrc);
-    } else if (anchorSrc.anchorType === "link") {
-      anchorEl = resolveLinkEl(anchorSrc);
-    } else if (anchorSrc.anchorType === "widget") {
-      anchorEl = findWidgetPart(anchorSrc.widget, anchorSrc.part);
-    } else {
-      anchorEl = root.querySelector(`mark.cm-hl[data-cid="${anchorSrc.id}"]`);
-    }
-    anchorRect = anchorEl ? anchorEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
+  // Creating the composer mutates the document (preview marks, the appended surface) and then
+  // positions the composer from the anchor's rect. Guard the whole block so the browser's scroll
+  // anchoring cannot move the document underneath it and detach the two (issue #838).
+  const endScrollGuard = cmhBeginScrollGuard();
+  try {
+    document.body.appendChild(el);
+    cmhAutogrowResize(ta);
+    bringToFront(el);
+    positionComposerNear(el, composerAnchorRect({ mode, range, comment, mermaid, diff, image, widget, link }));
+    if (mode === "new") applyComposerPreview(el);
+  } finally {
+    endScrollGuard();
   }
-  positionComposerNear(el, anchorRect);
-  if (mode === "new") applyComposerPreview(el);
 
   const cleanups = [];
   cleanups.push(addListener(cancelBtn, "click", () => closeComposerElement(el)));
@@ -12160,23 +12241,41 @@ function openComposerForEdit(comment) {
 
 function closeComposerElement(el) {
   if (!el || !openComposers.has(el)) return;
-  clearComposerPreview(el);
-  openComposers.delete(el);
-  if (el._editingId) openEditComposers.delete(el._editingId);
-  if (lastFocusedComposer === el) lastFocusedComposer = null;
-  if (typeof el._cleanup === "function") el._cleanup();
-  cmhForgetClampedSurface(el);
-  cmhForgetAutogrow(el.querySelector("textarea"));
-  const opener = el._opener;
-  el.remove();
-  // Return focus to whatever opened the composer (e.g. a keyboard-focused diff
-  // line or image) if it is still connected, so keyboard users keep their place.
-  if (opener && opener.isConnected && root.contains(opener)) {
-    try { opener.focus(); } catch (e) {}
+  // Closing mutates the document exactly as opening it did - the preview marks come out and the
+  // surface is removed - so the browser can anchor on the reverse change just as readily (#838).
+  const endScrollGuard = cmhBeginScrollGuard();
+  try {
+    clearComposerPreview(el);
+    openComposers.delete(el);
+    if (el._editingId) openEditComposers.delete(el._editingId);
+    if (lastFocusedComposer === el) lastFocusedComposer = null;
+    if (typeof el._cleanup === "function") el._cleanup();
+    cmhForgetClampedSurface(el);
+    cmhForgetAutogrow(el.querySelector("textarea"));
+    const opener = el._opener;
+    el.remove();
+    // Return focus to whatever opened the composer (e.g. a keyboard-focused diff
+    // line or image) if it is still connected, so keyboard users keep their place.
+    if (opener && opener.isConnected && root.contains(opener)) {
+      try { opener.focus(); } catch (e) {}
+    }
+  } finally {
+    endScrollGuard();
   }
 }
 
+// Saving swaps the preview marks for the real highlight and then closes the composer - the same
+// class of mutation, so it carries the same scroll guard (#838). The work itself is unchanged.
 function saveComposerElement(el) {
+  const endScrollGuard = cmhBeginScrollGuard();
+  try {
+    return saveComposerElementInner(el);
+  } finally {
+    endScrollGuard();
+  }
+}
+
+function saveComposerElementInner(el) {
   const ta = el.querySelector("textarea");
   const note = ta.value.trim();
   if (!note) {

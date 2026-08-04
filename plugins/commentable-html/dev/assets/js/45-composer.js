@@ -32,6 +32,58 @@ function positionComposerNear(el, anchorRect) {
   el.style.top  = top + "px";
 }
 
+// Where a new or edited composer opens from: the anchor's client rect, resolved per mode. An
+// unresolvable anchor (a diagram node or image that is no longer in the document) falls back to a
+// small on-screen box so the composer is always reachable.
+function composerAnchorRect({ mode, range, comment, mermaid, diff, image, widget, link }) {
+  if (mode === "new") return range.getBoundingClientRect();
+  if (mode === "new-mermaid") {
+    const node = findMermaidNode(mermaid.diagramIndex, mermaid.nodeKey);
+    return node ? node.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
+  }
+  if (mode === "new-diff") {
+    const el2 = findDiffLineEls(diff.diffIndex, diff.lineKey)[0];
+    return el2 ? el2.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
+  }
+  if (mode === "new-image") {
+    const imgEl = findImageEl(image.imageIndex);
+    return imgEl ? imgEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
+  }
+  if (mode === "new-link") {
+    const aEl = findLinkEl(link.linkIndex);
+    return aEl ? aEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
+  }
+  if (mode === "new-widget") {
+    const p = findWidgetPart(widget.widget, widget.part);
+    return p ? p.getBoundingClientRect() : { left: 120, top: 100, bottom: 130, right: 320 };
+  }
+  if (mode === "new-document" || mode === "new-slide") {
+    const vp = cmhViewportBox();
+    const cx = Math.max(vp.left + 20, Math.round(vp.left + vp.width / 2) - 190);
+    return { left: cx, top: vp.top + 90, bottom: vp.top + 120, right: cx + 380 };
+  }
+  // A reply inherits its thread root's anchor (it has no anchorType of its own), so resolve
+  // the root and dispatch on ITS anchor type; a text root still resolves by the mark cid.
+  const anchorSrc = comment.parentId
+    ? (comments.find((x) => x.id === comment.parentId) || comment)
+    : comment;
+  let anchorEl = null;
+  if (anchorSrc.anchorType === "mermaid") {
+    anchorEl = findMermaidNode(anchorSrc.diagramIndex, anchorSrc.nodeKey);
+  } else if (anchorSrc.anchorType === "diff") {
+    anchorEl = findDiffLineEls(anchorSrc.diffIndex, anchorSrc.lineKey)[0];
+  } else if (anchorSrc.anchorType === "image") {
+    anchorEl = resolveImageEl(anchorSrc);
+  } else if (anchorSrc.anchorType === "link") {
+    anchorEl = resolveLinkEl(anchorSrc);
+  } else if (anchorSrc.anchorType === "widget") {
+    anchorEl = findWidgetPart(anchorSrc.widget, anchorSrc.part);
+  } else {
+    anchorEl = root.querySelector(`mark.cm-hl[data-cid="${anchorSrc.id}"]`);
+  }
+  return anchorEl ? anchorEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
+}
+
 function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget, slide, link }) {
   // When deck commenting is disabled ("off" present-only state) every "new-*" entry point
   // (selection, document, mermaid, image, diff, widget, heading) must be inert, not just the
@@ -128,60 +180,19 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   quoteEl.textContent = el._quote;
   ta.value = comment ? comment.note : "";
 
-  document.body.appendChild(el);
-  cmhAutogrowResize(ta);
-  bringToFront(el);
-
-  let anchorRect;
-  if (mode === "new") {
-    anchorRect = range.getBoundingClientRect();
-  } else if (mode === "new-mermaid") {
-    const node = findMermaidNode(mermaid.diagramIndex, mermaid.nodeKey);
-    anchorRect = node ? node.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
-  } else if (mode === "new-diff") {
-    const el2 = findDiffLineEls(diff.diffIndex, diff.lineKey)[0];
-    anchorRect = el2 ? el2.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
-  } else if (mode === "new-image") {
-    const imgEl = findImageEl(image.imageIndex);
-    anchorRect = imgEl ? imgEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
-  } else if (mode === "new-link") {
-    const aEl = findLinkEl(link.linkIndex);
-    anchorRect = aEl ? aEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
-  } else if (mode === "new-widget") {
-    const p = findWidgetPart(widget.widget, widget.part);
-    anchorRect = p ? p.getBoundingClientRect() : { left: 120, top: 100, bottom: 130, right: 320 };
-  } else if (mode === "new-document") {
-    const vp = cmhViewportBox();
-    const cx = Math.max(vp.left + 20, Math.round(vp.left + vp.width / 2) - 190);
-    anchorRect = { left: cx, top: vp.top + 90, bottom: vp.top + 120, right: cx + 380 };
-  } else if (mode === "new-slide") {
-    const vp = cmhViewportBox();
-    const cx = Math.max(vp.left + 20, Math.round(vp.left + vp.width / 2) - 190);
-    anchorRect = { left: cx, top: vp.top + 90, bottom: vp.top + 120, right: cx + 380 };
-  } else {
-    // A reply inherits its thread root's anchor (it has no anchorType of its own), so resolve
-    // the root and dispatch on ITS anchor type; a text root still resolves by the mark cid.
-    const anchorSrc = comment.parentId
-      ? (comments.find((x) => x.id === comment.parentId) || comment)
-      : comment;
-    let anchorEl = null;
-    if (anchorSrc.anchorType === "mermaid") {
-      anchorEl = findMermaidNode(anchorSrc.diagramIndex, anchorSrc.nodeKey);
-    } else if (anchorSrc.anchorType === "diff") {
-      anchorEl = findDiffLineEls(anchorSrc.diffIndex, anchorSrc.lineKey)[0];
-    } else if (anchorSrc.anchorType === "image") {
-      anchorEl = resolveImageEl(anchorSrc);
-    } else if (anchorSrc.anchorType === "link") {
-      anchorEl = resolveLinkEl(anchorSrc);
-    } else if (anchorSrc.anchorType === "widget") {
-      anchorEl = findWidgetPart(anchorSrc.widget, anchorSrc.part);
-    } else {
-      anchorEl = root.querySelector(`mark.cm-hl[data-cid="${anchorSrc.id}"]`);
-    }
-    anchorRect = anchorEl ? anchorEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
+  // Creating the composer mutates the document (preview marks, the appended surface) and then
+  // positions the composer from the anchor's rect. Guard the whole block so the browser's scroll
+  // anchoring cannot move the document underneath it and detach the two (issue #838).
+  const endScrollGuard = cmhBeginScrollGuard();
+  try {
+    document.body.appendChild(el);
+    cmhAutogrowResize(ta);
+    bringToFront(el);
+    positionComposerNear(el, composerAnchorRect({ mode, range, comment, mermaid, diff, image, widget, link }));
+    if (mode === "new") applyComposerPreview(el);
+  } finally {
+    endScrollGuard();
   }
-  positionComposerNear(el, anchorRect);
-  if (mode === "new") applyComposerPreview(el);
 
   const cleanups = [];
   cleanups.push(addListener(cancelBtn, "click", () => closeComposerElement(el)));
@@ -389,23 +400,41 @@ function openComposerForEdit(comment) {
 
 function closeComposerElement(el) {
   if (!el || !openComposers.has(el)) return;
-  clearComposerPreview(el);
-  openComposers.delete(el);
-  if (el._editingId) openEditComposers.delete(el._editingId);
-  if (lastFocusedComposer === el) lastFocusedComposer = null;
-  if (typeof el._cleanup === "function") el._cleanup();
-  cmhForgetClampedSurface(el);
-  cmhForgetAutogrow(el.querySelector("textarea"));
-  const opener = el._opener;
-  el.remove();
-  // Return focus to whatever opened the composer (e.g. a keyboard-focused diff
-  // line or image) if it is still connected, so keyboard users keep their place.
-  if (opener && opener.isConnected && root.contains(opener)) {
-    try { opener.focus(); } catch (e) {}
+  // Closing mutates the document exactly as opening it did - the preview marks come out and the
+  // surface is removed - so the browser can anchor on the reverse change just as readily (#838).
+  const endScrollGuard = cmhBeginScrollGuard();
+  try {
+    clearComposerPreview(el);
+    openComposers.delete(el);
+    if (el._editingId) openEditComposers.delete(el._editingId);
+    if (lastFocusedComposer === el) lastFocusedComposer = null;
+    if (typeof el._cleanup === "function") el._cleanup();
+    cmhForgetClampedSurface(el);
+    cmhForgetAutogrow(el.querySelector("textarea"));
+    const opener = el._opener;
+    el.remove();
+    // Return focus to whatever opened the composer (e.g. a keyboard-focused diff
+    // line or image) if it is still connected, so keyboard users keep their place.
+    if (opener && opener.isConnected && root.contains(opener)) {
+      try { opener.focus(); } catch (e) {}
+    }
+  } finally {
+    endScrollGuard();
   }
 }
 
+// Saving swaps the preview marks for the real highlight and then closes the composer - the same
+// class of mutation, so it carries the same scroll guard (#838). The work itself is unchanged.
 function saveComposerElement(el) {
+  const endScrollGuard = cmhBeginScrollGuard();
+  try {
+    return saveComposerElementInner(el);
+  } finally {
+    endScrollGuard();
+  }
+}
+
+function saveComposerElementInner(el) {
   const ta = el.querySelector("textarea");
   const note = ta.value.trim();
   if (!note) {
