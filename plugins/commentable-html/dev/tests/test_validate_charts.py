@@ -274,6 +274,32 @@ class ChartValidatorTests(unittest.TestCase):
     def test_e5_skipped_without_marker(self):
         e, _w, _n = run(build(marker=False, pre_marker="<script>new Chart(x,{});</script>\n"))
         self.assertEqual([x for x in e if "before the" in x], [], e)
+        self.assertEqual([x for x in e if "never reads as a boundary" in x], [], e)
+
+    def test_e5_skip_is_refused_when_a_counted_marker_is_not_a_boundary(self):
+        # The skip above is only honest while "the parse found no marker" also means "there is no
+        # marker". The COUNT view is TEXT: it counts a marker written where a browser builds no
+        # boundary, so a document could carry one, lose E5, and validate clean. The layer check
+        # refuses that on the full path (CMH-VAL-20); this is the chart-only path, where the layer
+        # checks never run, so check_charts refuses it itself.
+        shapes = {
+            "template": "<template>\n" + MARKER + "\n</template>",
+            "cdata": "<svg><![CDATA[\n" + MARKER + "\n]]></svg>",
+            "raw text": "<textarea>\n" + MARKER + "\n</textarea>",
+            "decorated": "<!--\n=====\n== END: commentable-html - JS ==\n=====\n-->",
+            "legacy close": "<!--\nEND: commentable-html - JS\n--!>",
+        }
+        for label, replacement in shapes.items():
+            with self.subTest(shape=label):
+                html = build(marker=False,
+                             pre_marker=replacement + "\n<script>new Chart(x,{});</script>\n")
+                e, _w, _n = run(html)
+                self.assertTrue(any("never reads as a boundary" in x for x in e),
+                                "%s: %r" % (label, e))
+        # And a real marker is still a real marker: E5 fires instead of the provenance error.
+        e, _w, _n = run(build(pre_marker="<script>new Chart(x,{});</script>\n"))
+        self.assertTrue(any("before the" in x for x in e), e)
+        self.assertEqual([x for x in e if "never reads as a boundary" in x], [], e)
 
     def test_e5_new_chart_in_prose_not_flagged(self):
         # `new Chart(` in a <pre> before the marker is not executable init.
