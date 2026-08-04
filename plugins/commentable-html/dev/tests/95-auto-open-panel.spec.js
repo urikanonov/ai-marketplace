@@ -145,6 +145,87 @@ test("CMH-MENU-PREF-03: the default persists across a reload and applies to ever
   expect(await sidebarOpen(page)).toBe(false);
 });
 
+test("CMH-MENU-PREF-08: with the preference off a first checklist change no longer opens the panel", async ({ page }) => {
+  const doc = DOC + `
+  <div class="cmh-checklist" data-cmh-checklist="release" data-cmh-checklist-label="Release readiness">
+    <ul>
+      <li data-cmh-item="rel" data-cmh-state="blank">Release notes</li>
+      <li data-cmh-item="ops" data-cmh-state="blank">Ops sign-off</li>
+    </ul>
+  </div>`;
+  await open(page, "cmh-pref-08c", { content: doc });
+  const ctrl = (item) => page.locator(`[data-cmh-item="${item}"] .cmh-check`).first();
+  await expect(ctrl("rel")).toBeVisible();
+  // On (the default): the first change surfaces its card by opening the panel.
+  await ctrl("rel").click();
+  expect(await sidebarOpen(page)).toBe(true);
+
+  const menu = await openPrefs(page);
+  await menu.locator(DEFAULT_ROW).click();
+  await hideSidebar(page);
+  // Off: the change is still tracked, but the panel is left alone.
+  await ctrl("ops").click();
+  expect(await sidebarOpen(page)).toBe(false);
+  expect(await page.evaluate(() => {
+    const k = document.getElementById("commentRoot").dataset.commentKey + "::cl";
+    return localStorage.getItem(k);
+  })).toBeTruthy();
+});
+
+test("CMH-MENU-PREF-06: a refused preference write reports itself instead of silently snapping back", async ({ page }) => {
+  // Refuse ONLY the preference keys, so the rest of the runtime still works: this is the
+  // storage-full case, where a silently reverting checkbox would look broken.
+  await page.addInitScript(() => {
+    const real = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (typeof key === "string" && key.indexOf("autoOpenPanel") >= 0) {
+        const err = new Error("quota");
+        err.name = "QuotaExceededError";
+        throw err;
+      }
+      return real.call(this, key, value);
+    };
+  });
+  await open(page, "cmh-pref-06b");
+  const menu = await openPrefs(page);
+  await menu.locator(DEFAULT_ROW).click();
+  await expect(page.locator("#toast")).toBeVisible();
+  await expect(page.locator("#toast")).toContainText(/Could not save that preference/i);
+  await expect(page.locator("#toast").getByRole("button", { name: "Manage storage" })).toBeVisible();
+  // The row snapped back because the write never landed, and the effective value is still ON.
+  await expect(menu.locator(DEFAULT_ROW)).toHaveAttribute("aria-checked", "true");
+});
+
+test("CMH-MENU-PREF-06: a cross-tab change re-syncs an open menu's rows", async ({ page }) => {
+  await open(page, "cmh-pref-06c");
+  const menu = await openPrefs(page);
+  await expect(menu.locator(DEFAULT_ROW)).toHaveAttribute("aria-checked", "true");
+  // Another tab turned the shared default off; the open menu must not toggle from a stale state.
+  await page.evaluate((k) => {
+    localStorage.setItem(k, "0");
+    window.dispatchEvent(new StorageEvent("storage", { key: k, newValue: "0" }));
+  }, GLOBAL_KEY);
+  await expect(menu.locator(DEFAULT_ROW)).toHaveAttribute("aria-checked", "false");
+});
+
+test("CMH-MENU-PREF-03: a document keyed 'commentable-html' cannot own the cross-document default", async ({ page }) => {
+  // The exact collision the ::autoOpenPanelDefault name exists to prevent: this document's own
+  // per-document key is `commentable-html::autoOpenPanel`, which must stay distinct.
+  await open(page, "commentable-html");
+  const menu = await openPrefs(page);
+  await menu.locator(OVERRIDE_ROW).click();
+  expect(await docPref(page)).toBe("0");
+  expect(await globalPref(page)).toBe(null);      // the shared default is untouched
+  await hideSidebar(page);
+
+  // A second document still inherits the (still ON) default.
+  const other = stageContent(DOC, { key: "cmh-pref-03c" });
+  await page.goto(fileUrl(other.html));
+  await ready(page);
+  await addTextComment(page, "#one", "follows the untouched default");
+  expect(await sidebarOpen(page)).toBe(true);
+});
+
 test("CMH-MENU-PREF-04: the override pins a per-document value and unchecking re-inherits the default", async ({ page }) => {
   const staged = await open(page, "cmh-pref-04a");
   const menu = await openPrefs(page);
@@ -224,6 +305,24 @@ test("CMH-MENU-PREF-05: both rows are keyboard operable and take part in the men
   await page.locator("#btnMoreMenu").press("ArrowDown");
   await expect(menu).toBeVisible();
   await expect(def).toBeFocused();
+});
+
+test("CMH-MENU-PREF-05: the menu is one tab stop and dismisses when focus leaves it", async ({ page }) => {
+  await open(page, "cmh-pref-05b");
+  const menu = await openPrefs(page);
+  // Exactly one item is in the sequential tab order at a time; the rest are tabindex="-1".
+  const stops = await page.evaluate(() => Array.prototype.map.call(
+    document.querySelectorAll("#sidebarMoreMenu button"), (b) => b.getAttribute("tabindex")));
+  expect(stops.filter((t) => t === "0").length).toBe(1);
+  expect(stops.filter((t) => t === "-1").length).toBe(stops.length - 1);
+  // Focusing a later item moves the tab stop with it.
+  await menu.locator(OVERRIDE_ROW).focus();
+  await expect(menu.locator(OVERRIDE_ROW)).toHaveAttribute("tabindex", "0");
+  await expect(menu.locator(DEFAULT_ROW)).toHaveAttribute("tabindex", "-1");
+  // Tabbing out of the open menu dismisses it rather than leaving it open behind the caret.
+  await page.locator("#btnClearAll").focus();
+  await page.keyboard.press("Tab");
+  await expect(menu).toBeHidden();
 });
 
 test("CMH-MENU-PREF-06: a browser that throws on storage degrades to the default instead of failing", async ({ page }) => {

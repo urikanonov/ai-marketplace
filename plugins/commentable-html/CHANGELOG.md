@@ -22,12 +22,17 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   highlighted, and still carded - only the panel stays where the reviewer left it; every explicit
   Show/panel action and the storage manager's pending-quota auto-open are unaffected, and the deck
   runtime honors it too (its present-only `Comments off` lock still surfaces the panel for a
-  comment that lands there, so none is ever stranded). Nothing stored means ON, so an existing
-  document behaves exactly as it did. Both rows toggle in place without closing the menu, expose
+  comment that lands there, so none is ever stranded). The preference governs every path where the panel opens ITSELF, not just the
+  save: with it off, reopening a document that already carries comments, note changes, or checklist
+  changes leaves the panel closed, and a first review-note, checklist, or widget layout change no
+  longer yanks it open either. Nothing stored means ON, so an existing document behaves exactly as
+  it did. Both rows toggle in place without closing the menu, expose
   `aria-checked`, are keyboard operable, and take part in a new roving focus (Arrow Up/Down,
   Home/End) across the `More` menu. Every read and write of both keys is `try/catch` guarded, so a
   browser that denies storage degrades to the ON default instead of throwing
-  (`CMH-MENU-PREF-01..07`).
+  Both rows sit in a real ARIA menu (`role="menu"` with
+  `role="menuitem"` actions and one roving tab stop), and a refused write raises a toast with a
+  Manage-storage action instead of silently snapping the row back (`CMH-MENU-PREF-01..09`).
 
 ## [1.540.0] - 2026-08-04
 

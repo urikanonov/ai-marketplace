@@ -95,6 +95,7 @@
       const otherBtn = document.getElementById("btnSidebarExportMenu");
       if (otherBtn) otherBtn.setAttribute("aria-expanded", "false");
       syncPrefRows();
+      setRovingTabStop(null);
       if (window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
     }
   }
@@ -106,7 +107,14 @@
     },
   };
   if (window.__cmhRegisterEscapePopup) window.__cmhRegisterEscapePopup(popup);
-  btn.addEventListener("click", (e) => { e.stopPropagation(); setOpen(menu.hidden); });
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = menu.hidden;
+    setOpen(open);
+    // The menu-button pattern: opening moves focus INTO the menu, so the arrows and the single tab
+    // stop are usable immediately (Escape and focus-out put focus back on the trigger).
+    if (open) focusItem(items(), 0);
+  });
   // A click on a Preferences row FLAGS itself instead of stopping propagation, so the menu stays
   // open for the second scope without also hiding the click from every other document-level
   // listener (the selection popup, the deck's click-to-advance bookkeeping).
@@ -144,9 +152,14 @@
       // A refused write is not always private mode: a storage-full browser refuses it too, and
       // silently snapping the row back would look like a broken control.
       if (toggle() === false && typeof showToast === "function") {
+        // A direct Manage-storage action: this is a PREFERENCE write, so there is no pending
+        // comment-store write for cmhStorageAction to attach to.
         showToast("Could not save that preference - this browser's storage is full or blocked.", {
           alert: true,
-          action: (typeof cmhStorageAction === "function") ? cmhStorageAction(CMH_STORE_KEY) : null,
+          duration: 8000,
+          action: (typeof openStorageManager === "function")
+            ? { label: "Manage storage", onClick: function () { openStorageManager(); } }
+            : null,
         });
       }
       syncPrefRows();
@@ -163,17 +176,35 @@
     if (!e || e.key == null || e.key === AUTO_OPEN_PANEL_KEY || e.key === AUTO_OPEN_PANEL_DOC_KEY) syncPrefRows();
   });
 
-  // Roving focus across the menu's items (Up/Down/Home/End), the arrow behavior a menu is expected
-  // to have once it holds checkable rows. Tab order is untouched, so every item stays tabbable too.
+  // Roving focus across the menu's items (Up/Down/Home/End) with ONE tab stop, the pattern
+  // role="menu" implies (and the one #contextMenu already uses): the items carry tabindex="-1" and
+  // the currently-focused item is promoted to tabindex="0", so Tab reaches the menu once and the
+  // arrows walk it.
   function items() {
     return Array.prototype.slice.call(menu.querySelectorAll("button:not([disabled])"))
-      .filter((el) => el.offsetParent !== null || el === document.activeElement);
+      .filter((el) => !el.hidden && (el.getClientRects().length > 0 || el === document.activeElement));
+  }
+  function setRovingTabStop(target) {
+    const list = items();
+    const stop = (target && list.indexOf(target) >= 0) ? target : list[0];
+    list.forEach((el) => el.setAttribute("tabindex", el === stop ? "0" : "-1"));
   }
   function focusItem(list, index) {
     if (!list.length) return;
     const el = list[(index + list.length) % list.length];
+    setRovingTabStop(el);
     try { el.focus(); } catch (e) { /* focus can be refused while the menu is closing */ }
   }
+  menu.addEventListener("focusin", (e) => {
+    if (e.target && e.target.tagName === "BUTTON") setRovingTabStop(e.target);
+  });
+  // Tabbing out of an open menu must dismiss it, or focus lands behind a still-open popover. A
+  // null relatedTarget is a programmatic blur (or a window blur), which is not a move OUT.
+  menu.addEventListener("focusout", (e) => {
+    const to = e.relatedTarget;
+    if (!to || menu.contains(to) || btn.contains(to)) return;
+    setOpen(false);
+  });
   menu.addEventListener("keydown", (e) => {
     if (menu.hidden) return;
     const list = items();

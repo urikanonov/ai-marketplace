@@ -1115,9 +1115,10 @@ function getEmbeddedComments() {
 }
 
 /* ---------- Reviewer preferences (scoped: a cross-document default + a per-document override) ----------
-   Today's only preference is "Auto-open panel on comment". The comments panel opens when a comment
-   is saved, which is the right default; a reviewer who reads full width with the panel collapsed
-   turns it off. The DEFAULT is cross-document (AUTO_OPEN_PANEL_KEY); a document that must differ
+   Today's only preference is "Auto-open panel on comment". It governs every path where the panel
+   opens ITSELF - a saved comment, the load-time restore, and the first note/checklist/widget change
+   that raises a card - which is the right default; a reviewer who reads full width with the panel
+   collapsed turns it off. An EXPLICIT Show/panel action always opens it. The DEFAULT is cross-document (AUTO_OPEN_PANEL_KEY); a document that must differ
    pins its own value in AUTO_OPEN_PANEL_DOC_KEY, and dropping that key re-inherits the default.
    Every read and write is try/catch guarded, so a browser that denies storage (private mode) simply
    degrades to the ON default instead of throwing. */
@@ -1170,11 +1171,16 @@ function cmhRegisterForcePanelOnComment(fn) {
 function cmhPanelForcedOnComment() {
   try { return !!(_cmhForcePanelPredicate && _cmhForcePanelPredicate()); } catch (e) { return false; }
 }
-// The single question every "should the panel open itself?" site asks: a saved comment, the
-// load-time restore, and the first note/checklist/widget change that raises a card. An EXPLICIT
-// Show/panel action never goes through here, and neither does the storage manager's pending-quota
-// auto-open.
+// Should the panel open ITSELF for a state change that raises a card - the load-time restore and
+// the first note/checklist/widget change? An EXPLICIT Show/panel action never asks.
 function cmhShouldAutoOpenPanel() {
+  return autoOpenPanelEnabled();
+}
+// The same question for a SAVED COMMENT, which carries the deck carve-out above. Kept separate so
+// the carve-out cannot leak to a caller where it is not valid: forcing the panel open for a
+// note/checklist/widget change in a comments-off deck would be reverted by the deck observer, and
+// the reader of either function does not have to reason about the other's call sites.
+function cmhShouldAutoOpenPanelOnComment() {
   return autoOpenPanelEnabled() || cmhPanelForcedOnComment();
 }
 /* ---------- Text-offset helpers ---------- */
@@ -7650,7 +7656,7 @@ function saveComposerElementInner(el) {
   // "Auto-open panel on comment" (the More menu Preferences group) decides whether saving reveals
   // the panel. Off leaves it exactly where the reviewer put it - the comment is still saved and
   // highlighted, and every explicit Show/panel action still opens it.
-  if (cmhShouldAutoOpenPanel()) openSidebar();
+  if (cmhShouldAutoOpenPanelOnComment()) openSidebar();
   // A quota failure on this explicit Save opens the storage manager so the reviewer can free space
   // and the pending write is retried. Deferred to a microtask so it runs AFTER closeComposerElement
   // has moved focus. If the manager cannot open (already open, or a prior episode is unresolved),
@@ -9782,6 +9788,7 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
       const otherBtn = document.getElementById("btnSidebarExportMenu");
       if (otherBtn) otherBtn.setAttribute("aria-expanded", "false");
       syncPrefRows();
+      setRovingTabStop(null);
       if (window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
     }
   }
@@ -9793,7 +9800,14 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
     },
   };
   if (window.__cmhRegisterEscapePopup) window.__cmhRegisterEscapePopup(popup);
-  btn.addEventListener("click", (e) => { e.stopPropagation(); setOpen(menu.hidden); });
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = menu.hidden;
+    setOpen(open);
+    // The menu-button pattern: opening moves focus INTO the menu, so the arrows and the single tab
+    // stop are usable immediately (Escape and focus-out put focus back on the trigger).
+    if (open) focusItem(items(), 0);
+  });
   // A click on a Preferences row FLAGS itself instead of stopping propagation, so the menu stays
   // open for the second scope without also hiding the click from every other document-level
   // listener (the selection popup, the deck's click-to-advance bookkeeping).
@@ -9831,9 +9845,14 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
       // A refused write is not always private mode: a storage-full browser refuses it too, and
       // silently snapping the row back would look like a broken control.
       if (toggle() === false && typeof showToast === "function") {
+        // A direct Manage-storage action: this is a PREFERENCE write, so there is no pending
+        // comment-store write for cmhStorageAction to attach to.
         showToast("Could not save that preference - this browser's storage is full or blocked.", {
           alert: true,
-          action: (typeof cmhStorageAction === "function") ? cmhStorageAction(CMH_STORE_KEY) : null,
+          duration: 8000,
+          action: (typeof openStorageManager === "function")
+            ? { label: "Manage storage", onClick: function () { openStorageManager(); } }
+            : null,
         });
       }
       syncPrefRows();
@@ -9850,17 +9869,35 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
     if (!e || e.key == null || e.key === AUTO_OPEN_PANEL_KEY || e.key === AUTO_OPEN_PANEL_DOC_KEY) syncPrefRows();
   });
 
-  // Roving focus across the menu's items (Up/Down/Home/End), the arrow behavior a menu is expected
-  // to have once it holds checkable rows. Tab order is untouched, so every item stays tabbable too.
+  // Roving focus across the menu's items (Up/Down/Home/End) with ONE tab stop, the pattern
+  // role="menu" implies (and the one #contextMenu already uses): the items carry tabindex="-1" and
+  // the currently-focused item is promoted to tabindex="0", so Tab reaches the menu once and the
+  // arrows walk it.
   function items() {
     return Array.prototype.slice.call(menu.querySelectorAll("button:not([disabled])"))
-      .filter((el) => el.offsetParent !== null || el === document.activeElement);
+      .filter((el) => !el.hidden && (el.getClientRects().length > 0 || el === document.activeElement));
+  }
+  function setRovingTabStop(target) {
+    const list = items();
+    const stop = (target && list.indexOf(target) >= 0) ? target : list[0];
+    list.forEach((el) => el.setAttribute("tabindex", el === stop ? "0" : "-1"));
   }
   function focusItem(list, index) {
     if (!list.length) return;
     const el = list[(index + list.length) % list.length];
+    setRovingTabStop(el);
     try { el.focus(); } catch (e) { /* focus can be refused while the menu is closing */ }
   }
+  menu.addEventListener("focusin", (e) => {
+    if (e.target && e.target.tagName === "BUTTON") setRovingTabStop(e.target);
+  });
+  // Tabbing out of an open menu must dismiss it, or focus lands behind a still-open popover. A
+  // null relatedTarget is a programmatic blur (or a window blur), which is not a move OUT.
+  menu.addEventListener("focusout", (e) => {
+    const to = e.relatedTarget;
+    if (!to || menu.contains(to) || btn.contains(to)) return;
+    setOpen(false);
+  });
   menu.addEventListener("keydown", (e) => {
     if (menu.hidden) return;
     const list = items();
@@ -15094,7 +15131,7 @@ function showHelp(restoreEl) {
           '<li>Below it, a row of captioned buttons - <strong>Search</strong>, <strong>Sort</strong>, <strong>More</strong>, <strong>Help</strong>, and <strong>Hide</strong>. <strong>Help</strong> opens this dialog; <strong>Hide</strong> collapses the panel, leaving a small floating toolbar to bring it back.</li>' +
           '<li><strong>Copy all</strong> (the primary button) copies every comment as a Markdown bundle to paste back to the agent; beside it, the <strong>Export</strong> button opens the file-format menu. The <strong>Search</strong> button in the ribbon reveals a search field (hidden by default) that filters the list by each comment\'s note text.</li>' +
           '<li><strong>More</strong> opens a menu with a <strong>Preferences</strong> group and the <strong>Manage storage</strong> and <strong>Clear all comments</strong> actions. While the panel is collapsed, the floating toolbar\'s overflow <kbd>...</kbd> menu holds the export actions, Manage storage, ' + (hasToolbarClear ? '<strong>Clear all comments</strong> (the same confirmed clear), ' : '') + 'and <strong>Help &amp; About</strong>.</li>' +
-          '<li><strong>Auto-open panel on comment</strong> (in <em>More &gt; Preferences</em>) decides whether this panel opens <em>itself</em>. It is <strong>on</strong> by default and is your setting for <em>every</em> commentable-html document in this browser, so turning it off once lets you read full width and dip into the panel only when you want it: saving a comment, reopening a document you have already commented on, and a first review-note or checklist change all leave the panel exactly where you put it. Your comment is still saved and still highlighted either way, and <strong>Comments</strong> in the floating toolbar always brings the panel back.</li>' +
+          '<li><strong>Auto-open panel on comment</strong> (in <em>More &gt; Preferences</em>) decides whether this panel opens <em>itself</em>. It is <strong>on</strong> by default and is your setting for <em>every</em> commentable-html document in this browser, so turning it off once lets you read full width and dip into the panel only when you want it: saving a comment, reopening a document that already has review items, and a first review-note, checklist, or widget layout change all leave the panel exactly where you put it. Your comment is still saved and still highlighted either way, and <strong>Comments</strong> in the floating toolbar always brings the panel back.</li>' +
           '<li><strong>Override for this document</strong>, indented under it, is the exception: leave it unchecked and this document follows the default above; check it and this document keeps its own setting (the label then shows it, for example <em>Override for this document: Off</em>) no matter how you later change the default. Unchecking it makes the document follow the default again.</li>' +
         '</ul>') +
       T('Shareable or Not shareable',

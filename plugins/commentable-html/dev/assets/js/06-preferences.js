@@ -1,7 +1,8 @@
 /* ---------- Reviewer preferences (scoped: a cross-document default + a per-document override) ----------
-   Today's only preference is "Auto-open panel on comment". The comments panel opens when a comment
-   is saved, which is the right default; a reviewer who reads full width with the panel collapsed
-   turns it off. The DEFAULT is cross-document (AUTO_OPEN_PANEL_KEY); a document that must differ
+   Today's only preference is "Auto-open panel on comment". It governs every path where the panel
+   opens ITSELF - a saved comment, the load-time restore, and the first note/checklist/widget change
+   that raises a card - which is the right default; a reviewer who reads full width with the panel
+   collapsed turns it off. An EXPLICIT Show/panel action always opens it. The DEFAULT is cross-document (AUTO_OPEN_PANEL_KEY); a document that must differ
    pins its own value in AUTO_OPEN_PANEL_DOC_KEY, and dropping that key re-inherits the default.
    Every read and write is try/catch guarded, so a browser that denies storage (private mode) simply
    degrades to the ON default instead of throwing. */
@@ -54,10 +55,15 @@ function cmhRegisterForcePanelOnComment(fn) {
 function cmhPanelForcedOnComment() {
   try { return !!(_cmhForcePanelPredicate && _cmhForcePanelPredicate()); } catch (e) { return false; }
 }
-// The single question every "should the panel open itself?" site asks: a saved comment, the
-// load-time restore, and the first note/checklist/widget change that raises a card. An EXPLICIT
-// Show/panel action never goes through here, and neither does the storage manager's pending-quota
-// auto-open.
+// Should the panel open ITSELF for a state change that raises a card - the load-time restore and
+// the first note/checklist/widget change? An EXPLICIT Show/panel action never asks.
 function cmhShouldAutoOpenPanel() {
+  return autoOpenPanelEnabled();
+}
+// The same question for a SAVED COMMENT, which carries the deck carve-out above. Kept separate so
+// the carve-out cannot leak to a caller where it is not valid: forcing the panel open for a
+// note/checklist/widget change in a comments-off deck would be reverted by the deck observer, and
+// the reader of either function does not have to reason about the other's call sites.
+function cmhShouldAutoOpenPanelOnComment() {
   return autoOpenPanelEnabled() || cmhPanelForcedOnComment();
 }
