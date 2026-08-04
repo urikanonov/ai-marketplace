@@ -4,6 +4,23 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.661.1] - 2026-08-04
+
+### Fixed
+
+- The validator's shared element boundaries no longer read a terminated `</` + whitespace end
+  tag differently per interpreter (CMH-VAL-21). A browser's end-tag-open state accepts only an
+  ASCII letter as a tag name, so `</ p>` and `<//>` open a BOGUS COMMENT that ends at the first
+  `>` and close nothing at all. `html.parser` agreed only from 3.13: before it, `endtagfind`
+  allowed whitespace after `</`, and `_BrowserBoundaries.parse_endtag` delegated the terminated
+  case to the host - so a stray `</ main>` CLOSED an element on an older interpreter and was a
+  comment on a newer one, which is one document with two element stacks, and so two cm-skip
+  ancestries, two `#commentRoot` scopes and two raw-text bookkeepings. The case is now resolved
+  explicitly (EOF is the text `</`, `</>` emits nothing, everything else is a bogus comment),
+  so every check that reads the element stack sees the same document on every host. An
+  unterminated one (`</ x` at end of input) now also raises `eof_unterminated`, as every other
+  unterminated construct already did.
+
 ## [1.660.0] - 2026-08-04
 
 ### Fixed
