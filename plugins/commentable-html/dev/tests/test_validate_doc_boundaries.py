@@ -707,6 +707,215 @@ class DocParserCdataTests(unittest.TestCase):
         self.assertEqual(_ids(html), ["real"])
 
 
+class _CountingStack(list):
+    """A list that counts every ELEMENT inspection, so a stack RESCAN is visible without a clock.
+
+    Slice reads, iteration and reversed iteration all count the entries they expose, because the
+    scans this guards against take all three shapes.
+    """
+
+    reads = 0
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            self.reads += len(range(*index.indices(len(self))))
+        else:
+            self.reads += 1
+        return list.__getitem__(self, index)
+
+    def __iter__(self):
+        self.reads += len(self)
+        return list.__iter__(self)
+
+    def __reversed__(self):
+        self.reads += len(self)
+        return list.__reversed__(self)
+
+
+class _CountingIndex(dict):
+    """A `tag -> open indices` mapping whose lists count their inspections the same way.
+
+    The per-tag index is a dict of lists rather than a list, so wrapping the parser's list
+    attributes alone would leave the end-tag lookup unmeasured - and a regression that searched
+    one of these lists instead of taking its last entry is exactly what the budget exists to see.
+    A bucket that empties is DELETED by the parser, so its reads are banked on the way out or the
+    count would silently reset with it.
+    """
+
+    banked = 0
+
+    def setdefault(self, key, default=None):
+        if key not in self:
+            dict.__setitem__(self, key, _CountingStack(default or ()))
+        return dict.__getitem__(self, key)
+
+    def __delitem__(self, key):
+        self.banked += dict.__getitem__(self, key).reads
+        dict.__delitem__(self, key)
+
+    @property
+    def reads(self):
+        return self.banked + sum(v.reads for v in self.values())
+
+
+class DocParserScopeCostTests(unittest.TestCase):
+    """CMH-VAL-21: the shared boundaries cost O(1) of open-element stack per start tag.
+
+    The HTML5 "close a p element" / "close an li element" step used to scan the WHOLE open-element
+    stack on every block-level start tag, stopping only at a scope boundary, so a document that
+    opens elements which are neither the target nor a boundary - `<div>` repeated with no closing
+    tags - cost O(n) per tag and O(n^2) overall, in pure Python: 3200 `<div>`s took 1.31s and a
+    5000-`<div>` document (~25 KB) had not finished after 240 seconds. `validate()` parses every
+    document with `_DocParser`, and the resource checks parse it again with `_TagAttrParser`, so a
+    merely pathological ~25 KB document could hang the validator.
+
+    The budget is asserted on INSPECTIONS, not on a clock, so it is deterministic on a loaded CI
+    runner and fails for the real reason rather than for a slow machine.
+    """
+
+    PARSERS = ("_DocParser", "_CodeSpanParser", "_TagAttrParser", "_RawTextSpanParser")
+
+    # Three shapes. The first two grow the open-element stack without ever closing it - the pure
+    # implicit-close case, and one that also RECORDS an element at every depth, which is what asks
+    # the ancestor questions (`cm-skip` ancestry, the nearest `<svg>`, the owning `<pre>`, the
+    # enclosing chart figure, an open `<a>` around prose) that used to walk the stack in their
+    # turn. The third closes elements it never opened, which is the OTHER way to make a parser walk
+    # the stack per tag: an end tag matches the innermost open element of its name, and finding
+    # that there is none used to cost a full scan.
+    SHAPES = (
+        ("nested divs", "<div>"),
+        ("recorded elements at depth",
+         '<div id="commentRoot"><a href="x.html">t</a>text<pre><code>c</code></pre>'
+         '<figure class="chart"><figcaption>f</figcaption></figure><canvas></canvas>'),
+        ("stray end tags at depth", "<div></span>"),
+    )
+
+    @staticmethod
+    def _stack_reads(name, html):
+        parser = getattr(parsing, name)(html)
+        counters = []
+        for attr in ("_ns", "stack", "_stack", "_anc", "_p_stop", "_li_stop", "_mermaid_stack"):
+            current = getattr(parser, attr, None)
+            if isinstance(current, list):
+                counted = _CountingStack(current)
+                setattr(parser, attr, counted)
+                counters.append(counted)
+        index = _CountingIndex(parser._open_by_tag)
+        parser._open_by_tag = index
+        counters.append(index)
+        parser.parse_document(html)
+        return sum(c.reads for c in counters)
+
+    def test_the_implicit_close_does_not_rescan_the_open_element_stack(self):
+        depth = 3000
+        for label, unit in self.SHAPES:
+            html = unit * depth
+            tags = html.count("<")
+            for name in self.PARSERS:
+                with self.subTest(shape=label, parser=name):
+                    reads = self._stack_reads(name, html)
+                    self.assertLess(
+                        reads, 20 * tags,
+                        "%s inspected %d open elements over %d tags (%d %s) - that is a stack "
+                        "scan per start tag, so the parse is quadratic again"
+                        % (name, reads, tags, depth, label))
+
+    def test_the_open_element_stack_cost_grows_linearly_with_depth(self):
+        # State the SCALING directly as well: twice the document must not cost ~four times the
+        # work. A constant-factor allowance of 3x absorbs the per-parse fixed cost.
+        for label, unit in self.SHAPES:
+            for name in self.PARSERS:
+                with self.subTest(shape=label, parser=name):
+                    small = self._stack_reads(name, unit * 1000)
+                    large = self._stack_reads(name, unit * 2000)
+                    self.assertLess(
+                        large, max(3 * small, 6000),
+                        "%s inspected %d open elements over 1000 %s and %d over 2000 - that is "
+                        "superlinear growth, so the stack scan is back"
+                        % (name, small, label, large))
+
+    def test_the_open_element_index_holds_only_currently_open_elements(self):
+        # The end-tag lookup is answered from an index of the open elements by name, so it must
+        # shrink back as they close: a document that opens and closes many DISTINCT names must
+        # grow it by open depth, not by how large its tag vocabulary is. Every parallel view is
+        # also asserted to be the SAME LENGTH as the namespace stack, because each replacement
+        # reads one view with an index derived from another - `_CodeSpanParser.handle_endtag`
+        # slices a `<pre>` body out of `_stack` at an index that came from the base's `_ns` map -
+        # and nothing else states that invariant.
+        names = ["x%d" % i for i in range(500)]
+        for name in self.PARSERS:
+            with self.subTest(parser=name):
+                flat = "".join("<%s></%s>" % (t, t) for t in names)
+                parser = getattr(parsing, name)(flat)
+                parser.parse_document(flat)
+                self.assertEqual(parser._open_by_tag, {},
+                                 "closed elements are still indexed as open")
+                self._assert_parallel(parser, 0)
+                nested = "".join("<%s>" % t for t in names)
+                parser = getattr(parsing, name)(nested)
+                parser.parse_document(nested)
+                self.assertEqual(sorted(parser._open_by_tag), sorted(names))
+                self.assertTrue(all(len(v) == 1 for v in parser._open_by_tag.values()))
+                self._assert_parallel(parser, len(names))
+
+    def _assert_parallel(self, parser, depth):
+        views = {"_ns": parser._ns, "_p_stop": parser._p_stop, "_li_stop": parser._li_stop}
+        for attr in ("stack", "_stack", "_anc"):
+            current = getattr(parser, attr, None)
+            if isinstance(current, list):
+                views[attr] = current
+        for attr, view in views.items():
+            self.assertEqual(len(view), depth,
+                             "%s is %d deep beside a %d-deep namespace stack - the parallel views "
+                             "have drifted, so an index taken from one no longer addresses the "
+                             "other" % (attr, len(view), depth))
+
+    def test_the_scope_boundaries_are_unchanged_at_depth(self):
+        # The cheap path must still be the CORRECT path: a <p> deep under many open <div>s is
+        # still implicitly closed, and one behind a scope boundary still is not.
+        opened = "<div>" * 200
+        closes = _anchors('<p class="cm-skip">' + opened
+                          + '<div><a href="p.html" target="_self">x</a></div>')
+        self.assertEqual([a["skip"] for a in closes], [False])
+        blocked = _anchors('<p class="cm-skip"><button>' + opened
+                           + '<div><a href="p.html" target="_self">x</a></div>')
+        self.assertEqual([a["skip"] for a in blocked], [True])
+        # The same for <li>, whose scope additionally stops at <ol>/<ul>.
+        li_closes = _anchors('<li class="cm-skip">' + opened
+                             + '<li><a href="p.html" target="_self">x</a>')
+        self.assertEqual([a["skip"] for a in li_closes], [False])
+        li_blocked = _anchors('<li class="cm-skip"><ul>' + opened
+                              + '<li><a href="p.html" target="_self">x</a>')
+        self.assertEqual([a["skip"] for a in li_blocked], [True])
+
+    def test_the_ancestor_summary_answers_every_predicate_it_replaced(self):
+        # Each running count / index stands in for a walk of the open elements, so pin each of
+        # them: cm-skip ancestry, the inert <template>, the enclosing <canvas>, the chart <figure>,
+        # the nearest <svg> versus <foreignObject>, and an open <a> around prose.
+        html = ('<main id="commentRoot">'
+                '<div class="cm-skip"><canvas id="c1"></canvas>'
+                '<figure class="chart"><figcaption>a</figcaption></figure></div>'
+                '<figure class="chart"><figcaption>b</figcaption></figure>'
+                '<figure><figcaption>c</figcaption></figure>'
+                '<canvas id="c2"><figcaption>d</figcaption></canvas>'
+                '<template><canvas id="tpl"></canvas><a href="t.html">t</a></template>'
+                '<svg><a href="s.html">s</a>'
+                '<foreignObject><a href="f.html">f</a></foreignObject></svg>'
+                '<a href="l.html">linked</a>prose</main>')
+        doc = parsing._parse_document(html)
+        self.assertEqual([(c["attrs"].get("id"), c["skip"]) for c in doc.canvases],
+                         [("c1", True), ("c2", False)])
+        self.assertEqual([(f["skip"], f["in_canvas"], f["in_chart_figure"])
+                          for f in doc.figcaptions],
+                         [(True, False, True), (False, False, True),
+                          (False, False, False), (False, True, False)])
+        self.assertEqual([(a["href"], a["in_svg"]) for a in doc.anchors],
+                         [("s.html", True), ("f.html", False), ("l.html", False)])
+        prose = "".join(doc.commentroot_prose)
+        self.assertIn("prose", prose)
+        self.assertNotIn("linked", prose)   # text inside an <a> is not unlinked prose
+
+
 class DocParserForeignContentTests(unittest.TestCase):
     """The foreign-content model the CDATA rule rests on."""
 

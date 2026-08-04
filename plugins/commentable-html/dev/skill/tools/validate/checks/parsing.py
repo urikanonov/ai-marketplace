@@ -187,6 +187,12 @@ _P_CLOSE_BOUNDARY = {"applet", "caption", "html", "table", "td", "th",
 
 _LI_CLOSE_BOUNDARY = _P_CLOSE_BOUNDARY | {"ol", "ul"}
 
+# The elements the scan for an open <p> / <li> stops at: the target itself and its scope
+# boundaries. Everything else is TRANSPARENT to the scan, which is why the scan itself is not
+# needed - the nearest one of these is tracked incrementally as the stack is pushed.
+_P_SCOPE_STOPS = frozenset(_P_CLOSE_BOUNDARY | {"p"})
+_LI_SCOPE_STOPS = frozenset(_LI_CLOSE_BOUNDARY | {"li"})
+
 # The FOREIGN half of the same scope: markup under an `<svg><foreignObject>` is HTML again, but a
 # <p> outside the <svg> is not in scope, so it must not be popped (which would pop the svg with
 # it). These names are only boundaries in their own namespace - an HTML element that happens to be
@@ -1076,6 +1082,16 @@ class _BrowserBoundaries(_BrowserStartTag):
         super().__init__(convert_charrefs=True)
         self._starts = _line_starts(html)
         self._ns = []         # [(tag, namespace, is_integration_point)], parallel to the stack
+        # Parallel to `_ns`: the index of the nearest enclosing element the <p> / <li> implicit
+        # close stops at (the target itself or one of its scope boundaries), or -1 when there is
+        # none. Every other element is transparent to that scan, so tracking the nearest stop as
+        # the stack grows answers it in O(1) instead of rescanning the stack per start tag.
+        self._p_stop = []
+        self._li_stop = []
+        # tag -> the indices of the open elements with that name, innermost last. An end tag
+        # matches the INNERMOST open element of its name, which was a backwards scan of the whole
+        # stack per end tag - quadratic on a document that closes many elements it never opened.
+        self._open_by_tag = {}
         self._comment_raw = None      # source of the REAL comment being handled (see below)
         # Whether the input ran out inside a comment / declaration / marked section, which a
         # browser resolves by consuming the rest of the document. Recorded because a caller
@@ -1380,12 +1396,39 @@ class _BrowserBoundaries(_BrowserStartTag):
     # -- the element stack the namespace view runs parallel to --------------- #
 
     def _push_ns(self, tag, ns, ad):
+        depth = len(self._ns)
         self._ns.append((tag, ns, self._is_integration_point(tag, ns, ad)))
+        self._open_by_tag.setdefault(tag, []).append(depth)
+        # A FOREIGN element stops the scan only when it is an integration point by NAME, and an
+        # HTML element only when it is the target or one of its boundaries - so the two sets are
+        # applied per namespace, exactly as the scan applied them.
+        if ns == "html":
+            p_stops, li_stops = tag in _P_SCOPE_STOPS, tag in _LI_SCOPE_STOPS
+        else:
+            p_stops = li_stops = tag in _FOREIGN_SCOPE_BOUNDARY
+        self._p_stop.append(depth if p_stops else (self._p_stop[-1] if depth else -1))
+        self._li_stop.append(depth if li_stops else (self._li_stop[-1] if depth else -1))
+
+    def _innermost_open(self, tag):
+        """The index of the innermost open element named `tag`, or -1 when none is open. This is
+        the element an end tag matches, so every subclass's `handle_endtag` reads it instead of
+        walking the stack."""
+        open_at = self._open_by_tag.get(tag)
+        return open_at[-1] if open_at else -1
 
     def _truncate_stacks(self, depth):
         """Truncate every parallel element stack to `depth`. Subclasses extend this with their
         own stacks so no truncation path can leave the namespace view out of step."""
+        for tag, _ns, _integration in self._ns[depth:]:
+            open_at = self._open_by_tag[tag]
+            open_at.pop()
+            if not open_at:
+                # Keep the index to CURRENTLY OPEN elements only, so a document that opens and
+                # closes many distinct names grows it by open depth rather than by vocabulary.
+                del self._open_by_tag[tag]
         del self._ns[depth:]
+        del self._p_stop[depth:]
+        del self._li_stop[depth:]
 
     def _before_truncate(self, depth):
         """Hook: the elements from `depth` up are about to be popped WITHOUT their own end tag."""
@@ -1397,23 +1440,43 @@ class _BrowserBoundaries(_BrowserStartTag):
         # only cm-skip ancestor is such a <p> is not falsely protected and a `<pre>` a browser
         # puts inside a `figure.cmh-kql` is not judged outside it.
         if tag in P_CLOSERS:
-            self._close_scoped("p", _P_CLOSE_BOUNDARY)
+            self._close_scoped("p", self._p_stop)
         if tag == "li":
-            self._close_scoped("li", _LI_CLOSE_BOUNDARY)
+            self._close_scoped("li", self._li_stop)
 
-    def _close_scoped(self, target, boundary):
-        for i in range(len(self._ns) - 1, -1, -1):
-            t, ns, _integration = self._ns[i]
-            if ns != "html":
-                if t in _FOREIGN_SCOPE_BOUNDARY:
-                    return  # an integration point: the target is not in scope across it
-                continue
-            if t == target:
-                self._before_truncate(i)
-                self._truncate_stacks(i)
-                return
-            if t in boundary:
-                return  # target is not in scope; do not close it
+    def _close_scoped(self, target, stops):
+        """Close an open `target` if it is in scope, in O(1) rather than a stack scan.
+
+        `stops` carries the index of the nearest enclosing element the scan would have stopped at,
+        so the whole scan reduces to reading it: the target closes when the nearest stop IS the
+        target, and nothing happens when it is a boundary (the target is out of scope) or when
+        there is no stop at all (no open target).
+        """
+        i = stops[-1] if stops else -1
+        if i < 0:
+            return
+        tag, ns, _integration = self._ns[i]
+        if ns == "html" and tag == target:
+            self._before_truncate(i)
+            self._truncate_stacks(i)
+
+
+# The ancestor facts each tolerant parser asks about an element while it is being recorded. They
+# are running COUNTS (and, for `svg`, the index of the nearest `svg`/`foreignObject`), kept
+# parallel to the element stack so each question is O(1) instead of a walk of the open elements.
+class _DocAncestors(NamedTuple):
+    skip: int
+    template: int
+    canvas: int
+    pre: int
+    chart_figure: int
+    anchor: int
+    svg: int
+
+
+class _CodeAncestors(NamedTuple):
+    pre: int
+    kql_figure: int
 
 
 class _DocParser(_BrowserBoundaries):
@@ -1491,20 +1554,39 @@ class _DocParser(_BrowserBoundaries):
         self._cur_heading_depth = None   # stack depth of that heading, so an ancestor's close ends it
         self.has_top_level_lede = False  # a direct child of #commentRoot carries class cmh-lede
         self._lede_depth = None      # stack depth of the current top-level cmh-lede (for title h1)
-        self._figure_chart = []      # stack of bool: is each open <figure> a chart figure
+        self._anc = []               # parallel to self.stack: the ancestor summary (see below)
         self.has_offline_chart = False
 
+    # Parallel to `self.stack`: the ancestor facts `_record` asks about, as running counts (and,
+    # for the nearest svg / foreignObject, an index). Asking them of the open-element stack was a
+    # walk per recorded element, which is quadratic on a deeply nested document.
+    _NO_ANCESTORS = _DocAncestors(0, 0, 0, 0, 0, 0, -1)
+
+    def _ancestors(self):
+        return self._anc[-1] if self._anc else self._NO_ANCESTORS
+
+    def _push_ancestors(self, tag, own_skip, is_chart_figure):
+        prev = self._ancestors()
+        self._anc.append(_DocAncestors(prev.skip + bool(own_skip),
+                                       prev.template + (tag == "template"),
+                                       prev.canvas + (tag == "canvas"),
+                                       prev.pre + (tag == "pre"),
+                                       prev.chart_figure + bool(is_chart_figure),
+                                       prev.anchor + (tag == "a"),
+                                       len(self._anc) if tag in ("svg", "foreignobject")
+                                       else prev.svg))
+
     def _skip_ancestor(self):
-        return any(skip for (_t, skip) in self.stack)
+        return self._ancestors().skip > 0
 
     def _in_canvas(self):
-        return any(t == "canvas" for (t, _s) in self.stack)
+        return self._ancestors().canvas > 0
 
     def _in_template(self):
         # A <template>'s contents live in an inert DocumentFragment: they are not
         # active DOM (getElementById does not see them, scripts do not run), so
         # ids / canvases / scripts inside a template must not be counted.
-        return any(t == "template" for (t, _s) in self.stack)
+        return self._ancestors().template > 0
 
     def _in_comment_root(self):
         return self._cr_depth is not None and not self._cr_closed and len(self.stack) > self._cr_depth
@@ -1542,9 +1624,6 @@ class _DocParser(_BrowserBoundaries):
         # be concatenated onto it into a body no browser would ever see.
         if self._cur_tpl_raw is not None and depth <= self._cur_tpl_raw[3]:
             self._flush_template_raw()
-        for (t, _s) in self.stack[depth:]:
-            if t == "figure" and self._figure_chart:
-                self._figure_chart.pop()
         # Closing #commentRoot (or an ancestor of it) ends the root subtree for
         # good, so headings/prose in a later sibling container are not collected.
         if self._cr_depth is not None and depth <= self._cr_depth:
@@ -1561,6 +1640,7 @@ class _DocParser(_BrowserBoundaries):
             self._flush_heading()
         super()._truncate_stacks(depth)
         del self.stack[depth:]
+        del self._anc[depth:]
         del self._mermaid_stack[depth:]
 
     def _record(self, tag, ad, own_skip):
@@ -1589,18 +1669,13 @@ class _DocParser(_BrowserBoundaries):
         elif tag == "figcaption":
             self.figcaptions.append({"skip": self._skip_ancestor() or own_skip,
                                      "in_canvas": self._in_canvas(),
-                                     "in_chart_figure": any(self._figure_chart)})
+                                     "in_chart_figure": self._ancestors().chart_figure > 0})
         if tag == "a":
             # SVG-namespaced <a> (tagName "a", not "A") is never stamped by the runtime, so exclude
             # it. But an <a> inside an SVG <foreignObject> is at an HTML integration point (tagName
             # "A") and IS stamped - detect the nearest svg/foreignObject ancestor, not any svg.
-            in_svg = False
-            for (t, _s) in reversed(self.stack):
-                if t == "svg":
-                    in_svg = True
-                    break
-                if t == "foreignobject":
-                    break
+            nearest = self._ancestors().svg
+            in_svg = nearest >= 0 and self.stack[nearest][0] == "svg"
             self.anchors.append({"href": ad.get("href"), "target": ad.get("target"),
                                  "skip": self._skip_ancestor() or own_skip,
                                  "in_svg": in_svg,
@@ -1616,7 +1691,7 @@ class _DocParser(_BrowserBoundaries):
         elif tag == "pre" and own_skip and self._in_commentable_content():
             self.cm_skip_code_blocks.append({"kind": "<pre>"})
         elif (tag == "code" and own_skip and self._in_commentable_content()
-              and any(t == "pre" for (t, _s) in self.stack)):
+              and self._ancestors().pre > 0):
             current_mermaid = self._mermaid_stack[-1] if self._mermaid_stack else None
             if current_mermaid is None:
                 self.cm_skip_code_blocks.append({"kind": "<pre><code>"})
@@ -1680,13 +1755,13 @@ class _DocParser(_BrowserBoundaries):
         # element is never void: `<svg><rect/>` is self-closing markup, handled below.)
         if tag not in VOID or ns != "html":
             self.stack.append((tag, own_skip))
+            self._push_ancestors(tag, own_skip,
+                                 tag == "figure" and "chart" in set((ad.get("class") or "").split()))
             self._push_ns(tag, ns, ad)
             current_mermaid = self._mermaid_stack[-1] if self._mermaid_stack else None
             if len(self.mermaid_blocks) > before_mermaid:
                 current_mermaid = len(self.mermaid_blocks) - 1
             self._mermaid_stack.append(current_mermaid)
-            if tag == "figure":
-                self._figure_chart.append("chart" in set((ad.get("class") or "").split()))
         else:
             self._close_zero_width()
         self._enter_raw_text(tag, ns)
@@ -1752,7 +1827,7 @@ class _DocParser(_BrowserBoundaries):
         if (self._cr_depth is not None and not self._cr_closed and len(self.stack) > self._cr_depth
                 and not self._skip_ancestor()
                 and not self._in_template()
-                and not any(t == "a" for (t, _s) in self.stack)):
+                and self._ancestors().anchor == 0):
             self.commentroot_prose.append(data)
 
     def _flush_heading(self):
@@ -1810,10 +1885,9 @@ class _DocParser(_BrowserBoundaries):
             self._flush_template_raw()
         if self._cur_heading is not None and tag == self._cur_heading[0]:
             self._flush_heading()
-        for i in range(len(self.stack) - 1, -1, -1):
-            if self.stack[i][0] == tag:
-                self._truncate_stacks(i)
-                return
+        i = self._innermost_open(tag)
+        if i >= 0:
+            self._truncate_stacks(i)
 
     def handle_comment(self, data):
         # A region marker is a comment the AUTHORING TOOLS wrote, so only a REAL comment whose
@@ -1868,16 +1942,27 @@ class _CodeSpanParser(_BrowserBoundaries):
     def __init__(self, html):
         super().__init__(html)
         self._stack = []   # [(tag, record, is_kql_figure)], parallel to the namespace stack
+        self._anc = []     # parallel to _stack: (nearest open <pre> index, open kql figures)
         self.pres = []
         self.unclosed = False
 
     # -- element tracking -------------------------------------------------- #
 
+    _NO_ANCESTORS = _CodeAncestors(-1, 0)
+
+    def _ancestors(self):
+        return self._anc[-1] if self._anc else self._NO_ANCESTORS
+
+    def _push_ancestors(self, is_pre, is_kql_figure):
+        prev = self._ancestors()
+        self._anc.append(_CodeAncestors(len(self._anc) if is_pre else prev.pre,
+                                        prev.kql_figure + bool(is_kql_figure)))
+
     def _open_pre(self):
-        for entry in reversed(self._stack):
-            if entry[0] == "pre":
-                return entry[1]
-        return None
+        # The nearest open <pre>'s record, tracked as the stack grows: walking the open elements
+        # per <code> is quadratic on a deeply nested document.
+        i = self._ancestors().pre
+        return self._stack[i][1] if i >= 0 else None
 
     def _mark_unclosed(self, start):
         for entry in self._stack[start:]:
@@ -1892,6 +1977,7 @@ class _CodeSpanParser(_BrowserBoundaries):
     def _truncate_stacks(self, depth):
         super()._truncate_stacks(depth)
         del self._stack[depth:]
+        del self._anc[depth:]
 
     def handle_starttag(self, tag, attrs):
         tag = self._browser_tag(tag)
@@ -1903,7 +1989,7 @@ class _CodeSpanParser(_BrowserBoundaries):
         if tag == "pre" and ns == "html":
             rec = {"attrs": ad, "start": self._off(), "inner_start": self._start_tag_end(),
                    "inner": None, "codes": [],
-                   "in_kql_figure": any(e[2] for e in self._stack)}
+                   "in_kql_figure": self._ancestors().kql_figure > 0}
             self.pres.append(rec)
         elif tag == "code" and ns == "html":
             owner = self._open_pre()
@@ -1916,9 +2002,10 @@ class _CodeSpanParser(_BrowserBoundaries):
         # void-heavy document from growing the stack (and every unmatched end tag's scan of it).
         # (A foreign element is never void: `<svg><rect/>` is self-closing markup, handled below.)
         if tag not in VOID or ns != "html":
-            self._stack.append((tag, rec,
-                                tag == "figure" and ns == "html"
-                                and parsed_attrs_have_class(ad, "cmh-kql")))
+            is_kql_figure = (tag == "figure" and ns == "html"
+                             and parsed_attrs_have_class(ad, "cmh-kql"))
+            self._stack.append((tag, rec, is_kql_figure))
+            self._push_ancestors(tag == "pre", is_kql_figure)
             self._push_ns(tag, ns, ad)
         self._enter_raw_text(tag, ns)
 
@@ -1937,16 +2024,14 @@ class _CodeSpanParser(_BrowserBoundaries):
     def handle_endtag(self, tag):
         tag = self._browser_tag(tag)
         end = self._off()
-        for i in range(len(self._stack) - 1, -1, -1):
-            if self._stack[i][0] != tag:
-                continue
-            self._mark_unclosed(i + 1)   # implicitly closed: they never got their own closer
-            own = self._stack[i][1]
-            if own is not None:
-                own["inner"] = (own["inner_start"], end)
-            self._truncate_stacks(i)
-            return
-        # An end tag with no open element is ignored, exactly as a browser ignores it.
+        i = self._innermost_open(tag)
+        if i < 0:
+            return  # An end tag with no open element is ignored, exactly as a browser ignores it.
+        self._mark_unclosed(i + 1)   # implicitly closed: they never got their own closer
+        own = self._stack[i][1]
+        if own is not None:
+            own["inner"] = (own["inner_start"], end)
+        self._truncate_stacks(i)
 
     def close(self):
         super().close()
@@ -2527,10 +2612,9 @@ class _TagAttrParser(_BrowserBoundaries):
         tag = self._browser_tag(tag)
         if tag == "noscript" and self._noscript is not None:
             self._flush_noscript()
-        for i in range(len(self._stack) - 1, -1, -1):
-            if self._stack[i] == tag:
-                self._truncate_stacks(i)
-                return
+        i = self._innermost_open(tag)
+        if i >= 0:
+            self._truncate_stacks(i)
         # An end tag with no open element is ignored, exactly as a browser ignores it.
 
     def close(self):

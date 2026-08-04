@@ -4,6 +4,31 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.574.0] - 2026-08-04
+
+### Fixed
+
+- The validator's tolerant HTML parsers no longer cost O(n^2) TIME on a deeply nested document. The
+  HTML5 "close a p element" / "close an li element" step scanned the WHOLE open-element stack on
+  every block-level start tag, stopping only at a scope boundary, so a document that opens many
+  elements which are neither the target nor a boundary - `<div>` repeated with no closing tags -
+  paid a full stack walk per tag: 3200 `<div>`s took 1.31s and a 5000-`<div>` document (~25 KB) had
+  not finished after 240 seconds, which is enough to hang `validate` on a merely pathological file.
+  Both the nearest open `<p>`/`<li>` and the nearest scope boundary are now tracked incrementally
+  as the element stack grows, so the step is O(1) per tag with the SAME boundary semantics (button
+  scope, list-item scope, and the foreign-content integration points are all unchanged). The
+  ancestor questions the document parser asks per element - is an ancestor `cm-skip`, a
+  `<template>`, a `<canvas>`, a `<pre>`, a chart `<figure>` or an `<a>`, and which
+  `<svg>`/`<foreignObject>` is nearest - and the code-span parser's owning-`<pre>` and
+  `figure.cmh-kql` lookups are answered from the same running summary rather than by walking the
+  stack. The last walk goes too: an end tag matches the INNERMOST open element of its name, which
+  was another backwards scan of the whole stack per end tag - unbounded when the tag was never
+  opened, so `<div>` repeated followed by as many stray `</span>`s was quadratic by a second route
+  (8000 of each measured 5.07s) - and the open elements are now indexed by name, so the match is
+  O(1). That index holds the CURRENTLY open elements only (a bucket is dropped when it empties), so
+  it grows with open depth rather than with the document's tag vocabulary. A 4000-`<div>` document
+  now parses in 0.10s instead of 1.32s, and 20000 of them in 0.51s.
+
 ## [1.572.0] - 2026-08-04
 
 ### Fixed
