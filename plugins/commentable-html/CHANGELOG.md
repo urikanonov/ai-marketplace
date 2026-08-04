@@ -4,6 +4,42 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.669.0] - 2026-08-04
+
+### Fixed
+
+- The offline validator's egress gate no longer switches itself off on a NonShareable-lineage
+  offline document (CMH-VAL-08). `_check_self_contained` scoped every offline-only rule with
+  `not nonshareable and mode == "offline"`, keying the GATE to a classification the exporter's
+  offline STRIPS never consult: `saveOffline` reaches `_buildOfflineHtml` from the NonShareable
+  path too (the standalone rebuild inlines the companion CSS/JS and removes the NONSHAREABLE
+  BOOTSTRAP block first, and the descriptor is then stamped `offline`), so a document that
+  DECLARES offline while still carrying a companion reference - which a mangled or missing
+  CSS/JS region marker leaves behind, and a hand-authored file can carry outright - silently
+  turned off the zero-network CSP requirement, the media/form/background egress checks, the
+  inline-script navigation and import scans, the active-data (importmap/speculationrules) rules,
+  and the event-handler and meta-refresh gates, all at once. Such a file was never certified
+  clean - the descriptor rule rejects the NonShareable-plus-offline pair on its own, and did so
+  before this change - so what was lost was the REPORT and the second layer, not the verdict: a
+  live `on*` handler and a missing offline CSP were not named at all, and the egress that was
+  named carried the shareable wording, so the list an author worked from was incomplete and the
+  rest of it appeared only once the descriptor line had been corrected. The scope of a
+  fail-closed gate should not depend on a different check happening to be right, which is the
+  defense-in-depth this restores. That principle is applied where widening is free, not
+  absolutely: a descriptor that is missing, unparseable, not an object, or carries a mode outside
+  the allowed set still leaves `offline_mode` false and is caught by the descriptor rule alone,
+  deliberately, because defaulting those to offline would add wrong `offline mode:` errors to an
+  ordinary shareable document whose descriptor merely failed to parse - a worse report, for no
+  verdict. The offline scope is now decided by the DECLARED descriptor
+  mode alone, and the check no longer even receives the classification, so it cannot regress to
+  consulting it. The gate was widened to match the strips rather than the exporter narrowed,
+  because refusing an offline export on the NonShareable path would remove the only way a
+  companion-file document becomes a single offline file. Nothing legitimate is newly rejected:
+  the descriptor error and the offline errors are now reported together, and a document that
+  declares `nonshareable` keeps its own rules unchanged - its companion `<link>`/`<script src>`
+  stay ordinary local references, and the shipped bootstrap's `onclick` dismiss button still
+  validates clean.
+
 ## [1.668.0] - 2026-08-04
 
 ### Fixed

@@ -174,7 +174,9 @@ def check_layer(html, parser, base_dir=None):
     errors += e
     warnings += w
 
-    e, w = _check_self_contained(html, parser, nonshareable)
+    # No `nonshareable` argument: the offline gates key off the DECLARED descriptor mode, so this
+    # check must not be able to consult the lineage at all (see 20-resources.py).
+    e, w = _check_self_contained(html, parser)
     errors += e
     warnings += w
 

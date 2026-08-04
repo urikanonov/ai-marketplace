@@ -1,4 +1,4 @@
-def _check_self_contained(html, parser, nonshareable):
+def _check_self_contained(html, parser):
     errors, warnings = [], []
     # The whole guarantee is read off the shared tag index, so a parse that could not be built
     # must be REPORTED rather than read as "this document loads nothing" (a partial index would
@@ -20,7 +20,25 @@ def _check_self_contained(html, parser, nonshareable):
     def _is_network(v):
         return is_network_url(v)
     descriptor = _layer_descriptor_data(parser) or {}
-    offline_mode = (not nonshareable and descriptor.get("mode") == "offline")
+    # The offline rules follow the DECLARED mode, not the NonShareable lineage. The exporter runs
+    # its offline strips on whatever it stamps `mode: offline`, and it reaches that stamp from the
+    # NonShareable path too (`_buildStandaloneHtml` inlines the companions and drops the bootstrap
+    # block first), so scoping this with `not nonshareable` keyed the GATE to a classification the
+    # STRIPS never consult. A document stamped offline that still carried a companion reference -
+    # a mangled or missing CSS/JS region marker leaves one behind, and a hand-authored file can
+    # carry both - then switched OFF every offline-only rule below: the zero-network CSP
+    # requirement, the media/form/background egress checks, the inline-script navigation and import
+    # scans, the active-data rules, and the event-handler and meta-refresh gates. That never
+    # certified the file - the descriptor rule rejects the NonShareable+offline pair on its own -
+    # but it cost the REPORT (a live `on*` handler and a missing CSP were not named at all, and the
+    # egress that was named carried the shareable wording) and it made this gate's SCOPE depend on
+    # a different check being right. Reading the declared mode alone restores that layer and adds
+    # no false rejection: the descriptor error and these errors are simply reported together, and a
+    # document that declares `nonshareable` is untouched. A descriptor that is MISSING or malformed
+    # still leaves these rules off and is left to the descriptor rule on purpose - defaulting those
+    # to offline would only add wrong `offline mode:` errors to an ordinary shareable document
+    # whose descriptor failed to parse, and none of them validates clean either way.
+    offline_mode = (descriptor.get("mode") == "offline")
     def _network_values(value, srcset=False):
         if srcset:
             return srcset_candidate_urls(value)
