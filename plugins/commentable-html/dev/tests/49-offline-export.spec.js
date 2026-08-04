@@ -2916,15 +2916,18 @@ test("CMH-OFFLINE-04: a preload link's imagesrcset and imagesizes are stripped f
     // the gate must reject it, so a hand-authored offline document cannot keep what the strip takes.
     const reinjections = [
       ['<link id="cmh-preload-reinjected" rel="preload" as="image" imagesrcset="https://evil.example/re.png 1x">',
-        /<link imagesrcset="https:\/\/evil\.example\/re\.png">/],
+        /<link imagesrcset="https:\/\/evil\.example\/re\.png">/, "loads over the network"],
       ['<link id="cmh-preload-reinjected" rel="preload" as="image" imagesrcset="local.png 1x, //evil.example/re2.png 2x">',
-        /<link imagesrcset="\/\/evil\.example\/re2\.png">/],
+        /<link imagesrcset="\/\/evil\.example\/re2\.png">/, "loads over the network"],
       ['<link id="cmh-preload-reinjected" imagesrcset="https://evil.example/norel.png 1x">',
-        /<link imagesrcset="https:\/\/evil\.example\/norel\.png">/],
+        /<link imagesrcset="https:\/\/evil\.example\/norel\.png">/, "loads over the network"],
+      // `imagesizes` is rejected too, but its message must NOT claim a load: a source-size list
+      // fetches nothing whatever it says. The export clears a network-valued one, so accepting it
+      // would bless a file an export would change - which is what the message says instead.
       ['<link id="cmh-preload-reinjected" rel="preload" as="image" imagesizes="https://evil.example/sizes">',
-        /<link imagesizes="https:\/\/evil\.example\/sizes">/],
+        /<link imagesizes="https:\/\/evil\.example\/sizes">/, "a browser fetches nothing from it"],
     ];
-    for (const [markup, labelRe] of reinjections) {
+    for (const [markup, labelRe, needle] of reinjections) {
       const reinjectedPath = path.join(outDir, "offline-preload-reinjected.html");
       const reinjectedHtml = exportedHtml.replace('<p id="preload-note"', markup + '\n<p id="preload-note"');
       expect(reinjectedHtml, "the shape must actually have been re-injected").not.toEqual(exportedHtml);
@@ -2939,7 +2942,7 @@ test("CMH-OFFLINE-04: a preload link's imagesrcset and imagesizes are stripped f
       }
       expect(failure, `--strict must reject ${markup}`).not.toBeNull();
       expect(failure).toMatch(labelRe);
-      expect(failure).toContain("loads over the network");
+      expect(failure).toContain(needle);
     }
   } finally {
     fs.rmSync(staged.dir, { recursive: true, force: true });

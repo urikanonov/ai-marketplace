@@ -830,13 +830,16 @@ class NewCheckTests(unittest.TestCase):
 
     # `imagesizes` rides with `imagesrcset`, and it is read the same way both sides read it: as one
     # value, not a srcset. Its grammar holds media conditions and lengths rather than URLs, so a
-    # network value there is malformed either way - but reading it costs nothing and keeps the
-    # attribute pair covered on both sides rather than half of it.
+    # browser fetches nothing from it - which is why the message says so rather than naming a load
+    # that cannot happen - but the export CLEARS a network-valued one, so accepting it here would
+    # bless a file an export would change.
     def test_offline_mode_rejects_a_network_imagesizes_on_a_link(self):
         markup = '<link rel="preload" as="image" imagesizes="https://evil.example/sizes">'
         errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, markup))))
-        self.assertTrue(any("offline mode" in e and "<link imagesizes" in e for e in errors),
-                        errors)
+        self.assertTrue(any("offline mode" in e and "<link imagesizes" in e
+                            and "a browser fetches nothing from it" in e for e in errors), errors)
+        self.assertFalse(any("<link imagesizes" in e and "loads over the network" in e
+                             for e in errors), errors)
 
     # The two attributes are read whatever the `rel` says, on both sides. The `href` check skips a
     # non-fetching rel because a `rel=canonical` href really loads nothing, but the export strip

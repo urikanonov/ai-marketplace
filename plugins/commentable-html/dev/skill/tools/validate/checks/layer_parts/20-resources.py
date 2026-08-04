@@ -48,6 +48,15 @@ def _check_self_contained(html, parser):
         if offline_mode:
             if tag == "script" and attr == "src" and CHARTJS_SRC_RE.search(val):
                 return "offline mode: %s loads Chart.js over the network - inline it or export offline after rendering" % label
+            # `imagesizes` is a source-SIZE list (media conditions and lengths), so a browser
+            # fetches nothing from it however the value is spelled, and saying it "loads over the
+            # network" would name a beacon that does not exist - the mistake the `file:` drive-letter
+            # arm was widened to avoid. It is still rejected, because the export clears a
+            # network-valued one and accepting it here would bless a file an export would change.
+            if tag == "link" and attr == "imagesizes":
+                return ("offline mode: %s names a network URL in a source-size list - a browser "
+                        "fetches nothing from it, but the export clears the value, so remove it "
+                        "here too" % label)
             return "offline mode: %s loads over the network - inline or remove it" % label
         return None
     def _check_network_attr(tag, attrs, attr, srcset=False):
@@ -66,8 +75,13 @@ def _check_self_contained(html, parser):
             if tag == "script" and attr == "src" and CHARTJS_SRC_RE.search(item):
                 continue
             if tag == "link":
-                warnings.append('<link %s="%s"> loads over the network and breaks the self-contained '
-                                "guarantee - inline or remove it" % (attr, item[:80]))
+                if attr == "imagesizes":
+                    warnings.append('<link imagesizes="%s"> names a network URL in a source-size '
+                                    "list - a browser fetches nothing from it, but it does not "
+                                    "belong in a self-contained file" % item[:80])
+                else:
+                    warnings.append('<link %s="%s"> loads over the network and breaks the self-contained '
+                                    "guarantee - inline or remove it" % (attr, item[:80]))
             else:
                 errors.append('<%s %s="%s"> loads over the network and breaks the self-contained guarantee - '
                               "inline or remove it" % (tag, attr, item[:80]))
