@@ -2225,6 +2225,259 @@ class RuntimeParityTests(unittest.TestCase):
         r'location.href = "\\https://evil.example"',
     ]
 
+    # Each escaped IdentifierName spelling the corpora below are built from, paired with the name
+    # the JavaScript PARSER resolves it to. This is a language claim, and it is easy to get wrong:
+    # `locatio\u006En` is `locationn`, not `location`, so a sample built from it is dead source that
+    # would "pin" nothing. Ask the parser instead of assuming. Both escape spellings are listed, and
+    # a FIRST-character case beside a later-character one, for each POSITION the scan matches
+    # literally - the prefix name, the sink name and the property name are three independent code
+    # paths (a backwards walk, an anchor and a sticky tail), so closing one of them would otherwise
+    # leave this corpus green.
+    _NAV_ESCAPED_IDENTIFIERS = [
+        (r"locatio\u006E", "location"),
+        (r"locatio\u{6E}", "location"),
+        (r"\u006Cocation", "location"),
+        (r"l\u006Fcation", "location"),
+        (r"l\u{6F}cation", "location"),
+        (r"\u006Fpen", "open"),
+        (r"op\u0065n", "open"),
+        (r"\u{6F}pen", "open"),
+        (r"hre\u0066", "href"),
+        (r"hre\u{66}", "href"),
+        (r"\u0068ref", "href"),
+        (r"assig\u006E", "assign"),
+        (r"\u0061ssign", "assign"),
+        (r"replac\u0065", "replace"),
+        (r"windo\u0077", "window"),
+        (r"windo\u{77}", "window"),
+    ]
+    # The UNDER-match direction of the identifier-escape class, as `(escaped, plain twin)` pairs.
+    # Each escaped sample is a REAL top-level navigation to a network URL - an escape names exactly
+    # the property its plain spelling does - and each is a DOCUMENTED MISS of the strip, not a
+    # benign script: the scan is driven from the LITERAL `location` / `open` anchors and matches the
+    # prefix and property names as literal text, so an escape in ANY identifier of the chain, at any
+    # position in it, steps around it. The plain twin is the positive control that makes the miss
+    # mean something: without it a sample that stopped being a sink for an unrelated reason (a
+    # mangled URL, a lost `=`, an off-by-one escape) would keep passing and pin nothing. Each pair
+    # must DERIVE from its twin by substituting exactly one spelling above, which is what keeps the
+    # off-by-one out - a substring test would not, since `locatio\u006E` sits inside `locatio\u006En`.
+    _NAV_CORPUS_ESCAPED_IDENTIFIER_MISSES = [
+        (r'window.locatio\u006E.href = "https://evil.example/steal";',
+         'window.location.href = "https://evil.example/steal";'),
+        (r'locatio\u006E.href = "https://evil.example";',
+         'location.href = "https://evil.example";'),
+        (r'window.locatio\u{6E}.href = "https://evil.example";',
+         'window.location.href = "https://evil.example";'),
+        (r'window.\u006Cocation.href = "https://evil.example";',
+         'window.location.href = "https://evil.example";'),
+        (r'window.\u006Fpen("https://evil.example");',
+         'window.open("https://evil.example");'),
+        (r'window.op\u0065n("https://evil.example");',
+         'window.open("https://evil.example");'),
+        (r'window.\u{6F}pen("https://evil.example");',
+         'window.open("https://evil.example");'),
+        (r'window.location.hre\u0066 = "https://evil.example";',
+         'window.location.href = "https://evil.example";'),
+        (r'window.location.hre\u{66} = "https://evil.example";',
+         'window.location.href = "https://evil.example";'),
+        (r'window.location.\u0068ref = "https://evil.example";',
+         'window.location.href = "https://evil.example";'),
+        (r'window.location.assig\u006E("https://evil.example");',
+         'window.location.assign("https://evil.example");'),
+        (r'window.location.\u0061ssign("https://evil.example");',
+         'window.location.assign("https://evil.example");'),
+        (r'top.location.replac\u0065("https://evil.example");',
+         'top.location.replace("https://evil.example");'),
+        (r'windo\u0077.location.href = "https://evil.example";',
+         'window.location.href = "https://evil.example";'),
+        (r'windo\u{77}.location.href = "https://evil.example";',
+         'window.location.href = "https://evil.example";'),
+        # An OUTER prefix, dot-joined with no whitespace. The walk consumes the literal `top`, then
+        # needs a boundary in front of it and finds the `.` of the escaped name, which is an
+        # identifier character - so the escape defeats the scan from any depth of the chain, not
+        # just from the element beside the sink.
+        (r'windo\u0077.top.location.href = "https://evil.example";',
+         'window.top.location.href = "https://evil.example";'),
+        (r'windo\u0077?.top.open("https://evil.example");',
+         'window?.top.open("https://evil.example");'),
+    ]
+    # The OVER-match direction of the SAME class, and the one with a user-visible cost. The local
+    # binding that suppresses an unprefixed sink (`OFFLINE_LOCAL_LOCATION_RE`) also matches
+    # `location` as literal text, so an escaped DECLARATION does not register as a shadow and the
+    # script is DELETED whole - although it navigates nothing, since the reference beside it names
+    # that same local binding. Pinned as `(escaped, plain twin)` where the escaped sample is
+    # STRIPPED and the plain twin is KEPT, because the residual is only honest if it names the
+    # direction that loses an author's content, not just the one that lets a beacon through.
+    _NAV_CORPUS_ESCAPED_SHADOW_OVERMATCHES = [
+        (r'const l\u006Fcation = { href: "" }; location.href = "https://api.example";',
+         'const location = { href: "" }; location.href = "https://api.example";'),
+        (r'let l\u{6F}cation = {}; location.assign("https://api.example");',
+         'let location = {}; location.assign("https://api.example");'),
+        (r'function f(l\u006Fcation) { location.href = "https://api.example"; }',
+         'function f(location) { location.href = "https://api.example"; }'),
+    ]
+    # The one shape an escape does NOT defeat, and the reason it does not. A prefix name separated
+    # from its `.` by WHITESPACE leaves the walk a legal boundary AT that run, so the literal
+    # remainder of the chain qualifies on its own and the sample is stripped exactly as its plain
+    # twin is. That is incidental to the escape rather than a defence, which is what
+    # `_NAV_CORPUS_WHITESPACE_BOUNDARY_CONTROLS` proves: an arbitrary non-sink identifier in the
+    # same position is stripped too, so the whitespace is doing the work. Without that control these
+    # samples would keep passing if the escape class were closed outright, and would pin nothing.
+    _NAV_CORPUS_ESCAPED_WHITESPACE_BOUNDARY = [
+        (r'windo\u0077 . top.location.href = "https://evil.example";',
+         'window . top.location.href = "https://evil.example";'),
+        (r'if (x) { windo\u0077 . location.href = "https://evil.example"; }',
+         'if (x) { window . location.href = "https://evil.example"; }'),
+    ]
+    _NAV_CORPUS_WHITESPACE_BOUNDARY_CONTROLS = [
+        'zzz . top.location.href = "https://evil.example";',
+        'if (x) { zzz . location.href = "https://evil.example"; }',
+    ]
+
+    def _escaped_nav_pairs(self):
+        """Every `(escaped, plain, escaped_hits, plain_hits)` case in the corpora above."""
+        return ([(esc, plain, False, True)
+                 for esc, plain in self._NAV_CORPUS_ESCAPED_IDENTIFIER_MISSES]
+                + [(esc, plain, True, False)
+                   for esc, plain in self._NAV_CORPUS_ESCAPED_SHADOW_OVERMATCHES]
+                + [(esc, plain, True, True)
+                   for esc, plain in self._NAV_CORPUS_ESCAPED_WHITESPACE_BOUNDARY])
+
+    def test_the_escaped_identifier_spellings_name_the_sinks_they_claim(self):
+        """Pin the LANGUAGE claim the documented residual rests on, not just the scan's verdict.
+
+        A residual is only worth documenting if the shape it describes really is the sink it says.
+        An escaped IdentifierName is exactly the kind of claim that is easy to write down wrongly -
+        the off-by-one `locatio\\u006En` resolves to `locationn`, which navigates nothing and would
+        make the corpora below prove the opposite of what they say - so the spellings go to the real
+        parser and are compared against the plain names they are filed as. Each escaped sample is
+        then tied BACK to that verified list by DERIVATION: substituting one verified spelling for
+        its plain name must turn the sample into its twin exactly. A substring test is not enough,
+        because `locatio\\u006E` sits inside the off-by-one spelling and would satisfy it.
+        """
+        pairs = self._escaped_nav_pairs()
+        used = set()
+        for escaped, plain, _, _ in pairs:
+            derived = [spelling for spelling, name in self._NAV_ESCAPED_IDENTIFIERS
+                       if escaped.replace(spelling, name) == plain]
+            self.assertTrue(
+                derived,
+                "the escaped sample %r does not become its plain twin %r by substituting any "
+                "parser-verified spelling, so nothing has checked what it resolves to - it may be "
+                "dead source that pins the opposite of what it claims" % (escaped, plain))
+            used.update(derived)
+        for spelling, _ in self._NAV_ESCAPED_IDENTIFIERS:
+            self.assertIn(spelling, used,
+                          "the spelling %s is verified against the parser but no corpus sample "
+                          "uses it, so one of the three literal-matching code paths lost its "
+                          "coverage while this test kept passing" % spelling)
+        node = shutil.which("node")
+        if not node:
+            # The derivation half above already asserted; the parser half is extra, as elsewhere.
+            return
+        script = (
+            "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);"
+            "const names=p.names.map(n=>{try{return {ok:true,v:Object.keys("
+            "(0,eval)('({'+n+':1})'))[0]};}catch(e){return {ok:false,v:String(e&&e.message)};}});"
+            "const parses=p.samples.map(s=>{try{new Function(s);return '';}"
+            "catch(e){return String(e&&e.message)||'rejected';}});"
+            "process.stdout.write(JSON.stringify({names:names,parses:parses}));});"
+        )
+        spellings = [spelling for spelling, _ in self._NAV_ESCAPED_IDENTIFIERS]
+        samples = [escaped for escaped, _, _, _ in pairs]
+        got = self._run_nav_node(node, script, {"names": spellings, "samples": samples},
+                                 "the escaped identifier spellings")
+        self.assertEqual(len(got.get("names", [])), len(self._NAV_ESCAPED_IDENTIFIERS),
+                         "node returned %d names for %d spellings"
+                         % (len(got.get("names", [])), len(self._NAV_ESCAPED_IDENTIFIERS)))
+        self.assertEqual(len(got.get("parses", [])), len(samples),
+                         "node returned %d parse results for %d samples"
+                         % (len(got.get("parses", [])), len(samples)))
+        for (spelling, expected), result in zip(self._NAV_ESCAPED_IDENTIFIERS, got["names"]):
+            self.assertTrue(result["ok"],
+                            "the JS parser rejects the identifier %s, so every sample built from "
+                            "it is dead source: %s" % (spelling, result["v"]))
+            self.assertEqual(
+                result["v"], expected,
+                "the JS parser reads the identifier %s as %r, not the %r the escaped corpora "
+                "assume - the sample is not the sink it is filed as"
+                % (spelling, result["v"], expected))
+        # Resolving the NAME is not enough: the escape sits in a member-access or binding position
+        # in the samples, where the grammar is stricter than the object-literal key position above
+        # (node accepts `({\u0069f:1})` but rejects `var \u0069f`). Compile each sample - never run
+        # it - so a spelling that is only legal as a key cannot pass as a beacon.
+        for sample, error in zip(samples, got["parses"]):
+            self.assertFalse(error,
+                             "the JS parser rejects %r, so the sample is dead source rather than "
+                             "the navigation it is filed as: %s" % (sample, error))
+
+    def test_the_escaped_identifier_sink_is_the_documented_residual_in_both_engines(self):
+        """The identifier-escape bypass is a DOCUMENTED residual, and it is pinned as one.
+
+        `location` / `open` are found as literal text, and so are the global prefix names in front
+        of the sink and the `href` / `assign` / `replace` after it, so a `\\uXXXX` (or `\\u{...}`)
+        escape in ANY identifier of the chain walks past the exporter's strip AND past the strict
+        validator - the file is preserved and then blessed as offline-clean - while the same literal
+        matching in the local-binding shadow rule DELETES a script that navigates nothing. Both
+        directions are deliberate rather than overlooked: the anchors are what make the scan linear
+        over every inline script including the vendored payload's inflated megabytes, and
+        recognizing each identifier of the chain in both escape spellings would close a channel that
+        computed access (`location["href"]`) leaves open for a shorter edit anyway. What this test
+        buys is that the decision cannot be reversed in SILENCE. Every escaped sample is paired with
+        its PLAIN twin and the twin's verdict is asserted too, so the escape is provably the sole
+        cause of the difference; without that a sample that decayed into a non-sink would keep
+        passing and pin nothing. The whitespace-boundary pair is the exception that proves it, and
+        carries a further control: the same shape with an ordinary non-sink identifier in place of
+        the escaped prefix is stripped too, which is what shows the whitespace rather than the
+        escape is doing the work there.
+        """
+        pairs = self._escaped_nav_pairs()
+        for escaped, plain, esc_hit, plain_hit in pairs:
+            self.assertEqual(
+                resources.offline_script_navigates_to_network(escaped), esc_hit,
+                "the validator's verdict on %r changed. If the identifier-escape class was closed "
+                "(or its over-match fixed) on purpose, move the sample into the corpus that now "
+                "describes it and update the CMH-OFFLINE-05 residual, which still documents this "
+                "behavior" % escaped)
+            self.assertEqual(
+                resources.offline_script_navigates_to_network(plain), plain_hit,
+                "the PLAIN twin %r no longer behaves as the control this pin needs, so the escaped "
+                "sample beside it proves nothing about the escape" % plain)
+        for sample in self._NAV_CORPUS_WHITESPACE_BOUNDARY_CONTROLS:
+            self.assertTrue(
+                resources.offline_script_navigates_to_network(sample),
+                "%r is no longer matched, so the whitespace-boundary pair beside it may be passing "
+                "because of the ESCAPE rather than the whitespace - which is the opposite of what "
+                "the CMH-OFFLINE-05 residual says about that shape" % sample)
+        node = shutil.which("node")
+        if not node:
+            # The validator half above already asserted; the JS half is extra, as elsewhere here.
+            return
+        script = (
+            self._runtime_nav_source() + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);"
+            "process.stdout.write(JSON.stringify("
+            "p.map(_offlineScriptNavigatesToNetwork)));});"
+        )
+        payload = ([escaped for escaped, _, _, _ in pairs]
+                   + [plain for _, plain, _, _ in pairs]
+                   + list(self._NAV_CORPUS_WHITESPACE_BOUNDARY_CONTROLS))
+        expected = ([esc_hit for _, _, esc_hit, _ in pairs]
+                    + [plain_hit for _, _, _, plain_hit in pairs]
+                    + [True] * len(self._NAV_CORPUS_WHITESPACE_BOUNDARY_CONTROLS))
+        verdicts = self._run_nav_node(node, script, payload, "the escaped-identifier corpus")
+        self.assertEqual(len(verdicts), len(payload),
+                         "node returned %d verdicts for %d samples"
+                         % (len(verdicts), len(payload)))
+        for sample, hit, want in zip(payload, verdicts, expected):
+            self.assertEqual(
+                hit, want,
+                "the REAL JS engine's verdict on %r disagrees with the CMH-OFFLINE-05 residual, "
+                "which documents this behavior - the code and the residual must move together"
+                % sample)
+
     # The regex literals and name lists the exporter's navigation SCAN is built from, each paired
     # with the validator constant that must mirror it byte for byte, and with the JS flags it must
     # carry. The scan replaced a single repeated-prefix pattern (see `_offlineNavSinkIndex`), so
