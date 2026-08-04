@@ -40,6 +40,20 @@ function cmhMarkLayerChrome(el) {
   CMH_LAYER_CHROME.add(el);
   return el;
 }
+// Resolve the layer's OWN control inside `scope`, by IDENTITY rather than by class name. Every
+// "does a control already exist here?" guard must go through this: an author element wearing a
+// control's class would otherwise make the layer skip creating (or, worse, remove) the real
+// control, silently denying the reviewer the affordance. The spoof gains nothing either way - it
+// is never registered, so the dialog's outside-click swallow still treats it as document content.
+function cmhOwnChrome(scope, selector) {
+  if (!scope || typeof scope.querySelectorAll !== "function") return null;
+  try {
+    const list = scope.querySelectorAll(selector);
+    for (let i = 0; i < list.length; i++) if (CMH_LAYER_CHROME.has(list[i])) return list[i];
+  } catch (e) { return null; }
+  return null;
+}
+
 // True when a click landed on, or inside, a registered chrome subtree. Prefers the EVENT's
 // propagation path (fixed at dispatch) so a control another listener detaches mid-dispatch is still
 // recognized, and falls back to the live ancestor chain where `composedPath` is unavailable.

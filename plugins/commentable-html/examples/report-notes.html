@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.650.0" />
+<meta name="commentable-html-version" content="1.651.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.650.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.651.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Design review sign-off</title>
 
@@ -4147,6 +4147,20 @@ function cmhMarkLayerChrome(el) {
   CMH_LAYER_CHROME.add(el);
   return el;
 }
+// Resolve the layer's OWN control inside `scope`, by IDENTITY rather than by class name. Every
+// "does a control already exist here?" guard must go through this: an author element wearing a
+// control's class would otherwise make the layer skip creating (or, worse, remove) the real
+// control, silently denying the reviewer the affordance. The spoof gains nothing either way - it
+// is never registered, so the dialog's outside-click swallow still treats it as document content.
+function cmhOwnChrome(scope, selector) {
+  if (!scope || typeof scope.querySelectorAll !== "function") return null;
+  try {
+    const list = scope.querySelectorAll(selector);
+    for (let i = 0; i < list.length; i++) if (CMH_LAYER_CHROME.has(list[i])) return list[i];
+  } catch (e) { return null; }
+  return null;
+}
+
 // True when a click landed on, or inside, a registered chrome subtree. Prefers the EVENT's
 // propagation path (fixed at dispatch) so a control another listener detaches mid-dispatch is still
 // recognized, and falls back to the live ancestor chain where `composedPath` is unavailable.
@@ -4382,7 +4396,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.650.0";
+const CMH_VERSION = "1.651.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -8919,7 +8933,7 @@ function positionWidgetAdd(el) {
   const bw = widgetAddBtn.offsetWidth || 96, bh = widgetAddBtn.offsetHeight || 26;
   const bounds = _floatingBounds(el);
   const widget = el.closest("[data-cm-widget]");
-  const reset = widget && widget.matches("[data-cm-draggable]") ? widget.querySelector(".cm-widget-reset") : null;
+  const reset = widget && widget.matches("[data-cm-draggable]") ? cmhOwnChrome(widget, ":scope > .cm-widget-reset") : null;
   const resetRect = reset && !reset.hidden ? reset.getBoundingClientRect() : null;
   const candidates = [
     { left: visible.right - bw - 6, top: visible.top + 6 },
@@ -9040,7 +9054,7 @@ function _syncWidgetResetButtons() {
   root.querySelectorAll("[data-cm-widget]").forEach((w) => {
     if (!_widgetResetOptIn(w)) return;
     const has = changed.has(w.getAttribute("data-cm-widget") || "widget");
-    let btn = w.querySelector(":scope > .cm-widget-reset");
+    let btn = cmhOwnChrome(w, ":scope > .cm-widget-reset");
     if (has && !btn) {
       btn = document.createElement("button");
       btn.type = "button";
@@ -12362,8 +12376,12 @@ function expandCollapsedAncestors(el) {
   let sec = el && el.closest && el.closest("section.cmh-section-collapsed");
   while (sec) {
     sec.classList.remove("cmh-section-collapsed");
-    const caret = sec.querySelector(":scope > .cmh-section-heading .cmh-sec-caret");
-    if (caret) { caret.setAttribute("aria-expanded", "true"); caret.title = "Collapse section"; }
+    const caret = cmhOwnChrome(sec, ":scope > .cmh-section-heading .cmh-sec-caret");
+    if (caret) {
+      caret.setAttribute("aria-expanded", "true");
+      caret.title = "Collapse section";
+      caret.setAttribute("aria-label", "Collapse section");
+    }
     sec = sec.parentElement && sec.parentElement.closest && sec.parentElement.closest("section.cmh-section-collapsed");
   }
 }
@@ -16294,7 +16312,7 @@ function setupSortableTables() {
     t.classList.add("cmh-sortable");
     const cur = _tableSortState[key] || null;
     [...hdr.cells].forEach(function (th, ci) {
-      if (th.querySelector(".cmh-sort-ctrl")) return;
+      if (cmhOwnChrome(th, ":scope > .cmh-sort-ctrl")) return;
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "cmh-sort-ctrl cm-skip";
@@ -16313,7 +16331,7 @@ function setupSortableTables() {
         else { _tableSortState[key] = { col: ci, dir: dir }; _sortRows(body, ci, dir); }
         _saveTableSortState();
         [...hdr.cells].forEach(function (h2, cj) {
-          const b2 = h2.querySelector(".cmh-sort-ctrl");
+          const b2 = cmhOwnChrome(h2, ":scope > .cmh-sort-ctrl");
           if (b2) _reflectSortIco(b2, (dir && ci === cj) ? dir : "");
         });
         recomputeTextOffsets();
@@ -19669,7 +19687,7 @@ function setupCollapsibleSections() {
     if (sec.closest(".cm-skip")) return;
     const heading = sec.querySelector(":scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6");
     if (!heading || heading.closest(".cm-skip")) return;
-    if (heading.querySelector(".cmh-sec-caret")) return;
+    if (cmhOwnChrome(heading, ":scope > .cmh-sec-caret")) return;
     heading.classList.add("cmh-section-heading");
     const caret = document.createElement("button");
     caret.type = "button";
@@ -19697,7 +19715,7 @@ function setupCollapsibleSections() {
     // Ignore clicks that are part of a text selection so commenting on an expanded heading
     // is unaffected.
     heading.addEventListener("click", function (e) {
-      if (e.target.closest(".cmh-sec-caret")) return;
+      if (caret.contains(e.target)) return;
       if (!sec.classList.contains("cmh-section-collapsed")) return;
       const sel = window.getSelection();
       if (sel && sel.toString().trim()) return;
@@ -21020,7 +21038,7 @@ const _REVIEW_LABELS = {
   commented: "Commented",
 };
 function _ensureBadge(heading) {
-  let badge = heading.querySelector(":scope > .cmh-review-badge");
+  let badge = cmhOwnChrome(heading, ":scope > .cmh-review-badge");
   if (!badge) {
     badge = document.createElement("button");
     badge.type = "button";

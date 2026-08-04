@@ -442,7 +442,7 @@ const _REVIEW_LABELS = {
   commented: "Commented",
 };
 function _ensureBadge(heading) {
-  let badge = heading.querySelector(":scope > .cmh-review-badge");
+  let badge = cmhOwnChrome(heading, ":scope > .cmh-review-badge");
   if (!badge) {
     badge = document.createElement("button");
     badge.type = "button";

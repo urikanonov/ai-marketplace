@@ -954,6 +954,169 @@ test.describe("comment interactions", () => {
     await expect.poll(() => page.evaluate(() => location.hash)).toBe("#resetspoofed");
   });
 
+  // The same in-root controls, except the AUTHOR document already ships an element wearing each
+  // control's class before the layer runs. A guard that decides "a control already exists here"
+  // from a bare class match skips creating the real control in every one of these headings, cells,
+  // and widgets - a silent denial of the affordance. The spoofs carry no text, so the document's
+  // offset space is unchanged, and each is sized so it can be clicked.
+  const SPOOF_BOX = ' style="display:inline-block;width:40px;height:16px;vertical-align:middle"';
+  const SPOOFED_CHROME = `
+    <section id="spoof-sec1">
+      <h2 id="spoof-head1">Spoofed chrome</h2>
+      <p>Reviewable paragraph text here for anchoring a comment.</p>
+      <div class="cm-skip" style="height:340px"></div>
+      <table>
+        <thead><tr><th>Service</th><th id="spoof-th">Requests<button type="button" class="cmh-sort-ctrl" id="author-sort"${SPOOF_BOX}></button></th></tr></thead>
+        <tbody>
+          <tr><td>gateway</td><td>1200</td></tr>
+          <tr><td>auth</td><td>340</td></tr>
+          <tr><td>catalog</td><td>9800</td></tr>
+        </tbody>
+      </table>
+      <div class="board cm-skip" data-cm-widget="triage" data-cm-draggable aria-label="Triage board" id="board">
+        <button type="button" class="cm-widget-reset" id="author-reset"${SPOOF_BOX}></button>
+        <div class="col" data-cm-slot="Now" id="now"><div class="card" data-cm-part="a" data-cm-part-label="Card A">Card A</div></div>
+        <div class="col" data-cm-slot="Later" id="later"></div>
+      </div>
+    </section>
+    <section id="spoof-sec2">
+      <h2 id="spoof-head2"><button type="button" class="cmh-sec-caret" id="author-caret"${SPOOF_BOX}></button>Second section<button type="button" class="cmh-review-badge" id="author-badge"${SPOOF_BOX}></button></h2>
+      <p>A second section with its own reviewable paragraph.</p>
+    </section>`;
+
+  test("CMH-CORE-21: an author element wearing a layer control's class does not suppress the real control", async ({ page }) => {
+    const { html } = stageContent(SPOOFED_CHROME, { key: "cmh-chrome-spoof-suppress" });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    const services = () => page.$$eval("#commentRoot table tbody tr td:first-child", (tds) => tds.map((t) => t.textContent.trim()));
+
+    // 62-sortable-tables.js: the header cell already carries an author `.cmh-sort-ctrl`.
+    const sortCtrl = page.locator("#spoof-th .cmh-sort-ctrl:not(#author-sort)");
+    await expect(sortCtrl).toHaveCount(1);
+    expect(await services()).toEqual(["gateway", "auth", "catalog"]);
+    await sortCtrl.click();
+    await expect(sortCtrl).toHaveAttribute("data-dir", "asc");
+    expect(await services()).toEqual(["auth", "gateway", "catalog"]);
+
+    // 82-toc.js: the heading already carries an author `.cmh-sec-caret`.
+    const caret = page.locator("#spoof-head2 .cmh-sec-caret:not(#author-caret)");
+    const section = page.locator("#spoof-sec2");
+    await expect(caret).toHaveCount(1);
+    await caret.click();
+    await expect(section).toHaveClass(/cmh-section-collapsed/);
+    await caret.click();
+    await expect(section).not.toHaveClass(/cmh-section-collapsed/);
+    // The delegated heading click defers to the caret by IDENTITY too: an author element merely
+    // wearing the caret class is not the caret, so clicking it still expands a collapsed section.
+    await caret.click();
+    await expect(section).toHaveClass(/cmh-section-collapsed/);
+    await page.locator("#author-caret").click();
+    await expect(section).not.toHaveClass(/cmh-section-collapsed/);
+
+    // 84-section-review.js: the heading already carries an author `.cmh-review-badge`.
+    const badge = page.locator("#spoof-head2 .cmh-review-badge:not(#author-badge)");
+    await expect(badge).toHaveCount(1);
+    await expect(badge).toHaveClass(/cmh-review-unreviewed/);
+    await badge.click();
+    await expect(badge).toHaveClass(/cmh-review-reviewed/);
+
+    // 35-widgets.js: the widget already carries an author `.cm-widget-reset`.
+    await page.evaluate(() => document.getElementById("later").appendChild(document.querySelector('[data-cm-part="a"]')));
+    await widgetMutationFrame(page);
+    const reset = page.locator("#board .cm-widget-reset:not(#author-reset)");
+    await expect(reset).toHaveCount(1);
+    await reset.click();
+    await widgetMutationFrame(page);
+    await expect(page.locator('#now [data-cm-part="a"]')).toHaveCount(1);
+    await expect(reset).toHaveCount(0);
+    // Symmetrically, the author's element is never the layer's to REMOVE either.
+    await expect(page.locator("#author-reset")).toHaveCount(1);
+    // ...nor to MEASURE: the widget Add button dodges the layer's own "Reset moves", so with the
+    // widget clean again (no real reset) the author's element must not be measured in its place.
+    // Move the pointer clear first so the hover below raises a REAL mouseenter and repositions.
+    await page.mouse.move(2, 2);
+    await expect(page.locator("#widgetAddBtn")).toBeHidden();
+    await page.evaluate(() => {
+      window.__authorResetMeasured = false;
+      const el = document.getElementById("author-reset");
+      const orig = Element.prototype.getBoundingClientRect;
+      el.getBoundingClientRect = function () { window.__authorResetMeasured = true; return orig.call(this); };
+    });
+    await page.hover('[data-cm-part="a"]');
+    await expect(page.locator("#widgetAddBtn")).toBeVisible();
+    expect(await page.evaluate(() => window.__authorResetMeasured), "the author's spoof must never be measured").toBe(false);
+  });
+
+  test("CMH-CORE-21: an author element that spoofs a control class gains nothing and is still swallowed", async ({ page }) => {
+    // A viewport tall enough for the whole staged document, so clicking a spoof near its foot never
+    // auto-scrolls: a scroll would close the dialog clip-awarely BEFORE the click, and the probe
+    // would then read a legitimately un-swallowed click as a chrome-identity regression.
+    await page.setViewportSize({ width: 1280, height: 1200 });
+    const { html } = stageContent(SPOOFED_CHROME, { key: "cmh-chrome-spoof-unregistered" });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await addTextComment(page, "#commentRoot #spoof-sec1 p", "spoofed chrome note");
+    const cid = (await allCids(page))[0];
+    const pop = page.locator(".cm-comment-popover");
+    const ids = ["author-sort", "author-reset", "author-caret", "author-badge"];
+    // Every spoof must still be in the document: an "already created?" guard that matched the
+    // author's element by class would also have REMOVED it (the widget reset's clean-up branch).
+    for (const id of ids) await expect(page.locator(`#${id}`)).toHaveCount(1);
+    // Record whether the click actually REACHED each spoof un-prevented; the capture-phase swallow
+    // stops it before the target listener, so a swallowed click leaves the flag false.
+    await page.evaluate((names) => {
+      window.__cmhSpoofReached = {};
+      names.forEach((id) => {
+        window.__cmhSpoofReached[id] = false;
+        document.getElementById(id).addEventListener("click", (e) => { window.__cmhSpoofReached[id] = !e.defaultPrevented; });
+      });
+    }, ids);
+
+    for (const id of ids) {
+      await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+      await expect(page.locator("#hlBubble")).toBeVisible();
+      await page.locator("#hlBubble").click();
+      await expect(pop).toBeVisible();
+      // The dismiss guard arms on the next tick (so the opening click cannot close the dialog), so
+      // cross a macrotask boundary in the page before probing: our timer was scheduled after the
+      // layer's, and equal-delay timers fire in scheduling order.
+      await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)));
+      await expect(pop, "the dialog must still be open when the probe click lands").toBeVisible();
+      await page.locator(`#${id}`).click();
+      // The dialog must still have been OPEN when the click landed, or "not swallowed" would mean
+      // nothing; assert the close was caused by this click rather than an earlier scroll.
+      await expect(pop).toBeHidden();
+      expect(await page.evaluate((n) => window.__cmhSpoofReached[n], id), `${id} must not be carved out as layer chrome`).toBe(false);
+    }
+    // Non-vacuous: with no dialog open the identical click DOES reach each spoof, so the assertions
+    // above pin the swallow rather than an inert probe.
+    for (const id of ids) {
+      await page.locator(`#${id}`).click();
+      expect(await page.evaluate((n) => window.__cmhSpoofReached[n], id), `${id} probe is inert`).toBe(true);
+    }
+  });
+
+  test("CMH-CORE-21: expanding a collapsed section from the sidebar restamps the layer's own caret", async ({ page }) => {
+    const { html } = stageContent(SPOOFED_CHROME, { key: "cmh-chrome-spoof-expand" });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await addTextComment(page, "#commentRoot #spoof-sec2 p", "collapsed section note");
+    const caret = page.locator("#spoof-head2 .cmh-sec-caret:not(#author-caret)");
+    await caret.click();
+    await expect(page.locator("#spoof-sec2")).toHaveClass(/cmh-section-collapsed/);
+    await expect(caret).toHaveAttribute("aria-expanded", "false");
+    // Jumping to the comment expands the ancestor section, and must put the expanded state back on
+    // the caret the LAYER created - name, title, and aria-expanded together - never on the author's.
+    await page.locator('.cm-card [data-act="jump"]').first().click();
+    await expect(page.locator("#spoof-sec2")).not.toHaveClass(/cmh-section-collapsed/);
+    await expect(caret).toHaveAttribute("aria-expanded", "true");
+    await expect(caret).toHaveAttribute("aria-label", "Collapse section");
+    // The tooltip layer moves `title` into `data-cmh-tip` on first hover, so assert the effective
+    // tooltip rather than the raw attribute.
+    expect(await caret.evaluate((el) => el.getAttribute("title") || el.getAttribute("data-cmh-tip"))).toBe("Collapse section");
+    expect(await page.locator("#author-caret").getAttribute("aria-expanded")).toBeNull();
+  });
+
   test("CMH-CORE-16: the dialog does not swallow the first click on a floating composer control", async ({ page }) => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section:nth-of-type(1) p", "anchor note");
