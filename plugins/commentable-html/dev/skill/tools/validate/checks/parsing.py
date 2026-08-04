@@ -1820,12 +1820,16 @@ class _DocParser(_BrowserBoundaries):
         ns = self._child_namespace(tag, ad)
         if ns == "html":
             self._implicit_close(tag)
-            # HTML5's h1-h6 start tag POPS an open heading that is the current node, so
+            # HTML5's h1-h6 start tag POPS an open heading that is the CURRENT node, so
             # `<h2 id="a">A<h2 id="b">B` is two headings: without this the first one ran on and
-            # swallowed the second's text, and the second's id was never collected at all.
-            if (tag in _HEADING_TAGS and self._cur_heading is not None
-                    and self._cur_heading_depth == len(self.stack) - 1):
-                self._truncate_stacks(self._cur_heading_depth)
+            # swallowed the second's text, and the second's id was never collected at all. The
+            # rule is STRUCTURAL - a browser pops whatever open heading is the current node, so a
+            # heading this parser does not CAPTURE (a cm-skip one, one outside #commentRoot) is
+            # popped too; keyed on the capture instead, such a heading stayed open and the
+            # visible heading after it inherited its cm-skip and vanished from every check.
+            if (tag in _HEADING_TAGS and self.stack
+                    and self.stack[-1][0] in _HEADING_TAGS):
+                self._truncate_stacks(len(self.stack) - 1)
         own_skip = "cm-skip" in set((ad.get("class") or "").split())
         before_mermaid = len(self.mermaid_blocks)
         self._record(tag, ad, own_skip)

@@ -100,6 +100,17 @@ class _SectionParser(_browser_attrs.BrowserTagNames):
             return
         d = dict(attrs)
         classes = (d.get("class") or "").split()
+        # HTML5's h1-h6 start tag pops an open heading that is the CURRENT node, so a heading whose
+        # end tag never arrived stops here instead of running on to collect the rest of the
+        # document as its own text. The rule is STRUCTURAL - a browser pops whatever open heading
+        # is the current node - so a heading excluded from the hash is popped too; keyed on `hidx`
+        # instead, an unterminated cm-skip heading stayed open and the VISIBLE heading after it
+        # inherited its skip, dropping a section a browser renders. This runs BEFORE the skip
+        # inheritance below so that inheritance is read off the heading's parent, as in the DOM.
+        # Mirrors the validator's _DocParser (CMH-VAL-21).
+        if (_HEADING_RE.match(tag_l) and self._stack
+                and _HEADING_RE.match(self._stack[-1]["tag"])):
+            self._truncate(len(self._stack) - 1)
         parent_skip = self._skipping()
         # Skip cm-skip chrome, inert script/style/template/noscript, and runtime-transformed blocks
         # (rendered diffs, KQL, mermaid, chart canvases, editable notes) - the same set the JS
@@ -130,16 +141,45 @@ class _SectionParser(_browser_attrs.BrowserTagNames):
 
     def handle_endtag(self, tag):
         tag_l = self._browser_tag(tag)
+        # HTML5 does NOT pop for `</body>` or `</html>`: they only switch the insertion mode, and
+        # what follows is appended to the element still open - which, in a document truncated
+        # before `</main>`, is `#commentRoot` itself (verified in chromium: the trailing prose is
+        # part of `getElementById("commentRoot").textContent`). Popping here would drop text the
+        # runtime hashes, and this hash has to match `cmhDocContentHash` byte for byte.
+        if tag_l in ("body", "html"):
+            return
         for i in range(len(self._stack) - 1, -1, -1):
             if self._stack[i]["tag"] == tag_l:
-                for entry in self._stack[i:]:
-                    hidx = entry.get("hidx")
-                    if hidx is not None and self.headings[hidx]["end"] is None:
-                        self.headings[hidx]["end"] = self.length
-                if self._root_depth is not None and (i + 1) == self._root_depth:
-                    self._root_depth = None
-                del self._stack[i:]
+                self._truncate(i)
                 break
+
+    def _truncate(self, index):
+        """Pop the open-element stack back to `index`, applying every boundary that depth ends.
+
+        A heading the popped subtree holds ends there, and so does the content root when an
+        ANCESTOR of it closes: only the root's OWN end tag used to end it, so an unterminated root
+        an ancestor closed over (`<section><main id="commentRoot">...</section>`) kept collecting
+        the text and the headings a browser puts outside it into the last section. The validator's
+        `_DocParser` and the table-of-contents parser read those two boundaries the same way
+        (CMH-VAL-21). `</body>` and `</html>` never reach here - see `handle_endtag`.
+        """
+        for entry in self._stack[index:]:
+            hidx = entry.get("hidx")
+            if hidx is not None and self.headings[hidx]["end"] is None:
+                self.headings[hidx]["end"] = self.length
+        if self._root_depth is not None and (index + 1) <= self._root_depth:
+            self._root_depth = None
+        del self._stack[index:]
+
+    def close(self):
+        """End a heading still open at end of input, so the PARSER owns that boundary rather than
+        leaving each caller to guess it. A browser renders a heading whose end tag never arrives,
+        so its text runs to the end of the document. The host's own close() runs FIRST so trailing
+        text it is still holding is counted before the ends are stamped."""
+        super().close()
+        for heading in self.headings:
+            if heading["end"] is None:
+                heading["end"] = self.length
 
     def handle_data(self, data):
         if self._in_root() and not self._skipping() and data:
