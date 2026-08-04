@@ -984,9 +984,19 @@ case" - a permanently-open issue nobody will ever act on is worse than a dismiss
 because it hides the real backlog. Findings that CLEAR the bar are still captured immediately, exactly
 as above.
 
-These always clear the bar and are real work: a change that WEAKENS a declared enforcement layer; a
-FALSE POSITIVE where a guard deletes, rejects, or breaks benign content; a drift that makes a tool
-emit output its own validator rejects; and anything a user can actually observe.
+These always clear the bar and are real work: a change that WEAKENS a declared enforcement layer;
+EVIDENCE THAT A DECLARED ENFORCEMENT CLAIM IS FACTUALLY INACCURATE (a channel the spec asserts is
+blocked that turns out not to be - that invalidates the non-goal itself, so it must be filed, never
+dismissed by citing the row it disproves); a FALSE POSITIVE where a guard deletes, rejects, or breaks
+benign content; a drift that makes a tool emit output its own validator rejects; and anything a user
+can actually observe.
+
+**Confirm a finding before you file it.** The gate above filters findings that are out of scope; it
+does nothing about findings that are simply WRONG. A review panel running in prisms mode expects low
+cross-model agreement, so a lone unreviewed finding is as likely to be a model artifact as a bug.
+Read the actual code and satisfy yourself the problem is real before opening an issue - the same bar
+that applies before auto-fixing one. File what you confirmed; report what you could not confirm as
+unverified rather than as a defect.
 
 ### Signal that an issue is actively being worked on (branch stamp + heartbeat)
 

@@ -84,10 +84,21 @@ class OfflineThreatModelTests(unittest.TestCase):
             )
 
     def test_the_threat_model_names_scripted_navigation_as_the_one_residual(self):
-        """CMH-SEC-06: top-level scripted navigation stays the single acknowledged residual."""
+        """CMH-SEC-06: navigation and WebRTC are the acknowledged non-CSP-coverable residuals."""
         row = _sec_06_row()
         self.assertIn("CMH-OFFLINE-05", row)
         self.assertIn("navigation", row.lower())
+        # A review panel disproved the original "navigation is the ONE residual" wording by showing
+        # RTCPeerConnection ICE/STUN egresses under this exact policy. Keep both residuals named, so
+        # the row cannot drift back to a claim that is not true.
+        self.assertIn("WEBRTC", row.upper())
+        self.assertIn("not a sanitizer", row)
+
+    def test_an_inaccurate_enforcement_claim_is_never_dismissible_by_citing_this_row(self):
+        """CMH-SEC-06: disproving a claim in the row is always in scope, never dismissible by it."""
+        row = _sec_06_row()
+        self.assertIn("EVIDENCE THAT AN ENFORCEMENT CLAIM IN THIS ROW IS INACCURATE", row)
+        self.assertIn("never dismissed by citing this row", row)
 
 
 if __name__ == "__main__":
