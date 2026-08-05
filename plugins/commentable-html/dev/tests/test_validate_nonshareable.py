@@ -121,10 +121,37 @@ class NonShareableTests(unittest.TestCase):
             'commentableHtmlLayer.mode is "nonshareable" but the document carries offline chart '
             "snapshots")
 
+    def test_nonshareable_document_rejects_offline_chart_snapshots_in_the_legacy_spelling(self):
+        # The pre-rename `nonportable` spelling is baked into every document produced before the
+        # rename, so the rule must reach it too - and the error must quote the mode the document
+        # actually declares rather than the current spelling.
+        html = self._with_offline_chart(
+            build_nonshareable().replace('"mode":"nonshareable"', '"mode":"nonportable"', 1))
+        self.assertIn('"mode":"nonportable"', html)
+        self.assertNonShareableError(
+            html,
+            'commentableHtmlLayer.mode is "nonportable" but the document carries offline chart '
+            "snapshots")
+
     def test_nonshareable_document_without_offline_chart_snapshots_is_clean(self):
         # Control: the rule fires on the SNAPSHOT, not on the nonshareable classification, so an
         # ordinary companion-file document stays clean.
         errors, warnings = self._validate(build_nonshareable())
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    def test_an_offline_chart_attribute_outside_the_content_root_is_not_a_snapshot(self):
+        # Scope control: the runtime reads `#commentRoot [data-cm-offline-chart]`, so the validator
+        # must not fail a companion-file document for the attribute sitting in host chrome outside
+        # the content root - it is not evidence either side would act on.
+        html = build_nonshareable().replace(
+            "<!-- BEGIN: commentable-html - NONSHAREABLE BOOTSTRAP -->",
+            "<!-- BEGIN: commentable-html - NONSHAREABLE BOOTSTRAP -->\n"
+            '<img class="cmh-chart" data-cm-offline-chart="true" '
+            'src="data:image/png;base64,AA==" alt="Outside the content root">',
+            1)
+        self.assertIn('data-cm-offline-chart="true"', html)
+        errors, warnings = self._validate(html)
         self.assertEqual(errors, [], errors)
         self.assertEqual(warnings, [], warnings)
 

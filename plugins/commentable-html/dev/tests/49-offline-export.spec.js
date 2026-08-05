@@ -434,15 +434,30 @@ test("a document that declares the companion-file mode is never read as Offline 
 </figure>`;
   const staged = stageContent(snapshotContent, { key: "cmh-nonshareable-chart", source: "nonshareable-chart.html" });
   const original = fs.readFileSync(staged.html, "utf8");
-  const declared = original.replace('"mode":"shareable"', '"mode":"nonshareable"', 1);
-  expect(declared).toContain('"mode":"nonshareable"');
-  fs.writeFileSync(staged.html, declared);
   try {
     await installClipboardCapture(page);
-    await page.goto(fileUrl(staged.html));
-    await ready(page);
-    await expect(page.locator("#cmTypeBadge")).not.toHaveText("Offline");
-    await expect(page.locator("#cmTypeBadge")).toHaveText("Shareable");
+    // Both spellings: the pre-rename `nonportable` is what a legacy companion-file document
+    // actually carries, so it is the shape this rule most needs to reach.
+    for (const mode of ["nonshareable", "nonportable"]) {
+      const declared = original.replace('"mode":"shareable"', `"mode":"${mode}"`, 1);
+      expect(declared).toContain(`"mode":"${mode}"`);
+      fs.writeFileSync(staged.html, declared);
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await expect(page.locator("#cmTypeBadge")).not.toHaveText("Offline");
+      await expect(page.locator("#cmTypeBadge")).toHaveText("Shareable");
+
+      // The durable half: a Save restamps the descriptor from the same reading, so the mode
+      // written into the downloaded file must not claim offline either.
+      await openToolbarMenu(page);
+      const [download] = await Promise.all([
+        page.waitForEvent("download"),
+        page.locator("#btnSaveHtmlTop").click(),
+      ]);
+      const savedHtml = await readDownload(download);
+      expect(layerDescriptor(savedHtml).mode).toBe("shareable");
+      expect(savedHtml).toContain('data-cm-offline-chart="true"');
+    }
 
     // Control: the legacy fallback survives. Drop the declared mode entirely - the shape
     // CMH-OFFLINE-02 promises to keep reading - and the same snapshot still yields Offline.

@@ -135,6 +135,19 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
             '<img class="cmh-chart" data-cm-offline-chart="true" '
             'src="data:image/png;base64,AA==" alt="Offline chart">'
         )
+        self.assertIn('data-cm-offline-chart="true"', doc)
+        self.assertOkNoWarn(doc)
+
+    def test_layer_descriptor_offline_artifact_outside_the_content_root_is_not_a_snapshot(self):
+        # Scope control: the runtime's signal is `#commentRoot [data-cm-offline-chart]`, so an
+        # attribute outside the content root forces nothing here either (CMH-OFFLINE-09).
+        doc = build().replace(
+            "<!--\nBEGIN: commentable-html - HANDLED IDS",
+            '<img class="cmh-chart" data-cm-offline-chart="true" '
+            'src="data:image/png;base64,AA==" alt="Outside the content root">\n'
+            "<!--\nBEGIN: commentable-html - HANDLED IDS",
+            1)
+        self.assertIn('data-cm-offline-chart="true"', doc)
         self.assertOkNoWarn(doc)
 
     def test_layer_descriptor_id_decoy_div_is_flagged(self):
