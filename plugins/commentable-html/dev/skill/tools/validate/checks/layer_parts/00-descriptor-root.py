@@ -19,8 +19,55 @@ SHAREABLE_MODES = ("shareable", "portable")
 NONSHAREABLE_MODES = ("nonshareable", "nonportable")
 
 
+def _descriptor_scripts(parser):
+    """Every `<script id="commentableHtmlLayer">` the LAYER owns, in document order.
+
+    The boundary is the one the runtime and the exporter already enforce: `cmhLayerBlocks`
+    (`assets/js/01-config.js`) drops any owner the content ROOT contains, because "a
+    content-region decoy must not be able to declare what this document IS", and
+    `65-export-shareable.js` refuses a document whose only owner sits there. Reading the whole
+    document instead certified a file the layer resolves no descriptor for and no export will
+    produce - and, since the DECLARED mode became the sole key for the offline rule set, let
+    authored content pick the rule set that judges it.
+
+    The boundary is the whole `#commentRoot` SUBTREE, not just the part between the CONTENT
+    markers, because that is what `cmhLayerBlocks` tests (`root.contains(node)`): a descriptor
+    parked inside the root but ahead of the BEGIN marker is equally invisible to the layer. That
+    subtree contains the authored region, so the authored-DEMONSTRATION case `layer_tags` handles
+    is covered by the same test.
+    """
+    return [s for s in parser.scripts
+            if s["attrs"].get("id") == LAYER_DESCRIPTOR_ID and not _in_content_root(s)]
+
+
+def _in_content_root(script):
+    """Whether the `#commentRoot` subtree contains this script.
+
+    An ABSENT flag fails CLOSED (treated as inside the root, so not layer-owned): every entry
+    `_flush_raw_captures` puts in `parser.scripts` carries it, and a future writer that forgot it
+    must not silently revert this boundary to the "first script anywhere" rule it replaced. The
+    sibling `in_content` flag is deliberately NOT consulted - it is this flag AND the marker
+    region by construction, so it can never be true when this one is false.
+    """
+    return bool(script.get("in_content_root", True))
+
+
+def _missing_descriptor_error(parser):
+    msg = 'missing <script id="%s" type="application/json"> layer descriptor' % LAYER_DESCRIPTOR_ID
+    if any(s["attrs"].get("id") == LAYER_DESCRIPTOR_ID and _in_content_root(s)
+           for s in parser.scripts):
+        # Say WHY, as the runtime and the exporter do: the element is right there in the file.
+        # Phrased without an ownership COUNT, because this predicate only proves that at least
+        # one such script is inside the root - a duplicate, or a non-script owner elsewhere, is
+        # reported by the dedicated uniqueness checks instead.
+        msg += (" - a <script> carrying that id sits inside the content root, where authored"
+                " content lives, so the layer does not resolve it; move the descriptor above the"
+                " content root (or re-generate the document)")
+    return msg
+
+
 def _layer_descriptor_data(parser):
-    scripts = [s for s in parser.scripts if s["attrs"].get("id") == LAYER_DESCRIPTOR_ID]
+    scripts = _descriptor_scripts(parser)
     if not scripts:
         return None
     try:
@@ -32,9 +79,9 @@ def _layer_descriptor_data(parser):
 
 def _check_layer_descriptor(parser, nonshareable, active_regions):
     errors = []
-    scripts = [s for s in parser.scripts if s["attrs"].get("id") == LAYER_DESCRIPTOR_ID]
+    scripts = _descriptor_scripts(parser)
     if not scripts:
-        return ['missing <script id="%s" type="application/json"> layer descriptor' % LAYER_DESCRIPTOR_ID]
+        return [_missing_descriptor_error(parser)]
     if len(scripts) > 1:
         errors.append('<script id="%s"> appears %d times (must be unique)' % (LAYER_DESCRIPTOR_ID, len(scripts)))
     script = scripts[0]

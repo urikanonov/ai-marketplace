@@ -1969,16 +1969,26 @@ class _DocParser(_BrowserBoundaries):
         its `depth` is the index it occupies and any truncation that removes it finalizes it."""
         self._raw_captures.append({"tag": tag, "pos": self._off(), "attrs": ad,
                                    "depth": len(self.stack), "parts": [],
-                                   "in_content": self._in_commentable_content()})
+                                   "in_content": self._in_commentable_content(),
+                                   "in_content_root": self._in_comment_root()})
 
     def _flush_raw_captures(self, depth):
         """Finalize every capture the element at `depth` (or an ancestor of it) closed, innermost
-        first, so an element a browser closed implicitly still contributes its body."""
+        first, so an element a browser closed implicitly still contributes its body.
+
+        `in_content` and `in_content_root` ride along: a check that asks what the LAYER declares
+        needs the same boundary the layer itself draws, and it can only be known while the capture
+        is open. Both are kept because they answer different questions - `in_content` is the
+        authored CONTENT region (what `layer_tags` excludes), `in_content_root` is the whole
+        `#commentRoot` subtree (what the runtime's `cmhLayerBlocks` excludes). They are recorded on
+        `styles` too and deliberately unread there: a `<style>` counts wherever it sits, because
+        one an author puts in their own content is still live CSS (CMH-VAL-20)."""
         while self._raw_captures and self._raw_captures[-1]["depth"] >= depth:
             cap = self._raw_captures.pop()
             sink = self.scripts if cap["tag"] == "script" else self.styles
             sink.append({"pos": cap["pos"], "attrs": cap["attrs"],
-                         "body": "".join(cap["parts"])})
+                         "body": "".join(cap["parts"]), "in_content": cap["in_content"],
+                         "in_content_root": cap["in_content_root"]})
 
     def _current_raw_capture(self):
         """The open `<script>`/`<style>` whose element is the CURRENT NODE, if any.

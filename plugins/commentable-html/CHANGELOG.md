@@ -4,6 +4,29 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.711.0] - 2026-08-05
+
+### Fixed
+
+- The validator now resolves the layer descriptor the way the runtime and the exporter do, so a
+  document whose ONLY `commentableHtmlLayer` descriptor sits inside the content root is reported as
+  missing a descriptor instead of validating completely clean (CMH-VAL-19). The layer deliberately
+  reads its own reserved blocks OUTSIDE the content root (`cmhLayerBlocks`, so that "a
+  content-region decoy must not be able to declare what this document IS") and every export refuses
+  such a file outright, but the validator took the first `<script id="commentableHtmlLayer">`
+  anywhere in the parse - the parser computed the content-region flag per capture and then dropped
+  it. A document with a live descriptor moved inside `#commentRoot` therefore got a clean bill of
+  health for a file the layer resolves no descriptor for and no export will produce, and a decoy
+  placed there ahead of the real descriptor decided the document's declared mode - the one value
+  that now keys the whole offline rule set, and one a decoy can set to the perfectly VALID
+  `"offline"` without raising any mode error at all. The flags ride along to the flushed script and
+  the descriptor is resolved through them, on the boundary `cmhLayerBlocks` actually tests: the
+  whole `#commentRoot` SUBTREE, not just the part between the CONTENT markers, so a descriptor
+  parked inside the root but ahead of the BEGIN marker (or past the END marker) is caught too. An
+  absent flag fails CLOSED. The root subtree contains the authored region, so an authored
+  DEMONSTRATION of the markup in prose is still content and the real descriptor in the head is
+  still read, and the missing-descriptor error now says WHY.
+
 ## [1.710.0] - 2026-08-05
 
 ### Fixed
