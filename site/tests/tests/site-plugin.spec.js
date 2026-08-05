@@ -816,17 +816,23 @@ test("a long unbreakable inline code token does not overflow the mobile viewport
   ];
   await page.setViewportSize({ width: 375, height: 800 });
   for (const { path: p, selector, label } of surfaces) {
-    await page.goto(p, { waitUntil: "domcontentloaded" });
+    // "load", not "domcontentloaded": the fit assertions below are absolute, so they must not race a
+    // stylesheet or a late-sizing image. Today the pages' trailing synchronous script happens to make
+    // the two equivalent, but nothing enforces that.
+    await page.goto(p, { waitUntil: "load" });
     const host = page.locator(selector).first();
     await expect(host, p + " has a " + label).toBeVisible();
-    const width = await page.evaluate(() => document.documentElement.clientWidth);
-    const before = await page.evaluate(() => document.documentElement.scrollWidth);
     // Nothing is neutralized first: every surface here, the hub included, fits the viewport at rest
     // (SITE-NAV-05 collapses the closed nav flyout, which used to stick 63px past the right edge).
-    // Pinning that baseline is what lets the post-injection assertion below be ABSOLUTE rather than
-    // a no-growth comparison, since scrollWidth reports only the largest overhang and a standing
-    // overflow would otherwise mask a smaller new one.
-    expect(before, p + " " + label + ": the page must fit the viewport before anything is injected").toBeLessThanOrEqual(width + 1);
+    // Pinning that baseline is what makes the absolute post-injection assertion below trustworthy on
+    // its own rather than only because a neutralized flyout was hidden first: documentElement
+    // .scrollWidth reports the largest overhang, so a standing overflow would mask a smaller new one.
+    // Both metrics are read in ONE evaluate so they always describe the same frame.
+    const rest = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(rest.scrollWidth, p + " " + label + ": the page must fit the viewport before anything is injected").toBeLessThanOrEqual(rest.clientWidth + 1);
     await host.evaluate((el, text) => {
       const code = document.createElement("code");
       code.id = "inline-code-overflow-probe";
@@ -835,13 +841,18 @@ test("a long unbreakable inline code token does not overflow the mobile viewport
     }, UNBREAKABLE_CODE_TOKEN);
     const probe = page.locator("#inline-code-overflow-probe");
     await expect(probe).toBeVisible();
-    const after = await page.evaluate(() => document.documentElement.scrollWidth);
-    expect(after, p + " " + label + ": a long code token must not widen the document").toBeLessThanOrEqual(before);
-    expect(after, p + " " + label + ": the document must still fit the viewport").toBeLessThanOrEqual(width + 1);
+    // Re-read the viewport width alongside the new scrollWidth: the probe is what these assertions
+    // judge, so they must measure against the viewport as it stands WITH the probe in the document.
+    const after = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(after.scrollWidth, p + " " + label + ": a long code token must not widen the document").toBeLessThanOrEqual(rest.scrollWidth);
+    expect(after.scrollWidth, p + " " + label + ": the document must still fit the viewport").toBeLessThanOrEqual(after.clientWidth + 1);
     // The span itself stays inside the viewport too, so the page is not merely clipping it.
     const box = await probe.boundingBox();
     expect(box.x, p + " " + label + ": code span starts on-screen").toBeGreaterThanOrEqual(-1);
-    expect(box.x + box.width, p + " " + label + ": code span ends on-screen").toBeLessThanOrEqual(width + 1);
+    expect(box.x + box.width, p + " " + label + ": code span ends on-screen").toBeLessThanOrEqual(after.clientWidth + 1);
   }
 });
 
@@ -850,9 +861,17 @@ test("a fenced code block keeps its own pre and scroll behavior (SITE-CODE-01)",
   // `white-space: pre`, which suppresses wrapping, so a long line scrolls inside the block
   // instead of being re-flowed (and still does not widen the document).
   await page.setViewportSize({ width: 375, height: 800 });
-  await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
+  await page.goto("/commentable-html/tutorial/", { waitUntil: "load" });
   const host = page.locator(".tutorial p").first();
   await expect(host).toBeVisible();
+  // Same unmodified baseline as the inline test above: pin that the page fits before the probe
+  // exists, so the docFits assertion after it is an absolute bound and not one a standing overflow
+  // could mask.
+  const rest = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  }));
+  expect(rest.scrollWidth, "the tutorial page must fit the viewport before anything is injected").toBeLessThanOrEqual(rest.clientWidth + 1);
   await host.evaluate((el, text) => {
     const pre = document.createElement("pre");
     pre.id = "fenced-block-probe";
