@@ -340,7 +340,7 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET, html=None)
     parser, ok = _parse(html)
     if not ok:
         return [_PARSE_FAIL], []
-    errors = _marker_newline_errors(raw_html, html, layer, charts)
+    errors = _marker_newline_errors(raw_html, html, True, charts) if layer else []
     warnings = []
     try:
         if layer:
@@ -358,9 +358,11 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET, html=None)
             errors += e
             warnings += w
         if charts:
-            e, w, _n = check_charts(html, parser, marker_provenance=not layer)
+            e, w, n = check_charts(html, parser, marker_provenance=not layer)
             errors += e
             warnings += w
+            if not layer and n:
+                errors += _marker_newline_errors(raw_html, html, False, True)
         if layer:
             e, w = check_checklists(html)
             errors += e
@@ -403,7 +405,9 @@ def validate_charts(path):
         n = len(re.findall(r"<canvas(?![-\w])", html, re.IGNORECASE))
         return ([_PARSE_FAIL] if n else []), [], n
     errors, warnings, n = check_charts(html, parser)
-    return _marker_newline_errors(raw_html, html, False, True) + errors, warnings, n
+    if n:
+        errors = _marker_newline_errors(raw_html, html, False, True) + errors
+    return errors, warnings, n
 
 
 _USAGE = "usage: python tools/validate.py [--charts-only|--layer-only] [--strict] [--suggest] [--no-stamp] <file.html> [more.html ...]"

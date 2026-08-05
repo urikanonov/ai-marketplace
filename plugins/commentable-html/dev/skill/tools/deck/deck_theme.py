@@ -43,7 +43,8 @@ def _validate_html(html):
     problems = []
     warnings = []
     if _base is not None:
-        with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as tf:
+        with tempfile.NamedTemporaryFile(
+                "w", suffix=".html", delete=False, encoding="utf-8", newline="") as tf:
             tf.write(html)
             tmp = tf.name
         try:

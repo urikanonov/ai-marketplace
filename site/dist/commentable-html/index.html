@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.685.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.685.2<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.685.2] - 2026-08-05</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The validator and upgrade tool now preserve raw newline characters while reading documents, so a lone carriage return cannot become a line break that makes Python count a region marker the browser runtime ignores. The validator compares marker counts in that raw view, then runs every browser-semantic check on the browser-normalized newline view, so equivalent CRLF/LF attribute values cannot evade duplicate checks. Upgrade offsets advance on line feeds only, retaining correct CRLF widths, and output still normalizes inserted regions to the document&#x27;s dominant newline without doubling preserved CRLF sequences. Newline style alone no longer makes an up-to-date CRLF document look stale, and invalid UTF-8 now produces a clean read error instead of an upgrade traceback. Validation stamps also use and remove the document&#x27;s dominant newline, so stamping a CRLF file cannot introduce a lone line feed or leave a blank line behind. Deck-theme validation preserves the same raw newlines in its temporary file instead of doubling CRLF on Windows.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.685.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>A chrome control focused while the comments panel is still SLIDING IN no longer loses its tooltip for good (CMH-UI-14). The tip is only ever raised by <code>focusin</code>/<code>mouseover</code>, so a control that sat outside the visible box during the 0.22s panel slide was suppressed with no second chance - a keyboard user who opened the panel and immediately tabbed to Search, Sort, More or Help got silence. A suppressed control now opens a bounded watch episode: the tip is raised the moment the control lands (within 600ms), and the bubble then keeps following the control until its box holds still, so it ends up beside the settled control with its arrow on the control&#x27;s centre rather than parked where the control was mid-slide. The suppression itself is unchanged for a control the reviewer genuinely cannot see (a soft keyboard covering it, a pinch-panned page): an episode needs the control to still be focused or hovered, is bounded as a whole so a never-settling animation cannot renew it, and ends when focus or the pointer moves on, on the usual dismissals (focus out, scroll, viewport change, Escape, mousedown), or when another control takes over - so it expires quietly instead of parking a bubble over unrelated chrome or raising one over a control the reviewer has already tabbed past.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.684.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -509,8 +518,6 @@
               <li>Startup diagnostics now share one aggregation path and appear together in a single alert toast. A startup storage read or write failure, duplicate reserved data blocks, an unresolved review-state block, and the handled-comment cleanup notice can no longer replace one another before the reader sees them.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.681.0] - 2026-08-04</h3></div>
             <div class="group-label">Changed</div>
@@ -552,14 +559,7 @@
               <li>The exported file&#x27;s <code>connect-src &#x27;none&#x27;</code> is now pinned by a live measurement instead of a substring check on the policy text (CMH-OFFLINE-04, CMH-OFFLINE-05). A scripted <code>WebSocket</code> is the one network channel no attribute predicate can see, so the decision not to widen <code>ws:</code>/<code>wss:</code> rests entirely on that directive - and a policy that still spelled <code>&#x27;none&#x27;</code> beside another source would have passed the old substring assertion while the channel silently reopened. The exported file is now driven against a raw TCP listener in both directions: blocked with the policy, and connecting once the policy is removed, which is what makes the zero a measurement.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.674.0] - 2026-08-04</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>An <code>&lt;iframe srcdoc&gt;</code> no longer rides through an Offline export, or past <code>validate.py --strict</code> in offline mode, carrying a whole nested document (CMH-OFFLINE-04, CMH-OFFLINE-05). A <code>srcdoc</code> holds an entire document as an ATTRIBUTE VALUE, and neither side of the offline contract could see inside it: the exporter&#x27;s <code>_stripOfflineNetworkLoads</code> cleared an iframe&#x27;s <code>src</code> and left <code>srcdoc</code> untouched, and every walk it makes visits ELEMENTS, so nothing descends into the string; the strict validator&#x27;s offline resource check read <code>(&quot;iframe&quot;, (&quot;src&quot;,))</code> only, and its tag index tokenizes the document, so that nested markup was attribute text and never became tags. An inline event handler, a meta refresh, or a network loader parked inside one therefore travelled into a file that promises zero network AND was certified clean by the gate the export is measured by. The offline CSP does not close the channel either: <code>frame-src &#x27;none&#x27;</code> blocks a <code>src</code> LOAD, but a <code>srcdoc</code> frame is content the policy is INHERITED into rather than a fetch, and the inherited policy still allows inline script, which can navigate the top-level document. The direction chosen - the way the meta-refresh case was settled - is that an offline document may not carry <code>srcdoc</code> at all: the export now clears the attribute UNCONDITIONALLY (on presence, so an empty or inert one goes too, which is what stops the gate blessing a file an export would still change) and offline <code>--strict</code> rejects any that remains, so the two sides agree by construction rather than by keeping two independent nested-document parsers in step. The frame ELEMENT is kept - an author&#x27;s <code>title</code>, sizing and relative <code>src</code> are content - and the removal is counted in the export toast, because unlike a network strip this takes away content that worked offline. Both sides judge the same shapes: a <code>&lt;template&gt;</code>-parked frame, a <code>&lt;noscript&gt;</code> fallback and a self-closed foreign element, namespace-blind.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">316 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">317 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

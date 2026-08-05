@@ -17,7 +17,9 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   newline without doubling preserved CRLF sequences. Newline style alone no longer makes an
   up-to-date CRLF document look stale, and invalid UTF-8 now produces a clean read error instead of
   an upgrade traceback. Validation stamps also use and remove the document's dominant newline, so
-  stamping a CRLF file cannot introduce a lone line feed or leave a blank line behind.
+  stamping a CRLF file cannot introduce a lone line feed or leave a blank line behind. Deck-theme
+  validation preserves the same raw newlines in its temporary file instead of doubling CRLF on
+  Windows.
 
 ## [1.685.0] - 2026-08-05
 

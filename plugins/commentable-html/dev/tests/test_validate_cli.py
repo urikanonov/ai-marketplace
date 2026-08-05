@@ -52,6 +52,14 @@ class ValidateCliTests(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertNotIn("region", r.stdout)
 
+    def test_charts_only_ignores_lone_cr_layer_marker_without_canvas(self):
+        doc = "<html>\r<!-- END: commentable-html - JS -->\r<body></body></html>"
+        with tempfile.TemporaryDirectory() as d:
+            p = self._write(d, "no-chart.html", doc)
+            r = self._run("--charts-only", p)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertNotIn("marker count changes", r.stdout)
+
     def test_valid_file_exit_0(self):
         with tempfile.TemporaryDirectory() as d:
             p = self._write(d, "ok.html", build())
