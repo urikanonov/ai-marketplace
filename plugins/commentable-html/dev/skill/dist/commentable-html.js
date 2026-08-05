@@ -379,7 +379,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.689.0";
+const CMH_VERSION = "1.691.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -8714,6 +8714,35 @@ function openInlineNoteEdit(entry, cid) {
   } };
   editor._focus();
 }
+// ---- One delete path for a comment thread, shared by every surface (issue #1031) ----
+// The sidebar card and the in-document comment dialog delete the SAME way: confirm (naming the
+// replies that go with the root), tombstone the embedded copy, close any editor or dialog left
+// showing a removed id, drop the highlight, save, and re-render. Keeping it in one function is what
+// makes the two surfaces impossible to drift apart.
+function cmhConfirmDeleteThread(id, opts) {
+  const c = comments.find((x) => x.id === id);
+  if (!c) return false;
+  const o = opts || {};
+  if (o.scrollFirst !== false) scrollToAnchor(c);   // jump to the anchor first, then confirm
+  // Deleting a thread root removes the whole thread (root + replies); a reply is deleted
+  // through its own reply-del button.
+  const ids = (typeof threadIds === "function") ? threadIds(id) : [id];
+  const nReplies = ids.length - 1;
+  const msg = nReplies > 0
+    ? ("Delete this comment and its " + nReplies + " repl" + (nReplies === 1 ? "y" : "ies") + "?")
+    : "Delete this comment?";
+  if (!confirm(msg)) return false;
+  const tombstoneOk = _tombstoneEmbedded(ids);
+  const drop = new Set(ids);
+  ids.forEach((tid) => { const oc = openEditComposers.get(tid); if (oc) closeComposerElement(oc); });
+  if (typeof cmhClosePopoverForIds === "function") cmhClosePopoverForIds(ids);
+  comments = comments.filter((x) => !drop.has(x.id));
+  removeHighlight(c);
+  const commentsOk = saveComments();
+  _ensureTombstoneEmbedded(ids, tombstoneOk, commentsOk);
+  renderComments();
+  return true;
+}
 listEl.addEventListener("click", (e) => {
   // A click inside an inline reply/edit editor belongs to that editor (its textarea and its
   // Save/Cancel buttons); it must never also fire the card's jump-to-anchor fall-through, which
@@ -8784,26 +8813,7 @@ listEl.addEventListener("click", (e) => {
     return;
   }
   if (act === "del") {
-    const c = comments.find(x => x.id === id);
-    scrollToAnchor(c);                       // jump to the anchor first, then confirm
-    // Deleting a thread root removes the whole thread (root + replies); a reply is deleted
-    // through its own reply-del button above.
-    const ids = (typeof threadIds === "function") ? threadIds(id) : [id];
-    const nReplies = ids.length - 1;
-    const msg = nReplies > 0
-      ? ("Delete this comment and its " + nReplies + " repl" + (nReplies === 1 ? "y" : "ies") + "?")
-      : "Delete this comment?";
-    if (confirm(msg)) {
-      const tombstoneOk = _tombstoneEmbedded(ids);
-      const drop = new Set(ids);
-      ids.forEach((tid) => { const oc = openEditComposers.get(tid); if (oc) closeComposerElement(oc); });
-      if (typeof cmhClosePopoverForIds === "function") cmhClosePopoverForIds(ids);
-      comments = comments.filter(x => !drop.has(x.id));
-      removeHighlight(c);
-      const commentsOk = saveComments();
-      _ensureTombstoneEmbedded(ids, tombstoneOk, commentsOk);
-      renderComments();
-    }
+    cmhConfirmDeleteThread(id);
     return;
   }
   if (act === "edit") {
@@ -9499,10 +9509,21 @@ function _renderCommentPopoverView(c) {
     '<div class="cm-comment-popover-note cmh-rich" id="' + noteId + '"></div>'
     + '<div class="cm-comment-popover-meta"></div>'
     + '<div class="cm-comment-popover-acts">'
+    + '<button type="button" class="cm-comment-popover-del" data-act="popover-del">Delete</button>'
     + '<button type="button" data-act="close">Close</button>'
     + '<button type="button" class="primary" data-act="edit">Edit</button>'
     + "</div>";
   el.setAttribute("aria-describedby", noteId);
+  // The button's own text is just "Delete", which does not say what goes with it. Name it the way
+  // the sidebar card's delete is named, so a screen-reader user learns a thread root takes its
+  // replies BEFORE the confirmation fires.
+  const _delBtn = el.querySelector('[data-act="popover-del"]');
+  if (_delBtn) {
+    const _ids = (typeof threadIds === "function") ? threadIds(c.id) : [c.id];
+    const _delName = _ids.length > 1 ? "Delete this comment and its replies" : "Delete this comment";
+    _delBtn.setAttribute("title", _delName);
+    _delBtn.setAttribute("aria-label", _delName);
+  }
   el.querySelector(".cm-comment-popover-note").innerHTML = renderRichNote(c.note);
   el.querySelector(".cm-comment-popover-meta").innerHTML =
     "<bdi>" + escapeHtml(formatTime(c.updatedAt || c.createdAt)) + "</bdi>"
@@ -9540,6 +9561,21 @@ function _renderCommentPopoverView(c) {
     e.preventDefault(); e.stopPropagation();
     closeCommentPopover();
   });
+  el.querySelector('[data-act="popover-del"]').addEventListener("click", (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const cur = _popoverComment();
+    // Deleted elsewhere while this dialog was open: nothing to delete, and the stale dialog goes.
+    if (!cur) { closeCommentPopover(); return; }
+    // ONE delete path for every surface (50-sidebar.js): same confirmation, same thread semantics,
+    // same durable tombstone. It also closes this dialog for the removed ids, so a delete can never
+    // leave a dialog anchored to a highlight that no longer exists.
+    const removed = (typeof cmhConfirmDeleteThread === "function")
+      && cmhConfirmDeleteThread(cur.id, { scrollFirst: false });
+    if (removed) { _focusAfterPopoverDelete(); return; }
+    // Declined: the dialog stays exactly as it was, with the reader still on Delete.
+    const btn = commentPopover && commentPopover.querySelector('[data-act="popover-del"]');
+    if (btn) { try { btn.focus(); } catch (err) {} }
+  });
   if (!_positionCommentPopover(_popoverAnchorMark)) _clampCommentPopoverIntoViewport();
 }
 
@@ -9556,6 +9592,15 @@ function _cancelCommentPopoverEdit() {
 function _focusPopoverEditButton() {
   const eb = commentPopover && commentPopover.querySelector('[data-act="edit"]');
   if (eb) { try { eb.focus(); } catch (e) {} }
+}
+
+// The dialog held focus and has just been removed with the comment it was showing, so focus would
+// otherwise fall to <body> and restart the keyboard order at the top of the page. Land the reader on
+// the comments list instead (a `tabindex="-1"` region), without scrolling the document.
+function _focusAfterPopoverDelete() {
+  const el = (typeof listEl !== "undefined") ? listEl : null;
+  if (!el) return;
+  try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (e2) {} }
 }
 
 function _renderCommentPopoverEdit(c) {
@@ -15761,7 +15806,7 @@ function showHelp(restoreEl) {
       T('Managing comments',
         '<ul>' +
           '<li><strong>Edit</strong> a comment from its card: the editor opens <em>inline</em> in the card, so the document stays exactly where you left it. <kbd>Ctrl/Cmd</kbd>+<kbd>Enter</kbd> saves and <kbd>Esc</kbd> cancels. <strong>Delete</strong> sits beside it.</li>' +
-          '<li><strong>Edit from the document:</strong> hover a highlight and click the orange <em>Open comment</em> bubble to see the note right there, then click <strong>Edit</strong> to edit it in place in that little dialog - no jumping to another part of the page.</li>' +
+          '<li><strong>Edit from the document:</strong> hover a highlight and click the orange <em>Open comment</em> bubble to see the note right there, then click <strong>Edit</strong> to edit it in place in that little dialog - no jumping to another part of the page. <strong>Delete</strong> is right there too, so a comment can be removed from the document without hunting down its card; it asks the same confirmation (and takes the whole thread with a reply) and then closes the dialog.</li>' +
           '<li><strong>Jump</strong> from a card to its highlight (collapsed sections auto-expand first).</li>' +
           '<li><strong>Sort</strong> the cards oldest-first or newest-first with the arrows, or click again for document order.</li>' +
           '<li><strong>Clear all comments</strong> (in the sidebar\'s <strong>More</strong> menu' + (hasToolbarClear ? ', or the collapsed toolbar\'s overflow <kbd>...</kbd> menu' : '') + ') deletes every comment and always asks for confirmation first (Cancel is the default)' + (hasToolbarClear ? ', so you can clear without re-opening the panel' : '') + '.</li>' +

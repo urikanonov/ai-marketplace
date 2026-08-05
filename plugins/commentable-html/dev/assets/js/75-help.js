@@ -76,7 +76,7 @@ function showHelp(restoreEl) {
       T('Managing comments',
         '<ul>' +
           '<li><strong>Edit</strong> a comment from its card: the editor opens <em>inline</em> in the card, so the document stays exactly where you left it. <kbd>Ctrl/Cmd</kbd>+<kbd>Enter</kbd> saves and <kbd>Esc</kbd> cancels. <strong>Delete</strong> sits beside it.</li>' +
-          '<li><strong>Edit from the document:</strong> hover a highlight and click the orange <em>Open comment</em> bubble to see the note right there, then click <strong>Edit</strong> to edit it in place in that little dialog - no jumping to another part of the page.</li>' +
+          '<li><strong>Edit from the document:</strong> hover a highlight and click the orange <em>Open comment</em> bubble to see the note right there, then click <strong>Edit</strong> to edit it in place in that little dialog - no jumping to another part of the page. <strong>Delete</strong> is right there too, so a comment can be removed from the document without hunting down its card; it asks the same confirmation (and takes the whole thread with a reply) and then closes the dialog.</li>' +
           '<li><strong>Jump</strong> from a card to its highlight (collapsed sections auto-expand first).</li>' +
           '<li><strong>Sort</strong> the cards oldest-first or newest-first with the arrows, or click again for document order.</li>' +
           '<li><strong>Clear all comments</strong> (in the sidebar\'s <strong>More</strong> menu' + (hasToolbarClear ? ', or the collapsed toolbar\'s overflow <kbd>...</kbd> menu' : '') + ') deletes every comment and always asks for confirmation first (Cancel is the default)' + (hasToolbarClear ? ', so you can clear without re-opening the panel' : '') + '.</li>' +

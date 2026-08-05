@@ -936,6 +936,35 @@ function openInlineNoteEdit(entry, cid) {
   } };
   editor._focus();
 }
+// ---- One delete path for a comment thread, shared by every surface (issue #1031) ----
+// The sidebar card and the in-document comment dialog delete the SAME way: confirm (naming the
+// replies that go with the root), tombstone the embedded copy, close any editor or dialog left
+// showing a removed id, drop the highlight, save, and re-render. Keeping it in one function is what
+// makes the two surfaces impossible to drift apart.
+function cmhConfirmDeleteThread(id, opts) {
+  const c = comments.find((x) => x.id === id);
+  if (!c) return false;
+  const o = opts || {};
+  if (o.scrollFirst !== false) scrollToAnchor(c);   // jump to the anchor first, then confirm
+  // Deleting a thread root removes the whole thread (root + replies); a reply is deleted
+  // through its own reply-del button.
+  const ids = (typeof threadIds === "function") ? threadIds(id) : [id];
+  const nReplies = ids.length - 1;
+  const msg = nReplies > 0
+    ? ("Delete this comment and its " + nReplies + " repl" + (nReplies === 1 ? "y" : "ies") + "?")
+    : "Delete this comment?";
+  if (!confirm(msg)) return false;
+  const tombstoneOk = _tombstoneEmbedded(ids);
+  const drop = new Set(ids);
+  ids.forEach((tid) => { const oc = openEditComposers.get(tid); if (oc) closeComposerElement(oc); });
+  if (typeof cmhClosePopoverForIds === "function") cmhClosePopoverForIds(ids);
+  comments = comments.filter((x) => !drop.has(x.id));
+  removeHighlight(c);
+  const commentsOk = saveComments();
+  _ensureTombstoneEmbedded(ids, tombstoneOk, commentsOk);
+  renderComments();
+  return true;
+}
 listEl.addEventListener("click", (e) => {
   // A click inside an inline reply/edit editor belongs to that editor (its textarea and its
   // Save/Cancel buttons); it must never also fire the card's jump-to-anchor fall-through, which
@@ -1006,26 +1035,7 @@ listEl.addEventListener("click", (e) => {
     return;
   }
   if (act === "del") {
-    const c = comments.find(x => x.id === id);
-    scrollToAnchor(c);                       // jump to the anchor first, then confirm
-    // Deleting a thread root removes the whole thread (root + replies); a reply is deleted
-    // through its own reply-del button above.
-    const ids = (typeof threadIds === "function") ? threadIds(id) : [id];
-    const nReplies = ids.length - 1;
-    const msg = nReplies > 0
-      ? ("Delete this comment and its " + nReplies + " repl" + (nReplies === 1 ? "y" : "ies") + "?")
-      : "Delete this comment?";
-    if (confirm(msg)) {
-      const tombstoneOk = _tombstoneEmbedded(ids);
-      const drop = new Set(ids);
-      ids.forEach((tid) => { const oc = openEditComposers.get(tid); if (oc) closeComposerElement(oc); });
-      if (typeof cmhClosePopoverForIds === "function") cmhClosePopoverForIds(ids);
-      comments = comments.filter(x => !drop.has(x.id));
-      removeHighlight(c);
-      const commentsOk = saveComments();
-      _ensureTombstoneEmbedded(ids, tombstoneOk, commentsOk);
-      renderComments();
-    }
+    cmhConfirmDeleteThread(id);
     return;
   }
   if (act === "edit") {

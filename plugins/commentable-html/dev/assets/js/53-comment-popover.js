@@ -261,10 +261,21 @@ function _renderCommentPopoverView(c) {
     '<div class="cm-comment-popover-note cmh-rich" id="' + noteId + '"></div>'
     + '<div class="cm-comment-popover-meta"></div>'
     + '<div class="cm-comment-popover-acts">'
+    + '<button type="button" class="cm-comment-popover-del" data-act="popover-del">Delete</button>'
     + '<button type="button" data-act="close">Close</button>'
     + '<button type="button" class="primary" data-act="edit">Edit</button>'
     + "</div>";
   el.setAttribute("aria-describedby", noteId);
+  // The button's own text is just "Delete", which does not say what goes with it. Name it the way
+  // the sidebar card's delete is named, so a screen-reader user learns a thread root takes its
+  // replies BEFORE the confirmation fires.
+  const _delBtn = el.querySelector('[data-act="popover-del"]');
+  if (_delBtn) {
+    const _ids = (typeof threadIds === "function") ? threadIds(c.id) : [c.id];
+    const _delName = _ids.length > 1 ? "Delete this comment and its replies" : "Delete this comment";
+    _delBtn.setAttribute("title", _delName);
+    _delBtn.setAttribute("aria-label", _delName);
+  }
   el.querySelector(".cm-comment-popover-note").innerHTML = renderRichNote(c.note);
   el.querySelector(".cm-comment-popover-meta").innerHTML =
     "<bdi>" + escapeHtml(formatTime(c.updatedAt || c.createdAt)) + "</bdi>"
@@ -302,6 +313,21 @@ function _renderCommentPopoverView(c) {
     e.preventDefault(); e.stopPropagation();
     closeCommentPopover();
   });
+  el.querySelector('[data-act="popover-del"]').addEventListener("click", (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const cur = _popoverComment();
+    // Deleted elsewhere while this dialog was open: nothing to delete, and the stale dialog goes.
+    if (!cur) { closeCommentPopover(); return; }
+    // ONE delete path for every surface (50-sidebar.js): same confirmation, same thread semantics,
+    // same durable tombstone. It also closes this dialog for the removed ids, so a delete can never
+    // leave a dialog anchored to a highlight that no longer exists.
+    const removed = (typeof cmhConfirmDeleteThread === "function")
+      && cmhConfirmDeleteThread(cur.id, { scrollFirst: false });
+    if (removed) { _focusAfterPopoverDelete(); return; }
+    // Declined: the dialog stays exactly as it was, with the reader still on Delete.
+    const btn = commentPopover && commentPopover.querySelector('[data-act="popover-del"]');
+    if (btn) { try { btn.focus(); } catch (err) {} }
+  });
   if (!_positionCommentPopover(_popoverAnchorMark)) _clampCommentPopoverIntoViewport();
 }
 
@@ -318,6 +344,15 @@ function _cancelCommentPopoverEdit() {
 function _focusPopoverEditButton() {
   const eb = commentPopover && commentPopover.querySelector('[data-act="edit"]');
   if (eb) { try { eb.focus(); } catch (e) {} }
+}
+
+// The dialog held focus and has just been removed with the comment it was showing, so focus would
+// otherwise fall to <body> and restart the keyboard order at the top of the page. Land the reader on
+// the comments list instead (a `tabindex="-1"` region), without scrolling the document.
+function _focusAfterPopoverDelete() {
+  const el = (typeof listEl !== "undefined") ? listEl : null;
+  if (!el) return;
+  try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (e2) {} }
 }
 
 function _renderCommentPopoverEdit(c) {

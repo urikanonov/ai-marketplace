@@ -4,6 +4,24 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.691.0] - 2026-08-05
+
+### Added
+
+- The in-document comment dialog can now DELETE the comment it is showing (CMH-CORE-22). Clicking a
+  highlight's orange bubble opens the note with `Delete` beside `Close` and `Edit`, so removing a
+  comment no longer means leaving the dialog and hunting down the same comment's card in the panel -
+  the dialog already edits in place, and this is the missing half of that interaction. Deleting from
+  the dialog is not a second implementation: both surfaces now call one shared path
+  (`cmhConfirmDeleteThread`), so the confirmation wording (including the reply count that warns a
+  thread root takes its replies with it), the durable embedded tombstone, the highlight removal, and
+  the re-render are identical wherever the delete is started. Confirming closes the dialog, so
+  nothing is left anchored to a removed highlight, and focus lands in the comments list instead of
+  falling to the top of the page; declining leaves the dialog exactly as it was with focus back on
+  `Delete`. `Delete` is offered in the note view only, so an in-place edit can never be discarded by
+  a delete sitting next to it, and it carries the same accessible name the sidebar card's delete
+  carries, so a thread root says up front that its replies go too.
+
 ## [1.689.0] - 2026-08-05
 
 ### Fixed
