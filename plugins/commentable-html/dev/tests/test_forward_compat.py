@@ -128,14 +128,18 @@ class ForwardCompatibleLayoutTests(unittest.TestCase):
         import to_shareable  # noqa: E402
 
         js = _read(os.path.join(_paths.ASSETS, "js", "70-mode-badge.js"))
-        m = re.search(r"const CMH_NONSHAREABLE_MODES = \[([^\]]*)\];", js)
+        modes_re = re.compile(r"const CMH_NONSHAREABLE_MODES = \[([^\]]*)\];")
+        m = modes_re.search(js)
         self.assertIsNotNone(m, "70-mode-badge.js no longer declares CMH_NONSHAREABLE_MODES")
         runtime_modes = tuple(re.findall(r'"([^"]+)"', m.group(1)))
         self.assertEqual(runtime_modes, layer.NONSHAREABLE_MODES)
         self.assertEqual(runtime_modes, to_shareable.NONSHAREABLE_MODES)
-        # The BUILT runtime carries the same list, so a stale dist cannot ship a different
-        # vocabulary than the source this test pins.
-        self.assertIn(m.group(0), _read(os.path.join(_paths.DIST, "commentable-html.js")))
+        # The BUILT runtime carries the same vocabulary, so a stale dist cannot ship a different
+        # one than the source this test pins. Compared as parsed values, not as raw text, so a
+        # change in how the bundle is written is not mistaken for a drift.
+        built = modes_re.search(_read(os.path.join(_paths.DIST, "commentable-html.js")))
+        self.assertIsNotNone(built, "the built runtime no longer declares CMH_NONSHAREABLE_MODES")
+        self.assertEqual(tuple(re.findall(r'"([^"]+)"', built.group(1))), runtime_modes)
 
 
 if __name__ == "__main__":

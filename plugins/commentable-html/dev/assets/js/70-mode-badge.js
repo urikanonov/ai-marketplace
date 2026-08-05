@@ -97,6 +97,11 @@ function _embeddedCommentSig() {
 // validator).
 const CMH_NONSHAREABLE_MODES = ["nonshareable", "nonportable"];
 function isOfflineDocument() {
+  // A document whose layer loads from companion files is not self-contained, so it can never be
+  // offline - whatever its descriptor says (CMH-OFFLINE-09). This is DECIDED FIRST because it is
+  // the same structural classification that picks the validator's own branch, where a declared
+  // `offline` is an error rather than a mode the document gets to keep.
+  if (NONSHAREABLE_MODE) return false;
   // The layer's descriptor, not whichever element got the id first: a content-region decoy must
   // not be able to declare what this document IS (cmhLayerBlock).
   const script = cmhLayerBlock(document, "commentableHtmlLayer");
@@ -104,18 +109,12 @@ function isOfflineDocument() {
     try {
       const data = JSON.parse((script.textContent || "").trim() || "{}");
       if (data && data.mode === "offline") return true;
-      // A NonShareable document loads its layer from companion files, so it is not
-      // self-contained and can never be offline: its declared mode settles the question and the
-      // legacy snapshot signal below is not evidence about it (CMH-OFFLINE-09). The validator
-      // refuses the same shape. A declared `shareable` deliberately still falls through to the
-      // signal, which is where a mode-less legacy document is read.
+      // A declared companion-file mode settles it the same way, so the legacy snapshot signal
+      // below is not evidence about such a document. A declared `shareable` deliberately still
+      // falls through to that signal, which is where a mode-less legacy document is read.
       if (data && CMH_NONSHAREABLE_MODES.indexOf(data.mode) >= 0) return false;
     } catch (e) { /* malformed descriptors are handled by validate.py */ }
   }
-  // The same rule from the DETECTED side, so a document with no (or an unreadable) descriptor
-  // cannot claim offline either while its layer loads from companion files. This mirrors the
-  // validator, whose branch is chosen by the same structural classification.
-  if (NONSHAREABLE_MODE) return false;
   return !!document.querySelector("#commentRoot [data-cm-offline-chart]");
 }
 function currentDocState() {

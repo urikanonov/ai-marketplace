@@ -442,8 +442,12 @@ test("a document that declares the companion-file mode is never read as Offline 
       const declared = original.replace('"mode":"shareable"', `"mode":"${mode}"`, 1);
       expect(declared).toContain(`"mode":"${mode}"`);
       fs.writeFileSync(staged.html, declared);
-      await page.goto(fileUrl(staged.html));
+      await page.goto(fileUrl(staged.html) + `?mode=${mode}`);
       await ready(page);
+      // Prove the reload really picked up THIS spelling, so the second pass cannot pass on a
+      // cached copy of the first.
+      expect(await page.evaluate(() => JSON.parse(
+        document.getElementById("commentableHtmlLayer").textContent).mode)).toBe(mode);
       await expect(page.locator("#cmTypeBadge")).not.toHaveText("Offline");
       await expect(page.locator("#cmTypeBadge")).toHaveText("Shareable");
 
@@ -457,6 +461,14 @@ test("a document that declares the companion-file mode is never read as Offline 
       const savedHtml = await readDownload(download);
       expect(layerDescriptor(savedHtml).mode).toBe("shareable");
       expect(savedHtml).toContain('data-cm-offline-chart="true"');
+      // And the residual CMH-OFFLINE-09 declares rather than hides: the saved copy no longer
+      // declares a companion-file mode, so re-opening it reads Offline from the legacy snapshot
+      // signal again - the `shareable` + snapshots shape the validator (not the runtime) owns.
+      const savedPath = path.join(staged.dir, `saved-${mode}.html`);
+      fs.writeFileSync(savedPath, savedHtml);
+      await page.goto(fileUrl(savedPath));
+      await ready(page);
+      await expect(page.locator("#cmTypeBadge")).toHaveText("Offline");
     }
 
     // Control: the legacy fallback survives. Drop the declared mode entirely - the shape

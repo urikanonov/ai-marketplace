@@ -58,19 +58,19 @@ def _check_layer_descriptor(parser, nonshareable, active_regions):
     # loads its layer from companion files and can never be a self-contained one, so a snapshot
     # there is a contradiction rather than a stale mode (CMH-OFFLINE-09); scoping the rule to the
     # non-NonShareable branch alone left that shape blessed here while the runtime's legacy
-    # snapshot signal still read it as offline. The snapshot error is a SIBLING of the mode error,
-    # not an `elif`: a document whose mode is wrong AND that carries snapshots must learn both in
-    # one pass rather than one problem per run.
+    # snapshot signal still read it as offline. The snapshot rule stands on its own rather than
+    # hanging off the mode check: a document whose mode is ALSO wrong learns both problems in one
+    # pass instead of one per run, which is why the message quotes whatever mode it declares.
     if nonshareable:
         if mode not in NONSHAREABLE_MODES:
             errors.append('%s.mode must be "nonshareable" for this document' % LAYER_DESCRIPTOR_ID)
-        if mode in NONSHAREABLE_MODES and parser.has_offline_chart:
-            errors.append('%s.mode is "%s" but the document carries offline chart snapshots; '
-                          "a document that loads its layer from companion files is not "
-                          "self-contained and can never be offline - remove the reserved "
+        if parser.has_offline_chart:
+            errors.append("%s.mode is %s but the document carries offline chart snapshots inside "
+                          "#commentRoot; a document that loads its layer from companion files is "
+                          "not self-contained and can never be offline - remove the reserved "
                           "data-cm-offline-chart attribute (the image itself can stay), or use "
                           "Export Offline, which produces a self-contained offline file"
-                          % (LAYER_DESCRIPTOR_ID, mode))
+                          % (LAYER_DESCRIPTOR_ID, json.dumps(mode)))
     else:
         if mode not in SHAREABLE_MODES + ("offline",):
             errors.append('%s.mode must be "shareable" or "offline" for this document' % LAYER_DESCRIPTOR_ID)

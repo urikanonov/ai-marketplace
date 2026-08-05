@@ -133,6 +133,18 @@ class NonShareableTests(unittest.TestCase):
             'commentableHtmlLayer.mode is "nonportable" but the document carries offline chart '
             "snapshots")
 
+    def test_nonshareable_document_reports_a_wrong_mode_and_its_snapshots_in_one_pass(self):
+        # The snapshot rule stands on its own: a companion-file document whose descriptor ALSO
+        # declares the wrong mode must learn both problems from one run, not one per run.
+        html = self._with_offline_chart(
+            build_nonshareable().replace('"mode":"nonshareable"', '"mode":"offline"', 1))
+        self.assertIn('"mode":"offline"', html)
+        errors, _ = self._validate(html)
+        self.assertTrue(any('mode must be "nonshareable"' in e for e in errors), errors)
+        self.assertTrue(any("carries offline chart snapshots" in e for e in errors), errors)
+        # The message quotes the mode the document actually declares, whatever that is.
+        self.assertTrue(any('mode is "offline" but' in e for e in errors), errors)
+
     def test_nonshareable_document_without_offline_chart_snapshots_is_clean(self):
         # Control: the rule fires on the SNAPSHOT, not on the nonshareable classification, so an
         # ordinary companion-file document stays clean.
