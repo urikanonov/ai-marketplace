@@ -53,6 +53,9 @@
 
 .back-link { display: inline-flex; align-items: center; gap: 6px; color: var(--cp-text-muted); font-size: 0.9rem; }
 
+/* The 720px breakpoint is load-bearing beyond the nav links themselves: dropping `hide-sm` shortens
+   the right-aligned nav and pushes the plugin-switcher trigger further right, which is why
+   20-nav-hero.css re-anchors the switcher flyout at this same width. Keep the two in step. */
 @media (max-width: 720px) {
   .hero { padding-top: 44px; }
   .nav-links { gap: 14px; }
