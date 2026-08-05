@@ -816,23 +816,24 @@ test("a long unbreakable inline code token does not overflow the mobile viewport
   ];
   await page.setViewportSize({ width: 375, height: 800 });
   for (const { path: p, selector, label } of surfaces) {
-    // "load", not "domcontentloaded": the fit assertions below are absolute, so they must not race a
-    // stylesheet or a late-sizing image. Today the pages' trailing synchronous script happens to make
-    // the two equivalent, but nothing enforces that.
+    // "load", not "domcontentloaded": it settles the stylesheet and the eager images without relying
+    // on the trailing synchronous script that happens to block DOMContentLoaded today. It costs
+    // nothing here because installNetworkBlock (top of this file) aborts every non-local request, so
+    // the pages' async CDN script fails fast instead of gating the event.
     await page.goto(p, { waitUntil: "load" });
     const host = page.locator(selector).first();
     await expect(host, p + " has a " + label).toBeVisible();
-    // Nothing is neutralized first: every surface here, the hub included, fits the viewport at rest
-    // (SITE-NAV-05 collapses the closed nav flyout, which used to stick 63px past the right edge).
-    // Pinning that baseline is what makes the absolute post-injection assertion below trustworthy on
-    // its own rather than only because a neutralized flyout was hidden first: documentElement
-    // .scrollWidth reports the largest overhang, so a standing overflow would mask a smaller new one.
-    // Both metrics are read in ONE evaluate so they always describe the same frame.
+    // Nothing is neutralized first, so the absolute assertion after the injection stands on the real
+    // page. This at-rest read attributes a failure - an already-over surface is a page defect, not a
+    // probe defect - and keeps the no-growth comparison honest, since documentElement.scrollWidth
+    // reports only the largest overhang and a standing overflow would hide a smaller new one. On the
+    // hub the surface fits only because SITE-NAV-05 collapses the closed nav flyout, which used to
+    // stick 63px past the right edge. Both metrics come from ONE evaluate, so they describe one frame.
     const rest = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
       clientWidth: document.documentElement.clientWidth,
     }));
-    expect(rest.scrollWidth, p + " " + label + ": the page must fit the viewport before anything is injected").toBeLessThanOrEqual(rest.clientWidth + 1);
+    expect(rest.scrollWidth, p + " " + label + ": the page must fit the viewport before anything is injected (on the hub, see SITE-NAV-05)").toBeLessThanOrEqual(rest.clientWidth + 1);
     await host.evaluate((el, text) => {
       const code = document.createElement("code");
       code.id = "inline-code-overflow-probe";
@@ -864,9 +865,10 @@ test("a fenced code block keeps its own pre and scroll behavior (SITE-CODE-01)",
   await page.goto("/commentable-html/tutorial/", { waitUntil: "load" });
   const host = page.locator(".tutorial p").first();
   await expect(host).toBeVisible();
-  // Same unmodified baseline as the inline test above: pin that the page fits before the probe
-  // exists, so the docFits assertion after it is an absolute bound and not one a standing overflow
-  // could mask.
+  // Same unmodified baseline as the inline test above. The docFits check below is already absolute,
+  // so what this adds is attribution: it separates "the tutorial page was already over" from "the
+  // fenced block widened it". The tutorial carries no nav switcher, so unlike the hub surface above
+  // it is a generic viewport-fit tripwire rather than a SITE-NAV-05 dependency.
   const rest = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
     clientWidth: document.documentElement.clientWidth,
