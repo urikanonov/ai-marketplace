@@ -227,8 +227,14 @@ code { overflow-wrap: anywhere; word-break: break-word; }
    clips anyway - so a pointer travelling down would drop `:hover` and close the flyout. A
    hit-testable bridge across that gap is NOT the answer: when the navbar wraps, the gap holds the
    nav's own wrapped links, and an invisible bridge over them swallows their clicks. Delay the CLOSE
-   instead, so the pointer has time to arrive; re-entering the flyout restores the open state, which
-   carries no delay of its own. */
+   instead, generously enough (1s) that crossing the gap does not depend on pointer speed - which
+   matters for a user with a motor impairment or a magnified pointer - and re-entering the flyout
+   restores the open state, which carries no delay of its own. The closed state collapses the box by
+   `max-height` here rather than by `height`, because the delay is what keeps the flyout REACHABLE
+   while the pointer travels and `height: auto` cannot interpolate to zero - it would snap the box to
+   a sliver the moment `:hover` was lost, however long the fade was delayed. A pointer that never
+   makes it is not stuck either: clicking or tapping the trigger focuses it, and `:focus-within` then
+   holds the flyout open for as long as the focus stays there. */
 @media (max-width: 720px), (max-height: 560px) {
   .nav-switcher-menu {
     max-height: calc(100vh - var(--nav-offset, 140px) - 16px);
@@ -237,9 +243,11 @@ code { overflow-wrap: anywhere; word-break: break-word; }
     overscroll-behavior-y: contain;
   }
   .nav-switcher:not(:hover):not(:focus-within) .nav-switcher-menu {
-    transition: opacity 0.14s ease 0.4s, transform 0.14s ease 0.4s, visibility 0.14s ease 0.4s,
-      width 0s linear 0.54s, height 0s linear 0.54s, min-width 0s linear 0.54s,
-      padding 0s linear 0.54s, border-width 0s linear 0.54s;
+    height: auto;
+    max-height: 0;
+    transition: opacity 0.14s ease 1s, transform 0.14s ease 1s, visibility 0.14s ease 1s,
+      width 0s linear 1.14s, max-height 0s linear 1.14s, min-width 0s linear 1.14s,
+      padding 0s linear 1.14s, border-width 0s linear 1.14s;
   }
 }
 @media (max-width: 560px) {

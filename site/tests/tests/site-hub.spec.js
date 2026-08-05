@@ -503,16 +503,36 @@ test("a slow pointer reaches the flyout, and it never swallows a nav link (SITE-
     });
     expect(stolen, `${width}px: no nav link is covered while the switcher is hovered`).toEqual([]);
 
-    // Travel down into the gap, pause there longer than the fade, and the flyout is still open.
+    // Travel down into the gap and DAWDLE there - far longer than the fade, and long enough that a
+    // slow or magnified pointer is not raced. The flyout must still be OPEN AND REACHABLE, not just
+    // nominally visible: a box that has collapsed to a sliver would pass a visibility check while
+    // being impossible to land on.
     const m = await menu.boundingBox();
     await page.mouse.move(t.x + t.width / 2, (t.y + t.height + m.y) / 2);
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(700);
     await expect(menu).toBeVisible();
+    const stillThere = await menu.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const at = el.ownerDocument.elementFromPoint(r.x + r.width / 2, r.y + 20);
+      return { height: r.height, reachable: el.contains(at) || el === at };
+    });
+    expect(stillThere.height, `${width}px: the flyout keeps its box while the pointer travels`)
+      .toBeGreaterThan(m.height - 1);
+    expect(stillThere.reachable, `${width}px: the travelling pointer can still land on it`).toBe(
+      true
+    );
     // Arriving at the flyout keeps it open with no delay of its own.
     await page.mouse.move(m.x + m.width / 2, m.y + 20);
+    await page.waitForTimeout(500);
+    await expect(menu).toBeVisible();
+    // A pointer that never makes it is not stuck either: focusing the trigger holds the flyout open
+    // for as long as focus stays there, however long the traversal takes.
+    await page.mouse.move(2, 700);
+    await trigger.focus();
+    await page.waitForTimeout(700);
     await expect(menu).toBeVisible();
     // And leaving for good still closes it.
-    await page.mouse.move(2, 700);
+    await trigger.evaluate((el) => el.blur());
     await expect(menu).toBeHidden();
   }
 });
