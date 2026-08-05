@@ -88,6 +88,84 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
         doc = re.sub(r'<script\b[^>]*\bid="commentableHtmlLayer"[^>]*>[\s\S]*?</script>\n?', "", build(), count=1)
         self.assertError(doc, "layer descriptor")
 
+    def _move_descriptor(self, doc, into_content=None, to_body_end=False, mode="shareable"):
+        """Relocate the document's only layer descriptor (CMH-VAL-19).
+
+        `into_content` puts a descriptor with that mode inside the authored CONTENT region;
+        `to_body_end` re-emits the real one just before `</body>`, so the content-region copy
+        is the one that comes FIRST in document order.
+        """
+        m = re.search(r'<script\b[^>]*\bid="commentableHtmlLayer"[^>]*>[\s\S]*?</script>\n?', doc)
+        self.assertIsNotNone(m, "the fixture no longer carries a layer descriptor")
+        real = m.group(0).strip()
+        doc = doc[:m.start()] + doc[m.end():]
+        if into_content is not None:
+            needle = "  <p>content</p>"
+            self.assertIn(needle, doc, "MAIN no longer carries the expected content placeholder")
+            inner = real if into_content == "real" else layer_descriptor(mode=into_content)
+            doc = doc.replace(needle, needle + "\n  " + inner, 1)
+        if to_body_end:
+            doc = doc.replace("\n</body>", "\n" + real + "\n</body>", 1)
+        return doc
+
+    def test_layer_descriptor_inside_the_content_region_is_not_the_descriptor(self):
+        # CMH-VAL-19: the layer resolves its own descriptor OUTSIDE the authored content root
+        # (assets/js/01-config.js - cmhLayerBlock) and every export refuses a document whose only
+        # descriptor sits inside it, so a validator that read the content-region copy certified a
+        # file the runtime resolves no descriptor for. It must report the descriptor as missing.
+        doc = self._move_descriptor(build(), into_content="real")
+        self.assertError(doc, "layer descriptor")
+        self.assertError(doc, "sits inside the content root")
+
+    def test_content_region_descriptor_does_not_decide_the_document_mode(self):
+        # The same divergence, in the direction that matters most since the declared mode became
+        # the sole key for the offline rule set: a decoy inside the content root that comes FIRST
+        # in document order must not displace the layer's real descriptor.
+        doc = self._move_descriptor(build(), into_content="nonshareable", to_body_end=True)
+        errors, _ = _validate_text(doc)
+        self.assertFalse(any("commentableHtmlLayer.mode" in e for e in errors),
+                         "the content-region decoy decided the mode: %r" % errors)
+        # It is still a duplicate reserved id, which is what the exporter refuses over.
+        self.assertTrue(any('id="commentableHtmlLayer" appears 2 times' in e for e in errors),
+                        "expected the duplicate-id error, got: %r" % errors)
+
+    def test_content_region_descriptor_does_not_key_the_offline_rule_set(self):
+        # The consumer that matters: `mode == "offline"` is what turns on the zero-network rule
+        # set, and "offline" is a VALID mode for this document, so a decoy declaring it raises no
+        # mode error at all - it would just silently change which rules judge the file. Pin that
+        # the decoy cannot reach that consumer.
+        doc = self._move_descriptor(build(), into_content="offline", to_body_end=True)
+        errors, _ = _validate_text(doc)
+        self.assertFalse(any("offline mode:" in e for e in errors),
+                         "the content-region decoy keyed the offline rule set: %r" % errors)
+
+    def test_authored_demonstration_of_the_descriptor_reads_the_real_one(self):
+        # Control (the authored-demonstration case `_layer_tags` already handles): a document
+        # about commentable-html may quote the descriptor markup in its prose while carrying the
+        # real one in the head. The real one is still read, and the prose raises nothing. The
+        # prose is ESCAPED, as an author writes it, so this pins the FALSE-POSITIVE direction (a
+        # document that merely talks about the descriptor stays clean); the live-element
+        # direction - a real decoy element inside the root - is pinned by the two tests above.
+        demo = ('<pre><code>&lt;script type="application/json" id="commentableHtmlLayer"&gt;'
+                '{"version":"1.0.0","mode":"nonshareable","regions":[]}'
+                '&lt;/script&gt;</code></pre>')
+        doc = build().replace("  <p>content</p>", "  " + demo, 1)
+        self.assertOkNoWarn(doc)
+
+    def test_a_descriptor_inside_the_root_but_before_the_markers_is_not_the_descriptor(self):
+        # The boundary is the content ROOT, not just the marker region: `cmhLayerBlocks` tests
+        # `root.contains(node)`, so a descriptor parked inside `#commentRoot` ahead of the BEGIN
+        # marker is equally invisible to the layer and equally refused by every export.
+        m = re.search(r'<script\b[^>]*\bid="commentableHtmlLayer"[^>]*>[\s\S]*?</script>\n?', build())
+        doc = build()
+        real = m.group(0).strip()
+        doc = doc[:m.start()] + doc[m.end():]
+        self.assertError(doc.replace(CONTENT_BEGIN, real + "\n" + CONTENT_BEGIN, 1),
+                         "sits inside the content root")
+        # ...and past the END marker, the other side of the region the spec row also claims.
+        self.assertError(doc.replace(CONTENT_END, CONTENT_END + "\n" + real, 1),
+                         "sits inside the content root")
+
     def test_layer_descriptor_region_list_must_match_contract(self):
         doc = build().replace('"regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]',
                               '"regions":["CSS","JS"]')

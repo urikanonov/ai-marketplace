@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.710.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.711.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.711.0] - 2026-08-05</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The validator now resolves the layer descriptor the way the runtime and the exporter do, so a document whose ONLY <code>commentableHtmlLayer</code> descriptor sits inside the content root is reported as missing a descriptor instead of validating completely clean (CMH-VAL-19). The layer deliberately reads its own reserved blocks OUTSIDE the content root (<code>cmhLayerBlocks</code>, so that &quot;a content-region decoy must not be able to declare what this document IS&quot;) and every export refuses such a file outright, but the validator took the first <code>&lt;script id=&quot;commentableHtmlLayer&quot;&gt;</code> anywhere in the parse - the parser computed the content-region flag per capture and then dropped it. A document with a live descriptor moved inside <code>#commentRoot</code> therefore got a clean bill of health for a file the layer resolves no descriptor for and no export will produce, and a decoy placed there ahead of the real descriptor decided the document&#x27;s declared mode - the one value that now keys the whole offline rule set, and one a decoy can set to the perfectly VALID <code>&quot;offline&quot;</code> without raising any mode error at all. The flags ride along to the flushed script and the descriptor is resolved through them, on the boundary <code>cmhLayerBlocks</code> actually tests: the whole <code>#commentRoot</code> SUBTREE, not just the part between the CONTENT markers, so a descriptor parked inside the root but ahead of the BEGIN marker (or past the END marker) is caught too. An absent flag fails CLOSED. The root subtree contains the authored region, so an authored DEMONSTRATION of the markup in prose is still content and the real descriptor in the head is still read, and the missing-descriptor error now says WHY.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.710.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>A NonShareable document that carries offline chart snapshots is no longer read one way by the runtime and another by the validator. A <code>data-cm-offline-chart</code> image marks a chart a self-contained offline document snapshotted (a legacy Offline export produced them; the current export inlines Chart.js and keeps the live canvas), so a document whose layer lives in companion files can never be one: the snapshot there is a contradiction rather than evidence of offline mode. The strict validator now refuses that shape (the &quot;snapshots force mode offline&quot; consistency rule used to sit in the non-NonShareable branch alone, so the shape drew no mode error at all), and reports it alongside a wrong declared mode rather than one problem per run. <code>isOfflineDocument()</code> stops treating the snapshot signal as evidence once the layer is detected loading from companion files, or the descriptor declares either spelling of the companion-file mode. Both sides now also read the snapshot at the same scope - inside <code>#commentRoot</code> - so an attribute in host chrome outside the content root no longer fails a document the runtime would never have read as offline. Nothing else moves: a self-contained document that declares no mode still falls back to the snapshot signal, a Shareable document carrying snapshots still fails the <code>mode must be &quot;offline&quot;</code> rule, and an Offline document carrying them stays clean.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.702.1] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -509,8 +518,6 @@
               <li>The offline strip no longer deletes a benign script because a local binding&#x27;s name happens to contain a non-ASCII letter (CMH-OFFLINE-05). The scripted-navigation scan decides where a sink can start by looking for an identifier BOUNDARY in front of it, and that class was ASCII-only, so any identifier character outside ASCII read as a boundary: a purely local <code>&lt;non-ASCII letter&gt;location.href = &lt;url&gt;</code> - which navigates nothing - was treated as the document&#x27;s own <code>location</code>, so Export Offline deleted the whole script and <code>validate.py --strict</code> rejected a file that navigates nowhere. That is the false-positive direction this check exists to avoid, because it silently destroys an author&#x27;s content. Both engines now spell the class as the COMPLEMENT of the boundary characters (every ASCII character that cannot appear in an identifier EXCEPT <code>.</code>, plus the exact whitespace set the scan already uses), byte-identically, because <code>\w</code> means different things in the two engines and Python has no Unicode property escape. The <code>.</code> exception is unchanged and load-bearing: a member-expression dot has to CONTINUE the chain, so that <code>cfg.location.href = &lt;url&gt;</code> stays some other object&#x27;s <code>location</code> rather than the document&#x27;s sink. The complement spelling also settles the astral case in one rule: a supplementary code point is a surrogate PAIR to JavaScript&#x27;s <code>charAt</code> and a single code point to Python, and neither reading is a boundary character now. Non-ASCII WHITESPACE is deliberately still a boundary, so a real sink one exotic space into a script is seen exactly as before, and the ASCII-only case fold beside it is untouched - it is what stops Python&#x27;s Unicode folding from folding a dotless i or a long s ONTO <code>location</code>, which is the opposite failure. Widening the identifier side can only ever remove matches, never invent one, so no benign document can start being deleted by this change. The identifier/boundary split is now ENUMERATED over every code point in both engines rather than sampled, because a sample corpus catches the whitespace carve-out being deleted wholesale but not one range going missing.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.702.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -539,14 +546,7 @@
               <li>An export whose canonical pass fails now says so instead of ending in silence. The pass that rewrites live comment offsets into authored-row coordinates ran on a bare line outside the try/catch that wraps the document build, so a throw there unwound the whole click handler: no file was downloaded and no message appeared, which a reader could not tell apart from a click that never registered. Save/Shareable, the NonShareable Standalone branch, and Offline now all run the pass through one guard that reports the failure as an assertive toast naming the cause, stating that no file was written and that the pass put comments and table sorting back. The report survives the awkward shapes a throw can take: a non-Error throwable (or one whose <code>message</code> getter itself throws) is still reported, and the cause is named whenever the thrown value can be turned into one; an unbounded message is capped so the actionable sentence stays on screen, the full value is left on the console for triage, and a toast that cannot be shown at all still aborts the export rather than restoring the original silence (CMH-EXP-23).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.694.0] - 2026-08-05</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The validator&#x27;s document parser now decides template inertness by NAMESPACE, not by tag name. Only the HTML <code>&lt;template&gt;</code> holds its contents in an inert DocumentFragment; an element merely NAMED <code>template</code> in the SVG or MathML namespace is an ordinary foreign element a browser keeps in the DOM and in its ancestor&#x27;s <code>textContent</code>. Markup such as <code>&lt;math&gt;&lt;template&gt;text&lt;/template&gt;&lt;/math&gt;</code> inside <code>#commentRoot</code> was therefore invisible at once to the prose / unlinked-cross-reference view, the heading capture, the element view and the mermaid diagram-source view, and raw-text children written that way were recorded as parked rather than classified as they would be without that wrapper - so an SVG <code>&lt;script&gt;</code>/<code>&lt;style&gt;</code>, which a browser really does execute and apply, was hidden from the checks that read the live views. Such content is now validated exactly as a reader sees it, while a <code>&lt;template&gt;</code> under an HTML integration point such as <code>&lt;svg&gt;&lt;foreignObject&gt;</code> or <code>&lt;math&gt;&lt;mi&gt;</code>, or after a foreign breakout start tag, stays inert as before, and a declarative shadow root keeps rendering.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">329 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">330 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
