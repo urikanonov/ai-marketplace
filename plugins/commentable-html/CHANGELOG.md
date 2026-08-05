@@ -4,6 +4,50 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.747.0] - 2026-08-05
+
+### Changed
+
+- An offline export no longer DROPS the nested document it removes from an `<iframe srcdoc>`: it
+  keeps that markup beside the emptied frame as escaped inert text, in a collapsed `<details>`
+  block. The clear-outright rule that settled issues #996 and #1080 answered for the AUTHOR - an
+  offline export is a derived artifact, so the source file still carries the `srcdoc` - and never
+  for the RECIPIENT, who holds only the export and met a frame that rendered nothing, with no toast
+  behind it and no note in the file. The middle option between clearing and sanitizing costs
+  nothing the rejected sanitizer cost: it needs only ESCAPING on the exporter side (no second
+  nested-document parser, so the drift argument does not apply), NOTHING on the gate side (the
+  presence rule is unchanged, so the exporter and offline `--strict` still agree by construction),
+  and it lands content both sides already read as text. The block is `cm-skip`, exactly like every
+  other layer-injected node inside the content root, so it stays out of the section-hash,
+  document-hash, anchor and selection walks on both the runtime and the Python side - an export
+  cannot shift its own section hashes, flip an already-reviewed section to "changed", or invalidate
+  the validated stamp it carries. (It also means a Markdown export omits the block, which loses
+  nothing: an `<iframe>` has no Markdown representation either.) The placement rule is one
+  sentence - the block goes where the FRAME is, so it is visible to exactly the reader the nested
+  document was visible to, which is what settles the `<template>`- and `<noscript>`-parked cases in
+  both directions. Bounds keep it from adding content where none was lost: an EMPTY or
+  whitespace-only `srcdoc` gets no block, a frame in a FOREIGN namespace (an `<iframe>` inside
+  `<svg>`, which renders nothing in any browser) gets none either, a frame inside a `<p>` anchors
+  its block after that paragraph so the export stays serialize/reparse stable (and that walk stops
+  at the first non-HTML ancestor, so a frame inside `<foreignObject>` keeps its block inside the
+  graphic), two frames in one paragraph keep their source order rather than coming out reversed,
+  a frame that did not render (it or an ancestor carries `hidden`) keeps a block that does not
+  render either, and the text is never capped or truncated - the collapsed `<details>` bounds the
+  LAYOUT instead,
+  and the only things that reach the text are two normalizations that exist so the export is a
+  fixed point (CR/CRLF to LF, and the file-wide blank-line collapse every offline export already
+  applies to an authored `<pre>` as well). What counts as "whitespace-only" is a literal ASCII
+  class shared by the exporter and the validator, because JS `trim()` and Python `str.strip()`
+  disagree in both directions. Re-exporting an already-exported file is idempotent by construction,
+  since the first export removed the attribute the second would read. The export toast now carries
+  both counts - how many frames were emptied, and how many kept their markup, the second read off
+  the finished document by IDENTITY (never by walking the public `cmh-srcdoc-export` class, which a
+  source can legitimately already carry) rather than banked as each block is inserted - and the
+  CMH-VAL-24 authoring
+  advisory says the markup survives as inert text rather than telling an author their content is
+  removed outright, branching so it promises nothing for an empty value, which the exporter does
+  not keep.
+
 ## [1.744.0] - 2026-08-05
 
 ### Fixed

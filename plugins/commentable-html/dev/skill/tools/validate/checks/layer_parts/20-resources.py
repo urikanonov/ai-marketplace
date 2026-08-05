@@ -519,11 +519,13 @@ def _check_self_contained(html, parser):
         # this pure-Python tokenizer and the exporter's browser DOM - to agree at every depth on
         # serialization, doctype and rendering mode, fixed-point settling under reparse, and one
         # shared parse budget, which is exactly the drift the clear-outright rule removes; and it
-        # would not even end the loss, since a value that will not settle still has to go. So the
-        # cost stays real: Export Offline removes the nested document. The author used to meet
-        # that only in a toast AFTER exporting, which is why this says it while they are still
-        # AUTHORING. Presence, off the same shared EGRESS index the offline rule reads, so it
-        # names the same frames the export will really empty and still parses nothing nested.
+        # would not even end the loss, since a value that will not settle still has to go. The cost
+        # that is left is real but smaller than it was: the export empties the FRAME, and keeps the
+        # nested markup beside it as escaped inert text (issue #1119), so what stops is the
+        # RENDERING. The author used to meet even that only in a toast AFTER exporting, which is
+        # why this says it while they are still AUTHORING. Presence, off the same shared EGRESS
+        # index the offline rule reads, so it names the same frames the export will really empty
+        # and still parses nothing nested.
         # ADVISORY, not a blocking warning: this branch is "not known to be offline" rather than
         # "known to be shareable" (a MISSING or malformed descriptor lands here too), and a
         # `srcdoc` is legitimate content in every mode that makes no zero-network promise. A
@@ -535,14 +537,32 @@ def _check_self_contained(html, parser):
         # almost always multi-line, and a report line is printed line-oriented.
         for el in _find_tag_attrs_egress(html, "iframe"):
             if "srcdoc" in el:
+                nested = el.get("srcdoc") or ""
+                # The "kept" half is only promised where the exporter really keeps something. An
+                # EMPTY or whitespace-only value keeps nothing (there is no nested document), and
+                # that case is trivially visible to this tokenizer, so it is branched here rather
+                # than glossed - a gate that describes behavior the exporter does not have is the
+                # one-sided rule CMH-OFFLINE-04 exists to prevent. WHICH whitespace matters: the
+                # literal HTML ASCII set, matching the exporter's `_OFFLINE_SRCDOC_CONTENT_RE`
+                # character for character, because `str.strip()` also takes U+001C-U+001F and U+0085
+                # while JS `trim()` also takes NBSP and U+FEFF - so the two engines' defaults
+                # disagreed in BOTH directions on real values (`&#xFEFF;`, `&#28;`). The exporter's
+                # other bound, a frame in a FOREIGN namespace, is not visible to a flat tokenizer
+                # with no namespace to consult, so the wording carries it instead of branching on
+                # it: what is kept is what could have RENDERED, and an `<iframe>` inside `<svg>`
+                # renders nothing.
+                kept = ("with the nested markup kept beside it as inert escaped text wherever "
+                        "that markup could have rendered; author the snippet as content "
+                        "yourself if it has to keep RENDERING in an offline copy"
+                        if nested.strip(" \t\n\f\r") else
+                        "and this one carries no nested document to keep")
                 warnings.append(SRCDOC_ADVISORY_PREFIX +
                                 '<iframe srcdoc="%s"> carries a nested document that Export '
-                                "Offline removes outright - an offline export deliberately does "
-                                "not inspect or preserve a document carried inside an attribute "
-                                "value - so an offline copy of this file shows whatever local "
-                                "`src` the frame also carries, or an empty frame; inline the "
-                                "snippet (a <pre><code> block, say) if it has to survive one"
-                                % _report_value(el.get("srcdoc")))
+                                "Offline removes from the frame - an offline export deliberately "
+                                "does not inspect a document carried inside an attribute value - "
+                                "so an offline copy of this file shows whatever local `src` the "
+                                "frame also carries, or an empty frame, %s"
+                                % (_report_value(nested), kept))
                 # CMH-VAL-25, the OTHER half of what a nested document hides (issue #1125). The
                 # advisory above answers the CONTENT-LOSS question and is deliberately not a ruling
                 # that a nested document is SAFE: every self-contained rule above reads ELEMENTS,
