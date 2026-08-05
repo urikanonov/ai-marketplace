@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.696.0" />
+<meta name="commentable-html-version" content="1.699.0" />
 <meta name="commentable-html-kind" content="board" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.696.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.699.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Incident Triage Board</title>
 
@@ -4518,7 +4518,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.696.0";
+const CMH_VERSION = "1.699.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -18633,7 +18633,7 @@ function _offlineScriptHasNetworkImport(body) {
 // incidental rather than a defence - the same whitespace makes an arbitrary `zzz . location` match
 // - and the corpus pins it beside a non-escaped control so it cannot be read as one. The same
 // literal matching runs the other way too, and that direction costs an author content rather than
-// letting a beacon out: `_OFFLINE_LOCAL_LOCATION_RE` reads a local `location` binding literally, so
+// letting a beacon out: `_offlineLocalLocationIndex` reads a local `location` binding literally, so
 // an ESCAPED declaration does not register as a shadow and a script that navigates nothing is
 // deleted whole. Both are DECIDED rather than overlooked. Recognizing each name as literal-or-
 // escaped per character is possible without backtracking, but it turns a plain literal anchor
@@ -18678,7 +18678,33 @@ const _OFFLINE_NAV_IDENT_RE = /[.A-Za-z0-9_$]/;
 const _OFFLINE_NAV_STATEMENT_RE = /[;})>\n\r\u2028\u2029]/;
 const _OFFLINE_NAV_LINE_BREAK_RE = /[\n\r\u2028\u2029]/;
 const _OFFLINE_NAV_PREFIX_NAMES = ["window", "self", "top", "parent", "globalThis", "document", "frames"];
-const _OFFLINE_LOCAL_LOCATION_RE = /(?:^|[^.A-Za-z0-9_$])(?:(?:var|let|const|function|class)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+location(?![A-Za-z0-9_$])|(?:var|let|const)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*[{\[](?:[^}\]]{0,399}[^}\]A-Za-z0-9_$])?location(?![A-Za-z0-9_$])|function(?![A-Za-z0-9_$])[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:[A-Za-z0-9_$]{1,100}[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\((?:[^)]{0,399}[^)A-Za-z0-9_$])?location(?![A-Za-z0-9_$])|catch[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\([ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*location(?![A-Za-z0-9_$]))/i;
+// A LOCAL binding named `location` - a declaration keyword, a destructuring declaration naming it,
+// a function parameter, or a catch binding. It decides whether the UNPREFIXED sinks still count,
+// so matching text that declares nothing WEAKENS the navigation check; every place the name can
+// appear therefore needs a boundary on BOTH sides. It is a SCAN for the same reason the sink
+// search above is, and the reason is the CONSTANT rather than the growth: spelled as one pattern
+// searched over the whole script, its two WINDOWED arms re-walked a bounded 400-character
+// lookahead at EVERY declaration anchor, so a densely packed near-match (`const{` or `var[`
+// repeated) cost ~2.7us per character in Python and ~0.4us in node - linear, but an order above
+// the anchored sink scan beside it, on input that includes the vendored payload's INFLATED bytes.
+// Every shape ends in the literal `location`, so the scan is driven from THAT anchor - and every
+// arm's HEAD is then a forward-only cursor over the same text, so a head is never re-read.
+// Each cursor yields the position just PAST its head: the keyword and `catch` arms declare when a
+// head ends exactly AT the anchor, and the two windowed arms take the last head ending at or
+// before it, whose final character is the opener. Walking a head BACKWARDS from the anchor instead
+// would have been the same defect one level down - the whitespace run in `const<WS>location` is
+// unbounded, so a per-character backwards walk over it is paid per anchor.
+// Each cursor resumes on its match's LAST character rather than past it, because a head
+// can begin on that character (`var {let [`, or a keyword whose boundary character is the
+// preceding run's final space) and that inner head owns a different opener, while nothing further
+// in is a legal head start, so a matched head is never re-read.
+const _OFFLINE_LOCAL_NAME_RE = /location(?![A-Za-z0-9_$])/gi;
+const _OFFLINE_LOCAL_KEYWORD_HEAD_RE = /(?:^|[^.A-Za-z0-9_$])(?:var|let|const|function|class)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+/gi;
+const _OFFLINE_LOCAL_CATCH_HEAD_RE = /(?:^|[^.A-Za-z0-9_$])catch[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\([ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*/gi;
+const _OFFLINE_LOCAL_BRACKET_HEAD_RE = /(?:^|[^.A-Za-z0-9_$])(?:var|let|const)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*[{\[]/gi;
+const _OFFLINE_LOCAL_PAREN_HEAD_RE = /(?:^|[^.A-Za-z0-9_$])function(?![A-Za-z0-9_$])[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:[A-Za-z0-9_$]{1,100}[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\(/gi;
+const _OFFLINE_LOCAL_IDENT_RE = /[A-Za-z0-9_$]/;
+const _OFFLINE_LOCAL_WINDOW_MAX = 400;
 function _offlineNavAsciiLower(text) {
   let out = "";
   for (let i = 0; i < text.length; i++) {
@@ -18762,6 +18788,76 @@ function _offlineNavSinkIndex(src, prefixedOnly) {
   }
   return -1;
 }
+// The bounded `(?:[^C]{0,399}[^CA-Za-z0-9_$])?` window between a declaration opener and the name.
+// `closers` is what the window may not contain - `}]` for the destructuring arm, `)` for the
+// parameter-list arm. Only the LAST opener before the anchor needs testing: an earlier one has a
+// SUPERSET window (so it fails whatever the nearest one fails on), and the "character before the
+// name is not an identifier character" rule does not depend on which opener it is except when the
+// opener sits right against the name, which is the nearest one.
+function _offlineLocalWindowOk(src, opener, at, closers) {
+  if (opener < 0 || at - opener > _OFFLINE_LOCAL_WINDOW_MAX + 1) return false;
+  if (opener < at - 1 && _OFFLINE_LOCAL_IDENT_RE.test(src.charAt(at - 1))) return false;
+  const window = src.slice(opener + 1, at);
+  for (let i = 0; i < closers.length; i++) {
+    if (window.indexOf(closers.charAt(i)) >= 0) return false;
+  }
+  return true;
+}
+// The next declaration head at or after `pos`, as [end index, resume position]. The end index is
+// the position the name would have to start at. The resume position is the head's LAST character
+// rather than the one past it, because a head can begin on that character (`var {` followed by
+// `let [`, or a keyword whose boundary character is the previous head's final space) and the inner
+// head owns a different opener - but nothing between a head's start and its last character can
+// begin another one, since every character in there is a keyword letter, an identifier character
+// or whitespace, and a head must open on a NON-identifier boundary followed immediately by a
+// keyword. So the cursor never re-reads a head it has already matched.
+function _offlineLocalNextHead(src, rx, pos) {
+  rx.lastIndex = pos;
+  const m = rx.exec(src);
+  if (!m) return [-1, src.length + 1];
+  const end = m.index + m[0].length;
+  return [end, end - 1];
+}
+// The index of the first `location` the script declares as a LOCAL binding, or -1. All four
+// cursors only ever move FORWARD, so no character of the script is examined twice and a `location`
+// anchor costs a handful of integer comparisons plus, at most, the two bounded window tests.
+function _offlineLocalLocationIndex(src) {
+  let keyword = _offlineLocalNextHead(src, _OFFLINE_LOCAL_KEYWORD_HEAD_RE, 0);
+  let group = _offlineLocalNextHead(src, _OFFLINE_LOCAL_CATCH_HEAD_RE, 0);
+  let bracket = _offlineLocalNextHead(src, _OFFLINE_LOCAL_BRACKET_HEAD_RE, 0);
+  let paren = _offlineLocalNextHead(src, _OFFLINE_LOCAL_PAREN_HEAD_RE, 0);
+  let bracketSeen = -1;
+  let parenSeen = -1;
+  _OFFLINE_LOCAL_NAME_RE.lastIndex = 0;
+  for (let m = _OFFLINE_LOCAL_NAME_RE.exec(src); m; m = _OFFLINE_LOCAL_NAME_RE.exec(src)) {
+    const at = m.index;
+    _OFFLINE_LOCAL_NAME_RE.lastIndex = at + 1;
+    // Each cursor stops at the FIRST head end at or after the anchor, which is the smallest one
+    // because a pattern's head ends are non-decreasing in their start order (two starts can SHARE
+    // an end - `function function(` ends both parameter heads on the same `(` - but a longer head
+    // can never precede a shorter one).
+    while (keyword[0] >= 0 && keyword[0] < at) {
+      keyword = _offlineLocalNextHead(src, _OFFLINE_LOCAL_KEYWORD_HEAD_RE, keyword[1]);
+    }
+    while (group[0] >= 0 && group[0] < at) {
+      group = _offlineLocalNextHead(src, _OFFLINE_LOCAL_CATCH_HEAD_RE, group[1]);
+    }
+    // The windowed arms want the last head ENDING at or before the anchor, since its final
+    // character is the opener the window is measured from.
+    while (bracket[0] >= 0 && bracket[0] <= at) {
+      bracketSeen = bracket[0] - 1;
+      bracket = _offlineLocalNextHead(src, _OFFLINE_LOCAL_BRACKET_HEAD_RE, bracket[1]);
+    }
+    while (paren[0] >= 0 && paren[0] <= at) {
+      parenSeen = paren[0] - 1;
+      paren = _offlineLocalNextHead(src, _OFFLINE_LOCAL_PAREN_HEAD_RE, paren[1]);
+    }
+    if (keyword[0] === at || group[0] === at) return at;
+    if (_offlineLocalWindowOk(src, bracketSeen, at, "}]")) return at;
+    if (_offlineLocalWindowOk(src, parenSeen, at, ")")) return at;
+  }
+  return -1;
+}
 function _offlineScriptNavigatesToNetwork(body) {
   const src = String(body || "");
   if (_offlineNavSinkIndex(src, false) < 0) return false;
@@ -18772,7 +18868,7 @@ function _offlineScriptNavigatesToNetwork(body) {
   // one no matter what a local `location` shadows. This costs nothing an attacker did not already
   // have - aliasing (`var l = location; l.href = <url>`) is a cheaper bypass that has always
   // worked, and both are listed in the CMH-OFFLINE-05 residual.
-  if (_OFFLINE_LOCAL_LOCATION_RE.test(src)) return _offlineNavSinkIndex(src, true) >= 0;
+  if (_offlineLocalLocationIndex(src) >= 0) return _offlineNavSinkIndex(src, true) >= 0;
   return true;
 }
 function _offlineScriptHasNetworkEgress(body) {
