@@ -26,6 +26,7 @@ from unittest import mock
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402
 sys.path.insert(0, _paths.TOOLS)
+import _io_faults  # noqa: E402
 import new_document  # noqa: E402
 import to_shareable  # noqa: E402
 import upgrade  # noqa: E402
@@ -370,18 +371,10 @@ class SafeWriteTests(_Case):
 
     def test_an_interrupted_write_leaves_the_original_document_intact(self):
         original = _read(self.nonshareable)
-        real_open = io.open
-
-        def half_open(path, mode="r", *args, **kwargs):
-            # Sabotage EVERY write, whichever file the implementation writes: the old code wrote
-            # the target itself, the fixed one writes a staged temp file (and opens it by
-            # descriptor, not by name), so a path-based condition would silently stop testing.
-            fh = real_open(path, mode, *args, **kwargs)
-            if "w" in mode:
-                return _HalfWriter(fh)
-            return fh
-
-        with mock.patch("io.open", half_open):
+        # Sabotage EVERY write, whichever file the implementation writes: the old code wrote the
+        # target itself, the fixed one writes a staged temp file (and opens it by descriptor, not
+        # by name), so a path-based condition would silently stop testing.
+        with mock.patch("io.open", _io_faults.half_writing_opener(io.open)):
             try:
                 code = to_shareable.main(["to_shareable.py", self.nonshareable])
             except (OSError, IOError):
@@ -391,27 +384,6 @@ class SafeWriteTests(_Case):
                          "the original document must survive a failed write byte for byte")
         leftovers = [n for n in os.listdir(self.tmp) if n.startswith(".cmh-")]
         self.assertEqual(leftovers, [], "a staged write must clean up after itself")
-
-
-class _HalfWriter(object):
-    """A file object that writes half of what it is given and then fails, like a full disk."""
-
-    def __init__(self, fh):
-        self._fh = fh
-
-    def write(self, text):
-        self._fh.write(text[:len(text) // 2])
-        raise IOError("simulated disk-full")
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        self._fh.close()
-        return False
-
-    def __getattr__(self, name):
-        return getattr(self._fh, name)
 
 
 class LegacyReferenceShapeTests(_Case):

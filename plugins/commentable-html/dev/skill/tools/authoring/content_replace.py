@@ -266,10 +266,9 @@ def _stamp(path):
     """Write the content-bound validated stamp for the document's CURRENT bytes.
 
     `validate._stamp_validated_file` is deliberately best-effort (it swallows every
-    failure) and rewrites the file in place, so a partial write there could leave the
-    staged candidate truncated and we would commit those bytes. Verify the stamp landed
-    and that the file still validates, so any failure aborts before the target is
-    replaced.
+    failure), so a stamp that never landed would otherwise be committed silently as the
+    user's document. Verify the stamp is actually there and that the file still validates,
+    so any failure aborts before the target is replaced.
     """
     errors, warnings = validate.validate(path)
     fatal, _advisory = validate.partition_warnings(warnings)

@@ -220,36 +220,57 @@ class IoAmplificationTests(_Case):
     def _counted(self, run_toc=False, stamp_when_clean=False):
         reads, writes = [], []
         real_open = io.open
+        # Resolve BOTH sides the same way everywhere: `_atomic_io` realpaths the target before
+        # replacing it, so an abspath comparison would miss the swap whenever the document sits
+        # under a symlinked directory (a macOS /tmp mkdtemp, say) and silently count zero writes.
+        doc = os.path.realpath(self.doc)
+
+        def _resolve(file):
+            try:
+                return os.path.realpath(str(file))
+            except Exception:
+                return ""
 
         def counting_open(file, mode="r", *a, **kw):
-            try:
-                target = os.path.abspath(str(file))
-            except Exception:
-                target = ""
-            if target == os.path.abspath(self.doc):
-                (writes if any(m in mode for m in ("w", "a", "+")) else reads).append(target)
+            if _resolve(file) == doc:
+                (writes if any(m in mode for m in ("w", "a", "+")) else reads).append(doc)
             return real_open(file, mode, *a, **kw)
 
         import builtins
         real_builtin_open = builtins.open
 
         def counting_builtin_open(file, mode="r", *a, **kw):
-            try:
-                target = os.path.abspath(str(file))
-            except Exception:
-                target = ""
-            if target == os.path.abspath(self.doc):
-                (writes if any(m in mode for m in ("w", "a", "+")) else reads).append(target)
+            if _resolve(file) == doc:
+                (writes if any(m in mode for m in ("w", "a", "+")) else reads).append(doc)
             return real_builtin_open(file, mode, *a, **kw)
+
+        # The document is replaced ATOMICALLY (staged temp + os.replace, CMH-STAMP-02), so the
+        # target path is never opened for writing. Count the swap too - both spellings, so a
+        # writer that reaches for os.rename cannot make this invariant stop enforcing silently.
+        real_replace, real_rename = os.replace, os.rename
+
+        def counting_replace(src, dst, *a, **kw):
+            if _resolve(dst) == doc:
+                writes.append(doc)
+            return real_replace(src, dst, *a, **kw)
+
+        def counting_rename(src, dst, *a, **kw):
+            if _resolve(dst) == doc:
+                writes.append(doc)
+            return real_rename(src, dst, *a, **kw)
 
         io.open = counting_open
         builtins.open = counting_builtin_open
+        os.replace = counting_replace
+        os.rename = counting_rename
         try:
             finalize.finalize(self.doc, run_toc=run_toc,
                               stamp_when_clean=stamp_when_clean)
         finally:
             io.open = real_open
             builtins.open = real_builtin_open
+            os.replace = real_replace
+            os.rename = real_rename
         return len(reads), len(writes)
 
     def test_the_pipeline_writes_the_document_once(self):
@@ -287,7 +308,13 @@ class IoAmplificationTests(_Case):
         _reads, writes = self._counted()
         self.assertEqual(writes, 0,
                          "a finalize that changes nothing must not rewrite the file (got %d)" % writes)
-        self.assertEqual(os.stat(self.doc).st_size, before.st_size)
+        after = os.stat(self.doc)
+        self.assertEqual(after.st_size, before.st_size)
+        # The write is now an inode SWAP, so a same-length rewrite would be invisible to the size
+        # check alone; pin the identity too where the filesystem reports one.
+        if before.st_ino:
+            self.assertEqual(after.st_ino, before.st_ino,
+                             "an unchanged document must keep its identity, not be replaced")
 
     def test_the_toc_run_does_not_add_a_read_write_pair(self):
         reads, writes = self._counted(run_toc=True)

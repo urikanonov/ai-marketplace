@@ -16,6 +16,7 @@ from unittest import mock
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402
 sys.path.insert(0, _paths.TOOLS)
+import _io_faults  # noqa: E402
 import doc_stamp  # noqa: E402
 import new_document  # noqa: E402
 import section_hash  # noqa: E402
@@ -229,7 +230,9 @@ class NewDocumentSessionStampTests(unittest.TestCase):
         self.assertIsNone(doc_stamp.get_meta(html, doc_stamp.SESSION_META))
 
 
-class ValidateStampTests(unittest.TestCase):
+class _ValidateStampCase(object):
+    """Shared fixture helpers for the validate.py stamping tests."""
+
     def _tmp(self):
         d = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, d, ignore_errors=True)
@@ -253,6 +256,8 @@ class ValidateStampTests(unittest.TestCase):
             code = validate.main(argv)
         return code, out.getvalue() + err.getvalue()
 
+
+class ValidateStampTests(_ValidateStampCase, unittest.TestCase):
     def test_validate_stamps_validated_on_clean_file(self):
         p = self._make_doc()
         self.assertIsNone(doc_stamp.get_meta(self._read(p), doc_stamp.VALIDATED_META))
@@ -403,6 +408,97 @@ class ValidatedHashStampTests(unittest.TestCase):
         self.assertIsNotNone(doc_stamp.get_meta(no_root, doc_stamp.VALIDATED_HASH_META))
         restamped = doc_stamp.stamp_validated_html(no_root)
         self.assertIsNone(doc_stamp.get_meta(restamped, doc_stamp.VALIDATED_HASH_META))
+
+
+class AtomicStampWriteTests(_ValidateStampCase, unittest.TestCase):
+    """CMH-STAMP-02: the validated stamp is written atomically, so a stamp that cannot be
+    completed never damages the document that just PASSED validation.
+
+    The stamp used to reopen the validated file with mode "w", which truncates the original
+    before the stamped bytes exist. An interrupted write (a full disk, a killed run, an encoding
+    error) therefore destroyed the user's only copy - and, because stamping is best-effort, it
+    was reported as nothing worse than a NOTE on an otherwise clean pass.
+    """
+
+    def _patch_open(self, wrapper):
+        """Route BOTH open entry points through `wrapper`. The old code truncated the target with
+        the builtin `open`; an atomic write stages a temp file through `io.open` on a descriptor,
+        so patching only one of them would silently stop testing."""
+        for target, real in (("io.open", io.open), ("builtins.open", open)):
+            patcher = mock.patch(target, wrapper(real))
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_an_interrupted_stamp_write_leaves_the_original_document_intact(self):
+        p = self._make_doc()
+        with open(p, "rb") as fh:
+            original = fh.read()
+        self._patch_open(_io_faults.half_writing_opener)
+        code, out = self._run_validate(["validate.py", p])
+        self.assertEqual(code, 0, out)
+        self.assertIn("could not write the validated stamp", out)
+        with open(p, "rb") as fh:
+            self.assertEqual(fh.read(), original,
+                             "a failed stamp write must leave the validated document byte for byte")
+        leftovers = [n for n in os.listdir(os.path.dirname(p)) if n.startswith(".cmh-")]
+        self.assertEqual(leftovers, [], "a staged stamp write must clean up after itself")
+
+    def test_a_missing_atomic_io_refuses_to_stamp_rather_than_truncating(self):
+        # A broken/partial install without the shared safe writer must NOT fall back to a
+        # truncating write: an unstamped document is a banner the user clears by re-running,
+        # a truncated one is data loss. The degraded run stays visible (a missing-tool warning)
+        # and non-fatal.
+        p = self._make_doc()
+        with open(p, "rb") as fh:
+            original = fh.read()
+        missing = object()
+        saved = sys.modules.get("_atomic_io", missing)
+
+        def restore():
+            if saved is missing:
+                sys.modules.pop("_atomic_io", None)
+            else:
+                sys.modules["_atomic_io"] = saved
+
+        # Patch the ONE key rather than the whole sys.modules dict: unpatching a dict clears it
+        # and restores the snapshot, which would also evict every module first imported inside
+        # the block and silently re-execute it later in the same worker.
+        sys.modules["_atomic_io"] = None
+        self.addCleanup(restore)
+        code, out = self._run_validate(["validate.py", p])
+        self.assertEqual(code, 0, out)
+        # Pin REFUSING, not merely failing: the missing-tool warning is the refuse path, while
+        # the stamp NOTE would mean it tried to write anyway. Asserting only that "_atomic_io"
+        # appears would pass either way, since the ImportError text names the module too.
+        self.assertIn("optional tool '_atomic_io' could not be imported", out)
+        self.assertNotIn("could not write the validated stamp", out)
+        self.assertIsNone(doc_stamp.get_meta(self._read(p), doc_stamp.VALIDATED_META),
+                          "a run that cannot write safely must not stamp")
+        with open(p, "rb") as fh:
+            self.assertEqual(fh.read(), original,
+                             "refusing to stamp must leave the document byte for byte")
+
+    def test_the_stamp_never_opens_the_validated_document_for_truncation(self):
+        # The guarantee stated directly: the document is REPLACED, never rewritten in place.
+        p = self._make_doc()
+        target = os.path.realpath(p)
+        truncating = []
+
+        def watch(real):
+            def opener(path, mode="r", *args, **kwargs):
+                if isinstance(path, str) and ("w" in mode or "a" in mode) \
+                        and os.path.realpath(path) == target:
+                    truncating.append(mode)
+                return real(path, mode, *args, **kwargs)
+            return opener
+
+        self._patch_open(watch)
+        code, out = self._run_validate(["validate.py", p])
+        self.assertEqual(code, 0, out)
+        self.assertIsNotNone(doc_stamp.get_meta(self._read(p), doc_stamp.VALIDATED_META),
+                             "the document must still end up stamped")
+        self.assertEqual(truncating, [],
+                         "the stamp must be staged and swapped in, never truncate the original")
 
 
 if __name__ == "__main__":

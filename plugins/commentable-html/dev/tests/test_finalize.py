@@ -14,6 +14,7 @@ import _paths  # noqa: E402  shared pkg/dev split path constants
 ROOT = _paths.PKG
 TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
+import _io_faults  # noqa: E402
 import finalize  # noqa: E402
 
 TEMPLATE = os.path.join(ROOT, "dist", "SHAREABLE.html")
@@ -256,6 +257,32 @@ class FinalizeTests(unittest.TestCase):
         self.assertEqual(code, 0, err)
         with open(path, "r", encoding="utf-8") as fh:
             self.assertNotIn("commentable-html-validated", fh.read())
+
+    def test_an_interrupted_finalize_write_leaves_the_original_document_intact(self):
+        # CMH-STAMP-02: finalize rewrites the user's only copy in one write. Opening the target
+        # with "w" truncates it before the replacement bytes exist, so an interrupted write
+        # (a full disk, a killed run) destroyed a document that had just passed validation.
+        directory = self._tmpdir()
+        path = os.path.join(directory, "doc.html")
+        self._write(path, "<html><head></head><body>x</body></html>")
+        with open(path, "rb") as fh:
+            original = fh.read()
+
+        for target, real in (("io.open", io.open), ("builtins.open", open)):
+            patcher = mock.patch(target, _io_faults.half_writing_opener(real))
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        with mock.patch.object(finalize.validate, "validate", return_value=([], [])):
+            code, _out, err = self._run_main(["finalize.py", path])
+        # Assert on the RETURN CODE, not on a caught exception: finalize must REPORT a failed
+        # write, so an uncaught traceback has to fail this test rather than pass it.
+        self.assertEqual(code, 1, "a failed write must be reported, not swallowed")
+        self.assertIn("finalize:", err)
+        with open(path, "rb") as fh:
+            self.assertEqual(fh.read(), original,
+                             "a failed finalize write must leave the document byte for byte")
+        leftovers = [n for n in os.listdir(directory) if n.startswith(".cmh-")]
+        self.assertEqual(leftovers, [], "a staged write must clean up after itself")
 
     def _report_doc(self, kind="report"):
         # A minimal full document with a #commentRoot whose report/plan content sits under
