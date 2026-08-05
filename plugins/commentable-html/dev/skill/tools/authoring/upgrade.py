@@ -36,6 +36,7 @@ from html.parser import HTMLParser
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import _atomic_io  # noqa: E402
 import _browser_attrs  # noqa: E402
 import _favicon  # noqa: E402
 import doc_stamp  # noqa: E402
@@ -700,13 +701,21 @@ def main(argv):
         return 0
 
     out_path = args.out or args.file
+    # Follow a symlink to its target (as _atomic_io.atomic_write does): replacing the LINK would
+    # turn it into a regular file and strand the real document with stale content. The original
+    # spelling stays in the messages below.
+    real_out = os.path.realpath(out_path)
 
     # Validate BEFORE committing: write to a temp file in the destination directory,
     # validate that, and only atomically replace the target on success. This guarantees
     # a failed validation never clobbers the source/target with a broken document.
-    out_dir = os.path.dirname(os.path.abspath(out_path)) or "."
+    out_dir = os.path.dirname(os.path.abspath(real_out)) or "."
     warnings = []
-    fd, tmp_path = tempfile.mkstemp(prefix=".cmh-upgrade-", suffix=".html", dir=out_dir)
+    try:
+        fd, tmp_path = tempfile.mkstemp(prefix=".cmh-upgrade-", suffix=".html", dir=out_dir)
+    except OSError as exc:
+        sys.stderr.write("upgrade: cannot write %s: %s\n" % (out_path, exc))
+        return 1
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             fh.write(new_html.replace("\r\n", "\n").replace("\n", newline))
@@ -744,11 +753,18 @@ def main(argv):
                                      "(target left unchanged):\n  %s\n" % (out_path, "\n  ".join(fatal)))
                     return 1
 
-        os.replace(tmp_path, out_path)
+        # mkstemp creates 0600 and os.replace carries the STAGED inode's mode to the target, so
+        # without this an upgrade of a 0644 report would silently make it owner-only. A brand-new
+        # --out file has no mode to preserve, so it takes the SOURCE document's mode rather than a
+        # process default that could widen a private report.
+        _atomic_io.preserve_mode(tmp_path, real_out, fallback=args.file)
+        os.replace(tmp_path, real_out)
         tmp_path = None
     finally:
         if tmp_path is not None and os.path.exists(tmp_path):
-            os.remove(tmp_path)
+            # quiet_remove clears a read-only bit first: the staged file now carries the
+            # destination's mode, and a read-only staged file cannot be removed on Windows.
+            _atomic_io.quiet_remove(tmp_path)
 
     print("Upgraded %s (regions: %s)%s" % (out_path, ", ".join(changed),
           "" if out_path == args.file else " from " + args.file))

@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 import _toolpath  # noqa: E402
 _toolpath.ensure()
 
+import _atomic_io  # noqa: E402
 import _brand_profile  # noqa: E402
 import _browser_attrs  # noqa: E402
 import _favicon  # noqa: E402
@@ -216,19 +217,30 @@ def _detect_newline(path):
     return "\r\n" if crlf > lf else "\n"
 
 
-def _write_atomic(path, text, copy_assets=False, newline="\n"):
-    out_dir = os.path.dirname(os.path.abspath(path)) or "."
-    fd, tmp_path = tempfile.mkstemp(prefix=".cmh-retrofit-", suffix=".html", dir=out_dir)
+def _write_atomic(path, text, copy_assets=False, newline="\n", source=None):
+    # Follow a symlink to its target so the replace does not turn the LINK into a regular file
+    # and strand the real document (matches _atomic_io.atomic_write). The staging file must sit
+    # beside the REAL file (os.replace needs the same filesystem), but companions are resolved by
+    # the browser against the URL the document is OPENED by, so they still go beside the path the
+    # caller named.
+    real_path = os.path.realpath(path)
+    real_dir = os.path.dirname(os.path.abspath(real_path)) or "."
+    asset_dir = os.path.dirname(os.path.abspath(path)) or "."
+    fd, tmp_path = tempfile.mkstemp(prefix=".cmh-retrofit-", suffix=".html", dir=real_dir)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as fh:
             fh.write(text)
         if copy_assets:
-            new_document._copy_companions(out_dir)
-        os.replace(tmp_path, path)
+            new_document._copy_companions(asset_dir)
+        # mkstemp creates 0600 and os.replace carries the staged inode's mode to the target, so
+        # retrofitting a 0644 host page in place would otherwise make it owner-only. A brand-new
+        # --out file takes the source page's mode rather than a process default.
+        _atomic_io.preserve_mode(tmp_path, real_path, fallback=source)
+        os.replace(tmp_path, real_path)
         tmp_path = None
     finally:
         if tmp_path is not None and os.path.exists(tmp_path):
-            os.remove(tmp_path)
+            _atomic_io.quiet_remove(tmp_path)
 
 
 def _has_layer(text, parser):
@@ -788,7 +800,8 @@ def main(argv):
         return 1
 
     try:
-        _write_atomic(out_path, result, copy_assets=(not args.shareable and args.copy_assets), newline=newline)
+        _write_atomic(out_path, result, copy_assets=(not args.shareable and args.copy_assets), newline=newline,
+                      source=args.file)
     except OSError as exc:
         sys.stderr.write("retrofit: cannot write %s: %s\n" % (out_path, exc))
         return 1

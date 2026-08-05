@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.726.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.728.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,24 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.728.0] - 2026-08-05</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The authoring tools that rewrite a document in place now preserve the destination file&#x27;s permissions. The new bytes are staged in a temp file, which POSIX creates as owner-only <code>0600</code>, and <code>os.replace</code> carries the STAGED inode&#x27;s mode to the target - so upgrading, retrofitting, or re-theming a world-readable <code>0644</code> document silently narrowed it to <code>0600</code> and anyone it had been shared with could no longer open it. <code>upgrade.py</code>, <code>retrofit.py</code>, and <code>deck/deck_theme.py</code> now all give the staged file the destination&#x27;s mode just before the swap, and the validated-temp plus atomic-replace guarantees are unchanged.</li>
+              <li>The mode step lives in the shared <code>_atomic_io</code> helper (<code>preserve_mode</code>), so the tools that stage a document and swap it in - <code>upgrade.py</code>, <code>retrofit.py</code>, <code>deck/deck_theme.py</code>, and the shared <code>atomic_write</code> behind <code>content_replace.py</code>, <code>to_shareable.py</code>, <code>validate.py</code> and <code>finalize.py</code> - all answer this the same way. Only the <code>0777</code> permission bits are copied - a setuid/setgid/sticky bit is never applied to a freshly staged inode - and a destination that exists but cannot be statted is left alone, so a guess can never WIDEN a deliberately private file. A <code>--out</code> to a path that does not exist yet has no mode to preserve, so the transform tools pass their SOURCE document as the fallback rather than letting a process default widen it (and the result is intersected with what a plain create would produce, so it is never wider than the umask allows either). A failure to apply the mode never fails the write, but it is reported on stderr instead of silently landing the wrong permissions.</li>
+              <li><code>upgrade.py</code>, <code>retrofit.py</code>, and <code>deck_theme.py</code> now resolve the destination with <code>realpath</code> before staging and replacing, as <code>_atomic_io.atomic_write</code> already did. Writing through a symlink used to replace the LINK with a regular file and strand the real document with stale content; it now rewrites the document the link points at. A <code>retrofit.py --copy-assets</code> run still copies its companions beside the path the CALLER named, since bare-name refs resolve against the URL the document is opened by.</li>
+              <li>Staged-file cleanup in those tools goes through <code>_atomic_io.quiet_remove</code>, which clears a read-only bit first, so a staged file that inherited a read-only destination&#x27;s mode cannot leak on Windows.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.726.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The in-document comment dialog&#x27;s action buttons now meet the repo-wide <code>&gt;=44px</code> touch target on a phone viewport (<code>max-width: 640px</code>), in the note view (<code>Delete</code> / <code>Close</code> / <code>Edit</code>) and the edit view (<code>Cancel</code> / <code>Save</code>) alike (CMH-CORE-23). Both rows measured 33px tall at a 320x720 viewport - the last controls in the dialog a thumb had to aim at, since its formatting toolbar (CMH-RICH-20) and the sidebar card&#x27;s actions were already enlarged. With the shipped labels the enlarged row still fits one line at 320px in every density scale, so the layout is unchanged; wrapping is a fallback for a row that no longer fits (a localized label set, a larger host root font), and the wrapped lines take a roomier row gap - in the same absolute unit as the touch target - so a <code>Delete</code> pushed onto its own line keeps a deliberate gap from the button below it rather than sitting a thumb-slip away. The confirmation <code>Delete</code> goes through (CMH-CORE-22) is unchanged.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.723.0] - 2026-08-05</h3></div>
             <div class="group-label">Added</div>
@@ -513,8 +525,6 @@
               <li>Recorded the decision behind that removal in the spec rather than leaving it as an omission (CMH-OFFLINE-04, CMH-SEC-06). Sanitizing the nested document instead of clearing it was prototyped on an abandoned branch, weighed, and rejected: it needs two independent recursive parsers - the exporter&#x27;s browser DOM and the validator&#x27;s pure-Python tokenizer - to agree at every depth on serialization, doctype reconstruction and rendering mode, fixed-point settling under serialize-then-reparse, and one shared parse budget; the content-preserving precedents in this layer are all edits inside a document both sides already parse; a value that will not settle still has to be removed, so sanitizing would trade a deterministic rule for parser-quirk roulette; and the author keeps the content regardless, since the export is a derived artifact. That last ground answers for the author and not for the recipient of an export, so the row also records the cheap middle option it does not take here - having the export replace the emptied frame with the nested markup as escaped inert text - as an open follow-up rather than a settled non-goal.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.722.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -543,14 +553,7 @@
               <li>The validator now resolves the layer descriptor the way the runtime and the exporter do, so a document whose ONLY <code>commentableHtmlLayer</code> descriptor sits inside the content root is reported as missing a descriptor instead of validating completely clean (CMH-VAL-19). The layer deliberately reads its own reserved blocks OUTSIDE the content root (<code>cmhLayerBlocks</code>, so that &quot;a content-region decoy must not be able to declare what this document IS&quot;) and every export refuses such a file outright, but the validator took the first <code>&lt;script id=&quot;commentableHtmlLayer&quot;&gt;</code> anywhere in the parse - the parser computed the content-region flag per capture and then dropped it. A document with a live descriptor moved inside <code>#commentRoot</code> therefore got a clean bill of health for a file the layer resolves no descriptor for and no export will produce, and a decoy placed there ahead of the real descriptor decided the document&#x27;s declared mode - the one value that now keys the whole offline rule set, and one a decoy can set to the perfectly VALID <code>&quot;offline&quot;</code> without raising any mode error at all. The flags ride along to the flushed script and the descriptor is resolved through them, on the boundary <code>cmhLayerBlocks</code> actually tests: the whole <code>#commentRoot</code> SUBTREE, not just the part between the CONTENT markers, so a descriptor parked inside the root but ahead of the BEGIN marker (or past the END marker) is caught too. An absent flag fails CLOSED. The root subtree contains the authored region, so an authored DEMONSTRATION of the markup in prose is still content and the real descriptor in the head is still read, and the missing-descriptor error now says WHY.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.710.0] - 2026-08-05</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A NonShareable document that carries offline chart snapshots is no longer read one way by the runtime and another by the validator. A <code>data-cm-offline-chart</code> image marks a chart a self-contained offline document snapshotted (a legacy Offline export produced them; the current export inlines Chart.js and keeps the live canvas), so a document whose layer lives in companion files can never be one: the snapshot there is a contradiction rather than evidence of offline mode. The strict validator now refuses that shape (the &quot;snapshots force mode offline&quot; consistency rule used to sit in the non-NonShareable branch alone, so the shape drew no mode error at all), and reports it alongside a wrong declared mode rather than one problem per run. <code>isOfflineDocument()</code> stops treating the snapshot signal as evidence once the layer is detected loading from companion files, or the descriptor declares either spelling of the companion-file mode. Both sides now also read the snapshot at the same scope - inside <code>#commentRoot</code> - so an attribute in host chrome outside the content root no longer fails a document the runtime would never have read as offline. Nothing else moves: a self-contained document that declares no mode still falls back to the snapshot signal, a Shareable document carrying snapshots still fails the <code>mode must be &quot;offline&quot;</code> rule, and an Offline document carrying them stays clean.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">335 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">336 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

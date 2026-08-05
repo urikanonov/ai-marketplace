@@ -21,6 +21,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import _atomic_io  # noqa: E402
 import _deck_theme  # noqa: E402
 import deck_validate  # noqa: E402
 
@@ -32,7 +33,9 @@ except ImportError:  # pragma: no cover
 
 
 def _is_repo_example(path):
-    norm = os.path.normpath(os.path.abspath(path)).replace("\\", "/")
+    # realpath first: the guard has to see where the file actually LIVES, or a symlink into the
+    # examples tree would walk straight past it.
+    norm = os.path.normpath(os.path.realpath(path)).replace("\\", "/")
     return (
         "/commentable-html/examples/" in norm
         or "/dev/examples/src/" in norm
@@ -108,17 +111,23 @@ def main(argv=None):
         print(f"deck_theme: warning: {w}", file=sys.stderr)
 
     out = args.out or args.deck
-    dest_dir = os.path.dirname(os.path.abspath(out)) or "."
-    with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8",
-                                     dir=dest_dir, newline="") as tf:
-        tf.write(themed)
-        tmp = tf.name
+    # Follow a symlink to its target so the replace does not strand the real deck.
+    real_out = os.path.realpath(out)
+    dest_dir = os.path.dirname(os.path.abspath(real_out)) or "."
+    fd, tmp = tempfile.mkstemp(prefix=".cmh-deck-theme-", suffix=".html", dir=dest_dir)
     try:
-        os.replace(tmp, out)
-    except OSError:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
-        raise
+        # The write is inside the try so a failed or interrupted write cleans its staging file
+        # up too, not just a failed replace.
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+            fh.write(themed)
+        # The staging file is created 0600 and os.replace carries that mode to the target, so
+        # re-theming a 0644 deck in place would otherwise make it owner-only.
+        _atomic_io.preserve_mode(tmp, real_out, fallback=args.deck)
+        os.replace(tmp, real_out)
+        tmp = None
+    finally:
+        if tmp is not None:
+            _atomic_io.quiet_remove(tmp)
     print(f"deck_theme: applied theme '{theme.label}' to {out}")
     return 0
 
