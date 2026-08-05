@@ -101,6 +101,72 @@ class NonShareableTests(unittest.TestCase):
         # It is not silently clean either - the shareable self-contained guarantee still applies.
         self.assertTrue(any("self-contained" in e and "f.html" in e for e in errors), errors)
 
+    # -- offline chart snapshots contradict the companion-file mode --------- #
+    # The `data-cm-offline-chart` image is the artifact of a SELF-CONTAINED Offline export, so a
+    # document that loads its layer from companion files can never be one. The forcing rule used
+    # to sit in the non-NonShareable branch alone, so this shape drew no error at all while the
+    # runtime's legacy snapshot signal still read it as an offline document (CMH-OFFLINE-09).
+    def _with_offline_chart(self, html):
+        out = html.replace(
+            "<p>content</p>",
+            '<p>content</p>\n'
+            '  <img class="cmh-chart" data-cm-offline-chart="true" '
+            'src="data:image/png;base64,AA==" alt="Offline chart snapshot">')
+        self.assertIn('data-cm-offline-chart="true"', out)
+        return out
+
+    def test_nonshareable_document_rejects_offline_chart_snapshots(self):
+        self.assertNonShareableError(
+            self._with_offline_chart(build_nonshareable()),
+            'commentableHtmlLayer.mode is "nonshareable" but the document carries offline chart '
+            "snapshots")
+
+    def test_nonshareable_document_rejects_offline_chart_snapshots_in_the_legacy_spelling(self):
+        # The pre-rename `nonportable` spelling is baked into every document produced before the
+        # rename, so the rule must reach it too - and the error must quote the mode the document
+        # actually declares rather than the current spelling.
+        html = self._with_offline_chart(
+            build_nonshareable().replace('"mode":"nonshareable"', '"mode":"nonportable"', 1))
+        self.assertIn('"mode":"nonportable"', html)
+        self.assertNonShareableError(
+            html,
+            'commentableHtmlLayer.mode is "nonportable" but the document carries offline chart '
+            "snapshots")
+
+    def test_nonshareable_document_reports_a_wrong_mode_and_its_snapshots_in_one_pass(self):
+        # The snapshot rule stands on its own: a companion-file document whose descriptor ALSO
+        # declares the wrong mode must learn both problems from one run, not one per run.
+        html = self._with_offline_chart(
+            build_nonshareable().replace('"mode":"nonshareable"', '"mode":"offline"', 1))
+        self.assertIn('"mode":"offline"', html)
+        errors, _ = self._validate(html)
+        self.assertTrue(any('mode must be "nonshareable"' in e for e in errors), errors)
+        self.assertTrue(any("carries offline chart snapshots" in e for e in errors), errors)
+        # The message quotes the mode the document actually declares, whatever that is.
+        self.assertTrue(any('mode is "offline" but' in e for e in errors), errors)
+
+    def test_nonshareable_document_without_offline_chart_snapshots_is_clean(self):
+        # Control: the rule fires on the SNAPSHOT, not on the nonshareable classification, so an
+        # ordinary companion-file document stays clean.
+        errors, warnings = self._validate(build_nonshareable())
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    def test_an_offline_chart_attribute_outside_the_content_root_is_not_a_snapshot(self):
+        # Scope control: the runtime reads `#commentRoot [data-cm-offline-chart]`, so the validator
+        # must not fail a companion-file document for the attribute sitting in host chrome outside
+        # the content root - it is not evidence either side would act on.
+        html = build_nonshareable().replace(
+            "<!-- BEGIN: commentable-html - NONSHAREABLE BOOTSTRAP -->",
+            "<!-- BEGIN: commentable-html - NONSHAREABLE BOOTSTRAP -->\n"
+            '<img class="cmh-chart" data-cm-offline-chart="true" '
+            'src="data:image/png;base64,AA==" alt="Outside the content root">',
+            1)
+        self.assertIn('data-cm-offline-chart="true"', html)
+        errors, warnings = self._validate(html)
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
     def test_a_nonshareable_document_may_carry_an_inline_event_handler(self):
         # Both places a NonShareable document legitimately carries an `on*`: the shipped bootstrap
         # dismiss button (which `_inlineNonShareableAssets` deletes with the whole NONSHAREABLE

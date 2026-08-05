@@ -52,9 +52,25 @@ def _check_layer_descriptor(parser, nonshareable, active_regions):
     if not isinstance(version, str) or not version.strip():
         errors.append('%s.version must be a non-empty string' % LAYER_DESCRIPTOR_ID)
     mode = data.get("mode")
+    # An offline chart snapshot is the artifact of a self-contained offline document (a legacy
+    # Offline export produced them; today's export inlines Chart.js and keeps the live canvas), so
+    # its presence and the declared mode must agree in BOTH branches. A NonShareable document
+    # loads its layer from companion files and can never be a self-contained one, so a snapshot
+    # there is a contradiction rather than a stale mode (CMH-OFFLINE-09); scoping the rule to the
+    # non-NonShareable branch alone left that shape blessed here while the runtime's legacy
+    # snapshot signal still read it as offline. The snapshot rule stands on its own rather than
+    # hanging off the mode check: a document whose mode is ALSO wrong learns both problems in one
+    # pass instead of one per run, which is why the message quotes whatever mode it declares.
     if nonshareable:
         if mode not in NONSHAREABLE_MODES:
             errors.append('%s.mode must be "nonshareable" for this document' % LAYER_DESCRIPTOR_ID)
+        if parser.has_offline_chart:
+            errors.append("%s.mode is %s but the document carries offline chart snapshots inside "
+                          "#commentRoot; a document that loads its layer from companion files is "
+                          "not self-contained and can never be offline - remove the reserved "
+                          "data-cm-offline-chart attribute (the image itself can stay), or use "
+                          "Export Offline, which produces a self-contained offline file"
+                          % (LAYER_DESCRIPTOR_ID, json.dumps(mode)))
     else:
         if mode not in SHAREABLE_MODES + ("offline",):
             errors.append('%s.mode must be "shareable" or "offline" for this document' % LAYER_DESCRIPTOR_ID)

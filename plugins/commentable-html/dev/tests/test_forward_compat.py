@@ -114,6 +114,33 @@ class ForwardCompatibleLayoutTests(unittest.TestCase):
         self.assertIn("<current-runtime-version>", block)
         self.assertNotRegex(block, r"\d+\.\d+\.\d+")
 
+    def test_companion_file_mode_vocabulary_is_shared_by_every_reader(self):
+        """CMH-OFFLINE-09: the runtime, the validator and the migration tool must spell the
+        companion-file mode the same way.
+
+        The runtime decides "this document is not offline" from its own copy of that list, the
+        validator refuses the contradictory shape from its copy, and to_shareable.py migrates
+        from a third. Three hand-kept copies is exactly the drift that let the runtime and the
+        validator disagree in the first place, so pin them together: adding or renaming a
+        spelling on one side alone fails here rather than silently re-opening the divergence.
+        """
+        from checks import layer  # noqa: E402  the validator's assembled layer checks
+        import to_shareable  # noqa: E402
+
+        js = _read(os.path.join(_paths.ASSETS, "js", "70-mode-badge.js"))
+        modes_re = re.compile(r"const CMH_NONSHAREABLE_MODES = \[([^\]]*)\];")
+        m = modes_re.search(js)
+        self.assertIsNotNone(m, "70-mode-badge.js no longer declares CMH_NONSHAREABLE_MODES")
+        runtime_modes = tuple(re.findall(r'"([^"]+)"', m.group(1)))
+        self.assertEqual(runtime_modes, layer.NONSHAREABLE_MODES)
+        self.assertEqual(runtime_modes, to_shareable.NONSHAREABLE_MODES)
+        # The BUILT runtime carries the same vocabulary, so a stale dist cannot ship a different
+        # one than the source this test pins. Compared as parsed values, not as raw text, so a
+        # change in how the bundle is written is not mistaken for a drift.
+        built = modes_re.search(_read(os.path.join(_paths.DIST, "commentable-html.js")))
+        self.assertIsNotNone(built, "the built runtime no longer declares CMH_NONSHAREABLE_MODES")
+        self.assertEqual(tuple(re.findall(r'"([^"]+)"', built.group(1))), runtime_modes)
+
 
 if __name__ == "__main__":
     unittest.main()

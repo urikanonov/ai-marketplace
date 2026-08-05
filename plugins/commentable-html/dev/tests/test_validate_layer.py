@@ -126,6 +126,30 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
         )
         self.assertError(doc, 'commentableHtmlLayer.mode must be "offline" when offline chart snapshots are present')
 
+    def test_layer_descriptor_offline_mode_accepts_offline_chart_snapshots(self):
+        # The control for CMH-OFFLINE-09: the snapshot forcing rule reports a mode that
+        # CONTRADICTS the artifact, so the document the Offline export actually produces - one
+        # that declares offline and carries the snapshots - stays clean.
+        doc = with_offline_mode(build()).replace(
+            "<p>content</p>",
+            '<img class="cmh-chart" data-cm-offline-chart="true" '
+            'src="data:image/png;base64,AA==" alt="Offline chart">'
+        )
+        self.assertIn('data-cm-offline-chart="true"', doc)
+        self.assertOkNoWarn(doc)
+
+    def test_layer_descriptor_offline_artifact_outside_the_content_root_is_not_a_snapshot(self):
+        # Scope control: the runtime's signal is `#commentRoot [data-cm-offline-chart]`, so an
+        # attribute outside the content root forces nothing here either (CMH-OFFLINE-09).
+        doc = build().replace(
+            "<!--\nBEGIN: commentable-html - HANDLED IDS",
+            '<img class="cmh-chart" data-cm-offline-chart="true" '
+            'src="data:image/png;base64,AA==" alt="Outside the content root">\n'
+            "<!--\nBEGIN: commentable-html - HANDLED IDS",
+            1)
+        self.assertIn('data-cm-offline-chart="true"', doc)
+        self.assertOkNoWarn(doc)
+
     def test_layer_descriptor_id_decoy_div_is_flagged(self):
         doc = build().replace(
             '<script type="application/json" id="commentableHtmlLayer">',

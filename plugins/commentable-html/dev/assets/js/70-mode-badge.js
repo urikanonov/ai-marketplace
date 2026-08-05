@@ -92,7 +92,16 @@ function _embeddedCommentSig() {
 // and every current comment embedded, or none) or "Not shareable" (it references external
 // skill/companion resources, and/or has comments that are not embedded in the file). The
 // bubble hover explains WHY a file is not shareable.
+// The pre-rename spelling of the companion-file mode is baked into every document produced
+// before the rename, so both spellings count (SHAREABLE_MODES / NONSHAREABLE_MODES in the
+// validator).
+const CMH_NONSHAREABLE_MODES = ["nonshareable", "nonportable"];
 function isOfflineDocument() {
+  // A document whose layer loads from companion files is not self-contained, so it can never be
+  // offline - whatever its descriptor says (CMH-OFFLINE-09). This is DECIDED FIRST because it is
+  // the same structural classification that picks the validator's own branch, where a declared
+  // `offline` is an error rather than a mode the document gets to keep.
+  if (NONSHAREABLE_MODE) return false;
   // The layer's descriptor, not whichever element got the id first: a content-region decoy must
   // not be able to declare what this document IS (cmhLayerBlock).
   const script = cmhLayerBlock(document, "commentableHtmlLayer");
@@ -100,6 +109,10 @@ function isOfflineDocument() {
     try {
       const data = JSON.parse((script.textContent || "").trim() || "{}");
       if (data && data.mode === "offline") return true;
+      // A declared companion-file mode settles it the same way, so the legacy snapshot signal
+      // below is not evidence about such a document. A declared `shareable` deliberately still
+      // falls through to that signal, which is where a mode-less legacy document is read.
+      if (data && CMH_NONSHAREABLE_MODES.indexOf(data.mode) >= 0) return false;
     } catch (e) { /* malformed descriptors are handled by validate.py */ }
   }
   return !!document.querySelector("#commentRoot [data-cm-offline-chart]");

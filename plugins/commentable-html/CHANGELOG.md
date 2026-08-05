@@ -4,6 +4,26 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.710.0] - 2026-08-05
+
+### Fixed
+
+- A NonShareable document that carries offline chart snapshots is no longer read one way by the
+  runtime and another by the validator. A `data-cm-offline-chart` image marks a chart a
+  self-contained offline document snapshotted (a legacy Offline export produced them; the current
+  export inlines Chart.js and keeps the live canvas), so a document whose layer lives in companion
+  files can never be one: the snapshot there is a contradiction rather than evidence of offline
+  mode. The strict validator now refuses that shape (the "snapshots force mode offline"
+  consistency rule used to sit in the non-NonShareable branch alone, so the shape drew no mode
+  error at all), and reports it alongside a wrong declared mode rather than one problem per run.
+  `isOfflineDocument()` stops treating the snapshot signal as evidence once the layer is detected
+  loading from companion files, or the descriptor declares either spelling of the companion-file
+  mode. Both sides now also read the snapshot at the same scope - inside `#commentRoot` - so an
+  attribute in host chrome outside the content root no longer fails a document the runtime would
+  never have read as offline. Nothing else moves: a self-contained document that declares no mode
+  still falls back to the snapshot signal, a Shareable document carrying snapshots still fails the
+  `mode must be "offline"` rule, and an Offline document carrying them stays clean.
+
 ## [1.702.1] - 2026-08-05
 
 ### Fixed

@@ -2083,7 +2083,12 @@ class _DocParser(_BrowserBoundaries):
                                  "skip": self._skip_ancestor() or own_skip,
                                  "in_svg": in_svg,
                                  "in_root": self._in_comment_root()})
-        if "data-cm-offline-chart" in ad:
+        if "data-cm-offline-chart" in ad and self._in_comment_root():
+            # Scoped to the content root because that is where the Offline export puts a snapshot,
+            # and because the runtime's own signal is `#commentRoot [data-cm-offline-chart]`: a
+            # wider view here would fail a document the runtime never reads as offline (a snapshot
+            # in host chrome or in layer-owned markup). Template and shadow content never reach
+            # here at all (`_record` returns above).
             self.has_offline_chart = True
         if "style" in ad:
             self.inline_styles.append({"tag": tag, "value": ad.get("style", "")})
