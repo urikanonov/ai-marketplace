@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.721.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.722.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.722.0] - 2026-08-05</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The validated stamp is now written ATOMICALLY. <code>validate.py</code> stamped a strict-clean document by reopening it with mode <code>w</code>, which truncates the file before the stamped bytes exist, so an interrupted or failing write (a full disk, a killed run, an encoding error) destroyed a document that had just PASSED validation - and, because stamping is best-effort, the loss was reported as nothing worse than a NOTE. The stamp, and the single write <code>finalize.py</code> makes, now stage the new bytes in the target&#x27;s own directory and swap them in with <code>os.replace</code> (the shared <code>_atomic_io.atomic_write</code> the migration tools already use), so a failed write leaves the original bytes untouched and cleans up after itself. A partial install whose <code>validate.py</code> cannot import <code>_atomic_io</code> refuses to stamp rather than falling back to a truncating write.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.721.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li><code>Export Offline</code> now removes a <code>&lt;link rel=&quot;preconnect&quot;&gt;</code> or <code>&lt;link rel=&quot;dns-prefetch&quot;&gt;</code> UNCONDITIONALLY, whatever its <code>href</code> parses as, and offline <code>--strict</code> rejects one that survives (CMH-OFFLINE-04). Both relations were removed only when their <code>href</code> was a network URL by the per-resource predicate, so a hint in a scheme that predicate reads as local - <code>&lt;link rel=&quot;dns-prefetch&quot; href=&quot;ftp://evil.example&quot;&gt;</code> - rode into a zero-network export, as did a relative or same-document one. A DNS lookup for an attacker-chosen host from the reader&#x27;s machine is a beacon: it reveals that the document was opened, from which resolver, and when. The predicate is the wrong LAYER for these two rather than merely too narrow: their leak is a name RESOLUTION rather than a fetch, so the TCP-listener probe that settled the predicate&#x27;s scheme boundary structurally cannot see one. That was measured rather than assumed - a DNS-capable observer (a Chromium netlog, read as host-resolver EVENTS rather than as raw text) saw ZERO resolver activity for a <code>preconnect</code>/<code>dns-prefetch</code> host in any scheme, the <code>http:</code>/<code>https:</code> CONTROL hints included, from a <code>file:</code> and an <code>http:</code> document alike and with the speculative machinery deliberately re-enabled, while an ordinary image reference to an http host in the same document did produce a resolver job. A control that measures zero cannot license a boundary, so no scheme is evidenced inert and the hints go outright: unlike a stylesheet or an icon they show a reader nothing, so removing one loses no content. What goes is the HINT rather than the ELEMENT - a <code>rel</code> that mixes a hint with a content relation keeps its other relations, so an <code>alternate</code> or <code>stylesheet</code> reference a reader uses is never deleted silently, and what remains is still judged by the network-href pass as the relation it also is. Both sides read the <code>rel</code> list through the shared ASCII tokenizer and one shared relation set, so the strip and the gate agree by construction rather than by two predicates staying in step, and the measurement is committed as a spec that re-runs on every CI pass.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.715.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -509,8 +518,6 @@
               <li>The validator now reads a <code>file://</code> companion reference&#x27;s HOST the way the URL parser reads it, so a NonShareable document whose companion refs are written in a percent-encoded spelling of <code>localhost</code> validates cleanly. The parser percent-decodes a file host and maps it through domain-to-ASCII before the file-host state empties the exact string <code>localhost</code>, but the resolver compared the raw, still-encoded host to the literal - so <code>file://local%68ost/...</code> fell through to the authority branch, resolved to a bogus UNC path, and reported a companion file that was right there on disk as missing. The ref now also goes through the same input cleanup the network-URL predicate uses, so a BACKSLASH host terminator (<code>file://localhost\x</code>, which the parser ends at the <code>\</code> exactly as at a <code>/</code>) is local too. A TRAILING DOT deliberately keeps a real authority (<code>file://localhost./x</code> is the SMB path <code>\\localhost.\x</code>), matching the network-URL predicate&#x27;s decision, and the two are now pinned to agree about the <code>localhost</code> spelling - IDNA/UTS-46 spellings included, which both sides read as an authority (the accepted over-detection the network-URL predicate already records) (CMH-VAL-05).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.711.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -539,14 +546,7 @@
               <li>The offline shadow rule now decides on the SCRIPT&#x27;S OWN DECLARATIONS instead of a bounded character window over raw source, so it stops deleting scripts that navigate nothing (CMH-OFFLINE-05). The window could not see an arrow parameter, a method or <code>constructor</code> shorthand, a generator, a nested destructuring or a default that spent a <code>}</code>, <code>]</code> or <code>)</code> inside it, a comment between <code>catch (</code> and the name, a non-ASCII function name, or any binding more than 400 characters into the list - every one of those made <code>Export Offline</code> drop an author&#x27;s script whole and made <code>validate.py --strict</code> reject the file the exporter had just written. It also read a <code>location</code> merely MENTIONED in a comment, a string or a parameter default as a declaration, which suppressed a real unprefixed sink beside it. The rule is now a single left-to-right tokenizing pass (comments, string and template literals and regex literals skipped; declaration lists, parameter lists and destructuring patterns tracked as binding contexts; property keys and default-value expressions excluded), mirrored helper for helper in the exporter and the strict validator and pinned in both engines. It stays linear on adversarial input, and the arm is now recorded as what it is: a false-positive reducer, not a security boundary. This REPLACES the anchor-driven cursor scan added in 1.699.0: that change made the same character-window decision cheap, and tokenizing the declaration removes the window (and so the cursors, their head patterns and their tests) outright, at a comparable cost per character.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.701.0] - 2026-08-05</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Sorting a table nested inside another sortable table now re-applies every sortable ancestor&#x27;s persisted sort, nearest first. An outer table sorted on a column whose cells HOLD a nested table ranks its rows by that cell&#x27;s text, so a reader who sorted the outer table FIRST and the nested one second was left looking at an order ranked against the nested table&#x27;s old rows - one that a reload (which replays the persisted sorts innermost-first) and an export never reproduced. Each ancestor is unsorted before it is re-sorted, matching the replay&#x27;s authored-order starting point, so the live view is exactly what a reload gives back for either click order. Clearing a nested sort re-ranks its ancestors too, and because re-ranking an ancestor detaches and re-inserts the row that holds the clicked table, focus is restored to the chevron the reader actuated instead of being dropped on the document body (CMH-CONTENT-08).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">332 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">333 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

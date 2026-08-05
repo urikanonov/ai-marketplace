@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.722.0] - 2026-08-05
+
+### Fixed
+
+- The validated stamp is now written ATOMICALLY. `validate.py` stamped a strict-clean document by
+  reopening it with mode `w`, which truncates the file before the stamped bytes exist, so an
+  interrupted or failing write (a full disk, a killed run, an encoding error) destroyed a document
+  that had just PASSED validation - and, because stamping is best-effort, the loss was reported as
+  nothing worse than a NOTE. The stamp, and the single write `finalize.py` makes, now stage the new
+  bytes in the target's own directory and swap them in with `os.replace` (the shared
+  `_atomic_io.atomic_write` the migration tools already use), so a failed write leaves the original
+  bytes untouched and cleans up after itself. A partial install whose `validate.py` cannot import
+  `_atomic_io` refuses to stamp rather than falling back to a truncating write.
+
 ## [1.721.0] - 2026-08-05
 
 ### Fixed

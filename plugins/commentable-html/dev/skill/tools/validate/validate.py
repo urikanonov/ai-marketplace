@@ -463,19 +463,30 @@ def _stamp_validated_file(path):
     it ever fails we print a visible NOTE rather than silently reporting a clean validation that
     wrote no stamp - the confusing UX that #584 fixed. Stamping now runs an HTML parse
     (doc_stamp -> section_hash), a wider failure surface than the old timestamp-only write, so catch
-    broadly. The subprocess-stamp tests guard against a silent regression of the import path."""
+    broadly. The subprocess-stamp tests guard against a silent regression of the import path.
+
+    The write is ATOMIC (shared `_atomic_io.atomic_write`: a same-directory staged temp file
+    swapped in with `os.replace`). Reopening the target with mode "w" truncated the document
+    BEFORE the stamped bytes existed, so an interrupted write destroyed a document that had just
+    PASSED validation - and, because stamping is best-effort, reported it as only a NOTE."""
     try:
         import doc_stamp
     except ImportError:
         _toolpath.warn_missing_tool("doc_stamp", "the validated stamp")
         return
     try:
+        import _atomic_io
+    except ImportError:
+        # Refuse to stamp rather than fall back to a truncating write: an unstamped document is a
+        # banner the user can clear by re-running, a truncated one is data loss.
+        _toolpath.warn_missing_tool("_atomic_io", "the validated stamp")
+        return
+    try:
         with open(path, "r", encoding="utf-8", newline="") as fh:
             html = fh.read()
         stamped = doc_stamp.stamp_validated_html(html)
         if stamped != html:
-            with open(path, "w", encoding="utf-8", newline="") as fh:
-                fh.write(stamped)
+            _atomic_io.atomic_write(path, stamped)
     except Exception as exc:
         sys.stderr.write(
             "  NOTE: could not write the validated stamp (%s); the document PASSED validation but "

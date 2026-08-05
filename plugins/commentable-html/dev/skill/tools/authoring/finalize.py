@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 import _toolpath  # noqa: E402
 _toolpath.ensure()
 
+import _atomic_io  # noqa: E402
 import fix_skip  # noqa: E402
 import generate_toc  # noqa: E402
 import doc_stats  # noqa: E402
@@ -47,8 +48,10 @@ def _read(path):
 
 
 def _write(path, html):
-    with open(path, "w", encoding="utf-8", newline="") as fh:
-        fh.write(html)
+    """Replace the document crash-safely. finalize rewrites the user's only copy in ONE write, so
+    a truncating `open(path, "w")` would destroy it if the write is interrupted (see
+    `_atomic_io.atomic_write`: a same-directory staged temp file swapped in with `os.replace`)."""
+    _atomic_io.atomic_write(path, html)
 
 
 def _apply_normalize(html):
