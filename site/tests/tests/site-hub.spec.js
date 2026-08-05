@@ -293,6 +293,80 @@ test("the hub nav 'Plugins' dropdown also reveals on keyboard focus (SITE-NAV-04
 });
 
 
+test("the closed nav switcher menu adds no horizontal overflow on a phone (SITE-NAV-05)", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  const menu = page.locator(".nav-switcher-start .nav-switcher-menu");
+  await expect(menu).toBeHidden();
+  // The closed flyout is still LAID OUT (visibility:hidden removes it from hit-testing, not from
+  // layout), so its box must be collapsed or it sticks past the right edge of a phone viewport.
+  const closed = await menu.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return { right: r.right, width: r.width };
+  });
+  const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+  expect(closed.right, "the closed flyout must not reach past the viewport").toBeLessThanOrEqual(
+    clientWidth + 1
+  );
+  // The whole hub page is free of horizontal overflow at phone width.
+  const fits = await page.evaluate(
+    () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1
+  );
+  expect(fits, "the hub must not scroll horizontally at phone width").toBe(true);
+
+  // Opening it is unchanged: the flyout still reveals at full geometry on a phone...
+  await page.locator(".nav-switcher-start .nav-switcher-trigger").focus();
+  await expect(menu).toBeVisible();
+  const openNarrow = await menu.evaluate((el) => el.getBoundingClientRect().width);
+  expect(openNarrow, "the open flyout keeps its 260px min-width").toBeGreaterThanOrEqual(260);
+  await expect(menu.locator('a[href="#plugin-commentable-html"]')).toBeVisible();
+  // ...and closing it returns the page to the overflow-free resting state (the collapse is delayed
+  // by the length of the fade, so this only settles once the fade-out has finished).
+  await menu.evaluate((el) => {
+    el.ownerDocument.querySelector(".nav-switcher-start .nav-switcher-trigger").blur();
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+      )
+    )
+    .toBeLessThanOrEqual(1);
+
+  // ...and on a desktop viewport, where it also opens flush to the left edge of its trigger.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const trigger = page.locator(".nav-switcher-start .nav-switcher-trigger");
+  await trigger.hover();
+  await expect(menu).toBeVisible();
+  const [menuBox, triggerBox] = await Promise.all([menu.boundingBox(), trigger.boundingBox()]);
+  expect(menuBox.width).toBeGreaterThanOrEqual(260);
+  expect(Math.abs(menuBox.x - triggerBox.x)).toBeLessThanOrEqual(1);
+  expect(menuBox.y).toBeGreaterThan(triggerBox.y + triggerBox.height - 1);
+
+  // Closing still animates: the collapse is delayed by the length of the fade, so the box keeps its
+  // full geometry while it fades out (measured synchronously in the same task as the blur, so this
+  // cannot race the 0.14s delay) and only collapses afterwards. Reload first so no stale hover
+  // keeps the flyout open once focus leaves it.
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.mouse.move(5, 600);
+  await expect(menu).toBeHidden();
+  await trigger.focus();
+  await expect(menu).toBeVisible();
+  const widthWhileFadingOut = await menu.evaluate((el) => {
+    el.ownerDocument.querySelector(".nav-switcher-start .nav-switcher-trigger").blur();
+    return el.getBoundingClientRect().width;
+  });
+  expect(widthWhileFadingOut, "the flyout keeps its box while it fades out").toBeGreaterThanOrEqual(
+    260
+  );
+  await expect
+    .poll(() => menu.evaluate((el) => el.getBoundingClientRect().width))
+    .toBeLessThanOrEqual(1);
+});
+
+
 test("the hero shows a pill per plugin that scrolls to its card (SITE-HUB-12)", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const pills = page.locator(".hero-pills .hero-pill");
