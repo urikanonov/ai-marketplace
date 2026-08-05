@@ -241,9 +241,10 @@ from checks.layer import (  # noqa: F401,E402
 # tools pass through verbatim by design, and the offline-export notice on an `<iframe srcdoc>`
 # (CMH-VAL-24), which reports what a DIFFERENT mode's export would REMOVE - blocking on it
 # would make deleting the nested document the only route to a clean run, which is the very loss
-# the notice exists to announce. That says nothing about whether a nested document is SAFE: no
-# check here can see inside an attribute value, a gap that predates the notice and is tracked as
-# issue #1125. An advisory is
+# the notice exists to announce. That says nothing about whether a nested document is SAFE, which
+# is a separate question answered by a separate, BLOCKING finding: CMH-VAL-25 reads the nested
+# document as a fragment and reports the loads inside it (issue #1125).
+# An advisory is
 # always REPORTED but never fails --strict, never blocks a
 # fail-closed caller, and never withholds the validated stamp. Keeping the split in ONE place is
 # what stops retrofit, content_replace, finalize and this CLI disagreeing about what is

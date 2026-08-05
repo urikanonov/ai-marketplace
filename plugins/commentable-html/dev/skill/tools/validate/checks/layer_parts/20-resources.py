@@ -1,10 +1,10 @@
 # The offline-export notice on an `<iframe srcdoc>` (CMH-VAL-24) reports what a DIFFERENT mode's
 # export would REMOVE, so it must never be the thing that blocks a document: it carries a stable
 # prefix so `validate.ADVISORY_PREFIXES` keeps it out of every fail-closed path. That classification
-# is scoped to the CONTENT-LOSS question and is NOT a ruling that a nested document is safe: this
-# gate cannot see inside an attribute value, so a network load or a beacon parked in one is
-# unaudited either way - a gap that predates this notice and is tracked separately (issue #1125),
-# not one the advisory channel decides.
+# is scoped to the CONTENT-LOSS question and is NOT a ruling that a nested document is safe; what
+# the frame FETCHES is a separate question, answered beside it by a BLOCKING finding from
+# `_srcdoc_network_findings()` - an error, except a nested loading `<link>`, which is a warning
+# mirroring the top-level rule (CMH-VAL-25, issue #1125).
 SRCDOC_ADVISORY_PREFIX = "offline export advisory: "
 
 # Whatever `str.split()` does not already treat as whitespace: the C0 controls (NUL, BEL,
@@ -31,6 +31,81 @@ def _report_value(value):
     # indentation) would otherwise report identically to a genuinely empty one.
     if not out and value:
         return "..."
+    return out
+
+
+# The (tag, attr) pairs whose value a browser FETCHES, applied INSIDE a nested `srcdoc` document:
+# exactly the set the element-level rules below enforce on the top-level document in a mode that
+# makes no zero-network promise. A `<base href>` is not itself a load and is handled beside this on
+# the stricter `offline_is_non_local_ref`, the way the top-level rule handles it.
+_SRCDOC_LOAD_ATTRS = ((("img", "src", False), ("img", "srcset", True), ("iframe", "src", False),
+                       ("link", "href", False))
+                      + tuple(("script", attr, False) for attr in SCRIPT_LOAD_ATTRS))
+
+# A nested document is entity-escaped once per level of nesting, so each level costs the level
+# outside it about twice its own size and a real document bottoms out after one or two (a `srcdoc`
+# can alternate quote styles for a level or so before `<` has to be escaped at all). The cap is far
+# above anything an author writes and exists only so the walk can never be the thing that runs
+# away. Reaching it is REPORTED rather than passed, because an unaudited frame is not a clean one.
+_SRCDOC_MAX_DEPTH = 8
+
+
+def _srcdoc_network_findings(value, depth=1):
+    """Every network reference a nested `srcdoc` document carries, as (kind, tag, attr, value).
+
+    The nested markup is read as a FRAGMENT through the SAME shared tag index every other rule here
+    reads - the fragment lookup `_tag_attr_index` already serves for a KQL figure's inner HTML - so
+    an `<a href>` stays navigation, a relative reference and a `data:` URI stay local, and a nested
+    element gets the same verdict its top-level twin gets, at the same SEVERITY (the caller routes a
+    nested `link` into `warnings`, exactly as the top-level rule does). The one deliberate
+    difference is the Chart.js CDN loader, which is exempt at the top level and not here - see the
+    `load` branch below for why the exemption cannot travel into a frame.
+
+    A raw TEXT SCAN over the attribute value is the cheaper option and is deliberately NOT taken:
+    it cannot tell a link, a `data:` URI or a URL written in prose from a load, so it would BLOCK
+    benign nested markup, and a false rejection is the one failure mode a gate that withholds the
+    validated stamp cannot afford. Reading the fragment costs no drift either, because - unlike the
+    offline `srcdoc` rule (CMH-OFFLINE-04) - shareable mode has no exporter strip pass to keep in
+    step, so this gate is the only implementation of the rule.
+
+    The total work is bounded by the DOCUMENT, not by the branching factor: a frame's content is
+    physically contained in its parent's attribute value (and shrinks by one round of entity
+    escaping per level), so the nested text summed over every frame at every depth cannot exceed
+    the document size times the depth cap. Each distinct value is tokenized ONCE - the per-tag
+    lookups below all hit `_tag_attr_index`'s cache - so a wide or deep nest costs linear work in
+    the text it actually carries.
+    """
+    text = value or ""
+    out = []
+    # An empty answer from a parse that blew up means "could not look", never "loads nothing".
+    if _tag_attrs_failed(text):
+        return [("parse", None, None, None)]
+    for tag, attr, is_srcset in _SRCDOC_LOAD_ATTRS:
+        for el in _find_tag_attrs_egress(text, tag):
+            if tag == "link" and not _link_loads(el):
+                continue
+            val = el.get(attr, "")
+            if not val:
+                continue
+            for item in (srcset_candidate_urls(val) if is_srcset else [val]):
+                # The top-level Chart.js CDN exemption exists for the ONE documented opt-in: the
+                # loader that draws this document's `<canvas>` charts, whose version and SRI
+                # `check_charts` audits when the document renders one. A copy parked inside a
+                # nested document can never be that loader - a frame cannot draw into its host's
+                # canvas - so the exemption has nothing to exempt here and does not travel with
+                # the spelling.
+                if is_network_url(item):
+                    out.append(("load", tag, attr, item))
+    for el in _find_tag_attrs_egress(text, "base"):
+        val = el.get("href", "")
+        if val and offline_is_non_local_ref(val):
+            out.append(("base", "base", "href", val))
+    for el in _find_tag_attrs_egress(text, "iframe"):
+        if "srcdoc" in el:
+            if depth >= _SRCDOC_MAX_DEPTH:
+                out.append(("depth", None, None, None))
+                continue
+            out.extend(_srcdoc_network_findings(el.get("srcdoc"), depth + 1))
     return out
 
 
@@ -468,6 +543,50 @@ def _check_self_contained(html, parser):
                                 "`src` the frame also carries, or an empty frame; inline the "
                                 "snippet (a <pre><code> block, say) if it has to survive one"
                                 % _report_value(el.get("srcdoc")))
+                # CMH-VAL-25, the OTHER half of what a nested document hides (issue #1125). The
+                # advisory above answers the CONTENT-LOSS question and is deliberately not a ruling
+                # that a nested document is SAFE: every self-contained rule above reads ELEMENTS,
+                # so the byte-identical load that is a hard error written as `<img src="https://x">`
+                # rode through untouched when it was written inside a `srcdoc`, and a shareable file
+                # could carry the `commentable-html-validated` stamp and still phone home. It is
+                # reported, not advised: unlike the content-loss notice there IS a way to a clean
+                # run that keeps the nested document (make its references local), and the recipient
+                # of a stamped file is entitled to the guarantee every other spelling is held to.
+                # The SEVERITY mirrors the top-level rule element for element - a `link` is a
+                # warning there, so it is a warning here (a non-advisory warning fails `--strict`
+                # and withholds the stamp just the same, but a plain run must not report the nested
+                # spelling of a reference more harshly than the top-level one). Offline mode is
+                # untouched - it rejects a `srcdoc` on PRESENCE, which is strictly stronger, so the
+                # two branches never double-report the same frame.
+                # An `id` rides along in the label when the frame has one, because the value itself
+                # is truncated and several frames in a document often open with the same
+                # boilerplate - without it a report cannot say WHICH frame it means.
+                frame_id = el.get("id")
+                label = '<iframe%s srcdoc="%s">' % (
+                    ' id="%s"' % _report_value(frame_id) if frame_id else "",
+                    _report_value(el.get("srcdoc")))
+                for kind, tag, attr, val in _srcdoc_network_findings(el.get("srcdoc")):
+                    if kind == "load":
+                        report = ('%s carries a nested <%s %s="%s"> that loads over the network '
+                                  "and breaks the self-contained guarantee - a load written inside "
+                                  "a nested document is the same load written as an element; make "
+                                  "the reference local (inline it as a data: URI), or remove the "
+                                  "frame" % (label, tag, attr, _report_value(val)))
+                        (warnings if tag == "link" else errors).append(report)
+                    elif kind == "base":
+                        errors.append('%s carries a nested <base href="%s"> that rebases every '
+                                      "relative reference in the nested document onto a base the "
+                                      "file cannot resolve on its own and breaks the "
+                                      "self-contained guarantee - make the base relative, or "
+                                      "remove the frame" % (label, _report_value(val)))
+                    elif kind == "parse":
+                        errors.append("%s carries a nested document that could not be parsed for "
+                                      "the self-contained resource checks - fix the nested markup "
+                                      "or remove the frame" % label)
+                    else:
+                        errors.append("%s nests documents more than %d deep, past the point this "
+                                      "gate audits them - flatten the nesting or remove the frame"
+                                      % (label, _SRCDOC_MAX_DEPTH))
     return errors, warnings
 
 

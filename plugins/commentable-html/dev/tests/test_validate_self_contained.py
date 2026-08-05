@@ -4,6 +4,9 @@ from checks import resources  # noqa: E402
 import difflib  # noqa: E402  the cut-boundary oracle in the head-fallback parity check
 import shutil  # noqa: E402  the node-gated cross-engine parity check needs `which`
 
+from html import escape as html_escape  # noqa: E402  builds the nested-frame depth fixtures
+
+from checks import layer  # noqa: E402  the srcdoc walk's own depth budget, read by its test
 from checks import resources  # noqa: E402  the gate's own offline predicates, tested directly
 
 
@@ -873,6 +876,279 @@ class NewCheckTests(unittest.TestCase):
         # `commentable-html-validated`, so a substring test would pass with no timestamp stamp.
         self.assertIn('name="commentable-html-validated"', stamped,
                       "an advisory must not withhold the validated stamp")
+
+    def test_a_network_load_inside_a_srcdoc_is_an_error_outside_offline_mode(self):
+        # CMH-VAL-25: the self-contained guarantee was enforced against every spelling of a
+        # network load EXCEPT one - a load carried inside a nested document, which the tag index
+        # reads as attribute TEXT. The byte-identical load written as an element is a hard error
+        # in every mode, so a shareable file could carry a validated stamp and still phone home.
+        # Every load-bearing pair the top-level rules enforce is read the same way inside the
+        # frame, through the SAME shared index on the nested value as a FRAGMENT.
+        # Each case asserts the DISCRIMINATING clause, not just the host name: the shared label
+        # echoes the nested document, so a bare "evil.example" substring is satisfied by the label
+        # alone and every finding kind would satisfy it interchangeably.
+        for nested, clause in (
+                ("&lt;img src=//evil.example/x.png&gt;",
+                 'carries a nested <img src="//evil.example/x.png">'),
+                ("&lt;img srcset=&quot;//evil.example/x.png 1x&quot;&gt;",
+                 'carries a nested <img srcset="//evil.example/x.png">'),
+                ("&lt;script src=&quot;https://evil.example/x.js&quot;&gt;&lt;/script&gt;",
+                 'carries a nested <script src="https://evil.example/x.js">'),
+                ("&lt;script href=&quot;https://evil.example/x.js&quot;&gt;&lt;/script&gt;",
+                 'carries a nested <script href="https://evil.example/x.js">'),
+                ("&lt;script xlink:href=&quot;https://evil.example/x.js&quot;&gt;&lt;/script&gt;",
+                 'carries a nested <script xlink:href="https://evil.example/x.js">'),
+                ("&lt;iframe src=&quot;https://evil.example/x.html&quot;&gt;&lt;/iframe&gt;",
+                 'carries a nested <iframe src="https://evil.example/x.html">'),
+                ("&lt;base href=&quot;https://evil.example/&quot;&gt;",
+                 'carries a nested <base href="https://evil.example/">')):
+            markup = '<iframe srcdoc="%s"></iframe>' % nested
+            with self.subTest(nested=nested):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any(clause in e for e in errors),
+                                "expected %r in a nested-load error for %r, got %r"
+                                % (clause, nested, errors))
+
+    def test_a_nested_network_link_is_a_warning_like_the_top_level_one(self):
+        # CMH-VAL-25: the SEVERITY mirrors the top-level rule element for element. A network
+        # `<link>` is a WARNING at the top level, so the nested spelling is a warning too - a
+        # non-advisory warning still fails `--strict` and withholds the stamp, but a plain run must
+        # not report the nested spelling more harshly than the identical top-level element. Pinned
+        # against the TOP-LEVEL behavior in the same test so the two can never drift apart.
+        link = '<link rel="stylesheet" href="https://evil.example/x.css">'
+        top_errors, top_warnings = self._errs_warns(build(body=self._body(MAIN, link)))
+        self.assertEqual([e for e in top_errors if "evil.example" in e], [])
+        self.assertTrue(any("evil.example" in w for w in top_warnings), top_warnings)
+        markup = ('<iframe srcdoc="&lt;link rel=stylesheet '
+                  'href=&quot;https://evil.example/x.css&quot;&gt;"></iframe>')
+        errors, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+        clause = 'carries a nested <link href="https://evil.example/x.css">'
+        self.assertFalse(any(clause in e for e in errors), errors)
+        notice = [w for w in warnings if clause in w]
+        self.assertEqual(len(notice), 1, warnings)
+        # A warning, but NOT an advisory: it must still fail --strict and withhold the stamp.
+        self.assertFalse(validate.is_advisory(notice[0]), notice)
+
+    def test_a_srcdoc_that_reaches_no_network_stays_clean(self):
+        # CMH-VAL-25 control, and the reason this reads the nested value through the shared tag
+        # index rather than scanning its raw text: a text scan cannot tell an `<a href>` (which is
+        # NAVIGATION and exempt at the top level) or a URL written in prose from a real load, so it
+        # would block benign nested markup. A relative reference, a `data:` URI and a non-loading
+        # `<link>` are all as legitimate inside a frame as outside one.
+        for nested in ("&lt;a href=&quot;https://example.com/&quot;&gt;docs&lt;/a&gt;",
+                       "&lt;p&gt;see https://example.com/ for more&lt;/p&gt;",
+                       "&lt;img src=&quot;x.png&quot;&gt;",
+                       "&lt;img src=&quot;data:image/png;base64,AAAA&quot;&gt;",
+                       "&lt;img srcset=&quot;data:text/plain,https://h/p 1x&quot;&gt;",
+                       "&lt;link rel=&quot;canonical&quot; href=&quot;https://example.com/&quot;&gt;",
+                       "&lt;base href=&quot;sub/&quot;&gt;"):
+            markup = '<iframe srcdoc="%s"></iframe>' % nested
+            with self.subTest(nested=nested):
+                errors, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertEqual(errors, [], "%r should not error, got %r" % (nested, errors))
+                self.assertEqual([w for w in warnings if not validate.is_advisory(w)], [],
+                                 "%r should draw no blocking warning, got %r" % (nested, warnings))
+
+    def test_a_doubly_escaped_nested_document_stays_inert_text(self):
+        # CMH-VAL-25: exactly ONE decode per nesting level. A value escaped TWICE is text a browser
+        # renders rather than markup it builds, so the walk must not report it - an extra decode
+        # pass would invent a load that no browser performs, which is the false-positive direction
+        # this rule cannot afford. The control for the two-frames-deep test below.
+        markup = ('<iframe srcdoc="&amp;lt;img src=//evil.example/x.png&amp;gt;">'
+                  "</iframe>")
+        errors, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+        self.assertEqual(errors, [], errors)
+        self.assertEqual([w for w in warnings if not validate.is_advisory(w)], [], warnings)
+
+    def test_the_srcdoc_network_rule_reaches_a_parked_frame(self):
+        # CMH-VAL-25: read off the same shared EGRESS index as every other rule here, so a
+        # `<template>`-parked frame, a `<noscript>` fallback and a self-closed foreign element are
+        # all judged alike - a hole in any of them is a hole in the guarantee.
+        nested = "&lt;img src=//evil.example/x.png&gt;"
+        clause = 'carries a nested <img src="//evil.example/x.png">'
+        for markup in ('<template><iframe srcdoc="%s"></iframe></template>' % nested,
+                       '<noscript><iframe srcdoc="%s"></iframe></noscript>' % nested,
+                       '<svg><iframe srcdoc="%s"/></svg>' % nested):
+            with self.subTest(markup=markup):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any(clause in e for e in errors),
+                                "expected a nested-load error for %r, got %r" % (markup, errors))
+
+    def test_the_nested_read_inherits_the_shared_index_smuggling_rules(self):
+        # CMH-VAL-25: the nested document is read through the SAME index as the top-level one, so
+        # the shapes CMH-VAL-21 already settled there - a `<![CDATA[` bogus comment, and raw text
+        # inside a FOREIGN `<script>`/`<style>` (which is not raw text at all) - must be seen
+        # inside a frame too. Pinning the integration, not the shared parser: a nested read that
+        # ever grew its own tokenizer would regress exactly this.
+        clause = 'carries a nested <img src="//evil.example/x.png">'
+        for nested in ("&lt;![CDATA[&gt;&lt;img src=//evil.example/x.png&gt;]]&gt;",
+                       "&lt;svg&gt;&lt;script&gt;&lt;img src=//evil.example/x.png&gt;"
+                       "&lt;/script&gt;&lt;/svg&gt;",
+                       "&lt;svg&gt;&lt;style&gt;&lt;img src=//evil.example/x.png&gt;"
+                       "&lt;/style&gt;&lt;/svg&gt;"):
+            markup = '<iframe srcdoc="%s"></iframe>' % nested
+            with self.subTest(nested=nested):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any(clause in e for e in errors),
+                                "expected a nested-load error for %r, got %r" % (nested, errors))
+
+    def test_a_load_nested_two_frames_deep_is_an_error(self):
+        # CMH-VAL-25: a frame inside a frame is one more spelling of the same load, so the walk
+        # follows the nesting instead of stopping at the first level.
+        inner = "&amp;lt;img src=//evil.example/x.png&amp;gt;"
+        markup = '<iframe srcdoc="&lt;iframe srcdoc=&quot;%s&quot;&gt;&lt;/iframe&gt;"></iframe>' % inner
+        errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+        self.assertTrue(any('carries a nested <img src="//evil.example/x.png">' in e
+                            for e in errors), errors)
+
+    def test_a_nested_chartjs_cdn_script_is_not_exempt(self):
+        # CMH-VAL-25: the top-level Chart.js CDN exemption exists for the ONE documented opt-in -
+        # the loader that draws this document's canvas charts. A copy parked inside a nested
+        # document can never be that loader (a frame cannot draw into its host's canvas), so the
+        # exemption has nothing to exempt and does not travel with the spelling. A deliberate
+        # strictness difference, not an oversight.
+        src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
+        nested = "&lt;script src=&quot;%s&quot;&gt;&lt;/script&gt;" % src
+        markup = '<iframe srcdoc="%s"></iframe>' % nested
+        errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+        self.assertTrue(any('carries a nested <script src="%s">' % src in e for e in errors),
+                        errors)
+
+    def test_an_offline_document_reports_the_srcdoc_presence_alone(self):
+        # CMH-VAL-25: offline mode already refuses a `srcdoc` on PRESENCE, which is strictly
+        # stronger than refusing the loads inside it, so the two must not double-report the same
+        # frame. Offline behavior is unchanged by this rule.
+        markup = '<iframe srcdoc="&lt;img src=//evil.example/x.png&gt;"></iframe>'
+        doc = with_offline_mode(build(body=self._body(MAIN, markup)))
+        errors, _ = self._errs_warns(doc)
+        srcdoc_errors = [e for e in errors if "srcdoc" in e]
+        self.assertEqual(len(srcdoc_errors), 1, errors)
+        self.assertIn("offline mode", srcdoc_errors[0])
+
+    def test_a_srcdoc_network_load_fails_strict_and_is_not_stamped(self):
+        # CMH-VAL-25 end to end: the finding blocks, so `--strict` fails and the
+        # `commentable-html-validated` stamp is withheld - the whole point is that a recipient
+        # cannot be handed a stamped file that fetches from a host. Both severities are pinned:
+        # the `img` ERROR and the `link` WARNING, because a non-advisory warning must fail
+        # `--strict` exactly as the error does. Contrast
+        # `test_a_srcdoc_document_still_passes_strict_and_is_still_stamped`, where the frame
+        # carries no load and only the advisory fires.
+        for markup in ('<iframe srcdoc="&lt;img src=//evil.example/x.png&gt;"></iframe>',
+                       '<iframe srcdoc="&lt;link rel=stylesheet '
+                       'href=&quot;https://evil.example/x.css&quot;&gt;"></iframe>'):
+            with self.subTest(markup=markup):
+                content = build(body=self._body(MAIN, markup))
+                with tempfile.TemporaryDirectory() as d:
+                    p = os.path.join(d, "doc.html")
+                    with open(p, "w", encoding="utf-8", newline="") as fh:
+                        fh.write(content)
+                    r = subprocess.run([sys.executable, VALIDATE_PY, "--strict", p],
+                                       capture_output=True, text=True)
+                    self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
+                    self.assertIn("evil.example", r.stdout)
+                    with open(p, "r", encoding="utf-8", newline="") as fh:
+                        stamped = fh.read()
+                self.assertNotIn('name="commentable-html-validated"', stamped,
+                                 "a nested network load must withhold the validated stamp")
+
+    def test_a_nested_document_that_cannot_be_read_fails_closed(self):
+        # CMH-VAL-25: an empty answer from the nested lookup must mean "nothing loads", never
+        # "could not look". The nested value below is one the shared tolerant parse cannot build an
+        # index for, so the guard is what stands between it and a clean report - deleting the guard
+        # makes this test fail rather than leaving it green. Asserted on the DISCRIMINATING clause,
+        # since the shared label puts "srcdoc" on every finding kind.
+        nested = ("&lt;noscript&gt;&lt;style&gt;/* &lt;/noscript&gt; */ "
+                  "body{background:url(https://evil.example/b.png)}&lt;/style&gt;"
+                  "&lt;/noscript&gt;")
+        markup = '<iframe srcdoc="%s"></iframe>' % nested
+        errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+        self.assertTrue(any("could not be parsed" in e for e in errors), errors)
+
+    def test_a_nested_base_is_held_to_the_stricter_non_local_predicate(self):
+        # CMH-VAL-25: a nested `<base href>` is judged by `offline_is_non_local_ref`, not by the
+        # `//`-requiring network predicate the per-resource rules use - a base rebases EVERY
+        # relative reference in the nested document, so a scheme the fetch predicate ignores still
+        # takes the whole nested document off the file. The `ftp:` and `file:` cases are what
+        # discriminate: they are non-local under that predicate and NOT network URLs, so swapping
+        # the two predicates cannot leave the suite green. The two `https:` spellings are network
+        # URLs under both and ride along as authority-form controls.
+        for href in ("ftp://evil.example/", "file:///etc/passwd", "https:evil.example/",
+                     "https:/\\evil.example/"):
+            markup = ('<iframe srcdoc="&lt;base href=&quot;%s&quot;&gt;"></iframe>'
+                      % href.replace("&", "&amp;"))
+            with self.subTest(href=href):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any("carries a nested <base href=" in e for e in errors),
+                                "expected a nested-base error for %r, got %r" % (href, errors))
+
+    def test_the_nested_read_reads_the_frame_the_outer_parse_built(self):
+        # CMH-VAL-25: the nested walk sees exactly the value the OUTER document parse produced, so
+        # the boundary between the two parses is pinned rather than assumed. A character reference
+        # (hex, decimal, and the unterminated decimal form a browser still consumes) becomes markup;
+        # a single-quoted outer value carries the frame just as a double-quoted one does; and a
+        # frame carrying BOTH a `srcdoc` and a `src` is still read through its `srcdoc`, which is
+        # what a browser renders.
+        clause = 'carries a nested <img src="//evil.example/x.png">'
+        for markup in ('<iframe srcdoc="&#x3c;img src=//evil.example/x.png&#x3e;"></iframe>',
+                       '<iframe srcdoc="&#60;img src=//evil.example/x.png&#62;"></iframe>',
+                       "<iframe srcdoc='&lt;img src=//evil.example/x.png&gt;'></iframe>",
+                       '<iframe src="local.html" srcdoc="&lt;img src=//evil.example/x.png&gt;">'
+                       "</iframe>"):
+            with self.subTest(markup=markup):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any(clause in e for e in errors),
+                                "expected a nested-load error for %r, got %r" % (markup, errors))
+
+    def test_a_nested_frames_network_src_is_reported_beside_its_srcdoc(self):
+        # CMH-VAL-25: a network `src` on a frame that ALSO carries a `srcdoc` is reported, and that
+        # is deliberate rather than an over-report. `src` is the documented FALLBACK for `srcdoc` -
+        # an engine that does not implement `srcdoc` navigates `src` instead - and it becomes live
+        # in this product too, because Export Offline clears `srcdoc` unconditionally
+        # (CMH-OFFLINE-04), which is exactly what the CMH-VAL-24 advisory means when it says an
+        # offline copy shows whatever local `src` the frame also carries. So the reference survives
+        # into a copy where nothing shadows it. The top-level rule reports the identical element the
+        # same way, so this is also the parity the whole row rests on.
+        nested = ("&lt;iframe src=&quot;https://evil.example/&quot; "
+                  "srcdoc=&quot;safe&quot;&gt;&lt;/iframe&gt;")
+        markup = '<iframe srcdoc="%s"></iframe>' % nested
+        errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+        self.assertTrue(any('carries a nested <iframe src="https://evil.example/">' in e
+                            for e in errors), errors)
+        top_errors, _ = self._errs_warns(build(body=self._body(
+            MAIN, '<iframe src="https://evil.example/" srcdoc="&lt;p&gt;safe&lt;/p&gt;"></iframe>')))
+        self.assertTrue(any("evil.example" in e for e in top_errors), top_errors)
+
+    def test_a_reported_frame_is_named_by_its_id_when_it_has_one(self):
+        # CMH-VAL-25: the nested value is truncated in the report and several frames in one
+        # document often open with the same boilerplate, so a report that named only the value
+        # could not say WHICH frame it meant. The `id` rides along when the frame carries one.
+        markup = ('<iframe id="demo-two" srcdoc="&lt;img src=//evil.example/x.png&gt;">'
+                  "</iframe>")
+        errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+        self.assertTrue(any('<iframe id="demo-two" srcdoc=' in e for e in errors), errors)
+
+    def test_the_nested_walk_audits_to_its_depth_budget_then_reports(self):
+        # CMH-VAL-25: the depth cap is the OTHER fail-closed path - nesting past the budget is
+        # reported rather than passed. Both sides of the boundary are pinned, so neither a
+        # premature cap (which would reject a legal document) nor a removed one can regress
+        # silently, and the assertion names the depth clause: every message carries "nested"
+        # somewhere, so a loose substring would be satisfied by a load or a parse failure too.
+        depth_clause = "nests documents more than %d deep" % layer._SRCDOC_MAX_DEPTH
+
+        def nest(levels):
+            markup = "<img src=//evil.example/x.png>"
+            for _ in range(levels):
+                markup = '<iframe srcdoc="%s"></iframe>' % html_escape(markup, quote=True)
+            return markup
+
+        at_budget, _ = self._errs_warns(
+            build(body=self._body(MAIN, nest(layer._SRCDOC_MAX_DEPTH))))
+        self.assertTrue(any('carries a nested <img src="//evil.example/x.png">' in e
+                            for e in at_budget), at_budget)
+        self.assertFalse(any(depth_clause in e for e in at_budget), at_budget)
+        past_budget, _ = self._errs_warns(
+            build(body=self._body(MAIN, nest(layer._SRCDOC_MAX_DEPTH + 1))))
+        self.assertTrue(any(depth_clause in e for e in past_budget), past_budget)
 
     def test_offline_mode_rejects_network_resources_inside_noscript(self):
         # A <noscript> body is raw TEXT only while scripting is enabled; with scripting off a
