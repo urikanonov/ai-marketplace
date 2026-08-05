@@ -208,6 +208,16 @@ FETCHING_LINK_RELS = frozenset((
     "apple-touch-icon-precomposed", "manifest",
 ))
 
+# The two SPECULATIVE-CONNECTION relations, a strict subset of the set above. They are called out
+# separately because an offline document may not carry one AT ALL, whatever its href resolves to
+# (#1076), while every other fetching relation is reported only when its href is a network URL.
+# Unlike a stylesheet or an icon they show a reader nothing, so removing one takes no content away,
+# and their leak is a name RESOLUTION rather than a fetch - which is both why the TCP-listener probe
+# that settled the network predicate's scheme boundary (#993) cannot see it and why no per-resource
+# href predicate is the right layer for them. The offline export strips exactly these tokens
+# unconditionally (`_OFFLINE_SPECULATIVE_LINK_RELS`), so the two sides agree by construction.
+SPECULATIVE_LINK_RELS = frozenset(("preconnect", "dns-prefetch"))
+
 # How a `rel` list is TOKENIZED, which is neither language's own idea of whitespace: HTML splits
 # the list on ASCII whitespace ONLY, while Python's argument-less `str.split()` also splits on
 # U+001C-U+001F and NBSP and a JS `\s` also splits on U+FEFF and NBSP. Each of those made one side

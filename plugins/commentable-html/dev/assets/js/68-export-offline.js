@@ -1198,6 +1198,24 @@ function _offlineLinkLoads(rel) {
     return _OFFLINE_FETCHING_LINK_RELS.indexOf(r) >= 0;
   });
 }
+// The two SPECULATIVE-CONNECTION relations, a strict subset of the fetching set above. They are
+// singled out because an offline export may not carry one AT ALL, whatever its href resolves to
+// (#1076), while every other fetching relation goes only when its href is a network URL.
+const _OFFLINE_SPECULATIVE_LINK_RELS = ["preconnect", "dns-prefetch"];
+function _offlineLinkSpeculates(rel) {
+  return _offlineLinkRelTokens(rel).some(function (r) {
+    return _OFFLINE_SPECULATIVE_LINK_RELS.indexOf(r) >= 0;
+  });
+}
+// The `rel` list with every speculative token dropped, or null when nothing else is left - in which
+// case the ELEMENT goes rather than the attribute. Mirrored by the validator's `_link_speculates`,
+// which rejects on the same reading; both are evaluated over one corpus by a parity test.
+function _offlineRelWithoutHints(rel) {
+  const kept = _offlineLinkRelTokens(rel).filter(function (r) {
+    return _OFFLINE_SPECULATIVE_LINK_RELS.indexOf(r) < 0;
+  });
+  return kept.length ? kept.join(" ") : null;
+}
 function _stripOfflineNetworkLoads(doc) {
   let dropped = 0;
   let clearedBases = 0;
@@ -1233,6 +1251,41 @@ function _stripOfflineNetworkLoads(doc) {
   // A per-element `referrerpolicy` overrides the document policy for that request, so a permissive
   // one would defeat the no-referrer meta on exactly the anchor an attacker planted.
   all("[referrerpolicy]").forEach(function (el) { el.removeAttribute("referrerpolicy"); });
+  // `preconnect` and `dns-prefetch` go UNCONDITIONALLY, whatever their href parses as (#1076).
+  // Every other fetching relation is removed only when its href is a network URL, because deleting
+  // a local reference would take an author's CONTENT away - a stylesheet, an icon, a prefetched
+  // page. These two take nothing: their whole purpose is to make the browser reach out EARLY, and
+  // they show a reader nothing at all, so the same reasoning that drops a `speculationrules` block
+  // outright applies. The network-URL predicate is the wrong LAYER for them rather than merely too
+  // narrow. Their leak is a NAME RESOLUTION rather than a connection, so the TCP-listener probe
+  // that settled that predicate's scheme boundary (#993) structurally cannot see one - which is why
+  // a hint in a scheme the predicate reads as local (`ftp:`, a custom scheme), and a relative or
+  // same-document one, used to ride into a zero-network export. A DNS-capable observer (a Chromium
+  // netlog, read as HOST_RESOLVER events rather than as raw text) then measured ZERO resolver
+  // activity for these two rels in Chromium 149 - not only for a non-fetchable scheme but for the
+  // `http:` and `https:` CONTROL hints too, from a `file:` and an `http:` document alike, with
+  // Playwright's `--disable-background-networking` removed and `NetworkPrediction` enabled, while
+  // an ordinary image reference to an http host in the same document did produce a resolver job. A
+  // control that measures zero cannot license a boundary: the instrument cannot separate "this
+  // scheme is inert" from "this build does not drive the hint", so no measurement supports keeping
+  // a hint in ANY scheme. Removing them outright costs nothing and needs no engine to be right.
+  // What goes is the HINT, not necessarily the ELEMENT: a `rel` that mixes a hint with a content
+  // relation (`rel="alternate preconnect"`) still names a reference a reader USES, so the
+  // speculative tokens are dropped from the list and the element is removed only when nothing else
+  // is left. What survives is then judged by the network-href pass below as the relation it also
+  // is, so a remote stylesheet that also carried a hint is still stripped as a loader.
+  // The strict validator applies the same rule to an offline document on the REL ALONE, so the two
+  // sides agree by construction rather than by two predicates staying in step. Namespace-blind on
+  // purpose, exactly as the script LOAD attributes and the `base` href are: the validator's flat
+  // tokenizer has no namespace to consult, so scoping this to the HTML namespace would make the
+  // exporter KEEP a hint the gate then REJECTS.
+  all("link[rel]").forEach(function (link) {
+    const rel = link.getAttribute("rel");
+    if (!_offlineLinkSpeculates(rel)) return;
+    const kept = _offlineRelWithoutHints(rel);
+    if (kept === null) link.remove();
+    else link.setAttribute("rel", kept);
+  });
   all("link[href]").forEach(function (link) {
     if (!_offlineIsNetworkUrl(link.getAttribute("href"))) return;
     if (_offlineLinkLoads(link.getAttribute("rel"))) link.remove();

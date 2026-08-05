@@ -4,6 +4,34 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.721.0] - 2026-08-05
+
+### Fixed
+
+- `Export Offline` now removes a `<link rel="preconnect">` or `<link rel="dns-prefetch">`
+  UNCONDITIONALLY, whatever its `href` parses as, and offline `--strict` rejects one that survives
+  (CMH-OFFLINE-04). Both relations were removed only when their `href` was a network URL by the
+  per-resource predicate, so a hint in a scheme that predicate reads as local -
+  `<link rel="dns-prefetch" href="ftp://evil.example">` - rode into a zero-network export, as did a
+  relative or same-document one. A DNS lookup for an attacker-chosen host from the reader's machine
+  is a beacon: it reveals that the document was opened, from which resolver, and when. The
+  predicate is the wrong LAYER for these two rather than merely too narrow: their leak is a name
+  RESOLUTION rather than a fetch, so the TCP-listener probe that settled the predicate's scheme
+  boundary structurally cannot see one. That was measured rather than assumed - a DNS-capable
+  observer (a Chromium netlog, read as host-resolver EVENTS rather than as raw text) saw ZERO
+  resolver activity for a `preconnect`/`dns-prefetch` host in any scheme, the `http:`/`https:`
+  CONTROL hints included, from a `file:` and an `http:` document alike and with the speculative
+  machinery deliberately re-enabled, while an ordinary image reference to an http host in the same
+  document did produce a resolver job. A control that measures zero cannot license a boundary, so
+  no scheme is evidenced inert and the hints go outright: unlike a stylesheet or an icon they show
+  a reader nothing, so removing one loses no content. What goes is the HINT rather than the
+  ELEMENT - a `rel` that mixes a hint with a content relation keeps its other relations, so an
+  `alternate` or `stylesheet` reference a reader uses is never deleted silently, and what remains
+  is still judged by the network-href pass as the relation it also is. Both sides read the `rel`
+  list through the shared ASCII tokenizer and one shared relation set, so the strip and the gate
+  agree by construction rather than by two predicates staying in step, and the measurement is
+  committed as a spec that re-runs on every CI pass.
+
 ## [1.717.0] - 2026-08-05
 
 ### Fixed

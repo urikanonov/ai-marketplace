@@ -102,6 +102,25 @@ def _check_self_contained(html, parser):
     # otherwise triple that cost for scripts alone.
     for tag, attrs in (("link", ("href",)), ("script", SCRIPT_LOAD_ATTRS), ("iframe", ("src",))):
         for el in _find_tag_attrs_egress(html, tag):
+            # A speculative-connection hint is rejected on its REL alone, before the href is read at
+            # all (#1076): an offline document may not carry one whatever it points at, because the
+            # network-URL predicate cannot be the layer for a channel whose leak is a name
+            # RESOLUTION rather than a fetch (the measurement that settled that predicate's scheme
+            # boundary is a TCP listener, which structurally cannot see one, and a DNS-capable
+            # observer measured no resolver activity even for the http CONTROL hints - so no scheme
+            # is evidenced inert). Deleting one costs no content: unlike a stylesheet or an icon it
+            # shows a reader nothing. The export strip drops exactly this set of TOKENS
+            # unconditionally, so the two sides agree by construction. The loader rule below is
+            # skipped only for a link that is NOTHING BUT hints: on a mixed `rel="preconnect
+            # stylesheet"` the strip keeps the element as a stylesheet, so its network href is a
+            # second, separate defect and reporting only the hint would hand the author one error
+            # per run.
+            if tag == "link" and offline_mode and _link_speculates(el):
+                errors.append('offline mode: <link rel="%s"> asks the browser to reach out to a '
+                              "host before anything needs it - remove it (it shows a reader "
+                              "nothing, so nothing is lost)" % (el.get("rel", "")[:80]))
+                if not (link_rel_tokens(el.get("rel")) - SPECULATIVE_LINK_RELS) & FETCHING_LINK_RELS:
+                    continue
             for attr in attrs:
                 _check_network_attr(tag, el, attr)
     # A <base href> is not itself a load, which is why neither this gate nor the export strip used

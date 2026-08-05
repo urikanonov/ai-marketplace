@@ -9,7 +9,8 @@ import tempfile
 from html.parser import HTMLParser
 from urllib.parse import unquote, urlparse
 from urllib.request import url2pathname
-from .parsing import REGIONS, FETCHING_LINK_RELS, _DocParser, _ascii_lower, _parse_document, link_rel_tokens
+from .parsing import (REGIONS, FETCHING_LINK_RELS, SPECULATIVE_LINK_RELS, _DocParser, _ascii_lower,
+                      _parse_document, link_rel_tokens)
 
 # A Chart.js loader filename, as a whole path segment: chart(.umd)?(.min)?.js,
 # optionally followed by a query string / fragment; OR the bare pinned form
@@ -1274,6 +1275,14 @@ def _is_adx_run_href(href):
 def _link_loads(attrs):
     rels = link_rel_tokens(attrs.get("rel"))
     return bool(rels & FETCHING_LINK_RELS)
+
+
+def _link_speculates(attrs):
+    """True for a <link> that only exists to make the browser reach out early.
+
+    Read on its own, without consulting the href: an offline document may not carry one at all
+    (#1076). See `SPECULATIVE_LINK_RELS` for why the href predicate is the wrong layer here."""
+    return bool(link_rel_tokens(attrs.get("rel")) & SPECULATIVE_LINK_RELS)
 
 
 # The referrer surface the offline export hardens, and the gate that has to agree with it. No
