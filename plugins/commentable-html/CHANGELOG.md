@@ -12,7 +12,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   `handle_starttag()`, `handle_startendtag()` and `handle_endtag()` moved onto the shared
   `_BrowserBoundaries` base (and, identically, onto the degraded fallback a partial install gets)
   and drive overridable hooks - `_visit_start()`, `_push_element()`, `_visit_void()`,
-  `_after_start()`, `_visit_self_closed()`, `_visit_end()` - so each of the twelve parsers and
+  `_after_start()`, `_visit_self_closed()`, `_visit_end()` - so each of the thirteen parsers and
   authoring tools that derive from it now says only what it COLLECTS. The same ~25-line skeleton
   (browser tag name, browser attribute dict, child namespace, the implicit `</p>` / `</li>` close,
   the void and foreign self-closing carve-outs, the namespace push, the raw-text switch, and, for
