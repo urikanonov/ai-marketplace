@@ -263,6 +263,7 @@ suite (see `.github/workflows/pages.yml`).
 | Feature id | Behavior | Covering tests |
 | --- | --- | --- |
 | SITE-THEME-01 | The site follows the operating system light or dark color preference with token-based colors that maintain WCAG AA contrast for normal text, links, and primary buttons on page and card backgrounds. | `site/tests/tests/site-plugin.spec.js` - `light and dark themes preserve readable contrast` |
+| SITE-CODE-01 | Inline `code` wraps by default (`overflow-wrap: anywhere` in the `site/css/10-base.css` baseline, not per surface), so a long unbreakable token in a code span - a quoted tag, a CSS selector, a path - breaks inside itself rather than widening the document on a phone-width viewport. This holds on every generated prose surface that renders inline Markdown: a tutorial paragraph, an install description, a step card on the plugin page and the hub, and a changelog bullet (SITE-PLUGIN-29 pins the changelog case). Fenced code blocks are unaffected - `pre` keeps `white-space: pre`, which suppresses wrapping, so a long line still scrolls inside the block. | `site/tests/tests/site-plugin.spec.js` - `a long unbreakable inline code token does not overflow the mobile viewport (SITE-CODE-01)`, `a fenced code block keeps its own pre and scroll behavior (SITE-CODE-01)` |
 
 ## Discoverability (SEO, social, and AI answer engines)
 
