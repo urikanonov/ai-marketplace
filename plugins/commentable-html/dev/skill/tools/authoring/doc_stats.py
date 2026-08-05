@@ -133,6 +133,12 @@ class _StatsParser(_browser_boundaries.BrowserBoundaries):
     def _push_element(self, tag, ad, ns, info):
         self.stack.append((tag, info))
 
+    def _visit_self_closed(self, tag, ad, ns):
+        """Nothing: a self-closed FOREIGN element is opened and closed at once, so it lays out no
+        reading content - and nothing the start hook collects is namespace-gated, so the shared
+        default (which reports it as a start tag that opens nothing) would let a
+        `<svg id="commentRoot"/>` become the root this tool measures, counts and rewrites."""
+
     def handle_data(self, data):
         if self._inside_root() and not self._skip_ancestor():
             self.text_parts.append(data)

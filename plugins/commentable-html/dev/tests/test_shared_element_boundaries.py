@@ -551,22 +551,33 @@ class _HookOnlyBase(object):
         self.seen = []        # (tag, ns, opens) per start tag reaching `_visit_start`
         self.closed = []      # (tag, index) per end tag reaching `_visit_end`
         self.own_close = []   # tags whose truncation the base flagged as their OWN end tag
+        self.voided = []      # (tag, info) per element the skeleton never pushed
+        self.pushed = []      # (tag, info) per element it did
+        self.after = []       # (tag, opens, the raw-text element open once the start tag is done)
         self.text = []
 
     def _truncate_stacks(self, depth):
+        if self._end_tag_close:
+            self.own_close.append(depth)
         super()._truncate_stacks(depth)
         del self.stack[depth:]
 
     def _visit_start(self, tag, ad, ns, opens):
         self.seen.append((tag, ns, opens))
+        return "info:" + tag        # routed back to `_push_element` / `_visit_void`
 
     def _push_element(self, tag, ad, ns, info):
+        self.pushed.append((tag, info))
         self.stack.append(tag)
+
+    def _visit_void(self, tag, ad, ns, info):
+        self.voided.append((tag, info))
+
+    def _after_start(self, tag, ad, ns, opens):
+        self.after.append((tag, opens, self.cdata_elem))
 
     def _visit_end(self, tag, index):
         self.closed.append((tag, index))
-        if index >= 0:
-            self.own_close.append(tag)
 
     def handle_data(self, data):
         self.text.append(data)
@@ -652,8 +663,25 @@ class HookOnlySubclassTests(unittest.TestCase):
     def test_an_end_tag_reports_the_element_it_closes(self):
         parser = _hook_only("<div><span></span></div></em>")
         self.assertEqual(parser.closed, [("span", 1), ("div", 0), ("em", -1)])
-        self.assertEqual(parser.own_close, ["span", "div"])
         self.assertEqual(parser.stack, [])
+
+    def test_only_an_end_tags_truncation_is_flagged_as_its_own(self):
+        # `_end_tag_close` is the base-owned answer two rewriting tools key their span on: only a
+        # close the element's OWN end tag caused may carry that closer's source extent.
+        own = _hook_only("<div><span></span></div>")
+        self.assertEqual(own.own_close, [1, 0])
+        implicit = _hook_only("<p>a<div>b")
+        self.assertEqual(implicit.own_close, [])   # the implicit `</p>` close is not an end tag
+
+    def test_the_start_hooks_payload_reaches_the_push_and_void_hooks(self):
+        parser = _hook_only("<div><img src=x>")
+        self.assertEqual(parser.pushed, [("div", "info:div")])
+        self.assertEqual(parser.voided, [("img", "info:img")])
+
+    def test_the_after_start_hook_sees_the_raw_text_the_element_opened(self):
+        parser = _hook_only("<title>x</title><p>a")
+        self.assertIn(("title", True, "title"), parser.after)
+        self.assertIn(("p", True, None), parser.after)
 
     def test_a_closer_scoped_away_by_a_template_matches_nothing(self):
         parser = _hook_only("<div><template></div>")
@@ -673,12 +701,94 @@ class HookOnlySubclassTests(unittest.TestCase):
         self.assertEqual(parser.stack, ["p"])
 
 
+class SelfClosedForeignCollectionTests(unittest.TestCase):
+    """The shared skeleton reports a self-closed FOREIGN element as a start tag that opens
+    nothing, so a hook-only subclass still SEES `<svg><rect id="x"/>`. A tool whose start hook is
+    not namespace-gated must opt out of that default, and `doc_stats` is the one that must: it
+    measures the reading content a browser lays out, and a `<svg id="commentRoot"/>` - closed at
+    once, with no body a reader can see - would otherwise become the root it counts and rewrites.
+    (A `<h2/>` inside an `<svg>` is not a case: HTML5 makes h1-h6 BREAK OUT of foreign content, so
+    it is an ordinary HTML start tag both before and after this change.)"""
+
+    def test_a_foreign_self_closed_root_is_not_the_content_root(self):
+        html = '<svg id="commentRoot"/><h2>outside</h2>'
+        parser = doc_stats._StatsParser(html)
+        parser.parse_document(html)
+        self.assertIsNone(parser.root_depth)
+        self.assertEqual(parser.word_count(), 0)
+
+    def test_a_foreign_self_closed_element_is_still_seen_by_default(self):
+        # The other side of the same rule: the locators and scanners that DO want every element
+        # get one from the shared default, with no hook of their own.
+        parser = _hook_only('<svg><rect id="x"/></svg>')
+        self.assertIn(("rect", "svg", False), parser.seen)
+        self.assertEqual(parser.voided[-1][0], "rect")
+        self.assertEqual(parser.stack, [])
+
+
+def _class_defs_in(source, path):
+    """Every class defined in one module: `(name, resolved base short names)` pairs.
+
+    Import and assignment ALIASES are resolved, so `from .parsing import _BrowserBoundaries as BB`
+    followed by `class X(BB)` still names `_BrowserBoundaries` as the base - otherwise the guard
+    below would be one `as` away from being silently switched off. Resolution is deliberately
+    CONSERVATIVE rather than flow-sensitive: a name that is bound more than once (rebound later in
+    the file, shadowed inside a function, annotated) keeps EVERY target, so any binding that could
+    reach a boundary base makes the class inspectable. Over-reporting a base only costs an extra
+    class read; under-reporting one is a hole."""
+    tree = ast.parse(source, filename=path)
+    alias = {}
+
+    def _bind(name, value):
+        if isinstance(value, ast.Attribute):
+            alias.setdefault(name, set()).add(value.attr)
+        elif isinstance(value, ast.Name):
+            alias.setdefault(name, set()).add(value.id)
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for name in node.names:
+                if name.asname:
+                    alias.setdefault(name.asname, set()).add(name.name.rsplit(".", 1)[-1])
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    _bind(target.id, node.value)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            if node.value is not None:
+                _bind(node.target.id, node.value)
+
+    def _resolve(name):
+        out, pending = set(), [name]
+        while pending:
+            current = pending.pop()
+            if current in out:
+                continue
+            out.add(current)
+            pending.extend(alias.get(current, ()))
+        return out
+
+    out = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        names = set()
+        for base in node.bases:
+            if isinstance(base, ast.Attribute):
+                names |= _resolve(base.attr)      # `_browser_boundaries.BrowserBoundaries`
+            elif isinstance(base, ast.Name):
+                names |= _resolve(base.id)
+        out.append((node.name, names))
+    return out
+
+
 def _tool_class_bases():
     """Every class defined in the shipped tools, mapped to the SHORT names of its bases.
 
     Read with `ast` rather than by importing, so a tool module added later is covered whether or
     not any test imports it, and a class is seen even when its module needs an install-shaped
-    sys.path to load."""
+    sys.path to load. A name defined in more than one module keeps EVERY definition, so a second
+    class of the same name cannot hide behind the first."""
     bases = {}
     where = {}
     for root, dirs, files in os.walk(_paths.TOOLS):
@@ -688,18 +798,10 @@ def _tool_class_bases():
                 continue
             path = os.path.join(root, name)
             with open(path, encoding="utf-8") as fh:
-                tree = ast.parse(fh.read(), filename=path)
-            for node in ast.walk(tree):
-                if not isinstance(node, ast.ClassDef):
-                    continue
-                names = set()
-                for base in node.bases:
-                    if isinstance(base, ast.Attribute):
-                        names.add(base.attr)     # `_browser_boundaries.BrowserBoundaries`
-                    elif isinstance(base, ast.Name):
-                        names.add(base.id)
-                bases[node.name] = bases.get(node.name, set()) | names
-                where.setdefault(node.name, os.path.relpath(path, _paths.TOOLS))
+                source = fh.read()
+            for cls, parents in _class_defs_in(source, path):
+                bases[cls] = bases.get(cls, set()) | parents
+                where.setdefault(cls, []).append(os.path.relpath(path, _paths.TOOLS))
     return bases, where
 
 
@@ -742,16 +844,45 @@ class SharedHandlerSkeletonTests(unittest.TestCase):
         for name in subclasses:
             if name in _HANDLER_ALLOWLIST:
                 continue
-            src = os.path.join(_paths.TOOLS, where[name])
-            with open(src, encoding="utf-8") as fh:
-                tree = ast.parse(fh.read(), filename=src)
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ClassDef) and node.name == name:
-                    for item in node.body:
-                        if (isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
-                                and item.name in _TAG_HANDLERS):
-                            offenders.append("%s.%s (%s)" % (name, item.name, where[name]))
+            for rel in where[name]:
+                src = os.path.join(_paths.TOOLS, rel)
+                with open(src, encoding="utf-8") as fh:
+                    tree = ast.parse(fh.read(), filename=src)
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.ClassDef) and node.name == name:
+                        for item in node.body:
+                            if (isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+                                    and item.name in _TAG_HANDLERS):
+                                offenders.append("%s.%s (%s)" % (name, item.name, rel))
         self.assertEqual(offenders, [], "these re-copy the shared handler skeleton: %s" % offenders)
+
+    def test_an_aliased_base_does_not_escape_the_guard(self):
+        # One `as` away from switching the guard off: the base name a class is written against is
+        # resolved through import and assignment aliases, so a subclass cannot hide behind either.
+        source = ("from checks.parsing import _BrowserBoundaries as _BB\n"
+                  "import _browser_boundaries as _bb\n"
+                  "_Shim = _bb.BrowserBoundaries\n"
+                  "class Aliased(_BB):\n    pass\n"
+                  "class ViaAssignment(_Shim):\n    pass\n")
+        defined = dict(_class_defs_in(source, "<synthetic>"))
+        self.assertIn("_BrowserBoundaries", defined["Aliased"])
+        self.assertIn("BrowserBoundaries", defined["ViaAssignment"])
+
+    def test_a_rebound_or_annotated_alias_does_not_escape_the_guard(self):
+        # Resolution is conservative rather than flow-sensitive: a name bound more than once keeps
+        # EVERY target, so rebinding it after the class, shadowing it inside a function, or
+        # annotating it cannot hide the base that was really used.
+        source = ("from checks.parsing import _BrowserBoundaries as _BB\n"
+                  "class Rebound(_BB):\n    pass\n"
+                  "_BB = object\n"
+                  "_Annotated: type = _BB\n"
+                  "class ViaAnnotated(_Annotated):\n    pass\n"
+                  "def unrelated():\n"
+                  "    _BB = object\n"
+                  "    return _BB\n")
+        defined = dict(_class_defs_in(source, "<synthetic>"))
+        self.assertIn("_BrowserBoundaries", defined["Rebound"])
+        self.assertIn("_BrowserBoundaries", defined["ViaAnnotated"])
 
     def test_the_guard_sees_every_boundary_subclass(self):
         # A guard that discovered nothing would pass vacuously, and the fixpoint has to reach the

@@ -498,10 +498,13 @@ class _DocumentScanner(_StyleScanner):
         node.parent.children.append(node)
         self._stack.append(node)
 
-    def _visit_void(self, tag, ad, ns, info):
-        # A VOID element is a node but never an open one; drop it back off the ancestor stack so
-        # its siblings are not parented under it.
-        del self._stack[len(self._els) + 1:]
+    def _after_start(self, tag, ad, ns, opens):
+        if not opens:
+            # A VOID element is a node but never an open one; drop it back off the ancestor stack
+            # so its siblings are not parented under it. Done from HERE, not `_visit_void()`, so
+            # the trim keeps its old position relative to `_enter_raw_text()` - no void element is
+            # raw text today, and this way that cannot start mattering later.
+            del self._stack[len(self._els) + 1:]
 
     def _visit_self_closed(self, tag, ad, ns):
         super()._visit_self_closed(tag, ad, ns)
