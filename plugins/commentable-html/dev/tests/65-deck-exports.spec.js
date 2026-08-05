@@ -10,7 +10,7 @@ import path from "path";
 import {
   DEV, SKILL, PYTHON, fileUrl, ready, readDownload, startStaticServer,
   installClipboardCapture, openComposerFor, routeMermaidLocal, enterCommentMode, openSidebarExportMenu,
-  clickSidebarExport,
+  clickSidebarExport, srcsetCandidates,
 } from "./helpers.js";
 
 const DECK = path.join(SKILL, "..", "..", "examples", "deck-showcase.html");
@@ -25,14 +25,17 @@ function makeTmpDir(prefix) {
 }
 
 // Any absolute-scheme URL still referenced by a media/load attribute in the exported HTML,
-// used to prove the offline file reaches out to nothing.
+// used to prove the offline file reaches out to nothing. A `srcset` is tokenized with the
+// exporter's own candidate reader (`srcsetCandidates`), not a comma split: a comma inside a
+// `data:` URL is not a candidate separator, so splitting on it would report a network reference
+// the exporter correctly left alone and red this sweep on a CORRECT export (#1084).
 function networkLoadRefs(html) {
   const refs = [];
   const tagRe = /<(script|link|img|source|iframe|video|audio|object|embed|track|image|use|input|meta|body|table|td|th|form|button)\b[^>]*>/gi;
   for (const tag of html.matchAll(tagRe)) {
     for (const attr of tag[0].matchAll(/\s(href|xlink:href|src|srcset|poster|data|background|content|action|formaction)\s*=\s*["']([^"']+)["']/gi)) {
       const values = attr[1].toLowerCase() === "srcset"
-        ? attr[2].split(",").map((part) => part.trim().split(/\s+/)[0])
+        ? srcsetCandidates(attr[2])
         : [attr[2]];
       for (const value of values) {
         if (/^(?:https?:)?\/\//i.test(value)) refs.push(value);

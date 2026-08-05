@@ -7,7 +7,7 @@ import zlib from "zlib";
 import {
   DEV, SKILL, PYTHON, fileUrl, ready, stageContent, startStaticServer,
   installClipboardCapture, openToolbarMenu, openSidebarExportMenu, addTextComment, readDownload, stageNonShareable,
-  clickSidebarExport,
+  clickSidebarExport, srcsetCandidates,
 } from "./helpers.js";
 
 const CONTENT = `
@@ -176,10 +176,13 @@ function mediaLoadAttributes(html) {
   return refs;
 }
 
+// The candidate BOUNDARY is HTML's, so the sweep does not invent a network reference by splitting
+// inside one URL; the tokenizer is shared with the exporter (see `srcsetCandidates` in helpers.js).
+// The URL PREDICATE below stays deliberately coarse.
 function networkLoadRefs(html) {
   const refs = [];
   for (const item of mediaLoadAttributes(html)) {
-    const values = item.attr === "srcset" ? item.value.split(",").map((part) => part.trim().split(/\s+/)[0]) : [item.value];
+    const values = item.attr === "srcset" ? srcsetCandidates(item.value) : [item.value];
     for (const value of values) {
       if (/^(?:https?:)?\/\//i.test(value)) refs.push(value);
     }
@@ -2748,6 +2751,8 @@ const NORMALIZED_URL_CONTENT = [
   // ASCII whitespace, so a candidate cut there hid the load from both implementations. Written as
   // character references so the spec file stays plain ASCII; the parser decodes them.
   '<img id="cmh-img-srcset" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" srcset="&#1;&#11;//evil.example/img-srcset.png 1x" alt="srcset">',
+  // ...and two candidates separated by a bare comma are still two, so the network one is found.
+  '<img id="cmh-img-srcset-bare-comma" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" srcset="local.png 1x,//evil.example/img-srcset-bare.png 2x" alt="bare comma">',
   '<iframe id="cmh-iframe-newline" src="https:\n//evil.example/frame-newline.html" title="newline-split"></iframe>',
   '<link rel="stylesheet" href="\\\\evil.example/style-backslash.css">',
   '<svg width="10" height="10" aria-hidden="true">',
@@ -2768,6 +2773,10 @@ const NORMALIZED_URL_CONTENT = [
   '  <script href="file:///local/svg-file-keep.js">/* cmh-svg-file-keep */</script>',
   '  <script href="file://C:/local/svg-drive-keep.js">/* cmh-svg-drive-keep */</script>',
   "</svg>",
+  // A `data:` URL carries a comma of its own (it separates the media type from the data), so the
+  // old comma-split arm read this ONE candidate as two and struck the whole attribute off a
+  // document that reaches no network at all (#1084). It must survive INTACT.
+  '<img id="cmh-img-srcset-data-comma" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" srcset="data:text/plain,https://keep.example/not-a-load 1x" alt="data candidate">',
 ].join("\n");
 
 test("CMH-OFFLINE-04: the offline strip reads a reference the way the URL parser does", async ({ page, browser }) => {
@@ -2788,7 +2797,8 @@ test("CMH-OFFLINE-04: the offline strip reads a reference the way the URL parser
     const exportedHtml = await capturedDownloadText(page);
 
     for (const target of ["evil.example/img-backslash.png", "evil.example/img-scheme-backslash.png",
-      "evil.example/img-tab.png", "evil.example/img-srcset.png", "evil.example/frame-newline.html",
+      "evil.example/img-tab.png", "evil.example/img-srcset.png", "evil.example/img-srcset-bare.png",
+      "evil.example/frame-newline.html",
       "evil.example/style-backslash.css", "evil.example/svg-backslash.js",
       "evil.example/img-unc.png", "evil.example/img-unc4.png", "evil.example/svg-unc.js"]) {
       expect(exportedHtml, `${target} is a network load a browser would make and must not survive`)
@@ -2796,14 +2806,18 @@ test("CMH-OFFLINE-04: the offline strip reads a reference the way the URL parser
     }
     // The controls must survive INTACT: over-detecting here would silently delete an author's
     // local reference, which is the same content loss in the other direction.
+    expect(exportedHtml, "a `data:` candidate's own comma is not a candidate separator, so this srcset reaches no network")
+      .toContain('srcset="data:text/plain,https://keep.example/not-a-load 1x"');
     expect(exportedHtml, "a backslash-separated relative path is not a network load").toContain('href="sub\\svg-local-keep.js"');
     expect(exportedHtml, "a backslash-separated relative script reference is not a network load").toContain("cmh-svg-relative-keep");
     expect(exportedHtml, "an empty-host file: URL stays on the machine").toContain('href="file:///local/svg-file-keep.js"');
     expect(exportedHtml, "a Windows drive letter in the host position is a local path").toContain('href="file://C:/local/svg-drive-keep.js"');
-    // A deliberately COARSE raw-literal scan, not the production predicate: it recognizes only
+    // A deliberately COARSE URL predicate, not the production one: it recognizes only
     // `(?:https?:)?//`, so it cannot see the spellings this test is about. The explicit
     // not-toContain loop above is what covers those; this is the belt-and-braces sweep for the
-    // ordinary ones.
+    // ordinary ones. Its candidate BOUNDARY, by contrast, is the exporter's own, so this sweep
+    // cannot catch a boundary bug the exporter shares - the not-toContain loop above, the
+    // `--strict` run below, and `_SRCSET_TOKEN_CORPUS` are what cover that.
     expect(networkLoadRefs(exportedHtml)).toEqual([]);
 
     const exportedPath = path.join(outDir, "offline-normalized-url.html");

@@ -379,7 +379,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.731.0";
+const CMH_VERSION = "1.733.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -14253,28 +14253,62 @@ function _offlineIsNetworkUrl(v) {
 // the rest (JS `trim()` strips U+FEFF, Python's `str.strip()` strips U+001C-U+001F), which is the
 // CMH-OFFLINE-04 drift. Only the candidate BOUNDARY is decided here; every character the URL parser
 // itself removes is left to `_offlineNormalizeUrlValue`.
-const _OFFLINE_SRCSET_WS_RE = /[\t\n\f\r ]+/;
-function _offlineSrcsetCandidateUrl(part) {
-  return String(part).replace(/^[\t\n\f\r ]+/, "").split(_OFFLINE_SRCSET_WS_RE)[0];
-}
-// Two readings, because splitting on the comma ALONE is not what HTML does: its srcset parser
-// collects a run of non-ASCII-whitespace as the URL, so a comma INSIDE that run belongs to the URL
-// (`srcset="https://,host/x.png 1x"` requests `https://,host/x.png` - measured in a real Chromium),
-// and a comma-split alone tests the truncated `https://`, which is an empty authority and local.
-// The whitespace-run reading alone is not enough either, because two candidates may be separated by
-// a comma with no space around it. Taking the UNION costs nothing: a descriptor (`1x`, `320w`) can
-// never match the network predicate. Mirrored in the validator's `srcset_candidate_urls`.
+const _OFFLINE_SRCSET_WS = "\t\n\f\r ";
+// HTML's own srcset candidate state machine, not an approximation of it: skip a run of ASCII
+// whitespace and commas, collect a run of NON-whitespace as the URL, then either strip that URL's
+// trailing commas (which end the candidate with no descriptors at all) or run the descriptor
+// tokenizer forward to the first comma OUTSIDE parentheses.
+//
+// It replaced a UNION of two approximations - a comma split and a whitespace split - taken because
+// a descriptor (`1x`, `320w`) can never match the network predicate, so over-inclusion was thought
+// free. A `data:` URL breaks that reasoning: a comma is legal INSIDE one (it separates the media
+// type from the data), so `data:text/plain,https://example.com/payload 1x` was comma-split into
+// `data:text/plain` and `https://example.com/payload`, and the second half matched. Fail-CLOSED,
+// but it made an offline export clear a `srcset` that reaches no network and the strict validator
+// reject a document with no egress (issue #1084). Both cases the union existed for survive: a comma
+// inside the URL run belongs to the URL (`srcset="https://,host/x.png 1x"` really does request
+// `https://,host/x.png`), and a comma that follows the DESCRIPTORS still separates two candidates
+// even with no space around it (`local.png 1x,https://host/x.png 2x` is two). A comma that abuts
+// the URL run is NOT a separator: `a.png,b.png` is the single relative reference `a.png,b.png`,
+// which a browser resolves against the document and never fetches off-host. All three measured in
+// a real Chromium.
+//
+// One step of HTML's algorithm is deliberately NOT taken: descriptor VALIDATION. HTML appends a
+// candidate only once its descriptors parse cleanly, so it DISCARDS `https://host/x.png 1x 2x`
+// (repeated `x`) and never fetches it; both sides here keep the candidate and report the load.
+// That is the fail-CLOSED direction, and the alternative is a second, larger state machine (the
+// `w`/`x`/`h`/`d` grammar and its duplicate rules) to hold identical across two languages - the
+// drift this pair exists to prevent - where a mistake would cost a MISSED load rather than an
+// over-strip. Mirrored in the validator's `srcset_candidate_urls`.
 function _offlineSrcsetCandidateUrls(v) {
   const text = String(v || "");
   const urls = [];
-  text.split(",").forEach(function (part) {
-    const url = _offlineSrcsetCandidateUrl(part);
+  let pos = 0;
+  const end = text.length;
+  while (pos < end) {
+    while (pos < end && (_OFFLINE_SRCSET_WS.indexOf(text[pos]) !== -1 || text[pos] === ",")) pos += 1;
+    const start = pos;
+    while (pos < end && _OFFLINE_SRCSET_WS.indexOf(text[pos]) === -1) pos += 1;
+    let url = text.slice(start, pos);
+    if (url.endsWith(",")) {
+      url = url.replace(/,+$/, "");
+      if (url) urls.push(url);
+      continue;
+    }
     if (url) urls.push(url);
-  });
-  text.split(_OFFLINE_SRCSET_WS_RE).forEach(function (token) {
-    const trimmed = token.replace(/^,+/, "").replace(/,+$/, "");
-    if (trimmed && urls.indexOf(trimmed) === -1) urls.push(trimmed);
-  });
+    let inParens = false;
+    while (pos < end) {
+      const c = text[pos];
+      pos += 1;
+      if (inParens) {
+        if (c === ")") inParens = false;
+      } else if (c === ",") {
+        break;
+      } else if (c === "(") {
+        inParens = true;
+      }
+    }
+  }
   return urls;
 }
 function _offlineSrcsetHasNetwork(v) {

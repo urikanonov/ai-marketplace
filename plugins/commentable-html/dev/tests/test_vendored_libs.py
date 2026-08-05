@@ -1553,6 +1553,64 @@ class RuntimeParityTests(unittest.TestCase):
         ("", False), (",", False), ("   ", False),
         ("data:image/gif;base64,R0lGODlhAQABAAAAACw= 1x", False),
         (",local.png 1x,", False), ("local.png 1x 2x, local-2.png 100w", False),
+        # The case the old two-reading UNION got wrong (issue #1084). A `data:` URL may legally
+        # CONTAIN a comma - it separates the media type from the data - so the comma-split arm cut
+        # this ONE candidate into `data:text/plain` and `https://example.com/payload`, and the
+        # second half matched the network predicate. Fail-CLOSED (an over-strip and an
+        # over-rejection, never a missed load), but it made an offline export clear a `srcset` that
+        # reaches no network and the strict validator reject a document with no egress.
+        ("data:text/plain,https://example.com/payload 1x", False),
+        ("local.png 1x, data:text/plain,//evil.example/x.png 2x", False),
+        # A candidate run that ENDS in commas takes no descriptors at all: HTML strips them and
+        # starts the next candidate, so the network URL after them is still its own candidate.
+        ("local.png,, https://evil.example/x.png 1x", True),
+        # A comma inside a PARENTHESISED descriptor does not end the candidate, so what follows it
+        # is descriptor text and not a URL. Reading it as a separator invents a candidate.
+        ("local.png (a,https://evil.example/x.png) 1x", False),
+        ("local.png (a,b) 1x, https://evil.example/x.png 2x", True),
+        # HTML's descriptor tokenizer has TWO states, not a nesting DEPTH: a single `)` leaves the
+        # paren state however many `(` preceded it, so the comma after it IS a separator and the
+        # run that follows is a real candidate - Chromium fetches `https://.../x.png)`, trailing
+        # paren and all, so a depth counter here would be a MISSED load, not a tightening.
+        ("local.png (a(b), https://evil.example/x.png) 1x", True),
+        # ...and an UNCLOSED `(` runs to EOF, so nothing after it is a candidate. Measured: a real
+        # Chromium loads nothing at all from this value.
+        ("local.png (1x, https://evil.example/x.png 2x", False),
+        # Descriptor VALIDATION is deliberately not implemented (see `srcset_candidate_urls`): HTML
+        # DISCARDS a candidate whose descriptors do not parse, so Chromium fetches nothing from
+        # either of these, while both sides here report the load. That over-detection is the
+        # fail-closed direction and is pinned so a later "fix" toward browser fidelity is a
+        # deliberate decision rather than an accident.
+        ("https://evil.example/x.png 1x 2x", True), ("https://evil.example/x.png nope", True),
+    ]
+
+    # The VERDICT corpus above cannot see a tokenization that both engines got wrong the same way -
+    # a union that over-splits agrees with itself. These rows pin the candidate list ITSELF against
+    # what HTML's srcset parser collects, so a revert to the union reds this even though the two
+    # sides would still match each other.
+    _SRCSET_TOKEN_CORPUS = [
+        ("data:text/plain,https://example.com/payload 1x",
+         ["data:text/plain,https://example.com/payload"]),
+        ("local.png 1x, local-2x.png 2x", ["local.png", "local-2x.png"]),
+        ("local.png 1x,https://evil.example/x.png 2x", ["local.png", "https://evil.example/x.png"]),
+        ("https://,evil.example/x.png 1x", ["https://,evil.example/x.png"]),
+        ("local.png,, https://evil.example/x.png 1x", ["local.png", "https://evil.example/x.png"]),
+        ("local.png (a,https://evil.example/x.png) 1x", ["local.png"]),
+        ("local.png (a(b), https://evil.example/x.png) 1x",
+         ["local.png", "https://evil.example/x.png)"]),
+        ("x.png ((),https://evil.example/y.png 1x", ["x.png", "https://evil.example/y.png"]),
+        ("local.png (1x, https://evil.example/x.png 2x", ["local.png"]),
+        # Every character of the ASCII-whitespace set, so the boundary is EXERCISED as well as
+        # compared: `\f`, `\r` and `\n` appear nowhere else in either corpus.
+        ("a.png\f1x,b.png\r2x,c.png\n3x", ["a.png", "b.png", "c.png"]),
+        # A URL run that ends in a comma takes NO descriptors, so the next token really is the next
+        # candidate's URL - here a bare descriptor becomes one. HTML-faithful and easy to mistake
+        # for a bug, so it is pinned before someone "fixes" it into swallowing the URL after it.
+        ("local.png, 1x, https://evil.example/x.png 2x",
+         ["local.png", "1x", "https://evil.example/x.png"]),
+        (",local.png 1x,", ["local.png"]),
+        (",,  ,,", []), ("", []),
+        ("a.png,b.png 1x", ["a.png,b.png"]),
     ]
 
     def _runtime_network_url_source(self):
@@ -1577,8 +1635,8 @@ class RuntimeParityTests(unittest.TestCase):
         region = source[start:end + 2]
         for name in ("_OFFLINE_PCT_LOCALHOST", "_OFFLINE_PCT_LOCALHOST_END",
                      "_OFFLINE_NETWORK_URL_RE", "_offlineIsNetworkUrl",
-                     "_OFFLINE_SRCSET_WS_RE",
-                     "_offlineSrcsetCandidateUrl", "_offlineSrcsetCandidateUrls"):
+                     'const _OFFLINE_SRCSET_WS = "',
+                     "_offlineSrcsetCandidateUrls"):
             self.assertIn(name, region,
                           "%s is no longer inside the extracted network-URL region, so the parity "
                           "check would run a partial copy of the decision" % name)
@@ -1628,7 +1686,13 @@ class RuntimeParityTests(unittest.TestCase):
         for js_name, py_value in (("_OFFLINE_PCT_LOCALHOST", resources._PCT_LOCALHOST),
                                   ("_OFFLINE_PCT_LOCALHOST_END", resources._PCT_LOCALHOST_END),
                                   ("_OFFLINE_FILE_DOTDOT_SEGMENT", resources._FILE_DOTDOT_SEGMENT),
-                                  ("_OFFLINE_FILE_EMPTY_SEGMENT", resources._FILE_EMPTY_SEGMENT)):
+                                  ("_OFFLINE_FILE_EMPTY_SEGMENT", resources._FILE_EMPTY_SEGMENT),
+                                  # The srcset candidate BOUNDARY rests entirely on this five-
+                                  # character set, and a corpus cannot pin it: a row only exercises
+                                  # the characters it happens to carry, so dropping `\f` from one
+                                  # side (or both) would keep every verdict and every token list
+                                  # intact. Comparing the VALUE is the only check that sees it.
+                                  ("_OFFLINE_SRCSET_WS", resources._SRCSET_WS)):
             # The body is lazy up to a `;` at END of line, not "anything but a `;`": a pattern that
             # legitimately contained a semicolon would otherwise be extracted as a prefix and
             # compared as if the rest were missing.
@@ -1682,18 +1746,27 @@ class RuntimeParityTests(unittest.TestCase):
             self.assertEqual(
                 resources.srcset_has_network(value), expected,
                 "the validator's srcset predicate calls %r %s" % (value, "local" if expected else "a network URL"))
+        for value, expected in self._SRCSET_TOKEN_CORPUS:
+            self.assertEqual(
+                resources.srcset_candidate_urls(value), expected,
+                "the validator tokenizes the srcset %r as %r, not the candidate list HTML's parser "
+                "collects (%r). A candidate the tokenizer INVENTS by splitting inside a URL is an "
+                "over-rejection - a `data:` URL's own comma is not a candidate separator."
+                % (value, resources.srcset_candidate_urls(value), expected))
         node = shutil.which("node")
         if not node:
             self.skipTest("node is not on PATH; the JS-engine parity check needs it")
         payload = {"corpus": [value for value, _ in self._NETWORK_URL_CORPUS],
-                   "srcset": [value for value, _ in self._SRCSET_CORPUS]}
+                   "srcset": [value for value, _ in self._SRCSET_CORPUS],
+                   "tokenCorpus": [value for value, _ in self._SRCSET_TOKEN_CORPUS]}
         script = (
             self._runtime_network_url_source() + "\n"
             + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
             "const p=JSON.parse(raw);process.stdout.write(JSON.stringify({"
             "corpus:p.corpus.map(s=>_offlineIsNetworkUrl(s)),"
             "srcset:p.srcset.map(s=>_offlineSrcsetHasNetwork(s)),"
-            "tokens:p.srcset.map(s=>_offlineSrcsetCandidateUrls(s))}));});"
+            "tokens:p.srcset.map(s=>_offlineSrcsetCandidateUrls(s)),"
+            "tokenCorpus:p.tokenCorpus.map(s=>_offlineSrcsetCandidateUrls(s))}));});"
         )
         proc = subprocess.run([node, "-e", script], input=json.dumps(payload),
                               capture_output=True, text=True, encoding="utf-8")
@@ -1725,11 +1798,23 @@ class RuntimeParityTests(unittest.TestCase):
         for (value, _), js_tokens in zip(self._SRCSET_CORPUS, verdicts["tokens"]):
             self.assertEqual(
                 js_tokens, resources.srcset_candidate_urls(value),
-                "the runtime's _offlineSrcsetCandidateUrl and the validator's "
+                "the runtime's _offlineSrcsetCandidateUrls and the validator's "
                 "srcset_candidate_urls tokenize %r differently (%r vs %r). HTML splits candidates "
                 "on ASCII whitespace only; an engine-whitespace split hides a load from whichever "
                 "side cuts the candidate short."
                 % (value, js_tokens, resources.srcset_candidate_urls(value)))
+        # ...and the tokens against what HTML's parser actually collects, which parity alone cannot
+        # see: two copies of the same over-splitting union agree with each other perfectly.
+        self.assertEqual(len(verdicts["tokenCorpus"]), len(self._SRCSET_TOKEN_CORPUS),
+                         "node returned %d token lists for %d samples"
+                         % (len(verdicts["tokenCorpus"]), len(self._SRCSET_TOKEN_CORPUS)))
+        for (value, expected), js_tokens in zip(self._SRCSET_TOKEN_CORPUS, verdicts["tokenCorpus"]):
+            self.assertEqual(
+                js_tokens, expected,
+                "the runtime tokenizes the srcset %r as %r, not the candidate list HTML's parser "
+                "collects (%r). A `data:` URL's own comma is not a candidate separator, so a "
+                "comma-split arm invents a candidate the browser never requests."
+                % (value, js_tokens, expected))
 
     # The CSS half of the same decision, and the one the offline CSP is not allowed to stand in
     # for: the validator's gates (`CSS_NETWORK_URL_RE` and `CSS_NETWORK_IMPORT_RE`) and the

@@ -1256,6 +1256,36 @@ class NewCheckTests(unittest.TestCase):
         errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, markup))))
         self.assertTrue(any("offline mode" in e and "<img srcset" in e for e in errors), errors)
 
+    # A `data:` URL may legally CONTAIN a comma - it separates the media type from the data - so a
+    # comma-split arm read `data:text/plain,https://example.com/payload 1x` as TWO candidates and
+    # rejected the second half. Fail-closed, but it rejected a document with no egress at all, and
+    # the exporter cleared the same attribute. HTML's candidate state machine keeps it as one.
+    def test_offline_mode_accepts_a_data_srcset_candidate_carrying_a_comma(self):
+        for value in ("data:text/plain,https://example.com/payload 1x",
+                      "data:image/gif;base64,R0lGODlhAQABAAAAACw= 1x, "
+                      "data:text/plain,//evil.example/x.png 2x",
+                      "local.png (a,https://evil.example/x.png) 1x"):
+            with self.subTest(value=value):
+                markup = '<img src="local.png" srcset="%s">' % value
+                errors, _ = self._errs_warns(
+                    with_offline_mode(build(body=self._body(MAIN, markup))))
+                self.assertEqual([e for e in errors if "<img srcset" in e], [],
+                                 (value, errors))
+
+    # ...while the cases the old two-reading union existed for still resolve to a network load: a
+    # comma INSIDE a URL run belongs to the URL, and two candidates separated by a bare comma are
+    # still two candidates.
+    def test_offline_mode_still_rejects_the_srcset_shapes_the_union_was_written_for(self):
+        for value in ("https://,evil.example/x.png 1x",
+                      "local.png 1x,https://evil.example/x.png 2x",
+                      "local.png,, https://evil.example/x.png 1x"):
+            with self.subTest(value=value):
+                markup = '<img src="local.png" srcset="%s">' % value
+                errors, _ = self._errs_warns(
+                    with_offline_mode(build(body=self._body(MAIN, markup))))
+                self.assertTrue(any("offline mode" in e and "<img srcset" in e for e in errors),
+                                (value, errors))
+
     # The self-contained guarantee is not offline-only: a shareable document that loads a script
     # over the network is an error however the load is spelled.
     def test_shareable_mode_rejects_a_script_that_loads_through_href(self):

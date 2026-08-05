@@ -4,6 +4,81 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.733.0] - 2026-08-05
+
+### Fixed
+
+- A `srcset` candidate is now tokenized the way HTML's own parser does, on all THREE surfaces that
+  read one - the offline export strip, the strict validator, and the deck gate - so a `data:` URL
+  carrying a comma is read as ONE candidate instead of being split into two (CMH-OFFLINE-04,
+  CMH-VAL-08, CMH-DECK-04). The shared candidate reader used to take the UNION
+  of a comma split and an ASCII-whitespace split, on the reasoning that a descriptor (`1x`, `320w`)
+  can never match the network predicate so over-inclusion cost nothing. A `data:` URL breaks that
+  reasoning, because a comma is legal inside one - it separates the media type from the data - so
+  `srcset="data:text/plain,https://example.com/payload 1x"` was cut into `data:text/plain` and
+  `https://example.com/payload`, and the second half matched. Both implementations agreed, so this
+  was never a gate/strip drift, and it was fail-CLOSED (an over-strip and an over-rejection, never
+  a missed load) - but an offline export cleared a `srcset` that reaches no network at all, and
+  `--strict` rejected a document with no egress. The exporter's `_offlineSrcsetCandidateUrls` and
+  the validator's `srcset_candidate_urls` now both run HTML's candidate state machine (skip a run
+  of ASCII whitespace and commas, collect a run of non-whitespace as the URL, strip that URL's
+  trailing commas or run the descriptor tokenizer forward to the first comma outside parentheses),
+  moved in one change so the gate can never reject a file the exporter just produced. The cases the
+  union existed for are unchanged: a comma inside a network URL run still belongs to the URL
+  (`https://,host/x.png` really is requested), and a comma that FOLLOWS the descriptors still
+  separates two candidates even with no space around it. A comma that abuts the URL run is not a
+  separator - `a.png,b.png` is one relative reference a browser never fetches off-host - and one
+  step of HTML's algorithm is deliberately skipped: descriptor VALIDATION, so a candidate whose
+  descriptors HTML rejects outright (`https://host/x.png 1x 2x`) is still reported here. That
+  over-detection is the fail-closed direction and is kept rather than holding a second, larger
+  state machine identical across two languages.
+- The deck gate (`deck/deck_validate.py`) now calls that same shared reader instead of its own
+  third comma split, so a deck whose only "remote" reference was the tail of a `data:` URL is no
+  longer rejected, and the deck gate cannot disagree with the other two surfaces about where a
+  candidate begins and ends (CMH-DECK-04). Two OTHER deck checks read the same candidate list, so
+  they narrowed with it: a `javascript:`/`data:text/html` scheme or a `../` reference buried in
+  parenthesised or unclosed-paren DESCRIPTOR text is no longer reported, because HTML puts no
+  candidate boundary there and a browser acts on none of it. A genuine comma-separated candidate
+  carrying one is still rejected, and both directions are now pinned by tests.
+
+
+### Added
+
+- The validator now tells an author, while the document is still being authored, that an
+  `<iframe srcdoc>` will not survive Export Offline (CMH-VAL-24). An offline export removes the
+  nested document outright, and until now an author only met that in a transient toast after the
+  export had already emptied the frame. It is an ADVISORY (CMH-VAL-18), so it is always reported
+  but never fails `--strict`, never withholds the `commentable-html-validated` stamp and never
+  blocks a fail-closed caller such as `retrofit`: it reports what a different mode's export would
+  REMOVE, and blocking would have made deleting the nested document the only route to a clean
+  handoff - the very loss the notice exists to announce. That is scoped to the content-loss
+  question and is deliberately not a ruling that a nested document is safe outside offline mode;
+  no check can see inside an attribute value, a gap that predates the notice and is tracked as
+  issue #1125. It is a presence
+  test, exactly like the offline-mode error it complements, so nothing parses the nested document
+  and the exporter and the strict gate still agree by construction; it names a `<template>`-parked
+  frame, a `<noscript>` fallback and a self-closed foreign element the same way the export will
+  really empty them, and an offline document reports the error alone so the two never
+  double-report.
+
+### Changed
+
+- Recorded the decision behind that removal in the spec rather than leaving it as an omission
+  (CMH-OFFLINE-04, CMH-SEC-06). Sanitizing the nested document instead of clearing it was
+  prototyped on an abandoned branch, weighed, and rejected: it needs two independent recursive
+  parsers - the exporter's browser DOM and the validator's pure-Python tokenizer - to agree at
+  every depth on
+  serialization, doctype reconstruction and rendering mode, fixed-point settling under
+  serialize-then-reparse, and one shared parse budget; the content-preserving precedents in this
+  layer are all edits inside a document both sides already parse; a value that will not settle
+  still has to be removed, so sanitizing would trade a deterministic rule for parser-quirk
+  roulette; and the author keeps the content regardless, since the export is a derived artifact.
+  That last ground answers for the author and not for the recipient of an export, so the row also
+  records the cheap middle option it does not take here - having the export replace the emptied
+  frame with the nested markup as escaped inert text - as an open follow-up rather than a settled
+  non-goal.
+
+
 ## [1.731.0] - 2026-08-05
 
 ### Fixed
