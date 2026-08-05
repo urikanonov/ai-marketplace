@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.753.0] - 2026-08-06
+
+### Fixed
+
+- The validator no longer reports a MathML `<a>` as opening in the same tab (CMH-LINK-05). The
+  `check_links` exemption for a foreign-namespace anchor was keyed on the nearest `svg` /
+  `foreignObject` ANCESTOR TAG, but the runtime rule it mirrors is `a.tagName !== "A"`, which no
+  foreign element satisfies in any namespace. So `<math><a href="..." target="_self">` was recorded
+  as an HTML anchor and warned about, a false positive that is fatal under `--strict` and made an
+  author "fix" a link the runtime never stamps. The exemption is now read off the element's
+  insertion namespace, so it covers MathML as well as SVG while an HTML `<a>` at an integration
+  point (`<svg><foreignObject>`, `<math><mtext>`) is still checked - a browser really does stamp
+  that one.
+
 ## [1.751.0] - 2026-08-05
 
 ### Fixed

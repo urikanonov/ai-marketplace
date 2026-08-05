@@ -79,6 +79,18 @@ class LinkTargetTests(unittest.TestCase):
         self.assertTrue(self._warns(
             '<p><svg><foreignObject><a href="page.html" target="_self">x</a></foreignObject></svg></p>'))
 
+    def test_mathml_anchor_with_self_target_ok(self):
+        # A MathML-namespaced <a> has tagName "a" too, so the runtime never stamps it either. The
+        # exemption is the NAMESPACE, not the SVG ancestor: keyed on an svg ancestor this warned
+        # about a link that has no problem, and check_links is fatal under --strict.
+        self.assertFalse(self._warns('<p><math><a href="https://example.com/m" target="_self">x</a></math></p>'))
+
+    def test_mathml_mtext_html_anchor_warns_cmh_link_05(self):
+        # <mtext> is a MathML TEXT integration point, so its <a> child is inserted in the HTML
+        # namespace (tagName "A") and the runtime DOES stamp it - the validator must warn.
+        self.assertTrue(self._warns(
+            '<p><math><mtext><a href="page.html" target="_self">x</a></mtext></math></p>'))
+
 
 if __name__ == "__main__":
     unittest.main()

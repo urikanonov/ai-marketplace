@@ -1239,9 +1239,10 @@ class DocParserScopeCostTests(unittest.TestCase):
         self.assertEqual([a["skip"] for a in li_blocked], [True])
 
     def test_the_ancestor_summary_answers_every_predicate_it_replaced(self):
-        # Each running count / index stands in for a walk of the open elements, so pin each of
-        # them: cm-skip ancestry, the inert <template>, the enclosing <canvas>, the chart <figure>,
-        # the nearest <svg> versus <foreignObject>, and an open <a> around prose.
+        # Each running count stands in for a walk of the open elements, so pin each of them:
+        # cm-skip ancestry, the inert <template>, the enclosing <canvas>, the chart <figure>, and
+        # an open <a> around prose. The anchors also pin the foreign-namespace rule, which is read
+        # off the insertion namespace rather than an ancestor tag name.
         html = ('<main id="commentRoot">'
                 '<div class="cm-skip"><canvas id="c1"></canvas>'
                 '<figure class="chart"><figcaption>a</figcaption></figure></div>'
@@ -1251,6 +1252,8 @@ class DocParserScopeCostTests(unittest.TestCase):
                 '<template><canvas id="tpl"></canvas><a href="t.html">t</a></template>'
                 '<svg><a href="s.html">s</a>'
                 '<foreignObject><a href="f.html">f</a></foreignObject></svg>'
+                '<math><a href="m.html">m</a>'
+                '<mtext><a href="x.html">x</a></mtext></math>'
                 '<a href="l.html">linked</a>prose</main>')
         doc = parsing._parse_document(html)
         self.assertEqual([(c["attrs"].get("id"), c["skip"]) for c in doc.canvases],
@@ -1259,8 +1262,9 @@ class DocParserScopeCostTests(unittest.TestCase):
                           for f in doc.figcaptions],
                          [(True, False, True), (False, False, True),
                           (False, False, False), (False, True, False)])
-        self.assertEqual([(a["href"], a["in_svg"]) for a in doc.anchors],
-                         [("s.html", True), ("f.html", False), ("l.html", False)])
+        self.assertEqual([(a["href"], a["foreign"]) for a in doc.anchors],
+                         [("s.html", True), ("f.html", False), ("m.html", True),
+                          ("x.html", False), ("l.html", False)])
         prose = "".join(doc.commentroot_prose)
         self.assertIn("prose", prose)
         self.assertNotIn("linked", prose)   # text inside an <a> is not unlinked prose
