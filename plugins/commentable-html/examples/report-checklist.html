@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.748.0" />
+<meta name="commentable-html-version" content="1.750.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.748.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.750.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Release readiness review</title>
 
@@ -1077,6 +1077,24 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-composer button.primary { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); }
 .cm-composer button.primary:hover { background: var(--cp-accent-hover); }
 .cm-composer button:not(.primary):hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+/* On phones the composer is the surface a reviewer touches FIRST, so its actions keep the repo-wide
+   >=44px touch target (as this composer's own formatting toolbar, CMH-RICH-22, and the in-document
+   dialog's row, CMH-CORE-23, already do). The gap is widened to match, on BOTH axes: at 44px the
+   buttons would otherwise sit nearly flush, and the neighbour of `Save comment` is a `Cancel` that
+   discards the draft with no confirmation. It is a FLOOR (`max`) in an absolute unit, not a flat
+   replacement, so the separation can never close up while the buttons stay 44px and a host document
+   whose root font-size is large keeps the roomier density-scaled gap it already had.
+   With the shipped labels the enlarged row still fits one line at 320px; it is allowed to WRAP so a
+   wider label or a looser density scale costs a second line rather than a button dragged past the
+   composer's edge. Note what the wrap does NOT do: `min-width` replaces the flex automatic minimum
+   size, so a SINGLE button too wide for a whole line is still shrunk toward 44px and wraps its own
+   label. That is the deliberate trade - this surface computes `overflow-x: auto` from its
+   `overflow-y`, so a right-aligned button pushed past the start edge would land in unreachable
+   negative scroll space, and a squeezed label is better than a button no thumb can reach. */
+@media (max-width: 640px) {
+  .cm-composer .row { flex-wrap: wrap; gap: max(12px, var(--cp-chrome-gap)); }
+  .cm-composer .row button { min-width: 44px; min-height: 44px; }
+}
 
 .cm-comment-popover {
   position: fixed; z-index: 215; width: 320px; max-width: 92vw;
@@ -2451,6 +2469,14 @@ html[data-theme="dark"] .cm-author-pill {
   color: var(--cp-accent-fg, #fff);
 }
 .cm-reply-compose-actions .cm-reply-cancel:hover { background: var(--cp-accent-soft); }
+/* On phones the side pane is the primary editing surface, so its reply / edit actions keep the
+   repo-wide >=44px touch target too, with the same absolute both-axis gap FLOOR and the same wrap
+   fallback (and the same `min-width` caveat) as the floating composer's rule in 20-chrome.css, so
+   an over-wide row costs a second line rather than spilling out of the card. */
+@media (max-width: 640px) {
+  .cm-reply-compose-actions { flex-wrap: wrap; gap: max(12px, var(--cp-chrome-gap)); }
+  .cm-reply-compose-actions button { min-width: 44px; min-height: 44px; }
+}
 
 /* Print: show the author pill and replies as plain indented text. */
 @media print {
@@ -4529,7 +4555,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.748.0";
+const CMH_VERSION = "1.750.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

@@ -328,6 +328,24 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-composer button.primary { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); }
 .cm-composer button.primary:hover { background: var(--cp-accent-hover); }
 .cm-composer button:not(.primary):hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+/* On phones the composer is the surface a reviewer touches FIRST, so its actions keep the repo-wide
+   >=44px touch target (as this composer's own formatting toolbar, CMH-RICH-22, and the in-document
+   dialog's row, CMH-CORE-23, already do). The gap is widened to match, on BOTH axes: at 44px the
+   buttons would otherwise sit nearly flush, and the neighbour of `Save comment` is a `Cancel` that
+   discards the draft with no confirmation. It is a FLOOR (`max`) in an absolute unit, not a flat
+   replacement, so the separation can never close up while the buttons stay 44px and a host document
+   whose root font-size is large keeps the roomier density-scaled gap it already had.
+   With the shipped labels the enlarged row still fits one line at 320px; it is allowed to WRAP so a
+   wider label or a looser density scale costs a second line rather than a button dragged past the
+   composer's edge. Note what the wrap does NOT do: `min-width` replaces the flex automatic minimum
+   size, so a SINGLE button too wide for a whole line is still shrunk toward 44px and wraps its own
+   label. That is the deliberate trade - this surface computes `overflow-x: auto` from its
+   `overflow-y`, so a right-aligned button pushed past the start edge would land in unreachable
+   negative scroll space, and a squeezed label is better than a button no thumb can reach. */
+@media (max-width: 640px) {
+  .cm-composer .row { flex-wrap: wrap; gap: max(12px, var(--cp-chrome-gap)); }
+  .cm-composer .row button { min-width: 44px; min-height: 44px; }
+}
 
 .cm-comment-popover {
   position: fixed; z-index: 215; width: 320px; max-width: 92vw;

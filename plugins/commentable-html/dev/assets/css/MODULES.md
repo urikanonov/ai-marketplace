@@ -13,7 +13,7 @@ order the directory listing gives.
 | --- | --- | --- |
 | `00-base.css` | CMH-THEME, CMH-CORE, CMH-DENSITY | Theme tokens (`--cp-*`) and base element styling. |
 | `10-layout.css` | CMH-CORE, CMH-RESP, CMH-DENSITY | Layout recipe, toolbar, and core chrome. |
-| `20-chrome.css` | CMH-SIDE, CMH-HELP, CMH-FOOT, CMH-DENSITY, CMH-RICH, CMH-GROW, CMH-MENU-PREF, CMH-CORE | Attribution footer, sidebar meta, help dialog, TOC chrome, the More menu's Preferences checkbox rows, the in-document comment dialog (including its compact formatting toolbar and its phone touch targets), and the composer / dialog textarea sizing bounds the autogrow layer grows within. |
+| `20-chrome.css` | CMH-SIDE, CMH-HELP, CMH-FOOT, CMH-DENSITY, CMH-RICH, CMH-GROW, CMH-MENU-PREF, CMH-CORE, CMH-RESP | Attribution footer, sidebar meta, help dialog, TOC chrome, the More menu's Preferences checkbox rows, the in-document comment dialog (including its compact formatting toolbar and its phone touch targets), the floating composer's actions row and its phone touch targets, and the composer / dialog textarea sizing bounds the autogrow layer grows within. |
 | `22-section-review.css` | CMH-REVIEW | Section-review badges (four states), TOC state dots, and the segmented review filter. |
 | `30-mermaid.css` | CMH-MMD, CMH-DENSITY | Mermaid commenting layer + NonShareable controls. |
 | `40-diff.css` | CMH-DIFF | Diff / code-review layer. |
@@ -26,7 +26,7 @@ order the directory listing gives.
 | `86-notes.css` | CMH-NOTE | Editable notes fields: the textarea, label chip, single/multi-line toggle, and the per-note change card. |
 | `87-validation-banner.css` | CMH-STAMP | Unvalidated-document fallback banner (amber, dismissible, light + dark). |
 | `88-rich-text.css` | CMH-RICH | Rich-text note inline elements (bold/italic/underline/strike/code/list/link) and the composer formatting toolbar. |
-| `88-threads.css` | CMH-AUTHOR, CMH-THREAD, CMH-RICH, CMH-GROW | Author pill, sidebar identity control, the thread root-entry / reply layout + Reply button, the compact side-pane variant of the formatting toolbar, and the reply input's font size and autogrow bounds. |
+| `88-threads.css` | CMH-AUTHOR, CMH-THREAD, CMH-RICH, CMH-GROW, CMH-RESP | Author pill, sidebar identity control, the thread root-entry / reply layout + Reply button, the compact side-pane variant of the formatting toolbar, the reply / edit actions row and its phone touch targets, and the reply input's font size and autogrow bounds. |
 | `89-storage.css` | CMH-STORE | Storage manager dialog (near-full-screen list, rows, inline confirm, empty state) and the toast action button. |
 | `90-deck.css` | CMH-DECK, CMH-CODE | Deck profile (`data-cmh-mode="deck"`) overrides; deck theming of the code caption. |
 | `92-print.css` | CMH-PRINT | Print/PDF stylesheet for flat documents plus one-slide-per-page deck print flow. |
