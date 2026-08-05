@@ -166,6 +166,11 @@ class DensityAdvisoryTests(unittest.TestCase):
         self.assertEqual(len(warnings), 1)
         self.assertIn('"Section"', warnings[0])
 
+        half = LONG[:len(LONG) // 2]
+        nested_p = '<p>%s<span class="cm-skip"><p>ignore</p></span>%s</p>' % (half, half)
+        self.assertTrue(density.check_density(_doc(nested_p * 4))[1],
+                        "a paragraph inside inline cm-skip must not finalize the outer capture")
+
     def test_cmh_val_15_block_cm_skip_breaks_run_after_unclosed_paragraph(self):
         # A block-level cm-skip implicitly closes an open (unclosed) paragraph and breaks the run,
         # so paragraphs separated by block cm-skip blocks are not one consecutive wall.

@@ -14,7 +14,8 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   markup inside an SVG `<title>` or `<script>` is parsed instead of swallowed as HTML raw text, and
   a slash on a non-void HTML start tag no longer makes the density pass close an element the shared
   parser leaves open. Same-name paragraph and heading closers inside an inert template also stay
-  scoped to that fragment instead of finalizing live outer prose capture (CMH-VAL-15).
+  scoped to that fragment instead of finalizing live outer prose capture, and a paragraph nested
+  inside inline `cm-skip` no longer finalizes the surrounding live paragraph (CMH-VAL-15).
 
 ## [1.688.0] - 2026-08-05
 

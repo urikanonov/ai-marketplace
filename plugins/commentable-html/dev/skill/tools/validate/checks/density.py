@@ -232,7 +232,7 @@ class _DensityParser(_BrowserBoundaries):
             is_layout or (ns == "html" and (tag in _HEADINGS or tag == "section")))
         # A new paragraph, a boundary, or entering a skip block closes an open prose paragraph; a
         # boundary/skip-entry also breaks the run (a new paragraph continues it).
-        if tag == "p" or is_boundary or entering_skip:
+        if (ns == "html" and tag == "p" and in_scope) or is_boundary or entering_skip:
             self._flush_open_paragraph()
         if is_boundary or entering_skip:
             self.run = 0
@@ -270,7 +270,9 @@ class _DensityParser(_BrowserBoundaries):
 
     def _visit_self_closed(self, tag, d, ns):
         # The start hook's run/heading effects still apply to a real foreign element, but every
-        # depth contribution ends immediately because the element never remains open.
+        # depth contribution ends immediately because the element never remains open. `opens=True`
+        # is deliberate: unlike the default hook, this pass really does push a temporary frame so
+        # the ordinary truncation path unwinds every contribution.
         depth = len(self._stack)
         info = self._visit_start(tag, d, ns, True)
         self._push_element(tag, d, ns, info)
