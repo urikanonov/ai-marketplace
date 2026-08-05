@@ -10,6 +10,7 @@ import io
 import os
 import re
 import shutil
+import stat
 import sys
 import tempfile
 import unittest
@@ -869,6 +870,115 @@ class UpgradeCliTests(unittest.TestCase):
         raw = _read_bytes(p)
         self.assertNotIn(b"STALE", raw)  # region was actually swapped
         self.assertNotIn(b"\r\n", raw)  # dominant LF preserved; the stray CRLF did not win
+
+    @unittest.skipIf(os.name == "nt", "POSIX permission-bit semantics")
+    def test_cli_preserves_the_target_file_mode(self):
+        # CMH-TOOL-08: the validated temp comes from mkstemp, which creates 0600, and os.replace
+        # carries that inode's mode to the target - so an upgrade of a world-readable 0644 report
+        # would silently make it owner-only. The destination's mode must survive the swap.
+        target = _mutate_region_inner(_tpl(), "CSS", "\n/* STALE */\n")
+        p = self._write(target)
+        os.chmod(p, 0o644)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = upgrade.main(["upgrade.py", p])
+        self.assertEqual(rc, 0, out.getvalue())
+        with open(p, encoding="utf-8") as fh:
+            self.assertNotIn("STALE", fh.read())  # the file really was replaced
+        self.assertEqual(stat.S_IMODE(os.stat(p).st_mode), 0o644)
+
+    @unittest.skipIf(os.name == "nt", "POSIX permission-bit semantics")
+    def test_cli_preserves_an_executable_target_file_mode(self):
+        # CMH-TOOL-08: preservation copies the destination's WHOLE mode, not a hard-coded 0644.
+        target = _mutate_region_inner(_tpl(), "CSS", "\n/* STALE */\n")
+        p = self._write(target)
+        os.chmod(p, 0o751)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = upgrade.main(["upgrade.py", p])
+        self.assertEqual(rc, 0, out.getvalue())
+        self.assertEqual(stat.S_IMODE(os.stat(p).st_mode), 0o751)
+
+    @unittest.skipIf(os.name == "nt", "POSIX permission-bit semantics")
+    def test_cli_out_to_an_existing_file_preserves_that_file_mode(self):
+        # The mode that must survive is the DESTINATION's, so --out onto an existing file keeps
+        # the destination's bits rather than the source's or mkstemp's 0600.
+        src = self._write(_mutate_region_inner(_tpl(), "CSS", "\n/* STALE */\n"))
+        dst = os.path.join(os.path.dirname(src), "out.html")
+        with open(dst, "w", encoding="utf-8", newline="") as fh:
+            fh.write("<html>placeholder</html>")
+        os.chmod(src, 0o600)
+        os.chmod(dst, 0o644)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = upgrade.main(["upgrade.py", src, "--out", dst])
+        self.assertEqual(rc, 0, out.getvalue())
+        self.assertEqual(stat.S_IMODE(os.stat(dst).st_mode), 0o644)
+
+    @unittest.skipIf(os.name == "nt", "POSIX permission-bit semantics")
+    def test_cli_out_to_a_new_file_takes_the_source_file_mode(self):
+        # A destination that does not exist yet has no mode to preserve, so it must not be
+        # widened past the SOURCE document. 0640 is neither mkstemp's 0600 nor the umask
+        # default, so this cannot pass by accident on either fallback.
+        src = self._write(_mutate_region_inner(_tpl(), "CSS", "\n/* STALE */\n"))
+        dst = os.path.join(os.path.dirname(src), "copy.html")
+        os.chmod(src, 0o640)
+        umask = os.umask(0o022)
+        self.addCleanup(os.umask, umask)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = upgrade.main(["upgrade.py", src, "--out", dst])
+        self.assertEqual(rc, 0, out.getvalue())
+        self.assertEqual(stat.S_IMODE(os.stat(dst).st_mode), 0o640)
+
+    @unittest.skipIf(os.name == "nt", "POSIX symlinks need an elevated shell on Windows")
+    def test_cli_upgrades_through_a_symlink_instead_of_replacing_it(self):
+        # os.replace on a symlink would turn the LINK into a regular file and strand the real
+        # document with stale content, so the destination is resolved first.
+        real = self._write(_mutate_region_inner(_tpl(), "CSS", "\n/* STALE */\n"))
+        link = os.path.join(os.path.dirname(real), "link.html")
+        try:
+            os.symlink(real, link)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest("symlinks unavailable: %s" % exc)
+        os.chmod(real, 0o644)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = upgrade.main(["upgrade.py", link])
+        self.assertEqual(rc, 0, out.getvalue())
+        self.assertTrue(os.path.islink(link), "the symlink must survive the upgrade")
+        with open(real, encoding="utf-8") as fh:
+            self.assertNotIn("STALE", fh.read())  # the real document was upgraded, not stranded
+        self.assertEqual(stat.S_IMODE(os.stat(real).st_mode), 0o644)
+
+    def test_cli_leaves_no_temp_file_when_the_replace_itself_fails(self):
+        # The staged file now carries the destination's mode, so a READ-ONLY destination makes the
+        # staged file read-only too - and on Windows a read-only file cannot be deleted until the
+        # bit is cleared. This is the path quiet_remove exists for, so force the replace to fail
+        # after the mode was applied and assert nothing is left behind.
+        target = _mutate_region_inner(_tpl(), "CSS", "\n/* STALE */\n")
+        p = self._write(target)
+        with open(p, "rb") as fh:
+            original_bytes = fh.read()
+        os.chmod(p, stat.S_IREAD)
+        self.addCleanup(os.chmod, p, stat.S_IWRITE | stat.S_IREAD)
+        staged_modes = []
+
+        def boom(src, dst, *args, **kwargs):
+            staged_modes.append(stat.S_IMODE(os.stat(src).st_mode))
+            raise OSError("simulated replace failure")
+
+        with mock.patch("os.replace", boom):
+            with self.assertRaises(OSError):
+                upgrade.main(["upgrade.py", p])
+        self.assertTrue(staged_modes, "the replace must have been reached")
+        self.assertFalse(staged_modes[0] & stat.S_IWUSR,
+                         "the staged file must have inherited the read-only destination's mode")
+        with open(p, "rb") as fh:
+            self.assertEqual(fh.read(), original_bytes)
+        parent = os.path.dirname(os.path.abspath(p))
+        leftovers = sorted(f for f in os.listdir(parent) if f.startswith(".cmh-upgrade-"))
+        self.assertEqual(leftovers, [], "quiet_remove must clear the read-only bit and delete")
 
 
 if __name__ == "__main__":

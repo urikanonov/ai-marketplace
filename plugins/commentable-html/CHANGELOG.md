@@ -4,6 +4,39 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.728.0] - 2026-08-05
+
+### Fixed
+
+- The authoring tools that rewrite a document in place now preserve the destination file's
+  permissions. The new bytes are staged in a temp file, which POSIX creates as owner-only `0600`,
+  and `os.replace` carries the STAGED inode's mode to the target - so upgrading, retrofitting, or
+  re-theming a world-readable `0644` document silently narrowed it to `0600` and anyone it had
+  been shared with could no longer open it. `upgrade.py`, `retrofit.py`, and `deck/deck_theme.py`
+  now all give the staged file the destination's mode just before the swap, and the
+  validated-temp plus atomic-replace guarantees are unchanged.
+- The mode step lives in the shared `_atomic_io` helper (`preserve_mode`), so the tools that stage
+  a document and swap it in - `upgrade.py`, `retrofit.py`, `deck/deck_theme.py`, and the shared
+  `atomic_write` behind `content_replace.py`, `to_shareable.py`, `validate.py` and `finalize.py` -
+  all answer this the same way.
+  Only the `0777` permission bits are copied - a setuid/setgid/sticky bit is never applied to a
+  freshly staged inode - and a destination that exists but cannot be statted is left alone, so a
+  guess can never WIDEN a deliberately private file. A `--out` to a path that does not exist yet
+  has no mode to preserve, so the transform tools pass their SOURCE document as the fallback
+  rather than letting a process default widen it (and the result is intersected with what a plain
+  create would produce, so it is never wider than the umask allows either). A failure to apply the
+  mode never fails the write, but it is reported on stderr instead of silently landing the wrong
+  permissions.
+- `upgrade.py`, `retrofit.py`, and `deck_theme.py` now resolve the destination with `realpath`
+  before staging and replacing, as `_atomic_io.atomic_write` already did. Writing through a
+  symlink used to replace the LINK with a regular file and strand the real document with stale
+  content; it now rewrites the document the link points at. A `retrofit.py --copy-assets` run
+  still copies its companions beside the path the CALLER named, since bare-name refs resolve
+  against the URL the document is opened by.
+- Staged-file cleanup in those tools goes through `_atomic_io.quiet_remove`, which clears a
+  read-only bit first, so a staged file that inherited a read-only destination's mode cannot leak
+  on Windows.
+
 ## [1.726.0] - 2026-08-05
 
 ### Fixed

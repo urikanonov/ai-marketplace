@@ -678,6 +678,70 @@ class RetrofitCliTests(unittest.TestCase):
         self.assertIn('<a href="#b">Scope</a>', html)
         self._strict_clean(out)
 
+    @unittest.skipIf(os.name == "nt", "POSIX permission-bit semantics")
+    def test_in_place_retrofit_preserves_the_host_file_mode(self):
+        # CMH-TOOL-15: the staged file comes from mkstemp (POSIX 0600) and os.replace carries
+        # its mode to the target, so retrofitting a world-readable host page in place would
+        # otherwise silently make it owner-only.
+        import stat as _stat
+        d = self._tmpdir()
+        src = self._write(d, "host.html", HOST_HTML)
+        os.chmod(src, 0o644)
+        code, _stdout, stderr = self._run(["retrofit.py", src, "--label", "Host Report"])
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(_stat.S_IMODE(os.stat(src).st_mode), 0o644)
+
+    @unittest.skipIf(os.name == "nt", "POSIX permission-bit semantics")
+    def test_retrofit_out_to_a_new_file_takes_the_host_file_mode(self):
+        # A destination that does not exist yet has no mode to preserve, so it must not be
+        # widened past the host page it was built from.
+        import stat as _stat
+        d = self._tmpdir()
+        src = self._write(d, "host.html", HOST_HTML)
+        os.chmod(src, 0o640)
+        umask = os.umask(0o022)
+        self.addCleanup(os.umask, umask)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run(["retrofit.py", src, "--label", "Host Report", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(_stat.S_IMODE(os.stat(out).st_mode), 0o640)
+
+    @unittest.skipIf(os.name == "nt", "POSIX symlinks need an elevated shell on Windows")
+    def test_retrofit_through_a_symlink_rewrites_the_real_file(self):
+        # CMH-TOOL-15: os.replace on a symlink would turn the LINK into a regular file and
+        # strand the real host page, so the destination is resolved first.
+        d = self._tmpdir()
+        real = self._write(d, "host.html", HOST_HTML)
+        link = os.path.join(d, "link.html")
+        try:
+            os.symlink(real, link)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest("symlinks unavailable: %s" % exc)
+        code, _stdout, stderr = self._run(["retrofit.py", link, "--label", "Host Report"])
+        self.assertEqual(code, 0, stderr)
+        self.assertTrue(os.path.islink(link), "the symlink must survive the retrofit")
+        self.assertIn("commentRoot", _read_text(real))  # the real page got the layer
+
+    @unittest.skipIf(os.name == "nt", "POSIX symlinks need an elevated shell on Windows")
+    def test_copy_assets_lands_beside_the_path_the_caller_named(self):
+        # CMH-TOOL-15: --copy-assets writes BARE-name companion refs, which a browser resolves
+        # against the URL the document is OPENED by. Resolving the symlink for the replace must
+        # not drag the companions off to the target's directory, or those refs 404.
+        d = self._tmpdir()
+        real_dir = os.path.join(d, "real")
+        os.mkdir(real_dir)
+        real = self._write(real_dir, "host.html", HOST_HTML)
+        link = os.path.join(d, "link.html")
+        try:
+            os.symlink(real, link)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest("symlinks unavailable: %s" % exc)
+        code, _stdout, stderr = self._run(
+            ["retrofit.py", link, "--label", "Host Report", "--nonshareable", "--copy-assets"])
+        self.assertEqual(code, 0, stderr)
+        self.assertTrue(os.path.isfile(os.path.join(d, "commentable-html.js")),
+                        "companions must sit beside the path the caller named")
+
 
 class FaviconHelperTests(unittest.TestCase):
     """Direct tests for the shared favicon helper (tools/authoring/_favicon.py). It must match the

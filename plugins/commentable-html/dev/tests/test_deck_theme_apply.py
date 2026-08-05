@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402
@@ -57,6 +58,61 @@ class DeckThemeApplyTests(unittest.TestCase):
             "tokens": {"--slide-bg": "#101010", "--slide-fg": "#fafafa"},
         }), encoding="utf-8")
         return path
+
+    @unittest.skipIf(os.name == "nt", "POSIX permission-bit semantics")
+    def test_apply_preserves_the_deck_file_mode(self):
+        # CMH-DECK-THEME-02: the staging file is created 0600 and os.replace carries that mode
+        # to the target, so re-theming a world-readable deck in place would otherwise silently
+        # make it owner-only.
+        import stat as _stat
+        _scaffold(self.deck, "--slides", "2")
+        os.chmod(self.deck, 0o644)
+        self.assertEqual(self._apply("--theme", "terminal"), 0)
+        self.assertEqual(_stat.S_IMODE(os.stat(self.deck).st_mode), 0o644)
+
+    @unittest.skipIf(os.name == "nt", "POSIX permission-bit semantics")
+    def test_apply_out_to_a_new_file_takes_the_source_deck_mode(self):
+        # A destination that does not exist yet has no mode to preserve, so it must not be
+        # widened past the deck it was themed from.
+        import stat as _stat
+        _scaffold(self.deck, "--slides", "2")
+        os.chmod(self.deck, 0o640)
+        umask = os.umask(0o022)
+        self.addCleanup(os.umask, umask)
+        out = os.path.join(self.tmp, "themed.html")
+        self.assertEqual(self._apply("--theme", "terminal", "--out", out), 0)
+        self.assertEqual(_stat.S_IMODE(os.stat(out).st_mode), 0o640)
+
+    @unittest.skipIf(os.name == "nt", "POSIX symlinks need an elevated shell on Windows")
+    def test_apply_through_a_symlink_rewrites_the_real_deck(self):
+        # CMH-DECK-THEME-02: os.replace on a symlink would turn the LINK into a regular file and
+        # strand the real deck, so the destination is resolved first.
+        _scaffold(self.deck, "--slides", "2")
+        link = os.path.join(self.tmp, "link.html")
+        try:
+            os.symlink(self.deck, link)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest("symlinks unavailable: %s" % exc)
+        self.assertEqual(deck_theme.main(["apply", link, "--theme", "terminal"]), 0)
+        self.assertTrue(os.path.islink(link), "the symlink must survive the re-theme")
+        self.assertIn('id="cmh-deck-theme"', Path(self.deck).read_text(encoding="utf-8"))
+
+    def test_apply_leaves_no_staging_file_when_the_write_fails(self):
+        # The staging file is created before the theme is written, so a failed write must clean
+        # it up too - not only a failed replace.
+        _scaffold(self.deck, "--slides", "2")
+        real_fdopen = os.fdopen
+
+        def boom(fd, *args, **kwargs):
+            fh = real_fdopen(fd, *args, **kwargs)
+            fh.close()
+            raise OSError("simulated disk-full")
+
+        with mock.patch("os.fdopen", boom):
+            with self.assertRaises(OSError):
+                self._apply("--theme", "terminal")
+        leftovers = sorted(n for n in os.listdir(self.tmp) if n.startswith(".cmh-deck-theme-"))
+        self.assertEqual(leftovers, [])
 
     def test_apply_is_comment_safe_and_idempotent(self):
         html0 = _scaffold(self.deck, "--slides", "3")
