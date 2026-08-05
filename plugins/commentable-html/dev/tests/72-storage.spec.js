@@ -380,9 +380,23 @@ test("an unreadable (corrupt/newer-format) stored value is left untouched and su
     const k = document.getElementById("commentRoot").dataset.commentKey;
     localStorage.setItem(k + "::z", v);
   }, framed);
+  await page.addInitScript(() => {
+    const nativeSetTimeout = window.setTimeout.bind(window);
+    window.__cmhTimeoutDelays = [];
+    window.setTimeout = function (fn, delay, ...args) {
+      window.__cmhTimeoutDelays.push(delay);
+      return nativeSetTimeout(fn, delay, ...args);
+    };
+  });
   await page.reload();
   await ready(page);
-  await expect(page.locator("#toast")).toContainText("could not be read");
+  const expected = "Saved comments in this browser could not be read (they may be from a newer version) "
+    + "- they are left untouched; editing a comment will replace them.";
+  const toast = page.locator("#toast");
+  await expect(toast.locator("span")).toHaveText(expected);
+  await expect(toast).toHaveAttribute("role", "alert");
+  await expect(toast).toHaveAttribute("aria-live", "assertive");
+  expect(await page.evaluate(() => window.__cmhTimeoutDelays)).toContain(8000);
   const still = await page.evaluate(() => {
     const k = document.getElementById("commentRoot").dataset.commentKey;
     return localStorage.getItem(k + "::z");
