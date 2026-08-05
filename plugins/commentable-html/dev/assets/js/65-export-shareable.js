@@ -582,11 +582,21 @@ function _downloadHtml(text, filename) {
   const blob = new Blob([text], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.style.display = "none";
-  document.body.appendChild(a);
-  a.click();
+  // Once the object URL exists, every later step cleans up on its way out. A throw after the anchor
+  // is attached would otherwise leave it in the document - and it is not injected chrome, so
+  // `_snapshotWithTail()` would serialize it into the base of every later export - while the URL
+  // stayed unrevoked, making the download failure's "nothing in this document changed" false.
+  try {
+    a.href = url;
+    a.download = filename;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+  } catch (e) {
+    try { URL.revokeObjectURL(url); } catch (e2) {}
+    try { a.remove(); } catch (e2) {}
+    throw e;
+  }
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
 }
 function _layerDescriptorJson(mode) {
@@ -675,11 +685,18 @@ async function saveHtml() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
   catch (e) { showToast("Could not load base HTML."); return; }
-  baseHtml = _applyWidgetLayoutToHtml(baseHtml);
-  baseHtml = _applyChecklistStateToHtml(baseHtml);
-  baseHtml = _applyNoteStateToHtml(baseHtml);
-  const review = _applyReviewStateToHtml(baseHtml);
-  baseHtml = review.html;
+  // The state-baking prelude is one guarded step, not four bare lines: each applier does a
+  // DOMParser round-trip (and the widget one a live query), any of which can throw, and a throw
+  // used to unwind the whole click handler with no file and no toast - the #1052 failure reached
+  // from a different line (#1108).
+  let review;
+  try {
+    baseHtml = _applyWidgetLayoutToHtml(baseHtml);
+    baseHtml = _applyChecklistStateToHtml(baseHtml);
+    baseHtml = _applyNoteStateToHtml(baseHtml);
+    review = _applyReviewStateToHtml(baseHtml);
+    baseHtml = review.html;
+  } catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_PREPARE); return; }
   const canonical = _exportableCommentsOrReport();
   if (!canonical) return;
   const exportComments = canonical.comments;
@@ -691,10 +708,14 @@ async function saveHtml() {
     // The mode written is the document's own, so a re-saved Offline copy stays Offline
     // (CMH-OFFLINE-03): this is a consistency pass, never a mode change.
     text = _retargetLayerDescriptor(text, isOfflineDocument() ? "offline" : "shareable");
-  } catch (e) { showToast(e.message); return; }
+  } catch (e) { _reportExportBuildFailure(e); return; }
   const filename = _suggestedFilename();
   const n = exportComments.length;
   const noun = "comment" + (n === 1 ? "" : "s");
-  _downloadHtml(text, filename);
+  // The download itself can throw - `new Blob([text])` and `URL.createObjectURL` both can for a
+  // very large document - and the success toast is the NEXT statement, so an unguarded throw here
+  // downloaded nothing and said nothing.
+  try { _downloadHtml(text, filename); }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_DOWNLOAD); return; }
   showToast(`Downloaded ${filename} with ${n} embedded ${noun}. Replace the original on disk to make them stick.` + review.note, { center: true });
 }

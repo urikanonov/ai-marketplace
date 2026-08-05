@@ -693,6 +693,195 @@ test.describe("Save comments / Export plain", () => {
     }
   });
 
+  // #1108: #1052 closed the silent unwind for the CANONICAL PASS only. The same handlers still ran
+  // their state-baking prelude, their document build and their download call on lines that could
+  // unwind the click with no file and no toast - the identical reader-visible failure, reached from
+  // a different line. The three tests below take one failure point each, so a regression at any one
+  // of them reds a test of its own rather than hiding behind an earlier phase.
+  //
+  // Every break is switched by ONE page-level flag, so a phase turns its own break on and the rest
+  // stay inert. Each break is aimed at a line only the step under test reaches, and each phase
+  // asserts the message that belongs to that step, so a throw that landed anywhere else fails the
+  // test rather than passing it.
+  const installExportBreaks = (p) => p.evaluate(() => {
+    const rootEl = document.getElementById("commentRoot");
+    // The heading query is the section-review baker's alone (_cmhReviewHeadings); the canonical
+    // pass walks the content root with a TreeWalker instead.
+    const realQuery = rootEl.querySelectorAll.bind(rootEl);
+    rootEl.querySelectorAll = function (sel) {
+      if (window.__cmhBreak === "bake" && /^h1,/.test(String(sel).replace(/\s+/g, ""))) {
+        throw new Error("bake boom");
+      }
+      return realQuery(sel);
+    };
+    // The checklist and note bakers parse the base HTML; the review baker catches its own parse
+    // failure, so this break is what reaches the Plain export's prelude, which has no review baker.
+    // Thrown as a NON-Error under "assemble" so the document build's own catch, which reads the
+    // message, has nothing readable to show.
+    const realParse = DOMParser.prototype.parseFromString;
+    DOMParser.prototype.parseFromString = function (...args) {
+      if (window.__cmhBreak === "bake-parse") throw new Error("bake boom");
+      if (window.__cmhBreak === "assemble") throw null;
+      return realParse.apply(this, args);
+    };
+    // The Markdown conversion walks the content root's child nodes.
+    const realChildNodes = Object.getOwnPropertyDescriptor(Node.prototype, "childNodes");
+    Object.defineProperty(rootEl, "childNodes", {
+      configurable: true,
+      get: function () {
+        if (window.__cmhBreak === "convert") throw new Error("convert boom");
+        return realChildNodes.get.call(this);
+      },
+    });
+    // URL.createObjectURL is called only from the two download helpers, which is exactly what a
+    // multi-megabyte Offline export can fail on.
+    const realUrl = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = function (blob) {
+      if (window.__cmhBreak === "download") throw new Error("download boom");
+      return realUrl(blob);
+    };
+  });
+  const breakExportAt = (p, phase) => p.evaluate((v) => { window.__cmhBreak = v; }, phase);
+  // Same reset as the canonical-pass test: hideToast() only drops the .show class, so clearing the
+  // text and the role keeps a phase from passing on the previous phase's leftover.
+  const resetExportToast = (p) => p.evaluate(() => {
+    const t = document.getElementById("toast");
+    t.classList.remove("show");
+    t.textContent = "";
+    t.setAttribute("role", "status");
+  });
+  // Register the download waiter BEFORE the click, so an export that really did write a file fails
+  // here instead of timing out into a passing assertion. Only a timeout counts as "no download";
+  // any other waiter error is a real failure.
+  async function expectExportReports(p, control, cause, detail) {
+    await resetExportToast(p);
+    const downloaded = p.waitForEvent("download", { timeout: 750 }).then(() => true)
+      .catch((err) => { if (err && err.name === "TimeoutError") return false; throw err; });
+    await clickSidebarExport(p, control);
+    await expect(p.locator("#toast")).toContainText("Export failed - nothing was downloaded");
+    await expect(p.locator("#toast")).toContainText(cause);
+    if (detail) await expect(p.locator("#toast")).toContainText(detail);
+    // No success toast may follow the failure: an export that threw has no file to announce, and
+    // announcing one would be worse than the silence this row removes. Both wordings are named,
+    // since Markdown's success toast says "Markdown downloaded as ..." rather than "Downloaded".
+    await expect(p.locator("#toast")).not.toContainText("Downloaded ");
+    await expect(p.locator("#toast")).not.toContainText("downloaded as");
+    await expect(p.locator("#toast")).toHaveAttribute("role", "alert");
+    expect(await downloaded).toBe(false);
+  }
+  // A heading for the review baker to walk, a paragraph to comment on, and a checklist whose one
+  // item a test can dirty so the Plain export's state-baking prelude actually bakes something.
+  const EXPORT_FAILURE_CONTENT = `
+    <h1>Export failure demo</h1>
+    <section><p>An export that fails must say so.</p></section>
+    <div class="cmh-checklist" data-cmh-checklist="release" data-cmh-checklist-label="Release">
+      <ul><li data-cmh-item="rel" data-cmh-state="blank">Release notes</li></ul>
+    </div>`;
+  const BAKE_CAUSE = "current state could not be prepared for export";
+  const DOWNLOAD_CAUSE = "could not be handed to the browser to download";
+
+  test("an export that fails while baking state tells the reader nothing was downloaded (CMH-EXP-23)", async ({ page }) => {
+    const inline = stageContent(EXPORT_FAILURE_CONTENT, {
+      key: "cmh-bake-fail-inline",
+      source: "bake-fail-inline.html",
+    });
+    const nonshareable = stageNonShareable({
+      mutate: (html) => html.replace('data-comment-key="commentable-html-nonshareable-demo"',
+        'data-comment-key="cmh-bake-fail-nonshareable"'),
+    });
+    try {
+      await page.goto(fileUrl(inline.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "inline note");
+      await installExportBreaks(page);
+
+      // #btnSaveHtml delegates to saveHtml() on an inline document; Offline runs its own prelude.
+      await breakExportAt(page, "bake");
+      await expectExportReports(page, "#btnSaveHtml", BAKE_CAUSE, "bake boom");
+      await expectExportReports(page, "#btnExportOffline", BAKE_CAUSE, "bake boom");
+
+      // Plain bakes checklist and note state only, so dirty the checklist first - otherwise its
+      // appliers return the HTML untouched and its guard is never reached.
+      await page.locator('[data-cmh-item="rel"] .cmh-check').first().click();
+      await breakExportAt(page, "bake-parse");
+      await expectExportReports(page, "#btnSavePlain", BAKE_CAUSE, "bake boom");
+
+      // Markdown bakes no state: it converts the live content root, which is its own prepare step
+      // and says so rather than blaming a baking pass that never ran.
+      await breakExportAt(page, "convert");
+      await expectExportReports(page, "#btnExportMd", "could not be converted to Markdown", "convert boom");
+      await breakExportAt(page, "none");
+
+      // NonShareable takes the other branch of the Shareable button: saveStandalone() runs its own
+      // prelude instead of delegating to saveHtml().
+      await page.goto(fileUrl(nonshareable.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "nonshareable note");
+      await installExportBreaks(page);
+      await breakExportAt(page, "bake");
+      await expectExportReports(page, "#btnSaveHtml", BAKE_CAUSE, "bake boom");
+    } finally {
+      fs.rmSync(inline.dir, { recursive: true, force: true });
+      fs.rmSync(nonshareable.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an export that fails at the download step tells the reader nothing was downloaded (CMH-EXP-23)", async ({ page }) => {
+    const inline = stageContent(EXPORT_FAILURE_CONTENT, {
+      key: "cmh-download-fail-inline",
+      source: "download-fail-inline.html",
+    });
+    const nonshareable = stageNonShareable({
+      mutate: (html) => html.replace('data-comment-key="commentable-html-nonshareable-demo"',
+        'data-comment-key="cmh-download-fail-nonshareable"'),
+    });
+    try {
+      await page.goto(fileUrl(inline.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "inline note");
+      await installExportBreaks(page);
+      await breakExportAt(page, "download");
+      // Every entry point that writes a file, including the two that build no comment layer.
+      await expectExportReports(page, "#btnSaveHtml", DOWNLOAD_CAUSE, "download boom");
+      await expectExportReports(page, "#btnExportOffline", DOWNLOAD_CAUSE, "download boom");
+      await expectExportReports(page, "#btnSavePlain", DOWNLOAD_CAUSE, "download boom");
+      await expectExportReports(page, "#btnExportMd", DOWNLOAD_CAUSE, "download boom");
+
+      await page.goto(fileUrl(nonshareable.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "nonshareable note");
+      await installExportBreaks(page);
+      await breakExportAt(page, "download");
+      await expectExportReports(page, "#btnSaveHtml", DOWNLOAD_CAUSE, "download boom");
+    } finally {
+      fs.rmSync(inline.dir, { recursive: true, force: true });
+      fs.rmSync(nonshareable.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a document build that throws a value with no message still reports the failure (CMH-EXP-23)", async ({ page }) => {
+    // The build's own catch shows the message the builder wrote FOR the reader, so it stays. But a
+    // throwable with no readable message used to reach `showToast(e.message)` bare, which shows a
+    // toast with no text at all - the same silence, one line further down the handler.
+    const inline = stageContent(EXPORT_FAILURE_CONTENT, {
+      key: "cmh-assemble-fail-inline",
+      source: "assemble-fail-inline.html",
+    });
+    try {
+      await page.goto(fileUrl(inline.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "inline note");
+      await installExportBreaks(page);
+      // No checklist or note is dirty here, so the state-baking prelude parses nothing and the
+      // throw lands in the document build, which is the step under test.
+      await breakExportAt(page, "assemble");
+      await expectExportReports(page, "#btnSaveHtml", "could not be assembled for export", null);
+      await expect(page.locator("#toast")).not.toContainText("undefined");
+    } finally {
+      fs.rmSync(inline.dir, { recursive: true, force: true });
+    }
+  });
+
   test("embedded comments travel: a shared copy shows them in a fresh browser (no localStorage)", async ({ page, browser }) => {
     await openInline(page);
     await addTextComment(page, "#commentRoot section p", "traveling comment");

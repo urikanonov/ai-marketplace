@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.741.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.742.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.742.0] - 2026-08-05</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>An export can no longer fail silently at any step of its click handler (CMH-EXP-23). The guard added for the canonical pass covered that one pass only; the rest of the handler still ran on lines that could unwind it - the state-baking prelude (<code>_applyWidgetLayoutToHtml</code> / <code>_applyChecklistStateToHtml</code> / <code>_applyNoteStateToHtml</code> / <code>_applyReviewStateToHtml</code>, each a <code>DOMParser</code> round-trip that can throw), the document build&#x27;s own catch (which read <code>e.message</code> bare, so a throwable with no readable message produced an EMPTY toast and one whose <code>message</code> getter throws unwound the handler from inside the catch), and the download call itself (<code>new Blob([text])</code> plus <code>URL.createObjectURL</code>, which a multi-megabyte Offline export is the likeliest of all of them to fail). A throw from any of them ended the click with no file, no toast, and nothing a reader could tell apart from a click that never registered. All five export entry points that write a file - Shareable (<code>saveHtml</code>), the NonShareable Standalone branch (<code>saveStandalone</code>), Offline (<code>saveOffline</code>), Plain (<code>saveAsPlain</code>) and Markdown (<code>exportMarkdown</code>) - now report a failure at every one of those steps through one shared reporter that names the cause, says no file was written and that nothing in the document changed so a retry is safe, and leaves the full thrown value on the console; Markdown, which bakes no state, gets its own conversion message rather than being filed under a baking pass that never ran. A document build still shows the message its builder wrote for the reader, and only falls back to the shared report when there is no message to show. A download that throws no longer falls through to the success toast, so an export never claims a file it did not write, and both download helpers now revoke the object URL and remove their anchor if the throw lands after the URL exists - an anchor left in the document would otherwise be serialized into the base of every later export.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.741.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -503,6 +510,8 @@
               <li>The same reverse-tabnabbing gate now reads the <code>target</code> the way a browser reads it, and asks the question that actually matters: does this target CREATE an auxiliary browsing context, whose <code>window.opener</code> points back at the document the reader is looking at (CMH-KQL-05)? HTML matches its four keywords ASCII case-insensitively and does NOT trim the value, so <code>_BLANK</code>, a padded <code> _blank</code> and a NAME that resolves to nothing in the document all keep an opener. A Python <code>==</code> against the literal <code>_blank</code> saw none of them, so a <code>cmh-kql-run</code> link carrying no <code>rel</code> at all passed the gate in silence. A name that DOES resolve - an <code>&lt;iframe name=&quot;win1&quot;&gt;</code> in the same document - navigates a context that already exists and is exempt. That gate is the ONLY reverse-tabnabbing control on a run link, because CMH-KQL-01 places it inside <code>figcaption.cm-skip</code>, which both the render-time stamper and the <code>checks/links.py</code> new-tab check pass over.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.737.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -511,8 +520,6 @@
               <li>A NonShareable companion reference is now CLASSIFIED (remote, non-<code>file</code> scheme, drive letter) on the reference as the URL parser reads it, the same value the path resolver uses. Those tests are anchored, so reading the raw attribute let the parser&#x27;s own leading C0-or-space padding hide the scheme from all of them: <code>&lt;link href=&quot; https://cdn.example.com/commentable-html.css&quot;&gt;</code> and <code>&lt;script src=&quot; vscode://x.js&quot;&gt;</code> fell through to the relative-path branch and were reported as a missing companion file instead of as the remote or wrong-scheme reference the browser actually fetches.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.735.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -554,14 +561,7 @@
               <li>Staged-file cleanup in those tools goes through <code>_atomic_io.quiet_remove</code>, which clears a read-only bit first, so a staged file that inherited a read-only destination&#x27;s mode cannot leak on Windows.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.726.0] - 2026-08-05</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The in-document comment dialog&#x27;s action buttons now meet the repo-wide <code>&gt;=44px</code> touch target on a phone viewport (<code>max-width: 640px</code>), in the note view (<code>Delete</code> / <code>Close</code> / <code>Edit</code>) and the edit view (<code>Cancel</code> / <code>Save</code>) alike (CMH-CORE-23). Both rows measured 33px tall at a 320x720 viewport - the last controls in the dialog a thumb had to aim at, since its formatting toolbar (CMH-RICH-20) and the sidebar card&#x27;s actions were already enlarged. With the shipped labels the enlarged row still fits one line at 320px in every density scale, so the layout is unchanged; wrapping is a fallback for a row that no longer fits (a localized label set, a larger host root font), and the wrapped lines take a roomier row gap - in the same absolute unit as the touch target - so a <code>Delete</code> pushed onto its own line keeps a deliberate gap from the button below it rather than sitting a thumb-slip away. The confirmation <code>Delete</code> goes through (CMH-CORE-22) is unchanged.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">341 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">342 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

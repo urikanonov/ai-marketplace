@@ -232,13 +232,16 @@ async function saveAsPlain() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
   catch (e) { showToast("Could not load base HTML."); return; }
-  baseHtml = _applyChecklistStateToHtml(baseHtml);
-  baseHtml = _applyNoteStateToHtml(baseHtml);
+  try {
+    baseHtml = _applyChecklistStateToHtml(baseHtml);
+    baseHtml = _applyNoteStateToHtml(baseHtml);
+  } catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_PREPARE); return; }
   let text;
   try { text = _buildPlainHtml(baseHtml); }
-  catch (e) { showToast(e.message); return; }
+  catch (e) { _reportExportBuildFailure(e); return; }
   const filename = _suggestedPlainFilename();
-  _downloadHtml(text, filename);
+  try { _downloadHtml(text, filename); }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_DOWNLOAD); return; }
   showToast("Downloaded " + filename + " (plain HTML, comment layer removed).", { center: true });
 }
 const _btnSaveHtml = document.getElementById("btnSaveHtml");

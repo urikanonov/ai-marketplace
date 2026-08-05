@@ -4,6 +4,33 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.742.0] - 2026-08-05
+
+### Fixed
+
+- An export can no longer fail silently at any step of its click handler (CMH-EXP-23). The guard
+  added for the canonical pass covered that one pass only; the rest of the handler still ran on
+  lines that could unwind it - the state-baking prelude (`_applyWidgetLayoutToHtml` /
+  `_applyChecklistStateToHtml` / `_applyNoteStateToHtml` / `_applyReviewStateToHtml`, each a
+  `DOMParser` round-trip that can throw), the document build's own catch (which read `e.message`
+  bare, so a throwable with no readable message produced an EMPTY toast and one whose `message`
+  getter throws unwound the handler from inside the catch), and the download call itself
+  (`new Blob([text])` plus `URL.createObjectURL`, which a multi-megabyte Offline export is the
+  likeliest of all of them to fail). A throw from any of them ended the click with no file, no
+  toast, and nothing a reader could tell apart from a click that never registered. All five export
+  entry points that write a file - Shareable (`saveHtml`), the NonShareable Standalone branch
+  (`saveStandalone`), Offline (`saveOffline`), Plain (`saveAsPlain`) and Markdown
+  (`exportMarkdown`) - now report a failure at every one of those steps through one shared reporter
+  that names the cause, says no file was written and that nothing in the document changed so a retry
+  is safe, and leaves the full thrown value on the console; Markdown, which bakes no state, gets its
+  own conversion message rather than being filed under a baking pass that never ran. A document
+  build still shows the message its builder wrote for the reader, and only falls back to the shared
+  report when there is no message to show. A download that throws no longer falls through to the
+  success toast, so an export never claims a file it did not write, and both download helpers now
+  revoke the object URL and remove their anchor if the throw lands after the URL exists - an anchor
+  left in the document would otherwise be serialized into the base of every later export.
+
+
 ## [1.741.0] - 2026-08-05
 
 ### Fixed

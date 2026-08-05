@@ -398,8 +398,16 @@ function _downloadTextFile(text, filename, mime) {
   const blob = new Blob([text], { type: (mime || "text/plain") + ";charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
+  // Clean up on the way out of a throw, so a failed download leaves neither an unrevoked object URL
+  // nor a stray anchor in the document (see _downloadHtml).
+  try {
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+  } catch (e) {
+    try { URL.revokeObjectURL(url); } catch (e2) {}
+    try { a.remove(); } catch (e2) {}
+    throw e;
+  }
   setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 1000);
 }
 function _mdFilename() {
@@ -411,9 +419,15 @@ function _mdFilename() {
   return stem + ".md";
 }
 async function exportMarkdown() {
-  const md = buildMarkdownDoc();
+  // The same two bare lines the HTML exports carried (#1108): the conversion walks the whole
+  // content root and the download builds a Blob, and either throw used to end the click with no
+  // file and no message.
+  let md;
+  try { md = buildMarkdownDoc(); }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_CONVERT); return; }
   const filename = _mdFilename();
-  _downloadTextFile(md, filename, "text/markdown");
+  try { _downloadTextFile(md, filename, "text/markdown"); }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_DOWNLOAD); return; }
   showToast(`Markdown downloaded as ${filename}.`, { center: true });
 }
 ["btnExportMd", "btnExportMdTop"].forEach((id) => {

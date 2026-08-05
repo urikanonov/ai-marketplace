@@ -273,7 +273,7 @@ function _exportableComments() {
 }
 // An export that FAILED is the one message a reader must not miss, and some of these run long, so
 // give it an assertive announcement and time to read rather than the 3s confirmation timing.
-const _EXPORT_CANONICAL_FAILURE_TOAST = { alert: true, duration: 10000 };
+const _EXPORT_FAILURE_TOAST = { alert: true, duration: 10000 };
 // The cause to name in that toast, derived from ANY thrown value. `throw "boom"` is legal, and so is
 // a value whose `message` getter throws, so reading `e.message` bare would either drop the cause or
 // throw a SECOND time from inside the very catch that exists to report the first. The text is capped
@@ -291,6 +291,72 @@ function _cmhThrownDetail(e) {
   if (/^\[object [A-Za-z][A-Za-z0-9]*\]$/.test(detail)) detail = "";
   return detail.length > 200 ? detail.slice(0, 200) + "..." : detail;
 }
+// The three points an export can fail at, each naming its own cause and what it left behind. The
+// prelude and the download both leave the live document untouched (the prelude rewrites a STRING
+// copy of the base HTML, and by download time the canonical pass has already restored from its
+// `finally`), so both can promise a retry is safe without claiming a restore ran.
+const _EXPORT_FAILURE_CANONICAL = {
+  log: "export canonical pass failed",
+  cause: "This document's comment positions could not be prepared for export",
+  tail: "No file was written and the pass put your comments and table sorting back, so it is"
+    + " safe to try again.",
+};
+const _EXPORT_FAILURE_PREPARE = {
+  log: "export state-baking pass failed",
+  cause: "This document's current state could not be prepared for export",
+  tail: "No file was written and nothing in this document changed, so it is safe to try again.",
+};
+const _EXPORT_FAILURE_DOWNLOAD = {
+  log: "export download failed",
+  cause: "The prepared file could not be handed to the browser to download",
+  tail: "No file was written and nothing in this document changed, so it is safe to try again."
+    + " A very large export can fail this way.",
+};
+// The document build has its own descriptor because it is a different step from the state baking,
+// and Markdown its own again: it bakes no state at all, so filing its failure under the baking log
+// label would send a triager grepping the console to the wrong pass.
+const _EXPORT_FAILURE_BUILD = {
+  log: "export document build failed",
+  cause: "This document could not be assembled for export",
+  tail: "No file was written and nothing in this document changed, so it is safe to try again.",
+};
+const _EXPORT_FAILURE_CONVERT = {
+  log: "export markdown conversion failed",
+  cause: "This document could not be converted to Markdown",
+  tail: "No file was written and nothing in this document changed, so it is safe to try again.",
+};
+// One reporter for every export failure, so all of them share one message shape and one
+// best-effort contract. Reporting must not be able to fail the way the export just did: a throw
+// from showToast here would unwind the click handler past the caller's abort and restore the exact
+// silence this reporter exists to remove, so the report is best-effort and the abort is
+// unconditional. The toast is truncated and transient, so the full thrown value (stack included)
+// is left on the console for whoever has to triage the report.
+function _reportExportFailure(e, parts) {
+  const detail = _cmhThrownDetail(e);
+  try { console.warn("commentable-html: " + parts.log, e); } catch (e2) {}
+  try {
+    showToast("Export failed - nothing was downloaded. " + parts.cause
+      + (detail ? " (" + detail + ")" : "") + ". " + parts.tail,
+    _EXPORT_FAILURE_TOAST);
+  } catch (e2) { /* the export still aborts */ }
+}
+// The document build throws a message written FOR the reader (which reserved block is contested,
+// which id to rename), so that message is shown as-is rather than replaced by the generic one. It
+// is read defensively, though: `showToast(e.message)` on a throwable with no readable message shows
+// a toast with no text, and on a value whose `message` getter throws it throws a SECOND time from
+// inside the catch and unwinds the click handler - the very silence this row exists to remove,
+// reached from the one line the guards above do not own.
+function _reportExportBuildFailure(e, opts) {
+  let msg = "";
+  try {
+    const obj = e && (typeof e === "object" || typeof e === "function");
+    const raw = (obj && "message" in e) ? e.message : "";
+    msg = (raw === undefined || raw === null) ? "" : String(raw).trim();
+  } catch (e2) { msg = ""; }
+  if (!msg) { _reportExportFailure(e, _EXPORT_FAILURE_BUILD); return; }
+  try { console.warn("commentable-html: " + _EXPORT_FAILURE_BUILD.log, e); } catch (e2) {}
+  try { showToast(msg, opts); } catch (e2) { /* the export still aborts */ }
+}
 // Every export entry point runs the canonical pass through this guard rather than calling
 // `_exportableComments()` bare. The pass can throw, and it used to sit OUTSIDE the try/catch that
 // wraps the document build, so the throw unwound the whole click handler: no file was downloaded
@@ -301,20 +367,7 @@ function _exportableCommentsOrReport() {
   try {
     return { comments: _exportableComments() };
   } catch (e) {
-    const detail = _cmhThrownDetail(e);
-    // The toast is the reader's whole account of the failure and it is truncated and transient, so
-    // leave the full value (stack included) on the console for whoever has to triage the report.
-    try { console.warn("commentable-html: export canonical pass failed", e); } catch (e2) {}
-    // Reporting must not be able to fail the way the export just did: a throw from showToast here
-    // would unwind the click handler past the caller's abort and restore the exact silence this
-    // guard exists to remove, so the report is best-effort and the abort is unconditional.
-    try {
-      showToast("Export failed - nothing was downloaded. This document's comment positions could not"
-        + " be prepared for export" + (detail ? " (" + detail + ")" : "")
-        + ". No file was written and the pass put your comments and table sorting back, so it is"
-        + " safe to try again.",
-      _EXPORT_CANONICAL_FAILURE_TOAST);
-    } catch (e2) { /* the export still aborts */ }
+    _reportExportFailure(e, _EXPORT_FAILURE_CANONICAL);
     return null;
   }
 }
