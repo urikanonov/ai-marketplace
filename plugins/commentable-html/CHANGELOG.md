@@ -4,6 +4,26 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.681.0] - 2026-08-04
+
+### Changed
+
+- The browser-accurate element-boundary SEQUENCE now lives in exactly one place (CMH-VAL-21).
+  `handle_starttag()`, `handle_startendtag()` and `handle_endtag()` moved onto the shared
+  `_BrowserBoundaries` base (and, identically, onto the degraded fallback a partial install gets)
+  and drive overridable hooks - `_visit_start()`, `_push_element()`, `_visit_void()`,
+  `_after_start()`, `_visit_self_closed()`, `_visit_end()` - so each of the thirteen parsers and
+  authoring tools that derive from it now says only what it COLLECTS. The same ~25-line skeleton
+  (browser tag name, browser attribute dict, child namespace, the implicit `</p>` / `</li>` close,
+  the void and foreign self-closing carve-outs, the namespace push, the raw-text switch, and, for
+  an end tag, the innermost open element then the truncation) was maintained in eleven independent
+  copies, where one forgotten `_enter_raw_text()` would silently have parsed a `<script>` body as
+  markup - the base deliberately disables the host's own `_enter_cdata_mode()`, so no gate would
+  have seen it. A new guard fails any subclass that writes a tag handler of its own, with a single
+  named exception (the prose-density pass, which keeps no namespace stack and applies no implicit
+  close, so sharing the sequence would change what it counts rather than share it). No behavior
+  change to any tool: every parse this refactor touches reads a document exactly as it did.
+
 ## [1.679.0] - 2026-08-04
 
 ### Fixed

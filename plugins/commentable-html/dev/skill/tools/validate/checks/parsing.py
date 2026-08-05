@@ -1144,6 +1144,10 @@ class _BrowserBoundaries(_BrowserStartTag):
     foreign-content bookkeeping (`svg`/`math`, integration points, breakout start tags) in one
     stack that runs PARALLEL to each subclass's own element stack: subclasses push through
     `_push_ns()` and truncate through `_truncate_stacks()`, so the two never drift apart.
+
+    The three tag handlers themselves live here too (see "the shared handler skeleton" below), so
+    the ORDER those steps run in is written down ONCE and a subclass overrides only what it
+    COLLECTS.
     """
 
     def __init__(self, html):
@@ -1171,6 +1175,17 @@ class _BrowserBoundaries(_BrowserStartTag):
         # that the fragment did not end in the DATA state, and so cannot be reconciled with the
         # surrounding parse.
         self.eof_unterminated = False
+        # Whether the truncation running right now came from an element's OWN end tag rather than
+        # from an implicit close, an ancestor's closer, a foreign-content breakout or end of
+        # input. Only an end tag has a closer whose SOURCE EXTENT belongs to the element, which is
+        # what a tool that REWRITES the element's bytes must know; owned here so every subclass
+        # reads one answer instead of each keeping its own flag around its own truncation.
+        self._end_tag_close = False
+        # The HOST's own `(name, value)` list for the start tag being handled. A hook is handed
+        # the browser-decoded DICT, which has already resolved a duplicated attribute the way a
+        # browser resolves it; a subclass that wants every authored pair re-derives them with
+        # `browser_attrs(self, tag, self._host_attrs)`, whose fallback is exactly this list.
+        self._host_attrs = ()
 
     def parse_document(self, html):
         """Parse a COMPLETE document. Feeding the whole string at once is what lets an
@@ -1579,6 +1594,108 @@ class _BrowserBoundaries(_BrowserStartTag):
             self._before_truncate(i)
             self._truncate_stacks(i)
 
+    # -- the shared handler skeleton ---------------------------------------- #
+    #
+    # The ORDER of the steps below IS the CMH-VAL-21 boundary invariant, so it is written down in
+    # exactly ONE place. Every parser here and every rebased tool outside this package drives it
+    # through the hooks under it and overrides only what it COLLECTS; none of them repeats the
+    # sequence. That is structural, not stylistic: this base deliberately disables the host's own
+    # `_enter_cdata_mode()` (see below), so a copy of the skeleton that forgot `_enter_raw_text()`
+    # would parse a `<script>` body as markup, and one that ran `_implicit_close()` after its own
+    # bookkeeping would key that bookkeeping on a stack a browser had already popped - neither of
+    # which any gate could see.
+
+    def _opens_element(self, tag, ns):
+        """Whether this start tag leaves an element OPEN on the stack. A VOID element has no
+        content and no end tag, so it is never pushed; a FOREIGN element is never void
+        (`<svg><rect/>` is self-closing markup, which `handle_startendtag()` resolves)."""
+        return tag not in VOID or ns != "html"
+
+    def handle_starttag(self, tag, attrs):
+        tag = self._browser_tag(tag)
+        self._host_attrs = attrs
+        ad = self._attrs_dict(tag, attrs)
+        ns = self._child_namespace(tag, ad)
+        if ns == "html":
+            self._implicit_close(tag)
+        opens = self._opens_element(tag, ns)
+        info = self._visit_start(tag, ad, ns, opens)
+        if opens:
+            self._push_element(tag, ad, ns, info)
+            self._push_ns(tag, ns, ad)
+        else:
+            self._visit_void(tag, ad, ns, info)
+        self._enter_raw_text(tag, ns)
+        self._after_start(tag, ad, ns, opens)
+
+    def handle_startendtag(self, tag, attrs):
+        # HTML5 IGNORES a trailing slash on a non-void HTML tag - `<pre/>` opens an element that
+        # still needs `</pre>`, and `<hr/>` is a void tag that still implicitly closes an open
+        # `<p>` - so both go through the start-tag path. Only a FOREIGN element really is opened
+        # and closed at once, so `<svg><rect id="x"/>` is still an element with attributes and a
+        # bare `<svg/>` must not be left open (a stale foreign current node would make a following
+        # `<![CDATA[` hide live markup).
+        tag = self._browser_tag(tag)
+        self._host_attrs = attrs
+        ad = self._attrs_dict(tag, attrs)
+        ns = self._child_namespace(tag, ad)
+        if not self._foreign_self_closes(ns):
+            self.handle_starttag(tag, attrs)
+            return
+        self._visit_self_closed(tag, ad, ns)
+
+    def handle_endtag(self, tag):
+        tag = self._browser_tag(tag)
+        index = self._innermost_open(tag)
+        self._visit_end(tag, index)
+        if index < 0:
+            # An end tag with no open element is IGNORED, exactly as a browser ignores it.
+            return
+        self._end_tag_close = True
+        try:
+            self._truncate_stacks(index)
+        finally:
+            self._end_tag_close = False
+
+    # -- what a subclass overrides ------------------------------------------ #
+
+    def _visit_start(self, tag, ad, ns, opens):
+        """Collect whatever this parser wants from a start tag, BEFORE the element is pushed.
+
+        `ad` is the browser-decoded attribute dict, `ns` the namespace the element is inserted in,
+        and `opens` whether it will be pushed. Runs after HTML5's implicit `</p>` / `</li>` close,
+        so the stack is the one a browser has at this point. Whatever it RETURNS is handed back to
+        `_push_element()` / `_visit_void()`, so a record built here (and the depth-keyed state that
+        goes with it) needs no scratch attribute to survive the two steps.
+        """
+        return None
+
+    def _push_element(self, tag, ad, ns, info):
+        """Push the element onto the subclass's OWN stack, which runs parallel to `_ns`. Called
+        only when `_opens_element()` said so, and immediately before `_push_ns()`, so both stacks
+        take the same index."""
+
+    def _visit_void(self, tag, ad, ns, info):
+        """The element is never pushed (a void tag), so it has no content: any depth-keyed state
+        `_visit_start()` just opened at this depth ends immediately."""
+
+    def _after_start(self, tag, ad, ns, opens):
+        """After `_enter_raw_text()` - the one place a subclass can see whether the element it
+        just opened put the tokenizer into raw text."""
+
+    def _visit_self_closed(self, tag, ad, ns):
+        """A FOREIGN element written self-closed: a real element with attributes that is opened
+        and closed at once, so it is never pushed and never enters raw text. By default it is
+        reported as a start tag that opens nothing, so a subclass that only writes `_visit_start()`
+        still SEES it - `<svg><rect id="x"/>` is an element with an id. Override to collect less
+        (a subclass whose start hook also opens depth-keyed state has nothing here to key it on)."""
+        self._visit_void(tag, ad, ns, self._visit_start(tag, ad, ns, False))
+
+    def _visit_end(self, tag, index):
+        """An end tag, before anything is truncated. `index` is the stack index of the element it
+        closes, or -1 when a browser would ignore it (nothing open by that name, or the only match
+        sits below the `<template>` floor)."""
+
 
 # The ancestor facts each tolerant parser asks about an element while it is being recorded. They
 # are running COUNTS (and, for `svg`, the index of the nearest `svg`/`foreignObject`), kept
@@ -1924,12 +2041,8 @@ class _DocParser(_BrowserBoundaries):
             self.has_top_level_lede = True
             self._lede_depth = len(self.stack)
 
-    def handle_starttag(self, tag, attrs):
-        tag = self._browser_tag(tag)
-        ad = self._attrs_dict(tag, attrs)
-        ns = self._child_namespace(tag, ad)
+    def _visit_start(self, tag, ad, ns, opens):
         if ns == "html":
-            self._implicit_close(tag)
             # HTML5's h1-h6 start tag POPS an open heading that is the CURRENT node, so
             # `<h2 id="a">A<h2 id="b">B` is two headings: without this the first one ran on and
             # swallowed the second's text, and the second's id was never collected at all. The
@@ -1963,20 +2076,20 @@ class _DocParser(_BrowserBoundaries):
             in_lede = self._lede_depth is not None and len(self.stack) > self._lede_depth
             self._cur_heading = (tag, ad.get("id"), [], top_level, in_lede)
             self._cur_heading_depth = len(self.stack)
-        # A VOID element has no content and no end tag, so it is never pushed. (A foreign
-        # element is never void: `<svg><rect/>` is self-closing markup, handled below.)
-        if tag not in VOID or ns != "html":
-            self.stack.append((tag, own_skip))
-            self._push_ancestors(tag, own_skip,
-                                 tag == "figure" and "chart" in set((ad.get("class") or "").split()))
-            self._push_ns(tag, ns, ad)
-            current_mermaid = self._mermaid_stack[-1] if self._mermaid_stack else None
-            if len(self.mermaid_blocks) > before_mermaid:
-                current_mermaid = len(self.mermaid_blocks) - 1
-            self._mermaid_stack.append(current_mermaid)
-        else:
-            self._close_zero_width()
-        self._enter_raw_text(tag, ns)
+        return (own_skip, before_mermaid)
+
+    def _push_element(self, tag, ad, ns, info):
+        own_skip, before_mermaid = info
+        self.stack.append((tag, own_skip))
+        self._push_ancestors(tag, own_skip,
+                             tag == "figure" and "chart" in set((ad.get("class") or "").split()))
+        current_mermaid = self._mermaid_stack[-1] if self._mermaid_stack else None
+        if len(self.mermaid_blocks) > before_mermaid:
+            current_mermaid = len(self.mermaid_blocks) - 1
+        self._mermaid_stack.append(current_mermaid)
+
+    def _visit_void(self, tag, ad, ns, info):
+        self._close_zero_width()
 
     def _close_zero_width(self):
         """An element that is never PUSHED (a void tag, a self-closed foreign one) has no
@@ -1986,26 +2099,16 @@ class _DocParser(_BrowserBoundaries):
         OUTSIDE the empty root would be read as inside it."""
         self._truncate_stacks(len(self.stack))
 
-    def handle_startendtag(self, tag, attrs):
-        # HTML5: a trailing slash on a NON-void HTML tag is ignored by browsers, which treat it
-        # as an open start tag needing an explicit end tag. Delegate so the element stack and
-        # figure tracking stay in sync with the DOM (a void tag then simply is not pushed, but
-        # still implicitly closes an open <p>). A self-closed FOREIGN element really is closed
-        # at once, so it is RECORDED but never pushed - `<svg><rect id="x"/></svg>` is still an
-        # element with an id, and a bare `<svg/>` must not be left open (a stale foreign current
-        # node would make a following `<![CDATA[` hide live markup).
-        tag = self._browser_tag(tag)
-        ad = self._attrs_dict(tag, attrs)
-        ns = self._child_namespace(tag, ad)
-        if self._foreign_self_closes(ns):
-            if tag == "svg" and self._mermaid_stack:
-                idx = self._mermaid_stack[-1]
-                if idx is not None:
-                    self.mermaid_blocks[idx]["has_svg"] = True
-            self._record(tag, ad, "cm-skip" in set((ad.get("class") or "").split()))
-            self._close_zero_width()
-            return
-        self.handle_starttag(tag, attrs)
+    def _visit_self_closed(self, tag, ad, ns):
+        # A self-closed FOREIGN element is RECORDED but never pushed - `<svg><rect id="x"/></svg>`
+        # is still an element with an id, and a bare `<svg/>` must not be left open (a stale
+        # foreign current node would make a following `<![CDATA[` hide live markup).
+        if tag == "svg" and self._mermaid_stack:
+            idx = self._mermaid_stack[-1]
+            if idx is not None:
+                self.mermaid_blocks[idx]["has_svg"] = True
+        self._record(tag, ad, "cm-skip" in set((ad.get("class") or "").split()))
+        self._close_zero_width()
 
     def handle_data(self, data):
         self._note_ready_token(data)
@@ -2094,10 +2197,8 @@ class _DocParser(_BrowserBoundaries):
         self.scripts.sort(key=lambda s: s["pos"])
         self.styles.sort(key=lambda s: s["pos"])
 
-    def handle_endtag(self, tag):
-        tag = self._browser_tag(tag)
-        i = self._innermost_open(tag)
-        if i < 0 and self._end_tag_floor(tag) > 0:
+    def _visit_end(self, tag, index):
+        if index < 0 and self._end_tag_floor(tag) > 0:
             # A closer an open `<template>` scopes away is one a browser IGNORES, so it must not
             # reach the STATE MACHINES either. Both holes were live: a `</head>` parked in a
             # template ended the head, dropping the favicon `<link>` a browser keeps IN it, and a
@@ -2115,14 +2216,12 @@ class _DocParser(_BrowserBoundaries):
             # one is a BODY child whose pragma never runs. `</head>` deliberately does NOT do this
             # (see `csp_metas`), and no other end tag does either - both modes ignore the rest.
             self._csp_head_over = True
-        if i >= 0:
-            # The heading ends where the ELEMENT being closed ends, which `_truncate_stacks()`
-            # decides by DEPTH. Flushing on the tag NAME alone let a same-named heading nested
-            # inside a `<template>` end the one the author opened outside it.
-            self._truncate_stacks(i)
-        # An end tag with no open element is IGNORED, as a browser ignores it - which is why the
-        # `<script>`/`<style>` captures are finalized from `_truncate_stacks()` and not by name
-        # here: a stray `</style>` must not end a capture no element of it ever opened. A
+        # The base truncates to `index` from here (the heading ends where the ELEMENT being closed
+        # ends, which `_truncate_stacks()` decides by DEPTH - flushing on the tag NAME alone let a
+        # same-named heading nested inside a `<template>` end the one the author opened outside
+        # it), and an end tag with no open element is IGNORED, as a browser ignores it. That is
+        # why the `<script>`/`<style>` captures are finalized from `_truncate_stacks()` and not by
+        # name here: a stray `</style>` must not end a capture no element of it ever opened. A
         # template-parked `<script>`/`<style>` is finalized the same way, so an INNER closer (only
         # reachable in foreign content, where those two hold markup) cannot end the outer block
         # early and drop the CSS or code a browser still reads from it.
@@ -2234,12 +2333,7 @@ class _CodeSpanParser(_BrowserBoundaries):
         del self._stack[depth:]
         del self._anc[depth:]
 
-    def handle_starttag(self, tag, attrs):
-        tag = self._browser_tag(tag)
-        ad = self._attrs_dict(tag, attrs)
-        ns = self._child_namespace(tag, ad)
-        if ns == "html":
-            self._implicit_close(tag)
+    def _visit_start(self, tag, ad, ns, opens):
         rec = None
         if tag == "pre" and ns == "html":
             rec = {"attrs": ad, "start": self._off(), "inner_start": self._start_tag_end(),
@@ -2252,41 +2346,21 @@ class _CodeSpanParser(_BrowserBoundaries):
                 rec = {"attrs": ad, "start": self._off(),
                        "inner_start": self._start_tag_end(), "inner": None}
                 owner["codes"].append(rec)
-        # A VOID element has no content and no end tag, so it never owns a code block and never
-        # needs to be popped. Keeping voids off the stack matches _DocParser and keeps a
-        # void-heavy document from growing the stack (and every unmatched end tag's scan of it).
-        # (A foreign element is never void: `<svg><rect/>` is self-closing markup, handled below.)
-        if tag not in VOID or ns != "html":
-            is_kql_figure = (tag == "figure" and ns == "html"
-                             and parsed_attrs_have_class(ad, "cmh-kql"))
-            self._stack.append((tag, rec, is_kql_figure))
-            self._push_ancestors(tag == "pre", is_kql_figure)
-            self._push_ns(tag, ns, ad)
-        self._enter_raw_text(tag, ns)
+        return rec
 
-    def handle_startendtag(self, tag, attrs):
-        # HTML5: a trailing slash on a NON-void HTML tag is ignored, so `<pre/>` opens an element
-        # that still needs `</pre>` and `<textarea/>` still opens raw text; a void tag is not
-        # pushed but still implicitly closes an open <p> (`<hr/>`), exactly as in _DocParser.
-        # In FOREIGN content the slash really does close the element, so `<svg><rect/>` - and a
-        # bare `<svg/>` - leave nothing open.
-        tag = self._browser_tag(tag)
-        ad = self._attrs_dict(tag, attrs)
-        if self._foreign_self_closes(self._child_namespace(tag, ad)):
-            return  # a self-closed foreign element: opened and closed at once
-        self.handle_starttag(tag, attrs)
+    def _push_element(self, tag, ad, ns, info):
+        is_kql_figure = (tag == "figure" and ns == "html"
+                         and parsed_attrs_have_class(ad, "cmh-kql"))
+        self._stack.append((tag, info, is_kql_figure))
+        self._push_ancestors(tag == "pre", is_kql_figure)
 
-    def handle_endtag(self, tag):
-        tag = self._browser_tag(tag)
-        end = self._off()
-        i = self._innermost_open(tag)
-        if i < 0:
-            return  # An end tag with no open element is ignored, exactly as a browser ignores it.
-        self._mark_unclosed(i + 1)   # implicitly closed: they never got their own closer
-        own = self._stack[i][1]
+    def _visit_end(self, tag, index):
+        if index < 0:
+            return
+        self._mark_unclosed(index + 1)   # implicitly closed: they never got their own closer
+        own = self._stack[index][1]
         if own is not None:
-            own["inner"] = (own["inner_start"], end)
-        self._truncate_stacks(i)
+            own["inner"] = (own["inner_start"], self._off())
 
     def close(self):
         super().close()
@@ -2378,16 +2452,16 @@ class _RawTextSpanParser(_CodeSpanParser):
         # applies.
         return bool(self._tpl_stop) and self._tpl_stop[-1] >= 0
 
-    def handle_starttag(self, tag, attrs):
-        super().handle_starttag(tag, attrs)
+    def _after_start(self, tag, ad, ns, opens):
+        super()._after_start(tag, ad, ns, opens)
         if self._raw is None and self.cdata_elem is not None:
             self._raw = (self.cdata_elem, self._start_tag_end(), self._raw_in_template())
 
-    def handle_endtag(self, tag):
-        if self._raw is not None and self._browser_tag(tag) == self._raw[0]:
+    def _visit_end(self, tag, index):
+        if self._raw is not None and tag == self._raw[0]:
             self.raw_spans.append((self._raw[1], self._off(), self._raw[0], self._raw[2]))
             self._raw = None
-        super().handle_endtag(tag)
+        super()._visit_end(tag, index)
 
     def close(self):
         super().close()
@@ -2880,45 +2954,27 @@ class _TagAttrParser(_BrowserBoundaries):
         self.noscript_styles.extend(inner.styles)
         self.noscript_styles.extend(inner.noscript_styles)
 
-    def handle_starttag(self, tag, attrs):
-        tag = self._browser_tag(tag)
-        ad = self._attrs_dict(tag, attrs)
-        ns = self._child_namespace(tag, ad)
-        if ns == "html":
-            self._implicit_close(tag)
+    def _visit_start(self, tag, ad, ns, opens):
         self._record(tag, ad)
         if self._fallback and tag == "style":
             # Recorded BEFORE the push, so the depth is the index this element occupies and any
             # truncation that removes it (its own end tag, an ancestor's, a breakout) flushes it.
             self._cur_style.append((ad, len(self._stack), []))
-        # A VOID element has no content and no end tag, so it is never pushed. (A foreign
-        # element is never void: `<svg><rect/>` is self-closing markup, handled below.)
-        if tag not in VOID or ns != "html":
-            self._stack.append(tag)
-            self._push_ns(tag, ns, ad)
-        self._enter_raw_text(tag, ns)
+
+    def _push_element(self, tag, ad, ns, info):
+        self._stack.append(tag)
+
+    def _after_start(self, tag, ad, ns, opens):
         if tag == "noscript" and self.cdata_elem == "noscript":
             self._noscript = []
 
-    def handle_startendtag(self, tag, attrs):
-        # HTML5 ignores a trailing slash on a non-void HTML tag, so it opens an element; a
-        # self-closed FOREIGN element really is closed at once - still an element with
-        # attributes, but never left open.
-        tag = self._browser_tag(tag)
-        ad = self._attrs_dict(tag, attrs)
-        if self._foreign_self_closes(self._child_namespace(tag, ad)):
-            self._record(tag, ad)
-            return
-        self.handle_starttag(tag, attrs)
+    def _visit_self_closed(self, tag, ad, ns):
+        # Still an element with attributes, but never left open.
+        self._record(tag, ad)
 
-    def handle_endtag(self, tag):
-        tag = self._browser_tag(tag)
+    def _visit_end(self, tag, index):
         if tag == "noscript" and self._noscript is not None:
             self._flush_noscript()
-        i = self._innermost_open(tag)
-        if i >= 0:
-            self._truncate_stacks(i)
-        # An end tag with no open element is ignored, exactly as a browser ignores it.
 
     def close(self):
         # The base flushes the tail of an UNCLOSED raw-text element first, so a `<noscript>` that

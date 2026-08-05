@@ -116,10 +116,6 @@ _AUTHORED_ELEMENT_TAGS = {
     "h1", "h2", "h3", "h4", "h5", "h6", "img", "li", "ol", "p", "pre",
     "svg", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul",
 }
-_VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link",
-              "meta", "param", "source", "track", "wbr"}
-
-
 def _srcset_urls(value):
     return [part.strip().split()[0] for part in value.split(",") if part.strip()]
 
@@ -156,33 +152,11 @@ class _ActiveContentScanner(_browser_boundaries.BrowserBoundaries):
             return   # scripting is off in this pass, so <noscript> holds markup, not text
         super()._enter_raw_text(tag, ns)
 
-    def handle_starttag(self, tag, attrs):
-        tag = self._browser_tag(tag)
-        ad = self._attrs_dict(tag, attrs)
-        ns = self._child_namespace(tag, ad)
-        if ns == "html":
-            self._implicit_close(tag)
-        self._scan(tag, attrs, ad, ns)
-        if tag not in _VOID_TAGS or ns != "html":
-            self._stack.append(tag)
-            self._push_ns(tag, ns, ad)
-        self._enter_raw_text(tag, ns)
+    def _visit_start(self, tag, ad, ns, opens):
+        self._scan(tag, self._host_attrs, ad, ns)
 
-    def handle_endtag(self, tag):
-        tag = self._browser_tag(tag)
-        for i in range(len(self._stack) - 1, self._end_tag_floor(tag) - 1, -1):
-            if self._stack[i] == tag:
-                self._truncate_stacks(i)
-                return
-
-    def handle_startendtag(self, tag, attrs):
-        tag = self._browser_tag(tag)
-        ad = self._attrs_dict(tag, attrs)
-        ns = self._child_namespace(tag, ad)
-        if self._foreign_self_closes(ns):
-            self._scan(tag, attrs, ad, ns)
-            return
-        self.handle_starttag(tag, attrs)
+    def _push_element(self, tag, ad, ns, info):
+        self._stack.append(tag)
 
     def _scan(self, tag, raw_attrs, attr_map, ns):
         # Every pair, browser-decoded: the SCAN reads them all (a duplicate is still an authored
@@ -328,37 +302,15 @@ class _AuthoredContentScanner(_browser_boundaries.BrowserBoundaries):
         # text chunk.
         return bool(self._skip)
 
-    def handle_starttag(self, tag, attrs):
-        tag = self._browser_tag(tag)
+    def _visit_start(self, tag, ad, ns, opens):
         # The same shared browser decode the active-content scan uses, so an advisory count is
         # never taken from a value the validator disagrees with (CMH-VAL-21).
-        ad = self._attrs_dict(tag, attrs)
-        ns = self._child_namespace(tag, ad)
-        if ns == "html":
-            self._implicit_close(tag)
-        opens = tag not in _VOID_TAGS or ns != "html"
         self._element(tag, ad, opens)
-        if opens:
-            if tag in _SKIP_AUTHORED_CONTENT_TAGS:
-                self._skip.append(len(self._stack))
-            self._stack.append(tag)
-            self._push_ns(tag, ns, ad)
-        self._enter_raw_text(tag, ns)
+        if opens and tag in _SKIP_AUTHORED_CONTENT_TAGS:
+            self._skip.append(len(self._stack))
 
-    def handle_startendtag(self, tag, attrs):
-        tag = self._browser_tag(tag)
-        ad = self._attrs_dict(tag, attrs)
-        if self._foreign_self_closes(self._child_namespace(tag, ad)):
-            self._element(tag, ad, opens=False)
-            return
-        self.handle_starttag(tag, attrs)
-
-    def handle_endtag(self, tag):
-        tag = self._browser_tag(tag)
-        for i in range(len(self._stack) - 1, self._end_tag_floor(tag) - 1, -1):
-            if self._stack[i] == tag:
-                self._truncate_stacks(i)
-                return
+    def _push_element(self, tag, ad, ns, info):
+        self._stack.append(tag)
 
     def close(self):
         super().close()

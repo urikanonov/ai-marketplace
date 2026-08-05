@@ -22,10 +22,6 @@ import _browser_boundaries  # noqa: E402
 
 DEFAULT_WPM = 200
 STATS_ATTR = "data-cmh-doc-stats"
-VOID_TAGS = {
-    "area", "base", "br", "col", "embed", "hr", "img", "input",
-    "link", "meta", "param", "source", "track", "wbr",
-}
 # Element bodies whose text is never part of the reading content.
 SKIP_TAGS = {"script", "style", "template"}
 
@@ -63,7 +59,6 @@ class _StatsParser(_browser_boundaries.BrowserBoundaries):
         self.stats_end = None
         self.stats_own_close = False
         self._stats_index = None
-        self._end_tag = False     # the truncation below came from an end TAG, not an implicit close
 
     def _truncate_stacks(self, depth):
         # EVERY close runs through here - the element's own end tag, an ANCESTOR's end tag, HTML5's
@@ -77,7 +72,7 @@ class _StatsParser(_browser_boundaries.BrowserBoundaries):
             self.title_container_end = self._extent_end(depth == self._title_index)
         if (self._stats_index is not None and self.stats_end is None
                 and depth <= self._stats_index):
-            own = self._end_tag and depth == self._stats_index
+            own = self._end_tag_close and depth == self._stats_index
             self.stats_end = self._extent_end(own)
             # Only a strip the browser closed with its OWN end tag has a span a rewrite may
             # REPLACE: one an ancestor's closer (or end of input) ended runs past every following
@@ -89,7 +84,8 @@ class _StatsParser(_browser_boundaries.BrowserBoundaries):
         del self.stack[depth:]
 
     def _extent_end(self, own):
-        return _browser_boundaries.end_tag_end(self._text, self._off()) if (self._end_tag and own) else self._off()
+        return (_browser_boundaries.end_tag_end(self._text, self._off())
+                if (self._end_tag_close and own) else self._off())
 
     def _inside_root(self):
         return (self.root_depth is not None and not self.root_closed
@@ -98,17 +94,12 @@ class _StatsParser(_browser_boundaries.BrowserBoundaries):
     def _skip_ancestor(self):
         return any(skip for _tag, skip in self.stack)
 
-    def handle_starttag(self, tag, attrs):
-        tag = self._browser_tag(tag)
+    def _visit_start(self, tag, ad, ns, opens):
         # The shared browser attribute decode (CMH-VAL-21), so a class token this tool reads is
         # the token a browser sees - and the one the validator sees.
-        attrs_dict = self._attrs_dict(tag, attrs)
-        ns = self._child_namespace(tag, attrs_dict)
-        if ns == "html":
-            self._implicit_close(tag)
+        attrs_dict = ad
         start = self._off()
         start_text = self.get_starttag_text() or ""
-        opens = tag not in VOID_TAGS or ns != "html"
         is_stats = STATS_ATTR in attrs_dict
         own_skip = (
             _has_class(attrs_dict, "cm-skip")
@@ -137,36 +128,20 @@ class _StatsParser(_browser_boundaries.BrowserBoundaries):
         if is_stats and opens and self.stats_start is None:
             self.stats_start = start
             self._stats_index = len(self.stack)
+        return own_skip
 
-        if opens:
-            self.stack.append((tag, own_skip))
-            self._push_ns(tag, ns, attrs_dict)
-        self._enter_raw_text(tag, ns)
+    def _push_element(self, tag, ad, ns, info):
+        self.stack.append((tag, info))
 
-    def handle_startendtag(self, tag, attrs):
-        # HTML5 ignores a trailing slash on a non-void HTML tag (it opens an element) and on a VOID
-        # one (it was already terminal), so both go through the start-tag path - which is also
-        # where the implicit `</p>` close lives, and `<hr/>` really does close an open `<p>`.
-        tag = self._browser_tag(tag)
-        attrs_dict = self._attrs_dict(tag, attrs)
-        if not self._foreign_self_closes(self._child_namespace(tag, attrs_dict)):
-            self.handle_starttag(tag, attrs)
+    def _visit_self_closed(self, tag, ad, ns):
+        """Nothing: a self-closed FOREIGN element is opened and closed at once, so it lays out no
+        reading content - and nothing the start hook collects is namespace-gated, so the shared
+        default (which reports it as a start tag that opens nothing) would let a
+        `<svg id="commentRoot"/>` become the root this tool measures, counts and rewrites."""
 
     def handle_data(self, data):
         if self._inside_root() and not self._skip_ancestor():
             self.text_parts.append(data)
-
-    def handle_endtag(self, tag):
-        tag = self._browser_tag(tag)
-        for index in range(len(self.stack) - 1, self._end_tag_floor(tag) - 1, -1):
-            if self.stack[index][0] == tag:
-                self._end_tag = True
-                try:
-                    self._truncate_stacks(index)
-                finally:
-                    self._end_tag = False
-                return
-        # An end tag with no open element is ignored, exactly as a browser ignores it.
 
     def word_count(self):
         tokens = " ".join(self.text_parts).split()

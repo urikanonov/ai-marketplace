@@ -49,6 +49,15 @@ def _frame(root=False, skip=False, layout=False, section=False, template=False, 
 
 
 class _DensityParser(_BrowserBoundaries):
+    """The prose-density advisory's own pass over a document.
+
+    The ONE `_BrowserBoundaries` subclass that does not drive the shared handler skeleton: it
+    keeps no namespace stack and applies no implicit `</p>` / `</li>` close, so it reads every
+    element as HTML and unwinds its own frames (a `<template>`'s inert fragment is the structure
+    it tracks). `tests/test_shared_element_boundaries.py` names it as the single, reasoned
+    exception, so any OTHER subclass that defines a tag handler fails that guard.
+    """
+
     def __init__(self, html, min_chars, max_run):
         # The SHARED element boundaries, not the host's: the raw-text / RCDATA set, the
         # `</name` + whitespace/`/`/`>` closer, and the EOF rules are what decide whether a
@@ -235,12 +244,17 @@ class _DensityParser(_BrowserBoundaries):
 
     def handle_startendtag(self, tag, attrs):
         # HTML5 ignores a trailing slash on a non-void HTML tag, so `<template/>` OPENS the inert
-        # fragment rather than opening and closing it. Every other tag keeps the base behavior.
+        # fragment rather than opening and closing it. Every other tag keeps the host's
+        # open-then-close reading, which is why this pass does NOT drive the shared handler
+        # skeleton: that skeleton resolves a self-closed tag by NAMESPACE (only a foreign element
+        # really closes at once), and this pass deliberately keeps no namespace stack - it reads
+        # every element as HTML (see the foreign-content gap recorded against this parser).
         tag = self._browser_tag(tag)
         if tag == "template":
             self.handle_starttag(tag, attrs)
             return
-        super().handle_startendtag(tag, attrs)
+        self.handle_starttag(tag, attrs)
+        self.handle_endtag(tag)
 
     def handle_data(self, data):
         if self.template_depth > 0:
