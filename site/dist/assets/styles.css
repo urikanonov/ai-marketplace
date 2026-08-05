@@ -178,8 +178,26 @@ code { overflow-wrap: anywhere; word-break: break-word; }
   visibility: visible;
   transform: translateY(0);
 }
+/* A CLOSED flyout is still laid out - `visibility: hidden` removes it from hit-testing and the a11y
+   tree but not from layout - so its 260px box stuck past the right edge of a phone viewport and made
+   the whole document scroll horizontally. Collapse the closed box to a point so it contributes no
+   scrollable overflow. The collapse is DELAYED by the length of the fade so closing still animates
+   as before (the opening rule above carries no such delay, so the geometry is back before the
+   fade-in starts); position and the opacity/transform transition are untouched. */
+.nav-switcher:not(:hover):not(:focus-within) .nav-switcher-menu {
+  width: 0;
+  height: 0;
+  min-width: 0;
+  padding: 0;
+  border-width: 0;
+  overflow: hidden;
+  transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s ease,
+    width 0s linear 0.14s, height 0s linear 0.14s, min-width 0s linear 0.14s,
+    padding 0s linear 0.14s, border-width 0s linear 0.14s;
+}
 /* The hub 'Plugins' dropdown is the FIRST nav item, so its flyout opens to the RIGHT of the
-   trigger (left-aligned) rather than the left, keeping it on screen. */
+   trigger (left-aligned) rather than the left, keeping it on screen at desktop and tablet widths.
+   At phone width the OPEN flyout is still wider than the viewport; that is tracked in issue #1102. */
 .nav-switcher-start .nav-switcher-menu { left: 0; right: auto; }
 .nav-switcher-heading {
   padding: 6px 10px 4px;
