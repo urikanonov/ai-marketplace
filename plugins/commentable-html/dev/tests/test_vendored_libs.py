@@ -3576,6 +3576,72 @@ class RuntimeParityTests(unittest.TestCase):
                     "and `--strict` would treat the same document differently"
                     % (label, js_navigates))
 
+    def test_neither_shadow_scanner_bounds_a_span_of_source_text(self):
+        """CMH-OFFLINE-05: the FORBIDDEN shape cannot reappear without a deliberate decision.
+
+        The corpus beside this pins the unit model at the widths it was built around, which is what
+        catches a bound near those magnitudes - but no finite corpus can bracket an arbitrary future
+        bound, so a mirrored 600-unit window would leave every sample on the same side in both
+        engines and this suite would stay green while astral input around 600 diverged again.
+
+        So the general ban is enforced against the SOURCE instead, in the two spellings the bug has
+        actually worn: a bounded regex quantifier over a run of source (the pre-#1106 window,
+        `[^}\\]]{0,399}`), and a subtraction of two source positions used in a comparison (its
+        replacement, `at - opener > _OFFLINE_LOCAL_WINDOW_MAX + 1`). Both measure a span of
+        arbitrary source text in whichever unit the engine indexes in, which is exactly what the
+        unit model forbids. Anything genuinely safe earns an entry here and a class in the spec row
+        - a deliberate, reviewed act rather than a line that slips in.
+        """
+        allowed = {
+            # The anchor match WIDTH that selects the sink arm. Class (a): the anchor alternatives
+            # are the fixed ASCII literals `location` and `open`, so this is the width of an ASCII
+            # token and is the same number in either index model.
+            "after - at ==",
+        }
+        span = re.compile(r"[A-Za-z_$][\w$]*\s*-\s*[A-Za-z_$][\w$]*\s*(?:[<>]=?|[=!]==?)")
+        quantifier = re.compile(r"\{\d*,\s*\d+\}")
+        for name, source in (("the exporter", self._read("68-export-offline.js")),
+                             ("the validator", _read_validator_resources())):
+            region = self._offline_scanner_region(name, source)
+            for m in span.finditer(region):
+                text = " ".join(m.group(0).split())
+                self.assertTrue(
+                    any(text.startswith(ok) for ok in allowed),
+                    "%s now compares the DISTANCE between two source positions (%r). A JavaScript "
+                    "index counts UTF-16 code units and a Python index counts code points, so a "
+                    "span measured this way is two different lengths to the two copies - the exact "
+                    "shape of #1112. Spell the bound in UTF-16 code units on BOTH sides and add it "
+                    "to the allowlist here with a class in the CMH-OFFLINE-05 unit model, or do "
+                    "not bound the span." % (name, text))
+            for m in quantifier.finditer(region):
+                self.fail(
+                    "%s now bounds a run of source with the quantifier %s. That is the ORIGINAL "
+                    "spelling of #1112 (`[^}\\]]{0,399}`): the two engines count the run in "
+                    "different units, so the same window is two different lengths to them. See the "
+                    "CMH-OFFLINE-05 unit model." % (name, m.group(0)))
+
+    def _offline_scanner_region(self, name, source):
+        """The offline navigation and shadow scanners, without the rest of their file.
+
+        Bounded so the guard above judges the mirrored pair rather than every unrelated helper that
+        happens to share the file - a false red there would teach a maintainer to widen the
+        allowlist, which is the opposite of what it exists to do.
+        """
+        for start_marker, end_marker in (
+                ("const _OFFLINE_NAV_ANCHOR_RE = ", "function _offlineScriptNavigatesToNetwork"),
+                ("OFFLINE_SHADOW_IDENT_ASCII_RE = ", "def offline_script_navigates_to_network")):
+            start = source.find(start_marker)
+            if start < 0:
+                continue
+            end = source.find(end_marker, start)
+            self.assertGreater(
+                end, start,
+                "%s no longer defines %s after %s, so this guard would scan the wrong region"
+                % (name, end_marker, start_marker))
+            return source[start:end]
+        self.fail("could not find the offline scanner region in %s, so the source guard would "
+                  "scan nothing and pass vacuously" % name)
+
     def test_the_spec_declares_the_shadow_scanners_unit_model(self):
         """CMH-OFFLINE-05: the unit the two copies measure in is WRITTEN DOWN, not implicit.
 
