@@ -572,6 +572,86 @@ test.describe("Save comments / Export plain", () => {
     }
   });
 
+  // #1052: the canonical export pass used to run OUTSIDE the try/catch that wraps the document
+  // build, so a throw there unwound the whole click handler - no file, no message, and a reader
+  // could not tell a failed export from a click that never registered. Every entry point that runs
+  // the pass is exercised here, because each one called it on its own bare line.
+  test("a failed export canonical pass tells the reader nothing was downloaded (CMH-EXP-23)", async ({ page }) => {
+    // Make the canonical pass throw: it recomputes offsets by walking the CONTENT ROOT, and the
+    // export click does that nowhere else. A throw anywhere outside the pass would either produce a
+    // different toast ("Could not load base HTML.", a raw builder message) or none at all, so the
+    // assertions below only hold when the pass itself is what failed. The thrown VALUE is read from
+    // the page at throw time so a phase can swap an Error for a bare string without re-patching.
+    const throwAs = (p, spec) => p.evaluate((s) => { window.__cmhThrown = s; }, spec);
+    const breakCanonicalPass = async (p, spec) => {
+      await throwAs(p, spec);
+      await p.evaluate(() => {
+        const orig = document.createTreeWalker.bind(document);
+        document.createTreeWalker = function (node, ...rest) {
+          if (node && node.id === "commentRoot") {
+            const t = window.__cmhThrown;
+            throw t.primitive ? t.value : new Error(t.value);
+          }
+          return orig(node, ...rest);
+        };
+      });
+    };
+    const resetToast = (p) => p.evaluate(() => {
+      const t = document.getElementById("toast");
+      t.classList.remove("show");
+      t.textContent = "";
+      // Reset the role too, so the alert assertion below cannot pass on a leftover from the
+      // previous phase rather than on this failure's own toast.
+      t.setAttribute("role", "status");
+    });
+    // Register the download waiter BEFORE the click: an export that really did produce a file must
+    // fail this, not merely time out into a passing assertion. Asserting the toast live is safe
+    // because a failure toast lasts 10s and hideToast() only drops the .show class - it never
+    // clears the text or the role.
+    async function expectExportReports(p, control, detail) {
+      await resetToast(p);
+      const downloaded = p.waitForEvent("download", { timeout: 2000 }).then(() => true).catch(() => false);
+      await clickSidebarExport(p, control);
+      await expect(p.locator("#toast")).toContainText("Export failed - nothing was downloaded");
+      await expect(p.locator("#toast")).toContainText(detail);
+      await expect(p.locator("#toast")).toHaveAttribute("role", "alert");
+      expect(await downloaded).toBe(false);
+    }
+
+    const inline = stageContent("<section><p>A failed export must say so.</p></section>", {
+      key: "cmh-canonical-fail-inline",
+      source: "canonical-fail-inline.html",
+    });
+    const nonshareable = stageNonShareable({
+      mutate: (html) => html.replace('data-comment-key="commentable-html-nonshareable-demo"',
+        'data-comment-key="cmh-canonical-fail-nonshareable"'),
+    });
+    try {
+      await page.goto(fileUrl(inline.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "inline note");
+      await breakCanonicalPass(page, { value: "recompute boom" });
+      // #btnSaveHtml binds saveStandalone(), which on an inline document delegates straight to
+      // saveHtml() - so this exercises saveHtml's guard; saveStandalone's own is phase 3 below.
+      await expectExportReports(page, "#btnSaveHtml", "recompute boom");
+      await expectExportReports(page, "#btnExportOffline", "recompute boom"); // saveOffline()
+      // A bare `throw "..."` is legal JS and carries no `.message`; the cause must still be named.
+      await throwAs(page, { primitive: true, value: "primitive boom" });
+      await expectExportReports(page, "#btnSaveHtml", "primitive boom");
+
+      // NonShareable takes the OTHER branch of the Shareable button: saveStandalone() runs the pass
+      // itself instead of delegating to saveHtml().
+      await page.goto(fileUrl(nonshareable.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "nonshareable note");
+      await breakCanonicalPass(page, { value: "recompute boom" });
+      await expectExportReports(page, "#btnSaveHtml", "recompute boom");
+    } finally {
+      fs.rmSync(inline.dir, { recursive: true, force: true });
+      fs.rmSync(nonshareable.dir, { recursive: true, force: true });
+    }
+  });
+
   test("embedded comments travel: a shared copy shows them in a fresh browser (no localStorage)", async ({ page, browser }) => {
     await openInline(page);
     await addTextComment(page, "#commentRoot section p", "traveling comment");

@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.694.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.696.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.696.0] - 2026-08-05</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>An export whose canonical pass fails now says so instead of ending in silence. The pass that rewrites live comment offsets into authored-row coordinates ran on a bare line outside the try/catch that wraps the document build, so a throw there unwound the whole click handler: no file was downloaded and no message appeared, which a reader could not tell apart from a click that never registered. Save/Shareable, the NonShareable Standalone branch, and Offline now all run the pass through one guard that reports the failure as an assertive toast naming the cause, stating that no file was written and that the pass put comments and table sorting back. The report survives the awkward shapes a throw can take: a non-Error throwable (or one whose <code>message</code> getter itself throws) is still named, an unbounded message is capped so the actionable sentence stays on screen, the full value is left on the console for triage, and a toast that cannot be shown at all still aborts the export rather than restoring the original silence (CMH-EXP-23).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.694.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The validator&#x27;s document parser now decides template inertness by NAMESPACE, not by tag name. Only the HTML <code>&lt;template&gt;</code> holds its contents in an inert DocumentFragment; an element merely NAMED <code>template</code> in the SVG or MathML namespace is an ordinary foreign element a browser keeps in the DOM and in its ancestor&#x27;s <code>textContent</code>. Markup such as <code>&lt;math&gt;&lt;template&gt;text&lt;/template&gt;&lt;/math&gt;</code> inside <code>#commentRoot</code> was therefore invisible at once to the prose / unlinked-cross-reference view, the heading capture, the element view and the mermaid diagram-source view, and raw-text children written that way were recorded as parked rather than classified as they would be without that wrapper - so an SVG <code>&lt;script&gt;</code>/<code>&lt;style&gt;</code>, which a browser really does execute and apply, was hidden from the checks that read the live views. Such content is now validated exactly as a reader sees it, while a <code>&lt;template&gt;</code> under an HTML integration point such as <code>&lt;svg&gt;&lt;foreignObject&gt;</code> or <code>&lt;math&gt;&lt;mi&gt;</code>, or after a foreign breakout start tag, stays inert as before, and a declarative shadow root keeps rendering.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.691.0] - 2026-08-05</h3></div>
             <div class="group-label">Added</div>
@@ -509,8 +518,6 @@
               <li>The in-document comment dialog can now DELETE the comment it is showing (CMH-CORE-22). Clicking a highlight&#x27;s orange bubble opens the note with <code>Delete</code> beside <code>Close</code> and <code>Edit</code>, so removing a comment no longer means leaving the dialog and hunting down the same comment&#x27;s card in the panel - the dialog already edits in place, and this is the missing half of that interaction. Deleting from the dialog is not a second implementation: both surfaces now call one shared path (<code>cmhConfirmDeleteThread</code>), so the confirmation wording (including the reply count that warns a thread root takes its replies with it), the durable embedded tombstone, the highlight removal, and the re-render are identical wherever the delete is started. Confirming closes the dialog, so nothing is left anchored to a removed highlight, and focus lands in the comments list instead of falling to the top of the page; declining leaves the dialog exactly as it was with focus back on <code>Delete</code>. <code>Delete</code> is offered in the note view only, so an in-place edit can never be discarded by a delete sitting next to it, and it carries the same accessible name the sidebar card&#x27;s delete carries, so a thread root says up front that its replies go too.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.689.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -546,14 +553,7 @@
               <li>The validator document parser and table-of-contents generator no longer treat <code>&lt;/body&gt;</code> or <code>&lt;/html&gt;</code> in the HTML namespace as closing an open content root. HTML5 changes insertion mode for those tags without popping the open elements, so trailing content stays inside the root exactly as it does in a browser; same-named foreign elements still close normally. The TOC parser also keeps foreign-template content live and never selects a duplicate root after the browser&#x27;s first root is a void or self-closed foreign element.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.685.2] - 2026-08-05</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The validator and upgrade tool now preserve raw newline characters while reading documents, so a lone carriage return cannot become a line break that makes Python count a region marker the browser runtime ignores. The validator compares marker counts in that raw view, then runs every browser-semantic check on the browser-normalized newline view, so equivalent CRLF/LF attribute values cannot evade duplicate checks. Upgrade offsets advance on line feeds only, retaining correct CRLF widths, and output still normalizes inserted regions to the document&#x27;s dominant newline without doubling preserved CRLF sequences. Newline style alone no longer makes an up-to-date CRLF document look stale, and invalid UTF-8 now produces a clean read error instead of an upgrade traceback. Validation stamps also use and remove the document&#x27;s dominant newline, so stamping a CRLF file cannot introduce a lone line feed or leave a blank line behind. Deck-theme validation preserves the same raw newlines in its temporary file instead of doubling CRLF on Windows.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">323 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">324 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

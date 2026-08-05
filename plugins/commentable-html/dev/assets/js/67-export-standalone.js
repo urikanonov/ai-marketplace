@@ -331,7 +331,9 @@ async function saveStandalone() {
   baseHtml = _applyNoteStateToHtml(baseHtml);
   const review = _applyReviewStateToHtml(baseHtml);
   baseHtml = review.html;
-  const exportComments = _exportableComments();
+  const canonical = _exportableCommentsOrReport();
+  if (!canonical) return;
+  const exportComments = canonical.comments;
   let text;
   try { text = _buildStandaloneHtml(baseHtml, exportComments); }
   catch (e) { showToast(e.message); return; }

@@ -4,6 +4,23 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.696.0] - 2026-08-05
+
+### Fixed
+
+- An export whose canonical pass fails now says so instead of ending in silence. The pass that
+  rewrites live comment offsets into authored-row coordinates ran on a bare line outside the
+  try/catch that wraps the document build, so a throw there unwound the whole click handler: no
+  file was downloaded and no message appeared, which a reader could not tell apart from a click
+  that never registered. Save/Shareable, the NonShareable Standalone branch, and Offline now all
+  run the pass through one guard that reports the failure as an assertive toast naming the cause,
+  stating that no file was written and that the pass put comments and table sorting back. The
+  report survives the awkward shapes a throw can take: a non-Error throwable (or one whose
+  `message` getter itself throws) is still named, an unbounded message is capped so the actionable
+  sentence stays on screen, the full value is left on the console for triage, and a toast that
+  cannot be shown at all still aborts the export rather than restoring the original silence
+  (CMH-EXP-23).
+
 ## [1.694.0] - 2026-08-05
 
 ### Fixed
