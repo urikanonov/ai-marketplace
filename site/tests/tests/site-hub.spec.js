@@ -294,45 +294,52 @@ test("the hub nav 'Plugins' dropdown also reveals on keyboard focus (SITE-NAV-04
 
 
 test("the closed nav switcher menu adds no horizontal overflow on a phone (SITE-NAV-05)", async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 800 });
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-
   const menu = page.locator(".nav-switcher-start .nav-switcher-menu");
-  await expect(menu).toBeHidden();
-  // The closed flyout is still LAID OUT (visibility:hidden removes it from hit-testing, not from
-  // layout), so its box must be collapsed or it sticks past the right edge of a phone viewport.
-  const closed = await menu.evaluate((el) => {
-    const r = el.getBoundingClientRect();
-    return { right: r.right, width: r.width };
-  });
-  const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
-  expect(closed.right, "the closed flyout must not reach past the viewport").toBeLessThanOrEqual(
-    clientWidth + 1
-  );
-  // The whole hub page is free of horizontal overflow at phone width.
-  const fits = await page.evaluate(
-    () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1
-  );
-  expect(fits, "the hub must not scroll horizontally at phone width").toBe(true);
 
-  // Opening it is unchanged: the flyout still reveals at full geometry on a phone...
-  await page.locator(".nav-switcher-start .nav-switcher-trigger").focus();
-  await expect(menu).toBeVisible();
-  const openNarrow = await menu.evaluate((el) => el.getBoundingClientRect().width);
-  expect(openNarrow, "the open flyout keeps its 260px min-width").toBeGreaterThanOrEqual(260);
-  await expect(menu.locator('a[href="#plugin-commentable-html"]')).toBeVisible();
-  // ...and closing it returns the page to the overflow-free resting state (the collapse is delayed
-  // by the length of the fade, so this only settles once the fade-out has finished).
-  await menu.evaluate((el) => {
-    el.ownerDocument.querySelector(".nav-switcher-start .nav-switcher-trigger").blur();
-  });
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+  for (const width of [375, 320]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    await expect(menu).toBeHidden();
+    // The closed flyout is still LAID OUT (visibility:hidden removes it from hit-testing, not from
+    // layout), so its box must be collapsed or it sticks past the right edge of a phone viewport.
+    const closed = await menu.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return { right: r.right, width: r.width };
+    });
+    const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+    expect(
+      closed.right,
+      `${width}px: the closed flyout must not reach past the viewport`
+    ).toBeLessThanOrEqual(clientWidth + 1);
+    // The whole hub page is free of horizontal overflow at phone width.
+    const fits = await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1
+    );
+    expect(fits, `${width}px: the hub must not scroll horizontally`).toBe(true);
+
+    // Opening it still reveals the flyout at its full 260px width on a phone (where it stays is
+    // pinned by the OPEN tests below)...
+    await page.locator(".nav-switcher-start .nav-switcher-trigger").focus();
+    await expect(menu).toBeVisible();
+    const openNarrow = await menu.evaluate((el) => el.getBoundingClientRect().width);
+    expect(openNarrow, `${width}px: the open flyout keeps its 260px width`).toBeGreaterThanOrEqual(
+      260
+    );
+    await expect(menu.locator('a[href="#plugin-commentable-html"]')).toBeVisible();
+    // ...and closing it returns the page to the overflow-free resting state (the collapse is
+    // delayed by the length of the fade, so this only settles once the fade-out has finished).
+    await menu.evaluate((el) => {
+      el.ownerDocument.querySelector(".nav-switcher-start .nav-switcher-trigger").blur();
+    });
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+        )
       )
-    )
-    .toBeLessThanOrEqual(1);
+      .toBeLessThanOrEqual(1);
+  }
 
   // ...and on a desktop viewport, where it also opens flush to the left edge of its trigger.
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -344,6 +351,21 @@ test("the closed nav switcher menu adds no horizontal overflow on a phone (SITE-
   expect(menuBox.width).toBeGreaterThanOrEqual(260);
   expect(Math.abs(menuBox.x - triggerBox.x)).toBeLessThanOrEqual(1);
   expect(menuBox.y).toBeGreaterThan(triggerBox.y + triggerBox.height - 1);
+  // The desktop reveal is still the same fade-and-slide, not an instant swap, and the box is
+  // neither height-capped nor internally scrolled there the way a narrow or short viewport caps it.
+  const desktopStyle = await menu.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return {
+      transition: s.transitionProperty + " / " + s.transitionDuration,
+      maxHeight: s.maxHeight,
+      scrolls: el.scrollHeight > el.clientHeight + 1,
+    };
+  });
+  expect(desktopStyle.transition).toContain("opacity");
+  expect(desktopStyle.transition).toContain("transform");
+  expect(desktopStyle.transition).toContain("0.14s");
+  expect(desktopStyle.maxHeight).toBe("none");
+  expect(desktopStyle.scrolls).toBe(false);
 
   // Closing still animates: the collapse is delayed by the length of the fade, so the box keeps its
   // full geometry while it fades out (measured synchronously in the same task as the blur, so this
@@ -364,6 +386,189 @@ test("the closed nav switcher menu adds no horizontal overflow on a phone (SITE-
   await expect
     .poll(() => menu.evaluate((el) => el.getBoundingClientRect().width))
     .toBeLessThanOrEqual(1);
+});
+
+
+test("the OPEN nav switcher flyout fits a narrow viewport (SITE-NAV-05)", async ({ page }) => {
+  // A phone has no hover, but tapping the trigger follows #plugins AND leaves the link focused, so
+  // `:focus-within` opens the flyout - which is why the open state is reachable there at all. The
+  // widths span both narrow regimes: 561-720 (the navbar has dropped its `hide-sm` link, pushing the
+  // trigger right - 568 and 667 are a phone in landscape) and 560 and below.
+  for (const width of [720, 667, 640, 568, 414, 375, 320, 280]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const menu = page.locator(".nav-switcher-start .nav-switcher-menu");
+    const trigger = page.locator(".nav-switcher-start .nav-switcher-trigger");
+    await trigger.focus();
+    await expect(menu).toBeVisible();
+
+    const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+    const box = await menu.boundingBox();
+    expect(box.x, `${width}px: the open flyout starts on screen`).toBeGreaterThanOrEqual(-1);
+    expect(box.x + box.width, `${width}px: the open flyout ends on screen`).toBeLessThanOrEqual(
+      clientWidth + 1
+    );
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    );
+    expect(
+      overflow,
+      `${width}px: the hub must not scroll horizontally with the flyout open`
+    ).toBeLessThanOrEqual(1);
+    // The flyout itself never scrolls sideways either - it wraps its content instead.
+    const selfScrollsX = await menu.evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+    expect(selfScrollsX, `${width}px: the flyout does not scroll horizontally`).toBe(false);
+
+    if (width > 560) {
+      // 561-720: still anchored to the trigger, just flipped to right-aligned.
+      const triggerBox = await trigger.boundingBox();
+      expect(
+        Math.abs(box.x + box.width - (triggerBox.x + triggerBox.width)),
+        `${width}px: the flyout stays anchored to its trigger's right edge`
+      ).toBeLessThanOrEqual(1);
+    } else if (width >= 320) {
+      // 560 and below: navbar-anchored, but it keeps its full 260px box (an explicit length, so the
+      // delayed collapse below can still interpolate it).
+      expect(box.width, `${width}px: the flyout keeps its 260px box`).toBeGreaterThan(259);
+      expect(box.width, `${width}px: the flyout keeps its 260px box`).toBeLessThan(261);
+    } else {
+      // Narrower than 260px + insets: it shrinks to fit rather than hanging off the edge.
+      expect(box.width, `${width}px: the flyout shrinks to fit`).toBeLessThan(260);
+    }
+
+    // Every tile stays readable and tappable - on screen, a finger-sized target, and actually the
+    // element hit-tested at its own centre (nothing overlays it). All of them, not just today's
+    // first plugin: a later tile could be the clipped one.
+    const tiles = menu.locator(".switch-tile");
+    const tileCount = await tiles.count();
+    expect(tileCount, `${width}px: the flyout lists tiles`).toBeGreaterThan(0);
+    for (let i = 0; i < tileCount; i += 1) {
+      const tile = tiles.nth(i);
+      const t = await tile.boundingBox();
+      expect(t.x, `${width}px: tile ${i} starts on screen`).toBeGreaterThanOrEqual(-1);
+      expect(t.x + t.width, `${width}px: tile ${i} ends on screen`).toBeLessThanOrEqual(
+        clientWidth + 1
+      );
+      expect(t.height, `${width}px: tile ${i} is a finger-sized target`).toBeGreaterThanOrEqual(44);
+    }
+    const hit = await tiles.first().evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const at = el.ownerDocument.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      return el.contains(at);
+    });
+    expect(hit, `${width}px: the first tile is what a tap at its centre would hit`).toBe(true);
+
+    // Blurring the trigger closes it again, and the collapse holds the box open through the fade
+    // (measured in the same task as the blur, so it cannot race the delay).
+    const widthWhileFadingOut = await menu.evaluate((el) => {
+      el.ownerDocument.querySelector(".nav-switcher-start .nav-switcher-trigger").blur();
+      return el.getBoundingClientRect().width;
+    });
+    expect(
+      widthWhileFadingOut,
+      `${width}px: the flyout keeps its box while it fades out`
+    ).toBeGreaterThan(box.width - 1);
+    await expect(menu).toBeHidden();
+  }
+});
+
+
+test("a slow pointer reaches the flyout, and it never swallows a nav link (SITE-NAV-05)", async ({
+  page,
+}) => {
+  // Below 720px the flyout no longer sits 8px under its trigger, so a pointer travelling down would
+  // drop `:hover` mid-journey. The close is DELAYED to cover that. A hit-testable bridge would not
+  // do: when the navbar wraps, the gap holds the nav's own links, and covering them would swallow
+  // their clicks - so this test pins both halves.
+  for (const width of [375, 640]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const menu = page.locator(".nav-switcher-start .nav-switcher-menu");
+    const trigger = page.locator(".nav-switcher-start .nav-switcher-trigger");
+    const t = await trigger.boundingBox();
+    await page.mouse.move(t.x + t.width / 2, t.y + t.height / 2);
+    await expect(menu).toBeVisible();
+
+    // Every other nav link is still the thing a click at its own centre would hit, even while the
+    // switcher is hovered and the flyout is open.
+    const stolen = await page.evaluate(() => {
+      const bad = [];
+      document.querySelectorAll(".nav-links > a").forEach((a) => {
+        const r = a.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) return;
+        const at = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        if (at !== a && !a.contains(at)) bad.push(a.textContent.trim());
+      });
+      return bad;
+    });
+    expect(stolen, `${width}px: no nav link is covered while the switcher is hovered`).toEqual([]);
+
+    // Travel down into the gap and DAWDLE there - far longer than the fade, and long enough that a
+    // slow or magnified pointer is not raced. The flyout must still be OPEN AND REACHABLE, not just
+    // nominally visible: a box that has collapsed to a sliver would pass a visibility check while
+    // being impossible to land on.
+    const m = await menu.boundingBox();
+    await page.mouse.move(t.x + t.width / 2, (t.y + t.height + m.y) / 2);
+    await page.waitForTimeout(700);
+    await expect(menu).toBeVisible();
+    const stillThere = await menu.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const at = el.ownerDocument.elementFromPoint(r.x + r.width / 2, r.y + 20);
+      return { height: r.height, reachable: el.contains(at) || el === at };
+    });
+    expect(stillThere.height, `${width}px: the flyout keeps its box while the pointer travels`)
+      .toBeGreaterThan(m.height - 1);
+    expect(stillThere.reachable, `${width}px: the travelling pointer can still land on it`).toBe(
+      true
+    );
+    // Arriving at the flyout keeps it open with no delay of its own.
+    await page.mouse.move(m.x + m.width / 2, m.y + 20);
+    await page.waitForTimeout(500);
+    await expect(menu).toBeVisible();
+    // A pointer that never makes it is not stuck either: focusing the trigger holds the flyout open
+    // for as long as focus stays there, however long the traversal takes.
+    await page.mouse.move(2, 700);
+    await trigger.focus();
+    await page.waitForTimeout(700);
+    await expect(menu).toBeVisible();
+    // And leaving for good still closes it.
+    await trigger.evaluate((el) => el.blur());
+    await expect(menu).toBeHidden();
+  }
+});
+
+
+test("the OPEN nav switcher flyout fits a landscape phone and dismisses (SITE-NAV-05)", async ({
+  page,
+}) => {
+  // A landscape phone is SHORTER than the flyout is tall, and the flyout lives inside a sticky
+  // navbar, so page scrolling cannot bring its last tiles into view - it has to scroll internally.
+  await page.setViewportSize({ width: 568, height: 320 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const menu = page.locator(".nav-switcher-start .nav-switcher-menu");
+  const trigger = page.locator(".nav-switcher-start .nav-switcher-trigger");
+  await trigger.focus();
+  await expect(menu).toBeVisible();
+  const state = await menu.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return {
+      bottom: r.bottom,
+      viewport: el.ownerDocument.documentElement.clientHeight,
+      scrollable: el.scrollHeight > el.clientHeight + 1,
+      contained: getComputedStyle(el).overscrollBehaviorY,
+    };
+  });
+  expect(state.bottom, "the flyout ends above the fold").toBeLessThanOrEqual(state.viewport + 1);
+  expect(state.scrollable, "the clipped tiles are reachable by scrolling the flyout").toBe(true);
+  expect(state.contained, "scrolling the flyout does not chain into the page").toBe("contain");
+
+  // It is not a trap: it opened on focus, so moving focus away closes it again. Click below the
+  // flyout - asserted to be a point the flyout does not cover, so this cannot silently click INTO
+  // it and pass for the wrong reason.
+  const clickY = Math.round((state.bottom + state.viewport) / 2);
+  expect(clickY, "the dismiss click lands below the flyout").toBeGreaterThan(state.bottom + 2);
+  await page.mouse.click(20, clickY);
+  await expect(menu).toBeHidden();
 });
 
 

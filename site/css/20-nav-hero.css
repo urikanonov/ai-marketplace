@@ -103,9 +103,71 @@
     padding 0s linear 0.14s, border-width 0s linear 0.14s;
 }
 /* The hub 'Plugins' dropdown is the FIRST nav item, so its flyout opens to the RIGHT of the
-   trigger (left-aligned) rather than the left, keeping it on screen at desktop and tablet widths.
-   At phone width the OPEN flyout is still wider than the viewport; that is tracked in issue #1102. */
+   trigger (left-aligned) rather than the left, keeping it on screen at desktop and tablet widths. */
 .nav-switcher-start .nav-switcher-menu { left: 0; right: auto; }
+/* At narrow widths the OPEN flyout no longer fits, in two distinct ways.
+
+   Up to 720px the navbar drops its `hide-sm` link (50-media-footer.css) and the shorter, right-
+   aligned nav pushes the trigger further right, so the hub's LEFT-aligned 260px flyout runs past the
+   right edge and the document scrolls - measured from 561px through 720px, which includes a phone in
+   landscape (568x320, 667x375). Right-aligning it to its own trigger there keeps the trigger anchor
+   and lands the box on screen.
+
+   At 560px and below not even a right-aligned box fits, because the trigger's own right edge sits
+   less than 260px from the left of the viewport. There the flyout is anchored to the sticky navbar
+   instead - `position: static` on `.nav-switcher` hands the containing block to `.navbar` - and
+   inset from the viewport's right edge. Its width stays an explicit 260px LENGTH rather than `auto`
+   because the closed state holds the box open during the fade by delaying the collapse of its width,
+   and `auto` cannot interpolate to zero; `min-width`/`max-width` shrink it only on a viewport too
+   narrow even for that (under 284px). */
+@media (max-width: 720px) {
+  .nav-switcher-start .nav-switcher-menu { left: auto; right: 0; }
+}
+/* A viewport that is narrow OR short cannot show the whole flyout, and the flyout lives inside a
+   `position: sticky` navbar, so scrolling the PAGE can never bring its last tiles into view - it has
+   to scroll its own content. `dvh` measures what is actually visible under a mobile browser's
+   dynamic toolbar, with `vh` left as the fallback, and the `--nav-offset` fallback covers a navbar
+   wrapped to three rows for the first paint and for a visitor with no JavaScript.
+
+   Anchoring the flyout below the navbar also opens a gap (up to 83px) between the trigger and the
+   flyout, which the menu's own 8px `::before` bridge cannot span - and which the `overflow` here
+   clips anyway - so a pointer travelling down would drop `:hover` and close the flyout. A
+   hit-testable bridge across that gap is NOT the answer: when the navbar wraps, the gap holds the
+   nav's own wrapped links, and an invisible bridge over them swallows their clicks. Delay the CLOSE
+   instead, generously enough (1s) that crossing the gap does not depend on pointer speed - which
+   matters for a user with a motor impairment or a magnified pointer - and re-entering the flyout
+   restores the open state, which carries no delay of its own. The closed state collapses the box by
+   `max-height` here rather than by `height`, because the delay is what keeps the flyout REACHABLE
+   while the pointer travels and `height: auto` cannot interpolate to zero - it would snap the box to
+   a sliver the moment `:hover` was lost, however long the fade was delayed. A pointer that never
+   makes it is not stuck either: clicking or tapping the trigger focuses it, and `:focus-within` then
+   holds the flyout open for as long as the focus stays there. */
+@media (max-width: 720px), (max-height: 560px) {
+  .nav-switcher-menu {
+    max-height: calc(100vh - var(--nav-offset, 140px) - 16px);
+    max-height: calc(100dvh - var(--nav-offset, 140px) - 16px);
+    overflow: hidden auto;
+    overscroll-behavior-y: contain;
+  }
+  .nav-switcher:not(:hover):not(:focus-within) .nav-switcher-menu {
+    height: auto;
+    max-height: 0;
+    transition: opacity 0.14s ease 1s, transform 0.14s ease 1s, visibility 0.14s ease 1s,
+      width 0s linear 1.14s, max-height 0s linear 1.14s, min-width 0s linear 1.14s,
+      padding 0s linear 1.14s, border-width 0s linear 1.14s;
+  }
+}
+@media (max-width: 560px) {
+  .nav-switcher { position: static; }
+  .nav-switcher-menu,
+  .nav-switcher-start .nav-switcher-menu {
+    left: auto;
+    right: 12px;
+    width: 260px;
+    min-width: 0;
+    max-width: calc(100% - 24px);
+  }
+}
 .nav-switcher-heading {
   padding: 6px 10px 4px;
   font-size: 0.72rem;

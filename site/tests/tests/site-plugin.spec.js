@@ -580,6 +580,74 @@ test("the plugin switcher flyout also reveals on keyboard focus (SITE-SWITCH-01)
 });
 
 
+test("the OPEN plugin-page nav switcher flyout fits a narrow viewport (SITE-NAV-05)", async ({
+  page,
+}) => {
+  // The narrow-viewport flyout rules target the bare `.nav-switcher-menu` too, which is the variant
+  // every per-plugin page uses (right-aligned to its trigger rather than left-aligned). Its navbar
+  // also wraps to more rows than the hub's at the same width, so this is where the flyout sits
+  // furthest from its trigger and where the height cap bites hardest.
+  for (const [width, height] of [
+    [720, 800],
+    [568, 320],
+    [375, 800],
+    [320, 800],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+    const menu = page.locator(".nav-switcher-menu");
+    const trigger = page.locator(".nav-switcher-trigger");
+    await trigger.focus();
+    await expect(menu).toBeVisible();
+
+    const view = await page.evaluate(() => ({
+      width: document.documentElement.clientWidth,
+      height: document.documentElement.clientHeight,
+      scrollWidth: document.documentElement.scrollWidth,
+    }));
+    const box = await menu.boundingBox();
+    const at = `${width}x${height}:`;
+    expect(box.x, `${at} the open flyout starts on screen`).toBeGreaterThanOrEqual(-1);
+    expect(box.x + box.width, `${at} the open flyout ends on screen`).toBeLessThanOrEqual(
+      view.width + 1
+    );
+    // Absolute, not merely "no worse than closed": the page itself must fit too.
+    expect(
+      view.scrollWidth,
+      `${at} the plugin page must not scroll horizontally with the flyout open`
+    ).toBeLessThanOrEqual(view.width + 1);
+    // And the flyout ends above the fold, scrolling its own content when it cannot fit.
+    expect(box.y + box.height, `${at} the open flyout ends above the fold`).toBeLessThanOrEqual(
+      view.height + 1
+    );
+
+    const tiles = menu.locator(".switch-tile");
+    const tileCount = await tiles.count();
+    expect(tileCount, `${at} the flyout lists tiles`).toBeGreaterThan(0);
+    for (let i = 0; i < tileCount; i += 1) {
+      const t = await tiles.nth(i).boundingBox();
+      expect(t.x, `${at} tile ${i} starts on screen`).toBeGreaterThanOrEqual(-1);
+      expect(t.x + t.width, `${at} tile ${i} ends on screen`).toBeLessThanOrEqual(view.width + 1);
+      expect(t.height, `${at} tile ${i} is a finger-sized target`).toBeGreaterThanOrEqual(44);
+    }
+    const hit = await tiles.first().evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const el2 = el.ownerDocument.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      return el.contains(el2);
+    });
+    expect(hit, `${at} the first tile is what a tap at its centre would hit`).toBe(true);
+
+    // Closing it again leaves the page exactly as it was.
+    await trigger.evaluate((el) => el.blur());
+    await expect(menu).toBeHidden();
+    const closedWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    expect(view.scrollWidth, `${at} opening the flyout must not widen the page`).toBeLessThanOrEqual(
+      closedWidth
+    );
+  }
+});
+
+
 test("the plugin page footer credits mermaid and Chart.js (SITE-CREDIT-01)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const credit = page.locator("footer.footer .credit");
