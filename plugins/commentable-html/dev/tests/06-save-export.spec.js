@@ -733,13 +733,35 @@ test.describe("Save comments / Export plain", () => {
         return realChildNodes.get.call(this);
       },
     });
+    // Loading the base HTML falls back to the start-of-life snapshot on a file: document, and that
+    // snapshot walks the siblings of the layer's own <script> to recover the host tail. Throwing
+    // there is the one break that reaches the FIRST step of every handler; it is scoped to SCRIPT
+    // elements so nothing else the click or the assertions touch can trip it.
+    const realNextSibling = Object.getOwnPropertyDescriptor(Node.prototype, "nextSibling");
+    Object.defineProperty(Node.prototype, "nextSibling", {
+      configurable: true,
+      get: function () {
+        if (window.__cmhBreak === "load" && this.tagName === "SCRIPT") throw new Error("load boom");
+        return realNextSibling.get.call(this);
+      },
+    });
     // URL.createObjectURL is called only from the two download helpers, which is exactly what a
     // multi-megabyte Offline export can fail on. The "handoff" break instead throws AFTER the URL
-    // exists, which is the path where the helper has cleanup of its own to do.
+    // exists, which is the path where the helper has cleanup of its own to do - so every URL it
+    // mints and every one it releases is recorded, and a test can assert the two match.
+    window.__cmhMintedUrls = [];
+    window.__cmhRevokedUrls = [];
     const realUrl = URL.createObjectURL.bind(URL);
     URL.createObjectURL = function (blob) {
       if (window.__cmhBreak === "download") throw new Error("download boom");
-      return realUrl(blob);
+      const u = realUrl(blob);
+      window.__cmhMintedUrls.push(u);
+      return u;
+    };
+    const realRevoke = URL.revokeObjectURL.bind(URL);
+    URL.revokeObjectURL = function (u) {
+      window.__cmhRevokedUrls.push(u);
+      return realRevoke(u);
     };
     const realClick = HTMLAnchorElement.prototype.click;
     HTMLAnchorElement.prototype.click = function () {
@@ -902,6 +924,39 @@ test.describe("Save comments / Export plain", () => {
       await expectExportReports(page, "#btnSaveHtml", DOWNLOAD_CAUSE, "handoff boom");
       await expectExportReports(page, "#btnExportMd", DOWNLOAD_CAUSE, "handoff boom");
       expect(await page.evaluate(() => document.querySelectorAll("a[download]").length)).toBe(0);
+      // Every object URL the failed handoffs minted was released. Asserting the anchor alone would
+      // leave the revoke deletable with the suite still green.
+      const urls = await page.evaluate(() => ({
+        minted: window.__cmhMintedUrls.slice(),
+        revoked: window.__cmhRevokedUrls.slice(),
+      }));
+      expect(urls.minted.length).toBe(2);
+      expect(urls.minted.filter((u) => !urls.revoked.includes(u))).toEqual([]);
+    } finally {
+      fs.rmSync(inline.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an export that cannot read the document's own HTML tells the reader (CMH-EXP-23)", async ({ page }) => {
+    // The FIRST step of every handler: loading the base HTML. Its catch used to call showToast bare,
+    // so a throw from the toast unwound the click into the same silence, and the thrown value never
+    // reached the console. A file: document falls back to the start-of-life snapshot, so breaking
+    // that walk is what makes the load fail.
+    const inline = stageContent(EXPORT_FAILURE_CONTENT, {
+      key: "cmh-load-fail-inline",
+      source: "load-fail-inline.html",
+    });
+    try {
+      await page.goto(fileUrl(inline.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "inline note");
+      await installExportBreaks(page);
+      await breakExportAt(page, "load");
+      const LOAD_CAUSE = "could not be read to export from";
+      await expectExportReports(page, "#btnSaveHtml", LOAD_CAUSE, "load boom");
+      await expectExportReports(page, "#btnExportOffline", LOAD_CAUSE, "load boom");
+      await expectExportReports(page, "#btnSavePlain", LOAD_CAUSE, "load boom");
+      await breakExportAt(page, "none");
     } finally {
       fs.rmSync(inline.dir, { recursive: true, force: true });
     }

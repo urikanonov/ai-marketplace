@@ -231,7 +231,7 @@ function _suggestedPlainFilename() {
 async function saveAsPlain() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
-  catch (e) { _reportExportLoadFailure(); return; }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_LOAD); return; }
   try {
     baseHtml = _applyChecklistStateToHtml(baseHtml);
     baseHtml = _applyNoteStateToHtml(baseHtml);

@@ -689,7 +689,7 @@ function _retargetLayerDescriptor(html, mode) {
 async function saveHtml() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
-  catch (e) { _reportExportLoadFailure(); return; }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_LOAD); return; }
   // The state-baking prelude is one guarded step, not four bare lines: each applier does a
   // DOMParser round-trip (and the widget one a live query), any of which can throw, and a throw
   // used to unwind the whole click handler with no file and no toast - the #1052 failure reached

@@ -2287,7 +2287,7 @@ const _OFFLINE_EXPORT_ERROR_TOAST = { alert: true, duration: 10000 };
 async function saveOffline() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
-  catch (e) { _reportExportLoadFailure(_OFFLINE_EXPORT_ERROR_TOAST); return; }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_LOAD, _OFFLINE_EXPORT_ERROR_TOAST); return; }
   let review;
   let headFallbacks;
   try {

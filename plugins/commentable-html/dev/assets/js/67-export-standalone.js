@@ -325,7 +325,7 @@ async function saveStandalone() {
   if (!NONSHAREABLE_MODE) return saveHtml();
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
-  catch (e) { _reportExportLoadFailure(); return; }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_LOAD); return; }
   let review;
   try {
     baseHtml = _applyWidgetLayoutToHtml(baseHtml);

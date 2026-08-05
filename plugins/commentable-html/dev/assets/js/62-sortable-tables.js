@@ -325,6 +325,14 @@ const _EXPORT_FAILURE_CONVERT = {
   cause: "This document could not be converted to Markdown",
   tail: "No file was written and nothing in this document changed, so it is safe to try again.",
 };
+// Loading the base HTML is the FIRST step of every handler, and its own catch used to call showToast
+// bare - so it kept the same two holes the rest of the handler had: a throw from the toast unwound
+// the click, and the thrown value never reached the console.
+const _EXPORT_FAILURE_LOAD = {
+  log: "export could not load the base HTML",
+  cause: "This document's own HTML could not be read to export from",
+  tail: "No file was written and nothing in this document changed, so it is safe to try again.",
+};
 // One reporter for every export failure, so all of them share one message shape and one
 // best-effort contract. Reporting must not be able to fail the way the export just did: a throw
 // from showToast here would unwind the click handler past the caller's abort and restore the exact
@@ -359,15 +367,6 @@ function _reportExportBuildFailure(e, opts) {
   // long-duration timing whatever the caller passed - the builder's own text used to get the 3s
   // confirmation pacing, which is how a message that does NOT matter is shown.
   try { showToast(msg, opts || _EXPORT_FAILURE_TOAST); } catch (e2) { /* the export still aborts */ }
-}
-// The base HTML failing to LOAD names its own cause and has no thrown value worth showing, but the
-// report must be best-effort like the others: an unguarded showToast here would unwind the click
-// handler and restore the very silence these guards remove.
-function _reportExportLoadFailure(opts) {
-  try { console.warn("commentable-html: export could not load the base HTML"); } catch (e2) {}
-  try {
-    showToast("Could not load base HTML.", opts || _EXPORT_FAILURE_TOAST);
-  } catch (e2) { /* the export still aborts */ }
 }
 // Every export entry point runs the canonical pass through this guard rather than calling
 // `_exportableComments()` bare. The pass can throw, and it used to sit OUTSIDE the try/catch that

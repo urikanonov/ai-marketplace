@@ -412,13 +412,14 @@ function _downloadTextFile(text, filename, mime) {
   try {
     a = document.createElement("a");
     a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click(); a.remove();
+    document.body.appendChild(a); a.click();
   } catch (e) {
     _cmhReleaseDownloadAnchor(url, a);
     throw e;
   }
-  // The handoff already happened, so scheduling the cleanup is best-effort: a throw from here would
-  // report a failure for a file the browser has taken.
+  // The handoff already happened, so removing the anchor and scheduling the revoke are both
+  // best-effort: a throw from either would report a failure for a file the browser has taken.
+  try { a.remove(); } catch (e) {}
   try {
     setTimeout(function () { _cmhReleaseDownloadAnchor(url, a); }, 1000);
   } catch (e) { _cmhReleaseDownloadAnchor(url, a); }

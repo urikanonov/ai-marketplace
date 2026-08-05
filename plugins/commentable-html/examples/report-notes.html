@@ -15932,13 +15932,14 @@ function _downloadTextFile(text, filename, mime) {
   try {
     a = document.createElement("a");
     a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click(); a.remove();
+    document.body.appendChild(a); a.click();
   } catch (e) {
     _cmhReleaseDownloadAnchor(url, a);
     throw e;
   }
-  // The handoff already happened, so scheduling the cleanup is best-effort: a throw from here would
-  // report a failure for a file the browser has taken.
+  // The handoff already happened, so removing the anchor and scheduling the revoke are both
+  // best-effort: a throw from either would report a failure for a file the browser has taken.
+  try { a.remove(); } catch (e) {}
   try {
     setTimeout(function () { _cmhReleaseDownloadAnchor(url, a); }, 1000);
   } catch (e) { _cmhReleaseDownloadAnchor(url, a); }
@@ -16592,6 +16593,14 @@ const _EXPORT_FAILURE_CONVERT = {
   cause: "This document could not be converted to Markdown",
   tail: "No file was written and nothing in this document changed, so it is safe to try again.",
 };
+// Loading the base HTML is the FIRST step of every handler, and its own catch used to call showToast
+// bare - so it kept the same two holes the rest of the handler had: a throw from the toast unwound
+// the click, and the thrown value never reached the console.
+const _EXPORT_FAILURE_LOAD = {
+  log: "export could not load the base HTML",
+  cause: "This document's own HTML could not be read to export from",
+  tail: "No file was written and nothing in this document changed, so it is safe to try again.",
+};
 // One reporter for every export failure, so all of them share one message shape and one
 // best-effort contract. Reporting must not be able to fail the way the export just did: a throw
 // from showToast here would unwind the click handler past the caller's abort and restore the exact
@@ -16626,15 +16635,6 @@ function _reportExportBuildFailure(e, opts) {
   // long-duration timing whatever the caller passed - the builder's own text used to get the 3s
   // confirmation pacing, which is how a message that does NOT matter is shown.
   try { showToast(msg, opts || _EXPORT_FAILURE_TOAST); } catch (e2) { /* the export still aborts */ }
-}
-// The base HTML failing to LOAD names its own cause and has no thrown value worth showing, but the
-// report must be best-effort like the others: an unguarded showToast here would unwind the click
-// handler and restore the very silence these guards remove.
-function _reportExportLoadFailure(opts) {
-  try { console.warn("commentable-html: export could not load the base HTML"); } catch (e2) {}
-  try {
-    showToast("Could not load base HTML.", opts || _EXPORT_FAILURE_TOAST);
-  } catch (e2) { /* the export still aborts */ }
 }
 // Every export entry point runs the canonical pass through this guard rather than calling
 // `_exportableComments()` bare. The pass can throw, and it used to sit OUTSIDE the try/catch that
@@ -17612,7 +17612,7 @@ function _retargetLayerDescriptor(html, mode) {
 async function saveHtml() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
-  catch (e) { _reportExportLoadFailure(); return; }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_LOAD); return; }
   // The state-baking prelude is one guarded step, not four bare lines: each applier does a
   // DOMParser round-trip (and the widget one a live query), any of which can throw, and a throw
   // used to unwind the whole click handler with no file and no toast - the #1052 failure reached
@@ -17880,7 +17880,7 @@ function _suggestedPlainFilename() {
 async function saveAsPlain() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
-  catch (e) { _reportExportLoadFailure(); return; }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_LOAD); return; }
   try {
     baseHtml = _applyChecklistStateToHtml(baseHtml);
     baseHtml = _applyNoteStateToHtml(baseHtml);
@@ -18231,7 +18231,7 @@ async function saveStandalone() {
   if (!NONSHAREABLE_MODE) return saveHtml();
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
-  catch (e) { _reportExportLoadFailure(); return; }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_LOAD); return; }
   let review;
   try {
     baseHtml = _applyWidgetLayoutToHtml(baseHtml);
@@ -20541,7 +20541,7 @@ const _OFFLINE_EXPORT_ERROR_TOAST = { alert: true, duration: 10000 };
 async function saveOffline() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
-  catch (e) { _reportExportLoadFailure(_OFFLINE_EXPORT_ERROR_TOAST); return; }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_LOAD, _OFFLINE_EXPORT_ERROR_TOAST); return; }
   let review;
   let headFallbacks;
   try {
