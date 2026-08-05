@@ -3105,6 +3105,8 @@ class RuntimeParityTests(unittest.TestCase):
             "the %s adversary no longer matches the local-binding regex, so it stops covering the "
             "pass it exists to time" % label)
 
+    _NAV_CPU_BUDGET_SECONDS = 1.0
+
     def test_the_navigation_pattern_cannot_be_made_to_backtrack(self):
         """The scan must stay linear on adversarial input, in BOTH engines.
 
@@ -3159,12 +3161,15 @@ class RuntimeParityTests(unittest.TestCase):
         self._assert_reaches_local_binding_pass(local_binding_evil, "fixed-size local-binding")
         # Both patterns are fuzzed: they share the tail byte for byte, but only one of them was
         # ever driven with adversarial input, so a divergence in the prefixed copy could hide here.
+        # Measure ENGINE WORK, not wall time: a shared Windows runner has descheduled node for 27s
+        # during this guard. Process CPU time excludes that wait while the one-second ceiling still
+        # fails the historical backtracking pattern before its larger scaling samples become costly.
         for evil in evils:
-            start = time.monotonic()
+            start = time.process_time()
             self.assertFalse(resources.offline_script_navigates_to_network(evil))
-            elapsed = time.monotonic() - start
+            elapsed = time.process_time() - start
             self.assertLess(
-                elapsed, 1.0,
+                elapsed, self._NAV_CPU_BUDGET_SECONDS,
                 "the navigation scan took %.2fs on a %d-character adversarial input - it is "
                 "backtracking. Look for two unbounded repetitions that can consume the same input "
                 "(the historical shape was `WS*\\??WS*\\.`); bind the optional part in its own "
@@ -3176,9 +3181,9 @@ class RuntimeParityTests(unittest.TestCase):
             self._runtime_nav_source() + "\n"
             + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
             "const p=JSON.parse(raw);"
-            "const out=p.evils.map(e=>{const t=Date.now();"
+            "const out=p.evils.map(e=>{const t=process.cpuUsage();"
             "const hit=_offlineScriptNavigatesToNetwork(e);"
-            "return {ms:Date.now()-t,hit:hit};});"
+            "const cpu=process.cpuUsage(t);return {us:cpu.user+cpu.system,hit:hit};});"
             "process.stdout.write(JSON.stringify(out));});"
         )
         results = self._run_nav_node(node, script, {"evils": evils},
@@ -3186,10 +3191,11 @@ class RuntimeParityTests(unittest.TestCase):
         self.assertEqual(len(results), len(evils))
         for evil, result in zip(evils, results):
             self.assertFalse(result["hit"])
-            self.assertLess(result["ms"], 1000,
-                            "the REAL JS engine took %dms on a %d-character adversarial input - "
+            self.assertLess(result["us"], int(self._NAV_CPU_BUDGET_SECONDS * 1000000),
+                            "the REAL JS engine used %.1fms of CPU on a %d-character adversarial "
+                            "input - "
                             "the exporter would hang the reviewer's browser tab on an "
-                            "attacker-authored document" % (result["ms"], len(evil)))
+                            "attacker-authored document" % (result["us"] / 1000, len(evil)))
 
     # Two near-match SHAPES, each at 10x steps, because they stress opposite halves of the scan.
     # `head + unit * n + tail` must never match, so the whole input is walked before the verdict.
@@ -3219,8 +3225,6 @@ class RuntimeParityTests(unittest.TestCase):
         ("local-binding whitespace run", _NAV_LOCAL_BINDING_EVIL.split("%s", 1)[0], " ",
          _NAV_LOCAL_BINDING_EVIL.split("%s", 1)[1], (500, 5000, 50000), True),
     )
-    _NAV_SCALING_BUDGET = 1.0
-
     def test_the_navigation_scan_stays_linear_as_the_near_match_grows(self):
         """A 10x longer near-match must not cost ~100x, in BOTH engines.
 
@@ -3245,14 +3249,14 @@ class RuntimeParityTests(unittest.TestCase):
                 evil = head + unit * n + tail
                 if checks_binding_pass:
                     self._assert_reaches_local_binding_pass(evil, label)
-                start = time.monotonic()
+                start = time.process_time()
                 self.assertFalse(resources.offline_script_navigates_to_network(evil),
                                  "the %s sample must NOT match, or the scan stops early and times "
                                  "nothing" % label)
-                took = time.monotonic() - start
+                took = time.process_time() - start
                 elapsed.append(took)
                 self.assertLess(
-                    took, self._NAV_SCALING_BUDGET,
+                    took, self._NAV_CPU_BUDGET_SECONDS,
                     "the navigation scan took %.2fs on a %d-character %s. It is meant to cost one "
                     "pass over the input; a quadratic term is back." % (took, len(evil), label))
             # The absolute budgets above cannot be met by a quadratic implementation at the largest
@@ -3271,9 +3275,10 @@ class RuntimeParityTests(unittest.TestCase):
                 + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
                 "const p=JSON.parse(raw);"
                 "process.stdout.write(JSON.stringify(p.steps.map(n=>{"
-                "const evil=p.head+p.unit.repeat(n)+p.tail;const t=Date.now();"
+                "const evil=p.head+p.unit.repeat(n)+p.tail;const t=process.cpuUsage();"
                 "const hit=_offlineScriptNavigatesToNetwork(evil);"
-                "return {ms:Date.now()-t,hit:hit,len:evil.length};})));});"
+                "const cpu=process.cpuUsage(t);"
+                "return {us:cpu.user+cpu.system,hit:hit,len:evil.length};})));});"
             )
             payload = {"steps": list(steps), "head": head, "unit": unit, "tail": tail}
             results = self._run_nav_node(node, script, payload, "the %s timings" % label)
@@ -3282,16 +3287,19 @@ class RuntimeParityTests(unittest.TestCase):
             for result in results:
                 self.assertFalse(result["hit"])
                 self.assertLess(
-                    result["ms"], int(self._NAV_SCALING_BUDGET * 1000),
-                    "the REAL JS engine took %dms on a %d-character %s - the exporter would hang "
+                    result["us"], int(self._NAV_CPU_BUDGET_SECONDS * 1000000),
+                    "the REAL JS engine used %.1fms of CPU on a %d-character %s - the exporter "
+                    "would hang "
                     "the reviewer's browser tab on a document that plants one, and the vendored "
                     "payload makes planting one cost a few hundred bytes"
-                    % (result["ms"], result["len"], label))
+                    % (result["us"] / 1000, result["len"], label))
             self.assertLess(
-                results[-1]["ms"], max(500, results[-2]["ms"] * 30),
-                "the REAL JS engine took %dms on a %d-character %s and %dms on one 10x longer - "
+                results[-1]["us"], max(500000, results[-2]["us"] * 30),
+                "the REAL JS engine used %.1fms of CPU on a %d-character %s and %.1fms on one 10x "
+                "longer - "
                 "that is superlinear growth"
-                % (results[-2]["ms"], results[-2]["len"], label, results[-1]["ms"]))
+                % (results[-2]["us"] / 1000, results[-2]["len"], label,
+                   results[-1]["us"] / 1000))
 
     def test_the_layer_script_survives_its_own_offline_strips(self):
         """The review layer's own script is stripped by the same pass as any other inline script.
