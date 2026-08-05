@@ -4,6 +4,35 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.688.0] - 2026-08-05
+
+### Fixed
+
+- A region marker a browser does not parse as a comment where the strip thinks it is can no longer
+  aim an export's region strip (CMH-EXP-22). The marker locator is a LINE locator: it finds a
+  marker-shaped line wherever it sits, including inside a `<script>`, `<textarea>` or `<title>`
+  body, where a browser builds no comment at all. While the layer's own marker is intact a quoted
+  one only makes the count 2 and the existing guard already refuses, so two shapes were reachable:
+  a DAMAGED region whose only surviving marker was an authored quotation, and a REAL marker the
+  locator cannot see (the legacy `--!>` close) standing beside a quotation it can. In both the
+  Plain strip anchored on the quotation and cut from the real BEGIN through the author's content -
+  36,791 characters of the shipped Shareable document, the whole COMMENT UI region included,
+  downloaded as a "plain" copy with no error at all. Counting markers is not enough to catch the
+  second shape, so the export now stamps each located marker with its own probe token in a copy of
+  the source, parses that copy once, and requires every token to turn up inside a real comment;
+  the token's stem is extended until it does not occur in the document at all, so a file that
+  quotes a token cannot vouch for a marker that is not in a comment. The check is scoped to
+  markers written in HTML-comment syntax, since the strips anchor on `<!--`: the
+  Shareable CSS region's `/* ... */` pair inside a live `<style>` is unaffected, and a stray
+  `/* END: ... */` in the body still reaches the existing region-attribution diagnosis instead of a
+  cause that does not apply.
+- A quoted region marker that shares its line with other markup no longer aims an export's
+  region strip either (CMH-EXP-22). The strips' `<!--` prefix is not line-anchored, so an
+  authored `<p>x</p><!-- BEGIN: commentable-html - JS -->` was invisible to the LINE locator -
+  not counted, not a duplicate - and was still a perfectly good place for the strip to start,
+  cutting from there through the real region. An anchor strictly BEFORE a region's own BEGIN is
+  now refused; an anchor at the marker is the healthy case, and a missing one only leaves the
+  region unstripped, which the existing data-safety net already diagnoses.
 ## [1.686.0] - 2026-08-05
 
 ### Changed

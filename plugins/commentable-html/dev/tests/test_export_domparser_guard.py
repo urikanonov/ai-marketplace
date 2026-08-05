@@ -25,11 +25,14 @@ _COMMENT_FIELDS = (
 
 # All current call sites feed the trusted document string as the COMPLETE first argument: either
 # String(html ...), a local `src` that is itself assigned from String(html ...) (84-section-review.js,
-# 65-export-shareable.js, 66-export-plain.js), or `srcProbed`, which 65-export-shareable.js derives
-# from that same `src` by inserting a fixed probe attribute into walked <script> open tags (no
-# document content, let alone comment data, enters it). Matched with fullmatch so a concatenation
-# like `comment.payload + String(html)` cannot slip through.
-_ALLOWED_ARG_RE = re.compile(r"String\(html\b.*\)|src|srcProbed")
+# 65-export-shareable.js, 66-export-plain.js), `srcProbed`, which 65-export-shareable.js derives
+# from that same `src` by inserting a fixed probe attribute into walked <script> open tags, or
+# `stamped`, which 67-export-standalone.js derives from that same `src` by replacing each LOCATED
+# REGION MARKER with a fixed alphanumeric probe token (CMH-EXP-22). Neither derived string admits
+# document content, let alone comment data: both only ever splice in a constant this file owns.
+# Matched with fullmatch so a concatenation like `comment.payload + String(html)` cannot slip
+# through.
+_ALLOWED_ARG_RE = re.compile(r"String\(html\b.*\)|src|srcProbed|stamped")
 
 # Captures the first argument of a .parseFromString(...) call, tolerating whitespace before "(".
 _PARSE_CALL_RE = re.compile(r"\.parseFromString\s*\(([^,]+),")
@@ -102,6 +105,7 @@ class DomParserRoundTripGuardTests(unittest.TestCase):
             "37-notes.js",
             "65-export-shareable.js",
             "66-export-plain.js",
+            "67-export-standalone.js",
             "68-export-offline.js",
             "84-section-review.js",
         })

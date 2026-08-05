@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.686.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.688.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.688.0] - 2026-08-05</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A region marker a browser does not parse as a comment where the strip thinks it is can no longer aim an export&#x27;s region strip (CMH-EXP-22). The marker locator is a LINE locator: it finds a marker-shaped line wherever it sits, including inside a <code>&lt;script&gt;</code>, <code>&lt;textarea&gt;</code> or <code>&lt;title&gt;</code> body, where a browser builds no comment at all. While the layer&#x27;s own marker is intact a quoted one only makes the count 2 and the existing guard already refuses, so two shapes were reachable: a DAMAGED region whose only surviving marker was an authored quotation, and a REAL marker the locator cannot see (the legacy <code>--!&gt;</code> close) standing beside a quotation it can. In both the Plain strip anchored on the quotation and cut from the real BEGIN through the author&#x27;s content - 36,791 characters of the shipped Shareable document, the whole COMMENT UI region included, downloaded as a &quot;plain&quot; copy with no error at all. Counting markers is not enough to catch the second shape, so the export now stamps each located marker with its own probe token in a copy of the source, parses that copy once, and requires every token to turn up inside a real comment; the token&#x27;s stem is extended until it does not occur in the document at all, so a file that quotes a token cannot vouch for a marker that is not in a comment. The check is scoped to markers written in HTML-comment syntax, since the strips anchor on <code>&lt;!--</code>: the Shareable CSS region&#x27;s <code>/* ... */</code> pair inside a live <code>&lt;style&gt;</code> is unaffected, and a stray <code>/* END: ... */</code> in the body still reaches the existing region-attribution diagnosis instead of a cause that does not apply.</li>
+              <li>A quoted region marker that shares its line with other markup no longer aims an export&#x27;s region strip either (CMH-EXP-22). The strips&#x27; <code>&lt;!--</code> prefix is not line-anchored, so an authored <code>&lt;p&gt;x&lt;/p&gt;&lt;!-- BEGIN: commentable-html - JS --&gt;</code> was invisible to the LINE locator - not counted, not a duplicate - and was still a perfectly good place for the strip to start, cutting from there through the real region. An anchor strictly BEFORE a region&#x27;s own BEGIN is now refused; an anchor at the marker is the healthy case, and a missing one only leaves the region unstripped, which the existing data-safety net already diagnoses.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.686.0] - 2026-08-05</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -507,6 +515,8 @@
               <li>The runtime&#x27;s template-aware walkers now record their shadow-DOM boundary explicitly. The infrastructure resolver still excludes shadow-root ids because <code>document.getElementById</code> cannot see them; Markdown and section review remain light-DOM-only because closed roots cannot be inspected and review anchors do not cross shadow boundaries. Save and export preserve supported open and closed roots through shadow-aware serialization; the validator requires <code>shadowrootserializable</code> and rejects mixed light/shadow children so every accepted document fits that durable model (slot distribution is rejected too, and shadow-DOM export requires a browser with <code>Element.getHTML</code>). Generated TOC entries target the outer light-DOM host because browser fragment navigation cannot target a heading inside a shadow tree.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.685.3] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -515,8 +525,6 @@
               <li>The validator document parser and table-of-contents generator no longer treat <code>&lt;/body&gt;</code> or <code>&lt;/html&gt;</code> in the HTML namespace as closing an open content root. HTML5 changes insertion mode for those tags without popping the open elements, so trailing content stays inside the root exactly as it does in a browser; same-named foreign elements still close normally. The TOC parser also keeps foreign-template content live and never selects a duplicate root after the browser&#x27;s first root is a void or self-closed foreign element.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.685.2] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -545,16 +553,7 @@
               <li>The browser-accurate element-boundary SEQUENCE now lives in exactly one place (CMH-VAL-21). <code>handle_starttag()</code>, <code>handle_startendtag()</code> and <code>handle_endtag()</code> moved onto the shared <code>_BrowserBoundaries</code> base (and, identically, onto the degraded fallback a partial install gets) and drive overridable hooks - <code>_visit_start()</code>, <code>_push_element()</code>, <code>_visit_void()</code>, <code>_after_start()</code>, <code>_visit_self_closed()</code>, <code>_visit_end()</code> - so each of the thirteen parsers and authoring tools that derive from it now says only what it COLLECTS. The same ~25-line skeleton (browser tag name, browser attribute dict, child namespace, the implicit <code>&lt;/p&gt;</code> / <code>&lt;/li&gt;</code> close, the void and foreign self-closing carve-outs, the namespace push, the raw-text switch, and, for an end tag, the innermost open element then the truncation) was maintained in eleven independent copies, where one forgotten <code>_enter_raw_text()</code> would silently have parsed a <code>&lt;script&gt;</code> body as markup - the base deliberately disables the host&#x27;s own <code>_enter_cdata_mode()</code>, so no gate would have seen it. A new guard fails any subclass that writes a tag handler of its own, with a single named exception (the prose-density pass, which keeps no namespace stack and applies no implicit close, so sharing the sequence would change what it counts rather than share it). No behavior change to any tool: every parse this refactor touches reads a document exactly as it did.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.679.0] - 2026-08-04</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The Offline export no longer emits a <code>&lt;noscript&gt;</code> body whose end the two tokenizers disagree about - a file its own <code>--strict</code> gate rejects. A fallback body has two readings, and the export re-parses with only one: the <code>DOMParser</code> every strip walks has scripting OFF, so the body is markup, while the reviewer who opens the exported file has scripting ON, so it is raw text that ends at the first <code>&lt;/noscript</code>. The two agree exactly while the serialized body carries no such end-tag-open, and disagree the moment it does, because everything past that seam is live markup to the reviewer while the strips never saw it. Measured in chromium, two shapes really did ride an export out as a live <code>on*</code> handler, both because the serializer writes them verbatim: a comment (<code>&lt;noscript&gt;&lt;!-- &lt;/noscript&gt;&lt;img onload=...&gt; --&gt;&lt;/noscript&gt;</code>) and a raw-text <code>&lt;style&gt;</code> child. The seam cannot be reconciled from the exporter, since escaping it would change what a scripting-disabled reader is shown, so such a body is dropped whole and the count is named in the export toast rather than being silent content loss. The predicate reads the SERIALIZED body rather than modelling which node types a serializer writes verbatim, so it also catches an attribute-value seam on an engine that predates the escaping of <code>&lt;</code> and <code>&gt;</code> inside an attribute value (Chrome 116, Firefox 118, Safari 17) - an export runs in whatever browser the reviewer opened the document with. An ordinary fallback - the layer&#x27;s own print fallback included - reads the same both ways and is preserved, an <code>&lt;svg&gt;&lt;noscript&gt;</code> is an ordinary foreign element and is never judged at all, and Shareable is untouched, since it makes no zero-network promise and preserves the author&#x27;s bytes by design.</li>
-              <li>The Offline export no longer ACTIVATES fallback content it was only supposed to carry: the chart hoist moved a <code>Chart</code>-mentioning <code>&lt;script&gt;</code> parked inside a <code>&lt;noscript&gt;</code> into the body so it would run after the inlined library. Such a script is a real element to the scripting-disabled parse the export walks, but inert TEXT to the reader, so hoisting it did not relocate author code - it started executing code the source document never ran. The hoist now skips any script with an HTML <code>&lt;noscript&gt;</code> ancestor; the chart evidence scan is unchanged, where a false positive only costs bytes.</li>
-              <li>Known bound, tracked as issue #1081: all of the above concerns a <code>&lt;noscript&gt;</code> in the BODY. A <code>&lt;noscript&gt;</code> in the HEAD has its body promoted out of the fallback by <code>DOMParser</code> itself (the &quot;in head noscript&quot; insertion mode allows only <code>link</code>, <code>style</code>, <code>meta</code>, comments and whitespace), before any pass can see it, so a script parked there still rides out as live head content. Closing that needs a pre-parse, source-string pass, since a promoted node is indistinguishable in the DOM from an authored head sibling.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">319 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">320 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
