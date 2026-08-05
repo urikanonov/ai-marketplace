@@ -67,6 +67,7 @@ let _cmhLastSaveQuota = false;
 // untouched across a reload-without-edit; startup clears it after pruning so a genuine user edit
 // still persists (and intentionally replaces the unreadable value).
 let _cmhStoreUnreadable = false;
+let _cmhStartupInProgress = true;
 // Persist key <- produce(). produce() returns a string to store or null to removeItem. Returns
 // true on immediate success (set or remove). On a quota error it stashes the producer for retry
 // and returns false (callers already treat false as "not saved"); other errors return false too.
@@ -138,7 +139,7 @@ function loadComments() {
   // the recoverable bytes are not clobbered; only a subsequent edit will replace it.
   if (loaded.unreadable) {
     _cmhStoreUnreadable = true;
-    showToast("Saved comments in this browser could not be read (they may be from a newer version) "
+    showStartupDiagnostic("Saved comments in this browser could not be read (they may be from a newer version) "
       + "- they are left untouched; editing a comment will replace them.", { alert: true, duration: 8000 });
     return;
   }
@@ -176,7 +177,8 @@ function saveComments() {
       return false;
     }
     // Blocked / private mode: keep the existing recovery-path warning.
-    showToast("Comment NOT saved to this browser (storage full or blocked) - it will be lost on "
+    const notify = _cmhStartupInProgress ? showStartupDiagnostic : showToast;
+    notify("Comment NOT saved to this browser (storage full or blocked) - it will be lost on "
       + "reload. Use Copy all or Export as Shareable to keep it.", { alert: true, duration: 8000 });
     return false;
   }
@@ -287,4 +289,3 @@ function getEmbeddedComments() {
     return [];
   }
 }
-

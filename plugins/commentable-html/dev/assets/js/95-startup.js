@@ -276,6 +276,7 @@ restoreHighlights();
 // were suppressed so the recoverable bytes are left intact, and from here only a real user edit
 // replaces them (honoring the "editing a comment will replace them" notice).
 _cmhStoreUnreadable = false;
+_cmhStartupInProgress = false;
 setupMermaidLayer();
 setupImageLayer();
 setupLinkLayer();
@@ -1213,7 +1214,7 @@ for (let cur = CMH_LAYER_SCRIPT; cur && cur.parentNode; cur = cur.parentNode) {
 }
 renderComments();
 if (prunedCount > 0) {
-  showToast(`${prunedCount} previously-handled comment${prunedCount === 1 ? "" : "s"} cleared by the agent.`);
+  showStartupDiagnostic(`${prunedCount} previously-handled comment${prunedCount === 1 ? "" : "s"} cleared by the agent.`);
 }
 // A deck manages its own panel state from the persisted comment-model selection (applyDeckMode);
 // the document-flow auto-open below must not override it (that would force every deck with a

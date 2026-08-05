@@ -594,6 +594,76 @@ test("a second block the layer owns for a data id is reported (CMH-EXP-20)", asy
   }
 });
 
+test("competing startup diagnostics are aggregated so both remain visible (CMH-A11Y-03)", async ({ page }) => {
+  const blockerUrl = "http://127.0.0.1:31827/cmh-startup-blocker.js";
+  await page.addInitScript(() => {
+    Storage.prototype.setItem = function () {
+      throw new DOMException("storage blocked for startup diagnostic test", "SecurityError");
+    };
+  });
+  let requestSeenResolve;
+  let releaseRequest;
+  const requestSeen = new Promise((resolve) => { requestSeenResolve = resolve; });
+  const requestGate = new Promise((resolve) => { releaseRequest = resolve; });
+  await page.route(blockerUrl, async (route) => {
+    requestSeenResolve();
+    await requestGate;
+    await route.fulfill({ status: 200, contentType: "application/javascript", body: "" });
+  });
+  const staged = stageInline({
+    mutate: (h) => beforeLastBody(
+      regionEmbeddedPayload(endMarkerAsCssComment(h), [{
+        id: "cstartup001",
+        anchorType: "document",
+        note: "startup storage write",
+        createdAt: "2026-08-04T00:00:00.000Z",
+      }]),
+      '<script src="' + blockerUrl + '"></script>\n'
+        + OPEN + ' type="application/json" id="embeddedComments">[]' + CLOSE,
+    ),
+  });
+  try {
+    const navigation = page.goto(fileUrl(staged.html));
+    await requestSeen;
+    // Let the old two-timer heuristic expire while parsing is still blocked. A correct aggregation
+    // waits for parsing itself, not an assumed number of event-loop turns.
+    await page.evaluate(() => new Promise((resolve) => {
+      setTimeout(() => setTimeout(resolve, 0), 0);
+    }));
+    releaseRequest();
+    await navigation;
+    await ready(page);
+    await expect.poll(() => currentToast(page), { timeout: 15000 }).toContain("embeddedComments");
+    const toast = await currentToast(page);
+    expect(toast).toContain("Comment NOT saved");
+    expect(toast).toContain("reviewedSections");
+    expect(toast).toContain("embeddedComments");
+  } finally {
+    releaseRequest();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("a missing toast surface cannot make a deferred duplicate-block warning throw (CMH-EXP-20)", async ({ page }) => {
+  const toastMarkup = '<div class="cm-toast cm-skip" id="toast" role="status" aria-live="polite"></div>';
+  const staged = stageInline({
+    mutate: (h) => {
+      if (h.indexOf(toastMarkup) < 0) throw new Error("fixture: no toast surface to remove");
+      return strayEmbeddedBlock(h.replace(toastMarkup, ""), []);
+    },
+  });
+  try {
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(errors).toEqual([]);
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
 test("the Plain safety net names a block that was never in the region (CMH-EXP-21)", async ({ page }) => {
   // The commonest real cause, and the one "malformed markers?" always misnamed: the markers are
   // fine, the region was stripped, and the block that survived was never inside it.

@@ -86,9 +86,8 @@ function cmhWarnUnresolvedBlock(id) {
 // strand the reader's comments and block the export that would save them), so this is a report, not
 // a refusal. validate.py rejects the duplicate id outright; this is the runtime half, for a file
 // that never met the validator, and the reader is told because someone opening a shared HTML has no
-// console. The reader's half is DEFERRED and AGGREGATED into one message: there is a single #toast
-// and each call replaces the last, so reporting per id inside startup would have the second id wipe
-// the first (and a later startup toast wipe them both).
+// console. The reader's half first combines the affected ids here, then joins the shared startup
+// diagnostic aggregation in 90-toast.js so another startup warning cannot wipe it.
 const _CMH_AMBIGUOUS_BLOCKS = [];
 let _cmhAmbiguousFlushQueued = false;
 function cmhWarnAmbiguousBlock(id, count) {
@@ -105,12 +104,12 @@ function cmhWarnAmbiguousBlock(id, count) {
     _cmhAmbiguousFlushQueued = false;
     // Consume the queue, so a later id reports itself rather than re-listing what was shown.
     const found = _CMH_AMBIGUOUS_BLOCKS.splice(0, _CMH_AMBIGUOUS_BLOCKS.length);
-    if (typeof showToast !== "function" || !found.length) return;
+    if (typeof showStartupDiagnostic !== "function" || !found.length) return;
     // A damaged document is exactly the population this warning targets, and its COMMENT UI region
     // (where the toast element lives) may be part of the damage - so never let the report itself
     // throw out of the timer.
     try {
-      showToast("This file carries duplicate commentable-html data blocks outside its content root ("
+      showStartupDiagnostic("This file carries duplicate commentable-html data blocks outside its content root ("
         + found.join(", ") + "). Only the first of each is read, so the rest are ignored - and the"
         + " comments block the export rewrites is that same first one. Run validate.py on the file.",
       { alert: true, duration: 10000 });
@@ -205,7 +204,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.681.0";
+const CMH_VERSION = "1.682.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -294,5 +293,3 @@ const openComposers = new Set();
 const openEditComposers = new Map();
 let lastFocusedComposer = null;
 let composerZ = 210;
-
-

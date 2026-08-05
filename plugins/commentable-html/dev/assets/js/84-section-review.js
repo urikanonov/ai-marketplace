@@ -344,7 +344,7 @@ function _cmhWarnUnownedReviewBlock(reason) {
   const msg = "This file's " + REVIEW_BLOCK_ID + " block could not be attributed to the layer: "
     + reason + ". Its saved section-review marks are ignored. Run validate.py on the file.";
   try { console.warn("commentable-html: " + msg); } catch (e) { /* console is optional */ }
-  if (typeof showToast === "function") showToast(msg, { alert: true, duration: 8000 });
+  if (typeof showStartupDiagnostic === "function") showStartupDiagnostic(msg, { alert: true, duration: 8000 });
 }
 function getEmbeddedReviewMarkers() {
   const bounds = _cmhRegionCommentBounds(document, REVIEW_REGION);
