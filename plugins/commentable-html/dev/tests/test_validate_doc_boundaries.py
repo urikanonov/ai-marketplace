@@ -1319,8 +1319,38 @@ class DocParserForeignContentTests(unittest.TestCase):
         self.assertEqual(_ids(html), ["real"])
 
     def test_an_mglyph_inside_a_text_integration_point_stays_mathml(self):
-        html = '<math><mi><mglyph><![CDATA[><div id="quoted"></div>]]></mglyph></mi></math>'
-        self.assertEqual(_ids(html), [])
+        for tag in ("mglyph", "malignmark"):
+            with self.subTest(tag=tag):
+                html = ('<math><mi><%s><![CDATA[><div id="quoted"></div>]]></%s></mi></math>'
+                        % (tag, tag))
+                self.assertEqual(_ids(html), [])
+
+    def test_an_mglyph_inside_an_html_integration_point_is_html(self):
+        # The exception is written for a MathML TEXT integration point only. Under an HTML
+        # integration point HTML5 has no carve-out, so a browser inserts `<mglyph>` in the HTML
+        # namespace, where the `<![CDATA[` after it is a BOGUS COMMENT ending at the first `>` and
+        # the markup behind it is LIVE. Keying the carve-out on the generic integration flag
+        # consumed a whole CDATA section here and hid that element from every check.
+        for tag in ("mglyph", "malignmark"):
+            with self.subTest(tag=tag):
+                html = ('<math><annotation-xml encoding="text/html"><%s>'
+                        '<![CDATA[><div id="real"></div>]]></%s></annotation-xml></math>'
+                        % (tag, tag))
+                self.assertEqual(_ids(html), ["real"])
+
+    def test_a_padded_annotation_xml_encoding_is_not_an_integration_point(self):
+        # HTML5 compares the `encoding` VALUE exactly (ASCII case-insensitively), with no
+        # trimming, so a padded value leaves the subtree in MathML and the CDATA is a real section
+        # that hides the element. An exact value is an integration point, so its `<section>` is
+        # HTML, the `<![CDATA[` is a bogus comment ending at the first `>`, and the element lives.
+        # Both members of the accepted set are exercised, in both letter cases.
+        shape = ('<math><annotation-xml encoding="%s"><section>'
+                 '<![CDATA[><div id="probe"></div>]]></section></annotation-xml></math>')
+        for enc in ("text/html", "TEXT/HTML", "application/xhtml+xml", "APPLICATION/XHTML+XML"):
+            with self.subTest(encoding=enc):
+                self.assertEqual(_ids(shape % enc), ["probe"])
+                for padded in (" %s" % enc, "%s " % enc):
+                    self.assertEqual(_ids(shape % padded), [], padded)
 
     def test_a_raw_text_closer_folds_ascii_case_only(self):
         # A browser matches an end-tag name ASCII-case-insensitively, so the Unicode long s does
