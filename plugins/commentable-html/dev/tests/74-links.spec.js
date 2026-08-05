@@ -25,7 +25,8 @@ const CONTENT = `
 <a id="upper" href="HTTPS://example.com/u">upper scheme</a>
 <a id="tel" href="tel:+15551234">call</a>
 <a id="data" href="data:text/html,x" target="_blank">data blank</a></p>
-<h2 id="section-2">Section 2</h2>`;
+<h2 id="section-2">Section 2</h2>
+<p id="vt-rel-lead"><a id="vtrel" href="https://example.com/vt" target="_blank" rel="noopener&#x0b;x noreferrer&#x0b;y">vt rel</a></p>`;
 
 async function stage(page, { init } = {}) {
   const { dir, html } = stageContent(CONTENT, { key: KEY });
@@ -67,6 +68,22 @@ test.describe("link handling", () => {
       expect(rel).toContain("noopener");
       expect(rel).toContain("noreferrer");
     }
+  });
+
+  test("the rel stamp reads the authored list the way HTML tokenizes one (CMH-LINK-01)", async ({ page }) => {
+    await stage(page);
+    // #vtrel is authored `rel="noopener&#x0b;x noreferrer&#x0b;y"`. A JS `\s` split takes the
+    // vertical tab, so the stamper used to see BOTH required tokens, rewrite nothing, and leave the
+    // attribute exactly as authored; a browser tokenizes a `rel` list on ASCII whitespace ONLY, so
+    // it read TWO opaque relations, honored neither, and left `window.opener` exposed to the opened
+    // page. Assert on the tokens a BROWSER would read.
+    const rel = await page.locator("#vtrel").getAttribute("rel");
+    const tokens = rel.split(/[\t\n\f\r ]+/).filter(Boolean);
+    expect(tokens, rel).toContain("noopener");
+    expect(tokens, rel).toContain("noreferrer");
+    // The authored relations themselves survive - the stamp adds, it never rewrites author content.
+    expect(tokens, rel).toContain("noopener\u000bx");
+    expect(tokens, rel).toContain("noreferrer\u000by");
   });
 
   test("fragment, cm-skip, javascript, mailto, tel and data links are excluded; only document references are stamped (CMH-LINK-01)", async ({ page }) => {

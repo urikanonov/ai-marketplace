@@ -231,11 +231,14 @@ def link_rel_tokens(value):
 
     EVERY reader of a `rel` list goes through this, not only the egress gates it was introduced
     for (#1076): the offline link-relation gate, the CSP-lateness "does this <link> fetch?" test,
-    the export strip's own copy, the reverse-tabnabbing gate on a `cmh-kql-run` link, and the
-    favicon collector (plus `tools/authoring/_favicon.py`, which reads it through
-    `tools/_browser_attrs.py`). A reader left on `str.split()` has a parser differential against
-    the browser all of its own - it accepted a `noopener` and counted a favicon a browser never
-    honors (#1120) - so a new one is added here rather than beside its check.
+    the reverse-tabnabbing gate on a `cmh-kql-run` link, and the favicon collector (plus
+    `tools/authoring/_favicon.py`, which reads it through `tools/_browser_attrs.py`). The two
+    RUNTIME readers - the export strip and the render-time `rel="noopener noreferrer"` stamper -
+    share the bundle's single JS copy (`_offlineLinkRelTokens` / `_OFFLINE_REL_WS_RE` in
+    `assets/js/68-export-offline.js`), pinned to this pattern as TEXT by the parity test. A reader
+    left on `str.split()` has a parser differential against the browser all of its own - it
+    accepted a `noopener` and counted a favicon a browser never honors (#1120) - so a new one is
+    added here rather than beside its check.
 
     ASCII-only case folding because HTML matches a `rel` keyword ASCII case-insensitively: a
     Unicode fold maps U+212A onto `k` and U+017F onto `s`, so a look-alike would become a real

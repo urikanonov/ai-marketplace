@@ -38,7 +38,12 @@ def _check_kql_blocks(html):
         if not href.startswith("https://dataexplorer.azure.com/"):
             warnings.append('a "cmh-kql-run" link does not point at https://dataexplorer.azure.com/ '
                             "(build it with tools/kusto_link.py): " + (href[:80] or "(empty href)"))
-        if a.get("target", "") == "_blank" and "noopener" not in link_rel_tokens(a.get("rel")):
+        # `target` is read the way a browser matches the `_blank` keyword - ASCII case-insensitively,
+        # so `_BLANK` names a new tab too - and with HTML whitespace trimmed, matching the runtime
+        # stamper's own reading (`assets/js/31-links.js`), so a padded spelling is judged the way the
+        # runtime judges it. A Python `==` against the literal missed every one of those (#1120).
+        target = _ascii_lower(a.get("target") or "").strip(_HTML_WHITESPACE)
+        if target == "_blank" and "noopener" not in link_rel_tokens(a.get("rel")):
             warnings.append('a "cmh-kql-run" link uses target="_blank" without rel="noopener" '
                             "(reverse-tabnabbing risk); add rel=\"noopener noreferrer\"")
 

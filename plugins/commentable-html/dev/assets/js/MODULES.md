@@ -36,6 +36,11 @@ Conventions for these partials (they share ONE closure scope after concatenation
   `_offlineIsRunnableScriptType` (68-export-offline), the single HTML "JavaScript MIME type" test, so
   the descriptor retarget and the offline strips can never disagree about what would run. It is legal
   because the partials share one hoisted IIFE scope, but move either one with that pairing in mind.
+  A second dependency runs that way for the same reason: `stampLinkTargets` (31-links) reads an
+  authored `rel` list through `_offlineLinkRelTokens` / `_OFFLINE_REL_WS_RE` (68-export-offline),
+  the bundle's single HTML-accurate `rel` tokenizer (pinned as TEXT to the validator's
+  `link_rel_tokens`), so the render-time stamp and the export strip can never disagree about what
+  relations a `rel` attribute names.
 
 | Module | SPEC areas | Purpose |
 | --- | --- | --- |

@@ -97,6 +97,31 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
         self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
 
+    def test_kusto_run_link_blank_target_is_read_the_way_a_browser_reads_it(self):
+        # CMH-KQL-05: HTML matches the `_blank` keyword ASCII case-insensitively, and the runtime
+        # stamper trims the value before matching it, so `_BLANK` and a padded `_blank` both open a
+        # new tab with an opener. A Python `==` against the literal missed every spelling but the
+        # exact one, so the reverse-tabnabbing gate said nothing about a link carrying no `rel` at
+        # all.
+        for target in ("_BLANK", "_Blank", " _blank ", "\t_blank\n"):
+            link = ('<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
+                    'target="%s">Run</a>' % target)
+            main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
+            self.assertWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
+                            'without rel="noopener"')
+        # The controls: a NAMED target is not the `_blank` keyword, so THIS gate stays silent about
+        # it (`checks/links.py` already tells the author to use `_blank` instead)...
+        link = ('<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
+                'target="win1">Run</a>')
+        main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
+        _, warnings = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+        self.assertFalse(any('without rel="noopener"' in w for w in warnings), warnings)
+        # ...and a real `_BLANK` that does carry `noopener` is clean.
+        link = ('<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
+                'target="_BLANK" rel="noopener noreferrer">Run</a>')
+        main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
+        self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+
     def test_bare_kusto_without_no_cluster_marker_errors(self):
         # CMH-KQL-08: a bare KQL code block that is neither framed in a figure.cmh-kql (with a Run in
         # Azure Data Explorer link) nor explicitly marked data-cmh-kql-no-cluster is a hard error -
