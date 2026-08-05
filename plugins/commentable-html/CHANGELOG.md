@@ -27,8 +27,8 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   build still shows the message its builder wrote for the reader, and only falls back to the shared
   report when there is no message to show - but it now goes out as the same assertive, long-duration
   toast as every other export failure, rather than with the 3s pacing of a confirmation. A failure to
-  load the document's own base HTML reports the same best-effort way, so that step cannot unwind the
-  handler either. A download that throws no longer falls through to the success toast, so an export
+  load the document's own base HTML - the first step of every handler - reports through the same
+  path, carrying the thrown value, so that step can neither unwind the handler nor drop the cause. A download that throws no longer falls through to the success toast, so an export
   never claims a file it did not write, and both download helpers now revoke the object URL and
   remove their anchor if the throw lands after the URL exists - an anchor left in the document would
   otherwise be serialized into the base of every later export.
