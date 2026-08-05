@@ -8,6 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _browser_boundaries  # noqa: E402
+import _browser_attrs  # noqa: E402
 
 HEADING_TAGS = {"h2", "h3"}
 # Every heading a browser recognizes. Only h2/h3 are LISTED, but HTML5's h1-h6 start-tag rule pops
@@ -17,6 +18,7 @@ SLUG_RE = re.compile(r"[^a-z0-9]+")
 # A leading author section number (e.g. "1.", "3.1", "2)") that the ordered-list TOC would
 # otherwise double-number. Mirrors the runtime side-toc pattern in assets/js/82-toc.js.
 SECTION_NUMBER_RE = re.compile(r"^(?:\d+(?:\.\d+)*[.)]|\d+\.\d+(?:\.\d+)*)\s+")
+SHADOW_ROOT_MODES = frozenset(("open", "closed"))
 
 
 def _has_class(attrs, class_name):
@@ -37,7 +39,9 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
         super().__init__(text)
         self._text = text
         self.stack = []
+        self._shadow_frames = []  # shadow/template facts parallel to stack and namespace
         self.root_depth = None
+        self.root_start = None
         self.root_closed = False
         self.root_seen = False
         self.root_start_end = None
@@ -76,6 +80,7 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
             self.root_closed = True
         super()._truncate_stacks(depth)
         del self.stack[depth:]
+        del self._shadow_frames[depth:]
 
     def _finish_heading(self):
         text = re.sub(r"\s+", " ", "".join(self._heading["text_parts"])).strip()
@@ -86,15 +91,37 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
                 "text": text,
                 "start": self._heading["start"],
                 "start_text": self._heading["start_text"],
+                "shadow_host": self._heading["shadow_host"],
             })
         self._heading = None
         self._heading_index = None
 
     def _in_template(self):
-        return bool(self._tpl_stop) and self._tpl_stop[-1] >= 0
+        return any(frame["inert"] for frame in self._shadow_frames)
 
     def _skip_ancestor(self):
         return any(skip for _tag, skip in self.stack)
+
+    def _in_shadow_tree(self):
+        return any(frame["shadow"] for frame in self._shadow_frames)
+
+    def _current_shadow_host(self):
+        for frame in self._shadow_frames:
+            if frame["shadow"]:
+                return frame["shadow_host"]
+        return None
+
+    def _attaches_shadow_root(self, tag, attrs, ns):
+        host_ns = self._ns[-1][1] if self._ns else None
+        if (tag != "template" or ns != "html" or self._in_template()
+                or _browser_attrs.ascii_lower(attrs.get("shadowrootmode") or "")
+                not in SHADOW_ROOT_MODES
+                or not self.stack or not self._shadow_frames[-1]["hostable"]
+                or self._shadow_frames[-1]["shadow_used"]
+                or not _browser_attrs.can_host_shadow_root(self.stack[-1][0], host_ns)):
+            return False
+        self._shadow_frames[-1]["shadow_used"] = True
+        return True
 
     def _inside_root(self):
         return (self.root_depth is not None and not self.root_closed
@@ -115,14 +142,17 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
                     and self.stack[-1][0] in ALL_HEADING_TAGS):
                 self._truncate_stacks(len(self.stack) - 1)
         own_skip = _has_class(attrs_dict, "cm-skip")
+        is_shadow = self._attaches_shadow_root(tag, attrs_dict, ns)
+        inert_template = tag == "template" and ns == "html" and not is_shadow
         start = self._off()
         start_text = self.get_starttag_text() or ""
         if (tag == "nav" and opens and self._toc_start is None and self._inside_root()
-                and not self._in_template() and _has_class(attrs_dict, "cm-toc")):
+                and not self._in_template() and not self._in_shadow_tree()
+                and _has_class(attrs_dict, "cm-toc")):
             self._toc_start = start
             self._toc_index = len(self.stack)
 
-        if not self._in_template():
+        if not self._in_template() and not self._in_shadow_tree() and not is_shadow:
             element_id = attrs_dict.get("id")
             if element_id:
                 self.all_ids.append(element_id)
@@ -130,6 +160,7 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
                     self.root_seen = True
                     if opens:
                         self.root_depth = len(self.stack)
+                        self.root_start = start
                         self.root_start_end = start + len(start_text)
                     else:
                         self.root_closed = True
@@ -142,16 +173,36 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
                 "text_parts": [],
                 "start": start,
                 "start_text": start_text,
+                "shadow_host": self._current_shadow_host(),
             }
             self._heading_index = len(self.stack)
-        return own_skip
+        return (own_skip, inert_template, is_shadow, start, start_text)
 
     def _push_element(self, tag, ad, ns, info):
-        self.stack.append((tag, info))
+        own_skip, inert_template, is_shadow, start, start_text = info
+        shadow_host = None
+        if is_shadow:
+            host = self._shadow_frames[-1]
+            shadow_host = {
+                "start": host["start"],
+                "start_text": host["start_text"],
+                "id": host["id"],
+            }
+        self.stack.append((tag, own_skip if not is_shadow else False))
+        self._shadow_frames.append({
+            "inert": inert_template,
+            "shadow_used": False,
+            "hostable": not is_shadow,
+            "shadow": is_shadow,
+            "start": start,
+            "start_text": start_text,
+            "id": ad.get("id"),
+            "shadow_host": shadow_host,
+        })
 
     def _visit_self_closed(self, tag, ad, ns):
         # A self-closed FOREIGN element is still an element with an id a browser gives it.
-        if not self._in_template():
+        if not self._in_template() and not self._in_shadow_tree():
             element_id = ad.get("id")
             if element_id:
                 self.all_ids.append(element_id)
@@ -164,7 +215,8 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
     def handle_data(self, data):
         # A nested <template>'s text is inert (a browser renders none of it), so it is not part
         # of the heading a reader sees - the same rule the validator's heading capture applies.
-        if self._heading is not None and not self._in_template():
+        if (self._heading is not None and not self._in_template()
+                and self.cdata_elem not in ("script", "style")):
             self._heading["text_parts"].append(data)
 
     def _visit_end(self, tag, index):
@@ -213,10 +265,27 @@ def _unique_slug(text, used):
 def _heading_items(parser):
     used = set(parser.all_ids)
     items = []
+    generated_hosts = {}
+    listed_shadow_hosts = set()
     for heading in parser.headings:
         heading_id = heading["id"]
         generated = False
-        if not heading_id:
+        shadow_host = heading.get("shadow_host")
+        anchor_generated = False
+        if shadow_host is not None:
+            if shadow_host["start"] in listed_shadow_hosts:
+                continue
+            listed_shadow_hosts.add(shadow_host["start"])
+            heading_id = shadow_host["id"]
+            if not heading_id:
+                key = shadow_host["start"]
+                heading_id = generated_hosts.get(key)
+                if heading_id is None:
+                    heading_id = _unique_slug(
+                        (heading["id"] or heading["text"]) + "-shadow-host", used)
+                    generated_hosts[key] = heading_id
+                    anchor_generated = True
+        elif not heading_id:
             heading_id = _unique_slug(heading["text"], used)
             generated = True
         items.append({
@@ -226,6 +295,9 @@ def _heading_items(parser):
             "start": heading["start"],
             "start_text": heading["start_text"],
             "generated": generated,
+            "anchor_generated": anchor_generated,
+            "anchor_start": shadow_host["start"] if shadow_host is not None else None,
+            "anchor_start_text": shadow_host["start_text"] if shadow_host is not None else None,
         })
     return items
 
@@ -315,12 +387,19 @@ def rewrite_html(html):
     if parser.root_start_end is None:
         raise ValueError('no element with id="commentRoot" found')
     items = _heading_items(parser)
+    if any(item["anchor_start"] == parser.root_start for item in items):
+        raise ValueError(
+            'id="commentRoot" cannot itself host a declarative shadow TOC; '
+            "place the shadow host below #commentRoot")
     newline = _dominant_newline(html)
     nav = _render_nav(items).replace("\n", newline)
     edits = []
     for item in items:
         if item["generated"]:
             pos = _id_insert_pos(item["start"], item["start_text"])
+            edits.append((pos, pos, ' id="%s"' % item["id"]))
+        if item["anchor_generated"]:
+            pos = _id_insert_pos(item["anchor_start"], item["anchor_start_text"])
             edits.append((pos, pos, ' id="%s"' % item["id"]))
     for start, end in parser.toc_spans:
         edits.append((*_toc_removal_span(html, start, end), ""))

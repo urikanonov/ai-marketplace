@@ -4,7 +4,35 @@
 // fallback by "Export as Shareable" when fetch() of the page URL is unavailable
 // (e.g., file://, blocked fetch, or CSP). The snapshot is taken on the very first line
 // of the IIFE so it predates every runtime change this script makes.
-const SNAPSHOT_HTML = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+const SNAPSHOT_HTML = "<!DOCTYPE html>\n" + cmhSerializeElement(document.documentElement);
+function cmhSerializableOpenShadowRoots(rootEl) {
+  const roots = [];
+  const visit = function (scope) {
+    scope.querySelectorAll("*").forEach(function (el) {
+      if (!el.shadowRoot) return;
+      roots.push(el.shadowRoot);
+      visit(el.shadowRoot);
+    });
+  };
+  if (rootEl.shadowRoot) {
+    roots.push(rootEl.shadowRoot);
+    visit(rootEl.shadowRoot);
+  }
+  visit(rootEl);
+  return roots;
+}
+function cmhSerializeElement(el) {
+  if (!el || typeof el.getHTML !== "function") return el ? el.outerHTML : "";
+  const inner = el.getHTML({
+    serializableShadowRoots: true,
+    shadowRoots: cmhSerializableOpenShadowRoots(el),
+  });
+  const shell = el.cloneNode(false).outerHTML;
+  const close = "</" + el.tagName.toLowerCase() + ">";
+  return shell.toLowerCase().endsWith(close)
+    ? shell.slice(0, shell.length - close.length) + inner + close
+    : shell;
+}
 // The layer runs synchronously during parse, so SNAPSHOT_HTML stops at THIS <script>:
 // host content placed after the layer (per charts-embedding.md, chart data + init scripts land
 // after the "END: commentable-html - JS" marker, before the final </body>) has not been
@@ -145,7 +173,6 @@ function cmhPermuteChildrenInSlots(parent, ordered) {
   marks.forEach(function (m, i) { parent.replaceChild(ordered[i], m); });
   return true;
 }
-
 /* ---------- Config (auto-discovered, never edit per-doc) ---------- */
 const root = document.getElementById("commentRoot") || document.body;
 // The layer's own data blocks - the CMH-FWDCOMPAT-01 descriptor and the embedded-comments,
@@ -352,7 +379,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.685.3";
+const CMH_VERSION = "1.686.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -5407,7 +5434,7 @@ function _applyChecklistStateToHtml(html) {
     });
   });
   const doctype = /^\s*<!doctype/i.test(String(html || "")) ? "<!DOCTYPE html>\n" : "";
-  return doctype + doc.documentElement.outerHTML;
+  return doctype + cmhSerializeElement(doc.documentElement);
 }
 function setupChecklistLayer() {
   checklists.length = 0;
@@ -5665,7 +5692,7 @@ function _applyNoteStateToHtml(html) {
     }
   });
   const doctype = /^\s*<!doctype/i.test(String(html || "")) ? "<!DOCTYPE html>\n" : "";
-  return doctype + doc.documentElement.outerHTML;
+  return doctype + cmhSerializeElement(doc.documentElement);
 }
 function setupNotesLayer() {
   notes.length = 0;
@@ -11316,6 +11343,8 @@ try { cmhRegisterDocument(); } catch (e) { /* best-effort */ }
    fixed Markdown construct, so the output is byte-stable and idempotent. cm-skip subtrees
    are excluded EXCEPT a mermaid <pre> (its source is content) and a diff host (its raw
    source is recovered). Sortable tables emit in original row order. */
+// Shadow DOM is deliberately outside this light-DOM export model: a closed root cannot be walked,
+// and comments/section review do not anchor inside either kind of shadow root.
 const _MD_SKIP_TAGS = { SCRIPT: 1, STYLE: 1, NAV: 1, NOSCRIPT: 1, TEMPLATE: 1 };
 const _MD_ALERT = { info: "NOTE", success: "TIP", warning: "WARNING", danger: "CAUTION" };
 function _mdCollapse(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim(); }
@@ -12649,9 +12678,11 @@ function _cmhRawTextClose(html, name, from) {
 }
 // Walk an HTML string's element tags in document order the way an HTML parser does: consume
 // comments, DOCTYPEs, bogus declarations and processing instructions; skip the TEXT content of
-// raw-text elements; and never report a tag inside <template> content (which is an inert
-// fragment, invisible to getElementById). `visit` gets each open tag and returns a truthy value
-// to stop the walk and hand that value back. All indexes are offsets into the ORIGINAL string.
+// raw-text elements; and never report a tag inside <template> content. An ordinary template is
+// inert, while a declarative-shadow-root template renders - but both are outside the document
+// tree and therefore invisible to the getElementById result this infrastructure resolver must
+// cross-check. `visit` gets each open tag and returns a truthy value to stop the walk and hand
+// that value back. All indexes are offsets into the ORIGINAL string.
 function _cmhForEachTag(html, visit) {
   const raw = String(html == null ? "" : html);
   let templateDepth = 0;
@@ -12984,7 +13015,7 @@ function _snapshotWithTail() {
       // script; host content authored after the JS region (e.g. a chart canvas + init
       // scripts, which are themselves cm-skip) must be kept.
       if (_isInjectedChrome(n)) return "";
-      return n.outerHTML;
+      return cmhSerializeElement(n);
     }
     if (n.nodeType === 8) return "<!--" + n.nodeValue + "-->";
     if (n.nodeType === 3) return n.nodeValue;
@@ -13034,7 +13065,8 @@ function _applyWidgetLayoutToHtml(html) {
     const slot = firstInWidget(widget, "[data-cm-slot]", "data-cm-slot", move.slot);
     if (part && slot && !part.contains(slot)) slot.appendChild(part);
   });
-  return (/^\s*<!doctype/i.test(String(html || "")) ? "<!DOCTYPE html>\n" : "") + doc.documentElement.outerHTML;
+  return (/^\s*<!doctype/i.test(String(html || "")) ? "<!DOCTYPE html>\n" : "")
+    + cmhSerializeElement(doc.documentElement);
 }
 function _buildSavedHtml(baseHtml, commentArr) {
   // Escape "<" as \u003c so a comment note containing a closing script tag (or an
@@ -13798,7 +13830,7 @@ function _offlineDocFromHtml(html) {
   return new DOMParser().parseFromString(String(html || ""), "text/html");
 }
 function _serializeOfflineDoc(doc) {
-  return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
+  return "<!DOCTYPE html>\n" + cmhSerializeElement(doc.documentElement);
 }
 // A network URL in an attribute value, read AFTER the URL parser's own input cleanup (see
 // `_offlineNormalizeUrlValue`), so the spellings a browser normalizes into a network load - an
@@ -15797,6 +15829,39 @@ function _cmSlugify(text) {
     .replace(/[^\w\s-]/g, "").replace(/[\s_]+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
   return s || "section";
 }
+function cmhHeadingText(h) {
+  const light = (h.textContent || "").trim();
+  if (light || typeof h.getHTML !== "function") return light;
+  const source = h.getHTML({
+    serializableShadowRoots: true,
+    shadowRoots: cmhSerializableOpenShadowRoots(h),
+  });
+  const holder = document.createElement("template");
+  holder.innerHTML = source;
+  let text = "";
+  const visit = function (node) {
+    if (node.nodeType === 3) { text += node.nodeValue; return; }
+    if (node.nodeType !== 1 && node.nodeType !== 11) return;
+    if (node.nodeType === 1 && /^(SCRIPT|STYLE)$/.test(node.tagName)) return;
+    visitChildren(node);
+  };
+  const visitChildren = function (parent) {
+    let shadowUsed = false;
+    parent.childNodes.forEach(function (node) {
+      if (node.nodeType === 1 && node.tagName === "TEMPLATE") {
+        const mode = (node.getAttribute("shadowrootmode") || "").toLowerCase();
+        if (!shadowUsed && (mode === "open" || mode === "closed")) {
+          shadowUsed = true;
+          visitChildren(node.content);
+        }
+        return;
+      }
+      visit(node);
+    });
+  };
+  visitChildren(holder.content);
+  return text.replace(/\s+/g, " ").trim();
+}
 // Every heading inside #commentRoot gets a stable id and becomes a deep-link: a plain
 // click (no text selection, not on a link or highlight) updates the URL to #<id> and
 // scrolls to it, so a reader can copy a link straight to any section.
@@ -15908,7 +15973,7 @@ function setupHeadingAnchors() {
   root.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach(function (h) {
     if (h.closest(".cm-skip")) return;
     if (!h.id) {
-      const base = _cmSlugify(h.textContent || "section");
+      const base = _cmSlugify(cmhHeadingText(h) || "section");
       let id = base, n = 2;
       while (document.getElementById(id) || seen[id]) { id = base + "-" + n; n++; }
       h.id = id;
@@ -16025,7 +16090,7 @@ function setupSideToc() {
     });
   } else {
     root.querySelectorAll("h2[id], h3[id]").forEach(function (h) {
-      items.push({ id: h.id, label: (h.textContent || "").trim(), el: h, level: h.tagName === "H3" ? 2 : 1 });
+      items.push({ id: h.id, label: cmhHeadingText(h), el: h, level: h.tagName === "H3" ? 2 : 1 });
     });
   }
   if (items.length < 2) return; // not worth a side menu
@@ -16937,10 +17002,13 @@ function cmhSectionHash(text) {
   return h.toString(36);
 }
 
-// Exclude cm-skip chrome, script/style/template inert text, AND runtime-transformed blocks
+// Exclude cm-skip chrome, script/style/ordinary-template inert text, AND runtime-transformed blocks
 // (rendered diffs, KQL, mermaid, chart canvases, editable notes) whose text the runtime rewrites at
 // load - so the hash covers the section's STABLE prose and matches the Python extractor
-// (section_hash.py) for every content type, not just plain prose.
+// (section_hash.py) for every supported content type, not just plain prose. Declarative shadow
+// roots are deliberately outside section review: the walker and heading query stay in the light
+// DOM because a closed shadow root cannot be inspected, and review/comment anchors do not cross
+// either kind of shadow boundary.
 const CMH_SCAN_SKIP_SEL = ".cm-skip, script, style, template, noscript, .cmh-diff, .cmh-kql, .mermaid, canvas, [data-cmh-note]";
 
 // Layer chrome the runtime INJECTED into the content root is excluded by IDENTITY, not by a class.
@@ -17515,7 +17583,7 @@ function _applyReviewStateToHtml(html) {
   }
   block.textContent = json;
   const doctype = /^\s*<!doctype/i.test(src) ? "<!DOCTYPE html>\n" : "";
-  return { html: doctype + doc.documentElement.outerHTML, note: "" };
+  return { html: doctype + cmhSerializeElement(doc.documentElement), note: "" };
 }
 /* ---------- Toast ---------- */
 let toastTimer = null;

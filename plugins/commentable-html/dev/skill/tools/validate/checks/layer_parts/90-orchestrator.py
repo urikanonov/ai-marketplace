@@ -62,6 +62,8 @@ def _check_marker_parse_agreement(html, parser, active_regions, counted):
                     continue
                 if any(s <= pos < e for s, e in parser.template_comment_spans):
                     where = "an inert <template>, whose content a browser never parses as part of the document"
+                elif any(s <= pos < e for s, e in parser.shadow_comment_spans):
+                    where = "a declarative shadow tree, which is outside the document's layer regions"
                 elif any(s <= pos < e for s, e in raw_spans):
                     where = ("a raw-text body (<script>, <style>, <textarea>, <title>, <noscript>, ...), "
                              "which holds TEXT a reader sees rather than markup")
@@ -157,6 +159,7 @@ def check_layer(html, parser, base_dir=None):
     # 11a1) Document kind: the doc must declare a known kind, and title-bearing kinds
     #       (report/plan) must carry a top-level <h1> in #commentRoot.
     errors.extend(check_document_kind(parser))
+    errors.extend(check_shadow_root_exports(parser))
 
     # 11a2) Mermaid diagrams must actually render on open (loader present, triggers a
     #       render, and is not hidden behind a query-param gate).

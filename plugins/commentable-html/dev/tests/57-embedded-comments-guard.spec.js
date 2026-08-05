@@ -8,8 +8,8 @@ import { test, expect } from "@playwright/test";
 import fs from "fs";
 import path from "path";
 import {
-  addTextComment, clickSidebarExport, currentToast, fileUrl, openInline, readDownload,
-  ready, stageInline, stageNonShareable, startStaticServer,
+  addTextComment, clickSidebarExport, currentToast, fileUrl, openInline, openToolbarMenu, readDownload,
+  ready, stageContent, stageInline, stageNonShareable, startStaticServer,
 } from "./helpers.js";
 
 // Cut a block out by index (not a regex replace): the first `<script ... id="<id>">` and its
@@ -138,6 +138,10 @@ test("the embedded-comments block is resolved structurally, never from text a br
       // template content is an inert fragment, invisible to getElementById; nesting must not
       // end the skip early
       nestedTemplate: "<template><template></template>" + MENTION + "</template>",
+      // Declarative shadow content renders, but remains outside the document tree:
+      // document.getElementById cannot resolve an id owned by either an open or closed shadow root.
+      declarativeShadowOpen: '<div><template shadowrootmode="open">' + MENTION + "</template></div>",
+      declarativeShadowClosed: '<div><template shadowrootmode="closed">' + MENTION + "</template></div>",
       // <noscript> content is TEXT to a browser running the layer, so the layer ignores it on
       // BOTH sides (CMH-EXP-17 imposes that one scripting model): the real block still wins, and
       // the decoy alone resolves nothing. A parsed document does build those children (parsing
@@ -205,6 +209,48 @@ test("the embedded-comments block is resolved structurally, never from text a br
   expect(out.spacedEndTag).toContain(">REAL<");
   expect(out.foreignSelfClosed).toContain(">REAL<");
   expect(out.truncated).toBe(null);
+});
+
+test("Save preserves a serializable closed declarative shadow root (CMH-VAL-23)", async ({ page }) => {
+  const staged = stageContent(
+    '<div id="shadowHost"><template shadowrootmode="closed" shadowrootserializable>'
+    + "<h2>Durable shadow heading</h2><p>Durable shadow prose</p>"
+    + "</template></div>",
+    { key: "cmh-shadow-export" },
+  );
+  await page.goto(fileUrl(staged.html));
+  await ready(page);
+  await openToolbarMenu(page);
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#btnSaveHtmlTop").click(),
+  ]);
+  const saved = await readDownload(download);
+  expect(saved).toContain('shadowrootmode="closed"');
+  expect(saved).toContain("shadowrootserializable");
+  expect(saved).toContain("<h2>Durable shadow heading</h2>");
+  expect(saved).toContain("<p>Durable shadow prose</p>");
+});
+
+test("Save preserves an open shadow root on a post-layer tail element (CMH-VAL-23)", async ({ page }) => {
+  const staged = stageInline({
+    mutate: (html) => html.replace(
+      "</body>",
+      '<div id="tailShadowHost"><template shadowrootmode="open">'
+      + "<p>Durable tail shadow prose</p></template></div></body>",
+    ),
+  });
+  await page.goto(fileUrl(staged.html));
+  await ready(page);
+  await openToolbarMenu(page);
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator("#btnSaveHtmlTop").click(),
+  ]);
+  const saved = await readDownload(download);
+  expect(saved).toContain('id="tailShadowHost"');
+  expect(saved).toContain('shadowrootmode="open"');
+  expect(saved).toContain("<p>Durable tail shadow prose</p>");
 });
 
 test("a fetched copy is accepted only when it really carries the block (CMH-EXP-16)", async ({ page }) => {

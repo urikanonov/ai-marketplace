@@ -4,7 +4,35 @@
 // fallback by "Export as Shareable" when fetch() of the page URL is unavailable
 // (e.g., file://, blocked fetch, or CSP). The snapshot is taken on the very first line
 // of the IIFE so it predates every runtime change this script makes.
-const SNAPSHOT_HTML = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+const SNAPSHOT_HTML = "<!DOCTYPE html>\n" + cmhSerializeElement(document.documentElement);
+function cmhSerializableOpenShadowRoots(rootEl) {
+  const roots = [];
+  const visit = function (scope) {
+    scope.querySelectorAll("*").forEach(function (el) {
+      if (!el.shadowRoot) return;
+      roots.push(el.shadowRoot);
+      visit(el.shadowRoot);
+    });
+  };
+  if (rootEl.shadowRoot) {
+    roots.push(rootEl.shadowRoot);
+    visit(rootEl.shadowRoot);
+  }
+  visit(rootEl);
+  return roots;
+}
+function cmhSerializeElement(el) {
+  if (!el || typeof el.getHTML !== "function") return el ? el.outerHTML : "";
+  const inner = el.getHTML({
+    serializableShadowRoots: true,
+    shadowRoots: cmhSerializableOpenShadowRoots(el),
+  });
+  const shell = el.cloneNode(false).outerHTML;
+  const close = "</" + el.tagName.toLowerCase() + ">";
+  return shell.toLowerCase().endsWith(close)
+    ? shell.slice(0, shell.length - close.length) + inner + close
+    : shell;
+}
 // The layer runs synchronously during parse, so SNAPSHOT_HTML stops at THIS <script>:
 // host content placed after the layer (per charts-embedding.md, chart data + init scripts land
 // after the "END: commentable-html - JS" marker, before the final </body>) has not been
@@ -145,4 +173,3 @@ function cmhPermuteChildrenInSlots(parent, ordered) {
   marks.forEach(function (m, i) { parent.replaceChild(ordered[i], m); });
   return true;
 }
-

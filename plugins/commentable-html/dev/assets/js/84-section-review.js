@@ -32,10 +32,13 @@ function cmhSectionHash(text) {
   return h.toString(36);
 }
 
-// Exclude cm-skip chrome, script/style/template inert text, AND runtime-transformed blocks
+// Exclude cm-skip chrome, script/style/ordinary-template inert text, AND runtime-transformed blocks
 // (rendered diffs, KQL, mermaid, chart canvases, editable notes) whose text the runtime rewrites at
 // load - so the hash covers the section's STABLE prose and matches the Python extractor
-// (section_hash.py) for every content type, not just plain prose.
+// (section_hash.py) for every supported content type, not just plain prose. Declarative shadow
+// roots are deliberately outside section review: the walker and heading query stay in the light
+// DOM because a closed shadow root cannot be inspected, and review/comment anchors do not cross
+// either kind of shadow boundary.
 const CMH_SCAN_SKIP_SEL = ".cm-skip, script, style, template, noscript, .cmh-diff, .cmh-kql, .mermaid, canvas, [data-cmh-note]";
 
 // Layer chrome the runtime INJECTED into the content root is excluded by IDENTITY, not by a class.
@@ -610,5 +613,5 @@ function _applyReviewStateToHtml(html) {
   }
   block.textContent = json;
   const doctype = /^\s*<!doctype/i.test(src) ? "<!DOCTYPE html>\n" : "";
-  return { html: doctype + doc.documentElement.outerHTML, note: "" };
+  return { html: doctype + cmhSerializeElement(doc.documentElement), note: "" };
 }

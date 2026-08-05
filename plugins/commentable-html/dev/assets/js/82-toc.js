@@ -9,6 +9,39 @@ function _cmSlugify(text) {
     .replace(/[^\w\s-]/g, "").replace(/[\s_]+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
   return s || "section";
 }
+function cmhHeadingText(h) {
+  const light = (h.textContent || "").trim();
+  if (light || typeof h.getHTML !== "function") return light;
+  const source = h.getHTML({
+    serializableShadowRoots: true,
+    shadowRoots: cmhSerializableOpenShadowRoots(h),
+  });
+  const holder = document.createElement("template");
+  holder.innerHTML = source;
+  let text = "";
+  const visit = function (node) {
+    if (node.nodeType === 3) { text += node.nodeValue; return; }
+    if (node.nodeType !== 1 && node.nodeType !== 11) return;
+    if (node.nodeType === 1 && /^(SCRIPT|STYLE)$/.test(node.tagName)) return;
+    visitChildren(node);
+  };
+  const visitChildren = function (parent) {
+    let shadowUsed = false;
+    parent.childNodes.forEach(function (node) {
+      if (node.nodeType === 1 && node.tagName === "TEMPLATE") {
+        const mode = (node.getAttribute("shadowrootmode") || "").toLowerCase();
+        if (!shadowUsed && (mode === "open" || mode === "closed")) {
+          shadowUsed = true;
+          visitChildren(node.content);
+        }
+        return;
+      }
+      visit(node);
+    });
+  };
+  visitChildren(holder.content);
+  return text.replace(/\s+/g, " ").trim();
+}
 // Every heading inside #commentRoot gets a stable id and becomes a deep-link: a plain
 // click (no text selection, not on a link or highlight) updates the URL to #<id> and
 // scrolls to it, so a reader can copy a link straight to any section.
@@ -120,7 +153,7 @@ function setupHeadingAnchors() {
   root.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach(function (h) {
     if (h.closest(".cm-skip")) return;
     if (!h.id) {
-      const base = _cmSlugify(h.textContent || "section");
+      const base = _cmSlugify(cmhHeadingText(h) || "section");
       let id = base, n = 2;
       while (document.getElementById(id) || seen[id]) { id = base + "-" + n; n++; }
       h.id = id;
@@ -237,7 +270,7 @@ function setupSideToc() {
     });
   } else {
     root.querySelectorAll("h2[id], h3[id]").forEach(function (h) {
-      items.push({ id: h.id, label: (h.textContent || "").trim(), el: h, level: h.tagName === "H3" ? 2 : 1 });
+      items.push({ id: h.id, label: cmhHeadingText(h), el: h, level: h.tagName === "H3" ? 2 : 1 });
     });
   }
   if (items.length < 2) return; // not worth a side menu

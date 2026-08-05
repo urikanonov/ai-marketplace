@@ -379,6 +379,27 @@ class DensityAdvisoryTests(unittest.TestCase):
         self.assertEqual(density.check_density(_doc(inner))[1], [],
                          "only the first declarative shadow root on a host is rendered")
 
+    def test_cmh_val_15_shadow_template_on_an_ineligible_host_stays_inert(self):
+        inner = '<button><template shadowrootmode="open">%s</template></button>' % (
+            _p(LONG) * 6)
+        self.assertEqual(density.check_density(_doc(inner))[1], [],
+                         "a button cannot host a shadow root")
+
+    def test_cmh_val_15_autonomous_custom_element_can_host_a_shadow_root(self):
+        inner = '<review-card><template shadowrootmode="open">%s</template></review-card>' % (
+            _p(LONG) * 4)
+        self.assertTrue(density.check_density(_doc(inner))[1],
+                        "an autonomous custom element can host a shadow root")
+
+    def test_cmh_val_15_foreign_custom_element_cannot_host_a_shadow_root(self):
+        source = '<svg><x-host><template shadowrootmode="open"><text>foreign</text>'
+        parser = density._DensityParser(source, min_chars=10, max_run=2)
+        parser.feed(source)
+        self.assertFalse(
+            any(frame["shadow"] for _tag, frame in parser._stack),
+            "a custom-named SVG element is not an HTML shadow host",
+        )
+
     def test_cmh_val_15_shadow_root_inside_a_template_stays_inert(self):
         # Its host is itself inside a fragment a browser never renders, so no shadow tree is
         # ever attached.
@@ -399,6 +420,16 @@ class DensityAdvisoryTests(unittest.TestCase):
         )
         self.assertTrue(density.check_density(html)[1],
                         "a shadow-tree kind meta must not exempt a real report")
+
+    def test_cmh_val_15_shadow_root_cannot_establish_the_content_root(self):
+        html = (
+            '<!doctype html><html><head><meta name="commentable-html-kind" content="report" /></head>'
+            '<body><div><template shadowrootmode="open"><main id="commentRoot">'
+            "%s</main></template></div>"
+            '<main id="realRoot"><h1>Real title</h1><p>short</p></main></body></html>'
+            % (_p(LONG) * 4)
+        )
+        self.assertEqual(density.check_density(html)[1], [])
 
     def test_cmh_val_15_wired_into_validate(self):
         import tempfile

@@ -3,6 +3,8 @@
    fixed Markdown construct, so the output is byte-stable and idempotent. cm-skip subtrees
    are excluded EXCEPT a mermaid <pre> (its source is content) and a diff host (its raw
    source is recovered). Sortable tables emit in original row order. */
+// Shadow DOM is deliberately outside this light-DOM export model: a closed root cannot be walked,
+// and comments/section review do not anchor inside either kind of shadow root.
 const _MD_SKIP_TAGS = { SCRIPT: 1, STYLE: 1, NAV: 1, NOSCRIPT: 1, TEMPLATE: 1 };
 const _MD_ALERT = { info: "NOTE", success: "TIP", warning: "WARNING", danger: "CAUTION" };
 function _mdCollapse(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim(); }

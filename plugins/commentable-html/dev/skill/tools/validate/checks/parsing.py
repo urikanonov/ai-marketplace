@@ -497,6 +497,43 @@ def _ascii_lower(name):
     return name.translate(_ASCII_LOWER)
 
 
+_SHADOW_HOST_NAMES = frozenset((
+    "article", "aside", "blockquote", "body", "div", "footer", "h1", "h2", "h3", "h4",
+    "h5", "h6", "header", "main", "nav", "p", "section", "span",
+))
+_RESERVED_CUSTOM_ELEMENT_NAMES = frozenset((
+    "annotation-xml", "color-profile", "font-face", "font-face-src", "font-face-uri",
+    "font-face-format", "font-face-name", "missing-glyph",
+))
+
+
+def _is_pcen_char(ch):
+    cp = ord(ch)
+    return (
+        ch in "-._" or "0" <= ch <= "9" or "a" <= ch <= "z" or cp == 0xB7
+        or 0xC0 <= cp <= 0xD6 or 0xD8 <= cp <= 0xF6 or 0xF8 <= cp <= 0x37D
+        or 0x37F <= cp <= 0x1FFF or 0x200C <= cp <= 0x200D
+        or 0x203F <= cp <= 0x2040 or 0x2070 <= cp <= 0x218F
+        or 0x2C00 <= cp <= 0x2FEF or 0x3001 <= cp <= 0xD7FF
+        or 0xF900 <= cp <= 0xFDCF or 0xFDF0 <= cp <= 0xFFFD
+        or 0x10000 <= cp <= 0xEFFFF
+    )
+
+
+def _can_host_shadow_root(tag, namespace="html"):
+    """Whether an element can be an attachShadow()/declarative-shadow host."""
+    name = _ascii_lower(tag or "")
+    if namespace != "html":
+        return False
+    if name in _SHADOW_HOST_NAMES:
+        return True
+    return (
+        bool(name) and "a" <= name[0] <= "z" and "-" in name
+        and name not in _RESERVED_CUSTOM_ELEMENT_NAMES
+        and all(_is_pcen_char(ch) for ch in name)
+    )
+
+
 # The document's TEXT character references, decoded by the same BROWSER rule the attribute path
 # uses (CMH-VAL-21). With `convert_charrefs=True` the host decodes each text run inside
 # `goahead()` with `html.unescape()`, which is not that rule: it DELETES the code points it
@@ -883,6 +920,7 @@ browser_attrs_dict = _browser_attrs_dict
 # keeping a second copy of clause 7: they derive their scanners from `BrowserTagNames` (through
 # the same shim) and name each element with its `_browser_tag()`.
 ascii_lower = _ascii_lower
+can_host_shadow_root = _can_host_shadow_root
 BrowserTagNames = _BrowserTagNames
 
 # The same package-shared TEXT decode, for the one scanner OUTSIDE this package that parses a whole
@@ -1704,6 +1742,8 @@ class _BrowserBoundaries(_BrowserStartTag):
 class _DocAncestors(NamedTuple):
     skip: int
     template: int
+    html_template: int
+    shadow: int
     canvas: int
     pre: int
     chart_figure: int
@@ -1761,6 +1801,7 @@ class _DocParser(_BrowserBoundaries):
         # failed OPEN. `check_layer` cross-checks the counted markers against these spans.
         self.marker_comment_spans = []      # real comments a browser parses
         self.template_comment_spans = []    # the same, parked inside an inert <template>
+        self.shadow_comment_spans = []      # real comments parsed inside a shadow tree
         self.all_ids = []        # every element id value, in document order
         # The LAYER's own markup: everything the parser sees OUTSIDE the authored CONTENT region
         # (`_in_commentable_content()`). A document about commentable-html can DEMONSTRATE the
@@ -1798,8 +1839,11 @@ class _DocParser(_BrowserBoundaries):
         self.comment_root_attrs = None   # attrs dict of the id=commentRoot element
         self.body_attrs = None           # attrs dict of the REAL <body> start tag (first one)
         self.mermaid_blocks = []         # [{"cm_skip": bool, "has_svg": bool}] for pre/div.mermaid
+        self.declarative_shadow_roots = []  # rendered roots and their export-durability attrs
+        self._active_shadow_roots = []      # open root records, innermost last
         self.cm_skip_code_blocks = []    # [{"kind": "<pre>"|"<pre><code>"}] for direct cm-skip misuse
         self._mermaid_stack = []         # parallel to self.stack: current mermaid block index, or None
+        self._shadow_hosts = []          # host state parallel to stack; None for consumed DSD template
         # Open `<script>`/`<style>` captures, innermost LAST: [{"tag", "pos", "attrs", "depth",
         # "parts", "in_content"}]. A STACK rather than one scalar per kind because outside the HTML
         # namespace those two hold MARKUP, so one really can contain another (`<svg><style><style>`)
@@ -1832,15 +1876,18 @@ class _DocParser(_BrowserBoundaries):
     # Parallel to `self.stack`: the ancestor facts `_record` asks about, as running counts (and,
     # for the nearest svg / foreignObject, an index). Asking them of the open-element stack was a
     # walk per recorded element, which is quadratic on a deeply nested document.
-    _NO_ANCESTORS = _DocAncestors(0, 0, 0, 0, 0, 0, -1)
+    _NO_ANCESTORS = _DocAncestors(0, 0, 0, 0, 0, 0, 0, 0, -1)
 
     def _ancestors(self):
         return self._anc[-1] if self._anc else self._NO_ANCESTORS
 
-    def _push_ancestors(self, tag, own_skip, is_chart_figure):
+    def _push_ancestors(self, tag, own_skip, is_chart_figure,
+                        template=False, html_template=False, shadow=False):
         prev = self._ancestors()
         self._anc.append(_DocAncestors(prev.skip + bool(own_skip),
-                                       prev.template + (tag == "template"),
+                                       prev.template + bool(template),
+                                       prev.html_template + bool(html_template),
+                                       prev.shadow + bool(shadow),
                                        prev.canvas + (tag == "canvas"),
                                        prev.pre + (tag == "pre"),
                                        prev.chart_figure + bool(is_chart_figure),
@@ -1855,19 +1902,35 @@ class _DocParser(_BrowserBoundaries):
         return self._ancestors().canvas > 0
 
     def _in_template(self):
-        # A <template>'s contents live in an inert DocumentFragment: they are not
-        # active DOM (getElementById does not see them, scripts do not run), so
-        # ids / canvases / scripts inside a template must not be counted.
+        # An ordinary template is inert; a declarative shadow root contributes shadow ancestry.
         return self._ancestors().template > 0
 
+    def _in_shadow_tree(self):
+        return self._ancestors().shadow > 0
+
+    def _attaches_shadow_root(self, tag, ad, ns):
+        host_ns = self._ns[-1][1] if self._ns else None
+        host = self._shadow_hosts[-1] if self._shadow_hosts else None
+        if (tag != "template" or ns != "html" or self._in_template()
+                or _ascii_lower(ad.get("shadowrootmode") or "") not in ("open", "closed")
+                or host is None or host["used"]
+                or not _can_host_shadow_root(self.stack[-1][0], host_ns)):
+            return False
+        host["used"] = True
+        return True
+
+    def _mark_light_child(self):
+        if not self._shadow_hosts:
+            return
+        host = self._shadow_hosts[-1]
+        if host is None:
+            return
+        host["light"] = True
+        if host["root"] is not None:
+            host["root"]["mixed_light"] = True
+
     def _in_html_template(self):
-        # Namespace-aware form of `_in_template()`: only an HTML-namespace <template> is
-        # inert. An element merely NAMED `template` in a foreign namespace (under <math>
-        # or <svg>) is an ordinary element whose text a browser keeps in its ancestor's
-        # textContent, so it must not hide content from a view that models textContent.
-        # `_tpl_stop` is the same HTML-template floor `_end_tag_floor()` reads, and it
-        # answers in O(1).
-        return bool(self._tpl_stop) and self._tpl_stop[-1] >= 0
+        return self._ancestors().html_template > 0 or self._in_shadow_tree()
 
     def _in_comment_root(self):
         return self._cr_depth is not None and not self._cr_closed and len(self.stack) > self._cr_depth
@@ -1884,7 +1947,7 @@ class _DocParser(_BrowserBoundaries):
         must itself have been OPENED outside the content region, so text a browser reads as some
         other element's - or a script the author opened inside their own content and left open past
         the end marker - cannot stand in for the layer's watchdog either."""
-        if self.layer_ready_token:
+        if self.layer_ready_token or self._in_shadow_tree():
             return
         cap = self._current_raw_capture()
         if cap is None or cap["tag"] != "script" or cap["in_content"]:
@@ -1939,6 +2002,9 @@ class _DocParser(_BrowserBoundaries):
         # be concatenated onto it into a body no browser would ever see.
         self._flush_template_raw(depth)
         self._flush_raw_captures(depth)
+        while (self._active_shadow_roots
+               and self._active_shadow_roots[-1]["depth"] >= depth):
+            self._active_shadow_roots.pop()
         # Closing #commentRoot (or an ancestor of it) ends the root subtree for
         # good, so headings/prose in a later sibling container are not collected.
         if self._cr_depth is not None and depth <= self._cr_depth:
@@ -1957,12 +2023,13 @@ class _DocParser(_BrowserBoundaries):
         del self.stack[depth:]
         del self._anc[depth:]
         del self._mermaid_stack[depth:]
+        del self._shadow_hosts[depth:]
 
     def _record(self, tag, ad, own_skip):
-        if self._in_template():
+        if self._in_template() or self._in_shadow_tree():
             if "style" in ad:
                 self.template_inline_styles.append({"tag": tag, "value": ad.get("style", "")})
-            return  # inert template content
+            return
         if tag in self.layer_tags and not self._in_commentable_content():
             self.layer_tags[tag].append(ad)
         if not self._head_ended and (tag == "body" or tag not in _HEAD_TAGS):
@@ -2055,15 +2122,36 @@ class _DocParser(_BrowserBoundaries):
                     and self.stack[-1][0] in _HEADING_TAGS):
                 self._truncate_stacks(len(self.stack) - 1)
         own_skip = "cm-skip" in set((ad.get("class") or "").split())
+        is_shadow = self._attaches_shadow_root(tag, ad, ns)
+        if not is_shadow and tag != "template":
+            self._mark_light_child()
+        if is_shadow:
+            root_record = {
+                "mode": _ascii_lower(ad.get("shadowrootmode") or ""),
+                "serializable": "shadowrootserializable" in ad,
+                "mixed_light": self._shadow_hosts[-1]["light"],
+                "has_slot": False,
+                "host_is_comment_root": self._shadow_hosts[-1]["id"] == "commentRoot",
+                "depth": len(self.stack),
+                "host_depth": len(self.stack) - 1,
+            }
+            self.declarative_shadow_roots.append(root_record)
+            self._active_shadow_roots.append(root_record)
+            self._shadow_hosts[-1]["root"] = root_record
+        inert_template = tag == "template" and ns == "html" and not is_shadow
+        if (tag == "slot" and ns == "html" and not self._in_template()
+                and self._active_shadow_roots and self._in_shadow_tree()):
+            self._active_shadow_roots[-1]["has_slot"] = True
         before_mermaid = len(self.mermaid_blocks)
-        self._record(tag, ad, own_skip)
+        if not is_shadow:
+            self._record(tag, ad, own_skip)
         if tag == "svg" and self._mermaid_stack:
             idx = self._mermaid_stack[-1]
             if idx is not None:
                 self.mermaid_blocks[idx]["has_svg"] = True
-        if tag in ("script", "style") and not self._in_template():
+        if tag in ("script", "style") and not self._in_template() and not self._in_shadow_tree():
             self._open_raw_capture(tag, ad)
-        if tag in ("script", "style") and self._in_template():
+        if tag in ("script", "style") and (self._in_template() or self._in_shadow_tree()):
             # The stack DEPTH is carried so the state can never outlive its template: html.parser
             # keeps a raw-text element open to EOF, which matches a browser, but if any future path
             # ever left one open past `</template>` the next parked block's body would silently be
@@ -2073,17 +2161,26 @@ class _DocParser(_BrowserBoundaries):
         if (tag in _HEADING_TAGS and self._cur_heading is None and self._cr_depth is not None
                 and not self._cr_closed and len(self.stack) > self._cr_depth and not own_skip
                 and not self._skip_ancestor() and not self._in_template()):
-            top_level = (len(self.stack) == self._cr_depth + 1)
+            shadow_top_level = (
+                bool(self._active_shadow_roots)
+                and self._active_shadow_roots[0]["host_depth"] == self._cr_depth + 1)
+            top_level = (len(self.stack) == self._cr_depth + 1) or shadow_top_level
             in_lede = self._lede_depth is not None and len(self.stack) > self._lede_depth
-            self._cur_heading = (tag, ad.get("id"), [], top_level, in_lede)
+            self._cur_heading = (
+                tag, ad.get("id"), [], top_level, in_lede, self._in_shadow_tree())
             self._cur_heading_depth = len(self.stack)
-        return (own_skip, before_mermaid)
+        return (own_skip and not is_shadow, before_mermaid, inert_template, is_shadow)
 
     def _push_element(self, tag, ad, ns, info):
-        own_skip, before_mermaid = info
+        own_skip, before_mermaid, inert_template, is_shadow = info
         self.stack.append((tag, own_skip))
         self._push_ancestors(tag, own_skip,
-                             tag == "figure" and "chart" in set((ad.get("class") or "").split()))
+                             tag == "figure" and "chart" in set((ad.get("class") or "").split()),
+                             template=tag == "template" and not is_shadow,
+                             html_template=inert_template, shadow=is_shadow)
+        self._shadow_hosts.append(
+            None if is_shadow else {
+                "used": False, "light": False, "root": None, "id": ad.get("id")})
         current_mermaid = self._mermaid_stack[-1] if self._mermaid_stack else None
         if len(self.mermaid_blocks) > before_mermaid:
             current_mermaid = len(self.mermaid_blocks) - 1
@@ -2108,10 +2205,13 @@ class _DocParser(_BrowserBoundaries):
             idx = self._mermaid_stack[-1]
             if idx is not None:
                 self.mermaid_blocks[idx]["has_svg"] = True
+        self._mark_light_child()
         self._record(tag, ad, "cm-skip" in set((ad.get("class") or "").split()))
         self._close_zero_width()
 
     def handle_data(self, data):
+        if data.strip(_HTML_WHITESPACE):
+            self._mark_light_child()
         self._note_ready_token(data)
         # A non-whitespace character token in "in head" POPS the head and opens the body, so a
         # <meta> written after it is a child of BODY - and the HTML pragma directives return early
@@ -2121,12 +2221,14 @@ class _DocParser(_BrowserBoundaries):
         # content, and raw text to the tokenizer - does not end it.
         if (not self._csp_head_over and data.strip(_HTML_WHITESPACE)
                 and not self._in_template()
+                and not self._in_shadow_tree()
                 and (not self.stack or self.stack[-1][0] in ("html", "head"))):
             self._csp_head_over = True
         # A template-parked <script>/<style> body is collected ALONGSIDE the ordinary flow (never
         # instead of it), so adding this view cannot change what any existing check sees.
         if self._tpl_captures and self._tpl_captures[-1]["depth"] == len(self.stack) - 1:
             self._tpl_captures[-1]["parts"].append(data)
+            return
         # Capture the raw source text of the current mermaid block (entities are already
         # decoded because convert_charrefs=True), so the mermaid syntax checker can read it.
         # Only meaningful before the diagram renders to <svg>; a rendered block's has_svg
@@ -2171,10 +2273,13 @@ class _DocParser(_BrowserBoundaries):
             return
         text = re.sub(r"\s+", " ", "".join(self._cur_heading[2])).strip()
         if text:
-            self.headings.append({"tag": self._cur_heading[0],
-                                  "id": self._cur_heading[1], "text": text,
-                                  "top_level": self._cur_heading[3],
-                                  "in_lede": self._cur_heading[4]})
+            heading = {"tag": self._cur_heading[0],
+                       "id": self._cur_heading[1], "text": text,
+                       "top_level": self._cur_heading[3],
+                       "in_lede": self._cur_heading[4]}
+            if self._cur_heading[5]:
+                heading["shadow"] = True
+            self.headings.append(heading)
         self._cur_heading = None
         self._cur_heading_depth = None
 
@@ -2207,12 +2312,14 @@ class _DocParser(_BrowserBoundaries):
             # `</h2>` flushed a heading the author opened OUTSIDE the template - stopping that
             # heading's text at the template and collecting the rest of it as ordinary prose.
             return False
-        if tag == "head" and not matched_foreign and not self._in_template():
+        if (tag == "head" and not matched_foreign and not self._in_template()
+                and not self._in_shadow_tree()):
             # The head a `</head>` inside a template ends is the TEMPLATE's own; ending the
             # document's head there dropped the favicon `<link>` written after it.
             self._head_ended = True
         if (not self._csp_head_over and tag in _CSP_HEAD_CLOSERS
-                and not matched_foreign and not self._in_template()):
+                and not matched_foreign and not self._in_template()
+                and not self._in_shadow_tree()):
             # `</body>`, `</html>` and `</br>` are "anything else" in both "in head" and "after
             # head": the head is popped and a <body> is inserted, so a policy <meta> written after
             # one is a BODY child whose pragma never runs. `</head>` deliberately does NOT do this
@@ -2249,11 +2356,12 @@ class _DocParser(_BrowserBoundaries):
         # padding and decoration tolerance `_region_marker_matches` has (the layer writes its
         # region markers on their own lines inside one comment) - and only that.
         if (self.js_end_marker_pos is None and not self._in_template()
+                and not self._in_shadow_tree()
                 and _JS_END_MARKER_COMMENT_RE.fullmatch(raw)):
             self.js_end_marker_pos = self._off()
         if _MARKER_HINT in raw:
             self._record_region_marker_comment(raw)
-        if not self._in_template():
+        if not self._in_template() and not self._in_shadow_tree():
             if raw == CONTENT_BEGIN and self._in_comment_root():
                 self._in_content_region = True
                 self.content_region_opened = True
@@ -2274,6 +2382,8 @@ class _DocParser(_BrowserBoundaries):
         span = (off, off + len(raw))
         if self._in_template():
             self.template_comment_spans.append(span)
+        elif self._in_shadow_tree():
+            self.shadow_comment_spans.append(span)
         else:
             self.marker_comment_spans.append(span)
 

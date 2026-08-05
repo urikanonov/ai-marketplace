@@ -22,6 +22,40 @@ _SECTION_DIR_RE = re.compile(
     re.IGNORECASE)
 
 
+def check_shadow_root_exports(parser):
+    """Require every rendered declarative shadow root to survive Save/Export serialization."""
+    mixed = sum(
+        1 for root in parser.declarative_shadow_roots if root.get("mixed_light"))
+    slots = sum(
+        1 for root in parser.declarative_shadow_roots if root.get("has_slot"))
+    content_roots = sum(
+        1 for root in parser.declarative_shadow_roots if root.get("host_is_comment_root"))
+    missing = sum(
+        1 for root in parser.declarative_shadow_roots if not root.get("serializable"))
+    errors = []
+    if missing:
+        errors.append(
+            "%d declarative shadow root(s) omit shadowrootserializable - Save and export cannot "
+            "preserve a closed non-serializable root; add the boolean shadowrootserializable "
+            "attribute to every template[shadowrootmode]" % missing)
+    if mixed:
+        errors.append(
+            "%d declarative shadow host(s) mix light-DOM children with their shadow template - "
+            "the validator's supported shadow-content model requires all rendered content to live "
+            "inside the template; move those light-DOM children into the shadow root" % mixed)
+    if slots:
+        errors.append(
+            "%d declarative shadow root(s) use <slot> distribution, which the validator does not "
+            "model - remove the slot and keep all rendered content directly in the shadow template"
+            % slots)
+    if content_roots:
+        errors.append(
+            "%d declarative shadow root(s) use #commentRoot itself as the host - the review layer "
+            "and generated TOC live inside that light-DOM root and would be hidden; place the "
+            "shadow host below #commentRoot instead" % content_roots)
+    return errors
+
+
 def check_document_kind(parser):
     """Require a declared document kind and enforce its per-type rules.
 
