@@ -817,20 +817,16 @@ test("a long unbreakable inline code token does not overflow the mobile viewport
   await page.setViewportSize({ width: 375, height: 800 });
   for (const { path: p, selector, label } of surfaces) {
     await page.goto(p, { waitUntil: "domcontentloaded" });
-    // The hub navbar's plugin flyout is laid out while visibility:hidden and already pushes the
-    // hub's scrollWidth 63px past a 375px viewport (a separate defect, issue #1098). Neutralize
-    // that one out-of-flow, absolutely positioned box so this test can make the ABSOLUTE assertion
-    // below instead of only a no-growth one; a smaller future overflow would otherwise hide behind
-    // it, since scrollWidth reports only the largest overhang. A CSSOM style write is used rather
-    // than an injected <style> tag, which the tutorial page's `style-src 'self'` CSP would block.
-    await page.evaluate(() => {
-      document.querySelectorAll(".nav-switcher-menu").forEach((el) => {
-        el.style.display = "none";
-      });
-    });
     const host = page.locator(selector).first();
     await expect(host, p + " has a " + label).toBeVisible();
+    const width = await page.evaluate(() => document.documentElement.clientWidth);
     const before = await page.evaluate(() => document.documentElement.scrollWidth);
+    // Nothing is neutralized first: every surface here, the hub included, fits the viewport at rest
+    // (SITE-NAV-05 collapses the closed nav flyout, which used to stick 63px past the right edge).
+    // Pinning that baseline is what lets the post-injection assertion below be ABSOLUTE rather than
+    // a no-growth comparison, since scrollWidth reports only the largest overhang and a standing
+    // overflow would otherwise mask a smaller new one.
+    expect(before, p + " " + label + ": the page must fit the viewport before anything is injected").toBeLessThanOrEqual(width + 1);
     await host.evaluate((el, text) => {
       const code = document.createElement("code");
       code.id = "inline-code-overflow-probe";
@@ -840,7 +836,6 @@ test("a long unbreakable inline code token does not overflow the mobile viewport
     const probe = page.locator("#inline-code-overflow-probe");
     await expect(probe).toBeVisible();
     const after = await page.evaluate(() => document.documentElement.scrollWidth);
-    const width = await page.evaluate(() => document.documentElement.clientWidth);
     expect(after, p + " " + label + ": a long code token must not widen the document").toBeLessThanOrEqual(before);
     expect(after, p + " " + label + ": the document must still fit the viewport").toBeLessThanOrEqual(width + 1);
     // The span itself stays inside the viewport too, so the page is not merely clipping it.
@@ -856,14 +851,6 @@ test("a fenced code block keeps its own pre and scroll behavior (SITE-CODE-01)",
   // instead of being re-flowed (and still does not widen the document).
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
-  // Same neutralization as the inline test above, so both share one story: today the tutorial page
-  // carries no navbar flyout, but if the shared nav ever grows one this test would red for a reason
-  // that has nothing to do with fenced blocks.
-  await page.evaluate(() => {
-    document.querySelectorAll(".nav-switcher-menu").forEach((el) => {
-      el.style.display = "none";
-    });
-  });
   const host = page.locator(".tutorial p").first();
   await expect(host).toBeVisible();
   await host.evaluate((el, text) => {
