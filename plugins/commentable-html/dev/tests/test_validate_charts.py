@@ -110,6 +110,12 @@ class ChartValidatorTests(unittest.TestCase):
         self.assertEqual(n, 0)
         self.assertEqual(e, [])
 
+    def test_no_canvas_lone_cr_js_marker_is_a_noop(self):
+        html = "<html>\r<!-- END: commentable-html - JS -->\r<body></body></html>"
+        e, w, n = run(html)
+        self.assertEqual(n, 0)
+        self.assertEqual(e, [])
+
     @unittest.skipUnless(os.path.exists(FIELD_ARTIFACT), "field artifact not present")
     def test_field_artifact_clean(self):
         e, w, n = validate.validate_charts(FIELD_ARTIFACT)

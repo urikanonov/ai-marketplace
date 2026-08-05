@@ -4,6 +4,23 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.685.2] - 2026-08-05
+
+### Fixed
+
+- The validator and upgrade tool now preserve raw newline characters while reading documents, so a
+  lone carriage return cannot become a line break that makes Python count a region marker the
+  browser runtime ignores. The validator compares marker counts in that raw view, then runs every
+  browser-semantic check on the browser-normalized newline view, so equivalent CRLF/LF attribute
+  values cannot evade duplicate checks. Upgrade offsets advance on line feeds only, retaining
+  correct CRLF widths, and output still normalizes inserted regions to the document's dominant
+  newline without doubling preserved CRLF sequences. Newline style alone no longer makes an
+  up-to-date CRLF document look stale, and invalid UTF-8 now produces a clean read error instead of
+  an upgrade traceback. Validation stamps also use and remove the document's dominant newline, so
+  stamping a CRLF file cannot introduce a lone line feed or leave a blank line behind. Deck-theme
+  validation preserves the same raw newlines in its temporary file instead of doubling CRLF on
+  Windows.
+
 ## [1.685.0] - 2026-08-05
 
 ### Fixed

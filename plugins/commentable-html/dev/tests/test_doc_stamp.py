@@ -36,6 +36,22 @@ class DocStampUnitTests(unittest.TestCase):
         self.assertEqual(doc_stamp.get_meta(out, doc_stamp.VALIDATED_META), "new")
         self.assertNotIn("old", out)
 
+    def test_set_meta_inserts_with_the_document_crlf(self):
+        html = "<html>\r\n<head>\r\n</head>\r\n</html>"
+        out = doc_stamp.set_meta(html, doc_stamp.VALIDATED_META, "new")
+        self.assertNotIn("\n", out.replace("\r\n", ""))
+        self.assertNotIn("\r", out.replace("\r\n", ""))
+
+    def test_remove_meta_consumes_its_trailing_crlf(self):
+        html = (
+            "<head>\r\n"
+            '<meta name="commentable-html-validated-hash" content="old" />\r\n'
+            "<title>Report</title>\r\n"
+            "</head>"
+        )
+        out = doc_stamp.remove_meta(html, doc_stamp.VALIDATED_HASH_META)
+        self.assertEqual(out, "<head>\r\n<title>Report</title>\r\n</head>")
+
     def test_get_absent_is_none(self):
         self.assertIsNone(doc_stamp.get_meta("<head></head>", doc_stamp.VALIDATED_META))
 
@@ -245,6 +261,20 @@ class ValidateStampTests(unittest.TestCase):
         stamp = doc_stamp.get_meta(self._read(p), doc_stamp.VALIDATED_META)
         self.assertIsNotNone(stamp, "validate.py must stamp validated on a strict-clean file")
         self.assertRegex(stamp, r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+
+    def test_validate_stamps_a_crlf_file_without_mixing_newlines(self):
+        p = self._make_doc()
+        with open(p, "rb") as fh:
+            raw = fh.read().replace(b"\n", b"\r\n")
+        with open(p, "wb") as fh:
+            fh.write(raw)
+        code, out = self._run_validate(["validate.py", p])
+        self.assertEqual(code, 0, out)
+        with open(p, "rb") as fh:
+            stamped = fh.read()
+        without_crlf = stamped.replace(b"\r\n", b"")
+        self.assertNotIn(b"\n", without_crlf)
+        self.assertNotIn(b"\r", without_crlf)
 
     def test_validate_no_stamp_flag_leaves_file_unstamped(self):
         p = self._make_doc()

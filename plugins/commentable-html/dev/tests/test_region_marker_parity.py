@@ -16,6 +16,7 @@ either language fails one of the two suites.
 import json
 import os
 import sys
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -40,13 +41,20 @@ def _implementations():
     from checks import parsing  # noqa: E402
 
     import upgrade  # noqa: E402
+    import validate  # noqa: E402
 
     build = _load_module(os.path.join(_paths.DEV_TOOLS, "build.py"), "cmh_build_tool")
-    return {
-        "validate/checks/parsing.py": parsing._region_marker_matches,
-        "authoring/upgrade.py": upgrade._region_marker_matches,
-        "build_parts/20-nonshareable-regions.py": build._region_marker_matches,
-    }
+    return (
+        {
+            "validate/checks/parsing.py": parsing._region_marker_matches,
+            "authoring/upgrade.py": upgrade._region_marker_matches,
+            "build_parts/20-nonshareable-regions.py": build._region_marker_matches,
+        },
+        {
+            "validate/validate.py": (validate._read, parsing._region_marker_matches),
+            "authoring/upgrade.py": (upgrade._read, upgrade._region_marker_matches),
+        },
+    )
 
 
 class RegionMarkerParityTest(unittest.TestCase):
@@ -54,7 +62,7 @@ class RegionMarkerParityTest(unittest.TestCase):
     def setUpClass(cls):
         with open(PARITY_FIXTURE, "r", encoding="utf-8") as fh:
             cls.cases = json.load(fh)["cases"]
-        cls.impls = _implementations()
+        cls.impls, cls.readers = _implementations()
 
     def test_fixture_is_non_trivial(self):
         """A corpus that lost its hard cases would pass while pinning nothing."""
@@ -122,6 +130,45 @@ class RegionMarkerParityTest(unittest.TestCase):
             for label, fn in self.impls.items():
                 with self.subTest(sep=repr(sep), impl=label):
                     self.assertEqual(fn(text, "BEGIN", "CSS"), [])
+
+    def test_file_readers_preserve_lone_cr_for_the_marker_decision(self):
+        text = "prefix\r<!-- BEGIN: commentable-html - CSS -->\rsuffix"
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "lone-cr.html")
+            with open(path, "wb") as fh:
+                fh.write(text.encode("utf-8"))
+            for label, (reader, matcher) in self.readers.items():
+                with self.subTest(reader=label):
+                    read_text = reader(path)
+                    self.assertEqual(read_text, text)
+                    self.assertEqual(matcher(read_text, "BEGIN", "CSS"), [])
+            import validate
+
+            errors, _warnings = validate.validate(path, charts=False)
+            self.assertTrue(
+                any("marker count changes after browser newline normalization" in error
+                    for error in errors),
+                errors,
+            )
+
+    def test_validator_file_reader_normalizes_browser_semantic_newlines(self):
+        import validate
+
+        text = (
+            '<html><body><div class="cmh-checklist" data-cmh-checklist="c">'
+            '<li data-cmh-item="a\nb">A</li>'
+            '<li data-cmh-item="a\r\nb">B</li>'
+            "</div></body></html>"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "mixed-newlines.html")
+            with open(path, "wb") as fh:
+                fh.write(text.encode("utf-8"))
+            _errors, warnings = validate.validate(path, charts=False)
+        self.assertTrue(
+            any("duplicate data-cmh-item id" in warning for warning in warnings),
+            warnings,
+        )
 
 
 if __name__ == "__main__":

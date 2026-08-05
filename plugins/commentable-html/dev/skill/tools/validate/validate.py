@@ -122,6 +122,7 @@ from checks.parsing import (  # noqa: F401,E402
     JS_END_MARKER_TEXT,
     LAYER_DESCRIPTOR_ID,
     LAYER_JSON_IDS,
+    MARKER_KINDS,
     P_CLOSERS,
     REGIONS,
     REQUIRED_IDS,
@@ -269,8 +270,30 @@ def partition_warnings(warnings):
 
 
 def _read(path):
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, "r", encoding="utf-8", newline="") as fh:
         return fh.read()
+
+
+def _browser_newlines(html):
+    return (html or "").replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _marker_newline_errors(raw_html, html, layer, charts):
+    targets = []
+    if layer:
+        targets.extend((kind, region) for region in REGIONS for kind in MARKER_KINDS)
+    elif charts:
+        targets.append(("END", "JS"))
+    errors = []
+    for kind, region in targets:
+        raw_count = len(_region_marker_matches(raw_html, kind, region))
+        normalized_count = len(_region_marker_matches(html, kind, region))
+        if raw_count != normalized_count:
+            errors.append(
+                "%s region %s marker count changes after browser newline normalization "
+                "(%d raw, %d normalized) - a lone carriage return cannot delimit a marker line"
+                % (region, kind, raw_count, normalized_count))
+    return errors
 
 
 def _parse(html):
@@ -308,13 +331,17 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET, html=None)
     companions are supplied separately or placement is deferred."""
     if html is None:
         try:
-            html = _read(path)
+            raw_html = _read(path)
         except (OSError, UnicodeDecodeError) as exc:
             return [f"cannot read file: {exc}"], []
+    else:
+        raw_html = html
+    html = _browser_newlines(raw_html)
     parser, ok = _parse(html)
     if not ok:
         return [_PARSE_FAIL], []
-    errors, warnings = [], []
+    errors = _marker_newline_errors(raw_html, html, True, charts) if layer else []
+    warnings = []
     try:
         if layer:
             bd = os.path.dirname(os.path.abspath(path)) if base_dir is _BASE_DIR_UNSET else base_dir
@@ -331,9 +358,11 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET, html=None)
             errors += e
             warnings += w
         if charts:
-            e, w, _n = check_charts(html, parser, marker_provenance=not layer)
+            e, w, n = check_charts(html, parser, marker_provenance=not layer)
             errors += e
             warnings += w
+            if not layer and n:
+                errors += _marker_newline_errors(raw_html, html, False, True)
         if layer:
             e, w = check_checklists(html)
             errors += e
@@ -367,14 +396,18 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET, html=None)
 def validate_charts(path):
     """Chart-only check. Returns (errors, warnings, n_canvas)."""
     try:
-        html = _read(path)
+        raw_html = _read(path)
     except (OSError, UnicodeDecodeError) as exc:
         return [f"cannot read file: {exc}"], [], 0
+    html = _browser_newlines(raw_html)
     parser, ok = _parse(html)
     if not ok:
         n = len(re.findall(r"<canvas(?![-\w])", html, re.IGNORECASE))
         return ([_PARSE_FAIL] if n else []), [], n
-    return check_charts(html, parser)
+    errors, warnings, n = check_charts(html, parser)
+    if n:
+        errors = _marker_newline_errors(raw_html, html, False, True) + errors
+    return errors, warnings, n
 
 
 _USAGE = "usage: python tools/validate.py [--charts-only|--layer-only] [--strict] [--suggest] [--no-stamp] <file.html> [more.html ...]"
@@ -384,7 +417,7 @@ def _print_theme_suggestions(path):
     """Print a compliant nudged value for each authored --cp-* override that misses its contrast
     target. Best-effort: a read/parse failure here never affects the validation exit code."""
     try:
-        html = _read(path)
+        html = _browser_newlines(_read(path))
     except (OSError, UnicodeDecodeError):
         return
     for f in theme_contrast_findings(html):
