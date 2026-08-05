@@ -83,6 +83,21 @@ class DocParserTemplateRawTextTests(unittest.TestCase):
         self.assertEqual(doc.scripts, [])
         self.assertEqual(doc.styles, [])
 
+    def test_a_foreign_template_parks_nothing_from_the_live_raw_text_views(self):
+        # An element merely NAMED `template` under `<svg>`/`<math>` is not a template at all, so
+        # its raw-text children are not PARKED: they are classified exactly as they would be
+        # without that wrapper. Shown through SVG, where the browser semantics are unambiguous -
+        # `SVGScriptElement` really executes and `SVGStyleElement` really applies - so a body
+        # hidden in the template-only views was one the offline / egress gates never read
+        # (issue #1035). (A MathML `<script>` executes in no browser; that the layer views treat
+        # any foreign script as live is a separate, pre-existing namespace hole, issue #1101.)
+        doc = self._doc("<svg><template><script>var LIVE = 1;</script>"
+                        "<style>.live { color: #123456; }</style></template></svg>")
+        self.assertEqual([s["body"] for s in doc.scripts], ["var LIVE = 1;"])
+        self.assertEqual([s["body"] for s in doc.styles], [".live { color: #123456; }"])
+        self.assertEqual(doc.template_scripts, [])
+        self.assertEqual(doc.template_styles, [])
+
 
 class DocParserDeclarativeShadowTests(unittest.TestCase):
     """Rendered shadow prose is visible, but shadow elements are not in the document tree."""
@@ -207,7 +222,10 @@ class DocParserTemplateBoundaryTests(unittest.TestCase):
         # it still closes the svg and the paragraph after it is live, as in a browser.
         doc = self._doc('<svg><template>x</svg><p id="after">after</p></main>')
         self.assertEqual(doc.all_ids, ["commentRoot", "after"])
-        self.assertEqual(self._prose(doc), ["after"])
+        # Its text is live too: a browser keeps that element in the DOM and `x` in the
+        # ancestor's textContent - the view the prose check models - so the inertness views
+        # must not swallow it either (issue #1035).
+        self.assertEqual(self._prose(doc), ["x", "after"])
 
     def test_a_heading_closer_inside_a_template_does_not_end_the_heading(self):
         # Same hole, seen from the heading capture: the ignored `</h2>` flushed the heading the

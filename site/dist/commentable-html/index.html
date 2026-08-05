@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.691.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.694.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.694.0] - 2026-08-05</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The validator&#x27;s document parser now decides template inertness by NAMESPACE, not by tag name. Only the HTML <code>&lt;template&gt;</code> holds its contents in an inert DocumentFragment; an element merely NAMED <code>template</code> in the SVG or MathML namespace is an ordinary foreign element a browser keeps in the DOM and in its ancestor&#x27;s <code>textContent</code>. Markup such as <code>&lt;math&gt;&lt;template&gt;text&lt;/template&gt;&lt;/math&gt;</code> inside <code>#commentRoot</code> was therefore invisible at once to the prose / unlinked-cross-reference view, the heading capture, the element view and the mermaid diagram-source view, and raw-text children written that way were recorded as parked rather than classified as they would be without that wrapper - so an SVG <code>&lt;script&gt;</code>/<code>&lt;style&gt;</code>, which a browser really does execute and apply, was hidden from the checks that read the live views. Such content is now validated exactly as a reader sees it, while a <code>&lt;template&gt;</code> under an HTML integration point such as <code>&lt;svg&gt;&lt;foreignObject&gt;</code> or <code>&lt;math&gt;&lt;mi&gt;</code>, or after a foreign breakout start tag, stays inert as before, and a declarative shadow root keeps rendering.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.691.0] - 2026-08-05</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>The in-document comment dialog can now DELETE the comment it is showing (CMH-CORE-22). Clicking a highlight&#x27;s orange bubble opens the note with <code>Delete</code> beside <code>Close</code> and <code>Edit</code>, so removing a comment no longer means leaving the dialog and hunting down the same comment&#x27;s card in the panel - the dialog already edits in place, and this is the missing half of that interaction. Deleting from the dialog is not a second implementation: both surfaces now call one shared path (<code>cmhConfirmDeleteThread</code>), so the confirmation wording (including the reply count that warns a thread root takes its replies with it), the durable embedded tombstone, the highlight removal, and the re-render are identical wherever the delete is started. Confirming closes the dialog, so nothing is left anchored to a removed highlight, and focus lands in the comments list instead of falling to the top of the page; declining leaves the dialog exactly as it was with focus back on <code>Delete</code>. <code>Delete</code> is offered in the note view only, so an in-place edit can never be discarded by a delete sitting next to it, and it carries the same accessible name the sidebar card&#x27;s delete carries, so a thread root says up front that its replies go too.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.689.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -509,8 +518,6 @@
               <li>The information-density advisory now drives the shared browser element-handler sequence and keeps its contribution frames parallel to the shared namespace stack. A self-closed foreign <code>&lt;template/&gt;</code> no longer opens an inert HTML fragment and suppresses every later density warning, markup inside an SVG <code>&lt;title&gt;</code> or <code>&lt;script&gt;</code> is parsed instead of swallowed as HTML raw text, and a slash on a non-void HTML start tag no longer makes the density pass close an element the shared parser leaves open. Same-name paragraph and heading closers inside an inert template also stay scoped to that fragment instead of finalizing live outer prose capture, and a paragraph nested inside inline <code>cm-skip</code> no longer finalizes the surrounding live paragraph (CMH-VAL-15).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.688.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -546,14 +553,7 @@
               <li>The validator and upgrade tool now preserve raw newline characters while reading documents, so a lone carriage return cannot become a line break that makes Python count a region marker the browser runtime ignores. The validator compares marker counts in that raw view, then runs every browser-semantic check on the browser-normalized newline view, so equivalent CRLF/LF attribute values cannot evade duplicate checks. Upgrade offsets advance on line feeds only, retaining correct CRLF widths, and output still normalizes inserted regions to the document&#x27;s dominant newline without doubling preserved CRLF sequences. Newline style alone no longer makes an up-to-date CRLF document look stale, and invalid UTF-8 now produces a clean read error instead of an upgrade traceback. Validation stamps also use and remove the document&#x27;s dominant newline, so stamping a CRLF file cannot introduce a lone line feed or leave a blank line behind. Deck-theme validation preserves the same raw newlines in its temporary file instead of doubling CRLF on Windows.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.685.0] - 2026-08-05</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A chrome control focused while the comments panel is still SLIDING IN no longer loses its tooltip for good (CMH-UI-14). The tip is only ever raised by <code>focusin</code>/<code>mouseover</code>, so a control that sat outside the visible box during the 0.22s panel slide was suppressed with no second chance - a keyboard user who opened the panel and immediately tabbed to Search, Sort, More or Help got silence. A suppressed control now opens a bounded watch episode: the tip is raised the moment the control lands (within 600ms), and the bubble then keeps following the control until its box holds still, so it ends up beside the settled control with its arrow on the control&#x27;s centre rather than parked where the control was mid-slide. The suppression itself is unchanged for a control the reviewer genuinely cannot see (a soft keyboard covering it, a pinch-panned page): an episode needs the control to still be focused or hovered, is bounded as a whole so a never-settling animation cannot renew it, and ends when focus or the pointer moves on, on the usual dismissals (focus out, scroll, viewport change, Escape, mousedown), or when another control takes over - so it expires quietly instead of parking a bubble over unrelated chrome or raising one over a control the reviewer has already tabbed past.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">322 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">323 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

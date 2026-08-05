@@ -1741,7 +1741,6 @@ class _BrowserBoundaries(_BrowserStartTag):
 # parallel to the element stack so each question is O(1) instead of a walk of the open elements.
 class _DocAncestors(NamedTuple):
     skip: int
-    template: int
     html_template: int
     shadow: int
     canvas: int
@@ -1876,16 +1875,15 @@ class _DocParser(_BrowserBoundaries):
     # Parallel to `self.stack`: the ancestor facts `_record` asks about, as running counts (and,
     # for the nearest svg / foreignObject, an index). Asking them of the open-element stack was a
     # walk per recorded element, which is quadratic on a deeply nested document.
-    _NO_ANCESTORS = _DocAncestors(0, 0, 0, 0, 0, 0, 0, 0, -1)
+    _NO_ANCESTORS = _DocAncestors(0, 0, 0, 0, 0, 0, 0, -1)
 
     def _ancestors(self):
         return self._anc[-1] if self._anc else self._NO_ANCESTORS
 
     def _push_ancestors(self, tag, own_skip, is_chart_figure,
-                        template=False, html_template=False, shadow=False):
+                        html_template=False, shadow=False):
         prev = self._ancestors()
         self._anc.append(_DocAncestors(prev.skip + bool(own_skip),
-                                       prev.template + bool(template),
                                        prev.html_template + bool(html_template),
                                        prev.shadow + bool(shadow),
                                        prev.canvas + (tag == "canvas"),
@@ -1903,7 +1901,13 @@ class _DocParser(_BrowserBoundaries):
 
     def _in_template(self):
         # An ordinary template is inert; a declarative shadow root contributes shadow ancestry.
-        return self._ancestors().template > 0
+        # NAMESPACE-AWARE: only an HTML-namespace <template> is inert. An element merely NAMED
+        # `template` under <math>/<svg> is an ordinary unknown foreign element a browser keeps
+        # in the DOM and in its ancestor's textContent - and whose raw-text children a browser
+        # treats exactly as it would without that wrapper (an SVG <script>/<style> really does
+        # execute and apply). Counting it by NAME hid content a reader sees from the prose,
+        # heading and element views at once, and parked such a body in the template-only views.
+        return self._ancestors().html_template > 0
 
     def _in_shadow_tree(self):
         return self._ancestors().shadow > 0
@@ -1930,7 +1934,10 @@ class _DocParser(_BrowserBoundaries):
             host["root"]["mixed_light"] = True
 
     def _in_html_template(self):
-        return self._ancestors().html_template > 0 or self._in_shadow_tree()
+        # The textContent view: the inert-template floor above (already namespace-aware) plus a
+        # declarative shadow root, whose content a browser DOES render but into a SHADOW tree
+        # that is still outside the host's textContent.
+        return self._in_template() or self._in_shadow_tree()
 
     def _in_comment_root(self):
         return self._cr_depth is not None and not self._cr_closed and len(self.stack) > self._cr_depth
@@ -2176,7 +2183,6 @@ class _DocParser(_BrowserBoundaries):
         self.stack.append((tag, own_skip))
         self._push_ancestors(tag, own_skip,
                              tag == "figure" and "chart" in set((ad.get("class") or "").split()),
-                             template=tag == "template" and not is_shadow,
                              html_template=inert_template, shadow=is_shadow)
         self._shadow_hosts.append(
             None if is_shadow else {

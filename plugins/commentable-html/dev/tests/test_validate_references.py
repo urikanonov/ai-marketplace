@@ -262,5 +262,94 @@ class TemplateProseTests(unittest.TestCase):
         self.assertTrue(any("#commentRoot itself" in e for e in errors), errors)
 
 
+class ForeignTemplateIsNotInertTests(unittest.TestCase):
+    """Only an HTML-namespace `<template>` is inert (CMH-CONTENT-16).
+
+    An element merely NAMED `template` in the SVG or MathML namespace is an ordinary unknown
+    foreign element: a browser keeps it in the DOM and its text in the ancestor's
+    `textContent`, which is the view these checks model. Counting it toward the inertness
+    depth hid content a reader really sees from every template-aware view at once - and parked
+    a `<script>`/`<style>` a browser still runs or applies in the template-only views.
+    """
+
+    ROOT = '<main id="commentRoot">'
+
+    def _doc(self, inner):
+        return parsing._parse_document(self.ROOT + inner)
+
+    def _prose(self, inner):
+        return [t.strip() for t in self._doc(inner).commentroot_prose if t.strip()]
+
+    def _headings(self, inner):
+        return [h["text"] for h in self._doc(inner).headings]
+
+    def test_prose_inside_a_mathml_template_is_collected(self):
+        self.assertEqual(
+            self._prose("<math><template>See Section 4</template></math></main>"),
+            ["See Section 4"])
+
+    def test_prose_inside_an_svg_template_is_collected(self):
+        self.assertEqual(
+            self._prose("<svg><template>See Section 4</template></svg></main>"),
+            ["See Section 4"])
+
+    def test_an_unclosed_foreign_template_is_live_to_eof(self):
+        # The mirror of the HTML case, which stays INERT to EOF: nothing here was ever inert,
+        # so the truncation bounds must not start swallowing the tail at end of input.
+        self.assertEqual(self._prose("<p>live</p><math><template>See Section 4"),
+                         ["live", "See Section 4"])
+
+    def test_heading_text_includes_foreign_template_content(self):
+        # A reader sees "RealShownTail", so the named cross-reference and document-title
+        # checks must read it too.
+        self.assertEqual(
+            self._headings("<h2>Real<math><template>Shown</template></math>Tail</h2></main>"),
+            ["RealShownTail"])
+
+    def test_an_id_inside_a_foreign_template_is_a_real_element_id(self):
+        # `getElementById` finds it, so the element view must count it (an id check that
+        # skipped it would bless a document a browser really does have two of that id in).
+        self.assertIn("parked",
+                      self._doc('<math><template><mi id="parked">x</mi></template></math>'
+                                "</main>").all_ids)
+
+    def test_an_html_template_inside_foreign_content_is_still_inert(self):
+        # `<foreignObject>` is an HTML integration point, so the `<template>` under it IS
+        # HTML-namespaced and really is inert - the namespace rule cuts both ways.
+        self.assertEqual(
+            self._prose("<p>live</p><svg><foreignObject><template>parked</template>"
+                        "</foreignObject></svg></main>"),
+            ["live"])
+
+    def test_a_template_under_a_mathml_text_integration_point_is_inert(self):
+        # `<mi>` is a MathML TEXT integration point, so its children are inserted in the HTML
+        # namespace and the `<template>` there is a real, inert one.
+        self.assertEqual(
+            self._prose("<p>live</p><math><mi><template>parked</template></mi></math></main>"),
+            ["live"])
+
+    def test_a_template_under_an_html_annotation_xml_is_inert(self):
+        # The same, through the `encoding` attribute a browser reads to decide the same thing.
+        self.assertEqual(
+            self._prose('<p>live</p><math><annotation-xml encoding="text/html">'
+                        "<template>parked</template></annotation-xml></math></main>"),
+            ["live"])
+
+    def test_a_template_after_a_foreign_breakout_tag_is_inert(self):
+        # `<p>` is a BREAKOUT start tag: it pops the open foreign elements, so the `<template>`
+        # under it is HTML-namespaced and inert even though it was written inside `<svg>`.
+        self.assertEqual(
+            self._prose("<svg><p>live<template>parked</template></p></svg></main>"),
+            ["live"])
+
+    def test_a_foreign_template_cannot_host_a_declarative_shadow_root(self):
+        # `shadowrootmode` only attaches a shadow tree on an HTML `<template>`; the foreign one
+        # is an ordinary element, so its text stays live prose rather than becoming shadow
+        # content the host's textContent excludes.
+        self.assertEqual(
+            self._prose('<math><template shadowrootmode="open">shown</template></math></main>'),
+            ["shown"])
+
+
 if __name__ == "__main__":
     unittest.main()

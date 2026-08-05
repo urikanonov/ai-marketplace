@@ -4,6 +4,23 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.694.0] - 2026-08-05
+
+### Fixed
+
+- The validator's document parser now decides template inertness by NAMESPACE, not by tag name.
+  Only the HTML `<template>` holds its contents in an inert DocumentFragment; an element merely
+  NAMED `template` in the SVG or MathML namespace is an ordinary foreign element a browser keeps
+  in the DOM and in its ancestor's `textContent`. Markup such as
+  `<math><template>text</template></math>` inside `#commentRoot` was therefore invisible at once
+  to the prose / unlinked-cross-reference view, the heading capture, the element view and the
+  mermaid diagram-source view, and raw-text children written that way were recorded as parked
+  rather than classified as they would be without that wrapper - so an SVG `<script>`/`<style>`,
+  which a browser really does execute and apply, was hidden from the checks that read the live
+  views. Such content is now validated exactly as a reader sees it, while a `<template>` under an
+  HTML integration point such as `<svg><foreignObject>` or `<math><mi>`, or after a foreign
+  breakout start tag, stays inert as before, and a declarative shadow root keeps rendering.
+
 ## [1.691.0] - 2026-08-05
 
 ### Added
