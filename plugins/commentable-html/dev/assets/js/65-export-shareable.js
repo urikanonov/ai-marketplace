@@ -680,7 +680,9 @@ async function saveHtml() {
   baseHtml = _applyNoteStateToHtml(baseHtml);
   const review = _applyReviewStateToHtml(baseHtml);
   baseHtml = review.html;
-  const exportComments = _exportableComments();
+  const canonical = _exportableCommentsOrReport();
+  if (!canonical) return;
+  const exportComments = canonical.comments;
   let text;
   try {
     text = _buildSavedHtml(baseHtml, exportComments);

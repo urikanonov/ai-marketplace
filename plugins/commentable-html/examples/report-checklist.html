@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.694.0" />
+<meta name="commentable-html-version" content="1.696.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.694.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.696.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Release readiness review</title>
 
@@ -4517,7 +4517,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.694.0";
+const CMH_VERSION = "1.696.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -16514,6 +16514,53 @@ function _canonicalCommentsForExport() {
 function _exportableComments() {
   return withoutHandled(_canonicalCommentsForExport());
 }
+// An export that FAILED is the one message a reader must not miss, and some of these run long, so
+// give it an assertive announcement and time to read rather than the 3s confirmation timing.
+const _EXPORT_CANONICAL_FAILURE_TOAST = { alert: true, duration: 10000 };
+// The cause to name in that toast, derived from ANY thrown value. `throw "boom"` is legal, and so is
+// a value whose `message` getter throws, so reading `e.message` bare would either drop the cause or
+// throw a SECOND time from inside the very catch that exists to report the first. The text is capped
+// because it lands in a toast, where an unbounded message would push the actionable sentence away.
+function _cmhThrownDetail(e) {
+  let detail = "";
+  try {
+    const obj = e && (typeof e === "object" || typeof e === "function");
+    const raw = (obj && "message" in e) ? e.message : e;
+    detail = (raw === undefined || raw === null) ? "" : String(raw).trim();
+  } catch (e2) { detail = ""; }
+  // A value that only stringifies to its default object tag names no cause at all; showing it
+  // would be noise dressed up as a diagnosis. The tag is matched by SHAPE, not by the one literal
+  // `[object Object]`, because a Map, a Set, or anything carrying Symbol.toStringTag has its own.
+  if (/^\[object [A-Za-z][A-Za-z0-9]*\]$/.test(detail)) detail = "";
+  return detail.length > 200 ? detail.slice(0, 200) + "..." : detail;
+}
+// Every export entry point runs the canonical pass through this guard rather than calling
+// `_exportableComments()` bare. The pass can throw, and it used to sit OUTSIDE the try/catch that
+// wraps the document build, so the throw unwound the whole click handler: no file was downloaded
+// and no toast was shown, leaving a reader unable to tell a failed export from a click that never
+// registered (#1052). Failure returns null rather than an empty array, so no caller can mistake a
+// pass that failed for a document that simply has no comments and export an empty set.
+function _exportableCommentsOrReport() {
+  try {
+    return { comments: _exportableComments() };
+  } catch (e) {
+    const detail = _cmhThrownDetail(e);
+    // The toast is the reader's whole account of the failure and it is truncated and transient, so
+    // leave the full value (stack included) on the console for whoever has to triage the report.
+    try { console.warn("commentable-html: export canonical pass failed", e); } catch (e2) {}
+    // Reporting must not be able to fail the way the export just did: a throw from showToast here
+    // would unwind the click handler past the caller's abort and restore the exact silence this
+    // guard exists to remove, so the report is best-effort and the abort is unconditional.
+    try {
+      showToast("Export failed - nothing was downloaded. This document's comment positions could not"
+        + " be prepared for export" + (detail ? " (" + detail + ")" : "")
+        + ". No file was written and the pass put your comments and table sorting back, so it is"
+        + " safe to try again.",
+      _EXPORT_CANONICAL_FAILURE_TOAST);
+    } catch (e2) { /* the export still aborts */ }
+    return null;
+  }
+}
 // Runs BEFORE backfillContext/restoreHighlights: re-applies the last persisted sort so
 // the DOM order matches the persisted comment offsets.
 function applyPersistedTableSorts() {
@@ -17421,7 +17468,9 @@ async function saveHtml() {
   baseHtml = _applyNoteStateToHtml(baseHtml);
   const review = _applyReviewStateToHtml(baseHtml);
   baseHtml = review.html;
-  const exportComments = _exportableComments();
+  const canonical = _exportableCommentsOrReport();
+  if (!canonical) return;
+  const exportComments = canonical.comments;
   let text;
   try {
     text = _buildSavedHtml(baseHtml, exportComments);
@@ -18024,7 +18073,9 @@ async function saveStandalone() {
   baseHtml = _applyNoteStateToHtml(baseHtml);
   const review = _applyReviewStateToHtml(baseHtml);
   baseHtml = review.html;
-  const exportComments = _exportableComments();
+  const canonical = _exportableCommentsOrReport();
+  if (!canonical) return;
+  const exportComments = canonical.comments;
   let text;
   try { text = _buildStandaloneHtml(baseHtml, exportComments); }
   catch (e) { showToast(e.message); return; }
@@ -19608,7 +19659,9 @@ async function saveOffline() {
   baseHtml = _applyNoteStateToHtml(baseHtml);
   const review = _applyReviewStateToHtml(baseHtml);
   baseHtml = review.html;
-  const exportComments = _exportableComments();
+  const canonical = _exportableCommentsOrReport();
+  if (!canonical) return;
+  const exportComments = canonical.comments;
   let shareable;
   try {
     shareable = NONSHAREABLE_MODE

@@ -572,6 +572,127 @@ test.describe("Save comments / Export plain", () => {
     }
   });
 
+  // #1052: the canonical export pass used to run OUTSIDE the try/catch that wraps the document
+  // build, so a throw there unwound the whole click handler - no file, no message, and a reader
+  // could not tell a failed export from a click that never registered. Every entry point that runs
+  // the pass is exercised here, because each one called it on its own bare line.
+  test("a failed export canonical pass tells the reader nothing was downloaded (CMH-EXP-23)", async ({ page }) => {
+    // Make the canonical pass throw: it recomputes offsets by walking the CONTENT ROOT, and the
+    // export click does that nowhere else. A throw anywhere outside the pass would either produce a
+    // different toast ("Could not load base HTML.", a raw builder message) or none at all, so the
+    // assertions below only hold when the pass itself is what failed. The thrown VALUE is read from
+    // the page at throw time so a phase can swap an Error for a bare string without re-patching.
+    const throwAs = (p, spec) => p.evaluate((s) => { window.__cmhThrown = s; }, spec);
+    const breakCanonicalPass = async (p, spec) => {
+      await throwAs(p, spec);
+      await p.evaluate(() => {
+        const orig = document.createTreeWalker.bind(document);
+        document.createTreeWalker = function (node, ...rest) {
+          if (node && node.id === "commentRoot") {
+            const t = window.__cmhThrown;
+            if (t.tag) throw new Map();
+            throw t.primitive ? t.value : new Error(t.value);
+          }
+          return orig(node, ...rest);
+        };
+      });
+    };
+    // Asserting the toast live is safe because a failure toast lasts 10s and hideToast() only drops
+    // the .show class - it never clears the text or the role. Resetting the role too keeps the
+    // alert assertion from passing on the previous phase's leftover rather than this failure's own.
+    const resetToast = (p) => p.evaluate(() => {
+      const t = document.getElementById("toast");
+      t.classList.remove("show");
+      t.textContent = "";
+      t.setAttribute("role", "status");
+    });
+    // Register the download waiter BEFORE the click: an export that really did produce a file must
+    // fail this, not merely time out into a passing assertion. It is a REGRESSION guard rather than
+    // the discriminating check - an unguarded throw downloads nothing either - so the toast
+    // assertions are what tell a reported failure apart from a silent one, and they run first.
+    // Only a timeout counts as "no download"; any other waiter error is a real failure.
+    async function expectExportReports(p, control, detail, absent) {
+      await resetToast(p);
+      const downloaded = p.waitForEvent("download", { timeout: 750 }).then(() => true)
+        .catch((err) => { if (err && err.name === "TimeoutError") return false; throw err; });
+      await clickSidebarExport(p, control);
+      await expect(p.locator("#toast")).toContainText("Export failed - nothing was downloaded");
+      if (detail) await expect(p.locator("#toast")).toContainText(detail);
+      if (absent) await expect(p.locator("#toast")).not.toContainText(absent);
+      await expect(p.locator("#toast")).toHaveAttribute("role", "alert");
+      expect(await downloaded).toBe(false);
+    }
+
+    const inline = stageContent("<section><p>A failed export must say so.</p></section>", {
+      key: "cmh-canonical-fail-inline",
+      source: "canonical-fail-inline.html",
+    });
+    const nonshareable = stageNonShareable({
+      mutate: (html) => html.replace('data-comment-key="commentable-html-nonshareable-demo"',
+        'data-comment-key="cmh-canonical-fail-nonshareable"'),
+    });
+    try {
+      await page.goto(fileUrl(inline.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "inline note");
+      await breakCanonicalPass(page, { value: "recompute boom" });
+      // #btnSaveHtml binds saveStandalone(), which on an inline document delegates straight to
+      // saveHtml() - so this exercises saveHtml's guard. saveStandalone's OWN guard is only
+      // reachable on a NonShareable document, which is the last phase below.
+      await expectExportReports(page, "#btnSaveHtml", "recompute boom");
+      await expectExportReports(page, "#btnExportOffline", "recompute boom"); // saveOffline()
+      // A bare `throw "..."` is legal JS and carries no `.message`; the cause must still be named.
+      await throwAs(page, { primitive: true, value: "primitive boom" });
+      await expectExportReports(page, "#btnSaveHtml", "primitive boom");
+      await expectExportReports(page, "#btnExportOffline", "primitive boom");
+      // A value that only stringifies to its default object tag names no cause, so the report must
+      // fall back to the plain sentence instead of showing that tag as the diagnosis...
+      await throwAs(page, { primitive: true, tag: true });
+      await expectExportReports(page, "#btnSaveHtml", null, "[object ");
+      // ...and an unbounded message is capped, so the actionable sentence stays on screen.
+      await throwAs(page, { value: "b".repeat(400) });
+      await expectExportReports(page, "#btnSaveHtml", "safe to try again", "b".repeat(220));
+      // The report itself must not be able to fail the way the export just did. Make the toast
+      // element reject exactly the assertive role the FAILURE toast sets, so showToast throws for
+      // that toast only (the CMH-EXP-15 announcement sets role="status" and still works, or its own
+      // listener would raise the page error this phase is looking for). The click must still end
+      // quietly: the guard tried to report, nothing downloaded, and no exception escaped to the
+      // page. Without the guard's inner catch the throw unwinds saveHtml's promise and Chromium
+      // reports it, which is what makes this phase red on that regression.
+      const pageErrors = [];
+      page.on("pageerror", (err) => pageErrors.push(String(err)));
+      await page.evaluate(() => {
+        const t = document.getElementById("toast");
+        const real = t.setAttribute.bind(t);
+        window.__cmhReportAttempts = 0;
+        t.setAttribute = function (name, value) {
+          if (name === "role" && value === "alert") {
+            window.__cmhReportAttempts++;
+            throw new Error("toast down");
+          }
+          return real(name, value);
+        };
+      });
+      const noDownload = page.waitForEvent("download", { timeout: 750 }).then(() => true)
+        .catch((err) => { if (err && err.name === "TimeoutError") return false; throw err; });
+      await clickSidebarExport(page, "#btnSaveHtml");
+      expect(await noDownload).toBe(false);
+      expect(await page.evaluate(() => window.__cmhReportAttempts)).toBeGreaterThan(0);
+      expect(pageErrors).toEqual([]);
+
+      // NonShareable takes the OTHER branch of the Shareable button: saveStandalone() runs the pass
+      // itself instead of delegating to saveHtml().
+      await page.goto(fileUrl(nonshareable.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "nonshareable note");
+      await breakCanonicalPass(page, { value: "recompute boom" });
+      await expectExportReports(page, "#btnSaveHtml", "recompute boom");
+    } finally {
+      fs.rmSync(inline.dir, { recursive: true, force: true });
+      fs.rmSync(nonshareable.dir, { recursive: true, force: true });
+    }
+  });
+
   test("embedded comments travel: a shared copy shows them in a fresh browser (no localStorage)", async ({ page, browser }) => {
     await openInline(page);
     await addTextComment(page, "#commentRoot section p", "traveling comment");
