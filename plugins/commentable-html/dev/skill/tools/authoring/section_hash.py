@@ -113,14 +113,18 @@ class _SectionParser(_browser_boundaries.BrowserBoundaries):
         # runtime walk excludes - so the hash covers the section's stable prose and the two
         # extractors agree. noscript is excluded because with scripting ON the browser exposes its
         # markup as literal text, which would diverge from this tag-parsing extractor.
-        skip = (parent_skip
-                or bool(_SKIP_CLASSES.intersection(classes))
-                or tag_l in ("script", "style", "template", "canvas", "noscript")
-                or "data-cmh-note" in d)
+        own_skip = (bool(_SKIP_CLASSES.intersection(classes))
+                    or tag_l in ("script", "style", "template", "canvas", "noscript")
+                    or "data-cmh-note" in d)
         is_root = not self._in_html_template() and (
             (d.get("id") == "commentRoot") if self.single_root
             else ((d.get("id") == "commentRoot") or ("data-cmh-content-root" in d))
         )
+        opens_root = (is_root and self._root_depth is None
+                      and not (self.single_root and self.found_root))
+        # The runtime starts its traversal AT the selected root, so ancestors outside that root
+        # cannot make it skipped. The root's own class/tag state still applies.
+        skip = own_skip if opens_root else (parent_skip or own_skip)
         entry = {
             "tag": tag_l,
             "skip": skip,
@@ -129,8 +133,7 @@ class _SectionParser(_browser_boundaries.BrowserBoundaries):
         }
         # Open the root only when not already inside one and, in single_root mode, only the first
         # one (found_root latches True) - a later id=commentRoot never re-opens a subtree.
-        if (is_root and self._root_depth is None
-                and not (self.single_root and self.found_root)):
+        if opens_root:
             self._root_depth = len(self._stack) + 1
             self.found_root = True
         if self._in_root() and not skip and _HEADING_RE.match(tag_l):

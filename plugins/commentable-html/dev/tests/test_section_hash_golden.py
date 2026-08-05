@@ -149,6 +149,11 @@ class DocumentContentHashTests(unittest.TestCase):
         self.assertEqual(section_hash.document_content_hash(html),
                          section_hash.cmh_section_hash("Real"))
 
+    def test_a_foreign_template_ancestor_does_not_hide_the_selected_root(self):
+        html = '<svg><template><g id="commentRoot">Real</g></template></svg>'
+        self.assertEqual(section_hash.document_content_hash(html),
+                         section_hash.cmh_section_hash("Real"))
+
     def test_only_id_commentRoot_is_the_root_not_a_bare_data_attr(self):
         # A bare data-cmh-content-root is not getElementById("commentRoot"); only id=commentRoot is.
         self.assertIsNone(section_hash.document_content_hash('<aside data-cmh-content-root>X</aside>'))
