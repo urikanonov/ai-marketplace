@@ -101,6 +101,33 @@ class NonShareableTests(unittest.TestCase):
         # It is not silently clean either - the shareable self-contained guarantee still applies.
         self.assertTrue(any("self-contained" in e and "f.html" in e for e in errors), errors)
 
+    # -- offline chart snapshots contradict the companion-file mode --------- #
+    # The `data-cm-offline-chart` image is the artifact of a SELF-CONTAINED Offline export, so a
+    # document that loads its layer from companion files can never be one. The forcing rule used
+    # to sit in the non-NonShareable branch alone, so this shape drew no error at all while the
+    # runtime's legacy snapshot signal still read it as an offline document (CMH-OFFLINE-09).
+    def _with_offline_chart(self, html):
+        out = html.replace(
+            "<p>content</p>",
+            '<p>content</p>\n'
+            '  <img class="cmh-chart" data-cm-offline-chart="true" '
+            'src="data:image/png;base64,AA==" alt="Offline chart snapshot">')
+        self.assertIn('data-cm-offline-chart="true"', out)
+        return out
+
+    def test_nonshareable_document_rejects_offline_chart_snapshots(self):
+        self.assertNonShareableError(
+            self._with_offline_chart(build_nonshareable()),
+            'commentableHtmlLayer.mode is "nonshareable" but the document carries offline chart '
+            "snapshots")
+
+    def test_nonshareable_document_without_offline_chart_snapshots_is_clean(self):
+        # Control: the rule fires on the SNAPSHOT, not on the nonshareable classification, so an
+        # ordinary companion-file document stays clean.
+        errors, warnings = self._validate(build_nonshareable())
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
     def test_a_nonshareable_document_may_carry_an_inline_event_handler(self):
         # Both places a NonShareable document legitimately carries an `on*`: the shipped bootstrap
         # dismiss button (which `_inlineNonShareableAssets` deletes with the whole NONSHAREABLE

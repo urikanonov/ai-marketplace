@@ -379,7 +379,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.702.1";
+const CMH_VERSION = "1.710.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -16103,6 +16103,10 @@ function _embeddedCommentSig() {
 // and every current comment embedded, or none) or "Not shareable" (it references external
 // skill/companion resources, and/or has comments that are not embedded in the file). The
 // bubble hover explains WHY a file is not shareable.
+// The pre-rename spelling of the companion-file mode is baked into every document produced
+// before the rename, so both spellings count (SHAREABLE_MODES / NONSHAREABLE_MODES in the
+// validator).
+const CMH_NONSHAREABLE_MODES = ["nonshareable", "nonportable"];
 function isOfflineDocument() {
   // The layer's descriptor, not whichever element got the id first: a content-region decoy must
   // not be able to declare what this document IS (cmhLayerBlock).
@@ -16111,6 +16115,11 @@ function isOfflineDocument() {
     try {
       const data = JSON.parse((script.textContent || "").trim() || "{}");
       if (data && data.mode === "offline") return true;
+      // A NonShareable document loads its layer from companion files, so it is not
+      // self-contained and can never be offline: its declared mode settles the question and the
+      // legacy snapshot signal below is not evidence about it (CMH-OFFLINE-09). This mirrors the
+      // validator, whose "snapshots force mode offline" rule never applied to that branch.
+      if (data && CMH_NONSHAREABLE_MODES.indexOf(data.mode) >= 0) return false;
     } catch (e) { /* malformed descriptors are handled by validate.py */ }
   }
   return !!document.querySelector("#commentRoot [data-cm-offline-chart]");

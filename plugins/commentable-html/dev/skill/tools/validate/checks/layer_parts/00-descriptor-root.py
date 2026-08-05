@@ -52,9 +52,21 @@ def _check_layer_descriptor(parser, nonshareable, active_regions):
     if not isinstance(version, str) or not version.strip():
         errors.append('%s.version must be a non-empty string' % LAYER_DESCRIPTOR_ID)
     mode = data.get("mode")
+    # The offline chart snapshot is the artifact of a SELF-CONTAINED Offline export, so its
+    # presence and the declared mode must agree in BOTH branches. A NonShareable document loads
+    # its layer from companion files and can never be that export's output, so a snapshot in one
+    # is a contradiction rather than a stale mode (CMH-OFFLINE-09); scoping the rule to the
+    # non-NonShareable branch alone left that shape blessed here while the runtime's legacy
+    # snapshot signal still read it as offline.
     if nonshareable:
         if mode not in NONSHAREABLE_MODES:
             errors.append('%s.mode must be "nonshareable" for this document' % LAYER_DESCRIPTOR_ID)
+        elif parser.has_offline_chart:
+            errors.append('%s.mode is "nonshareable" but the document carries offline chart '
+                          "snapshots; a document that loads its layer from companion files is "
+                          "not self-contained and can never be offline - drop the "
+                          "data-cm-offline-chart snapshots, or use Export Offline, which "
+                          "produces a self-contained offline file" % LAYER_DESCRIPTOR_ID)
     else:
         if mode not in SHAREABLE_MODES + ("offline",):
             errors.append('%s.mode must be "shareable" or "offline" for this document' % LAYER_DESCRIPTOR_ID)

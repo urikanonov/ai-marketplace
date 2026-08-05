@@ -411,6 +411,52 @@ test("editing an already-offline document preserves offline mode and offline exp
   }
 });
 
+test("a document that declares the companion-file mode is never read as Offline (CMH-OFFLINE-09)", async ({ page }) => {
+  // The legacy `#commentRoot [data-cm-offline-chart]` signal (CMH-OFFLINE-02) is evidence only
+  // for a document that COULD be offline. A NonShareable document loads its layer from companion
+  // files, so it is not self-contained and can never be offline - which is why the validator
+  // raises no offline-mode error for one and now refuses the snapshot outright.
+  //
+  // The fixture keeps the layer INLINE (only the descriptor declares nonshareable) because that
+  // is what makes the runtime's reading observable at all: `currentDocState()` short-circuits to
+  // "Not shareable" for any document that really loads companion files, which is exactly why
+  // this divergence stayed hidden.
+  const snapshotContent = `
+<h1>Companion-file document</h1>
+<p id="companion-note">This document declares the companion-file mode.</p>
+<figure class="chart">
+  <div class="chart-wrap cm-skip">
+    <img id="companionChart" class="cmh-chart" data-cm-offline-chart="true"
+      src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/l1pK4wAAAABJRU5ErkJggg=="
+      alt="Offline chart snapshot" width="1" height="1">
+  </div>
+  <figcaption>Chart snapshot in a document that declares nonshareable.</figcaption>
+</figure>`;
+  const staged = stageContent(snapshotContent, { key: "cmh-nonshareable-chart", source: "nonshareable-chart.html" });
+  const original = fs.readFileSync(staged.html, "utf8");
+  const declared = original.replace('"mode":"shareable"', '"mode":"nonshareable"', 1);
+  expect(declared).toContain('"mode":"nonshareable"');
+  fs.writeFileSync(staged.html, declared);
+  try {
+    await installClipboardCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await expect(page.locator("#cmTypeBadge")).not.toHaveText("Offline");
+    await expect(page.locator("#cmTypeBadge")).toHaveText("Shareable");
+
+    // Control: the legacy fallback survives. Drop the declared mode entirely - the shape
+    // CMH-OFFLINE-02 promises to keep reading - and the same snapshot still yields Offline.
+    const legacy = original.replace('"mode":"shareable",', "", 1);
+    expect(legacy).not.toContain('"mode"');
+    fs.writeFileSync(staged.html, legacy);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await expect(page.locator("#cmTypeBadge")).toHaveText("Offline");
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
 test("Export Offline adds a zero-network CSP and strips loader, media, CSS, and event-handler egress (CMH-OFFLINE-04, CMH-OFFLINE-05)", async ({ page, browser }) => {
   const CONTENT_WITH_EGRESS = `
 <h1>Offline zero network</h1>
