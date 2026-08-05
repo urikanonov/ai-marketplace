@@ -28,13 +28,30 @@ def _is_kql_code(code):
 
 # The `target` keywords that do NOT open an auxiliary browsing context, so no `window.opener` is
 # handed to the opened page: the absent/empty value and the three keywords that navigate a context
-# that already exists. Matched ASCII case-insensitively and UNTRIMMED, the way HTML matches them -
-# a padded ` _blank` is a NAMED context, which keeps an opener like any other name.
+# that already exists. Matched ASCII case-insensitively, the way HTML matches the keywords, and
+# UNTRIMMED - a padded ` _blank` is not the keyword at all, it is a NAME.
 _SAME_CONTEXT_TARGETS = frozenset(("", "_self", "_parent", "_top"))
+
+# The elements that DECLARE a named browsing context inside this document. A `target` naming one of
+# them navigates a context that already exists (an `<iframe name="win1">`), which gets no opener -
+# so the gate below must not call that reverse-tabnabbing. Names are matched EXACTLY, as HTML
+# matches a browsing-context name (only the four keywords are case-insensitive).
+_NAMED_CONTEXT_TAGS = ("iframe", "frame", "object")
+
+
+def _named_browsing_contexts(html):
+    """The browsing-context names this document declares."""
+    names = set()
+    for tag in _NAMED_CONTEXT_TAGS:
+        for el in _find_tag_attrs(html, tag):
+            if el.get("name"):
+                names.add(el["name"])
+    return names
 
 
 def _check_kql_blocks(html):
     errors, warnings = [], []
+    named_contexts = _named_browsing_contexts(html)
     # 11c) "Run in Azure Data Explorer" links (class cmh-kql-run) must point at the ADX web UX over
     #      https and open safely. This fires ONLY on the explicit run-link class, so
     #      it never false-positives on a plain KQL code block or a syntax example.
@@ -45,24 +62,32 @@ def _check_kql_blocks(html):
         if not href.startswith("https://dataexplorer.azure.com/"):
             warnings.append('a "cmh-kql-run" link does not point at https://dataexplorer.azure.com/ '
                             "(build it with tools/kusto_link.py): " + (href[:80] or "(empty href)"))
-        # The condition is the one a BROWSER actually applies: does this target open an AUXILIARY
-        # browsing context, which keeps `window.opener` pointing back at this document? HTML matches
-        # the four keywords ASCII case-insensitively and does NOT trim the value, so everything else
-        # - `_BLANK`, a padded ` _blank`, and any NAMED target (`win1`) - opens or reuses an
-        # auxiliary context whose opener survives. A Python `==` against the literal `_blank` saw
-        # none of them, so a run link carrying no `rel` at all passed in silence (#1120).
+        # The condition is the one a BROWSER actually applies: does this target CREATE an auxiliary
+        # browsing context, whose `window.opener` points back at this document? HTML matches the
+        # four keywords ASCII case-insensitively and does NOT trim the value, so `_BLANK` is the
+        # keyword, a padded ` _blank` is a NAME, and a name that resolves to nothing in this
+        # document creates a new auxiliary context just as `_blank` does. A Python `==` against the
+        # literal `_blank` saw none of those, so a run link carrying no `rel` at all passed in
+        # silence (#1120). A name that DOES resolve - an `<iframe name="win1">` written in the same
+        # document - navigates a context that already exists and gets no opener, so it is exempt:
+        # warning there would be a false positive, and taking the advice would CHANGE behavior
+        # (`noopener` makes a named target stop reusing the frame and open a new tab instead).
         #
         # This gate is the ONLY reverse-tabnabbing control on a `cmh-kql-run` link: CMH-KQL-01 puts
         # the run link inside `figcaption.cm-skip`, and BOTH the render-time stamper
         # (`assets/js/31-links.js` returns early on `.cm-skip`) and `checks/links.py` (which skips a
-        # skip-marked anchor) pass it by. So it is written to over-approximate rather than to mirror
-        # the stamper: the stamper's JS `.trim()` is broader than HTML whitespace, which only makes
-        # it stamp MORE links, and every target it would treat as `_blank` is already covered here.
-        target = _ascii_lower(a.get("target") or "")
-        if target not in _SAME_CONTEXT_TARGETS and "noopener" not in link_rel_tokens(a.get("rel")):
+        # skip-marked anchor) pass it by.
+        raw_target = a.get("target") or ""
+        target = _ascii_lower(raw_target)
+        opens_auxiliary = (target not in _SAME_CONTEXT_TARGETS
+                           and (target == "_blank" or raw_target not in named_contexts))
+        if opens_auxiliary and "noopener" not in link_rel_tokens(a.get("rel")):
+            # `%r` because the value is authored text: the covered spellings include control
+            # characters (a tab, a newline, a vertical tab), and interpolating one raw would break
+            # the diagnostic across lines or drive the reader's terminal.
             warnings.append('a "cmh-kql-run" link opens an auxiliary browsing context '
-                            '(target="%s") without rel="noopener" (reverse-tabnabbing risk); '
-                            'add rel="noopener noreferrer"' % (a.get("target") or "")[:40])
+                            '(target=%r) without rel="noopener" (reverse-tabnabbing risk); '
+                            'add rel="noopener noreferrer"' % raw_target[:40])
 
     # 11d) A framed KQL figure (figure.cmh-kql) must carry a working "Run in Azure Data Explorer"
     #      link (a real <a class="cmh-kql-run"> element) so the reader can open the query in ADX.

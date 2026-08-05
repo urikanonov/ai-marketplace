@@ -122,11 +122,27 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
             _, warnings = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
             self.assertFalse(any('without rel="noopener"' in w for w in warnings),
                              "%r: %r" % (target, warnings))
+        # ...and a NAME that resolves to a browsing context this document already declares navigates
+        # THAT context, which gets no opener. Warning there would be a false positive, and taking the
+        # advice would change behavior: `noopener` stops a named target reusing the frame.
+        link = ('<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
+                'target="win1">Run</a><iframe name="win1" title="f"></iframe>')
+        main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
+        _, warnings = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+        self.assertFalse(any('without rel="noopener"' in w for w in warnings), warnings)
         # ...and a `_BLANK` that does carry `noopener` is clean.
         link = ('<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
                 'target="_BLANK" rel="noopener noreferrer">Run</a>')
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
         self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+
+        # `_blank` stays the keyword even when a frame claims the name - HTML checks the keywords
+        # FIRST - so the exemption above cannot be used to silence the gate.
+        link = ('<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
+                'target="_blank">Run</a><iframe name="_blank" title="f"></iframe>')
+        main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
+        _, warnings = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+        self.assertTrue(any('without rel="noopener"' in w for w in warnings), warnings)
 
     def test_bare_kusto_without_no_cluster_marker_errors(self):
         # CMH-KQL-08: a bare KQL code block that is neither framed in a figure.cmh-kql (with a Run in

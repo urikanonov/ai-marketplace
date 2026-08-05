@@ -32,14 +32,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   the shared split through `tools/_browser_attrs.py`, so it keeps injecting exactly when the
   validator would warn.
 - The same reverse-tabnabbing gate now reads the `target` the way a browser reads it, and asks the
-  question that actually matters: does this target open an AUXILIARY browsing context, whose
+  question that actually matters: does this target CREATE an auxiliary browsing context, whose
   `window.opener` points back at the document the reader is looking at (CMH-KQL-05)? HTML matches
   its four keywords ASCII case-insensitively and does NOT trim the value, so `_BLANK`, a padded
-  ` _blank` and any NAMED target (`win1`) all keep an opener. A Python `==` against the literal
-  `_blank` saw none of them, so a `cmh-kql-run` link carrying no `rel` at all passed the gate in
-  silence. That gate is the ONLY reverse-tabnabbing control on a run link, because CMH-KQL-01 places
-  it inside `figcaption.cm-skip`, which both the render-time stamper and the `checks/links.py`
-  new-tab check pass over.
+  ` _blank` and a NAME that resolves to nothing in the document all keep an opener. A Python `==`
+  against the literal `_blank` saw none of them, so a `cmh-kql-run` link carrying no `rel` at all
+  passed the gate in silence. A name that DOES resolve - an `<iframe name="win1">` in the same
+  document - navigates a context that already exists and is exempt. That gate is the ONLY
+  reverse-tabnabbing control on a run link, because CMH-KQL-01 places it inside
+  `figcaption.cm-skip`, which both the render-time stamper and the `checks/links.py` new-tab check
+  pass over.
 ## [1.737.0] - 2026-08-05
 
 ### Fixed
