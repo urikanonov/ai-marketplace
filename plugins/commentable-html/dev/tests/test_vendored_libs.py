@@ -2352,6 +2352,13 @@ class RuntimeParityTests(unittest.TestCase):
         'top.location.replace("https\\://evil.example")',
         'document.location.assign("\\ https://evil.example")',
         'location.href = "\\htt\\ps\\://evil.example"',
+        # A non-ASCII WHITESPACE character is a BOUNDARY, not an identifier character. The boundary
+        # class treats every OTHER non-ASCII character as part of an identifier, so the whitespace
+        # set has to be carved back out of it - widening to "any non-ASCII character" would stop
+        # seeing a real sink that merely sits one exotic space away from the start of the script.
+        '\u00a0location.href = "https://evil.example"',
+        '\u3000window.location.href = "https://evil.example"',
+        '\u1680location.replace("https://evil.example")',
     ]
     # Benign shapes that must SURVIVE. The strip deletes a whole script, so a false positive
     # silently breaks an author's document - the costlier direction of the two.
@@ -2386,6 +2393,20 @@ class RuntimeParityTests(unittest.TestCase):
         # source the exporter preserves. Keeping it in the BENIGN list pins both engines.
         'locat\u0131on.href = "https://evil.example"',
         '\u017felf.location.href = "https://evil.example"',
+        # A purely LOCAL binding whose name merely ENDS in `location` behind a NON-ASCII identifier
+        # character. JavaScript identifiers are not ASCII, so an ASCII-ONLY boundary class makes
+        # every one of these read as the document's own sink and deletes an author's whole script -
+        # the false-positive direction that costs content. The astral one is the cross-engine case:
+        # it is a surrogate PAIR to `charAt` and a single code point to Python, so a class that only
+        # widened for one of them would make the two engines disagree.
+        '\u00e9location.href = "https://evil.example"',
+        '\u0440location.href = "https://evil.example"',
+        '\U0001d425location.href = "https://evil.example"',
+        'var x = 1; \u00e9location.href = "https://evil.example"',
+        '\u00e9location.assign("https://evil.example")',
+        '\u00e9location = "https://evil.example"',
+        '\u00e9window.location.href = "https://evil.example"',
+        '\u00e9top.open("https://evil.example")',
         # A LOCAL binding named `location` makes an unprefixed sink refer to that object, not the
         # document - `const location = { href: "" }; location.href = <url>` navigates nothing, so
         # deleting the whole script over it is content loss. Shadow-awareness suppresses only the
@@ -3126,22 +3147,31 @@ class RuntimeParityTests(unittest.TestCase):
                         + _LEGACY_NAV_WS + r"*(?:href" + _LEGACY_NAV_WS + r"*=(?!=)"
                         r"|(?:assign|replace)" + _LEGACY_NAV_WS + r"*\()")
     _LEGACY_NAV_BARE = (r"(?:location" + _LEGACY_NAV_WS + r"*=(?!=)|open" + _LEGACY_NAV_WS + r"*\()")
+    # The boundary in front of a chain. It moved with #1056: a JavaScript identifier is not ASCII,
+    # so the ASCII-only class read every non-ASCII identifier character as a boundary and made a
+    # purely local `<non-ASCII letter>location` the document's own sink. The oracle carries the same
+    # widened class, because its job is to pin the SCAN's structure rather than to re-litigate which
+    # characters end an identifier.
+    _LEGACY_NAV_BOUNDARY = (r"[\u0000-\u0023\u0025-\u002d\u002f\u003a-\u0040\u005b-\u005e\u0060"
+                            r"\u007b-\u007f\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000"
+                            r"\ufeff]")
+    _LEGACY_NAV_BOUNDARY_RE = re.compile(_LEGACY_NAV_BOUNDARY, re.ASCII)
     _LEGACY_NAV_FULL = re.compile(
-        r"(?:(?:^|[^.A-Za-z0-9_$])" + _LEGACY_NAV_CHAIN + r"*" + _LEGACY_NAV_PROP
-        + r"|(?:^|[^.A-Za-z0-9_$])" + _LEGACY_NAV_CHAIN + r"+" + _LEGACY_NAV_BARE
+        r"(?:(?:^|" + _LEGACY_NAV_BOUNDARY + r")" + _LEGACY_NAV_CHAIN + r"*" + _LEGACY_NAV_PROP
+        + r"|(?:^|" + _LEGACY_NAV_BOUNDARY + r")" + _LEGACY_NAV_CHAIN + r"+" + _LEGACY_NAV_BARE
         + r"|(?:^|[;})>\n\r\u2028\u2029])" + _LEGACY_NAV_WS + r"*location" + _LEGACY_NAV_WS
         + r"*=(?!=))" + _LEGACY_NAV_URL, re.IGNORECASE | re.ASCII)
     _LEGACY_NAV_PREFIXED = re.compile(
-        r"(?:(?:^|[^.A-Za-z0-9_$])" + _LEGACY_NAV_CHAIN + r"+" + _LEGACY_NAV_PROP
-        + r"|(?:^|[^.A-Za-z0-9_$])" + _LEGACY_NAV_CHAIN + r"+" + _LEGACY_NAV_BARE + r")"
-        + _LEGACY_NAV_URL, re.IGNORECASE | re.ASCII)
+        r"(?:(?:^|" + _LEGACY_NAV_BOUNDARY + r")" + _LEGACY_NAV_CHAIN + r"+" + _LEGACY_NAV_PROP
+        + r"|(?:^|" + _LEGACY_NAV_BOUNDARY + r")" + _LEGACY_NAV_CHAIN + r"+" + _LEGACY_NAV_BARE
+        + r")" + _LEGACY_NAV_URL, re.IGNORECASE | re.ASCII)
 
     # Fragments crossed into a corpus of sinks and NEAR-sinks: a boundary character, a prefix
     # chain, a sink spelling, an operator and a URL literal. The interesting cells are the ones
     # that only ALMOST match - `cfg.` in front, a chain that ends in whitespace (which is itself a
     # legal boundary, so a shorter chain matches where the longest does not), `windows.` and
     # `locations.href`, `==` rather than `=`, and a relative URL.
-    _NAV_CROSS_HEADS = ("", "$", ";", "\n", " ", "x", ".", "cfg.")
+    _NAV_CROSS_HEADS = ("", "$", ";", "\n", " ", "x", ".", "cfg.", "\u00e9")
     _NAV_CROSS_CHAINS = ("", "window.", "window . ", "globalThis?. ", "top.window.", "windows.",
                          "frames . ? . ", "document.")
     _NAV_CROSS_SINKS = ("location.href", "LOCATION . href", "location?.href", "location.assign",
@@ -3221,6 +3251,79 @@ class RuntimeParityTests(unittest.TestCase):
         for sample in self._NAV_CORPUS_BENIGN:
             self.assertFalse(resources.offline_script_navigates_to_network(sample),
                              "the validator now rejects the benign script %r" % sample)
+
+    # The astral samples the code-point sweep below adds to its BMP range. A supplementary code
+    # point is a surrogate PAIR to `charAt` and ONE code point to Python, so it is the only place
+    # the two engines read the same source differently by construction; the sweep is what proves
+    # the class settles it the same way in both rather than the comment claiming it.
+    _NAV_IDENT_ASTRAL = (0x10000, 0x1d425, 0x1f600, 0x20000, 0x10fffd, 0x10ffff)
+
+    def _nav_ident_expected(self, ch):
+        """Whether `ch` MUST read as an identifier character, derived from the two ideas the class
+        encodes rather than from the class itself: within ASCII the identifier set is the scan's own
+        `[.A-Za-z0-9_$]` (the `.` is in it on purpose - a member-expression dot CONTINUES a chain,
+        which is what keeps `cfg.location.href = <url>` benign), and outside ASCII everything is an
+        identifier character except what the scan already calls WHITESPACE."""
+        if ord(ch) < 0x80:
+            return bool(re.match(r"[.A-Za-z0-9_$]", ch))
+        return not resources.OFFLINE_NAV_WS_RE.match(ch)
+
+    def test_the_navigation_boundary_class_covers_every_code_point(self):
+        """Sweep the identifier/boundary split over every code point, not over a few samples.
+
+        The curated corpora put a handful of exotic spaces in the boundary slot, which is enough to
+        catch the carve-out being deleted wholesale but NOT enough to catch ONE range going missing:
+        dropping `\\u2000-\\u200a` from either copy leaves every sample-based navigation test green
+        while a real `<U+2000>location.href = <url>` stops being seen. The split is a closed,
+        enumerable property, so enumerate it - against the WHITESPACE class the scan already uses,
+        so the two can never drift apart silently either.
+
+        The frozen legacy oracle's boundary class is swept in the same pass. It is the complement of
+        this one by construction, and an oracle that is only ALMOST the complement would make the
+        equivalence test assert something subtly different from what the scan does.
+        """
+        points = list(range(0x0000, 0x10000)) + list(self._NAV_IDENT_ASTRAL)
+        for code in points:
+            ch = chr(code)
+            expected = self._nav_ident_expected(ch)
+            self.assertEqual(
+                bool(resources.OFFLINE_NAV_IDENT_RE.match(ch)), expected,
+                "OFFLINE_NAV_IDENT_RE disagrees about U+%04X: within ASCII the identifier set is "
+                "exactly `[.A-Za-z0-9_$]` (the dot included, since it continues a member "
+                "expression), and outside it every character OFFLINE_NAV_WS_RE calls whitespace is "
+                "a BOUNDARY while everything else reads as an identifier character"
+                % code)
+            self.assertEqual(
+                bool(self._LEGACY_NAV_BOUNDARY_RE.match(ch)), not expected,
+                "the frozen oracle's boundary class is not the exact complement of the scan's "
+                "identifier class at U+%04X, so the equivalence test is comparing the scan against "
+                "a slightly different rule than the one it implements" % code)
+
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine sweep needs it")
+        script = (
+            self._runtime_nav_source() + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);"
+            "process.stdout.write(JSON.stringify(p.map(function(c){"
+            "const s=String.fromCodePoint(c);"
+            "return s.split('').map(u=>_OFFLINE_NAV_IDENT_RE.test(u));})));});"
+        )
+        verdicts = self._run_nav_node(node, script, points, "the identifier-class code-point sweep")
+        self.assertEqual(len(verdicts), len(points),
+                         "node returned %d verdicts for %d code points"
+                         % (len(verdicts), len(points)))
+        for code, units in zip(points, verdicts):
+            expected = self._nav_ident_expected(chr(code))
+            # An astral code point reaches `charAt` as a surrogate PAIR, so BOTH units have to land
+            # on the same side as Python's single code point or the two engines part company on the
+            # very inputs this class was widened for.
+            for unit in units:
+                self.assertEqual(
+                    unit, expected,
+                    "the REAL JS engine and the validator disagree about U+%04X, so a script the "
+                    "exporter keeps is one the gate rejects (or the reverse)" % code)
 
     def _run_nav_node(self, node, script, payload, what, timeout=180):
         """Evaluate the extracted navigation source in node, failing rather than hanging.

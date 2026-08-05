@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.702.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.702.1<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.702.1] - 2026-08-05</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The offline strip no longer deletes a benign script because a local binding&#x27;s name happens to contain a non-ASCII letter (CMH-OFFLINE-05). The scripted-navigation scan decides where a sink can start by looking for an identifier BOUNDARY in front of it, and that class was ASCII-only, so any identifier character outside ASCII read as a boundary: a purely local <code>&lt;non-ASCII letter&gt;location.href = &lt;url&gt;</code> - which navigates nothing - was treated as the document&#x27;s own <code>location</code>, so Export Offline deleted the whole script and <code>validate.py --strict</code> rejected a file that navigates nowhere. That is the false-positive direction this check exists to avoid, because it silently destroys an author&#x27;s content. Both engines now spell the class as the COMPLEMENT of the boundary characters (every ASCII character that cannot appear in an identifier EXCEPT <code>.</code>, plus the exact whitespace set the scan already uses), byte-identically, because <code>\w</code> means different things in the two engines and Python has no Unicode property escape. The <code>.</code> exception is unchanged and load-bearing: a member-expression dot has to CONTINUE the chain, so that <code>cfg.location.href = &lt;url&gt;</code> stays some other object&#x27;s <code>location</code> rather than the document&#x27;s sink. The complement spelling also settles the astral case in one rule: a supplementary code point is a surrogate PAIR to JavaScript&#x27;s <code>charAt</code> and a single code point to Python, and neither reading is a boundary character now. Non-ASCII WHITESPACE is deliberately still a boundary, so a real sink one exotic space into a script is seen exactly as before, and the ASCII-only case fold beside it is untouched - it is what stops Python&#x27;s Unicode folding from folding a dotless i or a long s ONTO <code>location</code>, which is the opposite failure. Widening the identifier side can only ever remove matches, never invent one, so no benign document can start being deleted by this change. The identifier/boundary split is now ENUMERATED over every code point in both engines rather than sampled, because a sample corpus catches the whitespace carve-out being deleted wholesale but not one range going missing.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.702.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The offline shadow rule now decides on the SCRIPT&#x27;S OWN DECLARATIONS instead of a bounded character window over raw source, so it stops deleting scripts that navigate nothing (CMH-OFFLINE-05). The window could not see an arrow parameter, a method or <code>constructor</code> shorthand, a generator, a nested destructuring or a default that spent a <code>}</code>, <code>]</code> or <code>)</code> inside it, a comment between <code>catch (</code> and the name, a non-ASCII function name, or any binding more than 400 characters into the list - every one of those made <code>Export Offline</code> drop an author&#x27;s script whole and made <code>validate.py --strict</code> reject the file the exporter had just written. It also read a <code>location</code> merely MENTIONED in a comment, a string or a parameter default as a declaration, which suppressed a real unprefixed sink beside it. The rule is now a single left-to-right tokenizing pass (comments, string and template literals and regex literals skipped; declaration lists, parameter lists and destructuring patterns tracked as binding contexts; property keys and default-value expressions excluded), mirrored helper for helper in the exporter and the strict validator and pinned in both engines. It stays linear on adversarial input, and the arm is now recorded as what it is: a false-positive reducer, not a security boundary. This REPLACES the anchor-driven cursor scan added in 1.699.0: that change made the same character-window decision cheap, and tokenizing the declaration removes the window (and so the cursors, their head patterns and their tests) outright, at a comparable cost per character.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.701.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -509,8 +518,6 @@
               <li>Sorting a table nested inside another sortable table now re-applies every sortable ancestor&#x27;s persisted sort, nearest first. An outer table sorted on a column whose cells HOLD a nested table ranks its rows by that cell&#x27;s text, so a reader who sorted the outer table FIRST and the nested one second was left looking at an order ranked against the nested table&#x27;s old rows - one that a reload (which replays the persisted sorts innermost-first) and an export never reproduced. Each ancestor is unsorted before it is re-sorted, matching the replay&#x27;s authored-order starting point, so the live view is exactly what a reload gives back for either click order. Clearing a nested sort re-ranks its ancestors too, and because re-ranking an ancestor detaches and re-inserts the row that holds the clicked table, focus is restored to the chevron the reader actuated instead of being dropped on the document body (CMH-CONTENT-08).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.699.0] - 2026-08-05</h3></div>
             <div class="group-label">Changed</div>
@@ -539,14 +546,7 @@
               <li>The in-document comment dialog can now DELETE the comment it is showing (CMH-CORE-22). Clicking a highlight&#x27;s orange bubble opens the note with <code>Delete</code> beside <code>Close</code> and <code>Edit</code>, so removing a comment no longer means leaving the dialog and hunting down the same comment&#x27;s card in the panel - the dialog already edits in place, and this is the missing half of that interaction. Deleting from the dialog is not a second implementation: both surfaces now call one shared path (<code>cmhConfirmDeleteThread</code>), so the confirmation wording (including the reply count that warns a thread root takes its replies with it), the durable embedded tombstone, the highlight removal, and the re-render are identical wherever the delete is started. Confirming closes the dialog, so nothing is left anchored to a removed highlight, and focus lands in the comments list instead of falling to the top of the page; declining leaves the dialog exactly as it was with focus back on <code>Delete</code>. <code>Delete</code> is offered in the note view only, so an in-place edit can never be discarded by a delete sitting next to it, and it carries the same accessible name the sidebar card&#x27;s delete carries, so a thread root says up front that its replies go too.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.689.0] - 2026-08-05</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The information-density advisory now drives the shared browser element-handler sequence and keeps its contribution frames parallel to the shared namespace stack. A self-closed foreign <code>&lt;template/&gt;</code> no longer opens an inert HTML fragment and suppresses every later density warning, markup inside an SVG <code>&lt;title&gt;</code> or <code>&lt;script&gt;</code> is parsed instead of swallowed as HTML raw text, and a slash on a non-void HTML start tag no longer makes the density pass close an element the shared parser leaves open. Same-name paragraph and heading closers inside an inert template also stay scoped to that fragment instead of finalizing live outer prose capture, and a paragraph nested inside inline <code>cm-skip</code> no longer finalizes the surrounding live paragraph (CMH-VAL-15).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">327 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">328 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

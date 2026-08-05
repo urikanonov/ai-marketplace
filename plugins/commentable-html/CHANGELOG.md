@@ -4,6 +4,34 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.702.1] - 2026-08-05
+
+### Fixed
+
+- The offline strip no longer deletes a benign script because a local binding's name happens to
+  contain a non-ASCII letter (CMH-OFFLINE-05). The scripted-navigation scan decides where a sink
+  can start by looking for an identifier BOUNDARY in front of it, and that class was ASCII-only,
+  so any identifier character outside ASCII read as a boundary: a purely local
+  `<non-ASCII letter>location.href = <url>` - which navigates nothing - was treated as the
+  document's own `location`, so Export Offline deleted the whole script and `validate.py --strict`
+  rejected a file that navigates nowhere. That is the false-positive direction this check exists to
+  avoid, because it silently destroys an author's content. Both engines now spell the class as the
+  COMPLEMENT of the boundary characters (every ASCII character that cannot appear in an identifier
+  EXCEPT `.`, plus the exact whitespace set the scan already uses), byte-identically, because `\w`
+  means different things in the two engines and Python has no Unicode property escape. The `.`
+  exception is unchanged and load-bearing: a member-expression dot has to CONTINUE the chain, so
+  that `cfg.location.href = <url>` stays some other object's `location` rather than the document's
+  sink. The complement spelling also settles the astral case in one rule: a supplementary code
+  point is a surrogate PAIR to JavaScript's `charAt` and a single code point to Python, and neither
+  reading is a boundary character now. Non-ASCII WHITESPACE is deliberately still a boundary, so a
+  real sink one exotic space into a script is seen exactly as before, and the ASCII-only case fold
+  beside it is untouched - it is what stops Python's Unicode folding from folding a dotless i or a
+  long s ONTO `location`, which is the opposite failure. Widening the identifier side can only ever
+  remove matches, never invent one, so no benign document can start being deleted by this change.
+  The identifier/boundary split is now ENUMERATED over every code point in both engines rather than
+  sampled, because a sample corpus catches the whitespace carve-out being deleted wholesale but not
+  one range going missing.
+
 ## [1.702.0] - 2026-08-05
 
 ### Fixed

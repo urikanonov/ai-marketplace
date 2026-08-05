@@ -422,7 +422,31 @@ OFFLINE_NAV_ASSIGN_TAIL_RE = re.compile(r"[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\
 OFFLINE_NAV_OPEN_TAIL_RE = re.compile(r"[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\([ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
     r"""["'`](?:\\?[\u0001-\u0020]|\\[\u2028\u2029])*(?:\\?h(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?p(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?s(?:\\?[\t\n\r]|\\[\u2028\u2029])*)?\\?:|(?:\\?\/|\\\\)(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?\/|\\\\))""", re.IGNORECASE | re.ASCII)
 OFFLINE_NAV_WS_RE = re.compile(r"[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]", re.ASCII)
-OFFLINE_NAV_IDENT_RE = re.compile(r"[.A-Za-z0-9_$]", re.ASCII)
+# An IDENTIFIER character, spelled as the complement of the BOUNDARY characters. It decides where a
+# prefix chain may start, so a character it gets wrong in the identifier direction turns a purely
+# local binding whose name merely ENDS in `location` (`<non-ASCII letter>location.href = <url>`)
+# into the document's own sink and deletes an author's whole script. The class was ASCII-only and
+# did exactly that. It cannot be fixed by reaching for `\w`, which is ASCII in JS and Unicode-aware
+# in Python - the two engines would then disagree on the very inputs this is about - and no
+# Unicode property escape exists in Python's `re`, so the complement is spelled out instead: every
+# ASCII character that cannot appear in an identifier EXCEPT `.`, plus the exact whitespace set the
+# scan uses. Everything else, ASCII or not, is an identifier character. The `.` exception is not an
+# oversight and predates this spelling: a member-expression dot must CONTINUE the chain, so that
+# `cfg.location.href = <url>` reads as some other object's `location` and stays benign - treating it
+# as a boundary would delete that script. Three more consequences are deliberate.
+# Non-ASCII WHITESPACE stays a boundary (a sink one exotic space into the script is still seen),
+# which is why the whitespace set is carved back out rather than the class being "any non-ASCII".
+# And a non-ASCII character that is NOT a legal IdentifierPart - an em dash, a curly quote - now
+# reads as one, so a sink written behind one is not matched; that is the same direction as the rest
+# of CMH-OFFLINE-05's residual (an author who writes it has cheaper bypasses already) and it is the
+# safe direction, since every widening here can only ever remove matches, never invent one.
+# It also settles the ASTRAL case identically in both engines without a second test: a supplementary
+# code point is a surrogate PAIR to `charAt` and a single code point to Python, and neither a
+# surrogate nor a supplementary code point is in the boundary list, so both read it as identifier.
+# The ASCII-only CASE FOLD elsewhere in the scan is untouched and must stay that way - it exists so
+# Python's Unicode folding cannot fold a non-ASCII letter ONTO `location` (the dotless i, the long
+# s), which is the OPPOSITE failure and is pinned by its own benign samples.
+OFFLINE_NAV_IDENT_RE = re.compile(r"[^\u0000-\u0023\u0025-\u002d\u002f\u003a-\u0040\u005b-\u005e\u0060\u007b-\u007f\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]", re.ASCII)
 OFFLINE_NAV_STATEMENT_RE = re.compile(r"[;})>\n\r\u2028\u2029]", re.ASCII)
 OFFLINE_NAV_LINE_BREAK_RE = re.compile(r"[\n\r\u2028\u2029]", re.ASCII)
 OFFLINE_NAV_PREFIX_NAMES = ("window", "self", "top", "parent", "globalThis", "document", "frames")
