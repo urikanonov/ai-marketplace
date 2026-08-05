@@ -9,7 +9,7 @@ import tempfile
 from html.parser import HTMLParser
 from urllib.parse import unquote, urlparse
 from urllib.request import url2pathname
-from .parsing import REGIONS, FETCHING_LINK_RELS, _DocParser, _ascii_lower, _parse_document
+from .parsing import REGIONS, FETCHING_LINK_RELS, _DocParser, _ascii_lower, _parse_document, link_rel_tokens
 
 # A Chart.js loader filename, as a whole path segment: chart(.umd)?(.min)?.js,
 # optionally followed by a query string / fragment; OR the bare pinned form
@@ -1272,9 +1272,89 @@ def _is_adx_run_href(href):
 
 
 def _link_loads(attrs):
-    rels = set((attrs.get("rel") or "").lower().split())
+    rels = link_rel_tokens(attrs.get("rel"))
     return bool(rels & FETCHING_LINK_RELS)
 
+
+# The referrer surface the offline export hardens, and the gate that has to agree with it. No
+# meta-delivered CSP can restrict TOP-LEVEL NAVIGATION, so a click the reader makes is not
+# blockable and the one thing an offline document can still control is that the navigation carries
+# no provenance: the export removes EVERY `referrerpolicy` attribute and replaces any authored
+# referrer meta with `no-referrer` (`_stripOfflineNetworkLoads` / `_ensureOfflineCsp` in
+# `assets/js/68-export-offline.js`). A per-element policy OVERRIDES the document one for that
+# request, so a permissive attribute defeats the `no-referrer` meta on exactly the anchor an
+# attacker planted, and the LAST referrer meta a document declares wins, so a permissive meta
+# written after ours defeats it too.
+#
+# What that is worth is stated honestly rather than overclaimed: a document opened from `file://`
+# sends no `Referer` at all whatever its policy says (the Referrer Policy standard's "strip url for
+# use as a referrer" returns no referrer for a non-HTTP(S) source), so the leak this closes is the
+# one an exported report meets once someone SERVES it - over http(s), where `unsafe-url` really
+# does hand the full document URL to whatever the reader clicks. The parity argument stands on its
+# own either way: the export removes this surface, so a gate that blesses what the export rewrites
+# is the CMH-OFFLINE-04 drift.
+#
+# The gate is a CONTRACT check rather than a byte-for-byte mirror of the strip, exactly as the
+# offline CSP rule is: the export REPLACES the CSP meta unconditionally while the gate accepts any
+# applied policy that meets the contract. Here the contract is that nothing WEAKENS `no-referrer`,
+# so what is reported is exactly what a browser would HONOUR as a weaker policy - which is why the
+# attribute and the meta get SEPARATE readings below rather than one shared one, and why each was
+# MEASURED in a real Chromium rather than read off the two specifications and hoped for.
+REFERRER_POLICIES = frozenset((
+    "no-referrer", "no-referrer-when-downgrade", "same-origin", "origin", "strict-origin",
+    "origin-when-cross-origin", "strict-origin-when-cross-origin", "unsafe-url",
+))
+# The legacy spellings HTML still folds onto a modern token when it processes a referrer META.
+# Folding them is what stops `always` - an alias for `unsafe-url` - from reading as an unparseable
+# value the gate would wave through, and `never` really is honoured as `no-referrer` (both
+# measured cross-origin: a document carrying `content="always"` sent the full URL, one carrying
+# `content="never"` sent nothing).
+REFERRER_POLICY_LEGACY = {
+    "never": "no-referrer",
+    "default": "no-referrer-when-downgrade",
+    "always": "unsafe-url",
+    "origin-when-crossorigin": "origin-when-cross-origin",
+}
+# The elements HTML gives `referrerpolicy` any meaning on. Scoped, the way the `ping` rule is
+# scoped to `a`/`area`, because the attribute anywhere else controls no request and so cannot
+# weaken anything - reporting `<div referrerpolicy="unsafe-url">` would only cost an author
+# content. The SVG-only fetchers this file treats as loaders elsewhere (`image`, `use`, `feImage`)
+# are deliberately NOT here: SVG2 lists the attribute on them, but a real Chromium exposes no
+# `referrerPolicy` on any of the three (measured - the IDL attribute is absent entirely), so it
+# honours nothing there. `a` and `script` are namespace-blind by tag NAME, which is what reaches
+# the SVG anchor (measured as supported). The export still removes the attribute from every
+# element, which is the same canonicalizing over-reach the CSP meta gets and costs the reader
+# nothing.
+REFERRER_POLICY_ELEMENTS = ("a", "area", "iframe", "img", "link", "script")
+
+
+def referrer_policy_attr(value):
+    """The policy a `referrerpolicy` ATTRIBUTE sets, or "" when it sets none.
+
+    An enumerated attribute: the value is matched ASCII case-insensitively against the current
+    tokens and nothing else. No whitespace trim and no legacy alias, both MEASURED - a real
+    Chromium reads `referrerpolicy=" unsafe-url "` and `referrerpolicy="always"` as the invalid
+    value state, which sets no policy at all and leaves the document's own in force, so trimming
+    or folding here would report an attribute that weakens nothing.
+    """
+    token = _ascii_lower(value or "")
+    return token if token in REFERRER_POLICIES else ""
+
+
+def referrer_meta_policy(content):
+    """The policy a `<meta name="referrer">` sets, or "" when it sets none.
+
+    The WHOLE content value, ASCII-lowercased, with HTML's legacy aliases folded - NOT a
+    comma-separated list and NOT trimmed. Measured rather than assumed, because the HTTP header
+    grammar is a list and the meta one is not: in a real Chromium `content="no-referrer,
+    unsafe-url"`, `content=" unsafe-url "` and `content=" origin-when-crossorigin "` all set NO
+    policy (the document fell back to its default), while `content="unsafe-url"`,
+    `content="always"` and `content="never"` each set theirs. Reading the meta as a list would
+    have reported documents a browser treats as carrying no policy at all.
+    """
+    token = _ascii_lower(content or "")
+    token = REFERRER_POLICY_LEGACY.get(token, token)
+    return token if token in REFERRER_POLICIES else ""
 
 def _csp_directives(content):
     """The directives of one policy, as a browser reads them: the FIRST occurrence of a directive
