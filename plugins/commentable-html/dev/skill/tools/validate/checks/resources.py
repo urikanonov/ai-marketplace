@@ -299,32 +299,72 @@ def is_network_url(value):
 # rest (Python's `str.strip()`/`split()` take U+001C-U+001F, JS's `trim()` takes U+FEFF), which is
 # the CMH-OFFLINE-04 drift. Only the candidate BOUNDARY is decided here; every character the URL
 # parser itself removes is left to `normalize_url_value`. Mirrored in the exporter's
-# `_offlineSrcsetCandidateUrl` / `_offlineSrcsetHasNetwork`.
-_SRCSET_WS_RE = re.compile(r"[\t\n\f\r ]+")
+# `_OFFLINE_SRCSET_WS` / `_offlineSrcsetHasNetwork`.
+_SRCSET_WS = "\t\n\f\r "
 
 
 def srcset_candidate_urls(value):
     """Every string in a `srcset` a browser could load, tokenized the way HTML's parser does.
 
-    Two readings are collected, because splitting on the comma ALONE is not what HTML does: its
-    srcset parser collects a run of non-ASCII-whitespace as the URL, so a comma INSIDE that run
-    belongs to the URL (`srcset="https://,host/x.png 1x"` requests `https://,host/x.png` - measured
-    in a real Chromium). A comma-split alone therefore tests the truncated `https://`, which is an
-    empty authority and local. The whitespace-run reading alone is not enough either, because two
-    candidates may be separated by a comma with no space around it. Taking the UNION costs nothing:
-    a descriptor (`1x`, `320w`) can never match the network predicate. Mirrored in the exporter's
-    `_offlineSrcsetCandidateUrls`.
+    This is HTML's own srcset candidate state machine, not an approximation of it: skip a run of
+    ASCII whitespace and commas, collect a run of NON-whitespace as the URL, and then either strip
+    that URL's trailing commas (which end the candidate with no descriptors at all) or run the
+    descriptor tokenizer forward to the first comma OUTSIDE parentheses.
+
+    It replaced a UNION of two approximations - a comma split and a whitespace split - that was
+    deliberately over-inclusive on the reasoning that a descriptor (`1x`, `320w`) can never match
+    the network predicate. A `data:` URL breaks that reasoning, because a comma is legal INSIDE one
+    (it separates the media type from the data): `data:text/plain,https://example.com/payload 1x`
+    was comma-split into `data:text/plain` and `https://example.com/payload`, and the second half
+    matched. Fail-CLOSED (an over-strip and an over-rejection, never a missed load), but it made an
+    offline export clear a `srcset` that reaches no network and the strict validator reject a
+    document with no egress (issue #1084). Both cases the union existed for survive: a comma inside
+    the URL run belongs to the URL (`srcset="https://,host/x.png 1x"` really does request
+    `https://,host/x.png`), and a comma that follows the DESCRIPTORS still separates two candidates
+    even with no space around it (`local.png 1x,https://host/x.png 2x` is two). A comma that abuts
+    the URL run is NOT a separator: `a.png,b.png` is the single relative reference `a.png,b.png`,
+    which a browser resolves against the document and never fetches off-host. All three measured in
+    a real Chromium.
+
+    One step of HTML's algorithm is deliberately NOT taken: descriptor VALIDATION. HTML appends a
+    candidate only once its descriptors parse cleanly, so it DISCARDS `https://host/x.png 1x 2x`
+    (repeated `x`) and never fetches it; both sides here keep the candidate and report the load.
+    That is the fail-CLOSED direction, and the alternative is a second, larger state machine (the
+    `w`/`x`/`h`/`d` grammar and its duplicate rules) to hold identical across two languages - the
+    drift this pair exists to prevent - where a mistake would cost a MISSED load rather than an
+    over-strip. Mirrored in the exporter's `_offlineSrcsetCandidateUrls`.
     """
     text = str(value or "")
     urls = []
-    for part in text.split(","):
-        url = _SRCSET_WS_RE.split(part.lstrip("\t\n\f\r "))[0]
+    pos = 0
+    end = len(text)
+    while pos < end:
+        while pos < end and (text[pos] in _SRCSET_WS or text[pos] == ","):
+            pos += 1
+        start = pos
+        while pos < end and text[pos] not in _SRCSET_WS:
+            pos += 1
+        url = text[start:pos]
+        if url.endswith(","):
+            url = url.rstrip(",")
+            if url:
+                urls.append(url)
+            continue
         if url:
             urls.append(url)
-    for token in _SRCSET_WS_RE.split(text):
-        token = token.strip(",")
-        if token and token not in urls:
-            urls.append(token)
+        # Descriptor tokenizer: everything up to the first comma outside parentheses belongs to
+        # this candidate's descriptors, so a comma parked inside `(...)` is not a separator.
+        in_parens = False
+        while pos < end:
+            c = text[pos]
+            pos += 1
+            if in_parens:
+                if c == ")":
+                    in_parens = False
+            elif c == ",":
+                break
+            elif c == "(":
+                in_parens = True
     return urls
 
 

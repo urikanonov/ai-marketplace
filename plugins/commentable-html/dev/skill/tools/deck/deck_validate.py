@@ -31,6 +31,11 @@ _toolpath.ensure()
 import _browser_attrs  # noqa: E402
 import _browser_boundaries  # noqa: E402
 from deck_common import SLIDE_ID_RE  # noqa: E402
+try:
+    from checks.resources import srcset_candidate_urls  # noqa: E402
+except Exception:  # pragma: no cover - only a broken/partial install reaches this
+    srcset_candidate_urls = None
+    _toolpath.warn_missing_tool("checks.resources", "srcset candidate tokenization")
 from cmhval import contrast  # noqa: E402
 
 PKG = Path(_toolpath.SKILL_ROOT)
@@ -117,7 +122,18 @@ _AUTHORED_ELEMENT_TAGS = {
     "svg", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul",
 }
 def _srcset_urls(value):
-    return [part.strip().split()[0] for part in value.split(",") if part.strip()]
+    # The SHARED candidate reader, not a third hand copy: `srcset` is a list, and a comma split
+    # cuts a `data:` URL in half at its own media-type separator, so this gate used to reject a
+    # deck whose only "remote" reference was the tail of one (#1084). The strict validator and the
+    # offline strip both read the list with HTML's candidate state machine, and reading it a third
+    # way here made the deck gate DISAGREE with both.
+    if srcset_candidate_urls is None:
+        # Only a broken install gets here (the import above already warned). Degrade to the UNION
+        # of both readings - the strictly over-inclusive one - so a partial install still fails
+        # CLOSED on egress rather than crashing the gate or waving a candidate through.
+        parts = [p.strip().split()[0] for p in value.split(",") if p.strip()]
+        return parts + [t.strip(",") for t in value.split() if t.strip(",") and t.strip(",") not in parts]
+    return srcset_candidate_urls(value)
 
 
 class _ActiveContentScanner(_browser_boundaries.BrowserBoundaries):

@@ -34,6 +34,42 @@ export const KITCHEN_SINK = path.join(FIXTURES, "kitchen-sink.html");
 export const KITCHEN_SINK_NONSHAREABLE = path.join(FIXTURES, "nonshareable", "kitchen-sink.html");
 export const fileUrl = (p) => pathToFileURL(p).href;
 
+// A `srcset` value is a LIST, and its candidate BOUNDARY is HTML's: a run of non-ASCII-whitespace
+// is the URL, and only a comma that FOLLOWS the descriptors separates two candidates, so a comma
+// inside a `data:` URL is not a separator. Every egress sweep in the suite needs that boundary, and
+// hand-copying it is what let three surfaces disagree in the first place (#1084), so the tokenizer
+// is EXTRACTED from the shipped runtime rather than re-transcribed here. That is also its LIMIT:
+// sharing the exporter's own function means a boundary bug moves both sides together and passes a
+// sweep unnoticed. The independent check on the boundary is the node-evaluated corpus in
+// `test_vendored_libs.py`, which pins the candidate LIST against HTML's own answer.
+function loadRuntimeSrcsetTokenizer() {
+  const source = fs.readFileSync(path.join(DEV, "assets", "js", "68-export-offline.js"), "utf8");
+  const wsMatch = source.match(/const _OFFLINE_SRCSET_WS = "(?:[^"\\]|\\.)*";/);
+  if (!wsMatch) throw new Error("the exporter no longer declares _OFFLINE_SRCSET_WS; re-point the extraction");
+  const start = source.indexOf("function _offlineSrcsetCandidateUrls(");
+  if (start === -1) throw new Error("the exporter no longer declares _offlineSrcsetCandidateUrls; re-point the extraction");
+  // Bound the slice by the NEXT known symbol and take the LAST column-0 `}` before it, not the
+  // first one after the start: a column-0 brace added anywhere inside the function would otherwise
+  // cut the region short, and a short region whose braces happen to balance would slip past the
+  // checks below and silently exercise a partial tokenizer.
+  const next = source.indexOf("function _offlineSrcsetHasNetwork(", start);
+  if (next === -1) throw new Error("the exporter no longer declares _offlineSrcsetHasNetwork after the tokenizer; re-point the extraction");
+  const end = source.lastIndexOf("\n}", next);
+  if (end === -1 || end < start) throw new Error("could not find the end of _offlineSrcsetCandidateUrls");
+  const region = source.slice(start, end + 2);
+  if (region.split("{").length !== region.split("}").length) {
+    throw new Error("the extracted _offlineSrcsetCandidateUrls region has unbalanced braces");
+  }
+  if (region.split("\n").pop() !== "}") {
+    throw new Error("the extracted _offlineSrcsetCandidateUrls region does not end at a column-0 brace");
+  }
+  if ((region.match(/function _offlineSrcsetCandidateUrls\(/g) || []).length !== 1) {
+    throw new Error("the extracted region does not carry exactly one _offlineSrcsetCandidateUrls definition");
+  }
+  return new Function(`${wsMatch[0]}\n${region}\nreturn _offlineSrcsetCandidateUrls;`)();
+}
+export const srcsetCandidates = loadRuntimeSrcsetTokenizer();
+
 // The layer copies via navigator.clipboard.writeText; capture it deterministically
 // so clipboard assertions do not depend on file:// clipboard permissions.
 export async function installClipboardCapture(page) {

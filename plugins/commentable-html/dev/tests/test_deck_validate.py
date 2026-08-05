@@ -308,7 +308,10 @@ class DeckValidateTests(unittest.TestCase):
 
     def test_unquoted_remote_media_fails(self):
         for snippet in ("<img src=//evil.example/o.gif>", "<img src=https://evil/x.png>",
-                        "<source srcset=//evil/x 1x>"):
+                        "<source srcset=//evil/x 1x>",
+                        # The remote candidate SECOND, so a reader that only ever returned the head
+                        # of the list would go blind while every other deck test stayed green.
+                        '<img src="local.png" srcset="local.png 1x, https://evil/x.png 2x">'):
             with self.subTest(snippet=snippet):
                 self._assert_error(_inject(self.html, snippet), "remote media/resource")
 
@@ -330,6 +333,52 @@ class DeckValidateTests(unittest.TestCase):
         ):
             with self.subTest(snippet=snippet):
                 self._assert_error(_inject(self.html, snippet), needle)
+
+    # The deck gate reads a `srcset` with the SHARED candidate reader, so it agrees with the
+    # strict validator and the offline strip. Splitting on the comma cut a `data:` URL in half at
+    # its own media-type separator and rejected a deck that reaches no network at all (#1084).
+    def test_a_data_srcset_candidate_carrying_a_comma_is_not_remote(self):
+        for value in ("data:text/plain,https://evil.example/payload 1x",
+                      "local.png (a,https://evil.example/x.png) 1x"):
+            with self.subTest(value=value):
+                errs = _errors(_inject(self.html, '<img src="local.png" srcset="%s">' % value))
+                self.assertEqual([e for e in errs if "remote media/resource" in e], [], (value, errs))
+
+    # The candidate list feeds the dangerous-scheme and traversal checks too, not only the remote
+    # one, so the narrower candidates have a blast radius. A payload buried where HTML puts no
+    # candidate boundary is not a candidate a browser ever acts on (measured: no request, no
+    # `currentSrc`, no execution), while a genuine comma-separated one must still be rejected.
+    def test_srcset_dangerous_scheme_and_traversal_follow_the_html_candidate_boundary(self):
+        for value, needle in (
+            ("local.png 1x, javascript:alert(1) 2x", "javascript:"),
+            ("local.png 1x, data:text/html,<b>x</b> 2x", "javascript:"),
+            ("local.png 1x, ../secret.png 2x", "parent-directory"),
+        ):
+            with self.subTest(value=value, rejected=True):
+                self._assert_error(_inject(self.html, '<img src="local.png" srcset="%s">' % value),
+                                   needle)
+        for value in ("local.png (a,javascript:alert(1)) 1x",
+                      "local.png (a,../secret.png) 1x",
+                      "data:image/png,javascript:alert(1) 1x"):
+            with self.subTest(value=value, rejected=False):
+                errs = _errors(_inject(self.html, '<img src="local.png" srcset="%s">' % value))
+                self.assertEqual([e for e in errs
+                                  if "dangerous URL scheme" in e or "parent-directory" in e],
+                                 [], (value, errs))
+
+    # ...and it must be the SHARED reader, not a third reading that merely happens to agree on the
+    # two values above. Compared over the same corpus that pins the exporter and the strict
+    # validator to each other, so all three surfaces are held to one candidate boundary.
+    def test_the_deck_gate_tokenizes_a_srcset_with_the_shared_candidate_reader(self):
+        from checks.resources import srcset_candidate_urls
+        for value in ("data:text/plain,https://evil.example/payload 1x",
+                      "local.png 1x, https://evil.example/x.png 2x",
+                      "local.png (a(b), https://evil.example/x.png) 1x",
+                      "local.png, 1x, https://evil.example/x.png 2x",
+                      "a.png,b.png 1x"):
+            with self.subTest(value=value):
+                self.assertEqual(deck_validate._srcset_urls(value),
+                                 srcset_candidate_urls(value), value)
 
     def test_external_hyperlink_is_allowed(self):
         # A hyperlink to a remote page is NOT egress (nothing fetches on load); it must not be flagged.
