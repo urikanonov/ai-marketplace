@@ -229,16 +229,17 @@ LINK_REL_WS_RE = re.compile(r"[\t\n\f\r ]+")
 def link_rel_tokens(value):
     """The relations a `rel` attribute names, ASCII-folded - the reading both sides share.
 
-    EVERY reader of a `rel` list goes through this, not only the egress gates it was introduced
-    for (#1076): the offline link-relation gate, the CSP-lateness "does this <link> fetch?" test,
-    the reverse-tabnabbing gate on a `cmh-kql-run` link, and the favicon collector (plus
-    `tools/authoring/_favicon.py`, which reads it through `tools/_browser_attrs.py`). The two
+    EVERY Python reader of a `rel` list in `checks/` goes through this, not only the egress gates it
+    was introduced for (#1076), and so does every tool outside the package that reads one (through
+    `tools/_browser_attrs.link_rel_tokens`, which `tools/authoring/_favicon.py` uses). The two
     RUNTIME readers - the export strip and the render-time `rel="noopener noreferrer"` stamper -
     share the bundle's single JS copy (`_offlineLinkRelTokens` / `_OFFLINE_REL_WS_RE` in
-    `assets/js/68-export-offline.js`), pinned to this pattern as TEXT by the parity test. A reader
-    left on `str.split()` has a parser differential against the browser all of its own - it
-    accepted a `noopener` and counted a favicon a browser never honors (#1120) - so a new one is
-    added here rather than beside its check.
+    `assets/js/68-export-offline.js`), pinned to this pattern as TEXT by the parity test. Note the
+    stamper does NOT back this gate up for content inside `.cm-skip` (it returns early there), which
+    is exactly where CMH-KQL-01 puts a `cmh-kql-run` link. A reader left on `str.split()` has a
+    parser differential against the browser all of its own - it accepted a `noopener` and counted a
+    favicon a browser never honors (#1120) - so a new one is added here rather than beside its
+    check.
 
     ASCII-only case folding because HTML matches a `rel` keyword ASCII case-insensitively: a
     Unicode fold maps U+212A onto `k` and U+017F onto `s`, so a look-alike would become a real

@@ -150,6 +150,9 @@ class SharedDecodeShimTests(unittest.TestCase):
                                  {"icon%sx" % sep}, repr(sep))
             self.assertEqual(_browser_attrs.link_rel_tokens("ICON x"), {"icon", "x"})
             self.assertEqual(_browser_attrs.link_rel_tokens("\u212a x"), {"\u212a", "x"})
+            # ...and the reason it cannot simply reuse `ascii_lower`: that helper degrades to
+            # Python's UNICODE `.lower()` under the SAME condition, which maps U+212A onto `k`.
+            self.assertEqual(_browser_attrs.ascii_lower("\u212a"), "k")
             self.assertEqual(_browser_attrs.link_rel_tokens(None), set())
             self.assertEqual(_browser_attrs.link_rel_tokens("   "), set())
 
