@@ -67,6 +67,12 @@ a { color: var(--cp-link); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 code, kbd, .mono { font-family: var(--cp-mono); font-size: 0.92em; }
+/* Site prose quotes tags, selectors, and paths, so any generated surface (a changelog bullet, a
+   tutorial paragraph, an install description, a step card) can land a long code span with no break
+   opportunity. Without a break rule that one token widens the whole document on a phone; break
+   inside it instead. A fenced block is unaffected: `pre` keeps `white-space: pre`, which suppresses
+   wrapping, so it still scrolls rather than re-flowing. */
+code { overflow-wrap: anywhere; word-break: break-word; }
 
 .wrap { max-width: var(--cp-maxw); margin: 0 auto; padding: 0 20px; }
 

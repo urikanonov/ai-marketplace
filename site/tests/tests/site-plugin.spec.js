@@ -797,3 +797,96 @@ test("a long unbreakable code token in a changelog entry does not overflow the m
     expect(box.x + box.width, p + " code span ends on-screen").toBeLessThanOrEqual(width + 1);
   }
 });
+
+// A long token with no space, hyphen, or other break opportunity - the shape a quoted tag, a CSS
+// selector, or a path takes in prose. Comfortably wider than a 375px viewport at the inline-code
+// font size on every surface below.
+const UNBREAKABLE_CODE_TOKEN = "commentableHtmlRuntimeSelectionAnchorOffsetResolverWithALongName";
+
+test("a long unbreakable inline code token does not overflow the mobile viewport (SITE-CODE-01)", async ({ page }) => {
+  // Every prose surface that carries a code span can pick up a long unbreakable token from a routine
+  // wording change - whether it is generated from Markdown (the tutorial) or authored in a page
+  // source (the install description, the step cards). Inject one into a real rendered element rather
+  // than depending on today's copy, which any edit can reword.
+  const surfaces = [
+    { path: "/commentable-html/tutorial/", selector: ".tutorial p", label: "tutorial paragraph" },
+    { path: "/commentable-html/", selector: ".install-updater-desc", label: "install description" },
+    { path: "/commentable-html/", selector: ".step p", label: "step card" },
+    { path: "/", selector: ".step p", label: "hub step card" },
+  ];
+  await page.setViewportSize({ width: 375, height: 800 });
+  for (const { path: p, selector, label } of surfaces) {
+    await page.goto(p, { waitUntil: "domcontentloaded" });
+    // The hub navbar's plugin flyout is laid out while visibility:hidden and already pushes the
+    // hub's scrollWidth 63px past a 375px viewport (a separate defect, issue #1098). Neutralize
+    // that one out-of-flow, absolutely positioned box so this test can make the ABSOLUTE assertion
+    // below instead of only a no-growth one; a smaller future overflow would otherwise hide behind
+    // it, since scrollWidth reports only the largest overhang. A CSSOM style write is used rather
+    // than an injected <style> tag, which the tutorial page's `style-src 'self'` CSP would block.
+    await page.evaluate(() => {
+      document.querySelectorAll(".nav-switcher-menu").forEach((el) => {
+        el.style.display = "none";
+      });
+    });
+    const host = page.locator(selector).first();
+    await expect(host, p + " has a " + label).toBeVisible();
+    const before = await page.evaluate(() => document.documentElement.scrollWidth);
+    await host.evaluate((el, text) => {
+      const code = document.createElement("code");
+      code.id = "inline-code-overflow-probe";
+      code.textContent = text;
+      el.appendChild(code);
+    }, UNBREAKABLE_CODE_TOKEN);
+    const probe = page.locator("#inline-code-overflow-probe");
+    await expect(probe).toBeVisible();
+    const after = await page.evaluate(() => document.documentElement.scrollWidth);
+    const width = await page.evaluate(() => document.documentElement.clientWidth);
+    expect(after, p + " " + label + ": a long code token must not widen the document").toBeLessThanOrEqual(before);
+    expect(after, p + " " + label + ": the document must still fit the viewport").toBeLessThanOrEqual(width + 1);
+    // The span itself stays inside the viewport too, so the page is not merely clipping it.
+    const box = await probe.boundingBox();
+    expect(box.x, p + " " + label + ": code span starts on-screen").toBeGreaterThanOrEqual(-1);
+    expect(box.x + box.width, p + " " + label + ": code span ends on-screen").toBeLessThanOrEqual(width + 1);
+  }
+});
+
+test("a fenced code block keeps its own pre and scroll behavior (SITE-CODE-01)", async ({ page }) => {
+  // The baseline inline-code wrapping rule must not reach into fenced blocks: a `pre` keeps
+  // `white-space: pre`, which suppresses wrapping, so a long line scrolls inside the block
+  // instead of being re-flowed (and still does not widen the document).
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
+  // Same neutralization as the inline test above, so both share one story: today the tutorial page
+  // carries no navbar flyout, but if the shared nav ever grows one this test would red for a reason
+  // that has nothing to do with fenced blocks.
+  await page.evaluate(() => {
+    document.querySelectorAll(".nav-switcher-menu").forEach((el) => {
+      el.style.display = "none";
+    });
+  });
+  const host = page.locator(".tutorial p").first();
+  await expect(host).toBeVisible();
+  await host.evaluate((el, text) => {
+    const pre = document.createElement("pre");
+    pre.id = "fenced-block-probe";
+    const code = document.createElement("code");
+    code.textContent = text;
+    pre.appendChild(code);
+    el.after(pre);
+  }, UNBREAKABLE_CODE_TOKEN + " " + UNBREAKABLE_CODE_TOKEN);
+  const pre = page.locator("#fenced-block-probe");
+  await expect(pre).toBeVisible();
+  const state = await pre.evaluate((el) => {
+    const code = el.querySelector("code");
+    return {
+      preWhiteSpace: getComputedStyle(el).whiteSpace,
+      codeWhiteSpace: getComputedStyle(code).whiteSpace,
+      scrolls: el.scrollWidth > el.clientWidth + 1,
+      docFits: document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+    };
+  });
+  expect(state.preWhiteSpace, "the fenced block keeps white-space: pre").toBe("pre");
+  expect(state.codeWhiteSpace, "the code inside inherits white-space: pre").toBe("pre");
+  expect(state.scrolls, "the long line scrolls inside the block instead of wrapping").toBe(true);
+  expect(state.docFits, "a fenced block does not widen the document either").toBe(true);
+});

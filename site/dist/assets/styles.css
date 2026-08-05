@@ -68,6 +68,12 @@ a { color: var(--cp-link); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 code, kbd, .mono { font-family: var(--cp-mono); font-size: 0.92em; }
+/* Site prose quotes tags, selectors, and paths, so any generated surface (a changelog bullet, a
+   tutorial paragraph, an install description, a step card) can land a long code span with no break
+   opportunity. Without a break rule that one token widens the whole document on a phone; break
+   inside it instead. A fenced block is unaffected: `pre` keeps `white-space: pre`, which suppresses
+   wrapping, so it still scrolls rather than re-flowing. */
+code { overflow-wrap: anywhere; word-break: break-word; }
 
 .wrap { max-width: var(--cp-maxw); margin: 0 auto; padding: 0 20px; }
 
@@ -1076,10 +1082,6 @@ main > section:nth-of-type(even) .loop-explainer .loop-fig-bg {
 .changelog ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .changelog li { position: relative; padding-left: 18px; color: var(--cp-text-muted); font-size: 0.93rem; }
 .changelog li::before { content: "-"; position: absolute; left: 0; color: var(--cp-accent); }
-/* A changelog bullet is site content, so a routine entry that quotes a tag, a selector, or a path
-   lands a long code span with no break opportunity here. Without a break rule that token widens
-   the whole document on a phone; break inside it instead. */
-.changelog code { overflow-wrap: anywhere; word-break: break-word; }
 .changelog .empty { color: var(--cp-text-soft); }
 .changelog .older-releases { display: flex; flex-direction: column; gap: 18px; }
 .changelog .older-releases > summary {
