@@ -402,7 +402,7 @@ SCRIPT_LOAD_ATTRS = ("src", "href", "xlink:href")
 # `windo\u0077.top.location` is not. That is incidental rather than a defence - the same whitespace
 # makes an arbitrary `zzz . location` match - and the corpus pins it beside a non-escaped control.
 # The same literal matching cuts the other way in
-# `offline_local_location_index`, and that direction costs an author content rather than letting a
+# `OFFLINE_LOCAL_LOCATION_RE`, and that direction costs an author content rather than letting a
 # beacon out: an ESCAPED local `location` declaration does not register as a shadow, so a script
 # that navigates nothing is rejected whole. Both are DECIDED, not overlooked. Recognizing each name
 # as literal-or-escaped per character is possible without backtracking, but it turns a plain literal
@@ -433,63 +433,486 @@ OFFLINE_NAV_PREFIX_NAMES = ("window", "self", "top", "parent", "globalThis", "do
 # statement-position `location =` alternative is dropped. Used when the script declares its own
 # `location`, further down.
 
-# A LOCAL binding named `location` - a declaration keyword, a destructuring declaration naming it,
-# a function parameter, or a catch binding. It decides whether the UNPREFIXED sinks still count, so
-# matching text that declares nothing WEAKENS the navigation check: every place the name can appear
-# therefore needs a boundary on BOTH sides. The keyword needs one because the `function` arm's
-# optional identifier would otherwise absorb the rest of a longer word (`functionx(location)`), and
-# the name needs one because a bounded window ending in `location` otherwise accepts any identifier
-# that merely ENDS in it - `function f(newLocation)` and `var {currentLocation}` are ordinary
-# spellings that used to buy a script the shadowed treatment and let a bare
-# `location.href = <url>` through. What that closes is the ACCIDENTAL disarm. A DELIBERATE one
-# survives, because the window is a character range over RAW SOURCE: a `location` merely MENTIONED
-# in a comment, a string or a parameter default inside it (`function f(a /* location */)`,
-# `function f(q = location)`) still suppresses the unprefixed sinks, and so does a non-ASCII
-# identifier character in the boundary slot, since the class is deliberately ASCII. Neither is
-# closed here - an allowlist of boundary characters was tried and rejects the legitimate
-# `const {href: location}` rename, and widening the class to non-ASCII breaks a real
-# `var location<NBSP>= 1` and, in the identifier run, would let whitespace be consumed two ways
-# again. An author who writes one of those already has the cheaper aliasing bypass the
-# CMH-OFFLINE-05 residual accepts, so both stay listed there rather than papered over.
-# Every repetition either is bounded or is the only one that can consume its run: the `function`
-# arm binds its optional identifier and that identifier's OWN trailing whitespace inside one group,
-# so a whitespace run never followed by `(` has a single parse. Spelled as two adjacent runs around
-# an optional part (`function WS* IDENT{0,100} WS* \(`) it was the `WS*\??WS*\.` shape again - the
-# engine split the run every possible way and re-ran the `[^)]{0,400}` search at each split, which
-# cost QUADRATIC time in the run's length (0.13s at 5 KB, 22.5s at 80 KB) on a document that plants
-# one.
-# It is a SCAN for the same reason the sink search beside it is, and the reason is the CONSTANT
-# rather than the growth. Spelled as one `search()` over the whole script, the two WINDOWED arms
-# re-walked their bounded 400-character lookahead at EVERY declaration anchor, so a densely packed
-# near-match (`const{` or `var[` repeated) cost ~2.7us per character in Python and ~0.4us in node -
-# growth was cleanly linear, but an order above the ~0.24us/char anchored sink scan, on input that
-# includes the vendored payload's INFLATED bytes. Every shape here ends in the literal `location`,
-# so the scan is driven from THAT anchor - and every arm's HEAD is then a forward-only cursor over
-# the same text, so a head is never re-read once matched. Each cursor yields the position just PAST
-# its head: the keyword and `catch` arms declare when a head ends exactly AT the anchor, and the two
-# windowed arms take the last head ending at or before it, whose final character is the opener.
-# Walking a head BACKWARDS from the anchor instead would have been the same defect one level down -
-# the whitespace run in `const<WS>location` is unbounded, and a per-character backwards walk over it
-# costs ~0.5us/char in CPython where the compiled run costs almost nothing.
-# Each cursor resumes on its match's LAST character rather than past it: a head can begin
-# on the last character of the previous one (`var {let [`, or a keyword whose boundary character is
-# the preceding run's final space) and that inner head owns a different opener, while nothing
-# further in is a legal head start, so a matched head is never re-read.
-OFFLINE_LOCAL_NAME_RE = re.compile(r"location(?![A-Za-z0-9_$])", re.IGNORECASE | re.ASCII)
-OFFLINE_LOCAL_KEYWORD_HEAD_RE = re.compile(
-    r"(?:^|[^.A-Za-z0-9_$])(?:var|let|const|function|class)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+",
-    re.IGNORECASE | re.ASCII)
-OFFLINE_LOCAL_CATCH_HEAD_RE = re.compile(
-    r"(?:^|[^.A-Za-z0-9_$])catch[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\([ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*",
-    re.IGNORECASE | re.ASCII)
-OFFLINE_LOCAL_BRACKET_HEAD_RE = re.compile(
-    r"(?:^|[^.A-Za-z0-9_$])(?:var|let|const)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*[{\[]",
-    re.IGNORECASE | re.ASCII)
-OFFLINE_LOCAL_PAREN_HEAD_RE = re.compile(
-    r"(?:^|[^.A-Za-z0-9_$])function(?![A-Za-z0-9_$])[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:[A-Za-z0-9_$]{1,100}[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\(",
-    re.IGNORECASE | re.ASCII)
-OFFLINE_LOCAL_IDENT_RE = re.compile(r"[A-Za-z0-9_$]", re.ASCII)
-OFFLINE_LOCAL_WINDOW_MAX = 400
+# A LOCAL binding named `location`, decided by TOKENIZING the declaration rather than by matching
+# a character window over raw source. It answers one question - does this script declare its OWN
+# `location`? - and a script that does is measured against the PREFIXED sinks only, so a wrong
+# answer costs something in either direction.
+# WHAT THIS ARM IS. It is a FALSE-POSITIVE REDUCER, not a security boundary, and that decision sets
+# the bar for everything below. An author who wants an unprefixed sink ignored has the aliasing
+# bypass the CMH-OFFLINE-05 residual already accepts (`const a = location; a.href = <url>`), which
+# is cheaper than any spelling here, so a shape that WRONGLY reports a shadow gives a hostile author
+# nothing new. A shape that wrongly reports NO shadow, on the other hand, makes the exporter delete
+# a script that navigates nothing and makes `--strict` reject a clean document - real, silent
+# content loss. So the over-rejection direction is closed hard, and the cheap under-rejection shapes
+# (a `location` in a comment, a string, a parameter default, or a property key renamed away) are
+# closed too because tokenizing gets them for free; what remains is stated in the residual rather
+# than papered over.
+# WHY NOT A REGEX. The window this replaced (`[{\[](?:[^}\]]{0,399}[^}\]A-Za-z0-9_$])?location` and
+# a parameter-list twin) was wrong both ways at once. A MENTION disarmed it - `function f(a /*
+# location */)`, `function f(q = location)`, `const {location: renamed}` - and a real binding it
+# could not see was MISSED: an arrow parameter, a method or `constructor` shorthand, a generator, a
+# nested pattern or a default that spends a `}`, `]` or `)` inside the window, a comment between
+# `catch (` and the name, a non-ASCII function name, and any binding more than 400 characters into
+# the list. Neither could be fixed inside the window: an allowlist of boundary characters rejects
+# the legitimate `const {href: location}` rename, and widening the identifier class to non-ASCII
+# breaks a real `var location<NBSP>= 1`, because NBSP is JS whitespace and sits in that range.
+# The scanner below is one LEFT-TO-RIGHT pass with no backtracking anywhere: each character is
+# classified once, each comment, string, template and regex literal is skipped once, and the only
+# look-ahead is a peek for the token that follows a `location` or a `)` - which scans the run after
+# that token and nothing else, so the runs peeked at are disjoint and the pass stays linear (#973,
+# #1045). Every helper is mirrored, name for name, by `_offlineShadow*` in
+# assets/js/68-export-offline.js, and `test_the_python_and_js_shadow_scanners_are_mirrored` plus the
+# node run of the exporter's own source over the shadow corpus pin the two together.
+OFFLINE_SHADOW_IDENT_ASCII_RE = re.compile(r"[A-Za-z0-9_$]", re.ASCII)
+# `import` and `using` are here because `import {location} from "./x"` and `using location = res`
+# bind the name exactly as `const` does. Neither is a reserved word in every position, so a
+# declaration is only recognized when the keyword is FOLLOWED by the name or pattern it binds
+# (`_offline_shadow_decl_starts`), which is what keeps `import(...)`, `import.meta`, `using(...)`
+# and a `{const: 1}` property key out of binding mode.
+OFFLINE_SHADOW_DECL_KEYWORDS = ("var", "let", "const", "import", "using")
+# Words that can head a parenthesized group which is NOT a parameter list, so `IDENT ( ... ) {` may
+# not be read as a method definition after them: `if (location) {` declares nothing. `function` and
+# `catch` are in the list because their parameter list is recognized directly, by keyword.
+OFFLINE_SHADOW_NON_METHOD = ("if", "while", "for", "switch", "with", "do", "else", "return",
+                             "typeof", "void", "delete", "new", "in", "of", "instanceof", "case",
+                             "throw", "yield", "await", "function", "catch", "try", "finally",
+                             "var", "let", "const", "class", "import", "export", "default",
+                             "break", "continue", "debugger", "this", "super", "null", "true",
+                             "false")
+# Words after which a `/` begins a REGULAR EXPRESSION rather than a division. Getting this wrong
+# either way only mis-skips a literal, but skipping a division as a regex can swallow a real
+# binding, so the list is the conservative one: after any other identifier, `/` divides.
+OFFLINE_SHADOW_REGEX_PRECEDERS = ("return", "typeof", "instanceof", "in", "of", "new", "delete",
+                                  "void", "throw", "case", "do", "else", "yield", "await")
+# The characters that, immediately before an `=`, make it a comparison or a compound assignment
+# rather than the plain `=` that opens a default-value expression.
+OFFLINE_SHADOW_COMPOUND_OPS = ("=", "!", "<", ">", "+", "-", "*", "/", "%", "&", "|", "^")
+# The deepest bracket nesting the frame stack tracks. Beyond it the scan keeps COUNTING depth but
+# stops allocating, so a hostile script that is nothing but openers costs constant memory instead of
+# one object per character - 2 million of them measured 168 MB of heap in node, and the export runs
+# in the reviewer's own tab. Real nesting is two orders of magnitude below this.
+OFFLINE_SHADOW_MAX_DEPTH = 1000
+
+
+def _offline_shadow_ident_char(ch):
+    """True for a character that can appear inside an identifier, mirroring `_offlineShadowIdentChar`.
+
+    Non-ASCII characters count, so `\u03c0location` and `location\u03c0` are ordinary names that
+    merely CONTAIN `location` rather than boundaries around it - except for the non-ASCII JS
+    WHITESPACE (NBSP and friends), which is why the class is a test rather than a range.
+    """
+    if OFFLINE_SHADOW_IDENT_ASCII_RE.match(ch):
+        return True
+    return ord(ch) >= 128 and not OFFLINE_NAV_WS_RE.match(ch)
+
+
+def _offline_shadow_line_end(src, i):
+    """The index of the next line terminator at or after `i`, or the end of the input."""
+    n = len(src)
+    while i < n and not OFFLINE_NAV_LINE_BREAK_RE.match(src, i):
+        i += 1
+    return i
+
+
+# An HTML comment opener is a line comment in a classic script (Annex B), so text after it is not
+# code. It is ASSEMBLED rather than written out to mirror the exporter, whose copy of this file is
+# served inside a `<script>` element where a literal one flips the HTML parser into its escaped
+# state.
+OFFLINE_SHADOW_HTML_COMMENT = "<" + "!--"
+
+
+def _offline_shadow_skip_comment(src, i):
+    """The index after the comment starting at `i`, or -1 when `i` starts no comment."""
+    if src.startswith("//", i) or src.startswith(OFFLINE_SHADOW_HTML_COMMENT, i):
+        return _offline_shadow_line_end(src, i + 2)
+    if src.startswith("/*", i):
+        at = src.find("*/", i + 2)
+        return len(src) if at < 0 else at + 2
+    return -1
+
+
+def _offline_shadow_next_word(src, i):
+    """The identifier that follows `i`, ASCII-folded, or "" when the next token is not one."""
+    n = len(src)
+    while i < n:
+        ch = src[i]
+        if OFFLINE_NAV_WS_RE.match(ch):
+            i += 1
+            continue
+        skipped = _offline_shadow_skip_comment(src, i)
+        if skipped >= 0:
+            i = skipped
+            continue
+        if not _offline_shadow_ident_char(ch):
+            return ""
+        j = i + 1
+        while j < n and _offline_shadow_ident_char(src[j]):
+            j += 1
+        return _offline_nav_ascii_lower(src[i:j])
+    return ""
+
+
+def _offline_shadow_next_sig(src, i, same_line=False):
+    """The next significant token from `i`: `=>`, a single character, or "" at end of input.
+
+    `same_line` stops at a line terminator and answers "", for the two decisions where the grammar
+    forbids one: no LineTerminator may precede `=>`, and a `{` on the next line after a call is a
+    separate block statement rather than a method body (ASI puts a `;` between them).
+    """
+    n = len(src)
+    while i < n:
+        ch = src[i]
+        if OFFLINE_NAV_WS_RE.match(ch):
+            if same_line and OFFLINE_NAV_LINE_BREAK_RE.match(ch):
+                return ""
+            i += 1
+            continue
+        skipped = _offline_shadow_skip_comment(src, i)
+        if skipped >= 0:
+            if same_line and OFFLINE_NAV_LINE_BREAK_RE.search(src, i, skipped):
+                return ""
+            i = skipped
+            continue
+        return "=>" if src.startswith("=>", i) else ch
+    return ""
+
+
+def _offline_shadow_skip_quoted(src, i):
+    """The index after the `'`/`"` literal opened at `i`, or -1 when it does not close.
+
+    Such a literal cannot carry a raw line terminator, so a quote with no partner on its own line
+    is punctuation rather than the start of a literal that swallows the rest of the script - and
+    swallowing it would hide a real binding, the direction that deletes an author's script. A
+    LineContinuation is the exception the check must not trip over: a backslash before CRLF escapes
+    BOTH characters, and reading only the CR left the LF looking like a bare line terminator, which
+    ended the literal and handed its text to the tokenizer as code.
+    """
+    quote = src[i]
+    n = len(src)
+    j = i + 1
+    while j < n:
+        ch = src[j]
+        if ch == "\\":
+            j += 3 if src.startswith("\r\n", j + 1) else 2
+            continue
+        if ch == quote:
+            return j + 1
+        if OFFLINE_NAV_LINE_BREAK_RE.match(ch):
+            return -1
+        j += 1
+    return -1
+
+
+def _offline_shadow_skip_template(src, i):
+    """Scan a template literal from `i` (its backtick, or the `}` that resumes it).
+
+    Returns `(index, opened)` where `opened` says a `${` substitution was entered, so the caller
+    reads what follows as CODE - an arrow parameter inside one binds a name like any other.
+    """
+    n = len(src)
+    j = i + 1
+    while j < n:
+        ch = src[j]
+        if ch == "\\":
+            j += 3 if src.startswith("\r\n", j + 1) else 2
+            continue
+        if ch == "`":
+            return j + 1, False
+        if ch == "$" and j + 1 < n and src[j + 1] == "{":
+            return j + 2, True
+        j += 1
+    return n, False
+
+
+def _offline_shadow_skip_regex(src, i):
+    """The index after the regex literal opened at `i`, or -1 when it does not close on its line."""
+    n = len(src)
+    j = i + 1
+    in_class = False
+    while j < n:
+        ch = src[j]
+        if ch == "\\":
+            j += 2
+            continue
+        if OFFLINE_NAV_LINE_BREAK_RE.match(ch):
+            return -1
+        if in_class:
+            if ch == "]":
+                in_class = False
+        elif ch == "[":
+            in_class = True
+        elif ch == "/":
+            j += 1
+            while j < n and _offline_shadow_ident_char(src[j]):
+                j += 1
+            return j
+        j += 1
+    return -1
+
+
+def _offline_shadow_regex_ok(prev, prev_word):
+    """True when a `/` at this point begins a regex literal rather than a division."""
+    if prev == "w":
+        return prev_word in OFFLINE_SHADOW_REGEX_PRECEDERS
+    return prev != ")" and prev != "]"
+
+
+def _offline_shadow_decl_starts(after):
+    """True when `after` is a token a DECLARATION can legally continue with.
+
+    A declaration keyword is followed by the name or pattern it binds, so anything else means the
+    word is not opening a declaration at all: `import(...)` and `import.meta` are expressions,
+    `import "./x"` and `using(...)` bind nothing, and `{const: 1}` or `{let: 1}` is a property key.
+    Every one of those used to put the enclosing frame into binding mode and report a shadow for
+    the next `location` it saw, which suppressed a real sink.
+    """
+    if after == "{" or after == "[" or after == "*":
+        return True
+    return len(after) == 1 and _offline_shadow_ident_char(after)
+
+
+def _offline_shadow_frame(ch, binding, decl, key, opener, template):
+    return {"ch": ch, "binding": binding, "decl": decl, "key": key, "named": False,
+            "in_default": False, "candidate": False, "opener": opener, "template": template}
+
+
+def offline_local_location_shadow(src):
+    """True when the script declares its OWN binding named `location`.
+
+    Mirrors `_offlineLocalLocationShadow` in assets/js/68-export-offline.js. A frame is pushed per
+    bracket; a frame is a BINDING context when it is a declaration list (`var`/`let`/`const`/
+    `import`/`using`), a parameter list (`function`, a generator, `catch`, a method or
+    `constructor` shorthand, an arrow) or a destructuring pattern nested inside one, and an
+    EXPRESSION context otherwise. Inside a binding context a name is a binding unless it is a
+    property KEY (`{location: renamed}`), a computed key (`{[location]: renamed}`) or sits in a
+    default-value expression (`function f(q = location)`) - the shapes that used to disarm the rule
+    by merely mentioning the name.
+    """
+    src = src or ""
+    n = len(src)
+    stack = [_offline_shadow_frame("", False, False, False, "", False)]
+    over_depth = 0
+    pending_params = False
+    expect_name = False
+    pending_break = False
+    prev = ""
+    prev_word = ""
+    no_regex_before = 0
+    i = 0
+    while i < n:
+        frame = stack[-1]
+        ch = src[i]
+        if OFFLINE_NAV_WS_RE.match(ch):
+            if OFFLINE_NAV_LINE_BREAK_RE.match(ch):
+                pending_break = True
+            i += 1
+            continue
+        if ch == "/" or ch == "<":
+            skipped = _offline_shadow_skip_comment(src, i)
+            if skipped >= 0:
+                # A comment can carry the line break that ends a declaration, so it feeds the same
+                # ASI flag rather than being skipped silently.
+                if OFFLINE_NAV_LINE_BREAK_RE.search(src, i, skipped):
+                    pending_break = True
+                i = skipped
+                continue
+        # ASI ends a declaration at a line break once it has bound a name, unless the next token
+        # continues the list. Without this, `let x` on its own line put every following `location`
+        # in binding position and reported a shadow the source never declared. The decision is made
+        # HERE, at the first token after the break, rather than by peeking from the break: peeking
+        # re-scanned the whole run of trivia at every newline in it, which is quadratic (20,000
+        # newlines cost 57s in Python and 4.5s in node).
+        if pending_break:
+            pending_break = False
+            if frame["decl"] and frame["named"] and not frame["in_default"]:
+                if not (ch == "," or (ch == "=" and not src.startswith("=>", i))):
+                    frame["binding"] = False
+                    frame["decl"] = False
+                    frame["named"] = False
+        if ch == "/":
+            if i >= no_regex_before and _offline_shadow_regex_ok(prev, prev_word):
+                end = _offline_shadow_skip_regex(src, i)
+                if end >= 0:
+                    i = end
+                    prev, prev_word = "]", ""
+                    continue
+                # A literal that never closes would be re-scanned from every later `/` on the same
+                # line, which is quadratic; one failed scan settles the whole line instead.
+                no_regex_before = _offline_shadow_line_end(src, i)
+            prev, prev_word = "/", ""
+            i += 1
+            continue
+        if ch == "'" or ch == '"':
+            end = _offline_shadow_skip_quoted(src, i)
+            if end >= 0:
+                i = end
+                prev, prev_word = "]", ""
+                continue
+            prev, prev_word = ch, ""
+            i += 1
+            continue
+        if ch == "`":
+            i, opened = _offline_shadow_skip_template(src, i)
+            if opened:
+                if len(stack) < OFFLINE_SHADOW_MAX_DEPTH:
+                    stack.append(_offline_shadow_frame("$", False, False, False, "", True))
+                else:
+                    over_depth += 1
+            prev, prev_word = "]", ""
+            continue
+        if _offline_shadow_ident_char(ch):
+            j = i + 1
+            while j < n and _offline_shadow_ident_char(src[j]):
+                j += 1
+            word = _offline_nav_ascii_lower(src[i:j])
+            member = prev == "."
+            i = j
+            prev, prev_word = "w", "" if member else word
+            if member:
+                continue
+            if expect_name:
+                # The name a `function` or `class` declaration binds.
+                expect_name = False
+                if word == "location":
+                    return True
+                continue
+            if word in OFFLINE_SHADOW_DECL_KEYWORDS:
+                if _offline_shadow_decl_starts(_offline_shadow_next_sig(src, i)):
+                    frame["binding"] = True
+                    frame["decl"] = True
+                    frame["named"] = False
+                    frame["in_default"] = False
+                continue
+            if word == "function" or word == "class" or word == "catch":
+                # Gated the same way a declaration keyword is: `{class: location}` and
+                # `[{catch: 1}, f(location)]` are property KEYS, and letting them arm the
+                # name/parameter-list state made an unrelated later call look like a declaration.
+                if _offline_shadow_next_sig(src, i) != ":":
+                    expect_name = word != "catch"
+                    pending_params = word != "class"
+                continue
+            if ((word == "of" or word == "in") and frame["ch"] == "(" and frame["binding"]):
+                # The head of `for (const x of EXPR)` turns to an EXPRESSION after `of`/`in`,
+                # exactly as a declarator does after `=`. Without this, the ordinary
+                # `for (const [k, v] of Object.entries({location, ...}))` idiom read `location` as
+                # a nested pattern and reported a shadow nothing declared.
+                frame["in_default"] = True
+                continue
+            if frame["binding"] and not frame["in_default"]:
+                frame["named"] = True
+            if word != "location":
+                continue
+            if _offline_shadow_next_sig(src, i) in (":", ".", "(", "["):
+                # A property KEY, a member access, a call or an index - a declarator name is never
+                # followed by any of them, so none of these is the binding the arm looks for.
+                continue
+            if _offline_shadow_next_word(src, i) == "as":
+                # `import {location as renamed}` binds `renamed`; the name before `as` is the
+                # imported one, exactly like the key half of `{location: renamed}`.
+                continue
+            if frame["binding"] and not frame["in_default"]:
+                return True
+            # The arrow test comes BEFORE the default-value skip: `let f = location => {}` reads
+            # `location` inside an initializer, and it is still that arrow's parameter.
+            if _offline_shadow_next_sig(src, i, True) == "=>":
+                return True
+            if frame["in_default"]:
+                continue
+            frame["candidate"] = True
+            continue
+        if ch == "(" or ch == "[" or ch == "{":
+            params = pending_params and ch == "("
+            # A `[` where an object pattern expects a KEY is a computed key, not a nested pattern:
+            # `const {[location]: x}` reads the outer binding rather than declaring one.
+            computed_key = (ch == "[" and frame["ch"] == "{"
+                            and (prev == "{" or prev == ","))
+            binding = params or (frame["binding"] and not frame["in_default"]
+                                 and not computed_key)
+            # A parameter list carries no opener, so the method rule below cannot fire on the
+            # function's own name: `function f(a = location) {}` declares no `location`. A `]` or a
+            # closing quote IS kept, because a computed or quoted method name ends in one.
+            opener = "" if params or ch != "(" else ("]" if prev == "]" else prev_word)
+            if len(stack) < OFFLINE_SHADOW_MAX_DEPTH:
+                stack.append(_offline_shadow_frame(ch, binding, False, computed_key, opener, False))
+            else:
+                over_depth += 1
+            pending_params = False
+            expect_name = False
+            prev, prev_word = ch, ""
+            i += 1
+            continue
+        if ch == ")" or ch == "]" or ch == "}":
+            if over_depth > 0:
+                over_depth -= 1
+            elif len(stack) > 1:
+                done = stack.pop()
+                parent = stack[-1]
+                if done["template"] and ch == "}":
+                    i, opened = _offline_shadow_skip_template(src, i)
+                    if opened:
+                        if len(stack) < OFFLINE_SHADOW_MAX_DEPTH:
+                            stack.append(_offline_shadow_frame("$", False, False, False, "", True))
+                        else:
+                            over_depth += 1
+                    prev, prev_word = "]", ""
+                    continue
+                if ch == ")" and done["candidate"]:
+                    # `=>` may not be preceded by a line terminator, and a `{` on a later line is a
+                    # separate block statement - `report(location)` then a block is a CALL, not a
+                    # method definition, so both peeks are same-line. A method shorthand also only
+                    # exists inside an object literal or a class body.
+                    after = _offline_shadow_next_sig(src, i + 1, True)
+                    if after == "=>":
+                        return True
+                    if (after == "{" and parent["ch"] == "{" and done["opener"]
+                            and done["opener"] not in OFFLINE_SHADOW_NON_METHOD):
+                        return True
+                # A name read inside a computed KEY, or inside a default-value expression, is a
+                # reference rather than a parameter, so it must not travel outwards and make the
+                # group it sits in look like a parameter list: `(q = foo(location)) => {}` and
+                # `({[location]: x}) => {}` declare nothing.
+                if done["candidate"] and not done["key"] and not parent["in_default"]:
+                    parent["candidate"] = True
+                if parent["binding"] and not parent["in_default"]:
+                    parent["named"] = True
+            # A keyword read INSIDE a group cannot arm a bracket outside it.
+            pending_params = False
+            expect_name = False
+            prev, prev_word = ch, ""
+            i += 1
+            continue
+        if ch == "." and src.startswith("...", i):
+            # A rest element is a BINDING (`function f(...location)`, `const {a, ...location}`),
+            # so its `.`s must not leave the name looking like a member access.
+            i += 3
+            prev, prev_word = ",", ""
+            continue
+        if (ch == "+" and src.startswith("++", i)) or (ch == "-" and src.startswith("--", i)):
+            # A postfix `++`/`--` ends a VALUE, so the `/` after it divides rather than opening a
+            # regex literal whose scan would swallow the declaration behind it.
+            i += 2
+            prev, prev_word = "]", ""
+            continue
+        if ch == ";":
+            frame["binding"] = False
+            frame["decl"] = False
+            frame["named"] = False
+            frame["in_default"] = False
+            pending_params = False
+            expect_name = False
+        elif ch == ",":
+            frame["in_default"] = False
+            frame["named"] = False
+        elif ch == "=":
+            if src.startswith("=>", i):
+                i += 2
+                prev, prev_word = ">", ""
+                continue
+            if not src.startswith("==", i) and prev not in OFFLINE_SHADOW_COMPOUND_OPS:
+                frame["in_default"] = True
+        prev, prev_word = ch, ""
+        i += 1
+    return False
 
 
 def _offline_nav_ascii_lower(text):
@@ -604,89 +1027,6 @@ def offline_nav_sink_index(src, prefixed_only):
             return at
 
 
-def _offline_local_window_ok(src, opener, at, closers):
-    r"""The bounded `(?:[^C]{0,399}[^CA-Za-z0-9_$])?` window between a declaration opener and a name.
-
-    `closers` is the character (or characters) the window may not contain - `}]` for the
-    destructuring arm, `)` for the parameter-list arm. Only the LAST opener before the anchor needs
-    testing: an earlier one has a SUPERSET window (so it fails whatever the nearest one fails on),
-    and the "character before the name is not an identifier character" rule does not depend on which
-    opener it is except when the opener sits right against the name, which is the nearest one.
-    Mirrors `_offlineLocalWindowOk`.
-    """
-    if opener < 0 or at - opener > OFFLINE_LOCAL_WINDOW_MAX + 1:
-        return False
-    if opener < at - 1 and OFFLINE_LOCAL_IDENT_RE.match(src, at - 1):
-        return False
-    for closer in closers:
-        if src.find(closer, opener + 1, at) >= 0:
-            return False
-    return True
-
-
-def _offline_local_next_head(src, rx, pos):
-    """The next declaration head at or after `pos`, as (end index, resume position).
-
-    The end index is the position the name would have to start at. The resume position is the head's
-    LAST character rather than the one past it, because a head can begin on that character (`var {`
-    followed by `let [`, or a keyword whose boundary character is the previous head's final space)
-    and the inner head owns a different opener - but nothing between a head's start and its last
-    character can begin another one, since every character in there is either a keyword letter, an
-    identifier character or whitespace, and a head must open on a NON-identifier boundary followed
-    immediately by a keyword. So the cursor never re-reads a head it has already matched.
-    Mirrors `_offlineLocalNextHead`.
-    """
-    m = rx.search(src, pos)
-    if not m:
-        return -1, len(src) + 1
-    return m.end(), m.end() - 1
-
-
-def offline_local_location_index(src):
-    """Index of the first `location` the script declares as a LOCAL binding, or -1.
-
-    Mirrors `_offlineLocalLocationIndex` in assets/js/68-export-offline.js. All four cursors only
-    ever move FORWARD, so no character of the script is examined twice and a `location` anchor costs
-    a handful of integer comparisons plus, at most, the two bounded window tests.
-    """
-    keyword = _offline_local_next_head(src, OFFLINE_LOCAL_KEYWORD_HEAD_RE, 0)
-    catch = _offline_local_next_head(src, OFFLINE_LOCAL_CATCH_HEAD_RE, 0)
-    bracket = _offline_local_next_head(src, OFFLINE_LOCAL_BRACKET_HEAD_RE, 0)
-    paren = _offline_local_next_head(src, OFFLINE_LOCAL_PAREN_HEAD_RE, 0)
-    bracket_seen = -1
-    paren_seen = -1
-    pos = 0
-    while True:
-        m = OFFLINE_LOCAL_NAME_RE.search(src, pos)
-        if not m:
-            return -1
-        at = m.start()
-        pos = at + 1
-        # Each cursor stops at the FIRST head end at or after the anchor, which is the smallest one
-        # because a pattern's head ends are non-decreasing in their start order (two starts can
-        # SHARE an end - `function function(` ends both parameter heads on the same `(` - but a
-        # longer head can never precede a shorter one). Pinned directly by
-        # `test_the_local_binding_cursors_see_every_head_in_order`.
-        while 0 <= keyword[0] < at:
-            keyword = _offline_local_next_head(src, OFFLINE_LOCAL_KEYWORD_HEAD_RE, keyword[1])
-        while 0 <= catch[0] < at:
-            catch = _offline_local_next_head(src, OFFLINE_LOCAL_CATCH_HEAD_RE, catch[1])
-        # The windowed arms want the last head ENDING at or before the anchor, since its final
-        # character is the opener the window is measured from.
-        while 0 <= bracket[0] <= at:
-            bracket_seen = bracket[0] - 1
-            bracket = _offline_local_next_head(src, OFFLINE_LOCAL_BRACKET_HEAD_RE, bracket[1])
-        while 0 <= paren[0] <= at:
-            paren_seen = paren[0] - 1
-            paren = _offline_local_next_head(src, OFFLINE_LOCAL_PAREN_HEAD_RE, paren[1])
-        if keyword[0] == at or catch[0] == at:
-            return at
-        if _offline_local_window_ok(src, bracket_seen, at, "}]"):
-            return at
-        if _offline_local_window_ok(src, paren_seen, at, ")"):
-            return at
-
-
 def offline_script_navigates_to_network(body):
     """True when an inline script scripts a top-level navigation to a network URL literal.
 
@@ -698,7 +1038,7 @@ def offline_script_navigates_to_network(body):
     src = body or ""
     if offline_nav_sink_index(src, False) < 0:
         return False
-    if offline_local_location_index(src) >= 0:
+    if offline_local_location_shadow(src):
         return offline_nav_sink_index(src, True) >= 0
     return True
 

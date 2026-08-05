@@ -15,7 +15,6 @@ import glob
 import itertools
 import json
 import os
-import random
 import re
 import shutil
 import subprocess
@@ -47,13 +46,19 @@ CHART = ('<h1>Chart</h1>\n<figure class="chart">'
 
 # An adversary for the LOCAL-BINDING half of the scripted-navigation predicate, parameterized on
 # the whitespace run it plants. `%s` is the run; everything around it is what makes the predicate
-# actually REACH `offline_local_location_index` and still answer False: the run is never followed by
+# actually REACH `OFFLINE_LOCAL_LOCATION_RE` and still answer False: the run is never followed by
 # an identifier, the 450 filler characters keep `location` outside the `[^)]{0,400}` window that
 # follows the `(`, the trailing bare sink is what makes the predicate look for a local binding at
 # all, and the trailing `const location` is the binding it then finds - which drops the verdict to
 # the PREFIXED sinks, of which there are none.
 _NAV_LOCAL_BINDING_EVIL = ('function%s(' + "x" * 450
                            + ';location.href="//e";const location=1;')
+
+# The trailing half of the adversaries aimed at the SHADOW pass: an unprefixed sink (so the
+# predicate looks for a local binding at all) followed by the binding it then finds, which drops
+# the verdict to the PREFIXED sinks - of which there are none, so every sample answers False and
+# the whole input is walked before it does.
+_NAV_SHADOW_TAIL = ';location.href="//e";const location=1;'
 
 
 class NeedsDetectionTests(unittest.TestCase):
@@ -2519,7 +2524,7 @@ class RuntimeParityTests(unittest.TestCase):
          'window?.top.open("https://evil.example");'),
     ]
     # The OVER-match direction of the SAME class, and the one with a user-visible cost. The local
-    # binding that suppresses an unprefixed sink (`offline_local_location_index`) also matches
+    # binding that suppresses an unprefixed sink (`OFFLINE_LOCAL_LOCATION_RE`) also matches
     # `location` as literal text, so an escaped DECLARATION does not register as a shadow and the
     # script is DELETED whole - although it navigates nothing, since the reference beside it names
     # that same local binding. Pinned as `(escaped, plain twin)` where the escaped sample is
@@ -2695,6 +2700,344 @@ class RuntimeParityTests(unittest.TestCase):
                 "which documents this behavior - the code and the residual must move together"
                 % sample)
 
+    # The unprefixed sink every shadow sample below is measured against. It is the whole point of
+    # the shadow rule: with a local binding the script assigns a URL to that object and navigates
+    # NOTHING (so the exporter must keep it), and without one it navigates the real document (so
+    # the exporter must drop it). Appending the SAME sink to every sample is what makes the corpus
+    # test the shadow decision rather than the sink scan.
+    _NAV_SHADOW_SINK = ' location.href = "https://api.example";'
+
+    # REAL bindings named `location` that the raw-source character window could not see, so the
+    # exporter DELETED the author's script and `--strict` rejected a clean document. Every one of
+    # these declares `location` in the script's own scope, so the unprefixed sink beside it is that
+    # object's `href` and the whole script must survive.
+    _NAV_SHADOW_BINDINGS = [
+        # Arrow parameters, parenthesized and bare - neither follows `function` or `catch`, so the
+        # window never looked at them at all.
+        'const f = (location) => {};',
+        'location => {};',
+        # A BARE arrow parameter inside an initializer or a default: the name sits in a
+        # default-value expression, and it is still that arrow's own parameter, so testing the
+        # default first would have deleted the script.
+        'let f = location => {};',
+        'function setup(cb = location => {}) {}',
+        'async (location) => {};',
+        'const f = ({href: location}) => {};',
+        # Method and `constructor` shorthand, in an object literal and in a class body.
+        'var o = {m(location) {}};',
+        'class A { m(location) {} }',
+        'class A { constructor(location) {} }',
+        'var o = {m(location) {}, n() {}};',
+        # Generators, in all three star spellings.
+        'function* g(location) {}',
+        'function *g(location) {}',
+        'function * g(location) {}',
+        # A `}`, `]` or `)` spent INSIDE the window ended the old `[^}\]]` / `[^)]` run, so a
+        # binding behind a nested pattern or a call in a default was invisible.
+        'const {a: {b}, location} = o;',
+        'const [a, [b], location] = o;',
+        'function f(a = g(), location) {}',
+        'const {a = (1), location} = o;',
+        # The catch arm allowed only whitespace between `(` and the name, so a comment disarmed it.
+        'try { x(); } catch (/*x*/ location) {}',
+        # A non-ASCII function name is not in the `[A-Za-z0-9_$]{1,100}` name slot.
+        'function \u00fcn\u00efcode(location) {}',
+        # A binding more than 400 characters into the list, which is past the window outright.
+        'function f(' + "a" * 450 + ', location) {}',
+        # Rest bindings. The `...` is three `.` characters, which a member-access test reads as
+        # `obj.location` unless the token is recognized - and these are real bindings the CHARACTER
+        # WINDOW got right, so missing them would be a regression rather than a leftover.
+        'function f(...location) {}',
+        'const {a, ...location} = o;',
+        'const [a, ...location] = xs;',
+        # A computed or quoted method name: the name slot is a `]` or a string rather than an
+        # identifier, so the opener has to survive both.
+        'var o = {"m"(location) {}};',
+        'class A { [key](location) {} }',
+        # `using` declares a lexical binding exactly as `const` does.
+        'function f() { using location = res; }',
+        # The declaration forms whose NAME is the binding.
+        'function location() {}',
+        'class location {}',
+        # A `for` head declaration, which is a declaration inside a parenthesized group.
+        'for (const location of xs) {}',
+        # A named import binds the name; the module specifier is a string the scanner must skip.
+        'import {location} from "./x";',
+        # A NAMESPACE import binds the name after `as`, and reaches the declaration through the `*`
+        # arm of the keyword guard rather than through a name or a pattern.
+        'import * as location from "./x";',
+        # An UNTERMINATED quote must not swallow the rest of the script: a `'`/`"` literal cannot
+        # carry a raw line terminator, so a lone quote is punctuation and the binding below it is
+        # still found. Swallowing it would delete an author's script.
+        'var q = "unclosed;\nconst location = 1;',
+        # A comment sitting exactly where the look-ahead peeks - between a method's `)` and its
+        # body, and between an arrow's `)` and its `=>`. Both are legal, and a peek that stopped
+        # skipping comments would read the shape as something else entirely.
+        'var o = {m(location) /*c*/ {}};',
+        'const f = (location) /*c*/ => {};',
+        # MALFORMED input (this is arbitrary, possibly damaged or minified text, not a parse): a
+        # COMPOUND operator must not be read as the `=` that opens a default value, or the
+        # parameter after it stops being a binding.
+        'function f(a != b, location) {}',
+        'const f = (a += location) => {};',
+        'const f = (a == location) => {};',
+        # A postfix `++` ends a VALUE, so the `/` after it divides. Read as a regex, the scan would
+        # swallow the declaration behind it and delete a script that navigates nothing.
+        'x++ / y; let location = {}; /z/;',
+        # A declaration whose line break falls inside a BLOCK COMMENT still ends there, but one that
+        # is only a continuation does not: this list carries on after the comment.
+        'let a = 1, /*\n*/ location = 2;',
+    ]
+
+    # Text that MENTIONS `location` without declaring anything. The window matched raw characters,
+    # so each of these disarmed the rule and bought the script the shadowed treatment - which meant
+    # the beacon beside it was preserved and blessed. Tokenizing the declaration closes them.
+    _NAV_SHADOW_MENTIONS = [
+        # A comment or a string inside the window - the cheapest deliberate disarm there was.
+        'function f(a /* location */) {}',
+        'function f(a // location\n) {}',
+        'function f(a = " location ") {}',
+        'var s = "const location";',
+        '/* const location */',
+        '// var location\n',
+        'var re = /const location/;',
+        # A parameter or destructuring DEFAULT names the outer binding; it declares nothing.
+        'function f(q = location) {}',
+        'const {a = location} = o;',
+        # A property KEY renamed away binds `renamed`, not `location`.
+        'const {location: renamed} = opts;',
+        # A non-ASCII identifier character in the boundary slot: `\u03c0location` and `location\u03c0`
+        # are ordinary names that merely CONTAIN `location`, exactly like `newLocation`.
+        'function f(\u03c0location) {}',
+        'var location\u03c0 = 1;',
+        # A method or accessor NAMED `location` defines a property, not a binding.
+        'var o = {location(a) {}};',
+        'class A { get location() { return 1; } }',
+        # A default expression in an ARROW parameter list. The bare-`function` twin above is caught
+        # by a different branch (its opener is dropped), so without this row the arrow branch could
+        # report a shadow for a name it only READS and nothing would notice.
+        'const f = (q = location) => {};',
+        'const f = async (q = location) => {};',
+        'const f = ({a = location}) => {};',
+        # A call whose `)` happens to be followed by a block on the NEXT line. ASI puts a statement
+        # boundary between them, so this is a call and a block, not a method definition - reading it
+        # as one disarmed the whole script with no aliasing and no obfuscation.
+        'report(location)\n{ }',
+        'function f() { report(location)\n{ } }',
+        # A declaration that ends by ASI rather than a semicolon. `let x` on its own line binds `x`
+        # and nothing else, so the next line's `location` is the document's. Each of these puts the
+        # name in a position the OTHER guards do not already answer - a bare assignment and a call
+        # argument, never `location.href`, whose `.` would decide it before ASI was consulted.
+        'let x\nlocation = 1;',
+        'let x\nfoo(location);',
+        'var a, b\nfoo(location);',
+        'import a from "./m"\nfoo(location);',
+        'let x /*\n*/ foo(location);',
+        'let x; foo(location);',
+        'let x\n',
+        'var a, b\n',
+        'import a from "./m"\n',
+        'import "./m"\n',
+        # A member access is not a declarator name even in a declaration.
+        'let o.location = 1;',
+        # `import` and `using` in EXPRESSION position declare nothing at all.
+        'import("./m")\n',
+        'import.meta.url\n',
+        'using(location)\n',
+        # A computed KEY inside an object pattern reads the outer binding; it declares nothing.
+        'const {[location]: renamed} = o;',
+        # A property key that happens to be spelled like a declaration keyword.
+        'var o = {const: 1, location: 2};',
+        # ... and one spelled like `function`, `class` or `catch`, whose name and parameter-list
+        # state must not leak past the `:` onto an unrelated later call.
+        'f({class: location});',
+        'f({function: location});',
+        'render({class: location.href});',
+        'var t = [{catch: 1}, f(location)];',
+        'var t = [{function: 1}, g(location)];',
+        # A `location` reached through a member access, a call or an index is not a declarator name.
+        'var o = {}; o.location = 1;',
+        # A default expression that CALLS something, and a computed key, inside what would otherwise
+        # be an arrow parameter list: both only READ the outer binding, so neither may travel out of
+        # its group and make the group look like a parameter list.
+        'const f = (q = foo(location)) => {};',
+        'const f = ({[location]: x}) => {};',
+        # An import alias binds the name AFTER `as`; the one before it is the imported name.
+        'import {location as renamed} from "./x";',
+        # A declaration whose line break sits inside a BLOCK COMMENT ends there just the same, so
+        # the next line's `location` is the document's.
+        'let x /*\n*/ ',
+        # `<!--` is a line comment in a classic script, so what follows it on that line is not code.
+        '<!-- const location = 1;\n',
+        # A call in a class `extends` clause, whose `)` really is followed by a `{`. It is the
+        # ENCLOSING frame that tells a method definition from this: a method shorthand only exists
+        # inside an object literal or a class body.
+        'class A extends report(location) {}',
+        # No LineTerminator may precede `=>`, so this is not an arrow function at all.
+        'location\n=> {};',
+        # The ITERABLE half of a `for` head is an expression, not a continuation of the pattern -
+        # and iterating an object literal or an array that mentions `location` is an ordinary idiom.
+        'for (const x of [location]) foo(x);',
+        'for (const [k, v] of Object.entries({location, other})) foo(k, v);',
+        'for (const k in {location}) foo(k);',
+    ]
+
+    # Shapes the tokenizer still answers the DOCUMENTED way rather than the strictly correct one,
+    # pinned so the decision cannot drift in silence. The rule answers "does this script declare a
+    # `location` anywhere", not "is that binding in scope AT the sink", because the arm is a
+    # false-positive reducer rather than a security boundary (see CMH-OFFLINE-05): scope-tracking
+    # would buy an author nothing that aliasing does not already give them.
+    _NAV_SHADOW_RESIDUAL_SHADOWS = [
+        'function g() { var location = 1; }',
+        'if (x) { let location = 1; }',
+        # A declaration keyword whose NAME is on the next line: ASI cannot end a declaration that
+        # has bound nothing yet, so this is still read as one.
+        'let\nlocation = {};',
+        # A call followed by a block on the SAME line, inside a block, object literal or class body.
+        # That is not valid JavaScript, but it is text this scan still has to answer for, and the
+        # enclosing `{` is what a genuine method shorthand shares with it.
+        'function f() { report(location) { } }',
+    ]
+
+    # The residuals in the OTHER direction: a real binding the tokenizer does not see, so the script
+    # is deleted. Each is listed in the CMH-OFFLINE-05 row, and each is pinned here so the row and
+    # the code cannot drift apart. They are the price of the two rules beside them - the reserved
+    # word list is what stops `if (location) {` being read as a method - and none is reachable by
+    # accident in ordinary code.
+    _NAV_SHADOW_RESIDUAL_MISSES = [
+        # A method whose NAME is a reserved word.
+        'var o = {delete(location) {}};',
+        # A method written in Allman style: a `{` on the next line is how an ordinary call followed
+        # by a block is told apart from a method body, and that costs this spelling.
+        'var o = {m(location)\n{}};',
+        # An ESCAPED declaration, which the arm reads as literal text exactly as the escaped SINK
+        # beside it is read.
+        'const l\\u006Fcation = { href: "" };',
+        # A binding introduced by `with` (or `eval`, or the `Function` constructor) exists only at
+        # run time, so no tokenizer can see it.
+        'with ({location: {href: ""}}) { }',
+    ]
+
+    # A LineContinuation before a CRLF escapes BOTH characters. Reading only the CR left the LF
+    # looking like a bare line terminator, which ENDED the string literal and handed its text to the
+    # tokenizer as code - so a string could plant a fake binding and disarm the arm. The sample is
+    # built here rather than written inline so the CRLF cannot be normalized away by an editor.
+    _NAV_SHADOW_CRLF_STRING = 'var s = "a\\\r\n, location ";'
+
+    def _shadow_samples(self):
+        """Every `(script, navigates)` pair the shadow corpora above assert."""
+        return ([(sample + self._NAV_SHADOW_SINK, False)
+                 for sample in self._NAV_SHADOW_BINDINGS]
+                + [(sample + self._NAV_SHADOW_SINK, True)
+                   for sample in self._NAV_SHADOW_MENTIONS]
+                + [(self._NAV_SHADOW_CRLF_STRING + self._NAV_SHADOW_SINK, True)]
+                + [(sample + self._NAV_SHADOW_SINK, False)
+                   for sample in self._NAV_SHADOW_RESIDUAL_SHADOWS]
+                + [(sample + self._NAV_SHADOW_SINK, True)
+                   for sample in self._NAV_SHADOW_RESIDUAL_MISSES])
+
+    def test_the_local_location_shadow_is_decided_on_bindings_not_a_character_window(self):
+        """The shadow arm must read DECLARATIONS, not a character window over raw source.
+
+        It decides whether an unprefixed sink is measured against the document's `location` or a
+        local object, so it fails in two directions and both have a cost. A real binding it cannot
+        see (an arrow parameter, a method or `constructor` shorthand, a generator, a nested pattern
+        that spends a `}` inside the window, a comment inside `catch (`, a non-ASCII function name)
+        makes the exporter DELETE a script that navigates nothing and `--strict` reject the file it
+        just wrote - the direction that costs an author content. A mere MENTION that disarms it (a
+        `location` in a comment, a string, a parameter default, or a renamed-away property key)
+        suppresses the sink beside it, which is the direction that preserves a beacon.
+
+        Both are asserted through the PUBLIC predicate rather than the shadow helper alone, because
+        the shadow answer only matters through it: what an author sees is a script kept or deleted.
+        """
+        for sample, navigates in self._shadow_samples():
+            self.assertEqual(
+                resources.offline_script_navigates_to_network(sample), navigates,
+                "the shadow decision on %r is wrong. A sample that must NOT navigate declares its "
+                "own `location`, so deleting the script is content loss; one that MUST navigate "
+                "declares nothing, so suppressing the sink preserves a beacon." % sample)
+            self.assertEqual(
+                resources.offline_local_location_shadow(sample), not navigates,
+                "the shadow helper and the predicate disagree about %r" % sample)
+
+    def test_the_local_location_shadow_agrees_in_the_real_js_engine(self):
+        """The exporter's own shadow scanner must answer the corpus above identically.
+
+        The two copies are hand-mirrored code now rather than one shared regex literal, so text
+        equality can no longer carry the parity: only running the exporter's source can. A
+        divergence here is the usual pair of failures - the validator rejecting the file the
+        exporter just produced, or blessing one it no longer protects.
+        """
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine parity check needs it")
+        samples = self._shadow_samples()
+        script = (
+            self._runtime_nav_source() + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);"
+            "process.stdout.write(JSON.stringify(p.map(s=>["
+            "_offlineScriptNavigatesToNetwork(s),_offlineLocalLocationShadow(s)])));});"
+        )
+        verdicts = self._run_nav_node(node, script, [sample for sample, _ in samples],
+                                      "the local-binding shadow corpus")
+        self.assertEqual(len(verdicts), len(samples),
+                         "node returned %d verdicts for %d shadow samples"
+                         % (len(verdicts), len(samples)))
+        for (sample, navigates), (js_navigates, js_shadow) in zip(samples, verdicts):
+            self.assertEqual(js_navigates, navigates,
+                             "the REAL JS engine disagrees with the validator about %r" % sample)
+            self.assertEqual(js_shadow, not navigates,
+                             "the REAL JS engine's shadow helper disagrees about %r" % sample)
+
+    # The shadow scanner is hand-mirrored code in two languages, so the shared DATA it is driven
+    # from is pinned the way `_OFFLINE_NAV_PREFIX_NAMES` is: a keyword only one side knows about is
+    # a binding one engine sees and the other does not, which is the same drift in a new place.
+    _NAV_SHADOW_NAME_LISTS = (
+        ("_OFFLINE_SHADOW_DECL_KEYWORDS", "OFFLINE_SHADOW_DECL_KEYWORDS"),
+        ("_OFFLINE_SHADOW_NON_METHOD", "OFFLINE_SHADOW_NON_METHOD"),
+        ("_OFFLINE_SHADOW_REGEX_PRECEDERS", "OFFLINE_SHADOW_REGEX_PRECEDERS"),
+        ("_OFFLINE_SHADOW_COMPOUND_OPS", "OFFLINE_SHADOW_COMPOUND_OPS"),
+    )
+
+    def test_the_python_and_js_shadow_scanners_are_mirrored(self):
+        """The two shadow scanners must be the same scanner: same helpers, same word lists."""
+        source = self._read("68-export-offline.js")
+        for js_name, py_name in self._NAV_SHADOW_NAME_LISTS:
+            names = re.search(r"^const %s = \[(.+?)\];$" % re.escape(js_name), source, re.MULTILINE)
+            self.assertIsNotNone(
+                names, "the runtime no longer defines %s as a single-line array; the parity "
+                       "extraction is stale" % js_name)
+            self.assertEqual(
+                tuple(re.findall(r'"([^"]+)"', names.group(1))), tuple(getattr(resources, py_name)),
+                "the exporter's %s and the validator's %s have diverged" % (js_name, py_name))
+        for js_helper, py_helper in (
+                ("_offlineShadowIdentChar", "_offline_shadow_ident_char"),
+                ("_offlineShadowSkipComment", "_offline_shadow_skip_comment"),
+                ("_offlineShadowNextSig", "_offline_shadow_next_sig"),
+                ("_offlineShadowNextWord", "_offline_shadow_next_word"),
+                ("_offlineShadowSkipQuoted", "_offline_shadow_skip_quoted"),
+                ("_offlineShadowSkipTemplate", "_offline_shadow_skip_template"),
+                ("_offlineShadowSkipRegex", "_offline_shadow_skip_regex"),
+                ("_offlineShadowLineEnd", "_offline_shadow_line_end"),
+                ("_offlineShadowRegexOk", "_offline_shadow_regex_ok"),
+                ("_offlineShadowDeclStarts", "_offline_shadow_decl_starts"),
+                ("_offlineLocalLocationShadow", "offline_local_location_shadow")):
+            self.assertIn("function %s(" % js_helper, source,
+                          "the exporter no longer defines %s, so the two scanners are no longer "
+                          "the same scanner" % js_helper)
+            self.assertTrue(hasattr(resources, py_helper),
+                            "the validator no longer defines %s, so the two scanners are no longer "
+                            "the same scanner" % py_helper)
+        depth = re.search(r"^const _OFFLINE_SHADOW_MAX_DEPTH = (\d+);$", source, re.MULTILINE)
+        self.assertIsNotNone(depth,
+                             "the runtime no longer defines _OFFLINE_SHADOW_MAX_DEPTH as a "
+                             "single-line constant; the parity extraction is stale")
+        self.assertEqual(int(depth.group(1)), resources.OFFLINE_SHADOW_MAX_DEPTH,
+                         "the exporter and the validator cap the frame stack at different depths, "
+                         "so a deeply nested script would be read differently by each")
+
     # The regex literals and name lists the exporter's navigation SCAN is built from, each paired
     # with the validator constant that must mirror it byte for byte, and with the JS flags it must
     # carry. The scan replaced a single repeated-prefix pattern (see `_offlineNavSinkIndex`), so
@@ -2709,15 +3052,7 @@ class RuntimeParityTests(unittest.TestCase):
         ("_OFFLINE_NAV_IDENT_RE", "OFFLINE_NAV_IDENT_RE", ""),
         ("_OFFLINE_NAV_STATEMENT_RE", "OFFLINE_NAV_STATEMENT_RE", ""),
         ("_OFFLINE_NAV_LINE_BREAK_RE", "OFFLINE_NAV_LINE_BREAK_RE", ""),
-        # The local-binding half is a scan now too, so what is shared is its `location` anchor, the
-        # four declaration heads its arms are driven from, and the identifier class that closes the
-        # windowed arms.
-        ("_OFFLINE_LOCAL_NAME_RE", "OFFLINE_LOCAL_NAME_RE", "gi"),
-        ("_OFFLINE_LOCAL_KEYWORD_HEAD_RE", "OFFLINE_LOCAL_KEYWORD_HEAD_RE", "gi"),
-        ("_OFFLINE_LOCAL_CATCH_HEAD_RE", "OFFLINE_LOCAL_CATCH_HEAD_RE", "gi"),
-        ("_OFFLINE_LOCAL_BRACKET_HEAD_RE", "OFFLINE_LOCAL_BRACKET_HEAD_RE", "gi"),
-        ("_OFFLINE_LOCAL_PAREN_HEAD_RE", "OFFLINE_LOCAL_PAREN_HEAD_RE", "gi"),
-        ("_OFFLINE_LOCAL_IDENT_RE", "OFFLINE_LOCAL_IDENT_RE", ""),
+        ("_OFFLINE_SHADOW_IDENT_ASCII_RE", "OFFLINE_SHADOW_IDENT_ASCII_RE", ""),
     )
 
     def _runtime_nav_pattern(self, name, flags=None):
@@ -2760,8 +3095,7 @@ class RuntimeParityTests(unittest.TestCase):
         region = source[start:end + 2]
         for name in ("_offlineNavAsciiLower", "_offlineNavPrefixStart", "_offlineNavChainOk",
                      "_offlineNavStatementStart", "_offlineNavSinkIndex",
-                     "_offlineLocalWindowOk", "_offlineLocalNextHead",
-                     "_offlineLocalLocationIndex"):
+                     "_offlineLocalLocationShadow"):
             self.assertIn(name, region,
                           "%s is no longer inside the extracted navigation region, so the parity "
                           "check would run a partial copy of the decision" % name)
@@ -2869,8 +3203,7 @@ class RuntimeParityTests(unittest.TestCase):
 
         # The prefix chain is walked in code now, so its NAME LIST is shared data rather than part
         # of a pattern - a name only one side knows about is a sink the strip drops and the gate
-        # blesses, or the reverse. (The local-binding keywords are NOT here: they live inside the
-        # four head patterns above, which are already pinned by text.)
+        # blesses, or the reverse.
         names = re.search(r"^const _OFFLINE_NAV_PREFIX_NAMES = \[(.+?)\];$",
                           self._read("68-export-offline.js"), re.MULTILINE)
         self.assertIsNotNone(names,
@@ -3039,213 +3372,6 @@ class RuntimeParityTests(unittest.TestCase):
                 "the REAL JS engine and the pattern the scan replaced disagree about the prefixed "
                 "sink in %r" % sample)
 
-    # The local-binding pattern the scan replaced, frozen here as an ORACLE for the same reason the
-    # sink oracle above is frozen: the point is that a hand-written scan recognizes exactly what the
-    # regex did, and an oracle that moved with the code would assert nothing. Update it only when
-    # the recognized SHAPES change on purpose, in the same commit that changes them.
-    _LEGACY_LOCAL = re.compile(
-        r"(?:^|[^.A-Za-z0-9_$])(?:(?:var|let|const|function|class)" + _LEGACY_NAV_WS
-        + r"+location(?![A-Za-z0-9_$])|(?:var|let|const)" + _LEGACY_NAV_WS
-        + r"*[{\[](?:[^}\]]{0,399}[^}\]A-Za-z0-9_$])?location(?![A-Za-z0-9_$])"
-        r"|function(?![A-Za-z0-9_$])" + _LEGACY_NAV_WS + r"*(?:[A-Za-z0-9_$]{1,100}"
-        + _LEGACY_NAV_WS + r"*)?\((?:[^)]{0,399}[^)A-Za-z0-9_$])?location(?![A-Za-z0-9_$])"
-        r"|catch" + _LEGACY_NAV_WS + r"*\(" + _LEGACY_NAV_WS + r"*location(?![A-Za-z0-9_$]))",
-        re.IGNORECASE | re.ASCII)
-
-    # Fragments crossed into a corpus of declarations and NEAR-declarations: a boundary character,
-    # a keyword (and two near-keywords), the run behind it, an opener, the name, and a closer. The
-    # cells that matter are the near-misses - `vars`/`varx` in front, an identifier that merely ENDS
-    # in the name, a non-ASCII whitespace character in the boundary slot, and an opener nested in
-    # another one.
-    _LOCAL_CROSS_HEADS = ("", "$", ";", ".", "x", "\u00a0", "\ufeff")
-    _LOCAL_CROSS_DECLS = ("var", "let", "const", "function", "class", "catch", "vars", "Const")
-    _LOCAL_CROSS_JOINS = ("", " ", "\n", "\u00a0", "\u2028")
-    _LOCAL_CROSS_OPENERS = ("", "{", "[", "(", "{a,", "(a=1,", "f(", "[x][")
-    _LOCAL_CROSS_NAMES = ("location", "newLocation", "Location", "locations")
-    _LOCAL_CROSS_TAILS = ("", "}", ")")
-
-    def _local_cross_corpus(self):
-        """Every head x keyword x run x opener x name x closer crossing, plus the awkward ones.
-
-        The hand-written tail carries the shapes a crossing cannot reach: the WINDOW boundary at
-        exactly 400 characters and one past it (which is where a scan driven from the name and a
-        pattern driven from the keyword would most plausibly part company), an opener nested inside
-        another declaration's opener, a `function` head whose identifier is 100 characters and 101,
-        and the aliasing/mention cases the CMH-OFFLINE-05 residual names.
-
-        Returned as (crossed, hand-written, fuzzed) so the caller can hold each part to its own
-        floor: a corpus-size check that only sees the TOTAL cannot notice the hand-written cases
-        being deleted, and those are exactly the ones aimed at the thinnest part of the argument.
-        """
-        crossed = ["".join(parts) for parts in itertools.product(
-            self._LOCAL_CROSS_HEADS, self._LOCAL_CROSS_DECLS, self._LOCAL_CROSS_JOINS,
-            self._LOCAL_CROSS_OPENERS, self._LOCAL_CROSS_NAMES, self._LOCAL_CROSS_TAILS)]
-        hand = [
-            "var {" + "a" * 398 + " location}",
-            "var {" + "a" * 399 + " location}",
-            "var {" + "a" * 400 + " location}",
-            "function(" + "x" * 399 + " location)",
-            "function(" + "x" * 400 + " location)",
-            "function(" + "x" * 401 + " location)",
-            # The rightmost opener is not the QUALIFYING one, so a scan that only ever looks at the
-            # nearest bracket answers this wrongly.
-            "var {a[b location}",
-            "var {} let [location]",
-            "var {let[location]",
-            "var {" + "a" * 396 + "let[location]",
-            "var {" + "a" * 397 + "let[location]",
-            # The one shape where "only the LAST qualifying opener matters" is genuinely
-            # load-bearing: a near-limit window that CONTAINS a second opener. The first has the
-            # nearer opener clean while the earlier one crosses a closer; the second has both out
-            # of range; the third stacks two openers with no gap at all.
-            "var{" + "x" * 50 + "let[" + "y" * 5 + "}location",
-            "var[" + "a" * 5 + "let{" + "b" * 500 + "location",
-            "var {let [location",
-            "var " + "{" * 400 + "location",
-            "var " + "{" * 401 + "location",
-            "var {a{b{c location}",
-            "{var [location]",
-            "letvar {location}",
-            "varlet {location}",
-            "var [a}location",
-            "let []location",
-            "var {" + "}" * 3 + "location",
-            "function " + "f" * 100 + "(location)",
-            "function " + "f" * 101 + "(location)",
-            "function function(location)",
-            "xfunction function (location)",
-            "function f(a)(location)",
-            "functionx(location)",
-            "function x(newLocation)",
-            "x=function(location){}",
-            ")function(location){}",
-            "catch (location)", "catch(  location )", "catchx (location)", "CATCH(LOCATION)",
-            "VAR LOCATION", "var location", "varlocation", "var\u00a0location",
-            "var{location}", "const[location]", "a.var location", ".const location",
-            "var {currentLocation}", "const {href: location}", "var {href: location}",
-            "var  \n location", "class location", "location", "", "location location",
-            "const location = { href: '' }; location.href = 'https://e'",
-            "var l = location; l.href = 'x'",
-            "function f(q = location) {}",
-            "function f(a /* location */) {}",
-            "for (const [k, location] of e) {}",
-            "try {} catch\n(\nlocation\n) {}",
-            "var[location]", "let{location}", "const  [  location ]",
-            "var (location)", "class (location)",
-        ]
-        # A seeded fuzz over the alphabet the shapes are built from. The crossing covers the joins
-        # somebody thought of; this covers the ones nobody did, and it is deterministic so a failure
-        # names a fixed sample rather than a lucky one.
-        rnd = random.Random(1045)
-        alphabet = list("varletconstfunctioclass{}[](). \n\t;=xylocation$_?\u00a0")
-        fuzzed = ["".join(rnd.choice(alphabet) for _ in range(rnd.randint(1, 40)))
-                  for _ in range(6000)]
-        return crossed, hand, fuzzed
-
-    # Each part of the corpus carries its own floor, because the realistic way this pin decays is
-    # one part being dropped: a total-only check cannot tell 17,583 samples with the hand-written
-    # cases from 17,520 without them.
-    _LOCAL_CROSS_MIN = (26880, 60, 6000)
-
-    _LOCAL_HEAD_PATTERNS = ("OFFLINE_LOCAL_KEYWORD_HEAD_RE", "OFFLINE_LOCAL_CATCH_HEAD_RE",
-                            "OFFLINE_LOCAL_BRACKET_HEAD_RE", "OFFLINE_LOCAL_PAREN_HEAD_RE")
-
-    def test_the_local_binding_cursors_see_every_head_in_order(self):
-        """Pin the two invariants the cursor loops silently depend on, directly.
-
-        `offline_local_location_index` advances each head cursor with `while end < at` and then
-        asks whether `end == at`, and it resumes a cursor on its match's LAST character rather than
-        past it. That is only correct if (1) resuming there still enumerates every head the pattern
-        can match anywhere, and (2) head ENDS are non-decreasing as the match start increases, so
-        the first end at or after the anchor is the smallest one. Both hold for the four patterns as
-        written, but neither is visible at the loop, and an edit to any head pattern - making a
-        trailing part optional, letting the parameter arm take a second identifier - could break
-        either one. The failure mode is a SILENT under-match (a benign script deleted, or an
-        unprefixed sink no longer suppressed), and the end-to-end equivalence test would only catch
-        it if the corpus happened to contain the broken shape. So assert the invariants themselves,
-        against a brute-force enumeration that tries every position.
-        """
-        crossed, hand, fuzzed = self._local_cross_corpus()
-        corpus = hand + crossed[::7] + fuzzed[::5]
-        self.assertGreater(len(corpus), 3000,
-                           "the invariant corpus collapsed to %d samples" % len(corpus))
-        for name in self._LOCAL_HEAD_PATTERNS:
-            rx = getattr(resources, name)
-            for sample in corpus:
-                cursor = []
-                pos = 0
-                while True:
-                    end, pos = resources._offline_local_next_head(sample, rx, pos)
-                    if end < 0:
-                        break
-                    cursor.append(end)
-                brute = [m.end() for m in
-                         (rx.match(sample, at) for at in range(len(sample) + 1)) if m]
-                # Compare the SETS: two different starts may share one end (`function function(`
-                # ends both paren heads on the same `(`), and the cursor reports that end once
-                # while a brute-force sweep reports it twice. What the arms compare is the end, so
-                # an end the cursor never yields is the only real loss.
-                self.assertEqual(
-                    sorted(set(cursor)), sorted(set(brute)),
-                    "%s: the forward cursor enumerated ends %r but the pattern matches at ends %r "
-                    "in %r. Resuming on a match's last character must not skip a head that begins "
-                    "inside another one, or the scan silently under-matches." % (
-                        name, sorted(set(cursor)), sorted(set(brute)), sample))
-                self.assertEqual(
-                    cursor, sorted(cursor),
-                    "%s: the cursor yielded ends out of order (%r) on %r" % (name, cursor, sample))
-                self.assertEqual(
-                    brute, sorted(brute),
-                    "%s: head ends are not non-decreasing in start order on %r (%r). The cursor "
-                    "loops stop at the FIRST end at or after the anchor, so a shorter head behind "
-                    "a longer one would be skipped." % (name, sample, brute))
-
-    def test_the_local_binding_scan_matches_the_pattern_it_replaced(self):
-        """The local-binding scan must recognize EXACTLY what the pattern it replaced recognized.
-
-        This half of the predicate decides whether a script's own `location` SHADOWS the document's,
-        which drops the verdict to the PREFIXED sinks. So a shape the scan stopped matching is a
-        benign script the exporter now deletes and the validator now rejects, and a shape it started
-        matching is an unprefixed egress channel that silently reopened - the same two directions
-        the sink oracle pins, one level down.
-        """
-        parts = self._local_cross_corpus()
-        for got, want, what in zip(parts, self._LOCAL_CROSS_MIN,
-                                   ("crossed", "hand-written", "fuzzed")):
-            self.assertGreaterEqual(
-                len(got), want,
-                "the %s part of the local-binding corpus collapsed to %d samples, below the %d it "
-                "is built to produce; the equivalence pin is only as good as what it crosses"
-                % (what, len(got), want))
-        corpus = [sample for part in parts for sample in part]
-        for sample in corpus:
-            self.assertEqual(
-                resources.offline_local_location_index(sample) >= 0,
-                bool(self._LEGACY_LOCAL.search(sample)),
-                "the local-binding scan and the pattern it replaced disagree about %r. A shape the "
-                "scan stopped matching is a benign script the exporter now deletes; one it started "
-                "matching is an unprefixed sink that is no longer suppressed." % sample)
-
-        node = shutil.which("node")
-        if not node:
-            self.skipTest("node is not on PATH; the JS-engine equivalence check needs it")
-        script = (
-            self._runtime_nav_source() + "\n"
-            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
-            "const p=JSON.parse(raw);"
-            "process.stdout.write(JSON.stringify("
-            "p.map(s=>_offlineLocalLocationIndex(s)>=0)));});"
-        )
-        verdicts = self._run_nav_node(node, script, corpus, "the crossed local-binding corpus")
-        self.assertEqual(len(verdicts), len(corpus),
-                         "node returned %d verdicts for %d crossed samples"
-                         % (len(verdicts), len(corpus)))
-        for sample, hit in zip(corpus, verdicts):
-            self.assertEqual(
-                hit, bool(self._LEGACY_LOCAL.search(sample)),
-                "the REAL JS engine and the pattern the local-binding scan replaced disagree about "
-                "%r" % sample)
-
     # The URL literals from the navigating corpus whose danger is a LANGUAGE claim rather than a
     # regex one, paired with the value the JavaScript parser actually produces. Each is the URL
     # LITERAL only (the sink around it is what the corpus above covers).
@@ -3308,18 +3434,18 @@ class RuntimeParityTests(unittest.TestCase):
                 % (src, result["v"], expected))
 
     def _assert_reaches_local_binding_pass(self, evil, label):
-        """The local-binding adversary must still ROUTE THROUGH the regex it is aimed at.
+        """The local-binding adversary must still ROUTE THROUGH the pass it is aimed at.
 
-        `offline_script_navigates_to_network` answers and returns BEFORE that regex when no sink is
+        `offline_script_navigates_to_network` answers and returns BEFORE that pass when no sink is
         found, so an unrelated change to SINK detection would leave this guard fast, green and
         guarding nothing. Assert the two conditions that put the expensive pass on the path.
         """
         self.assertGreaterEqual(
             resources.offline_nav_sink_index(evil, False), 0,
             "the %s adversary no longer trips the sink search, so the predicate answers before it "
-            "reaches the local-binding regex and the budget below times nothing" % label)
+            "reaches the local-binding scan and the budget below times nothing" % label)
         self.assertTrue(
-            resources.offline_local_location_index(evil) >= 0,
+            resources.offline_local_location_shadow(evil),
             "the %s adversary no longer registers a local binding, so it stops covering the "
             "pass it exists to time" % label)
 
@@ -3367,15 +3493,30 @@ class RuntimeParityTests(unittest.TestCase):
             # answers it without a chain walk, but the corpus only ever carried a single-name,
             # single-space chain, so pin the reported spelling itself.
             ("window{0}.{0}top{0}.{0}").format(" " * 8) * 2000,
-            # The LOCAL-BINDING regex is the other half of the predicate and runs over the WHOLE
-            # script whenever a sink is found, so it needs its own adversary. Its `function`
-            # alternative joined two unbounded whitespace runs around an OPTIONAL identifier
+            # The LOCAL-BINDING pass is the other half of the predicate and runs over the WHOLE
+            # script whenever a sink is found, so it needs its own adversary. The regex it replaced
+            # joined two unbounded whitespace runs around an OPTIONAL identifier
             # (`function WS* IDENT{0,100} WS* \(`), which is the `WS*\??WS*\.` shape again: a run
             # never followed by `(` was split every possible way and each split re-ran the
             # `[^)]{0,400}location` search. The trailing sink plus `const location` is what makes
-            # the predicate reach that regex and still answer False.
+            # the predicate reach that pass and still answer False.
             local_binding_evil,
         ]
+        # The shadow pass is a hand-written TOKENIZER now, so its own unbounded structures need
+        # adversaries: the frame stack, the string scan and the regex-literal scan. The last one is
+        # the interesting one - a regex literal that never terminates would be re-scanned to the
+        # end of the line from every `/` after it, which is quadratic, so a failed scan poisons the
+        # rest of that line instead.
+        shadow_evils = [
+            "(" * 20000 + _NAV_SHADOW_TAIL,
+            "[/" * 20000 + _NAV_SHADOW_TAIL,
+            ("'" + "a" * 20 + "\n") * 2000 + _NAV_SHADOW_TAIL,
+            "`${x}`" * 5000 + _NAV_SHADOW_TAIL,
+            "/*" + " " * 20000 + "*/" + _NAV_SHADOW_TAIL,
+        ]
+        for shadow_evil in shadow_evils:
+            self._assert_reaches_local_binding_pass(shadow_evil, "fixed-size shadow tokenizer")
+        evils.extend(shadow_evils)
         self._assert_reaches_local_binding_pass(local_binding_evil, "fixed-size local-binding")
         # Both patterns are fuzzed: they share the tail byte for byte, but only one of them was
         # ever driven with adversarial input, so a divergence in the prefixed copy could hide here.
@@ -3442,37 +3583,19 @@ class RuntimeParityTests(unittest.TestCase):
         # hid it.
         ("local-binding whitespace run", _NAV_LOCAL_BINDING_EVIL.split("%s", 1)[0], " ",
          _NAV_LOCAL_BINDING_EVIL.split("%s", 1)[1], (500, 5000, 50000), True),
-        # The shape above grows ONE declaration's whitespace run; this one grows the DECLARATION
-        # ANCHOR DENSITY instead, which is the other way the local-binding pass can be made to do
-        # work per character. Growth was already LINEAR here - the defect was the size of the
-        # CONSTANT: the pass used to be a `search()` over the whole script whose two windowed
-        # alternatives re-walked a bounded 400-character lookahead at EVERY `const{` / `var[`
-        # anchor, so a densely packed near-match cost ~2.7us per character in Python (0.031s at
-        # 12 KB, 0.375s at 120 KB, 3.281s at 1.2 MB) and ~0.4us in node, against ~0.24us for the
-        # anchored sink scan beside it. The input is document-supplied and includes the vendored
-        # payload's INFLATED bytes, so a few hundred base64 bytes buy megabytes of it. An absolute
-        # per-step budget is what states that constant; the ratio assertion alone never could,
-        # because a large constant scales perfectly.
-        ("declaration-anchor density", "", "const{", ';location.href="//e";const location=1;',
-         (1000, 10000, 100000), True),
-        # The MIRROR of the shape above, and the one an anchored scan makes possible: driving from
-        # the `location` anchor moves the worst input from declaration density to NAME density, so
-        # the shape that would hide a regression is a document that is almost entirely `location`.
-        # It also pins the arm that has no bounded window at all - the keyword arm's whitespace run
-        # is unbounded, so walking it BACKWARDS once per anchor (rather than letting a forward
-        # cursor consume it once) would put the same per-character constant back by another route.
-        ("name-anchor density", "", ";location", ';location.href="//e";const location=1;',
-         (400, 4000, 40000), True),
-        # The unbounded whitespace run that keyword arm carries, grown on its own: one anchor, one
-        # run, and no repetition at all, so the cost is the RUN's per-character treatment rather
-        # than any per-anchor work.
-        ("keyword whitespace run", "const", " ",
-         'x;location.href="//e";const location=1;', (5000, 50000, 500000), True),
-        # Dense STACKED heads: every arm's cursor advances on the same bytes, inside a comment so
-        # the sample stays valid script. The cursors are what the anchored scan pays instead of a
-        # per-anchor window walk, so this is where their own constant shows up.
-        ("stacked declaration heads", "", "/*var {let [*/",
-         ';location.href="//e";const location=1;', (250, 2500, 25000), True),
+        # The shadow pass is a tokenizer, so grow the structures IT walks: the frame stack, and an
+        # unterminated regex literal that every later `/` would re-scan to the end of the line if
+        # the failed scan did not poison the rest of it.
+        ("shadow frame nesting", "", "(", _NAV_SHADOW_TAIL, (500, 5000, 50000), True),
+        ("shadow unterminated regex", "", "[/", _NAV_SHADOW_TAIL, (500, 5000, 50000), True),
+        ("shadow unterminated quote", "", "'" + "a" * 20 + "\n", _NAV_SHADOW_TAIL,
+         (50, 500, 5000), True),
+        # The ASI rule that ends a dangling declaration reads the token AFTER a line break. Deciding
+        # that by peeking FROM the break re-scanned the whole run of trivia at every newline in it,
+        # which is quadratic: 20,000 newlines cost 57s in Python and 4.5s in node. The `,` keeps the
+        # declaration open, so every newline in the run re-armed the peek.
+        ("shadow declaration line breaks", "let x", "\n", ",location=1;" + _NAV_SHADOW_TAIL,
+         (200, 2000, 20000), True),
     )
     def test_the_navigation_scan_stays_linear_as_the_near_match_grows(self):
         """A 10x longer near-match must not cost ~100x, in BOTH engines.
@@ -3507,8 +3630,7 @@ class RuntimeParityTests(unittest.TestCase):
                 self.assertLess(
                     took, self._NAV_CPU_BUDGET_SECONDS,
                     "the navigation scan took %.2fs on a %d-character %s. It is meant to cost one "
-                    "cheap pass over the input; either a quadratic term is back or the per-"
-                    "character constant has grown an order." % (took, len(evil), label))
+                    "pass over the input; a quadratic term is back." % (took, len(evil), label))
             # The absolute budgets above cannot be met by a quadratic implementation at the largest
             # step, but state the SCALING directly as well: 10x the input, at most 30x the time
             # (with a floor, because the fastest step is too quick to time reliably).
@@ -3590,6 +3712,36 @@ class RuntimeParityTests(unittest.TestCase):
             (re.compile(r"\bimport\s+[\"'](?:https?:)?//", re.IGNORECASE), "a bare remote import"),
         ]
         for label, body in sources.items():
+            # Script-data escape state, walked rather than pattern-matched. Inside the script
+            # element that carries the layer, an HTML comment OPENER starts an escaped run, a start
+            # tag inside that run starts a DOUBLE-escaped run, and only a comment CLOSER leaves
+            # either. Text that ends still inside one is the failure: the layer's own end tag then
+            # closes the run instead of the element, the runtime is swallowed, and every document
+            # that embeds it silently comes up dead - with no error anywhere. This is the same
+            # tokenizer rule `_cmhScriptDataClose` implements; here it is asserted about the
+            # layer's OWN bytes. Prose may still discuss the shapes, as long as the runs balance.
+            marker = re.compile("<" + "!--" + "|" + "--" + ">" + r"|</?script[\t\n\f\r />]",
+                                re.IGNORECASE)
+            escaped = doubled = False
+            for hit in marker.finditer(body):
+                token = hit.group(0).lower()
+                if token == "<" + "!--":
+                    escaped = True
+                elif token == "--" + ">":
+                    if doubled:
+                        doubled = False
+                    else:
+                        escaped = False
+                elif token.startswith("</"):
+                    doubled = False
+                elif escaped:
+                    doubled = True
+            self.assertFalse(
+                escaped or doubled,
+                "%s ends inside a script-data escaped run: an HTML comment opener in it is never "
+                "closed, so the layer's own end tag would close the run instead of the script "
+                "element and every document that embeds the runtime would silently lose it. "
+                "Assemble the opener from pieces (`\"<\" + \"!--\"`), or close the comment." % label)
             for rx, what in forbidden:
                 hit = rx.search(body)
                 self.assertIsNone(
