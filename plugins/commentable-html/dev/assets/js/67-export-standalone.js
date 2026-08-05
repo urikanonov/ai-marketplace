@@ -325,20 +325,24 @@ async function saveStandalone() {
   if (!NONSHAREABLE_MODE) return saveHtml();
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
-  catch (e) { showToast("Could not load base HTML."); return; }
-  baseHtml = _applyWidgetLayoutToHtml(baseHtml);
-  baseHtml = _applyChecklistStateToHtml(baseHtml);
-  baseHtml = _applyNoteStateToHtml(baseHtml);
-  const review = _applyReviewStateToHtml(baseHtml);
-  baseHtml = review.html;
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_LOAD); return; }
+  let review;
+  try {
+    baseHtml = _applyWidgetLayoutToHtml(baseHtml);
+    baseHtml = _applyChecklistStateToHtml(baseHtml);
+    baseHtml = _applyNoteStateToHtml(baseHtml);
+    review = _applyReviewStateToHtml(baseHtml);
+    baseHtml = review.html;
+  } catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_PREPARE); return; }
   const canonical = _exportableCommentsOrReport();
   if (!canonical) return;
   const exportComments = canonical.comments;
   let text;
   try { text = _buildStandaloneHtml(baseHtml, exportComments); }
-  catch (e) { showToast(e.message); return; }
+  catch (e) { _reportExportBuildFailure(e); return; }
   const filename = _suggestedFilename();
   const n = exportComments.length;
-  _downloadHtml(text, filename);
+  try { _downloadHtml(text, filename); }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_DOWNLOAD); return; }
   showToast(`Downloaded ${filename} - one shareable file, ${n} comment${n === 1 ? "" : "s"} embedded, no companion files needed.` + review.note, { center: true });
 }

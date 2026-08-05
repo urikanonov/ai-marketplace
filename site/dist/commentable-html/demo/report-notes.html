@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.741.0" />
+<meta name="commentable-html-version" content="1.742.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.741.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.742.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Design review sign-off</title>
 
@@ -4502,7 +4502,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.741.0";
+const CMH_VERSION = "1.742.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -15914,13 +15914,35 @@ function buildMarkdownDoc() {
   if (appendix) md += "\n" + appendix;
   return md;
 }
+// Release a download anchor and its object URL, each independently and best-effort: a throw from one
+// must not skip the other, and neither must escape a timer callback. Shared with `_downloadHtml`
+// (65-export-shareable.js) - the partials share one hoisted scope, see MODULES.md. Both operations
+// are idempotent (revoking an already-revoked URL and removing an unattached node are no-ops), so
+// the failure path and the scheduled cleanup can each call it.
+function _cmhReleaseDownloadAnchor(url, a) {
+  try { URL.revokeObjectURL(url); } catch (e) {}
+  try { if (a) a.remove(); } catch (e) {}
+}
 function _downloadTextFile(text, filename, mime) {
   const blob = new Blob([text], { type: (mime || "text/plain") + ";charset=utf-8" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 1000);
+  // Clean up on the way out of a throw, so a failed download leaves neither an unrevoked object URL
+  // nor a stray anchor in the document (see _downloadHtml).
+  let a = null;
+  try {
+    a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+  } catch (e) {
+    _cmhReleaseDownloadAnchor(url, a);
+    throw e;
+  }
+  // The handoff already happened, so removing the anchor and scheduling the revoke are both
+  // best-effort: a throw from either would report a failure for a file the browser has taken.
+  try { a.remove(); } catch (e) {}
+  try {
+    setTimeout(function () { _cmhReleaseDownloadAnchor(url, a); }, 1000);
+  } catch (e) { _cmhReleaseDownloadAnchor(url, a); }
 }
 function _mdFilename() {
   let stem = "document";
@@ -15931,9 +15953,15 @@ function _mdFilename() {
   return stem + ".md";
 }
 async function exportMarkdown() {
-  const md = buildMarkdownDoc();
+  // The same two bare lines the HTML exports carried (#1108): the conversion walks the whole
+  // content root and the download builds a Blob, and either throw used to end the click with no
+  // file and no message.
+  let md;
+  try { md = buildMarkdownDoc(); }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_CONVERT); return; }
   const filename = _mdFilename();
-  _downloadTextFile(md, filename, "text/markdown");
+  try { _downloadTextFile(md, filename, "text/markdown"); }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_DOWNLOAD); return; }
   showToast(`Markdown downloaded as ${filename}.`, { center: true });
 }
 ["btnExportMd", "btnExportMdTop"].forEach((id) => {
@@ -16513,7 +16541,7 @@ function _exportableComments() {
 }
 // An export that FAILED is the one message a reader must not miss, and some of these run long, so
 // give it an assertive announcement and time to read rather than the 3s confirmation timing.
-const _EXPORT_CANONICAL_FAILURE_TOAST = { alert: true, duration: 10000 };
+const _EXPORT_FAILURE_TOAST = { alert: true, duration: 10000 };
 // The cause to name in that toast, derived from ANY thrown value. `throw "boom"` is legal, and so is
 // a value whose `message` getter throws, so reading `e.message` bare would either drop the cause or
 // throw a SECOND time from inside the very catch that exists to report the first. The text is capped
@@ -16531,6 +16559,83 @@ function _cmhThrownDetail(e) {
   if (/^\[object [A-Za-z][A-Za-z0-9]*\]$/.test(detail)) detail = "";
   return detail.length > 200 ? detail.slice(0, 200) + "..." : detail;
 }
+// The three points an export can fail at, each naming its own cause and what it left behind. The
+// prelude and the download both leave the live document untouched (the prelude rewrites a STRING
+// copy of the base HTML, and by download time the canonical pass has already restored from its
+// `finally`), so both can promise a retry is safe without claiming a restore ran.
+const _EXPORT_FAILURE_CANONICAL = {
+  log: "export canonical pass failed",
+  cause: "This document's comment positions could not be prepared for export",
+  tail: "No file was written and the pass put your comments and table sorting back, so it is"
+    + " safe to try again.",
+};
+const _EXPORT_FAILURE_PREPARE = {
+  log: "export preparation pass failed",
+  cause: "This document could not be prepared for export",
+  tail: "No file was written and nothing in this document changed, so it is safe to try again.",
+};
+const _EXPORT_FAILURE_DOWNLOAD = {
+  log: "export download failed",
+  cause: "The prepared file could not be handed to the browser to download",
+  tail: "No file was written and nothing in this document changed, so it is safe to try again."
+    + " A very large export can fail this way.",
+};
+// The document build has its own descriptor because it is a different step from the state baking,
+// and Markdown its own again: it bakes no state at all, so filing its failure under the baking log
+// label would send a triager grepping the console to the wrong pass.
+const _EXPORT_FAILURE_BUILD = {
+  log: "export document build failed",
+  cause: "This document could not be assembled for export",
+  tail: "No file was written and nothing in this document changed, so it is safe to try again.",
+};
+const _EXPORT_FAILURE_CONVERT = {
+  log: "export markdown conversion failed",
+  cause: "This document could not be converted to Markdown",
+  tail: "No file was written and nothing in this document changed, so it is safe to try again.",
+};
+// Loading the base HTML is the FIRST step of every handler, and its own catch used to call showToast
+// bare - so it kept the same two holes the rest of the handler had: a throw from the toast unwound
+// the click, and the thrown value never reached the console.
+const _EXPORT_FAILURE_LOAD = {
+  log: "export could not load the base HTML",
+  cause: "This document's own HTML could not be read to export from",
+  tail: "No file was written and nothing in this document changed, so it is safe to try again.",
+};
+// One reporter for every export failure, so all of them share one message shape and one
+// best-effort contract. Reporting must not be able to fail the way the export just did: a throw
+// from showToast here would unwind the click handler past the caller's abort and restore the exact
+// silence this reporter exists to remove, so the report is best-effort and the abort is
+// unconditional. The toast is truncated and transient, so the full thrown value (stack included)
+// is left on the console for whoever has to triage the report.
+function _reportExportFailure(e, parts, opts) {
+  const detail = _cmhThrownDetail(e);
+  try { console.warn("commentable-html: " + parts.log, e); } catch (e2) {}
+  try {
+    showToast("Export failed - nothing was downloaded. " + parts.cause
+      + (detail ? " (" + detail + ")" : "") + ". " + parts.tail,
+    opts || _EXPORT_FAILURE_TOAST);
+  } catch (e2) { /* the export still aborts */ }
+}
+// The document build throws a message written FOR the reader (which reserved block is contested,
+// which id to rename), so that message is shown as-is rather than replaced by the generic one. It
+// is read defensively, though: `showToast(e.message)` on a throwable with no readable message shows
+// a toast with no text, and on a value whose `message` getter throws it throws a SECOND time from
+// inside the catch and unwinds the click handler - the very silence this row exists to remove,
+// reached from the one line the guards above do not own.
+function _reportExportBuildFailure(e, opts) {
+  let msg = "";
+  try {
+    const obj = e && (typeof e === "object" || typeof e === "function");
+    const raw = (obj && "message" in e) ? e.message : "";
+    msg = (raw === undefined || raw === null) ? "" : String(raw).trim();
+  } catch (e2) { msg = ""; }
+  if (!msg) { _reportExportFailure(e, _EXPORT_FAILURE_BUILD, opts); return; }
+  try { console.warn("commentable-html: " + _EXPORT_FAILURE_BUILD.log, e); } catch (e2) {}
+  // A failed export is a message a reader must not miss, so it goes out with the assertive,
+  // long-duration timing whatever the caller passed - the builder's own text used to get the 3s
+  // confirmation pacing, which is how a message that does NOT matter is shown.
+  try { showToast(msg, opts || _EXPORT_FAILURE_TOAST); } catch (e2) { /* the export still aborts */ }
+}
 // Every export entry point runs the canonical pass through this guard rather than calling
 // `_exportableComments()` bare. The pass can throw, and it used to sit OUTSIDE the try/catch that
 // wraps the document build, so the throw unwound the whole click handler: no file was downloaded
@@ -16541,20 +16646,7 @@ function _exportableCommentsOrReport() {
   try {
     return { comments: _exportableComments() };
   } catch (e) {
-    const detail = _cmhThrownDetail(e);
-    // The toast is the reader's whole account of the failure and it is truncated and transient, so
-    // leave the full value (stack included) on the console for whoever has to triage the report.
-    try { console.warn("commentable-html: export canonical pass failed", e); } catch (e2) {}
-    // Reporting must not be able to fail the way the export just did: a throw from showToast here
-    // would unwind the click handler past the caller's abort and restore the exact silence this
-    // guard exists to remove, so the report is best-effort and the abort is unconditional.
-    try {
-      showToast("Export failed - nothing was downloaded. This document's comment positions could not"
-        + " be prepared for export" + (detail ? " (" + detail + ")" : "")
-        + ". No file was written and the pass put your comments and table sorting back, so it is"
-        + " safe to try again.",
-      _EXPORT_CANONICAL_FAILURE_TOAST);
-    } catch (e2) { /* the export still aborts */ }
+    _reportExportFailure(e, _EXPORT_FAILURE_CANONICAL);
     return null;
   }
 }
@@ -17412,13 +17504,28 @@ function _suggestedOfflineFilename() {
 function _downloadHtml(text, filename) {
   const blob = new Blob([text], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.style.display = "none";
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+  // Everything after the object URL exists cleans up on its way out, the anchor's own creation
+  // included. A throw after the anchor is attached would otherwise leave it in the document - and it
+  // is not injected chrome, so `_snapshotWithTail()` would serialize it into the base of every later
+  // export - while the URL stayed unrevoked, making the download failure's "nothing in this document
+  // changed" false.
+  let a = null;
+  try {
+    a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+  } catch (e) {
+    _cmhReleaseDownloadAnchor(url, a);
+    throw e;
+  }
+  // The handoff already happened, so scheduling the cleanup is best-effort: a throw from here would
+  // report a failure for a file the browser has taken.
+  try {
+    setTimeout(function () { _cmhReleaseDownloadAnchor(url, a); }, 0);
+  } catch (e) { _cmhReleaseDownloadAnchor(url, a); }
 }
 function _layerDescriptorJson(mode) {
   return JSON.stringify({ version: CMH_VERSION, mode, regions: CMH_REGION_NAMES });
@@ -17505,12 +17612,19 @@ function _retargetLayerDescriptor(html, mode) {
 async function saveHtml() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
-  catch (e) { showToast("Could not load base HTML."); return; }
-  baseHtml = _applyWidgetLayoutToHtml(baseHtml);
-  baseHtml = _applyChecklistStateToHtml(baseHtml);
-  baseHtml = _applyNoteStateToHtml(baseHtml);
-  const review = _applyReviewStateToHtml(baseHtml);
-  baseHtml = review.html;
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_LOAD); return; }
+  // The state-baking prelude is one guarded step, not four bare lines: each applier does a
+  // DOMParser round-trip (and the widget one a live query), any of which can throw, and a throw
+  // used to unwind the whole click handler with no file and no toast - the #1052 failure reached
+  // from a different line (#1108).
+  let review;
+  try {
+    baseHtml = _applyWidgetLayoutToHtml(baseHtml);
+    baseHtml = _applyChecklistStateToHtml(baseHtml);
+    baseHtml = _applyNoteStateToHtml(baseHtml);
+    review = _applyReviewStateToHtml(baseHtml);
+    baseHtml = review.html;
+  } catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_PREPARE); return; }
   const canonical = _exportableCommentsOrReport();
   if (!canonical) return;
   const exportComments = canonical.comments;
@@ -17522,11 +17636,15 @@ async function saveHtml() {
     // The mode written is the document's own, so a re-saved Offline copy stays Offline
     // (CMH-OFFLINE-03): this is a consistency pass, never a mode change.
     text = _retargetLayerDescriptor(text, isOfflineDocument() ? "offline" : "shareable");
-  } catch (e) { showToast(e.message); return; }
+  } catch (e) { _reportExportBuildFailure(e); return; }
   const filename = _suggestedFilename();
   const n = exportComments.length;
   const noun = "comment" + (n === 1 ? "" : "s");
-  _downloadHtml(text, filename);
+  // The download itself can throw - `new Blob([text])` and `URL.createObjectURL` both can for a
+  // very large document - and the success toast is the NEXT statement, so an unguarded throw here
+  // downloaded nothing and said nothing.
+  try { _downloadHtml(text, filename); }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_DOWNLOAD); return; }
   showToast(`Downloaded ${filename} with ${n} embedded ${noun}. Replace the original on disk to make them stick.` + review.note, { center: true });
 }
 /* ---------- Save as plain HTML (strip the comment layer) ---------- */
@@ -17762,14 +17880,17 @@ function _suggestedPlainFilename() {
 async function saveAsPlain() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
-  catch (e) { showToast("Could not load base HTML."); return; }
-  baseHtml = _applyChecklistStateToHtml(baseHtml);
-  baseHtml = _applyNoteStateToHtml(baseHtml);
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_LOAD); return; }
+  try {
+    baseHtml = _applyChecklistStateToHtml(baseHtml);
+    baseHtml = _applyNoteStateToHtml(baseHtml);
+  } catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_PREPARE); return; }
   let text;
   try { text = _buildPlainHtml(baseHtml); }
-  catch (e) { showToast(e.message); return; }
+  catch (e) { _reportExportBuildFailure(e); return; }
   const filename = _suggestedPlainFilename();
-  _downloadHtml(text, filename);
+  try { _downloadHtml(text, filename); }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_DOWNLOAD); return; }
   showToast("Downloaded " + filename + " (plain HTML, comment layer removed).", { center: true });
 }
 const _btnSaveHtml = document.getElementById("btnSaveHtml");
@@ -18110,21 +18231,25 @@ async function saveStandalone() {
   if (!NONSHAREABLE_MODE) return saveHtml();
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
-  catch (e) { showToast("Could not load base HTML."); return; }
-  baseHtml = _applyWidgetLayoutToHtml(baseHtml);
-  baseHtml = _applyChecklistStateToHtml(baseHtml);
-  baseHtml = _applyNoteStateToHtml(baseHtml);
-  const review = _applyReviewStateToHtml(baseHtml);
-  baseHtml = review.html;
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_LOAD); return; }
+  let review;
+  try {
+    baseHtml = _applyWidgetLayoutToHtml(baseHtml);
+    baseHtml = _applyChecklistStateToHtml(baseHtml);
+    baseHtml = _applyNoteStateToHtml(baseHtml);
+    review = _applyReviewStateToHtml(baseHtml);
+    baseHtml = review.html;
+  } catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_PREPARE); return; }
   const canonical = _exportableCommentsOrReport();
   if (!canonical) return;
   const exportComments = canonical.comments;
   let text;
   try { text = _buildStandaloneHtml(baseHtml, exportComments); }
-  catch (e) { showToast(e.message); return; }
+  catch (e) { _reportExportBuildFailure(e); return; }
   const filename = _suggestedFilename();
   const n = exportComments.length;
-  _downloadHtml(text, filename);
+  try { _downloadHtml(text, filename); }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_DOWNLOAD); return; }
   showToast(`Downloaded ${filename} - one shareable file, ${n} comment${n === 1 ? "" : "s"} embedded, no companion files needed.` + review.note, { center: true });
 }
 /* ---------- Export Offline (shareable + zero-network rich-content embedding) ---------- */
@@ -20416,21 +20541,25 @@ const _OFFLINE_EXPORT_ERROR_TOAST = { alert: true, duration: 10000 };
 async function saveOffline() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
-  catch (e) { showToast("Could not load base HTML.", _OFFLINE_EXPORT_ERROR_TOAST); return; }
-  // FIRST, on the authored bytes, before ANY pass that parses and re-serializes the document. The
-  // state appliers below each round-trip through `DOMParser` when they have something to write, and
-  // that parse promotes a head fallback's body out of it exactly as the export's own parse does -
-  // so a document with a pending checklist, note, widget or review change would reach
-  // `_buildOfflineHtml` with the promotion already baked in and no fallback left to judge. The pass
-  // inside `_buildOfflineHtml` still runs (nothing downstream may depend on the order of two
-  // callers), and finds nothing left once this one has run.
-  const headFallbacks = _stripOfflineHeadNoscriptStable(baseHtml);
-  baseHtml = headFallbacks.html;
-  baseHtml = _applyWidgetLayoutToHtml(baseHtml);
-  baseHtml = _applyChecklistStateToHtml(baseHtml);
-  baseHtml = _applyNoteStateToHtml(baseHtml);
-  const review = _applyReviewStateToHtml(baseHtml);
-  baseHtml = review.html;
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_LOAD, _OFFLINE_EXPORT_ERROR_TOAST); return; }
+  let review;
+  let headFallbacks;
+  try {
+    // FIRST, on the authored bytes, before ANY pass that parses and re-serializes the document. The
+    // state appliers below each round-trip through `DOMParser` when they have something to write, and
+    // that parse promotes a head fallback's body out of it exactly as the export's own parse does -
+    // so a document with a pending checklist, note, widget or review change would reach
+    // `_buildOfflineHtml` with the promotion already baked in and no fallback left to judge. The pass
+    // inside `_buildOfflineHtml` still runs (nothing downstream may depend on the order of two
+    // callers), and finds nothing left once this one has run.
+    headFallbacks = _stripOfflineHeadNoscriptStable(baseHtml);
+    baseHtml = headFallbacks.html;
+    baseHtml = _applyWidgetLayoutToHtml(baseHtml);
+    baseHtml = _applyChecklistStateToHtml(baseHtml);
+    baseHtml = _applyNoteStateToHtml(baseHtml);
+    review = _applyReviewStateToHtml(baseHtml);
+    baseHtml = review.html;
+  } catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_PREPARE); return; }
   const canonical = _exportableCommentsOrReport();
   if (!canonical) return;
   const exportComments = canonical.comments;
@@ -20439,12 +20568,15 @@ async function saveOffline() {
     shareable = NONSHAREABLE_MODE
       ? _buildStandaloneHtml(baseHtml, exportComments)
       : _buildSavedHtml(baseHtml, exportComments);
-  } catch (e) { showToast(e.message, _OFFLINE_EXPORT_ERROR_TOAST); return; }
+  } catch (e) { _reportExportBuildFailure(e, _OFFLINE_EXPORT_ERROR_TOAST); return; }
   let built;
   try { built = await _buildOfflineHtml(shareable); }
-  catch (e) { showToast(e.message, _OFFLINE_EXPORT_ERROR_TOAST); return; }
+  catch (e) { _reportExportBuildFailure(e, _OFFLINE_EXPORT_ERROR_TOAST); return; }
   const filename = _suggestedOfflineFilename();
-  _downloadHtml(built.html, filename);
+  // An Offline export is precisely the one that inlines base64 assets into a multi-megabyte
+  // document, so the Blob/object-URL step here is the likeliest of all of them to throw (#1108).
+  try { _downloadHtml(built.html, filename); }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_DOWNLOAD); return; }
   // Say when a script was dropped. The strip is deliberately literal, so it can remove a script
   // whose comment or string merely spells an egress shape; removing content silently would leave
   // the author guessing why their document behaves differently offline.

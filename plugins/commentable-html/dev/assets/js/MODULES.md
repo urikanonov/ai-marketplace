@@ -78,9 +78,9 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `55-toolbar-menu.js` | CMH-MENU-ICON, CMH-MENU-PREF, CMH-UI | Toolbar overflow menu; renders the menu header's brand icon and running-version text; wires the sidebar More menu's Preferences checkbox rows and its roving focus. |
 | `56-copy-clear.js` | CMH-COPY | Copy all + Clear all. |
 | `57-storage-manager.js` | CMH-STORE | Cross-document storage manager dialog: document registry, grouping, per-document delete, quota auto-open + retry. |
-| `60-export-markdown.js` | CMH-MD, CMH-CODE | Export to Markdown; per-code-block Copy button, language pill, and optional caption. |
+| `60-export-markdown.js` | CMH-MD, CMH-CODE | Export to Markdown; per-code-block Copy button, language pill, and optional caption. Also `_cmhReleaseDownloadAnchor`, the anchor/object-URL release both download helpers use. |
 | `61-table-scroll.js` | CMH-RESP | Wraps each table in a `.cmh-table-scroll` box so a too-wide table scrolls instead of pushing the page sideways. |
-| `62-sortable-tables.js` | CMH-CONTENT, CMH-PERSIST | Sortable tables (reordering is text-neutral: `_reorderBody` permutes the rows through their existing slots via the shared `cmhPermuteChildrenInSlots` in `00-preamble.js`) and durable embedded-delete persistence from Clear. |
+| `62-sortable-tables.js` | CMH-CONTENT, CMH-PERSIST, CMH-EXP | Sortable tables (reordering is text-neutral: `_reorderBody` permutes the rows through their existing slots via the shared `cmhPermuteChildrenInSlots` in `00-preamble.js`) and durable embedded-delete persistence from Clear. Also the canonical export pass (`_exportableCommentsOrReport`) and the shared export-failure reporting every export entry point uses - `_reportExportFailure`, `_reportExportBuildFailure`, `_cmhThrownDetail` and the `_EXPORT_FAILURE_*` message descriptors (CMH-EXP-23). Those descriptors are `const`, so a partial numbered BELOW this one may only read them from a handler that runs at click time, never at load time. |
 | `65-export-shareable.js` | CMH-EXP, CMH-SEC | Export as Shareable + shared export snapshot primitives. |
 | `66-export-plain.js` | CMH-EXP | Save as plain HTML (strip the comment layer). |
 | `67-export-standalone.js` | CMH-MODE | Export standalone (nonshareable -> single file). |

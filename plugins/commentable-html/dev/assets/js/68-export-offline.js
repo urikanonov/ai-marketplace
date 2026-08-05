@@ -2287,21 +2287,25 @@ const _OFFLINE_EXPORT_ERROR_TOAST = { alert: true, duration: 10000 };
 async function saveOffline() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
-  catch (e) { showToast("Could not load base HTML.", _OFFLINE_EXPORT_ERROR_TOAST); return; }
-  // FIRST, on the authored bytes, before ANY pass that parses and re-serializes the document. The
-  // state appliers below each round-trip through `DOMParser` when they have something to write, and
-  // that parse promotes a head fallback's body out of it exactly as the export's own parse does -
-  // so a document with a pending checklist, note, widget or review change would reach
-  // `_buildOfflineHtml` with the promotion already baked in and no fallback left to judge. The pass
-  // inside `_buildOfflineHtml` still runs (nothing downstream may depend on the order of two
-  // callers), and finds nothing left once this one has run.
-  const headFallbacks = _stripOfflineHeadNoscriptStable(baseHtml);
-  baseHtml = headFallbacks.html;
-  baseHtml = _applyWidgetLayoutToHtml(baseHtml);
-  baseHtml = _applyChecklistStateToHtml(baseHtml);
-  baseHtml = _applyNoteStateToHtml(baseHtml);
-  const review = _applyReviewStateToHtml(baseHtml);
-  baseHtml = review.html;
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_LOAD, _OFFLINE_EXPORT_ERROR_TOAST); return; }
+  let review;
+  let headFallbacks;
+  try {
+    // FIRST, on the authored bytes, before ANY pass that parses and re-serializes the document. The
+    // state appliers below each round-trip through `DOMParser` when they have something to write, and
+    // that parse promotes a head fallback's body out of it exactly as the export's own parse does -
+    // so a document with a pending checklist, note, widget or review change would reach
+    // `_buildOfflineHtml` with the promotion already baked in and no fallback left to judge. The pass
+    // inside `_buildOfflineHtml` still runs (nothing downstream may depend on the order of two
+    // callers), and finds nothing left once this one has run.
+    headFallbacks = _stripOfflineHeadNoscriptStable(baseHtml);
+    baseHtml = headFallbacks.html;
+    baseHtml = _applyWidgetLayoutToHtml(baseHtml);
+    baseHtml = _applyChecklistStateToHtml(baseHtml);
+    baseHtml = _applyNoteStateToHtml(baseHtml);
+    review = _applyReviewStateToHtml(baseHtml);
+    baseHtml = review.html;
+  } catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_PREPARE); return; }
   const canonical = _exportableCommentsOrReport();
   if (!canonical) return;
   const exportComments = canonical.comments;
@@ -2310,12 +2314,15 @@ async function saveOffline() {
     shareable = NONSHAREABLE_MODE
       ? _buildStandaloneHtml(baseHtml, exportComments)
       : _buildSavedHtml(baseHtml, exportComments);
-  } catch (e) { showToast(e.message, _OFFLINE_EXPORT_ERROR_TOAST); return; }
+  } catch (e) { _reportExportBuildFailure(e, _OFFLINE_EXPORT_ERROR_TOAST); return; }
   let built;
   try { built = await _buildOfflineHtml(shareable); }
-  catch (e) { showToast(e.message, _OFFLINE_EXPORT_ERROR_TOAST); return; }
+  catch (e) { _reportExportBuildFailure(e, _OFFLINE_EXPORT_ERROR_TOAST); return; }
   const filename = _suggestedOfflineFilename();
-  _downloadHtml(built.html, filename);
+  // An Offline export is precisely the one that inlines base64 assets into a multi-megabyte
+  // document, so the Blob/object-URL step here is the likeliest of all of them to throw (#1108).
+  try { _downloadHtml(built.html, filename); }
+  catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_DOWNLOAD); return; }
   // Say when a script was dropped. The strip is deliberately literal, so it can remove a script
   // whose comment or string merely spells an egress shape; removing content silently would leave
   // the author guessing why their document behaves differently offline.

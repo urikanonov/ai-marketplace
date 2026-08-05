@@ -600,7 +600,7 @@ test.describe("Save comments / Export plain", () => {
     // Asserting the toast live is safe because a failure toast lasts 10s and hideToast() only drops
     // the .show class - it never clears the text or the role. Resetting the role too keeps the
     // alert assertion from passing on the previous phase's leftover rather than this failure's own.
-    const resetToast = (p) => p.evaluate(() => {
+    const resetCanonicalToast = (p) => p.evaluate(() => {
       const t = document.getElementById("toast");
       t.classList.remove("show");
       t.textContent = "";
@@ -611,8 +611,8 @@ test.describe("Save comments / Export plain", () => {
     // the discriminating check - an unguarded throw downloads nothing either - so the toast
     // assertions are what tell a reported failure apart from a silent one, and they run first.
     // Only a timeout counts as "no download"; any other waiter error is a real failure.
-    async function expectExportReports(p, control, detail, absent) {
-      await resetToast(p);
+    async function expectCanonicalPassReports(p, control, detail, absent) {
+      await resetCanonicalToast(p);
       const downloaded = p.waitForEvent("download", { timeout: 750 }).then(() => true)
         .catch((err) => { if (err && err.name === "TimeoutError") return false; throw err; });
       await clickSidebarExport(p, control);
@@ -639,19 +639,19 @@ test.describe("Save comments / Export plain", () => {
       // #btnSaveHtml binds saveStandalone(), which on an inline document delegates straight to
       // saveHtml() - so this exercises saveHtml's guard. saveStandalone's OWN guard is only
       // reachable on a NonShareable document, which is the last phase below.
-      await expectExportReports(page, "#btnSaveHtml", "recompute boom");
-      await expectExportReports(page, "#btnExportOffline", "recompute boom"); // saveOffline()
+      await expectCanonicalPassReports(page, "#btnSaveHtml", "recompute boom");
+      await expectCanonicalPassReports(page, "#btnExportOffline", "recompute boom"); // saveOffline()
       // A bare `throw "..."` is legal JS and carries no `.message`; the cause must still be named.
       await throwAs(page, { primitive: true, value: "primitive boom" });
-      await expectExportReports(page, "#btnSaveHtml", "primitive boom");
-      await expectExportReports(page, "#btnExportOffline", "primitive boom");
+      await expectCanonicalPassReports(page, "#btnSaveHtml", "primitive boom");
+      await expectCanonicalPassReports(page, "#btnExportOffline", "primitive boom");
       // A value that only stringifies to its default object tag names no cause, so the report must
       // fall back to the plain sentence instead of showing that tag as the diagnosis...
       await throwAs(page, { primitive: true, tag: true });
-      await expectExportReports(page, "#btnSaveHtml", null, "[object ");
+      await expectCanonicalPassReports(page, "#btnSaveHtml", null, "[object ");
       // ...and an unbounded message is capped, so the actionable sentence stays on screen.
       await throwAs(page, { value: "b".repeat(400) });
-      await expectExportReports(page, "#btnSaveHtml", "safe to try again", "b".repeat(220));
+      await expectCanonicalPassReports(page, "#btnSaveHtml", "safe to try again", "b".repeat(220));
       // The report itself must not be able to fail the way the export just did. Make the toast
       // element reject exactly the assertive role the FAILURE toast sets, so showToast throws for
       // that toast only (the CMH-EXP-15 announcement sets role="status" and still works, or its own
@@ -686,7 +686,323 @@ test.describe("Save comments / Export plain", () => {
       await ready(page);
       await addTextComment(page, "#commentRoot section p", "nonshareable note");
       await breakCanonicalPass(page, { value: "recompute boom" });
-      await expectExportReports(page, "#btnSaveHtml", "recompute boom");
+      await expectCanonicalPassReports(page, "#btnSaveHtml", "recompute boom");
+    } finally {
+      fs.rmSync(inline.dir, { recursive: true, force: true });
+      fs.rmSync(nonshareable.dir, { recursive: true, force: true });
+    }
+  });
+
+  // #1108: #1052 closed the silent unwind for the CANONICAL PASS only. The same handlers still ran
+  // their state-baking prelude, their document build and their download call on lines that could
+  // unwind the click with no file and no toast - the identical reader-visible failure, reached from
+  // a different line. The three tests below take one failure point each, so a regression at any one
+  // of them reds a test of its own rather than hiding behind an earlier phase.
+  //
+  // Every break is switched by ONE page-level flag, so a phase turns its own break on and the rest
+  // stay inert. Each break is aimed at a line only the step under test reaches, and each phase
+  // asserts the message that belongs to that step, so a throw that landed anywhere else fails the
+  // test rather than passing it.
+  const installExportBreaks = (p) => p.evaluate(() => {
+    const rootEl = document.getElementById("commentRoot");
+    // The heading query is the section-review baker's alone (_cmhReviewHeadings); the canonical
+    // pass walks the content root with a TreeWalker instead.
+    const realQuery = rootEl.querySelectorAll.bind(rootEl);
+    rootEl.querySelectorAll = function (sel) {
+      if (window.__cmhBreak === "bake" && /^h1,/.test(String(sel).replace(/\s+/g, ""))) {
+        throw new Error("bake boom");
+      }
+      return realQuery(sel);
+    };
+    // The checklist and note bakers parse the base HTML; the review baker catches its own parse
+    // failure, so this break is what reaches the Plain export's prelude, which has no review baker.
+    // Thrown as a NON-Error under "assemble" so the document build's own catch, which reads the
+    // message, has nothing readable to show.
+    const realParse = DOMParser.prototype.parseFromString;
+    DOMParser.prototype.parseFromString = function (...args) {
+      if (window.__cmhBreak === "bake-parse") throw new Error("bake boom");
+      if (window.__cmhBreak === "assemble") throw null;
+      return realParse.apply(this, args);
+    };
+    // The Markdown conversion walks the content root's child nodes.
+    const realChildNodes = Object.getOwnPropertyDescriptor(Node.prototype, "childNodes");
+    Object.defineProperty(rootEl, "childNodes", {
+      configurable: true,
+      get: function () {
+        if (window.__cmhBreak === "convert") throw new Error("convert boom");
+        return realChildNodes.get.call(this);
+      },
+    });
+    // Loading the base HTML falls back to the start-of-life snapshot on a file: document, and that
+    // snapshot walks the siblings of the layer's own <script> to recover the host tail. Throwing
+    // there is the one break that reaches the FIRST step of every handler; it is scoped to SCRIPT
+    // elements so nothing else the click or the assertions touch can trip it.
+    const realNextSibling = Object.getOwnPropertyDescriptor(Node.prototype, "nextSibling");
+    Object.defineProperty(Node.prototype, "nextSibling", {
+      configurable: true,
+      get: function () {
+        if (window.__cmhBreak === "load" && this.tagName === "SCRIPT") throw new Error("load boom");
+        return realNextSibling.get.call(this);
+      },
+    });
+    // URL.createObjectURL is called only from the two download helpers, which is exactly what a
+    // multi-megabyte Offline export can fail on. The "handoff" break instead throws AFTER the URL
+    // exists, which is the path where the helper has cleanup of its own to do - so every URL it
+    // mints and every one it releases is recorded, and a test can assert the two match.
+    window.__cmhMintedUrls = [];
+    window.__cmhRevokedUrls = [];
+    const realUrl = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = function (blob) {
+      if (window.__cmhBreak === "download") throw new Error("download boom");
+      const u = realUrl(blob);
+      window.__cmhMintedUrls.push(u);
+      return u;
+    };
+    const realRevoke = URL.revokeObjectURL.bind(URL);
+    URL.revokeObjectURL = function (u) {
+      window.__cmhRevokedUrls.push(u);
+      return realRevoke(u);
+    };
+    const realClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () {
+      if (window.__cmhBreak === "handoff" && this.download) throw new Error("handoff boom");
+      return realClick.apply(this, arguments);
+    };
+  });
+  const breakExportAt = (p, phase) => p.evaluate((v) => { window.__cmhBreak = v; }, phase);
+  // Same reset as the canonical-pass test: hideToast() only drops the .show class, so clearing the
+  // text and the role keeps a phase from passing on the previous phase's leftover.
+  const resetExportToast = (p) => p.evaluate(() => {
+    const t = document.getElementById("toast");
+    t.classList.remove("show");
+    t.textContent = "";
+    t.setAttribute("role", "status");
+  });
+  // Register the download waiter BEFORE the click, so an export that really did write a file fails
+  // here instead of timing out into a passing assertion. Only a timeout counts as "no download";
+  // any other waiter error is a real failure.
+  async function expectExportReports(p, control, cause, detail) {
+    await resetExportToast(p);
+    const downloaded = p.waitForEvent("download", { timeout: 750 }).then(() => true)
+      .catch((err) => { if (err && err.name === "TimeoutError") return false; throw err; });
+    await clickSidebarExport(p, control);
+    await expect(p.locator("#toast")).toContainText("Export failed - nothing was downloaded");
+    await expect(p.locator("#toast")).toContainText(cause);
+    if (detail) await expect(p.locator("#toast")).toContainText(detail);
+    // No success toast may follow the failure: an export that threw has no file to announce, and
+    // announcing one would be worse than the silence this row removes. Both wordings are named,
+    // since Markdown's success toast says "Markdown downloaded as ..." rather than "Downloaded".
+    await expect(p.locator("#toast")).not.toContainText("Downloaded ");
+    await expect(p.locator("#toast")).not.toContainText("downloaded as");
+    await expect(p.locator("#toast")).toHaveAttribute("role", "alert");
+    expect(await downloaded).toBe(false);
+  }
+  // A build failure whose builder DID write a message keeps that message - it names what to fix -
+  // but it is still a failure, so it must be assertive and must not be followed by a success toast.
+  async function expectBuildMessageReports(p, control) {
+    await resetExportToast(p);
+    const downloaded = p.waitForEvent("download", { timeout: 750 }).then(() => true)
+      .catch((err) => { if (err && err.name === "TimeoutError") return false; throw err; });
+    await clickSidebarExport(p, control);
+    await expect(p.locator("#toast")).toContainText("Export aborted");
+    await expect(p.locator("#toast")).not.toContainText("undefined");
+    await expect(p.locator("#toast")).not.toContainText("Downloaded ");
+    await expect(p.locator("#toast")).not.toContainText("downloaded as");
+    await expect(p.locator("#toast")).toHaveAttribute("role", "alert");
+    expect(await downloaded).toBe(false);
+  }
+  // A heading for the review baker to walk, a paragraph to comment on, and a checklist whose one
+  // item a test can dirty so the Plain export's state-baking prelude actually bakes something.
+  const EXPORT_FAILURE_CONTENT = `
+    <h1>Export failure demo</h1>
+    <section><p>An export that fails must say so.</p></section>
+    <div class="cmh-checklist" data-cmh-checklist="release" data-cmh-checklist-label="Release">
+      <ul><li data-cmh-item="rel" data-cmh-state="blank">Release notes</li></ul>
+    </div>`;
+  const BAKE_CAUSE = "could not be prepared for export";
+  const DOWNLOAD_CAUSE = "could not be handed to the browser to download";
+
+  test("an export that fails while baking state tells the reader nothing was downloaded (CMH-EXP-23)", async ({ page }) => {
+    const inline = stageContent(EXPORT_FAILURE_CONTENT, {
+      key: "cmh-bake-fail-inline",
+      source: "bake-fail-inline.html",
+    });
+    const nonshareable = stageNonShareable({
+      mutate: (html) => html.replace('data-comment-key="commentable-html-nonshareable-demo"',
+        'data-comment-key="cmh-bake-fail-nonshareable"'),
+    });
+    try {
+      await page.goto(fileUrl(inline.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "inline note");
+      await installExportBreaks(page);
+
+      // #btnSaveHtml delegates to saveHtml() on an inline document; Offline runs its own prelude.
+      await breakExportAt(page, "bake");
+      await expectExportReports(page, "#btnSaveHtml", BAKE_CAUSE, "bake boom");
+      await expectExportReports(page, "#btnExportOffline", BAKE_CAUSE, "bake boom");
+
+      // Plain bakes checklist and note state only, so dirty the checklist first - otherwise its
+      // appliers return the HTML untouched and its guard is never reached. Dirtying it also makes
+      // the checklist applier run on the OTHER handlers, so the Offline phase below throws from an
+      // EARLIER line of the same guarded block than the review baker the first phases broke.
+      await page.locator('[data-cmh-item="rel"] .cmh-check').first().click();
+      await breakExportAt(page, "bake-parse");
+      await expectExportReports(page, "#btnSavePlain", BAKE_CAUSE, "bake boom");
+      await expectExportReports(page, "#btnExportOffline", BAKE_CAUSE, "bake boom");
+
+      // Markdown bakes no state: it converts the live content root, which is its own prepare step
+      // and says so rather than blaming a baking pass that never ran.
+      await breakExportAt(page, "convert");
+      await expectExportReports(page, "#btnExportMd", "could not be converted to Markdown", "convert boom");
+      await breakExportAt(page, "none");
+
+      // NonShareable takes the other branch of the Shareable button: saveStandalone() runs its own
+      // prelude instead of delegating to saveHtml().
+      await page.goto(fileUrl(nonshareable.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "nonshareable note");
+      await installExportBreaks(page);
+      await breakExportAt(page, "bake");
+      await expectExportReports(page, "#btnSaveHtml", BAKE_CAUSE, "bake boom");
+    } finally {
+      fs.rmSync(inline.dir, { recursive: true, force: true });
+      fs.rmSync(nonshareable.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an export that fails at the download step tells the reader nothing was downloaded (CMH-EXP-23)", async ({ page }) => {
+    const inline = stageContent(EXPORT_FAILURE_CONTENT, {
+      key: "cmh-download-fail-inline",
+      source: "download-fail-inline.html",
+    });
+    const nonshareable = stageNonShareable({
+      mutate: (html) => html.replace('data-comment-key="commentable-html-nonshareable-demo"',
+        'data-comment-key="cmh-download-fail-nonshareable"'),
+    });
+    try {
+      await page.goto(fileUrl(inline.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "inline note");
+      await installExportBreaks(page);
+      await breakExportAt(page, "download");
+      // Every entry point that writes a file, including the two that build no comment layer.
+      await expectExportReports(page, "#btnSaveHtml", DOWNLOAD_CAUSE, "download boom");
+      await expectExportReports(page, "#btnExportOffline", DOWNLOAD_CAUSE, "download boom");
+      await expectExportReports(page, "#btnSavePlain", DOWNLOAD_CAUSE, "download boom");
+      await expectExportReports(page, "#btnExportMd", DOWNLOAD_CAUSE, "download boom");
+
+      await page.goto(fileUrl(nonshareable.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "nonshareable note");
+      await installExportBreaks(page);
+      await breakExportAt(page, "download");
+      await expectExportReports(page, "#btnSaveHtml", DOWNLOAD_CAUSE, "download boom");
+    } finally {
+      fs.rmSync(inline.dir, { recursive: true, force: true });
+      fs.rmSync(nonshareable.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a download that throws after the object URL exists leaves nothing behind (CMH-EXP-23)", async ({ page }) => {
+    // The other download phase throws AT `URL.createObjectURL`, so there is nothing to clean up. A
+    // throw one line later leaves an anchor attached to the document - and that anchor is not
+    // injected chrome, so `_snapshotWithTail()` would serialize it into the base of every later
+    // export - and an unrevoked object URL, which would make the report's own "nothing in this
+    // document changed" false.
+    const inline = stageContent(EXPORT_FAILURE_CONTENT, {
+      key: "cmh-handoff-fail-inline",
+      source: "handoff-fail-inline.html",
+    });
+    try {
+      await page.goto(fileUrl(inline.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "inline note");
+      await installExportBreaks(page);
+      await breakExportAt(page, "handoff");
+      // One HTML export and the Markdown one, since the two helpers clean up separately.
+      await expectExportReports(page, "#btnSaveHtml", DOWNLOAD_CAUSE, "handoff boom");
+      await expectExportReports(page, "#btnExportMd", DOWNLOAD_CAUSE, "handoff boom");
+      expect(await page.evaluate(() => document.querySelectorAll("a[download]").length)).toBe(0);
+      // Every object URL the failed handoffs minted was released. Asserting the anchor alone would
+      // leave the revoke deletable with the suite still green.
+      const urls = await page.evaluate(() => ({
+        minted: window.__cmhMintedUrls.slice(),
+        revoked: window.__cmhRevokedUrls.slice(),
+      }));
+      expect(urls.minted.length).toBe(2);
+      expect(urls.minted.filter((u) => !urls.revoked.includes(u))).toEqual([]);
+    } finally {
+      fs.rmSync(inline.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an export that cannot read the document's own HTML tells the reader (CMH-EXP-23)", async ({ page }) => {
+    // The FIRST step of every handler: loading the base HTML. Its catch used to call showToast bare,
+    // so a throw from the toast unwound the click into the same silence, and the thrown value never
+    // reached the console. A file: document falls back to the start-of-life snapshot, so breaking
+    // that walk is what makes the load fail.
+    const inline = stageContent(EXPORT_FAILURE_CONTENT, {
+      key: "cmh-load-fail-inline",
+      source: "load-fail-inline.html",
+    });
+    try {
+      await page.goto(fileUrl(inline.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "inline note");
+      await installExportBreaks(page);
+      await breakExportAt(page, "load");
+      const LOAD_CAUSE = "could not be read to export from";
+      await expectExportReports(page, "#btnSaveHtml", LOAD_CAUSE, "load boom");
+      await expectExportReports(page, "#btnExportOffline", LOAD_CAUSE, "load boom");
+      await expectExportReports(page, "#btnSavePlain", LOAD_CAUSE, "load boom");
+      await breakExportAt(page, "none");
+    } finally {
+      fs.rmSync(inline.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a document build that throws a value with no message still reports the failure (CMH-EXP-23)", async ({ page }) => {
+    // The build's own catch shows the message the builder wrote FOR the reader, so it stays. But a
+    // throwable with no readable message used to reach `showToast(e.message)` bare, which shows a
+    // toast with no text at all - the same silence, one line further down the handler.
+    const inline = stageContent(EXPORT_FAILURE_CONTENT, {
+      key: "cmh-assemble-fail-inline",
+      source: "assemble-fail-inline.html",
+    });
+    const nonshareable = stageNonShareable({
+      mutate: (html) => html.replace('data-comment-key="commentable-html-nonshareable-demo"',
+        'data-comment-key="cmh-assemble-fail-nonshareable"'),
+    });
+    try {
+      await page.goto(fileUrl(inline.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "inline note");
+      await installExportBreaks(page);
+      // Nothing is dirtied here, so the only baker that parses is the review one - and it catches
+      // its own parse failure and leaves the state out. The throw therefore travels past the
+      // prelude and lands in the document build, which is the step under test.
+      await breakExportAt(page, "assemble");
+      await expectExportReports(page, "#btnSaveHtml", "could not be assembled for export", null);
+      await expect(page.locator("#toast")).not.toContainText("undefined");
+      // The other handlers differ by which builder catches that parse failure first. Offline builds
+      // the same Shareable document, so the value travels the same way; Plain and the NonShareable
+      // Standalone branch run the region cross-check, which catches it and re-throws its OWN
+      // reader-facing message ("Export aborted: ... Reload the document and export again"). That
+      // branch keeps the builder's text, and it must still reach the reader as a failure they
+      // cannot miss - it used to go out with the 3s confirmation pacing.
+      await expectExportReports(page, "#btnExportOffline", "could not be assembled for export", null);
+      await expectBuildMessageReports(page, "#btnSavePlain");
+
+      await page.goto(fileUrl(nonshareable.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "nonshareable note");
+      await installExportBreaks(page);
+      await breakExportAt(page, "assemble");
+      await expectExportReports(page, "#btnSaveHtml", "could not be assembled for export", null);
+      // Plain on this document still takes the message-keeping branch, since its own builder is
+      // the one that catches the parse failure.
+      await expectBuildMessageReports(page, "#btnSavePlain");
     } finally {
       fs.rmSync(inline.dir, { recursive: true, force: true });
       fs.rmSync(nonshareable.dir, { recursive: true, force: true });
