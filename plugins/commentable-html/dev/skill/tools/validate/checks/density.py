@@ -161,8 +161,8 @@ class _DensityParser(_BrowserBoundaries):
     def _is_root(self, tag, d):
         return "data-cmh-content-root" in d or d.get("id") == "commentRoot"
 
-    def _is_layout(self, tag, d):
-        if tag in _LAYOUT_TAGS:
+    def _is_layout(self, tag, d, ns):
+        if ns == "html" and tag in _LAYOUT_TAGS:
             return True
         if any(a in d for a in _LAYOUT_ATTRS):
             return True
@@ -218,17 +218,18 @@ class _DensityParser(_BrowserBoundaries):
             self._note_kind(d)
         is_root = self.shadow_depth == 0 and self._is_root(tag, d)
         is_skip = "cm-skip" in self._classes(d)
-        is_layout = self.root_depth > 0 and self.skip_depth == 0 and self._is_layout(tag, d)
+        is_layout = self.root_depth > 0 and self.skip_depth == 0 and self._is_layout(tag, d, ns)
         in_scope = self.root_depth > 0 and self.skip_depth == 0
         # A cm-skip subtree BETWEEN paragraphs (a non-commentable embedded table/widget) breaks a
         # prose run. An INLINE cm-skip inside an open paragraph must NOT: it only excludes its own
         # text (via the skip_depth gate in handle_data), keeping the surrounding prose one unit. A
         # BLOCK-level cm-skip element implicitly closes the paragraph, so it still breaks the run
         # even when the </p> was omitted.
-        inline_skip_in_paragraph = self._p_prose and tag not in _BLOCK_TAGS
+        inline_skip_in_paragraph = self._p_prose and not (ns == "html" and tag in _BLOCK_TAGS)
         entering_skip = (is_skip and self.root_depth > 0 and self.skip_depth == 0
                          and not inline_skip_in_paragraph)
-        is_boundary = in_scope and (is_layout or tag in _HEADINGS or tag == "section")
+        is_boundary = in_scope and (
+            is_layout or (ns == "html" and (tag in _HEADINGS or tag == "section")))
         # A new paragraph, a boundary, or entering a skip block closes an open prose paragraph; a
         # boundary/skip-entry also breaks the run (a new paragraph continues it).
         if tag == "p" or is_boundary or entering_skip:
@@ -238,17 +239,18 @@ class _DensityParser(_BrowserBoundaries):
         # A new section pushes a fresh heading frame so it is labeled by its OWN heading and a
         # nested section restores the parent heading when it closes. Gated to prose level so a
         # <section> structurally embedded in a layout block does not reframe the prose section.
-        pushes_section = tag == "section" and in_scope and self.layout_depth == 0
+        pushes_section = (
+            ns == "html" and tag == "section" and in_scope and self.layout_depth == 0)
         if pushes_section:
             self._sections.append("")
         # Only a prose-level heading (not one buried in a layout block like a <figcaption>) names
         # the current section.
-        if tag in _HEADINGS and in_scope and self.layout_depth == 0:
+        if ns == "html" and tag in _HEADINGS and in_scope and self.layout_depth == 0:
             self._heading_capture = True
             self._heading_index = len(self._stack)
             self._heading_text = []
         # Count a paragraph only when it sits at prose level (inside root, not skip, not layout).
-        if tag == "p" and in_scope and self.layout_depth == 0:
+        if ns == "html" and tag == "p" and in_scope and self.layout_depth == 0:
             self._p_prose = True
             self._p_index = len(self._stack)
             self._p_text = []

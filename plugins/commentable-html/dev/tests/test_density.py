@@ -385,6 +385,13 @@ class DensityAdvisoryTests(unittest.TestCase):
             self.assertEqual(density.check_density(_doc(inner))[1], [],
                              msg="foreign title/script markup must break the prose run: %s" % foreign)
 
+        # A foreign element that merely shares an HTML layout/section name has none of that HTML
+        # element's semantics, so it cannot split an otherwise continuous prose wall.
+        for name in ("figure", "canvas", "section"):
+            inner = _p(LONG) * 2 + "<svg><%s/></svg>" % name + _p(LONG) * 2
+            self.assertTrue(density.check_density(_doc(inner))[1],
+                            msg="a foreign <%s> must not act as an HTML boundary" % name)
+
     def test_cmh_val_15_self_closed_html_section_stays_open(self):
         # HTML ignores the slash on a non-void start tag. The wall belongs to the newly opened
         # headless section, exactly as it does for an ordinary `<section>` start tag.
