@@ -90,6 +90,71 @@ class NewCheckTests(unittest.TestCase):
             self.assertTrue(any("offline mode" in e and needle in e for e in errors),
                             "expected offline error for %s, got %r" % (needle, errors))
 
+    def test_offline_mode_rejects_a_speculative_connection_hint_whatever_its_href(self):
+        # CMH-OFFLINE-04 (#1076): `preconnect` and `dns-prefetch` exist only to make the browser
+        # reach out early and show a reader NOTHING, so an offline document may not carry one at
+        # all - not even in a scheme the network-URL predicate reads as local, and not with a
+        # relative or same-document href. The export strip removes exactly these tokens
+        # unconditionally, so a narrower rule here would bless a hint the strip deletes (or reject
+        # a file the exporter just produced), which is the drift these two sides exist to prevent.
+        hrefs = [
+            "ftp://hint.example", "x-cmh-probe://hint.example", "https://hint.example",
+            "//hint.example", "local-hint.html", "#top", "",
+        ]
+        for href in hrefs:
+            for rel in ("preconnect", "dns-prefetch", "DNS-Prefetch", "alternate preconnect"):
+                with self.subTest(href=href, rel=rel):
+                    attrs = ' href="%s"' % href if href else ""
+                    link = '<link rel="%s"%s>' % (rel, attrs)
+                    doc = with_offline_mode(build(body=self._body(MAIN, link)))
+                    errors, _ = self._errs_warns(doc)
+                    self.assertTrue(
+                        any("offline mode" in e and "reach out to a host" in e for e in errors),
+                        "expected an offline rejection for %s, got %r" % (link, errors))
+
+    def test_offline_mode_keeps_a_link_whose_rel_is_not_a_hint(self):
+        # The control that makes the rule above safe: an unconditional strip is only free of
+        # content loss because it is scoped to the two relations that carry no content. Every
+        # other link - relative href and all - is author content and must still validate clean,
+        # and so must a rel that merely LOOKS like a hint to a sloppy match (a browser tokenizes a
+        # rel list on ASCII whitespace only, so an NBSP-joined value is ONE opaque token).
+        for link in ('<link rel="canonical" href="#top">',
+                     '<link rel="alternate" href="local-alternate.html">',
+                     '<link rel="author" href="mailto:someone@example.com">',
+                     '<link rel="preconnects" href="local.html">',
+                     '<link rel="pre-connect" href="local.html">',
+                     '<link rel="dnsprefetch" href="local.html">',
+                     '<link rel="preconnect\u00a0x" href="local.html">',
+                     '<link rel="dns-prefetch\ufeff" href="local.html">'):
+            with self.subTest(link=link):
+                doc = with_offline_mode(build(body=self._body(MAIN, link)))
+                errors, _ = self._errs_warns(doc)
+                self.assertEqual(errors, [], "%s must validate clean, got %r" % (link, errors))
+
+    def test_offline_mode_reports_a_mixed_hint_and_network_loader_link_twice(self):
+        # A `rel` that mixes a hint with a LOADING relation is two defects, and the gate must name
+        # both: the strip drops only the hint TOKEN there, so the element survives as a network
+        # stylesheet and is stripped by the loader pass - reporting only the hint would hand the
+        # author one error per run and hide the second.
+        link = '<link rel="preconnect stylesheet" href="https://cdn.example/app.css">'
+        doc = with_offline_mode(build(body=self._body(MAIN, link)))
+        errors, _ = self._errs_warns(doc)
+        self.assertTrue(any("reach out to a host" in e for e in errors), errors)
+        self.assertTrue(any("loads over the network" in e for e in errors),
+                        "the network stylesheet half of a mixed rel must be reported too: %r" % errors)
+
+    def test_offline_mode_reports_only_the_hint_when_nothing_else_fetches(self):
+        # ...and the other side of that rule: `alternate` is not a fetching relation, so the
+        # element the strip leaves behind (`rel="alternate"` with a network href) is a reference a
+        # browser does not follow on its own. Reporting a second, network error here would be a
+        # false rejection of a file the exporter legitimately produces.
+        link = '<link rel="alternate preconnect" href="https://alt.example/page.html">'
+        doc = with_offline_mode(build(body=self._body(MAIN, link)))
+        errors, _ = self._errs_warns(doc)
+        self.assertTrue(any("reach out to a host" in e for e in errors), errors)
+        self.assertFalse(any("loads over the network" in e for e in errors),
+                         "a non-fetching relation with a network href is not a load: %r" % errors)
+
     def test_offline_mode_accepts_inlined_data_resources(self):
         main = MAIN.replace(
             "<p>content</p>",

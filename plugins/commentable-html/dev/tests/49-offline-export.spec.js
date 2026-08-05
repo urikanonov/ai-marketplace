@@ -3835,6 +3835,146 @@ test("CMH-OFFLINE-04: a reference in a scheme no Chromium fetches survives the s
     fs.rmSync(outDir, { recursive: true, force: true });
   }
 });
+// A `preconnect` / `dns-prefetch` hint is the one link relation pair whose leak the probe above
+// structurally cannot see: it is a NAME RESOLUTION rather than a connection, so a TCP listener
+// reads a live hint and a dead one identically (which is why both are parked in
+// SCHEME_PROBE_UNOBSERVED_CHANNELS). They are therefore removed UNCONDITIONALLY rather than only
+// for a network href, and this pins the product half of that rule; the DNS-capable measurement it
+// rests on is its own spec (`tests/56-offline-dns-hints.spec.js`), which runs in the `heavy`
+// project because it launches its own browser.
+test("CMH-OFFLINE-04: a preconnect or dns-prefetch hint is removed from an offline export whatever its href, and the gate rejects one that survives", async ({ page, browser }) => {
+  test.setTimeout(120000);
+  // Every spelling of the hint, including the ones the network-URL predicate reads as LOCAL - a
+  // non-fetchable scheme, a relative reference, a same-document fragment - because the rule is
+  // unconditional (#1076). The controls beside them are the whole point of an unconditional rule
+  // being safe: a `<link>` whose rel is NOT a speculative hint is author content and survives,
+  // relative href and all, so this strip cannot be mistaken for "offline deletes link elements".
+  // Two controls carry exotic-whitespace `rel` values, which pin the shared ASCII tokenizer END TO
+  // END rather than only through a constant's text: a browser reads `preconnect<NBSP>x` as one
+  // opaque token and so must both sides, or the exporter deletes a link the gate keeps.
+  const CONTENT_WITH_HINTS = `
+<h1 id="top">Speculative connection hints</h1>
+<p id="hint-note">A hint that only resolves a name shows a reader nothing.</p>
+<link id="ftpPreconnect" rel="preconnect" href="ftp://ftp-hint.example">
+<link id="ftpDnsPrefetch" rel="dns-prefetch" href="ftp://ftp-hint.example">
+<link id="customDnsPrefetch" rel="dns-prefetch" href="x-cmh-probe://custom-hint.example">
+<link id="httpPreconnect" rel="preconnect" href="https://https-hint.example">
+<link id="schemeRelativePreconnect" rel="preconnect" href="//scheme-relative-hint.example">
+<link id="relativePreconnect" rel="preconnect" href="local-hint.html">
+<link id="fragmentDnsPrefetch" rel="dns-prefetch" href="#top">
+<link id="hrefLessPreconnect" rel="preconnect">
+<link id="casedDnsPrefetch" rel="DNS-Prefetch" href="ftp://cased-hint.example">
+<link id="multiRelPreconnect" rel="alternate preconnect" href="local-multi.html">
+<link id="multiRelLocalStylesheet" rel="stylesheet preconnect" href="local-multi.css">
+<link id="multiRelNetworkStylesheet" rel="preconnect stylesheet" href="https://multi-network.example/x.css">
+<link id="nbspNotAHint" rel="preconnect\u00a0x" href="local-nbsp.html">
+<link id="bomNotAHint" rel="dns-prefetch\ufeff" href="local-bom.html">
+<link id="nbspStylesheetKeep" rel="stylesheet\u00a0x" href="https://nbsp-stylesheet.example/x.css">
+<link id="canonicalKeep" rel="canonical" href="#top">
+<link id="alternateKeep" rel="alternate" href="local-alternate.html">`;
+  const staged = stageContent(CONTENT_WITH_HINTS, { key: "cmh-offline-speculative-hints", source: "offline-hints.html" });
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    await page.route(/^https?:\/\//, async (route) => {
+      const url = route.request().url();
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url)) return route.fallback();
+      return route.abort();
+    });
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+    const exportedPath = path.join(outDir, "offline-hints.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    // The gate certifies the very file the exporter produced.
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+
+    // Read the result through a real parser rather than by string match: the runtime's own source
+    // travels in the file and NAMES these relations, so a substring test would be answered by the
+    // strip's own code.
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    await expect(page2.locator("#cmTypeBadge")).toHaveText("Offline");
+    for (const id of ["ftpPreconnect", "ftpDnsPrefetch", "customDnsPrefetch", "httpPreconnect",
+                      "schemeRelativePreconnect", "relativePreconnect", "fragmentDnsPrefetch",
+                      "hrefLessPreconnect", "casedDnsPrefetch"]) {
+      expect(await page2.locator("#" + id).count(),
+             `<link id="${id}"> is a speculative-connection hint and must not survive an offline `
+             + "export, whatever its href parses as - it shows a reader nothing, so removing it "
+             + "loses no content").toBe(0);
+    }
+    // ...and no other spelling of the two rels rode through either.
+    expect(await page2.locator("link[rel~='preconnect' i], link[rel~='dns-prefetch' i]").count(),
+           "an offline export still carries a speculative-connection hint").toBe(0);
+    // A rel that MIXES a hint with a content relation loses the hint, not the element: the
+    // alternate or stylesheet reference is a thing a reader uses, so deleting it whole would be
+    // silent content loss - the one case where "these show a reader nothing" would be false.
+    await expect(page2.locator("#multiRelPreconnect")).toHaveAttribute("rel", "alternate");
+    await expect(page2.locator("#multiRelPreconnect")).toHaveAttribute("href", "local-multi.html");
+    await expect(page2.locator("#multiRelLocalStylesheet")).toHaveAttribute("rel", "stylesheet");
+    await expect(page2.locator("#multiRelLocalStylesheet")).toHaveAttribute("href", "local-multi.css");
+    // ...and when what remains is a NETWORK loader, the loader pass still takes it: dropping the
+    // hint must not launder a remote stylesheet into an offline file.
+    expect(await page2.locator("#multiRelNetworkStylesheet").count(),
+           "a network stylesheet that also carried a hint must still be stripped as a loader").toBe(0);
+    // The controls: a link whose rel is not a hint is author content, relative href and all - and
+    // a rel a BROWSER reads as one opaque token is not a relation at all, on either side of the
+    // pair, so it is neither stripped as a hint nor as a network loader.
+    await expect(page2.locator("#canonicalKeep")).toHaveAttribute("href", "#top");
+    await expect(page2.locator("#alternateKeep")).toHaveAttribute("href", "local-alternate.html");
+    await expect(page2.locator("#nbspNotAHint")).toHaveAttribute("href", "local-nbsp.html");
+    await expect(page2.locator("#bomNotAHint")).toHaveAttribute("href", "local-bom.html");
+    await expect(page2.locator("#nbspStylesheetKeep"))
+      .toHaveAttribute("href", "https://nbsp-stylesheet.example/x.css");
+    expect(external, "the exported file must reach no network at all").toEqual([]);
+
+    // The other direction, which a clean file alone cannot prove: put a hint BACK into the exported
+    // file and the gate must reject it. Otherwise the strip removes a shape the gate never looks at,
+    // and the two drift the moment either side is edited. Both a non-fetchable scheme and a
+    // relative href are re-injected, because the gate's rule has to be the same unconditional one.
+    const headEnd = exportedHtml.indexOf("</head>");
+    expect(headEnd, "the exported file must have a head end tag").toBeGreaterThan(0);
+    for (const [name, hint] of [
+      ["inert-scheme", '<link rel="preconnect" href="ftp://reinjected-hint.example">'],
+      ["relative", '<link rel="dns-prefetch" href="local-reinjected.html">'],
+      ["mixed-rel", '<link rel="alternate preconnect" href="local-reinjected-mixed.html">'],
+    ]) {
+      const reinjectedPath = path.join(outDir, `offline-hints-reinjected-${name}.html`);
+      fs.writeFileSync(reinjectedPath,
+                       exportedHtml.slice(0, headEnd) + hint + exportedHtml.slice(headEnd));
+      let failure = null;
+      try {
+        execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", reinjectedPath], { cwd: SKILL, stdio: "pipe" });
+      } catch (err) {
+        failure = String(err.stdout || "") + String(err.stderr || "");
+      }
+      expect(failure, `--strict must reject a re-injected ${name} speculative hint, or the gate `
+                      + "blesses exactly what the strip removes").not.toBeNull();
+      // Pinned to THIS rule rather than to a non-zero exit, which any unrelated future rule would
+      // also satisfy.
+      expect(failure).toContain("asks the browser to reach out to a host before anything needs it");
+    }
+  } finally {
+    if (ctx2) await ctx2.close();
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
 // The one channel the scheme boundary above defers to the CSP, pinned as a live measurement rather
 // than as a string match on the policy text. A scripted `new WebSocket("ws://host/...")` really
 // does reach the network from a `file:` document, and NO attribute predicate can see it - there is

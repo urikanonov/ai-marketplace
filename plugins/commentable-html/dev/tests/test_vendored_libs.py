@@ -2085,6 +2085,91 @@ class RuntimeParityTests(unittest.TestCase):
                          "the exporter's relation list carries a duplicate, so the two sets were "
                          "compared as multisets rather than as sets")
 
+    def test_the_python_and_js_speculative_link_relation_decisions_agree(self):
+        """The offline strip (JS) and the strict validator (Python) must call the SAME `<link>` a
+        speculative-connection hint, and agree on what is LEFT of a mixed `rel`.
+
+        This pair is removed UNCONDITIONALLY rather than for a network href (#1076), so a rel only
+        one side reads as a hint is either a beacon the gate certifies or an author's link the
+        export deletes - and the rel the strip WRITES BACK on a mixed list has to be one the gate
+        then accepts, or the exporter produces a file its own `--strict` run rejects. Evaluated in
+        node for the same reason the fetching pair is: the two engines fold case and split
+        whitespace differently, and that difference is what this pins.
+        """
+        source = self._read("68-export-offline.js")
+        m = re.search(r"const _OFFLINE_SPECULATIVE_LINK_RELS = (\[[^\]]*\]);", source)
+        self.assertIsNotNone(m, "the runtime no longer declares _OFFLINE_SPECULATIVE_LINK_RELS as a "
+                                "plain array literal, so this pin cannot read it")
+        js_rels = json.loads(m.group(1))
+        self.assertEqual(sorted(js_rels), sorted(parsing.SPECULATIVE_LINK_RELS),
+                         "the exporter's speculative-connection relations and the validator's "
+                         "SPECULATIVE_LINK_RELS have drifted. A relation only the GATE knows makes "
+                         "the gate reject a file the export just wrote; one only the STRIP knows "
+                         "deletes an author's link the gate would have kept.")
+        self.assertTrue(set(parsing.SPECULATIVE_LINK_RELS) < set(parsing.FETCHING_LINK_RELS),
+                        "the speculative relations must stay a strict SUBSET of the fetching ones: "
+                        "they are removed unconditionally, and the loader pass reads the rest")
+        corpus = [
+            # (rel, is a hint, what is left of the rel - None means the element goes)
+            ("preconnect", True, None), ("dns-prefetch", True, None),
+            ("PRECONNECT", True, None), ("DNS-Prefetch", True, None),
+            ("preconnect dns-prefetch", True, None), ("  preconnect  ", True, None),
+            ("preconnect\tdns-prefetch", True, None), ("preload\npreconnect", True, "preload"),
+            ("alternate preconnect", True, "alternate"),
+            ("preconnect stylesheet", True, "stylesheet"),
+            ("stylesheet PRECONNECT icon", True, "stylesheet icon"),
+            ("", False, None), ("   ", False, None), ("stylesheet", False, "stylesheet"),
+            ("preconnects", False, "preconnects"), ("pre-connect", False, "pre-connect"),
+            ("dnsprefetch", False, "dnsprefetch"),
+            # separators HTML does not honor: one opaque token, so no hint on either side
+            ("preconnect\u00a0x", False, "preconnect\u00a0x"),
+            ("preconnect\u001cx", False, "preconnect\u001cx"),
+            ("preconnect\ufeffx", False, "preconnect\ufeffx"),
+            ("preconnect\u000bx", False, "preconnect\u000bx"),
+            # ...and case look-alikes an engine's Unicode fold would turn into a relation
+            ("preconne\u212at", False, "preconne\u212at"),
+        ]
+        for rel, expected, _kept in corpus:
+            self.assertEqual(
+                resources._link_speculates({"rel": rel}), expected,
+                "the validator reads rel=%r as %s; HTML tokenizes a rel list on ASCII whitespace "
+                "only and matches a relation ASCII case-insensitively"
+                % (rel, "not a hint" if expected else "a hint"))
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine parity check needs it")
+        region = self._runtime_link_rel_source()
+        speculative = re.search(
+            r"const _OFFLINE_SPECULATIVE_LINK_RELS = \[[^\]]*\];.*?"
+            r"function _offlineRelWithoutHints\(rel\) \{.*?\n\}", source, re.S)
+        self.assertIsNotNone(speculative, "the runtime no longer declares the speculative relation "
+                                          "set followed by _offlineRelWithoutHints; the parity "
+                                          "extraction is stale")
+        script = (
+            region + "\n" + speculative.group(0) + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);process.stdout.write(JSON.stringify("
+            "p.corpus.map(s=>[_offlineLinkSpeculates(s),_offlineRelWithoutHints(s)])));});"
+        )
+        proc = subprocess.run([node, "-e", script],
+                              input=json.dumps({"corpus": [rel for rel, _, _ in corpus]}),
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0,
+                         "node could not evaluate the speculative-link decision: %s" % proc.stderr)
+        verdicts = json.loads(proc.stdout)
+        self.assertEqual(len(verdicts), len(corpus),
+                         "node returned %d verdicts for %d samples" % (len(verdicts), len(corpus)))
+        for (rel, expected, kept), (js_says, js_kept) in zip(corpus, verdicts):
+            self.assertEqual(js_says, expected,
+                             "the exporter reads rel=%r as %s while the validator does not; the "
+                             "strip and the gate must agree about what a hint is"
+                             % (rel, "a hint" if js_says else "not a hint"))
+            self.assertEqual(js_kept, kept,
+                             "the exporter rewrites rel=%r to %r, expected %r. What it writes back "
+                             "must carry no hint (or the gate rejects the exported file) and must "
+                             "keep every other relation (or an author's reference is lost)."
+                             % (rel, js_kept, kept))
+
     def test_the_python_and_js_link_relation_tokenizers_are_textually_identical(self):
         """The `rel` separator class is a hand-copied literal in two languages, so pin its TEXT.
 
