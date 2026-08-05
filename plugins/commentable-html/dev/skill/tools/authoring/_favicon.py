@@ -1,12 +1,15 @@
 """Shared favicon detection for the authoring tools (retrofit, upgrade).
 
-A favicon is a `<link>` in the head whose `rel` attribute, split on whitespace, contains the
-exact token `icon` (so `rel="icon"` and `rel="shortcut icon"` count, but `apple-touch-icon`,
-`mask-icon`, and `fluid-icon` do NOT) AND whose `href` is non-empty. This mirrors the validator's
-check (checks/kind.py `check_favicon` over the parser's `icon_links`, which uses
-`"icon" in rel.split()` plus a non-empty href), so the tools inject a favicon exactly when the
-validator would warn. Keeping this in one place stops the tools' detection from drifting away from
-the validator's.
+A favicon is a `<link>` in the head whose `rel` attribute, tokenized the way HTML tokenizes a
+`rel` list (on ASCII whitespace ONLY), contains the exact token `icon` (so `rel="icon"` and
+`rel="shortcut icon"` count, but `apple-touch-icon`, `mask-icon`, and `fluid-icon` do NOT) AND
+whose `href` is non-empty. This mirrors the validator's check (checks/kind.py `check_favicon` over
+the parser's `icon_links`, which uses the same shared `link_rel_tokens` split plus a non-empty
+href), so the tools inject a favicon exactly when the validator would warn. Keeping this in one
+place stops the tools' detection from drifting away from the validator's - and the SPLIT itself is
+read from the shared reading rather than restated, because Python's argument-less `str.split()`
+also splits on the vertical tab, NBSP and U+001C-U+001F and would name a relation a browser never
+matches (#1120).
 
 Detection uses `html.parser.HTMLParser` (the same tokenizer the validator uses) rather than a raw
 regex so that: attributes are parsed exactly (a `data-rel` / `data-href` is never mistaken for
@@ -32,8 +35,8 @@ _HEAD_TAGS = frozenset({
 
 
 def rel_is_favicon(rel_value):
-    """True when the rel attribute's whitespace-separated tokens include the exact token `icon`."""
-    return "icon" in (rel_value or "").lower().split()
+    """True when the rel attribute's HTML-tokenized relations include the exact token `icon`."""
+    return "icon" in _browser_attrs.link_rel_tokens(rel_value)
 
 
 class _FaviconFinder(_browser_attrs.BrowserTagNames):

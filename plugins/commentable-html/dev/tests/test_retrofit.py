@@ -761,6 +761,20 @@ class FaviconHelperTests(unittest.TestCase):
         self.assertFalse(self.f.rel_is_favicon(""))
         self.assertFalse(self.f.rel_is_favicon(None))
 
+    def test_rel_token_is_split_the_way_html_splits_it(self):
+        # The helper must tokenize a `rel` list the way HTML does - on ASCII whitespace ONLY - so it
+        # keeps agreeing with the validator (CMH-KIND-05). Python's argument-less `str.split()` also
+        # splits on the vertical tab, NBSP and U+001C-U+001F, so the helper used to see the token
+        # `icon` where a browser (and now the validator) sees one opaque relation, and retrofit /
+        # upgrade would leave a document the validator warns about without a favicon.
+        for sep in ("\u000b", "\u00a0", "\u001c", "\u001f"):
+            self.assertFalse(self.f.rel_is_favicon("icon%sx" % sep), repr(sep))
+            self.assertFalse(self.f.head_has_favicon(
+                '<head><link rel="icon%sx" href="/f.ico"></head>' % sep), repr(sep))
+        # The ASCII-space control still names the `icon` relation.
+        self.assertTrue(self.f.rel_is_favicon("icon x"))
+        self.assertTrue(self.f.head_has_favicon('<head><link rel="icon x" href="/f.ico"></head>'))
+
     def test_head_has_favicon_true_for_real_icon(self):
         self.assertTrue(self.f.head_has_favicon('<head><link rel="icon" href="/f.ico"></head>'))
         self.assertTrue(self.f.head_has_favicon('<head><link rel="shortcut icon" href="/f.ico" /></head>'))

@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.737.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.741.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.741.0] - 2026-08-05</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Every reader of a <code>rel</code> list - in the validator, the authoring tools, and the runtime itself - now tokenizes it the way HTML does rather than the way its own language does, so the gate&#x27;s verdict, the tools&#x27; behavior, and the browser&#x27;s reading of the same attribute agree (CMH-KQL-05, CMH-KIND-05, CMH-LINK-01). HTML splits a <code>rel</code> attribute on ASCII whitespace ONLY (tab, LF, FF, CR, space); Python&#x27;s argument-less <code>str.split()</code> is Unicode-aware and additionally splits on the vertical tab U+000B, NBSP, and U+001C-U+001F, and a JS <code>\s</code> split additionally takes the vertical tab, NBSP and U+FEFF. Three consequences, all closed here: - <code>&lt;a target=&quot;_blank&quot; rel=&quot;noopener&amp;#x0b;x&quot;&gt;</code> passed the reverse-tabnabbing gate on a link whose single opaque relation a browser never matches - <code>window.opener</code> stayed exposed and the opened page could navigate the document the reader is looking at. - <code>&lt;link rel=&quot;icon&amp;#x0b;x&quot;&gt;</code> satisfied the mandatory-favicon check with a link the browser never fetches, so the tab still showed the generic globe. - The render-time stamper that enforces <code>rel=&quot;noopener noreferrer&quot;</code> on every author link opening a new tab read <code>rel=&quot;noopener&amp;#x0b;x noreferrer&amp;#x0b;y&quot;</code> as already carrying both relations and stamped nothing, leaving the rendered document unprotected - the same hole in the layer that actually defends the reader, not just in the gate that warns the author. The stamp now ADDS the missing relations and never rewrites the author&#x27;s own. All of them now read one tokenizer per language: the validator&#x27;s <code>link_rel_tokens</code>, which the three egress readers already used, and the runtime&#x27;s <code>_offlineLinkRelTokens</code>, pinned to it as text by the existing parity test. The authoring tools&#x27; favicon helper (<code>tools/authoring/_favicon.py</code>, which decides when <code>retrofit</code>/<code>upgrade</code> inject a favicon) reads the shared split through <code>tools/_browser_attrs.py</code>, so it keeps injecting exactly when the validator would warn.</li>
+              <li>The same reverse-tabnabbing gate now reads the <code>target</code> the way a browser reads it, and asks the question that actually matters: does this target CREATE an auxiliary browsing context, whose <code>window.opener</code> points back at the document the reader is looking at (CMH-KQL-05)? HTML matches its four keywords ASCII case-insensitively and does NOT trim the value, so <code>_BLANK</code>, a padded <code> _blank</code> and a NAME that resolves to nothing in the document all keep an opener. A Python <code>==</code> against the literal <code>_blank</code> saw none of them, so a <code>cmh-kql-run</code> link carrying no <code>rel</code> at all passed the gate in silence. A name that DOES resolve - an <code>&lt;iframe name=&quot;win1&quot;&gt;</code> in the same document - navigates a context that already exists and is exempt. That gate is the ONLY reverse-tabnabbing control on a run link, because CMH-KQL-01 places it inside <code>figcaption.cm-skip</code>, which both the render-time stamper and the <code>checks/links.py</code> new-tab check pass over.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.737.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -503,6 +511,8 @@
               <li>A NonShareable companion reference is now CLASSIFIED (remote, non-<code>file</code> scheme, drive letter) on the reference as the URL parser reads it, the same value the path resolver uses. Those tests are anchored, so reading the raw attribute let the parser&#x27;s own leading C0-or-space padding hide the scheme from all of them: <code>&lt;link href=&quot; https://cdn.example.com/commentable-html.css&quot;&gt;</code> and <code>&lt;script src=&quot; vscode://x.js&quot;&gt;</code> fell through to the relative-path branch and were reported as a missing companion file instead of as the remote or wrong-scheme reference the browser actually fetches.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.735.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -511,8 +521,6 @@
               <li>The same fix closes two neighbouring divergences in the foreign-content bookkeeping the new gates rest on (CMH-VAL-21). The <code>annotation-xml</code> <code>encoding</code> attribute is now matched EXACTLY and ASCII-case-insensitively, with no trimming, as HTML5 compares it: a padded <code>encoding=&quot; text/html&quot;</code> is NOT an HTML integration point, and treating it as one reopened this very bypass through one space. And the MathML <code>mglyph</code>/<code>malignmark</code> carve-out now applies only under a MathML TEXT integration point, not under an <code>annotation-xml[encoding=text/html]</code> HTML integration point, where a browser inserts them in the HTML namespace - keying it on the generic integration flag consumed a whole <code>&lt;![CDATA[</code> section a browser reads as a bogus comment, hiding live markup from every check built on the parse. Finally, the bootstrap watchdog token is only credited to a script whose INLINE BODY runs: a browser that fetches an external script ignores the element&#x27;s own child text, so a token folded into a <code>&lt;script src&gt;</code> (or an SVG <code>&lt;script href&gt;</code> / <code>&lt;script xlink:href&gt;</code>, since an SVG script has no <code>src</code>) no longer satisfies the check.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.733.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -553,18 +561,7 @@
               <li>The in-document comment dialog&#x27;s action buttons now meet the repo-wide <code>&gt;=44px</code> touch target on a phone viewport (<code>max-width: 640px</code>), in the note view (<code>Delete</code> / <code>Close</code> / <code>Edit</code>) and the edit view (<code>Cancel</code> / <code>Save</code>) alike (CMH-CORE-23). Both rows measured 33px tall at a 320x720 viewport - the last controls in the dialog a thumb had to aim at, since its formatting toolbar (CMH-RICH-20) and the sidebar card&#x27;s actions were already enlarged. With the shipped labels the enlarged row still fits one line at 320px in every density scale, so the layout is unchanged; wrapping is a fallback for a row that no longer fits (a localized label set, a larger host root font), and the wrapped lines take a roomier row gap - in the same absolute unit as the touch target - so a <code>Delete</code> pushed onto its own line keeps a deliberate gap from the button below it rather than sitting a thumb-slip away. The confirmation <code>Delete</code> goes through (CMH-CORE-22) is unchanged.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.723.0] - 2026-08-05</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>The validator now tells an author, while the document is still being authored, that an <code>&lt;iframe srcdoc&gt;</code> will not survive Export Offline (CMH-VAL-24). An offline export removes the nested document outright, and until now an author only met that in a transient toast after the export had already emptied the frame. It is an ADVISORY (CMH-VAL-18), so it is always reported but never fails <code>--strict</code>, never withholds the <code>commentable-html-validated</code> stamp and never blocks a fail-closed caller such as <code>retrofit</code>: it reports what a different mode&#x27;s export would REMOVE, and blocking would have made deleting the nested document the only route to a clean handoff - the very loss the notice exists to announce. That is scoped to the content-loss question and is deliberately not a ruling that a nested document is safe outside offline mode; no check can see inside an attribute value, a gap that predates the notice and is tracked as issue #1125. It is a presence test, exactly like the offline-mode error it complements, so nothing parses the nested document and the exporter and the strict gate still agree by construction; it names a <code>&lt;template&gt;</code>-parked frame, a <code>&lt;noscript&gt;</code> fallback and a self-closed foreign element the same way the export will really empty them, and an offline document reports the error alone so the two never double-report.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Recorded the decision behind that removal in the spec rather than leaving it as an omission (CMH-OFFLINE-04, CMH-SEC-06). Sanitizing the nested document instead of clearing it was prototyped on an abandoned branch, weighed, and rejected: it needs two independent recursive parsers - the exporter&#x27;s browser DOM and the validator&#x27;s pure-Python tokenizer - to agree at every depth on serialization, doctype reconstruction and rendering mode, fixed-point settling under serialize-then-reparse, and one shared parse budget; the content-preserving precedents in this layer are all edits inside a document both sides already parse; a value that will not settle still has to be removed, so sanitizing would trade a deterministic rule for parser-quirk roulette; and the author keeps the content regardless, since the export is a derived artifact. That last ground answers for the author and not for the recipient of an export, so the row also records the cheap middle option it does not take here - having the export replace the emptied frame with the nested markup as escaped inert text - as an open follow-up rather than a settled non-goal.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">340 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">341 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

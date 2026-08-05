@@ -26,6 +26,7 @@ fallback is WARNED about once, the way every other optional-tool import in the s
 """
 import html as _html
 import os
+import re as _re
 import sys
 from html.parser import HTMLParser
 
@@ -104,7 +105,15 @@ _shared_attrs = getattr(_parsing, "browser_attrs", None)
 _shared_attrs_dict = getattr(_parsing, "browser_attrs_dict", None)
 _shared_ascii_lower = getattr(_parsing, "ascii_lower", None)
 _shared_can_host_shadow_root = getattr(_parsing, "can_host_shadow_root", None)
+_shared_link_rel_tokens = getattr(_parsing, "link_rel_tokens", None)
 _shared_tag_names = getattr(_parsing, "BrowserTagNames", None)
+
+# The fallback's copy of the shared `rel` split, for a partial install only. HTML tokenizes a `rel`
+# list on ASCII whitespace ONLY: Python's argument-less `str.split()` also splits on the vertical
+# tab, NBSP and U+001C-U+001F, so it names relations a browser never matches (#1120). Spelled out
+# as literal escapes, like the shared one it degrades from, and pinned to it by a parity test.
+_FALLBACK_REL_WS_RE = _re.compile(r"[\t\n\f\r ]+")
+_FALLBACK_ASCII_UPPER_RE = _re.compile(r"[A-Z]")
 
 
 def ascii_lower(name):
@@ -112,6 +121,24 @@ def ascii_lower(name):
     if _shared_ascii_lower is None:
         return (name or "").lower()
     return _shared_ascii_lower(name or "")
+
+
+def link_rel_tokens(value):
+    """The relations a `rel` attribute names, read the way HTML tokenizes the list.
+
+    The shared reading (`checks/parsing.link_rel_tokens`), so a tool outside the validator's
+    `checks` package - the favicon helper the authoring tools inject from - matches the gate that
+    would warn about the same document.
+
+    The partial-install fallback folds ASCII-only ITSELF rather than through `ascii_lower`, whose
+    own fallback degrades to Python's UNICODE `.lower()` under exactly this condition: that fold
+    maps U+212A onto `k` and U+017F onto `s`, so a look-alike would become a real relation on the
+    degraded path alone.
+    """
+    if _shared_link_rel_tokens is None:
+        return set(_FALLBACK_ASCII_UPPER_RE.sub(lambda m: m.group(0).lower(), t)
+                   for t in _FALLBACK_REL_WS_RE.split(value or "") if t)
+    return _shared_link_rel_tokens(value)
 
 
 def can_host_shadow_root(tag, namespace="html"):

@@ -49,10 +49,22 @@ function stampLinkTargets() {
     if (a.closest(".cm-skip")) return; // never touch runtime UI chrome
     if (_cmhCommentableLink(a)) a.setAttribute("target", "_blank");
     if ((a.getAttribute("target") || "").trim().toLowerCase() === "_blank") {
-      const rel = (a.getAttribute("rel") || "").split(/\s+/).filter(Boolean);
+      // HTML tokenizes a `rel` list on ASCII whitespace ONLY, so read it through the bundle's one
+      // reading (`_offlineLinkRelTokens`, pinned to the validator's `link_rel_tokens`) rather than
+      // a JS `\s` split, which also takes the vertical tab, NBSP and U+FEFF: `rel="noopener<VT>x
+      // noreferrer<VT>y"` looked like it already named both, so nothing was stamped and the browser
+      // - which reads TWO opaque relations - honored neither and left `window.opener` exposed
+      // (#1120). The RAW tokens are what is written back, so an author's casing and any relation
+      // they authored survive. The `.trim()` above is deliberately left as the JS one, which is
+      // BROADER than HTML whitespace: it only makes this stamp MORE links, never fewer.
+      const attr = a.getAttribute("rel");
+      const raw = String(attr || "").split(_OFFLINE_REL_WS_RE).filter(Boolean);
+      const have = _offlineLinkRelTokens(attr);
       let changed = false;
-      ["noopener", "noreferrer"].forEach((t) => { if (rel.indexOf(t) === -1) { rel.push(t); changed = true; } });
-      if (changed || !a.hasAttribute("rel")) a.setAttribute("rel", rel.join(" "));
+      ["noopener", "noreferrer"].forEach((t) => {
+        if (have.indexOf(t) === -1) { raw.push(t); changed = true; }
+      });
+      if (changed || !a.hasAttribute("rel")) a.setAttribute("rel", raw.join(" "));
     }
   });
 }

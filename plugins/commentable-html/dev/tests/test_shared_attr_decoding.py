@@ -35,6 +35,7 @@ import doc_stats  # noqa: E402
 import fix_skip  # noqa: E402
 import generate_toc  # noqa: E402
 import wrap_sections  # noqa: E402
+from checks import parsing  # noqa: E402
 from cmhval import contrast  # noqa: E402
 
 
@@ -135,6 +136,31 @@ class SharedDecodeShimTests(unittest.TestCase):
         foreign.__file__ = os.path.join(os.path.dirname(HERE), "not-the-skill", "parsing.py")
         self.assertFalse(_browser_attrs._is_shipped(foreign))
         self.assertFalse(_browser_attrs._is_shipped(types.ModuleType("checks.parsing")))
+
+    def test_the_degraded_path_reads_a_rel_list_the_way_html_tokenizes_it(self):
+        # The partial-install fallback must not reintroduce the differential the shared reading
+        # exists to close (#1120): HTML splits a `rel` list on ASCII whitespace ONLY, and folds a
+        # relation keyword ASCII-only. `ascii_lower` degrades to Python's UNICODE `.lower()` under
+        # exactly this condition, so the fallback folds ASCII itself; U+212A would otherwise become
+        # a `k` and turn a look-alike into a real relation on the degraded path alone.
+        with mock.patch.object(_browser_attrs, "_shared_link_rel_tokens", None), \
+                mock.patch.object(_browser_attrs, "_shared_ascii_lower", None):
+            for sep in ("\u000b", "\u00a0", "\u001c", "\u001f"):
+                self.assertEqual(_browser_attrs.link_rel_tokens("icon%sx" % sep),
+                                 {"icon%sx" % sep}, repr(sep))
+            self.assertEqual(_browser_attrs.link_rel_tokens("ICON x"), {"icon", "x"})
+            self.assertEqual(_browser_attrs.link_rel_tokens("\u212a x"), {"\u212a", "x"})
+            # ...and the reason it cannot simply reuse `ascii_lower`: that helper degrades to
+            # Python's UNICODE `.lower()` under the SAME condition, which maps U+212A onto `k`.
+            self.assertEqual(_browser_attrs.ascii_lower("\u212a"), "k")
+            self.assertEqual(_browser_attrs.link_rel_tokens(None), set())
+            self.assertEqual(_browser_attrs.link_rel_tokens("   "), set())
+
+    def test_the_degraded_rel_split_is_pinned_to_the_shared_one(self):
+        # The fallback is a SECOND copy of the ASCII-whitespace class, so it is pinned to the
+        # canonical one as TEXT - the same discipline the JS copy is held to. Without this, an edit
+        # to the shared pattern silently diverges the degraded reading.
+        self.assertEqual(_browser_attrs._FALLBACK_REL_WS_RE.pattern, parsing.LINK_REL_WS_RE.pattern)
 
     def test_the_degraded_path_still_returns_the_hosts_attributes(self):
         # Only a broken/partial install gets here (the warning is emitted at import). It must

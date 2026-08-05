@@ -4,6 +4,44 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.741.0] - 2026-08-05
+
+### Fixed
+
+- Every reader of a `rel` list - in the validator, the authoring tools, and the runtime itself - now
+  tokenizes it the way HTML does rather than the way its own language does, so the gate's verdict,
+  the tools' behavior, and the browser's reading of the same attribute agree (CMH-KQL-05,
+  CMH-KIND-05, CMH-LINK-01). HTML splits a `rel` attribute on ASCII whitespace ONLY (tab, LF, FF,
+  CR, space); Python's argument-less `str.split()` is Unicode-aware and additionally splits on the
+  vertical tab U+000B, NBSP, and U+001C-U+001F, and a JS `\s` split additionally takes the vertical
+  tab, NBSP and U+FEFF. Three consequences, all closed here:
+  - `<a target="_blank" rel="noopener&#x0b;x">` passed the reverse-tabnabbing gate on a link whose
+    single opaque relation a browser never matches - `window.opener` stayed exposed and the opened
+    page could navigate the document the reader is looking at.
+  - `<link rel="icon&#x0b;x">` satisfied the mandatory-favicon check with a link the browser never
+    fetches, so the tab still showed the generic globe.
+  - The render-time stamper that enforces `rel="noopener noreferrer"` on every author link opening
+    a new tab read `rel="noopener&#x0b;x noreferrer&#x0b;y"` as already carrying both relations and
+    stamped nothing, leaving the rendered document unprotected - the same hole in the layer that
+    actually defends the reader, not just in the gate that warns the author. The stamp now ADDS the
+    missing relations and never rewrites the author's own.
+  All of them now read one tokenizer per language: the validator's `link_rel_tokens`, which the
+  three egress readers already used, and the runtime's `_offlineLinkRelTokens`, pinned to it as
+  text by the existing parity test. The authoring tools' favicon helper
+  (`tools/authoring/_favicon.py`, which decides when `retrofit`/`upgrade` inject a favicon) reads
+  the shared split through `tools/_browser_attrs.py`, so it keeps injecting exactly when the
+  validator would warn.
+- The same reverse-tabnabbing gate now reads the `target` the way a browser reads it, and asks the
+  question that actually matters: does this target CREATE an auxiliary browsing context, whose
+  `window.opener` points back at the document the reader is looking at (CMH-KQL-05)? HTML matches
+  its four keywords ASCII case-insensitively and does NOT trim the value, so `_BLANK`, a padded
+  ` _blank` and a NAME that resolves to nothing in the document all keep an opener. A Python `==`
+  against the literal `_blank` saw none of them, so a `cmh-kql-run` link carrying no `rel` at all
+  passed the gate in silence. A name that DOES resolve - an `<iframe name="win1">` in the same
+  document - navigates a context that already exists and is exempt. That gate is the ONLY
+  reverse-tabnabbing control on a run link, because CMH-KQL-01 places it inside
+  `figcaption.cm-skip`, which both the render-time stamper and the `checks/links.py` new-tab check
+  pass over.
 ## [1.737.0] - 2026-08-05
 
 ### Fixed

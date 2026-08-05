@@ -76,6 +76,74 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
         self.assertWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
                         'without rel="noopener"')
 
+    def test_kusto_run_link_rel_is_tokenized_the_way_html_tokenizes_it(self):
+        # CMH-KQL-05: HTML splits a `rel` list on ASCII whitespace ONLY, so `noopener<U+000B>x` is
+        # ONE opaque relation a browser never matches - `window.opener` stays exposed and the opened
+        # page can navigate the document the reader is looking at. Python's argument-less
+        # `str.split()` is Unicode-aware and additionally splits on the vertical tab, NBSP and
+        # U+001C-U+001F, so it saw the token `noopener` and passed the gate on a link a browser
+        # leaves unprotected. Read through the shared `link_rel_tokens` instead, so the gate and the
+        # browser tokenize the same attribute the same way.
+        for sep in ("\u000b", "\u00a0", "\u001c", "\u001f"):
+            link = ('<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
+                    'target="_blank" rel="noopener%sx">Run</a>' % sep)
+            main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
+            self.assertWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
+                            'without rel="noopener"')
+        # The control: an ordinary ASCII-space-separated list really does name `noopener`, so it
+        # must still pass - the fix must not turn a protected link into a false warning.
+        link = ('<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
+                'target="_blank" rel="noopener noreferrer">Run</a>')
+        main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
+        self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+
+    def test_kusto_run_link_blank_target_is_read_the_way_a_browser_reads_it(self):
+        # CMH-KQL-05: the condition is the one a browser applies - does the target open an AUXILIARY
+        # browsing context, whose `window.opener` points back at this document? HTML matches the four
+        # keywords ASCII case-insensitively and does NOT trim, so `_BLANK`, a padded ` _blank` (a
+        # NAMED context) and any other name all keep an opener. A Python `==` against the literal
+        # `_blank` saw none of them, so a run link carrying no `rel` at all passed in silence - and
+        # this gate is the only control there is, because CMH-KQL-01 puts the run link inside
+        # `figcaption.cm-skip`, which both the render-time stamper and `checks/links.py` skip.
+        for target in ("_BLANK", "_Blank", " _blank ", "\t_blank\n", "\u00a0_blank",
+                       "\u000b_blank", "win1", "_blank"):
+            link = ('<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
+                    'target="%s">Run</a>' % target)
+            main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
+            _, warnings = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+            self.assertTrue(any('without rel="noopener"' in w for w in warnings),
+                            "%r: %r" % (target, warnings))
+        # The controls: a target that navigates a context which ALREADY EXISTS hands the opened page
+        # no opener, so none of these is this gate's business...
+        for target in ("_self", "_TOP", "_parent", ""):
+            link = ('<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
+                    'target="%s">Run</a>' % target)
+            main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
+            _, warnings = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+            self.assertFalse(any('without rel="noopener"' in w for w in warnings),
+                             "%r: %r" % (target, warnings))
+        # ...and a NAME that resolves to a browsing context this document already declares navigates
+        # THAT context, which gets no opener. Warning there would be a false positive, and taking the
+        # advice would change behavior: `noopener` stops a named target reusing the frame.
+        link = ('<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
+                'target="win1">Run</a><iframe name="win1" title="f"></iframe>')
+        main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
+        _, warnings = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+        self.assertFalse(any('without rel="noopener"' in w for w in warnings), warnings)
+        # ...and a `_BLANK` that does carry `noopener` is clean.
+        link = ('<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
+                'target="_BLANK" rel="noopener noreferrer">Run</a>')
+        main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
+        self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+
+        # `_blank` stays the keyword even when a frame claims the name - HTML checks the keywords
+        # FIRST - so the exemption above cannot be used to silence the gate.
+        link = ('<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
+                'target="_blank">Run</a><iframe name="_blank" title="f"></iframe>')
+        main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
+        _, warnings = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+        self.assertTrue(any('without rel="noopener"' in w for w in warnings), warnings)
+
     def test_bare_kusto_without_no_cluster_marker_errors(self):
         # CMH-KQL-08: a bare KQL code block that is neither framed in a figure.cmh-kql (with a Run in
         # Azure Data Explorer link) nor explicitly marked data-cmh-kql-no-cluster is a hard error -
