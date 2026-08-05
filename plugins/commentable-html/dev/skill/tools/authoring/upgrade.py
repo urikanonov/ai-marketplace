@@ -110,13 +110,11 @@ class _RootSourceFinder(_browser_attrs.BrowserTagNames):
 
     def __init__(self, html):
         super().__init__(convert_charrefs=True)
-        self._line_offsets = []
-        offset = 0
-        for line in html.splitlines(True):
-            self._line_offsets.append(offset)
-            offset += len(line)
-        if not self._line_offsets:
-            self._line_offsets.append(0)
+        self._line_offsets = [0]
+        pos = html.find("\n")
+        while pos != -1:
+            self._line_offsets.append(pos + 1)
+            pos = html.find("\n", pos + 1)
         self.root_result = None
         self.body_result = None
 
@@ -561,6 +559,10 @@ def _region_inner(text, name, where):
     return b, em.start(1)
 
 
+def _same_content_ignoring_crlf(left, right):
+    return left.replace("\r\n", "\n") == right.replace("\r\n", "\n")
+
+
 def upgrade(target_html, template_html, target_name="<target>", template_name="<template>"):
     """Return (new_html, changed_region_names). Raises ValueError on an unusable input."""
     if has_nonshareable_marker(target_html):
@@ -581,7 +583,7 @@ def upgrade(target_html, template_html, target_name="<target>", template_name="<
         tb, te = _region_inner(template_html, name, template_name)
         db, de = _region_inner(out, name, target_name)
         new_inner = template_html[tb:te]
-        if out[db:de] != new_inner:
+        if not _same_content_ignoring_crlf(out[db:de], new_inner):
             out = out[:db] + new_inner + out[de:]
             changed.append(name)
     # Re-emit the shell-baked mermaid loader bootstrap from the template. It lives in <head>,
@@ -598,7 +600,8 @@ def upgrade(target_html, template_html, target_name="<target>", template_name="<
     if tpl_boot is not None and tgt_boot is not None:
         new_boot = template_html[tpl_boot[0]:tpl_boot[1]]
         cur_boot = out[tgt_boot[0]:tgt_boot[1]]
-        if cur_boot != new_boot and not _mermaid_loader_is_vendored(cur_boot):
+        if (not _same_content_ignoring_crlf(cur_boot, new_boot)
+                and not _mermaid_loader_is_vendored(cur_boot)):
             out = out[:tgt_boot[0]] + new_boot + out[tgt_boot[1]:]
             changed.append("mermaid bootstrap")
     out, source_normalized = _normalize_source_provenance(out)
@@ -631,7 +634,7 @@ def upgrade(target_html, template_html, target_name="<target>", template_name="<
 
 
 def _read(path):
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, "r", encoding="utf-8", newline="") as fh:
         return fh.read()
 
 
@@ -676,7 +679,7 @@ def main(argv):
         target = _read(args.file)
         template = _read(args.template)
         newline = _detect_newline(args.file)
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         sys.stderr.write("cannot read file: %s\n" % exc)
         return 2
     try:
@@ -705,8 +708,8 @@ def main(argv):
     warnings = []
     fd, tmp_path = tempfile.mkstemp(prefix=".cmh-upgrade-", suffix=".html", dir=out_dir)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as fh:
-            fh.write(new_html)
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+            fh.write(new_html.replace("\r\n", "\n").replace("\n", newline))
 
         # Self-check the result with the validator when it is importable, so the
         # automated path never silently emits a broken file. An ImportError just means

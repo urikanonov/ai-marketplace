@@ -48,6 +48,13 @@ class UpgradeUnitTests(unittest.TestCase):
         self.assertEqual(changed, [])
         self.assertEqual(out, tpl)
 
+    def test_crlf_only_regions_are_up_to_date_in_memory(self):
+        template = _tpl()
+        target = template.replace("\n", "\r\n")
+        out, changed = upgrade.upgrade(target, template)
+        self.assertEqual(changed, [])
+        self.assertEqual(out, target)
+
     def test_upgrade_reduces_legacy_source_path_to_basename_cmh_sec_03(self):
         tpl = _tpl()
         legacy = tpl.replace(
@@ -102,6 +109,19 @@ class UpgradeUnitTests(unittest.TestCase):
         self.assertIn(authored_title, out)
         self.assertIn('data-doc-source="report.html"', out)
         self.assertNotIn("alice", out)
+
+    def test_source_provenance_offsets_ignore_a_lone_cr_before_an_lf(self):
+        html = (
+            "prefix\rnoise\n"
+            '<main id="commentRoot" data-doc-source="C:\\Users\\alice\\report.html">x</main>'
+        )
+        out, changed = upgrade._normalize_source_provenance(html)
+        self.assertTrue(changed)
+        self.assertEqual(
+            out,
+            "prefix\rnoise\n"
+            '<main id="commentRoot" data-doc-source="report.html">x</main>',
+        )
 
     def test_missing_kind_meta_is_added_on_upgrade(self):
         # A pre-kind document (predates the mandatory document-kind meta) is migrated:
@@ -604,6 +624,14 @@ class UpgradeCliTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("up to date", out.getvalue())
 
+    def test_cli_check_reports_a_crlf_document_up_to_date(self):
+        p = self._write(_tpl().replace("\n", "\r\n"))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = upgrade.main(["upgrade.py", p, "--check"])
+        self.assertEqual(rc, 0, out.getvalue())
+        self.assertIn("up to date", out.getvalue())
+
     def test_cli_upgrades_in_place_and_validates(self):
         target = _mutate_region_inner(_tpl(), "CSS", "\n/* STALE */\n")
         p = self._write(target)
@@ -716,6 +744,16 @@ class UpgradeCliTests(unittest.TestCase):
         rc = upgrade.main(["upgrade.py", os.path.join(tempfile.gettempdir(), "cmh-no-such-file.html")])
         self.assertEqual(rc, 2)
 
+    def test_cli_invalid_utf8_returns_2_without_a_traceback(self):
+        p = os.path.join(self._tmpdir(), "invalid.html")
+        with open(p, "wb") as fh:
+            fh.write(b"\xff")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            rc = upgrade.main(["upgrade.py", p])
+        self.assertEqual(rc, 2)
+        self.assertIn("cannot read file", err.getvalue())
+
     def test_cli_noop_when_already_up_to_date(self):
         p = self._write(_tpl())
         out = io.StringIO()
@@ -816,6 +854,7 @@ class UpgradeCliTests(unittest.TestCase):
         self.assertNotIn(b"STALE", raw)  # region was actually swapped
         self.assertIn(b"\r\n", raw)
         self.assertNotIn(b"\n", raw.replace(b"\r\n", b""))  # no lone LF introduced
+        self.assertNotIn(b"\r", raw.replace(b"\r\n", b""))  # no doubled CR introduced
 
     def test_cli_keeps_lf_when_lf_is_dominant_despite_a_stray_crlf(self):
         # CMH-TOOL-08: newline preservation follows the DOMINANT style, not the mere presence of

@@ -81,6 +81,12 @@ def get_meta(html, name):
     return m.group(1) if m else None
 
 
+def _dominant_newline(html):
+    crlf = html.count("\r\n")
+    lf = html.count("\n") - crlf
+    return "\r\n" if crlf > lf else "\n"
+
+
 def set_meta(html, name, content):
     """Set (or insert into <head>) `<meta name=NAME content=CONTENT>`; returns the new html.
     The content is attribute-escaped so a stray quote can never break the tag."""
@@ -91,7 +97,7 @@ def set_meta(html, name, content):
     tag = '<meta name="%s" content="%s" />' % (name, esc)
     m = re.search(r"<head[^>]*>", html, re.IGNORECASE)
     if m:
-        return html[:m.end()] + "\n" + tag + html[m.end():]
+        return html[:m.end()] + _dominant_newline(html) + tag + html[m.end():]
     return tag + html
 
 
@@ -102,7 +108,9 @@ def remove_meta(html, name):
     if not m:
         return html
     start, end = m.start(), m.end()
-    if end < len(html) and html[end] == "\n":
+    if html.startswith("\r\n", end):
+        end += 2
+    elif end < len(html) and html[end] == "\n":
         end += 1
     return html[:start] + html[end:]
 
