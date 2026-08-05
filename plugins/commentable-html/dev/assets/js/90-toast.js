@@ -1,5 +1,7 @@
 /* ---------- Toast ---------- */
 let toastTimer = null;
+const _cmhStartupDiagnostics = [];
+let _cmhStartupDiagnosticFlushPending = false;
 function hideToast() {
   toast.classList.remove("show");
   // Remove any inline action button when the toast is dismissed/times out so an invisible, faded-out
@@ -67,6 +69,45 @@ function cmhRestoreFocusTo(el) {
     if (document.activeElement === cands[i]) return true;
   }
   return false;
+}
+function _cmhFlushStartupDiagnostics() {
+  _cmhStartupDiagnosticFlushPending = false;
+  const diagnostics = _cmhStartupDiagnostics.splice(0, _cmhStartupDiagnostics.length);
+  if (!diagnostics.length || typeof toast === "undefined" || !toast || toast.nodeType !== 1) return;
+  if (diagnostics.length === 1) {
+    showToast(diagnostics[0].msg, diagnostics[0].opts);
+    return;
+  }
+  const combined = diagnostics.map(function (item, i) {
+    return (i + 1) + ". " + item.msg;
+  }).join(" ");
+  const combinedOpts = {
+    alert: true,
+    duration: diagnostics.reduce(function (longest, item) {
+      return Math.max(longest, item.opts.duration || 3000);
+    }, 3000),
+  };
+  const actionItem = diagnostics.find(function (item) { return !!item.opts.action; });
+  if (actionItem) combinedOpts.action = actionItem.opts.action;
+  showToast("Startup diagnostics: " + combined, combinedOpts);
+}
+function showStartupDiagnostic(msg, opts) {
+  opts = opts || {};
+  if (!_cmhStartupDiagnostics.some(function (item) { return item.msg === msg; })) {
+    _cmhStartupDiagnostics.push({ msg: msg, opts: opts });
+  }
+  if (_cmhStartupDiagnosticFlushPending) return;
+  _cmhStartupDiagnosticFlushPending = true;
+  // The reserved-block audit registers its DOMContentLoaded listener before this module. Deferring
+  // one turn after that event lets its timer join the synchronous startup diagnostics regardless of
+  // how long parsing the document tail takes.
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () {
+      setTimeout(_cmhFlushStartupDiagnostics, 0);
+    }, { once: true });
+  } else {
+    setTimeout(_cmhFlushStartupDiagnostics, 0);
+  }
 }
 function showToast(msg, opts) {
   opts = opts || {};
@@ -156,4 +197,3 @@ function showToast(msg, opts) {
     showToast("Exporting as " + label + "...", { center: true, duration: 2500 });
   }, true);
 })();
-

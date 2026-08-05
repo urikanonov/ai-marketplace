@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.681.0" />
+<meta name="commentable-html-version" content="1.684.0" />
 <meta name="commentable-html-kind" content="slides" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.681.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.684.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML Showcase</title>
 
@@ -4046,7 +4046,7 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
      content, not a template-owned region.
 -->
 <div class="app">
-<main id="commentRoot" data-cmh-content-root data-comment-key="deck-e0fac5524d" data-doc-label="Commentable HTML Showcase" data-doc-source="deck-showcase.html" data-generated="2026-08-04" data-cmh-mode="deck">
+<main id="commentRoot" data-cmh-content-root data-comment-key="deck-e0fac5524d" data-doc-label="Commentable HTML Showcase" data-doc-source="deck-showcase.html" data-generated="2026-08-05" data-cmh-mode="deck">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
 <style id="cmh-deck-stage">
@@ -5264,9 +5264,8 @@ function cmhWarnUnresolvedBlock(id) {
 // strand the reader's comments and block the export that would save them), so this is a report, not
 // a refusal. validate.py rejects the duplicate id outright; this is the runtime half, for a file
 // that never met the validator, and the reader is told because someone opening a shared HTML has no
-// console. The reader's half is DEFERRED and AGGREGATED into one message: there is a single #toast
-// and each call replaces the last, so reporting per id inside startup would have the second id wipe
-// the first (and a later startup toast wipe them both).
+// console. The reader's half first combines the affected ids here, then joins the shared startup
+// diagnostic aggregation in 90-toast.js so another startup warning cannot wipe it.
 const _CMH_AMBIGUOUS_BLOCKS = [];
 let _cmhAmbiguousFlushQueued = false;
 function cmhWarnAmbiguousBlock(id, count) {
@@ -5283,12 +5282,12 @@ function cmhWarnAmbiguousBlock(id, count) {
     _cmhAmbiguousFlushQueued = false;
     // Consume the queue, so a later id reports itself rather than re-listing what was shown.
     const found = _CMH_AMBIGUOUS_BLOCKS.splice(0, _CMH_AMBIGUOUS_BLOCKS.length);
-    if (typeof showToast !== "function" || !found.length) return;
+    if (typeof showStartupDiagnostic !== "function" || !found.length) return;
     // A damaged document is exactly the population this warning targets, and its COMMENT UI region
     // (where the toast element lives) may be part of the damage - so never let the report itself
     // throw out of the timer.
     try {
-      showToast("This file carries duplicate commentable-html data blocks outside its content root ("
+      showStartupDiagnostic("This file carries duplicate commentable-html data blocks outside its content root ("
         + found.join(", ") + "). Only the first of each is read, so the rest are ignored - and the"
         + " comments block the export rewrites is that same first one. Run validate.py on the file.",
       { alert: true, duration: 10000 });
@@ -5383,7 +5382,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.681.0";
+const CMH_VERSION = "1.684.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -5472,8 +5471,6 @@ const openComposers = new Set();
 const openEditComposers = new Map();
 let lastFocusedComposer = null;
 let composerZ = 210;
-
-
 /* ---------- Vendored: lz-string (UTF-16 codec, trimmed) ----------
  * lz-string 1.4.4 by pieroxy <pieroxy@pieroxy.net> - MIT license.
  * https://github.com/pieroxy/lz-string
@@ -6001,6 +5998,7 @@ let _cmhLastSaveQuota = false;
 // untouched across a reload-without-edit; startup clears it after pruning so a genuine user edit
 // still persists (and intentionally replaces the unreadable value).
 let _cmhStoreUnreadable = false;
+let _cmhStartupInProgress = true;
 // Persist key <- produce(). produce() returns a string to store or null to removeItem. Returns
 // true on immediate success (set or remove). On a quota error it stashes the producer for retry
 // and returns false (callers already treat false as "not saved"); other errors return false too.
@@ -6072,7 +6070,7 @@ function loadComments() {
   // the recoverable bytes are not clobbered; only a subsequent edit will replace it.
   if (loaded.unreadable) {
     _cmhStoreUnreadable = true;
-    showToast("Saved comments in this browser could not be read (they may be from a newer version) "
+    showStartupDiagnostic("Saved comments in this browser could not be read (they may be from a newer version) "
       + "- they are left untouched; editing a comment will replace them.", { alert: true, duration: 8000 });
     return;
   }
@@ -6110,7 +6108,8 @@ function saveComments() {
       return false;
     }
     // Blocked / private mode: keep the existing recovery-path warning.
-    showToast("Comment NOT saved to this browser (storage full or blocked) - it will be lost on "
+    const notify = _cmhStartupInProgress ? showStartupDiagnostic : showToast;
+    notify("Comment NOT saved to this browser (storage full or blocked) - it will be lost on "
       + "reload. Use Copy all or Export as Shareable to keep it.", { alert: true, duration: 8000 });
     return false;
   }
@@ -6221,7 +6220,6 @@ function getEmbeddedComments() {
     return [];
   }
 }
-
 /* ---------- Reviewer preferences (scoped: a cross-document default + a per-document override) ----------
    Today's only preference is "Auto-open panel on comment". It governs every path where the panel
    opens ITSELF - a saved comment, the load-time restore, and the first note/checklist/widget change
@@ -22281,7 +22279,7 @@ function _cmhWarnUnownedReviewBlock(reason) {
   const msg = "This file's " + REVIEW_BLOCK_ID + " block could not be attributed to the layer: "
     + reason + ". Its saved section-review marks are ignored. Run validate.py on the file.";
   try { console.warn("commentable-html: " + msg); } catch (e) { /* console is optional */ }
-  if (typeof showToast === "function") showToast(msg, { alert: true, duration: 8000 });
+  if (typeof showStartupDiagnostic === "function") showStartupDiagnostic(msg, { alert: true, duration: 8000 });
 }
 function getEmbeddedReviewMarkers() {
   const bounds = _cmhRegionCommentBounds(document, REVIEW_REGION);
@@ -22551,6 +22549,8 @@ function _applyReviewStateToHtml(html) {
 }
 /* ---------- Toast ---------- */
 let toastTimer = null;
+const _cmhStartupDiagnostics = [];
+let _cmhStartupDiagnosticFlushPending = false;
 function hideToast() {
   toast.classList.remove("show");
   // Remove any inline action button when the toast is dismissed/times out so an invisible, faded-out
@@ -22618,6 +22618,45 @@ function cmhRestoreFocusTo(el) {
     if (document.activeElement === cands[i]) return true;
   }
   return false;
+}
+function _cmhFlushStartupDiagnostics() {
+  _cmhStartupDiagnosticFlushPending = false;
+  const diagnostics = _cmhStartupDiagnostics.splice(0, _cmhStartupDiagnostics.length);
+  if (!diagnostics.length || typeof toast === "undefined" || !toast || toast.nodeType !== 1) return;
+  if (diagnostics.length === 1) {
+    showToast(diagnostics[0].msg, diagnostics[0].opts);
+    return;
+  }
+  const combined = diagnostics.map(function (item, i) {
+    return (i + 1) + ". " + item.msg;
+  }).join(" ");
+  const combinedOpts = {
+    alert: true,
+    duration: diagnostics.reduce(function (longest, item) {
+      return Math.max(longest, item.opts.duration || 3000);
+    }, 3000),
+  };
+  const actionItem = diagnostics.find(function (item) { return !!item.opts.action; });
+  if (actionItem) combinedOpts.action = actionItem.opts.action;
+  showToast("Startup diagnostics: " + combined, combinedOpts);
+}
+function showStartupDiagnostic(msg, opts) {
+  opts = opts || {};
+  if (!_cmhStartupDiagnostics.some(function (item) { return item.msg === msg; })) {
+    _cmhStartupDiagnostics.push({ msg: msg, opts: opts });
+  }
+  if (_cmhStartupDiagnosticFlushPending) return;
+  _cmhStartupDiagnosticFlushPending = true;
+  // The reserved-block audit registers its DOMContentLoaded listener before this module. Deferring
+  // one turn after that event lets its timer join the synchronous startup diagnostics regardless of
+  // how long parsing the document tail takes.
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () {
+      setTimeout(_cmhFlushStartupDiagnostics, 0);
+    }, { once: true });
+  } else {
+    setTimeout(_cmhFlushStartupDiagnostics, 0);
+  }
 }
 function showToast(msg, opts) {
   opts = opts || {};
@@ -22707,7 +22746,6 @@ function showToast(msg, opts) {
     showToast("Exporting as " + label + "...", { center: true, duration: 2500 });
   }, true);
 })();
-
 /* ---------- Handled-id pruning + startup ---------- */
 function getHandledIds() {
   // The boundary, not tree order: a handled-ids block planted inside the content root could
@@ -22986,6 +23024,7 @@ restoreHighlights();
 // were suppressed so the recoverable bytes are left intact, and from here only a real user edit
 // replaces them (honoring the "editing a comment will replace them" notice).
 _cmhStoreUnreadable = false;
+_cmhStartupInProgress = false;
 setupMermaidLayer();
 setupImageLayer();
 setupLinkLayer();
@@ -23923,7 +23962,7 @@ for (let cur = CMH_LAYER_SCRIPT; cur && cur.parentNode; cur = cur.parentNode) {
 }
 renderComments();
 if (prunedCount > 0) {
-  showToast(`${prunedCount} previously-handled comment${prunedCount === 1 ? "" : "s"} cleared by the agent.`);
+  showStartupDiagnostic(`${prunedCount} previously-handled comment${prunedCount === 1 ? "" : "s"} cleared by the agent.`);
 }
 // A deck manages its own panel state from the persisted comment-model selection (applyDeckMode);
 // the document-flow auto-open below must not override it (that would force every deck with a

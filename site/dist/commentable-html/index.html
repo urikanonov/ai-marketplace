@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.681.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.684.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.684.0] - 2026-08-05</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Startup diagnostics now share one aggregation path and appear together in a single alert toast. A startup storage read or write failure, duplicate reserved data blocks, an unresolved review-state block, and the handled-comment cleanup notice can no longer replace one another before the reader sees them.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.681.0] - 2026-08-04</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>The browser-accurate element-boundary SEQUENCE now lives in exactly one place (CMH-VAL-21). <code>handle_starttag()</code>, <code>handle_startendtag()</code> and <code>handle_endtag()</code> moved onto the shared <code>_BrowserBoundaries</code> base (and, identically, onto the degraded fallback a partial install gets) and drive overridable hooks - <code>_visit_start()</code>, <code>_push_element()</code>, <code>_visit_void()</code>, <code>_after_start()</code>, <code>_visit_self_closed()</code>, <code>_visit_end()</code> - so each of the thirteen parsers and authoring tools that derive from it now says only what it COLLECTS. The same ~25-line skeleton (browser tag name, browser attribute dict, child namespace, the implicit <code>&lt;/p&gt;</code> / <code>&lt;/li&gt;</code> close, the void and foreign self-closing carve-outs, the namespace push, the raw-text switch, and, for an end tag, the innermost open element then the truncation) was maintained in eleven independent copies, where one forgotten <code>_enter_raw_text()</code> would silently have parsed a <code>&lt;script&gt;</code> body as markup - the base deliberately disables the host&#x27;s own <code>_enter_cdata_mode()</code>, so no gate would have seen it. A new guard fails any subclass that writes a tag handler of its own, with a single named exception (the prose-density pass, which keeps no namespace stack and applies no implicit close, so sharing the sequence would change what it counts rather than share it). No behavior change to any tool: every parse this refactor touches reads a document exactly as it did.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.679.0] - 2026-08-04</h3></div>
             <div class="group-label">Fixed</div>
@@ -511,8 +520,6 @@
               <li>Known bound, tracked as issue #1081: all of the above concerns a <code>&lt;noscript&gt;</code> in the BODY. A <code>&lt;noscript&gt;</code> in the HEAD has its body promoted out of the fallback by <code>DOMParser</code> itself (the &quot;in head noscript&quot; insertion mode allows only <code>link</code>, <code>style</code>, <code>meta</code>, comments and whitespace), before any pass can see it, so a script parked there still rides out as live head content. Closing that needs a pre-parse, source-string pass, since a promoted node is indistinguishable in the DOM from an authored head sibling.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.678.0] - 2026-08-04</h3></div>
             <div class="group-label">Fixed</div>
@@ -557,14 +564,7 @@
               <li>The persisted table-sort map is re-homed onto a null-prototype object like the checklist and notes state maps (CMH-SEC-02), so the runtime has one convention for a document-reachable state map rather than two. Its keys are <code>&lt;idx&gt;::&lt;header-sig&gt;</code>, so the prototype part is defense in depth; a non-map payload (an array) is now discarded rather than accepted, which used to eat the reader&#x27;s sort silently because <code>JSON.stringify</code> drops string keys written onto an array.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.670.0] - 2026-08-04</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Closed two egress shapes that neither the Offline export strip nor the strict validator looked at, so a document carrying either rode into a zero-network export and <code>--strict</code> certified it clean. Hyperlink auditing (<code>&lt;a ping&gt;</code> / <code>&lt;area ping&gt;</code>) POSTs to every URL the attribute names on every click; the export now removes the attribute through the same template-walking pass as the other load attributes, and the gate rejects one in an offline document. It goes whatever it names, the way a meta refresh does: a relative ping still POSTs, shows the reader nothing, and is meaningless in a single-file export, so accepting one would bless a file an export would change - and an unconditional rule is one the two sides cannot drift apart on. What counts as &quot;names no URL&quot; is read off HTML&#x27;s own tokenization rather than off either engine&#x27;s whitespace class - the list is split on ASCII whitespace ONLY - so an empty or ASCII-whitespace-only value is left untouched by both (the strip has no write path for it at all), while an NBSP or U+FEFF value, which a browser resolves as a relative target and POSTs to, is caught by both. Trimming instead would have drifted them in both directions, since <code>String.trim()</code> and Python&#x27;s <code>str.strip()</code> disagree about exactly those characters. (CSP Level 3 folds auditing into <code>connect-src</code>, which the offline policy does set to <code>&#x27;none&#x27;</code>, so a current browser most likely absorbs it - but the strip and the gate are the layer that is not supposed to DEPEND on the CSP, and the directive&#x27;s <code>ping-src</code> history makes that coverage version-dependent.) The SVG filter primitive <code>&lt;feImage href&gt;</code> / <code>xlink:href</code> fetches exactly like the SVG <code>&lt;image&gt;</code> and <code>&lt;use&gt;</code> the media list already covered, so it joins that list on both sides; a relative or <code>data:</code> reference is left untouched. One selector spelling reaches both namespaces - CSS compares a type selector case-sensitively for an SVG-namespaced element and case-insensitively for an HTML one, so <code>feImage</code> matches the SVG primitive and an <code>&lt;feimage&gt;</code> authored outside <code>&lt;svg&gt;</code> alike (a current Chromium is laxer still and matches any casing, which neither side relies on) - which keeps the strip namespace-blind, exactly as the validator&#x27;s flat tokenizer is forced to be.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">314 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">315 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

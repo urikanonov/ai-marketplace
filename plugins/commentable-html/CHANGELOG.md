@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.684.0] - 2026-08-05
+
+### Fixed
+
+- Startup diagnostics now share one aggregation path and appear together in a single alert toast.
+  A startup storage read or write failure, duplicate reserved data blocks, an unresolved
+  review-state block, and the handled-comment cleanup notice can no longer replace one another
+  before the reader sees them.
+
 ## [1.681.0] - 2026-08-04
 
 ### Changed
