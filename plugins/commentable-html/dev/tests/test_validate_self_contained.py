@@ -604,9 +604,10 @@ class NewCheckTests(unittest.TestCase):
                 self.assertEqual(errors, [], errors)
                 self.assertEqual(warnings, [], warnings)
 
-    def test_a_srcdoc_is_left_alone_outside_offline_mode(self):
+    def test_a_srcdoc_is_not_an_error_outside_offline_mode(self):
         # Shareable mode makes no zero-network promise and its export runs no offline strip, so
-        # the rule stays scoped to the mode whose contract it belongs to.
+        # the REJECTION stays scoped to the mode whose contract it belongs to. The authoring-time
+        # warning below is the separate, non-blocking half.
         markup = '<iframe srcdoc="&lt;p&gt;x&lt;/p&gt;"></iframe>'
         errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
         self.assertFalse(any("srcdoc" in e for e in errors), errors)
@@ -745,6 +746,128 @@ class NewCheckTests(unittest.TestCase):
                                 ("", ""), (None, ""), ("bogus", "")):
             with self.subTest(meta=value):
                 self.assertEqual(resources.referrer_meta_policy(value), expected)
+    def test_a_srcdoc_warns_that_an_offline_export_will_remove_it(self):
+        # CMH-VAL-24: the decision (issue #1080) is to KEEP the clear-outright rule rather than
+        # sanitize the nested document, so the author's cost is real - Export Offline empties the
+        # frame. What they had was a transient toast AFTER the export. This warns while they are
+        # still AUTHORING, so the trade is announced rather than discovered. PRESENCE is the test,
+        # exactly like the offline error, so nothing here parses the nested document and the two
+        # sides still agree by construction.
+        for markup in ('<iframe srcdoc="&lt;p&gt;x&lt;/p&gt;"></iframe>',
+                       '<iframe srcdoc="" title="t"></iframe>',
+                       "<iframe srcdoc></iframe>"):
+            with self.subTest(markup=markup):
+                errors, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertEqual(errors, [], errors)
+                self.assertTrue(any("srcdoc" in w and "Export Offline" in w for w in warnings),
+                                "expected a srcdoc offline-export warning for %r, got %r"
+                                % (markup, warnings))
+
+    def test_the_srcdoc_offline_warning_reaches_a_parked_frame(self):
+        # CMH-VAL-24: the same shapes the offline error is held to - a `<template>` the export
+        # walks into, a `<noscript>` fallback, and a self-closed foreign element - because the
+        # warning has to describe the same set of frames the export will really empty.
+        for markup in ('<template><iframe srcdoc="&lt;p&gt;x&lt;/p&gt;"></iframe></template>',
+                       '<noscript><iframe srcdoc="&lt;p&gt;x&lt;/p&gt;"></iframe></noscript>',
+                       '<svg><iframe srcdoc="&lt;p&gt;x&lt;/p&gt;"/></svg>'):
+            with self.subTest(markup=markup):
+                _, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any("srcdoc" in w and "Export Offline" in w for w in warnings),
+                                "expected a srcdoc offline-export warning for %r, got %r"
+                                % (markup, warnings))
+
+    def test_a_frame_without_a_srcdoc_draws_no_offline_warning(self):
+        # CMH-VAL-24 control: the warning is about the nested document, not about the element, so
+        # a frame that carries none is silent.
+        for markup in ("<iframe></iframe>", '<iframe src="local.html" title="t"></iframe>'):
+            with self.subTest(markup=markup):
+                errors, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertEqual(errors, [], errors)
+                self.assertFalse(any("srcdoc" in w for w in warnings), warnings)
+
+    def test_an_offline_document_reports_the_srcdoc_once_as_an_error(self):
+        # CMH-VAL-24: an offline document is past the point the advisory is useful - the export
+        # already ran and the file is being certified - so the two must not double-report. The
+        # ERROR is the whole answer there.
+        markup = '<iframe srcdoc="&lt;p&gt;x&lt;/p&gt;"></iframe>'
+        doc = with_offline_mode(build(body=self._body(MAIN, markup)))
+        errors, warnings = self._errs_warns(doc)
+        self.assertTrue(any("offline mode" in e and "srcdoc" in e for e in errors), errors)
+        self.assertFalse(any("srcdoc" in w for w in warnings), warnings)
+
+    def test_the_srcdoc_notice_is_an_advisory_not_a_blocking_warning(self):
+        # CMH-VAL-24: the CHANNEL is the whole point, and asserting only that the string lands in
+        # `warnings` cannot see it. A BLOCKING warning fails `--strict`, withholds the validated
+        # stamp (so the runtime "not validated" banner stays up on every run) and makes a
+        # fail-closed caller such as retrofit refuse to write - which would make DELETING the
+        # nested document the only route to a clean run, the exact loss this notice exists to
+        # announce. A `srcdoc` is legitimate content in a mode that makes no zero-network promise,
+        # so it must be an advisory instead.
+        markup = '<iframe srcdoc="&lt;p&gt;x&lt;/p&gt;"></iframe>'
+        _, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+        notice = [w for w in warnings if "srcdoc" in w]
+        self.assertEqual(len(notice), 1, warnings)
+        self.assertTrue(validate.is_advisory(notice[0]), notice)
+        fatal, advisory = validate.partition_warnings(warnings)
+        self.assertIn(notice[0], advisory)
+        self.assertEqual(fatal, [], fatal)
+
+    def test_the_srcdoc_advisory_reports_on_one_line(self):
+        # CMH-VAL-24: a `srcdoc` carries a whole DOCUMENT, so it is almost always multi-line, and
+        # the CLI prints one report per line - the raw value would split a single finding across
+        # untagged lines. The non-whitespace C0 controls `str.split()` leaves alone go too: an ESC
+        # in authored text on its way to a terminal starts an ANSI escape sequence. The offline
+        # ERROR shares the treatment, so it is pinned here too - the spec row promises both, and
+        # a revert of either side alone must fail.
+        markup = ('<iframe srcdoc="&lt;p&gt;one&lt;/p&gt;\n\r\t&lt;p&gt;two\x1b[31m\x07\x00'
+                  '&lt;/p&gt;"></iframe>')
+        body = self._body(MAIN, markup)
+        _, warnings = self._errs_warns(build(body=body))
+        notice = [w for w in warnings if "srcdoc" in w]
+        errors, _ = self._errs_warns(with_offline_mode(build(body=body)))
+        offline = [e for e in errors if "srcdoc" in e]
+        self.assertEqual(len(notice), 1, warnings)
+        self.assertEqual(len(offline), 1, errors)
+        for label, reports in (("advisory", notice), ("offline error", offline)):
+            for ch in ("\n", "\r", "\t", "\x1b", "\x07", "\x00"):
+                self.assertNotIn(ch, reports[0], "%s: %r" % (label, reports[0]))
+
+    def test_a_srcdoc_beside_a_malformed_descriptor_is_still_only_an_advisory(self):
+        # CMH-VAL-24: the branch is "not known to be OFFLINE", not "known to be SHAREABLE" - a
+        # document whose layer descriptor is missing or malformed lands there too. That is
+        # harmless rather than wrong, because the descriptor rule errors on it independently, but
+        # the advisory must not become the thing that blocks such a document beyond that error.
+        markup = '<iframe srcdoc="&lt;p&gt;x&lt;/p&gt;"></iframe>'
+        doc = build(body=self._body(MAIN, markup)).replace(
+            '"mode": "shareable"', '"mode": "shareable"  <<< not json')
+        _, warnings = self._errs_warns(doc)
+        notice = [w for w in warnings if "srcdoc" in w]
+        self.assertEqual(len(notice), 1, warnings)
+        self.assertTrue(validate.is_advisory(notice[0]), notice)
+
+    def test_a_srcdoc_document_still_passes_strict_and_is_still_stamped(self):
+        # CMH-VAL-24, end to end: the advisory classification only matters if the GATE honors it.
+        # A shareable document carrying a `srcdoc` must stay strict-clean and must still receive
+        # the validated stamp, or an author who embeds a demo frame can never hand the file off.
+        markup = '<iframe srcdoc="&lt;p&gt;x&lt;/p&gt;" title="demo"></iframe>'
+        content = build(body=self._body(MAIN, markup))
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "doc.html")
+            with open(p, "w", encoding="utf-8", newline="") as fh:
+                fh.write(content)
+            r = subprocess.run([sys.executable, VALIDATE_PY, "--strict", p],
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            # Keyed to the PREFIX `ADVISORY_PREFIXES` itself reads, not to the loose substring
+            # "srcdoc": an error line or a strict-failure banner would carry that too.
+            self.assertIn(validate.SRCDOC_ADVISORY_PREFIX, r.stdout)
+            self.assertNotIn("FAILED", r.stdout)
+            with open(p, "r", encoding="utf-8", newline="") as fh:
+                stamped = fh.read()
+        # The exact meta, not a prefix of it: `commentable-html-validated-hash` also contains
+        # `commentable-html-validated`, so a substring test would pass with no timestamp stamp.
+        self.assertIn('name="commentable-html-validated"', stamped,
+                      "an advisory must not withhold the validated stamp")
 
     def test_offline_mode_rejects_network_resources_inside_noscript(self):
         # A <noscript> body is raw TEXT only while scripting is enabled; with scripting off a

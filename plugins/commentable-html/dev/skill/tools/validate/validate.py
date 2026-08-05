@@ -228,21 +228,28 @@ from checks.density import (  # noqa: F401,E402
     check_density,
 )
 from checks.layer import (  # noqa: F401,E402
+    SRCDOC_ADVISORY_PREFIX,
     _check_layer_descriptor,
     _layer_descriptor_data,
     check_layer,
 )
 
-# The stable ADVISORY warning prefixes: a finding the author CANNOT clear, so blocking on it
-# would leave the document permanently unstampable with the runtime "not validated" banner up.
-# Today that is the hand-written code block (CMH-VAL-11) the authoring tools pass through
-# verbatim by design. An advisory is always REPORTED but never fails --strict, never blocks a
+# The stable ADVISORY warning prefixes: a finding the author cannot clear - or must not be FORCED
+# to clear - so blocking on it would leave the document permanently unstampable with the runtime
+# "not validated" banner up. Today that is the hand-written code block (CMH-VAL-11) the authoring
+# tools pass through verbatim by design, and the offline-export notice on an `<iframe srcdoc>`
+# (CMH-VAL-24), which reports what a DIFFERENT mode's export would REMOVE - blocking on it
+# would make deleting the nested document the only route to a clean run, which is the very loss
+# the notice exists to announce. That says nothing about whether a nested document is SAFE: no
+# check here can see inside an attribute value, a gap that predates the notice and is tracked as
+# issue #1125. An advisory is
+# always REPORTED but never fails --strict, never blocks a
 # fail-closed caller, and never withholds the validated stamp. Keeping the split in ONE place is
 # what stops retrofit, content_replace, finalize and this CLI disagreeing about what is
 # actionable. NOTE the theme-contrast advisory (CMH-THEME-02) is deliberately NOT here: its
 # near-miss band ships a concrete `--suggest` fix, so it IS clearable and must keep failing
 # --strict; retrofit's own long-standing carve-out for it is composed in retrofit.py.
-ADVISORY_PREFIXES = (HIGHLIGHT_ADVISORY_PREFIX,)
+ADVISORY_PREFIXES = (HIGHLIGHT_ADVISORY_PREFIX, SRCDOC_ADVISORY_PREFIX)
 
 # Pre-rename aliases for the symbols this module re-exports. `validate` is an IMPORT surface (the
 # authoring tools import it by bare name), so the same compatibility promise the CLI flags and the

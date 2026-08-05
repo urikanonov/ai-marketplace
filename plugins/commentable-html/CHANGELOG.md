@@ -4,6 +4,44 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.723.0] - 2026-08-05
+
+### Added
+
+- The validator now tells an author, while the document is still being authored, that an
+  `<iframe srcdoc>` will not survive Export Offline (CMH-VAL-24). An offline export removes the
+  nested document outright, and until now an author only met that in a transient toast after the
+  export had already emptied the frame. It is an ADVISORY (CMH-VAL-18), so it is always reported
+  but never fails `--strict`, never withholds the `commentable-html-validated` stamp and never
+  blocks a fail-closed caller such as `retrofit`: it reports what a different mode's export would
+  REMOVE, and blocking would have made deleting the nested document the only route to a clean
+  handoff - the very loss the notice exists to announce. That is scoped to the content-loss
+  question and is deliberately not a ruling that a nested document is safe outside offline mode;
+  no check can see inside an attribute value, a gap that predates the notice and is tracked as
+  issue #1125. It is a presence
+  test, exactly like the offline-mode error it complements, so nothing parses the nested document
+  and the exporter and the strict gate still agree by construction; it names a `<template>`-parked
+  frame, a `<noscript>` fallback and a self-closed foreign element the same way the export will
+  really empty them, and an offline document reports the error alone so the two never
+  double-report.
+
+### Changed
+
+- Recorded the decision behind that removal in the spec rather than leaving it as an omission
+  (CMH-OFFLINE-04, CMH-SEC-06). Sanitizing the nested document instead of clearing it was
+  prototyped on an abandoned branch, weighed, and rejected: it needs two independent recursive
+  parsers - the exporter's browser DOM and the validator's pure-Python tokenizer - to agree at
+  every depth on
+  serialization, doctype reconstruction and rendering mode, fixed-point settling under
+  serialize-then-reparse, and one shared parse budget; the content-preserving precedents in this
+  layer are all edits inside a document both sides already parse; a value that will not settle
+  still has to be removed, so sanitizing would trade a deterministic rule for parser-quirk
+  roulette; and the author keeps the content regardless, since the export is a derived artifact.
+  That last ground answers for the author and not for the recipient of an export, so the row also
+  records the cheap middle option it does not take here - having the export replace the emptied
+  frame with the nested markup as escaped inert text - as an open follow-up rather than a settled
+  non-goal.
+
 ## [1.722.0] - 2026-08-05
 
 ### Fixed
