@@ -236,6 +236,25 @@ def _check_self_contained(html, parser):
                               "offline CSP is inherited into it rather than blocking it - the "
                               "export clears the attribute, so remove it here too"
                               % _report_value(el.get("srcdoc")))
+        # A `<noscript>` in the HEAD is not an ordinary element to the scripting-DISABLED parse the
+        # export re-parses with: the "in head noscript" insertion mode allows only `link`, `style`,
+        # `meta`, `basefont`, `bgsound`, `noframes`, comments and whitespace, and anything else POPS
+        # the fallback and REPROCESSES that node - and everything after it - under the "in head"
+        # rules, so it becomes a head SIBLING (a `<script>`) or ends the head and lands in the body.
+        # So a `<script>` parked there is promoted out INSIDE `DOMParser`, before any strip can see
+        # it, and the export ACTIVATES code the source document never ran (with scripting on, a head
+        # fallback is inert raw text). A promoted node is indistinguishable in the DOM from an
+        # authored sibling, so the export judges the SOURCE STRING before it parses and drops such a
+        # fallback whole; this rejects the same shape, so the two agree by construction rather than
+        # leaving the exporter to emit a file its own gate would have to bless. What the mode ALLOWS
+        # is untouched on both sides, so an ordinary head fallback is not content loss.
+        for body in offline_head_noscript_promotions(html):
+            errors.append('offline mode: a <noscript> in the document head ("%s") carries content '
+                          'the "in head noscript" insertion mode does not allow, so a '
+                          "scripting-disabled parse promotes it out of the fallback and into the "
+                          "head - where markup a reader only ever sees as inert text becomes live "
+                          "content the export would activate; the export removes such a fallback, "
+                          "so remove it here too" % body.strip()[:80])
         for el in _find_tag_attrs_egress(html, "form"):
             _check_network_attr("form", el, "action")
         for tag in ("button", "input"):

@@ -749,6 +749,152 @@ test("CMH-OFFLINE-05: a noscript body the two tokenizers end differently is drop
   }
 });
 
+// A `<noscript>` in the HEAD is the shape the strip above cannot reach, because there the fallback
+// is not an ordinary element to the scripting-DISABLED parse at all. The "in head noscript"
+// insertion mode allows only `link`, `style`, `meta`, `basefont`, `bgsound`, `noframes`, comments
+// and whitespace; anything else POPS the fallback and reprocesses that node - and everything after
+// it - as a head SIBLING. Measured in chromium: the source `<head><noscript><script>...` parses to
+// `<noscript></noscript><script>...`, so the export ACTIVATES code the source document never ran
+// (with scripting ON a head fallback is inert raw text). It happens INSIDE `DOMParser`, before any
+// pass can see it, and a promoted node is indistinguishable from an authored sibling - so the fix
+// is a PRE-PARSE pass over the source string and this test pins both directions of it.
+const HEAD_NOSCRIPT_CONTENT = `
+<h1>Head fallback</h1>
+<p id="head-fallback-note">A head fallback a scripting-disabled parse takes apart must not ride into an offline export as live head content.</p>
+<div class="cmh-checklist" data-cmh-checklist="head-fallback" data-cmh-checklist-label="Pending state">
+  <ul>
+    <li data-cmh-item="pending" data-cmh-state="blank">Something to change before exporting</li>
+  </ul>
+</div>`;
+const HEAD_NOSCRIPT_PROMOTED =
+  '<noscript id="headPromotedFallback"><script>window.__cmhHeadFallback = 1;/* cmh-head-noscript-promote */</script></noscript>';
+// The control: only what the insertion mode allows, so a scripting-disabled parse promotes nothing
+// and the fallback is ordinary content. It proves the fix is not a blanket head-fallback removal.
+const HEAD_NOSCRIPT_KEPT =
+  '<noscript id="headKeptFallback"><!-- cmh-head-noscript-keep --><meta name="cmh-head-fallback" content="kept">'
+  + "<style>#headKeptFallback { color: #333; }</style></noscript>";
+
+function stageWithHead(contentHtml, headHtml, opts) {
+  const staged = stageContent(contentHtml, opts);
+  const html = fs.readFileSync(staged.html, "utf8");
+  const headEnd = html.indexOf("</head>");
+  if (headEnd < 0) throw new Error("no </head> in the staged document");
+  fs.writeFileSync(staged.html, html.slice(0, headEnd) + headHtml + "\n" + html.slice(headEnd));
+  return staged;
+}
+
+test("CMH-OFFLINE-05: a head noscript body the scripting-disabled parse promotes out is dropped, not activated", async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const staged = stageWithHead(HEAD_NOSCRIPT_CONTENT, HEAD_NOSCRIPT_PROMOTED + "\n" + HEAD_NOSCRIPT_KEPT,
+    { key: "cmh-offline-head-noscript", source: "offline-head-noscript.html" });
+  // Served over HTTP so the export reads the AUTHORED bytes off disk: the `file://` fallback is a
+  // live-DOM snapshot, in which the promotion has not happened and there is nothing to strip.
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    await page.route(/^https?:\/\//, async (route) => {
+      const url = route.request().url();
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url)) return route.fallback();
+      return route.abort();
+    });
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    // The reading that the export must not change: in the SOURCE document, with scripting on, the
+    // head fallback is inert raw text and its script never runs.
+    expect(await page.evaluate(() => window.__cmhHeadFallback),
+      "the source document must not run its head fallback").toBeUndefined();
+    // Leave PENDING STATE before exporting. Every state applier (checklist here, and equally the
+    // widget, note and review ones) round-trips the document through `DOMParser` when it has
+    // something to write, and that parse promotes a head fallback exactly as the export's own does
+    // - so the fallback has to be judged on the authored bytes, before any of them run. Without
+    // that ordering this whole rule is bypassed by the ordinary case of a reviewed document.
+    await page.locator('[data-cmh-item="pending"] .cmh-check').first().click();
+    await expect(page.locator('[data-cmh-item="pending"] .cmh-check').first())
+      .toHaveAttribute("data-cmh-check-state", "check");
+    // Pending state opens the review panel, so the export runs from the sidebar menu here.
+    await Promise.all([
+      page.waitForEvent("download"),
+      clickSidebarExport(page, "#btnExportOffline"),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    // The promoted body goes WHOLE: once the parse has taken it apart there is nothing left in the
+    // DOM that says it was ever fallback content.
+    expect(exportedHtml, "a promoted head fallback must not survive").not.toContain("cmh-head-noscript-promote");
+    expect(exportedHtml, "the promoted script must not survive").not.toContain("__cmhHeadFallback");
+    // ... and ONLY that. A head fallback the insertion mode accepts is content both readings agree
+    // about, so removing it would be unrequested content loss.
+    expect(exportedHtml, "an allowed head fallback is not a promotion").toContain("cmh-head-noscript-keep");
+    expect(exportedHtml, "the allowed fallback keeps its body").toContain('content="kept"');
+    expect(exportedHtml, "the layer's own print fallback must survive").toContain("cmhPrintNoScript");
+    // Removing author content is named rather than silent, exactly as a straddling fallback is.
+    await expect(page.locator("#toast")).toContainText("1 noscript fallback block in the document head");
+
+    const exportedPath = path.join(outDir, "offline-head-noscript.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    // The gate must agree with the strip: the exporter cannot ship a file its own --strict rejects.
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+    // ...and the other direction, which the clean file alone cannot prove: put a promoting fallback
+    // BACK into the exported file's head and the gate must reject it, so what the strip removes is
+    // really what the gate refuses to certify rather than a shape it never looked at.
+    const reinjectedPath = path.join(outDir, "offline-head-noscript-reinjected.html");
+    const headEnd = exportedHtml.indexOf("</head>");
+    expect(headEnd, "the exported file must have a head end tag").toBeGreaterThan(0);
+    const reinjectedHtml = exportedHtml.slice(0, headEnd) + HEAD_NOSCRIPT_PROMOTED + exportedHtml.slice(headEnd);
+    fs.writeFileSync(reinjectedPath, reinjectedHtml);
+    let reinjectedFailure = null;
+    try {
+      execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", reinjectedPath], { cwd: SKILL, stdio: "pipe" });
+    } catch (err) {
+      reinjectedFailure = String(err.stdout || "") + String(err.stderr || "");
+    }
+    expect(reinjectedFailure, "--strict must reject a re-injected promoting head fallback").not.toBeNull();
+    // Pinned to the RULE, not merely to a non-zero exit: an exit-code-only assertion would be
+    // satisfied by any future rule that rejected this file for an unrelated reason.
+    expect(reinjectedFailure).toContain("in head noscript");
+
+    // The reading that matters is the reviewer's: open the exported file in a REAL browser, where
+    // scripting is on and a promoted script would be live code rather than text.
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    expect(await page2.evaluate(() => window.__cmhHeadFallback),
+      "the export must not run what the source left inert").toBeUndefined();
+    // The kept fallback is still a FALLBACK: with scripting on its body is raw text, so its meta is
+    // prose rather than an element the document head declares.
+    expect(await page2.locator("#headKeptFallback").count()).toBe(1);
+    expect(await page2.evaluate(() => document.querySelectorAll('meta[name="cmh-head-fallback"]').length),
+      "an allowed fallback body stays inert text, not promoted head content").toBe(0);
+    expect(external).toEqual([]);
+
+    // Shareable makes no zero-network promise and preserves the author's bytes by design, so it is
+    // unaffected in BOTH directions.
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await page.locator('[data-cmh-item="pending"] .cmh-check').first().click();
+    await Promise.all([
+      page.waitForEvent("download"),
+      clickSidebarExport(page, "#btnSaveHtml"),
+    ]);
+    const shareableHtml = await capturedDownloadText(page);
+    expect(shareableHtml, "Shareable does not rewrite author bytes").toContain("cmh-head-noscript-promote");
+    expect(shareableHtml, "Shareable keeps an allowed head fallback").toContain("cmh-head-noscript-keep");
+  } finally {
+    if (ctx2) await ctx2.close();
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
 test("Export Offline neutralizes form posts and preserves safe canvas scripts (CMH-OFFLINE-04, CMH-OFFLINE-05)", async ({ page, browser }) => {
   const CONTENT_WITH_FORMS_AND_CANVAS = `
 <h1>Offline forms and canvas</h1>

@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.728.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.731.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.731.0] - 2026-08-05</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>An offline export no longer ACTIVATES a <code>&lt;noscript&gt;</code> fallback the document keeps in its HEAD. A head <code>&lt;noscript&gt;</code> is not an ordinary element to a scripting-disabled parse: the &quot;in head noscript&quot; insertion mode allows only <code>link</code>, <code>style</code>, <code>meta</code>, <code>basefont</code>, <code>bgsound</code>, <code>noframes</code>, comments and whitespace, and anything else is a parse error that POPS the fallback and REPROCESSES that node - and everything after it - under the &quot;in head&quot; rules, so it becomes a head SIBLING (a <code>&lt;script&gt;</code>) or ends the head and lands in the body (a <code>&lt;p&gt;</code>). The export re-parses with <code>DOMParser</code> (scripting off), so the promotion happened INSIDE that parse, before any strip or ancestry check could see it, and a promoted node is indistinguishable in the DOM from one the author wrote as a sibling. Opening the SOURCE left a head <code>&lt;noscript&gt;&lt;script&gt;</code> inert (with scripting on a fallback body is raw text); opening the EXPORT ran it. The exporter now reads the head fallbacks the way the reviewer&#x27;s scripting-ENABLED tokenizer does - a start tag, then raw text to the first <code>&lt;/noscript</code> - in a PRE-PARSE pass over the source string, and drops whole any fallback the insertion mode would take apart, counting it in the download toast the way a straddling fallback and a dropped script already are. A head fallback carrying only what the mode allows is untouched, so this is not a blanket head-fallback removal, and a BODY fallback is unaffected (with scripting off it is transparent, and nothing is promoted out of it). Offline <code>--strict</code> rejects the same shape through a mirrored predicate, and the two are held to the same verdicts over a shared corpus by running the exporter&#x27;s own scanner in node, so on every shape the corpus covers the exporter cannot emit a file its own gate refuses to certify. What both model is the parser&#x27;s reading rather than the bytes&#x27;: a U+0000 and a whitespace character reference are not content, a leading BOM is dropped by the file decode a real load performs, a tag name is folded ASCII-only (so <code>lin&lt;U+212A&gt;</code> is not a <code>link</code>), an <code>&lt;/br&gt;</code> ends the head, an <code>&lt;html&gt;</code> or a nested <code>&lt;noscript&gt;</code> start tag inside a fallback is not a pop while a <code>&lt;head&gt;</code> is, and a fallback that never closes is cut to the end of the document rather than left standing. The exporter runs the pass to a FIXED POINT, because removing one fallback can splice the bytes around it into a head scope that reaches the next one (CMH-OFFLINE-05).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.728.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -505,6 +512,8 @@
               <li>Staged-file cleanup in those tools goes through <code>_atomic_io.quiet_remove</code>, which clears a read-only bit first, so a staged file that inherited a read-only destination&#x27;s mode cannot leak on Windows.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.726.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -512,8 +521,6 @@
               <li>The in-document comment dialog&#x27;s action buttons now meet the repo-wide <code>&gt;=44px</code> touch target on a phone viewport (<code>max-width: 640px</code>), in the note view (<code>Delete</code> / <code>Close</code> / <code>Edit</code>) and the edit view (<code>Cancel</code> / <code>Save</code>) alike (CMH-CORE-23). Both rows measured 33px tall at a 320x720 viewport - the last controls in the dialog a thumb had to aim at, since its formatting toolbar (CMH-RICH-20) and the sidebar card&#x27;s actions were already enlarged. With the shipped labels the enlarged row still fits one line at 320px in every density scale, so the layout is unchanged; wrapping is a fallback for a row that no longer fits (a localized label set, a larger host root font), and the wrapped lines take a roomier row gap - in the same absolute unit as the touch target - so a <code>Delete</code> pushed onto its own line keeps a deliberate gap from the button below it rather than sitting a thumb-slip away. The confirmation <code>Delete</code> goes through (CMH-CORE-22) is unchanged.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.723.0] - 2026-08-05</h3></div>
             <div class="group-label">Added</div>
@@ -546,14 +553,7 @@
               <li>The validator now reads a <code>file://</code> companion reference&#x27;s HOST the way the URL parser reads it, so a NonShareable document whose companion refs are written in a percent-encoded spelling of <code>localhost</code> validates cleanly. The parser percent-decodes a file host and maps it through domain-to-ASCII before the file-host state empties the exact string <code>localhost</code>, but the resolver compared the raw, still-encoded host to the literal - so <code>file://local%68ost/...</code> fell through to the authority branch, resolved to a bogus UNC path, and reported a companion file that was right there on disk as missing. The ref now also goes through the same input cleanup the network-URL predicate uses, so a BACKSLASH host terminator (<code>file://localhost\x</code>, which the parser ends at the <code>\</code> exactly as at a <code>/</code>) is local too. A TRAILING DOT deliberately keeps a real authority (<code>file://localhost./x</code> is the SMB path <code>\\localhost.\x</code>), matching the network-URL predicate&#x27;s decision, and the two are now pinned to agree about the <code>localhost</code> spelling - IDNA/UTS-46 spellings included, which both sides read as an authority (the accepted over-detection the network-URL predicate already records) (CMH-VAL-05).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.711.0] - 2026-08-05</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The validator now resolves the layer descriptor the way the runtime and the exporter do, so a document whose ONLY <code>commentableHtmlLayer</code> descriptor sits inside the content root is reported as missing a descriptor instead of validating completely clean (CMH-VAL-19). The layer deliberately reads its own reserved blocks OUTSIDE the content root (<code>cmhLayerBlocks</code>, so that &quot;a content-region decoy must not be able to declare what this document IS&quot;) and every export refuses such a file outright, but the validator took the first <code>&lt;script id=&quot;commentableHtmlLayer&quot;&gt;</code> anywhere in the parse - the parser computed the content-region flag per capture and then dropped it. A document with a live descriptor moved inside <code>#commentRoot</code> therefore got a clean bill of health for a file the layer resolves no descriptor for and no export will produce, and a decoy placed there ahead of the real descriptor decided the document&#x27;s declared mode - the one value that now keys the whole offline rule set, and one a decoy can set to the perfectly VALID <code>&quot;offline&quot;</code> without raising any mode error at all. The flags ride along to the flushed script and the descriptor is resolved through them, on the boundary <code>cmhLayerBlocks</code> actually tests: the whole <code>#commentRoot</code> SUBTREE, not just the part between the CONTENT markers, so a descriptor parked inside the root but ahead of the BEGIN marker (or past the END marker) is caught too. An absent flag fails CLOSED. The root subtree contains the authored region, so an authored DEMONSTRATION of the markup in prose is still content and the real descriptor in the head is still read, and the missing-descriptor error now says WHY.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">336 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">337 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
