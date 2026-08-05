@@ -7,7 +7,7 @@ import os
 import json
 import tempfile
 from html.parser import HTMLParser
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 from urllib.request import url2pathname
 from .parsing import REGIONS, FETCHING_LINK_RELS, _DocParser, _ascii_lower, _parse_document
 
@@ -1414,11 +1414,53 @@ def _ref_path(ref):
     return re.split(r"[?#]", ref or "", maxsplit=1)[0]
 
 
+def _file_host_is_local(netloc):
+    """True when the URL parser would EMPTY this `file:` host, so the reference names a purely
+    LOCAL path and must not be resolved as a UNC/SMB share.
+
+    The parser PERCENT-DECODES a file host and maps it through domain-to-ASCII (which lowercases)
+    BEFORE the file-host state special-cases the exact string `localhost`, so `file://local%68ost/x`
+    and `file://LOCALHOST/x` are the same local reference as `file://localhost/x` (all three parse
+    to href `file:///x`). `urlparse` does NOT decode, so comparing its raw netloc to the literal
+    sent the encoded spellings down the `//netloc+path` branch, resolved them to a bogus UNC path,
+    and reported a companion file that is right there on disk as missing.
+
+    A TRAILING DOT stays OUTSIDE the test: the special case is the exact string `localhost`, so
+    `file://localhost./x` keeps a NON-EMPTY host and really is the SMB path `\\\\localhost.\\x`.
+
+    Both calls mirror what the egress predicate's `_PCT_LOCALHOST` / `_PCT_LOCALHOST_END` already
+    decide about the LOCALHOST spelling, so the two cannot disagree about it (pinned by
+    `tests/test_validate_nonshareable.py` - `test_file_host_locality_agrees_with_the_egress_predicate`).
+    That parity is why `_file_url_to_path` runs `normalize_url_value` first: the predicate reads the
+    value after the parser's own input cleanup, and without it a BACKSLASH host terminator
+    (`file://localhost\\dist\\x.js`, which the parser ends at the `\\` exactly as at a `/`, emptying
+    the host) was a fresh instance of this very bug - local to the predicate, a UNC path here.
+
+    Three limits on the parity, all deliberate. The percent-decoding models only the
+    PERCENT-ENCODING and CASE half of canonicalization: the IDNA/UTS-46 half is not modelled, so a
+    host that only UTS-46 maps onto `localhost` (`file://%EF%BD%8Cocalhost/x`,
+    `file://LOCALHO%C5%BFT/x`, the soft-hyphen `file://local%C2%ADhost/x`) is read as a real
+    authority here, exactly as the egress predicate reads it - the accepted over-detection
+    `_PCT_LOCALHOST` records, kept rather than fixed because UTS-46 cannot be written as a regex the
+    Python and JS engines agree on, and the two sides must not drift. The lowercasing is ASCII-only
+    for the same reason. Second, the egress predicate ALSO excludes a Windows DRIVE-LETTER authority
+    (`file://c:evil.example/x`), which is not mirrored here, so that shape can still resolve to a
+    path the parser would not pick. Third, the predicate deliberately OVER-detects a `..` or empty
+    path segment (`file://localhost/../dist/x.js`) as egress for canonicalization-stability reasons
+    that do not apply to a path resolver, which resolves it the way the parser does. None costs
+    anything beyond a rare spurious "companion file not found": this function gates no egress, it
+    only resolves a companion ref to a path for an on-disk existence check.
+    """
+    if not netloc:
+        return True
+    return _ascii_lower(unquote(netloc)) == "localhost"
+
+
 def _file_url_to_path(ref):
-    parsed = urlparse(ref or "")
+    parsed = urlparse(normalize_url_value(ref))
     if parsed.scheme.lower() != "file":
         return None
-    raw = ("//" + parsed.netloc + parsed.path) if parsed.netloc and parsed.netloc.lower() != "localhost" else parsed.path
+    raw = parsed.path if _file_host_is_local(parsed.netloc) else "//" + parsed.netloc + parsed.path
     return os.path.abspath(url2pathname(raw))
 
 

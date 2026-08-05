@@ -629,6 +629,125 @@ class NonShareableTests(unittest.TestCase):
         self.assertEqual(errors, [], errors)
         self.assertFalse(any("remote/CDN URL" in w or "absolute path" in w for w in warnings), warnings)
 
+    def test_percent_encoded_file_host_resolves_like_localhost(self):
+        # CMH-VAL-05: the URL parser PERCENT-DECODES a `file:` host and maps it through
+        # domain-to-ASCII BEFORE the file-host state empties the exact string `localhost`, so
+        # `file://local%68ost/x` is the same purely LOCAL reference as `file://localhost/x` (both
+        # parse to href `file:///x`). Comparing the RAW netloc to the literal sent the encoded
+        # spellings down the `//netloc+path` branch instead. A BACKSLASH ends the host in the
+        # file-host state exactly as a `/` does, so that spelling is local too; the cased spellings
+        # already worked and are controls.
+        from checks import resources as _r
+        plain = _r._file_url_to_path("file://localhost/dist/commentable-html.js")
+        self.assertEqual(plain, _r._file_url_to_path("file:///dist/commentable-html.js"))
+        for spelling in ("file://local%68ost/dist/commentable-html.js",
+                         "file://LOCALHOST/dist/commentable-html.js",
+                         "file://LOCAL%48OST/dist/commentable-html.js",
+                         "file://%6Cocalhost/dist/commentable-html.js",
+                         "file://%6c%6F%63%61%6c%68%6F%73%74/dist/commentable-html.js",
+                         "file://localhost\\dist\\commentable-html.js",
+                         "file://local%68ost\\dist\\commentable-html.js"):
+            self.assertEqual(_r._file_url_to_path(spelling), plain,
+                             "%s must resolve like file://localhost/..." % spelling)
+
+    def test_trailing_dot_file_host_keeps_a_real_authority(self):
+        # CMH-VAL-05 control: the file-host state special-cases the EXACT string `localhost`, and
+        # `localhost.` is not it, so `file://localhost./x` keeps a NON-EMPTY host and really is the
+        # SMB path `\\localhost.\x`. That is the call the egress predicate already makes
+        # (`_PCT_LOCALHOST_END`), so decoding the host must not fold the trailing-dot spelling -
+        # in any encoding - onto the local path.
+        from checks import resources as _r
+        local = _r._file_url_to_path("file://localhost/dist/commentable-html.js")
+        for spelling in ("file://localhost./dist/commentable-html.js",
+                         "file://local%68ost./dist/commentable-html.js",
+                         "file://localhost%2E/dist/commentable-html.js",
+                         "file://not-a-host/dist/commentable-html.js"):
+            self.assertNotEqual(_r._file_url_to_path(spelling), local,
+                                "%s carries a real authority" % spelling)
+
+    def test_percent_encoded_localhost_companion_refs_validate_clean(self):
+        # CMH-VAL-05 end to end: a companion ref whose host is spelled `local%68ost` points at a
+        # file that is right there on disk, so it must validate exactly like the plain
+        # `file://localhost/...` spelling instead of resolving to a bogus UNC path and reporting
+        # "referenced companion file not found". This is an INTEGRATION control, and it bites on
+        # POSIX only: a real temp path carries a Windows drive letter, and `nturl2path` drops any
+        # host that precedes one, so the branch itself is pinned red-first by
+        # `test_percent_encoded_file_host_resolves_like_localhost` above (drive-letter free, so it
+        # fails on both platforms without the fix).
+        with tempfile.TemporaryDirectory() as d:
+            urls = {}
+            for ext in (".css", ".js", ".assets.js"):
+                p = os.path.join(d, "commentable-html%s" % ext)
+                with open(p, "w", encoding="utf-8") as fh:
+                    fh.write("/* stub */")
+                urls[ext] = "file://local%68ost" + Path(p).resolve().as_uri()[len("file://"):]
+            html = (build_nonshareable()
+                    .replace('href="commentable-html.css"', 'href="%s"' % urls[".css"])
+                    .replace('src="commentable-html.js"', 'src="%s"' % urls[".js"])
+                    .replace('src="commentable-html.assets.js"', 'src="%s"' % urls[".assets.js"]))
+            doc = os.path.join(d, "doc.html")
+            with open(doc, "w", encoding="utf-8", newline="") as fh:
+                fh.write(html)
+            errors, warnings = validate.validate(doc)
+        self.assertEqual(errors, [], errors)
+        self.assertFalse(any("remote/CDN URL" in w or "absolute path" in w for w in warnings), warnings)
+
+    def test_file_host_locality_agrees_with_the_egress_predicate(self):
+        # CMH-VAL-05 parity, scoped to the LOCALHOST decision: this resolver and the egress
+        # predicate (`is_network_url`) must read a `file:` host the same way, or a ref one side
+        # calls purely local is resolved by the other as an off-machine authority. That is also
+        # what settles the TRAILING DOT: the file-host state special-cases the exact string
+        # `localhost`, so `file://localhost./x` keeps a real host on BOTH sides, while every
+        # percent-encoded and cased spelling of `localhost` is local on both. A BACKSLASH host
+        # terminator is carried because it is how the two last disagreed: the predicate reads the
+        # value after the parser's input cleanup, so the resolver has to as well. The IDNA/UTS-46
+        # spellings are carried too: neither side models UTS-46, so both read them as an
+        # authority - the accepted over-detection `_PCT_LOCALHOST` records, pinned here so a
+        # future edit cannot move one side alone. (The egress predicate's separate DRIVE-LETTER
+        # exclusion and its `..`/empty-segment over-detection are deliberately outside this parity
+        # claim; see `_file_host_is_local`.)
+        from checks import resources as _r
+        local = _r._file_url_to_path("file:///dist/commentable-html.js")
+        for spelling in ("file://localhost/dist/commentable-html.js",
+                         "file://local%68ost/dist/commentable-html.js",
+                         "file://%6Cocalhost/dist/commentable-html.js",
+                         "file://LOCALHOS%54/dist/commentable-html.js",
+                         "file://localhost\\dist\\commentable-html.js",
+                         "file://localhost./dist/commentable-html.js",
+                         "file://localhost%2Fevil.example/dist/commentable-html.js",
+                         "file://local%68ostx/dist/commentable-html.js",
+                         "file://%EF%BD%8Cocalhost/dist/commentable-html.js",
+                         "file://LOCALHO%C5%BFT/dist/commentable-html.js",
+                         "file://local%C2%ADhost/dist/commentable-html.js",
+                         "file://evil.example/dist/commentable-html.js",
+                         "file://evil.example\\dist\\commentable-html.js"):
+            self.assertEqual(_r._file_url_to_path(spelling) == local,
+                             not _r.is_network_url(spelling),
+                             "%s: the companion path resolver and the egress predicate disagree "
+                             "about whether the host is this machine" % spelling)
+
+    def test_trailing_dot_localhost_companion_ref_is_rejected_as_egress(self):
+        # CMH-VAL-05 end-to-end control: because `localhost.` keeps a real authority, a companion
+        # ref written that way is an SMB load off the machine, and the self-contained gate rejects
+        # it - the trailing dot is never quietly folded onto the local file beside the document.
+        with tempfile.TemporaryDirectory() as d:
+            urls = {}
+            for ext in (".css", ".js", ".assets.js"):
+                p = os.path.join(d, "commentable-html%s" % ext)
+                with open(p, "w", encoding="utf-8") as fh:
+                    fh.write("/* stub */")
+                urls[ext] = "file://localhost." + Path(p).resolve().as_uri()[len("file://"):]
+            html = (build_nonshareable()
+                    .replace('href="commentable-html.css"', 'href="%s"' % urls[".css"])
+                    .replace('src="commentable-html.js"', 'src="%s"' % urls[".js"])
+                    .replace('src="commentable-html.assets.js"', 'src="%s"' % urls[".assets.js"]))
+            doc = os.path.join(d, "doc.html")
+            with open(doc, "w", encoding="utf-8", newline="") as fh:
+                fh.write(html)
+            errors, _ = validate.validate(doc)
+        self.assertTrue(any("loads over the network" in e for e in errors),
+                        "a trailing-dot host is an authority, not the local file: %r" % errors)
+
     def test_companion_parent_relative_ref_ok(self):
         # NonShareable may point at the skill dist/ folder via a ../ path; if the target
         # resolves to an existing file it is valid (no "escapes the folder" error).
