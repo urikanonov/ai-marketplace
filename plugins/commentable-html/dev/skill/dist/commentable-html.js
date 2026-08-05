@@ -379,7 +379,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.702.0";
+const CMH_VERSION = "1.702.1";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -14581,7 +14581,21 @@ const _OFFLINE_NAV_PROP_TAIL_RE = /[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u
 const _OFFLINE_NAV_ASSIGN_TAIL_RE = /[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*=(?!=)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*["'`](?:\\?[\u0001-\u0020]|\\[\u2028\u2029])*(?:\\?h(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?p(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?s(?:\\?[\t\n\r]|\\[\u2028\u2029])*)?\\?:|(?:\\?\/|\\\\)(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?\/|\\\\))/iy;
 const _OFFLINE_NAV_OPEN_TAIL_RE = /[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\([ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*["'`](?:\\?[\u0001-\u0020]|\\[\u2028\u2029])*(?:\\?h(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?t(?:\\?[\t\n\r]|\\[\u2028\u2029])*\\?p(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?s(?:\\?[\t\n\r]|\\[\u2028\u2029])*)?\\?:|(?:\\?\/|\\\\)(?:\\?[\t\n\r]|\\[\u2028\u2029])*(?:\\?\/|\\\\))/iy;
 const _OFFLINE_NAV_WS_RE = /[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]/;
-const _OFFLINE_NAV_IDENT_RE = /[.A-Za-z0-9_$]/;
+// An IDENTIFIER character, spelled as the complement of the BOUNDARY characters. It decides where
+// a prefix chain may start, so a character it gets wrong in the identifier direction turns a purely
+// local binding whose name merely ENDS in `location` into the document's own sink and deletes an
+// author's whole script. The class was ASCII-only and did exactly that. `\w` cannot fix it (ASCII
+// in JS, Unicode-aware in Python) and Python's `re` has no Unicode property escape, so the
+// complement is spelled out and stays byte-identical in both copies: every ASCII character that
+// cannot appear in an identifier EXCEPT `.`, plus the exact whitespace set the scan uses.
+// Everything else, ASCII or not, is an identifier character. The `.` exception predates this
+// spelling and is load-bearing: a member-expression dot must CONTINUE the chain, so
+// `cfg.location.href = <url>` reads as some other object's `location` and stays benign. A surrogate
+// code unit is an identifier character too, which is how a supplementary code point reads here and
+// is what keeps `charAt` agreeing with Python's whole-code-point view. Non-ASCII WHITESPACE stays a
+// boundary; a non-ASCII character that is not a legal IdentifierPart now reads as one, which only
+// ever removes matches (CMH-OFFLINE-05's residual).
+const _OFFLINE_NAV_IDENT_RE = /[^\u0000-\u0023\u0025-\u002d\u002f\u003a-\u0040\u005b-\u005e\u0060\u007b-\u007f\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]/;
 const _OFFLINE_NAV_STATEMENT_RE = /[;})>\n\r\u2028\u2029]/;
 const _OFFLINE_NAV_LINE_BREAK_RE = /[\n\r\u2028\u2029]/;
 const _OFFLINE_NAV_PREFIX_NAMES = ["window", "self", "top", "parent", "globalThis", "document", "frames"];
