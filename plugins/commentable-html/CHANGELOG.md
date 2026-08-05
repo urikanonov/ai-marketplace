@@ -4,6 +4,33 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.699.0] - 2026-08-05
+
+### Changed
+
+- The offline navigation predicate's LOCAL-BINDING half is now an anchored scan rather than a
+  `search()` over the whole script, cutting its per-character cost by an order of magnitude
+  (CMH-OFFLINE-05). It decides whether an inline script declares its own `location` - which drops
+  the navigation verdict to the PREFIXED sinks - and two of its arms carried a bounded
+  400-character lookahead window, so every `const{` / `var[` / `function(` anchor in the text
+  re-walked that window. Growth was already LINEAR, so this was not the ReDoS class earlier
+  releases closed; the defect was the size of the CONSTANT. Densely packed declaration anchors
+  measured ~2.2us per character in Python on `const{` repeated (0.031s at 12 KB, 0.375s at 120 KB,
+  2.7s at 1.2 MB) and ~3.4us on `var[`, with ~0.33-0.52us in node - an order above the anchored
+  sink scan beside it, on input that is document-supplied and includes the vendored payload's
+  INFLATED bytes, where a few hundred base64 bytes buy megabytes. Every shape the pattern
+  recognized ends in the literal `location`, so the scan is driven from THAT anchor, exactly as the
+  sink search is, and every arm's HEAD is a forward-only cursor over the same text: the keyword and
+  `catch` arms declare when a head ends exactly at the anchor, and the two windowed arms take the
+  last head ending at or before it, whose final character is the opener. A cursor never re-reads a
+  head it has already matched, and the unbounded whitespace run in `const<WS>location` is consumed
+  once by the compiled head rather than walked backwards per anchor. The same inputs now cost
+  ~0.26us and ~0.27us per character in Python and at most ~0.05us in node, the same order as the
+  sink scan. The recognized language is unchanged, pinned in both directions and in BOTH engines
+  against the frozen pattern over a crossed corpus plus a seeded fuzz, and the scaling guard grew
+  four shapes - declaration-anchor density, name-anchor density, a single unbounded whitespace run,
+  and densely stacked heads - so the constant is measured rather than left unstated.
+
 ## [1.696.0] - 2026-08-05
 
 ### Fixed

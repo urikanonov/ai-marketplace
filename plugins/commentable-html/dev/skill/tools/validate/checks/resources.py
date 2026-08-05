@@ -402,7 +402,7 @@ SCRIPT_LOAD_ATTRS = ("src", "href", "xlink:href")
 # `windo\u0077.top.location` is not. That is incidental rather than a defence - the same whitespace
 # makes an arbitrary `zzz . location` match - and the corpus pins it beside a non-escaped control.
 # The same literal matching cuts the other way in
-# `OFFLINE_LOCAL_LOCATION_RE`, and that direction costs an author content rather than letting a
+# `offline_local_location_index`, and that direction costs an author content rather than letting a
 # beacon out: an ESCAPED local `location` declaration does not register as a shadow, so a script
 # that navigates nothing is rejected whole. Both are DECIDED, not overlooked. Recognizing each name
 # as literal-or-escaped per character is possible without backtracking, but it turns a plain literal
@@ -458,14 +458,38 @@ OFFLINE_NAV_PREFIX_NAMES = ("window", "self", "top", "parent", "globalThis", "do
 # engine split the run every possible way and re-ran the `[^)]{0,400}` search at each split, which
 # cost QUADRATIC time in the run's length (0.13s at 5 KB, 22.5s at 80 KB) on a document that plants
 # one.
-OFFLINE_LOCAL_LOCATION_RE = re.compile(
-    r"(?:^|[^.A-Za-z0-9_$])(?:(?:var|let|const|function|class)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+location(?![A-Za-z0-9_$])|(?:var|let|const)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"[{\[](?:[^}\]]{0,399}[^}\]A-Za-z0-9_$])?location(?![A-Za-z0-9_$])|function(?![A-Za-z0-9_$])[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"(?:[A-Za-z0-9_$]{1,100}[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?"
-    r"\((?:[^)]{0,399}[^)A-Za-z0-9_$])?location(?![A-Za-z0-9_$])|catch[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"\([ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*"
-    r"location(?![A-Za-z0-9_$]))",
+# It is a SCAN for the same reason the sink search beside it is, and the reason is the CONSTANT
+# rather than the growth. Spelled as one `search()` over the whole script, the two WINDOWED arms
+# re-walked their bounded 400-character lookahead at EVERY declaration anchor, so a densely packed
+# near-match (`const{` or `var[` repeated) cost ~2.7us per character in Python and ~0.4us in node -
+# growth was cleanly linear, but an order above the ~0.24us/char anchored sink scan, on input that
+# includes the vendored payload's INFLATED bytes. Every shape here ends in the literal `location`,
+# so the scan is driven from THAT anchor - and every arm's HEAD is then a forward-only cursor over
+# the same text, so a head is never re-read once matched. Each cursor yields the position just PAST
+# its head: the keyword and `catch` arms declare when a head ends exactly AT the anchor, and the two
+# windowed arms take the last head ending at or before it, whose final character is the opener.
+# Walking a head BACKWARDS from the anchor instead would have been the same defect one level down -
+# the whitespace run in `const<WS>location` is unbounded, and a per-character backwards walk over it
+# costs ~0.5us/char in CPython where the compiled run costs almost nothing.
+# Each cursor resumes on its match's LAST character rather than past it: a head can begin
+# on the last character of the previous one (`var {let [`, or a keyword whose boundary character is
+# the preceding run's final space) and that inner head owns a different opener, while nothing
+# further in is a legal head start, so a matched head is never re-read.
+OFFLINE_LOCAL_NAME_RE = re.compile(r"location(?![A-Za-z0-9_$])", re.IGNORECASE | re.ASCII)
+OFFLINE_LOCAL_KEYWORD_HEAD_RE = re.compile(
+    r"(?:^|[^.A-Za-z0-9_$])(?:var|let|const|function|class)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+",
     re.IGNORECASE | re.ASCII)
+OFFLINE_LOCAL_CATCH_HEAD_RE = re.compile(
+    r"(?:^|[^.A-Za-z0-9_$])catch[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\([ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*",
+    re.IGNORECASE | re.ASCII)
+OFFLINE_LOCAL_BRACKET_HEAD_RE = re.compile(
+    r"(?:^|[^.A-Za-z0-9_$])(?:var|let|const)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*[{\[]",
+    re.IGNORECASE | re.ASCII)
+OFFLINE_LOCAL_PAREN_HEAD_RE = re.compile(
+    r"(?:^|[^.A-Za-z0-9_$])function(?![A-Za-z0-9_$])[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:[A-Za-z0-9_$]{1,100}[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\(",
+    re.IGNORECASE | re.ASCII)
+OFFLINE_LOCAL_IDENT_RE = re.compile(r"[A-Za-z0-9_$]", re.ASCII)
+OFFLINE_LOCAL_WINDOW_MAX = 400
 
 
 def _offline_nav_ascii_lower(text):
@@ -580,6 +604,89 @@ def offline_nav_sink_index(src, prefixed_only):
             return at
 
 
+def _offline_local_window_ok(src, opener, at, closers):
+    r"""The bounded `(?:[^C]{0,399}[^CA-Za-z0-9_$])?` window between a declaration opener and a name.
+
+    `closers` is the character (or characters) the window may not contain - `}]` for the
+    destructuring arm, `)` for the parameter-list arm. Only the LAST opener before the anchor needs
+    testing: an earlier one has a SUPERSET window (so it fails whatever the nearest one fails on),
+    and the "character before the name is not an identifier character" rule does not depend on which
+    opener it is except when the opener sits right against the name, which is the nearest one.
+    Mirrors `_offlineLocalWindowOk`.
+    """
+    if opener < 0 or at - opener > OFFLINE_LOCAL_WINDOW_MAX + 1:
+        return False
+    if opener < at - 1 and OFFLINE_LOCAL_IDENT_RE.match(src, at - 1):
+        return False
+    for closer in closers:
+        if src.find(closer, opener + 1, at) >= 0:
+            return False
+    return True
+
+
+def _offline_local_next_head(src, rx, pos):
+    """The next declaration head at or after `pos`, as (end index, resume position).
+
+    The end index is the position the name would have to start at. The resume position is the head's
+    LAST character rather than the one past it, because a head can begin on that character (`var {`
+    followed by `let [`, or a keyword whose boundary character is the previous head's final space)
+    and the inner head owns a different opener - but nothing between a head's start and its last
+    character can begin another one, since every character in there is either a keyword letter, an
+    identifier character or whitespace, and a head must open on a NON-identifier boundary followed
+    immediately by a keyword. So the cursor never re-reads a head it has already matched.
+    Mirrors `_offlineLocalNextHead`.
+    """
+    m = rx.search(src, pos)
+    if not m:
+        return -1, len(src) + 1
+    return m.end(), m.end() - 1
+
+
+def offline_local_location_index(src):
+    """Index of the first `location` the script declares as a LOCAL binding, or -1.
+
+    Mirrors `_offlineLocalLocationIndex` in assets/js/68-export-offline.js. All four cursors only
+    ever move FORWARD, so no character of the script is examined twice and a `location` anchor costs
+    a handful of integer comparisons plus, at most, the two bounded window tests.
+    """
+    keyword = _offline_local_next_head(src, OFFLINE_LOCAL_KEYWORD_HEAD_RE, 0)
+    catch = _offline_local_next_head(src, OFFLINE_LOCAL_CATCH_HEAD_RE, 0)
+    bracket = _offline_local_next_head(src, OFFLINE_LOCAL_BRACKET_HEAD_RE, 0)
+    paren = _offline_local_next_head(src, OFFLINE_LOCAL_PAREN_HEAD_RE, 0)
+    bracket_seen = -1
+    paren_seen = -1
+    pos = 0
+    while True:
+        m = OFFLINE_LOCAL_NAME_RE.search(src, pos)
+        if not m:
+            return -1
+        at = m.start()
+        pos = at + 1
+        # Each cursor stops at the FIRST head end at or after the anchor, which is the smallest one
+        # because a pattern's head ends are non-decreasing in their start order (two starts can
+        # SHARE an end - `function function(` ends both parameter heads on the same `(` - but a
+        # longer head can never precede a shorter one). Pinned directly by
+        # `test_the_local_binding_cursors_see_every_head_in_order`.
+        while 0 <= keyword[0] < at:
+            keyword = _offline_local_next_head(src, OFFLINE_LOCAL_KEYWORD_HEAD_RE, keyword[1])
+        while 0 <= catch[0] < at:
+            catch = _offline_local_next_head(src, OFFLINE_LOCAL_CATCH_HEAD_RE, catch[1])
+        # The windowed arms want the last head ENDING at or before the anchor, since its final
+        # character is the opener the window is measured from.
+        while 0 <= bracket[0] <= at:
+            bracket_seen = bracket[0] - 1
+            bracket = _offline_local_next_head(src, OFFLINE_LOCAL_BRACKET_HEAD_RE, bracket[1])
+        while 0 <= paren[0] <= at:
+            paren_seen = paren[0] - 1
+            paren = _offline_local_next_head(src, OFFLINE_LOCAL_PAREN_HEAD_RE, paren[1])
+        if keyword[0] == at or catch[0] == at:
+            return at
+        if _offline_local_window_ok(src, bracket_seen, at, "}]"):
+            return at
+        if _offline_local_window_ok(src, paren_seen, at, ")"):
+            return at
+
+
 def offline_script_navigates_to_network(body):
     """True when an inline script scripts a top-level navigation to a network URL literal.
 
@@ -591,7 +698,7 @@ def offline_script_navigates_to_network(body):
     src = body or ""
     if offline_nav_sink_index(src, False) < 0:
         return False
-    if OFFLINE_LOCAL_LOCATION_RE.search(src):
+    if offline_local_location_index(src) >= 0:
         return offline_nav_sink_index(src, True) >= 0
     return True
 

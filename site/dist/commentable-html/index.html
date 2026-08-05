@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.696.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.699.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.699.0] - 2026-08-05</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The offline navigation predicate&#x27;s LOCAL-BINDING half is now an anchored scan rather than a <code>search()</code> over the whole script, cutting its per-character cost by an order of magnitude (CMH-OFFLINE-05). It decides whether an inline script declares its own <code>location</code> - which drops the navigation verdict to the PREFIXED sinks - and two of its arms carried a bounded 400-character lookahead window, so every <code>const{</code> / <code>var[</code> / <code>function(</code> anchor in the text re-walked that window. Growth was already LINEAR, so this was not the ReDoS class earlier releases closed; the defect was the size of the CONSTANT. Densely packed declaration anchors measured ~2.2us per character in Python on <code>const{</code> repeated (0.031s at 12 KB, 0.375s at 120 KB, 2.7s at 1.2 MB) and ~3.4us on <code>var[</code>, with ~0.33-0.52us in node - an order above the anchored sink scan beside it, on input that is document-supplied and includes the vendored payload&#x27;s INFLATED bytes, where a few hundred base64 bytes buy megabytes. Every shape the pattern recognized ends in the literal <code>location</code>, so the scan is driven from THAT anchor, exactly as the sink search is, and every arm&#x27;s HEAD is a forward-only cursor over the same text: the keyword and <code>catch</code> arms declare when a head ends exactly at the anchor, and the two windowed arms take the last head ending at or before it, whose final character is the opener. A cursor never re-reads a head it has already matched, and the unbounded whitespace run in <code>const&lt;WS&gt;location</code> is consumed once by the compiled head rather than walked backwards per anchor. The same inputs now cost ~0.26us and ~0.27us per character in Python and at most ~0.05us in node, the same order as the sink scan. The recognized language is unchanged, pinned in both directions and in BOTH engines against the frozen pattern over a crossed corpus plus a seeded fuzz, and the scaling guard grew four shapes - declaration-anchor density, name-anchor density, a single unbounded whitespace run, and densely stacked heads - so the constant is measured rather than left unstated.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.696.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>An export whose canonical pass fails now says so instead of ending in silence. The pass that rewrites live comment offsets into authored-row coordinates ran on a bare line outside the try/catch that wraps the document build, so a throw there unwound the whole click handler: no file was downloaded and no message appeared, which a reader could not tell apart from a click that never registered. Save/Shareable, the NonShareable Standalone branch, and Offline now all run the pass through one guard that reports the failure as an assertive toast naming the cause, stating that no file was written and that the pass put comments and table sorting back. The report survives the awkward shapes a throw can take: a non-Error throwable (or one whose <code>message</code> getter itself throws) is still reported, and the cause is named whenever the thrown value can be turned into one; an unbounded message is capped so the actionable sentence stays on screen, the full value is left on the console for triage, and a toast that cannot be shown at all still aborts the export rather than restoring the original silence (CMH-EXP-23).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.694.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -509,8 +518,6 @@
               <li>The validator&#x27;s document parser now decides template inertness by NAMESPACE, not by tag name. Only the HTML <code>&lt;template&gt;</code> holds its contents in an inert DocumentFragment; an element merely NAMED <code>template</code> in the SVG or MathML namespace is an ordinary foreign element a browser keeps in the DOM and in its ancestor&#x27;s <code>textContent</code>. Markup such as <code>&lt;math&gt;&lt;template&gt;text&lt;/template&gt;&lt;/math&gt;</code> inside <code>#commentRoot</code> was therefore invisible at once to the prose / unlinked-cross-reference view, the heading capture, the element view and the mermaid diagram-source view, and raw-text children written that way were recorded as parked rather than classified as they would be without that wrapper - so an SVG <code>&lt;script&gt;</code>/<code>&lt;style&gt;</code>, which a browser really does execute and apply, was hidden from the checks that read the live views. Such content is now validated exactly as a reader sees it, while a <code>&lt;template&gt;</code> under an HTML integration point such as <code>&lt;svg&gt;&lt;foreignObject&gt;</code> or <code>&lt;math&gt;&lt;mi&gt;</code>, or after a foreign breakout start tag, stays inert as before, and a declarative shadow root keeps rendering.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.691.0] - 2026-08-05</h3></div>
             <div class="group-label">Added</div>
@@ -545,15 +552,7 @@
               <li>The runtime&#x27;s template-aware walkers now record their shadow-DOM boundary explicitly. The infrastructure resolver still excludes shadow-root ids because <code>document.getElementById</code> cannot see them; Markdown and section review remain light-DOM-only because closed roots cannot be inspected and review anchors do not cross shadow boundaries. Save and export preserve supported open and closed roots through shadow-aware serialization; the validator requires <code>shadowrootserializable</code> and rejects mixed light/shadow children so every accepted document fits that durable model (slot distribution is rejected too, and shadow-DOM export requires a browser with <code>Element.getHTML</code>). Generated TOC entries target the outer light-DOM host because browser fragment navigation cannot target a heading inside a shadow tree.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.685.3] - 2026-08-05</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Section review hashes now use the same browser-boundary parser as the validator and other authoring tools. Implicit paragraph/list-item closes, non-void HTML tags written with <code>/&gt;</code>, and headings quoted inside raw-text or RCDATA elements therefore produce the same sections and hashes in Python and Chromium; RCDATA character references and the leading-LF rule still match DOM <code>textContent</code>, and an inert template cannot hide the live content root.</li>
-              <li>The validator document parser and table-of-contents generator no longer treat <code>&lt;/body&gt;</code> or <code>&lt;/html&gt;</code> in the HTML namespace as closing an open content root. HTML5 changes insertion mode for those tags without popping the open elements, so trailing content stays inside the root exactly as it does in a browser; same-named foreign elements still close normally. The TOC parser also keeps foreign-template content live and never selects a duplicate root after the browser&#x27;s first root is a void or self-closed foreign element.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">324 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">325 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
