@@ -379,7 +379,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.686.0";
+const CMH_VERSION = "1.688.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -13572,7 +13572,12 @@ function _cmhRegionMarkerMatches(html, kind, name) {
     const match = inlineMatch || ((state === "html" || state === "css") ? bareMatch : null);
     if (match) {
       const markerOffset = body.indexOf(match[1]);
-      out.push({ index: offset + markerOffset });
+      // Which comment SYNTAX carries this marker. Not part of the pinned answer (the parity
+      // corpus reads offsets only, CMH-VAL-22) - it is what lets a caller ask the narrower
+      // question the region strips actually care about: the strips anchor on `<!--`, so only an
+      // HTML-comment-syntax marker can ever aim one (CMH-EXP-22).
+      const html5 = inlineMatch ? body.trim().charAt(0) === "<" : state === "html";
+      out.push({ index: offset + markerOffset, htmlComment: html5 });
     }
     state = _cmhAdvanceCommentState(body, state);
     offset += line.length;
@@ -13596,8 +13601,142 @@ function _assertSingleRegionMarkers(html, name) {
     throw new Error("Export aborted: commentable-html region " + name + " ends before it begins.");
   }
 }
+// The stem of the probe token stamped over a located marker so the parse can be asked WHERE that
+// exact marker landed. Letters and digits only, so substituting it cannot change how anything around
+// it is tokenized. The stem is EXTENDED until it does not occur in the source at all (the document
+// carries this runtime's own text, and an author may quote anything), so a token can only ever be
+// present because this pass put it there - otherwise a document quoting a token in a real comment
+// could vouch for a marker that is not in one.
+const _CMH_MARKER_PROBE = "cmhMarkerProbe";
+function _cmhMarkerProbeStem(src) {
+  let stem = _CMH_MARKER_PROBE;
+  // The stem grows by one character per collision, so a source can only lengthen it by the run of
+  // `x` it actually contains after the stem; the bound is belt-and-braces against a crafted input.
+  for (let i = 0; i < 64 && src.indexOf(stem) >= 0; i += 1) stem += "x";
+  return src.indexOf(stem) >= 0 ? null : stem;
+}
+// Which of the located markers a browser really parses INSIDE A COMMENT, by identity rather than by
+// count. Each located marker is replaced with its own token in a COPY of the source, the copy is
+// parsed once, and the tokens that turn up in a comment node are returned. Counting alone is not
+// enough: a region can hold the SAME number of text-located and parsed markers that are not the SAME
+// markers - a real `<!-- END ... --!>` comment (the legacy comment-end-bang close, which a browser
+// honours and the text locator rejects) paired with an authored `<script>` quotation of the marker
+// gives one of each, and the strip - which requires `-->` - would then anchor on the quotation.
+// Returns null when the cross-check cannot be taken at all.
+function _cmhCommentBorneMarkers(src, probes) {
+  const stem = _cmhMarkerProbeStem(src);
+  if (!stem) return null;
+  const ordered = probes.map(function (p, i) { return { id: i, index: p.index, length: p.length }; })
+    .sort(function (a, b) { return a.index - b.index; });
+  let stamped = "", cursor = 0;
+  for (let i = 0; i < ordered.length; i += 1) {
+    const p = ordered[i];
+    if (p.index < cursor) return null;
+    stamped += src.slice(cursor, p.index) + stem + p.id + "z";
+    cursor = p.index + p.length;
+  }
+  stamped += src.slice(cursor);
+  let doc, walker;
+  try { doc = new DOMParser().parseFromString(stamped, "text/html"); } catch (e) { return null; }
+  if (!doc) return null;
+  try { walker = doc.createTreeWalker(doc, NodeFilter.SHOW_COMMENT); } catch (e) { return null; }
+  const token = new RegExp(_cmhEscapeRegExp(stem) + "(\\d+)z", "g");
+  const seen = {};
+  let node;
+  while ((node = walker.nextNode())) {
+    // Skipped for the reason the rest of the export path skips a <noscript>: DOMParser has
+    // scripting disabled, so it reads as markup what the live document keeps as inert text.
+    if (_cmhInInertHost(node)) continue;
+    const data = node.data || "";
+    token.lastIndex = 0;
+    let m;
+    while ((m = token.exec(data))) seen[m[1]] = true;
+  }
+  return seen;
+}
+// Every marker written in HTML-COMMENT syntax must be one a browser really parses as a comment, at
+// that exact spot (CMH-EXP-22). The text locator above finds a marker-shaped line wherever it sits,
+// including inside a raw-text body (`<script>`, `<textarea>`, `<title>`) or an inert `<template>`,
+// where a browser builds no comment at all. While the layer's own marker is intact a quoted one just
+// makes the count 2 and the guard above already refuses; the case this closes is a region whose
+// marker a browser does not read where the strip thinks it is - a DAMAGED region whose only
+// surviving marker is an authored quotation, or a real marker the locator cannot see (the `--!>`
+// close) standing beside a quotation it can. Either way the strip anchors on the quotation and cuts
+// from the real BEGIN through the author's content. The validator has refused the same shapes since
+// CMH-VAL-20 (tools/validate/checks/layer_parts/90-orchestrator.py), positionally; this is the
+// runtime giving that same answer.
+//
+// The test is deliberately scoped to HTML-comment syntax, not to every located marker, because the
+// strips anchor on `<!--`: a marker written as a CSS comment cannot aim one, so it is not this
+// hazard. That is what leaves the Shareable CSS region's `/* ... */` pair inside a live `<style>`
+// alone, and what leaves a stray `/* END: ... */` in the body to the Plain export's own
+// region-attribution diagnosis (CMH-EXP-21) rather than pre-empting it with a wrong cause.
+//
+// The gate proves each LOCATED marker is comment-borne; the strips must additionally have no
+// EARLIER place to start. They are wider than the locator in one direction: their `<!--\s*=*\s*`
+// prefix is not line-anchored, so an authored `<p>x</p><!-- BEGIN: commentable-html - JS -->` -
+// invisible to a LINE locator, and therefore not counted, not probed, and not a duplicate - is a
+// perfectly good anchor for the strip, which then cuts from THERE through the real region and takes
+// the author's content with it. Only an anchor STRICTLY BEFORE the region's own BEGIN is refused:
+// that is the destructive direction. An anchor at the marker is the healthy case, and no anchor at
+// all (prose inside the marker's own comment defeats the strip's prefix) only leaves the region
+// unstripped, which the Plain export's data-safety net already diagnoses (CMH-EXP-21). END is not
+// checked at all - a decoy there can only cut the region SHORT, which again leaves the layer's own
+// blocks for that net, and the runtime's own inlined source legitimately contains the literal text
+// of an END marker inside a `<script>`, so checking it would refuse every shipped document.
+function _cmhFirstStripAnchor(src, kind, name) {
+  const anchor = new RegExp("<!--\\s*=*\\s*"
+    + _cmhEscapeRegExp(kind + ": commentable-html - " + name), "i");
+  const hit = anchor.exec(src);
+  return hit ? hit.index + hit[0].length : -1;
+}
 function _assertSingleLayerRegions(html) {
-  CMH_REGION_NAMES.forEach(function (name) { _assertSingleRegionMarkers(html, name); });
+  const src = String(html == null ? "" : html);
+  const probes = [];
+  CMH_REGION_NAMES.forEach(function (name) {
+    _assertSingleRegionMarkers(src, name);
+    ["BEGIN", "END"].forEach(function (kind) {
+      const marker = kind + ": commentable-html - " + name;
+      _cmhRegionMarkerMatches(src, kind, name).forEach(function (m) {
+        if (!m.htmlComment) return;
+        probes.push({ index: m.index, length: marker.length, kind: kind, name: name });
+        if (kind !== "BEGIN") return;
+        // Only an anchor STRICTLY BEFORE the region's own marker is destructive: the strip would
+        // start there and delete everything up to the real region. An anchor at the marker is the
+        // healthy case, and no anchor at all (prose inside the marker's comment, so the strip's
+        // prefix does not match it) only leaves the region unstripped, which the Plain export's
+        // data-safety net diagnoses (CMH-EXP-21) rather than losing anything.
+        const anchorEnd = _cmhFirstStripAnchor(src, kind, name);
+        if (anchorEnd < 0 || anchorEnd >= m.index + marker.length) return;
+        throw new Error("Export aborted: this document has an earlier `<!-- " + marker
+          + " -->` than the commentable-html " + name + " region's own BEGIN marker, so a region"
+          + " strip would start there and delete the content in between. It is not on a line of its"
+          + " own, so it reads as a boundary to the strip and not to the region check; write the"
+          + " quoted marker with `&lt;!--` (or move it onto its own line) so it cannot be mistaken"
+          + " for one, then export again.");
+      });
+    });
+  });
+  if (!probes.length) return;
+  const seen = _cmhCommentBorneMarkers(src, probes);
+  // Fail CLOSED. A cross-check that cannot be taken is not a reason to fall back to the text-only
+  // view this exists to correct: refusing costs the reader one export (their comments are safe in
+  // storage), while accepting can delete authored content from the copy being written.
+  if (!seen) {
+    throw new Error("Export aborted: the commentable-html region markers could not be cross-checked "
+      + "against this document's own parse, so a region strip cannot be aimed safely. Reload the "
+      + "document and export again.");
+  }
+  for (let i = 0; i < probes.length; i += 1) {
+    if (seen[String(i)]) continue;
+    const p = probes[i];
+    throw new Error("Export aborted: the " + p.kind + " marker for commentable-html region " + p.name
+      + " is written as an HTML comment the document does not parse as one - a browser builds no"
+      + " comment there, so it is text inside a <script>, <textarea> or <title> body, or markup"
+      + " parked in an inert <template>. A region strip would anchor on it and cut from the wrong"
+      + " place; write the marker as its own `<!-- " + p.kind + ": commentable-html - " + p.name
+      + " -->` comment in the document proper.");
+  }
 }
 // Insert `insertion` immediately before the LAST occurrence of </tag>. The real
 // closing tag of a well-formed document is the last one; earlier matches can sit

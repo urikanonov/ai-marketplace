@@ -983,6 +983,29 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
                 self.assertTrue(any("inside a raw-text body" in e for e in errors),
                                 "%s: %r" % (tag, errors))
 
+    def test_a_damaged_region_whose_only_marker_is_quoted_in_a_script_is_refused(self):
+        # The damaged-region case: the layer's OWN END marker is botched by a hand edit and an
+        # authored <script> in the CONTENT region quotes the marker on a line of its own, so the
+        # TEXT count is exactly 1 and the region looks well formed. The marker a browser reads is
+        # the authored quotation, which is no boundary at all - and a region strip anchored on it
+        # cuts from the real BEGIN through the author's content. Refusing it here is the SAME
+        # answer the runtime export gate now gives (CMH-EXP-22), so the two views agree.
+        marker = "<!-- END: commentable-html - EMBEDDED COMMENTS -->"
+        quoted = ('<script type="text/plain" id="cmhAuthoredMarkerSample">\n'
+                  + marker + "\n</script>")
+        main = MAIN.replace("  <p>content</p>", "  " + quoted)
+        self.assertNotEqual(main, MAIN, "fixture premise: the content placeholder was replaced")
+        damaged = EMBEDDED_REGION.replace(
+            marker, "<!-- END: commentable-html - EMBEDDED COMMENTS (damaged) -->")
+        self.assertNotEqual(damaged, EMBEDDED_REGION,
+                            "fixture premise: the region's own END marker was damaged")
+        doc = build(body=[HANDLED_REGION, damaged, comment_ui(), main, JS_REGION])
+        from checks.parsing import _region_marker_matches
+        self.assertEqual(len(_region_marker_matches(doc, "END", "EMBEDDED COMMENTS")), 1,
+                         "fixture premise: the text scan counts exactly one END marker")
+        errors, _warnings = _validate_text(doc)
+        self.assertTrue(any("inside a raw-text body" in e for e in errors), errors)
+
     def test_a_marker_comment_the_boundary_reader_rejects_is_refused(self):
         # The count view reads a marker LINE out of a comment; the chart-init guard's boundary
         # reader accepts only the marker itself (optionally on its own line and `=`-decorated,
