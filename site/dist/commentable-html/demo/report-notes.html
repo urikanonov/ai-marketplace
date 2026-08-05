@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.699.0" />
+<meta name="commentable-html-version" content="1.701.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.699.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.701.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Design review sign-off</title>
 
@@ -4490,7 +4490,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.699.0";
+const CMH_VERSION = "1.701.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -16555,6 +16555,51 @@ function applyPersistedTableSorts() {
     try { _sortRows(p.body, p.state.col, p.state.dir); } catch (e) { /* sort the rest */ }
   });
 }
+// A sort changes the clicked table's TEXT as its ancestors' cells read it, and an outer table sorted
+// on a column whose cells HOLD that table was ranked against the OLD order. Nothing re-ranked an
+// ancestor when a descendant moved, so a reader who sorted the outer table FIRST and the nested one
+// second was left looking at an order the innermost-first load replay never reproduces (#1053). The
+// alternative - making an outer sort key ignore nested-table text - was rejected: it would silently
+// rank a column that holds nothing but a nested table as empty, which is a worse surprise than the
+// replay mismatch. So re-apply each sortable ANCESTOR's persisted sort, nearest first (its own move
+// then re-ranks ITS ancestor), which makes the live view the replay's own answer for either click
+// order. UNSORT before re-sorting: `_sortRows` breaks ties on a row's CURRENT index and the replay
+// always sorts from the authored order, so re-sorting an already-sorted ancestor in place could
+// settle ties on an order the replay never reaches.
+function _reapplyAncestorSorts(t) {
+  let cur = t.parentElement ? t.parentElement.closest("table") : null;
+  if (!cur) return;
+  const all = _sortableTables();
+  // Re-ranking an ancestor permutes the row that HOLDS this table, and the slot swap detaches and
+  // re-inserts that row - taking the chevron the reader just pressed with it, which drops focus to
+  // <body>. Nothing else here moves the actuated control (a table's own chevrons live in its thead,
+  // which is never permuted), so put focus back rather than dumping a keyboard reader mid-sort. The
+  // restore deliberately does NOT pass preventScroll: the control physically moved, so following it
+  // is the point - pinning the viewport could leave the focused chevron off-screen on a tall table.
+  const focused = document.activeElement;
+  while (cur) {
+    const i = all.indexOf(cur);
+    if (i >= 0) {
+      const st = _tableSortState[_tableKeyFor(cur, i)];
+      // One ancestor that cannot be re-ranked must not swallow the click that reached this handler,
+      // nor stop a further-out ancestor being re-ranked. It is left UNSORTED rather than put back:
+      // that is exactly what the load replay does with a sort that throws, so the live view still
+      // agrees with the order a reload produces.
+      if (_validSortState(st)) {
+        try {
+          const body = _tableBody(cur);
+          _unsortRows(body);
+          _sortRows(body, st.col, st.dir);
+        } catch (e) { /* re-rank the rest */ }
+      }
+    }
+    cur = cur.parentElement ? cur.parentElement.closest("table") : null;
+  }
+  if (focused && focused !== document.activeElement && focused.isConnected
+    && typeof focused.focus === "function") {
+    focused.focus();
+  }
+}
 function _reflectSortIco(btn, dir) {
   btn.dataset.dir = dir || "";
   btn.setAttribute("aria-pressed", dir ? "true" : "false");
@@ -16590,6 +16635,7 @@ function setupSortableTables() {
         else dir = "asc";
         if (dir === "") { delete _tableSortState[key]; _unsortRows(body); }
         else { _tableSortState[key] = { col: ci, dir: dir }; _sortRows(body, ci, dir); }
+        _reapplyAncestorSorts(t);
         _saveTableSortState();
         [...hdr.cells].forEach(function (h2, cj) {
           const b2 = cmhOwnChrome(h2, ":scope > .cmh-sort-ctrl");

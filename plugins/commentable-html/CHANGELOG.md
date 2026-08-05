@@ -4,6 +4,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.701.0] - 2026-08-05
+
+### Fixed
+
+- Sorting a table nested inside another sortable table now re-applies every sortable ancestor's
+  persisted sort, nearest first. An outer table sorted on a column whose cells HOLD a nested table
+  ranks its rows by that cell's text, so a reader who sorted the outer table FIRST and the nested
+  one second was left looking at an order ranked against the nested table's old rows - one that a
+  reload (which replays the persisted sorts innermost-first) and an export never reproduced. Each
+  ancestor is unsorted before it is re-sorted, matching the replay's authored-order starting point,
+  so the live view is exactly what a reload gives back for either click order. Clearing a nested
+  sort re-ranks its ancestors too, and because re-ranking an ancestor detaches and re-inserts the
+  row that holds the clicked table, focus is restored to the chevron the reader actuated instead of
+  being dropped on the document body (CMH-CONTENT-08).
+
 ## [1.699.0] - 2026-08-05
 
 ### Changed
