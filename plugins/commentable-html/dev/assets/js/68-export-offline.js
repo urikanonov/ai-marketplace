@@ -546,7 +546,7 @@ function _offlineScriptHasNetworkImport(body) {
 // incidental rather than a defence - the same whitespace makes an arbitrary `zzz . location` match
 // - and the corpus pins it beside a non-escaped control so it cannot be read as one. The same
 // literal matching runs the other way too, and that direction costs an author content rather than
-// letting a beacon out: `_offlineLocalLocationIndex` reads a local `location` binding literally, so
+// letting a beacon out: `_OFFLINE_LOCAL_LOCATION_RE` reads a local `location` binding literally, so
 // an ESCAPED declaration does not register as a shadow and a script that navigates nothing is
 // deleted whole. Both are DECIDED rather than overlooked. Recognizing each name as literal-or-
 // escaped per character is possible without backtracking, but it turns a plain literal anchor
@@ -591,33 +591,21 @@ const _OFFLINE_NAV_IDENT_RE = /[.A-Za-z0-9_$]/;
 const _OFFLINE_NAV_STATEMENT_RE = /[;})>\n\r\u2028\u2029]/;
 const _OFFLINE_NAV_LINE_BREAK_RE = /[\n\r\u2028\u2029]/;
 const _OFFLINE_NAV_PREFIX_NAMES = ["window", "self", "top", "parent", "globalThis", "document", "frames"];
-// A LOCAL binding named `location` - a declaration keyword, a destructuring declaration naming it,
-// a function parameter, or a catch binding. It decides whether the UNPREFIXED sinks still count,
-// so matching text that declares nothing WEAKENS the navigation check; every place the name can
-// appear therefore needs a boundary on BOTH sides. It is a SCAN for the same reason the sink
-// search above is, and the reason is the CONSTANT rather than the growth: spelled as one pattern
-// searched over the whole script, its two WINDOWED arms re-walked a bounded 400-character
-// lookahead at EVERY declaration anchor, so a densely packed near-match (`const{` or `var[`
-// repeated) cost ~2.7us per character in Python and ~0.4us in node - linear, but an order above
-// the anchored sink scan beside it, on input that includes the vendored payload's INFLATED bytes.
-// Every shape ends in the literal `location`, so the scan is driven from THAT anchor - and every
-// arm's HEAD is then a forward-only cursor over the same text, so a head is never re-read.
-// Each cursor yields the position just PAST its head: the keyword and `catch` arms declare when a
-// head ends exactly AT the anchor, and the two windowed arms take the last head ending at or
-// before it, whose final character is the opener. Walking a head BACKWARDS from the anchor instead
-// would have been the same defect one level down - the whitespace run in `const<WS>location` is
-// unbounded, so a per-character backwards walk over it is paid per anchor.
-// Each cursor resumes on its match's LAST character rather than past it, because a head
-// can begin on that character (`var {let [`, or a keyword whose boundary character is the
-// preceding run's final space) and that inner head owns a different opener, while nothing further
-// in is a legal head start, so a matched head is never re-read.
-const _OFFLINE_LOCAL_NAME_RE = /location(?![A-Za-z0-9_$])/gi;
-const _OFFLINE_LOCAL_KEYWORD_HEAD_RE = /(?:^|[^.A-Za-z0-9_$])(?:var|let|const|function|class)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+/gi;
-const _OFFLINE_LOCAL_CATCH_HEAD_RE = /(?:^|[^.A-Za-z0-9_$])catch[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*\([ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*/gi;
-const _OFFLINE_LOCAL_BRACKET_HEAD_RE = /(?:^|[^.A-Za-z0-9_$])(?:var|let|const)[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*[{\[]/gi;
-const _OFFLINE_LOCAL_PAREN_HEAD_RE = /(?:^|[^.A-Za-z0-9_$])function(?![A-Za-z0-9_$])[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*(?:[A-Za-z0-9_$]{1,100}[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*)?\(/gi;
-const _OFFLINE_LOCAL_IDENT_RE = /[A-Za-z0-9_$]/;
-const _OFFLINE_LOCAL_WINDOW_MAX = 400;
+const _OFFLINE_SHADOW_IDENT_ASCII_RE = /[A-Za-z0-9_$]/;
+// `import` and `using` are here because a named `import` and `using location = res` bind the name
+// exactly as `const` does. Neither is a reserved word in every position, so a declaration is only
+// recognized when the keyword is FOLLOWED by the name or pattern it binds
+// (`_offlineShadowDeclStarts`), which is what keeps the expression and call spellings out of
+// binding mode.
+const _OFFLINE_SHADOW_DECL_KEYWORDS = ["var", "let", "const", "import", "using"];
+const _OFFLINE_SHADOW_NON_METHOD = ["if", "while", "for", "switch", "with", "do", "else", "return", "typeof", "void", "delete", "new", "in", "of", "instanceof", "case", "throw", "yield", "await", "function", "catch", "try", "finally", "var", "let", "const", "class", "import", "export", "default", "break", "continue", "debugger", "this", "super", "null", "true", "false"];
+const _OFFLINE_SHADOW_REGEX_PRECEDERS = ["return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "throw", "case", "do", "else", "yield", "await"];
+const _OFFLINE_SHADOW_COMPOUND_OPS = ["=", "!", "<", ">", "+", "-", "*", "/", "%", "&", "|", "^"];
+// The deepest bracket nesting the frame stack tracks. Beyond it the scan keeps COUNTING depth but
+// stops allocating, so a hostile script that is nothing but openers costs constant memory instead of
+// one object per character - 2 million of them measured 168 MB of heap in node, and the export runs
+// in the reviewer's own tab. Real nesting is two orders of magnitude below this.
+const _OFFLINE_SHADOW_MAX_DEPTH = 1000;
 function _offlineNavAsciiLower(text) {
   let out = "";
   for (let i = 0; i < text.length; i++) {
@@ -701,75 +689,366 @@ function _offlineNavSinkIndex(src, prefixedOnly) {
   }
   return -1;
 }
-// The bounded `(?:[^C]{0,399}[^CA-Za-z0-9_$])?` window between a declaration opener and the name.
-// `closers` is what the window may not contain - `}]` for the destructuring arm, `)` for the
-// parameter-list arm. Only the LAST opener before the anchor needs testing: an earlier one has a
-// SUPERSET window (so it fails whatever the nearest one fails on), and the "character before the
-// name is not an identifier character" rule does not depend on which opener it is except when the
-// opener sits right against the name, which is the nearest one.
-function _offlineLocalWindowOk(src, opener, at, closers) {
-  if (opener < 0 || at - opener > _OFFLINE_LOCAL_WINDOW_MAX + 1) return false;
-  if (opener < at - 1 && _OFFLINE_LOCAL_IDENT_RE.test(src.charAt(at - 1))) return false;
-  const window = src.slice(opener + 1, at);
-  for (let i = 0; i < closers.length; i++) {
-    if (window.indexOf(closers.charAt(i)) >= 0) return false;
-  }
-  return true;
+// Does this script declare its OWN binding named `location`? Decided by TOKENIZING the declaration
+// rather than by matching a character window over raw source, and MIRRORED helper for helper by
+// `_offline_shadow_*` in the strict validator (`tools/validate/checks/resources.py`).
+// This arm is a FALSE-POSITIVE REDUCER, not a security boundary. An author who wants an unprefixed
+// sink ignored already has the aliasing bypass the CMH-OFFLINE-05 residual accepts, so a wrong
+// SHADOW costs nothing new; a missed binding, on the other hand, deletes a script that navigates
+// nothing. The window this replaced was wrong in both directions at once: a `location` merely
+// MENTIONED in a comment, a string or a parameter default disarmed it, while a real binding it
+// could not see (an arrow parameter, a method or `constructor` shorthand, a generator, a nested
+// pattern that spends a bracket inside the window, a comment after `catch (`, a non-ASCII function
+// name, anything past 400 characters) was missed. Neither was fixable inside the window: a boundary
+// allowlist rejects the legitimate `const {href: location}` rename, and a non-ASCII identifier class
+// breaks a real `var location<NBSP>= 1`, NBSP being JS whitespace.
+// One LEFT-TO-RIGHT pass, no backtracking: each character is classified once, each comment, string,
+// template and regex literal is skipped once, and the only look-ahead is a peek at the token that
+// follows a name or a `)`, which reads the run after that token and nothing else - so the pass is
+// linear, which is what #973 and #1045 bought and must not be traded away.
+function _offlineShadowIdentChar(ch) {
+  if (_OFFLINE_SHADOW_IDENT_ASCII_RE.test(ch)) return true;
+  return ch.charCodeAt(0) >= 128 && !_OFFLINE_NAV_WS_RE.test(ch);
 }
-// The next declaration head at or after `pos`, as [end index, resume position]. The end index is
-// the position the name would have to start at. The resume position is the head's LAST character
-// rather than the one past it, because a head can begin on that character (`var {` followed by
-// `let [`, or a keyword whose boundary character is the previous head's final space) and the inner
-// head owns a different opener - but nothing between a head's start and its last character can
-// begin another one, since every character in there is a keyword letter, an identifier character
-// or whitespace, and a head must open on a NON-identifier boundary followed immediately by a
-// keyword. So the cursor never re-reads a head it has already matched.
-function _offlineLocalNextHead(src, rx, pos) {
-  rx.lastIndex = pos;
-  const m = rx.exec(src);
-  if (!m) return [-1, src.length + 1];
-  const end = m.index + m[0].length;
-  return [end, end - 1];
+function _offlineShadowLineEnd(src, i) {
+  while (i < src.length && !_OFFLINE_NAV_LINE_BREAK_RE.test(src.charAt(i))) i++;
+  return i;
 }
-// The index of the first `location` the script declares as a LOCAL binding, or -1. All four
-// cursors only ever move FORWARD, so no character of the script is examined twice and a `location`
-// anchor costs a handful of integer comparisons plus, at most, the two bounded window tests.
-function _offlineLocalLocationIndex(src) {
-  let keyword = _offlineLocalNextHead(src, _OFFLINE_LOCAL_KEYWORD_HEAD_RE, 0);
-  let group = _offlineLocalNextHead(src, _OFFLINE_LOCAL_CATCH_HEAD_RE, 0);
-  let bracket = _offlineLocalNextHead(src, _OFFLINE_LOCAL_BRACKET_HEAD_RE, 0);
-  let paren = _offlineLocalNextHead(src, _OFFLINE_LOCAL_PAREN_HEAD_RE, 0);
-  let bracketSeen = -1;
-  let parenSeen = -1;
-  _OFFLINE_LOCAL_NAME_RE.lastIndex = 0;
-  for (let m = _OFFLINE_LOCAL_NAME_RE.exec(src); m; m = _OFFLINE_LOCAL_NAME_RE.exec(src)) {
-    const at = m.index;
-    _OFFLINE_LOCAL_NAME_RE.lastIndex = at + 1;
-    // Each cursor stops at the FIRST head end at or after the anchor, which is the smallest one
-    // because a pattern's head ends are non-decreasing in their start order (two starts can SHARE
-    // an end - `function function(` ends both parameter heads on the same `(` - but a longer head
-    // can never precede a shorter one).
-    while (keyword[0] >= 0 && keyword[0] < at) {
-      keyword = _offlineLocalNextHead(src, _OFFLINE_LOCAL_KEYWORD_HEAD_RE, keyword[1]);
-    }
-    while (group[0] >= 0 && group[0] < at) {
-      group = _offlineLocalNextHead(src, _OFFLINE_LOCAL_CATCH_HEAD_RE, group[1]);
-    }
-    // The windowed arms want the last head ENDING at or before the anchor, since its final
-    // character is the opener the window is measured from.
-    while (bracket[0] >= 0 && bracket[0] <= at) {
-      bracketSeen = bracket[0] - 1;
-      bracket = _offlineLocalNextHead(src, _OFFLINE_LOCAL_BRACKET_HEAD_RE, bracket[1]);
-    }
-    while (paren[0] >= 0 && paren[0] <= at) {
-      parenSeen = paren[0] - 1;
-      paren = _offlineLocalNextHead(src, _OFFLINE_LOCAL_PAREN_HEAD_RE, paren[1]);
-    }
-    if (keyword[0] === at || group[0] === at) return at;
-    if (_offlineLocalWindowOk(src, bracketSeen, at, "}]")) return at;
-    if (_offlineLocalWindowOk(src, parenSeen, at, ")")) return at;
+// An HTML comment opener is a line comment in a classic script (Annex B), so text after it is not
+// code. The opener is ASSEMBLED rather than written out: this file is served INSIDE a script
+// element, and a literal one in script data puts the HTML parser into its escaped state, after
+// which the next start-tag sequence in the layer's own text starts double-escaped data and the end
+// tag stops ending the element - which silently breaks the runtime in every document that embeds
+// it. For the same reason no comment here may spell either tag out.
+const _OFFLINE_SHADOW_HTML_COMMENT = "<" + "!--";
+function _offlineShadowSkipComment(src, i) {
+  if (src.startsWith("//", i) || src.startsWith(_OFFLINE_SHADOW_HTML_COMMENT, i)) return _offlineShadowLineEnd(src, i + 2);
+  if (src.startsWith("/*", i)) {
+    const at = src.indexOf("*/", i + 2);
+    return at < 0 ? src.length : at + 2;
   }
   return -1;
+}
+// The identifier that follows `i`, ASCII-folded, or "" when the next token is not one.
+function _offlineShadowNextWord(src, i) {
+  const n = src.length;
+  while (i < n) {
+    const ch = src.charAt(i);
+    if (_OFFLINE_NAV_WS_RE.test(ch)) { i++; continue; }
+    const skipped = _offlineShadowSkipComment(src, i);
+    if (skipped >= 0) { i = skipped; continue; }
+    if (!_offlineShadowIdentChar(ch)) return "";
+    let j = i + 1;
+    while (j < n && _offlineShadowIdentChar(src.charAt(j))) j++;
+    return _offlineNavAsciiLower(src.slice(i, j));
+  }
+  return "";
+}
+// `same_line` stops at a line terminator, for the two decisions where the grammar forbids one: no
+// LineTerminator may precede `=>`, and a `{` on the next line after a call is a separate block
+// statement rather than a method body (ASI puts a `;` between them).
+function _offlineShadowNextSig(src, i, sameLine) {
+  const n = src.length;
+  while (i < n) {
+    const ch = src.charAt(i);
+    if (_OFFLINE_NAV_WS_RE.test(ch)) {
+      if (sameLine && _OFFLINE_NAV_LINE_BREAK_RE.test(ch)) return "";
+      i++;
+      continue;
+    }
+    const skipped = _offlineShadowSkipComment(src, i);
+    if (skipped >= 0) {
+      if (sameLine && _OFFLINE_NAV_LINE_BREAK_RE.test(src.slice(i, skipped))) return "";
+      i = skipped;
+      continue;
+    }
+    return src.startsWith("=>", i) ? "=>" : ch;
+  }
+  return "";
+}
+// A `'`/`"` literal cannot carry a raw line terminator, so a quote with no partner on its own line
+// is punctuation rather than the start of a literal that swallows the rest of the script - and
+// swallowing it would hide a real binding, the direction that deletes an author's script. A
+// LineContinuation is the exception the check must not trip over: a backslash before CRLF escapes
+// BOTH characters, and reading only the CR left the LF looking like a bare line terminator, which
+// ended the literal and handed its text to the tokenizer as code.
+function _offlineShadowSkipQuoted(src, i) {
+  const quote = src.charAt(i);
+  const n = src.length;
+  let j = i + 1;
+  while (j < n) {
+    const ch = src.charAt(j);
+    if (ch === "\\") { j += src.startsWith("\r\n", j + 1) ? 3 : 2; continue; }
+    if (ch === quote) return j + 1;
+    if (_OFFLINE_NAV_LINE_BREAK_RE.test(ch)) return -1;
+    j++;
+  }
+  return -1;
+}
+// Returns `[index, opened]`, where `opened` says a `${` substitution was entered - what follows is
+// CODE, and an arrow parameter inside one binds a name like any other.
+function _offlineShadowSkipTemplate(src, i) {
+  const n = src.length;
+  let j = i + 1;
+  while (j < n) {
+    const ch = src.charAt(j);
+    if (ch === "\\") { j += src.startsWith("\r\n", j + 1) ? 3 : 2; continue; }
+    if (ch === "`") return [j + 1, false];
+    if (ch === "$" && src.charAt(j + 1) === "{") return [j + 2, true];
+    j++;
+  }
+  return [n, false];
+}
+function _offlineShadowSkipRegex(src, i) {
+  const n = src.length;
+  let j = i + 1;
+  let inClass = false;
+  while (j < n) {
+    const ch = src.charAt(j);
+    if (ch === "\\") { j += 2; continue; }
+    if (_OFFLINE_NAV_LINE_BREAK_RE.test(ch)) return -1;
+    if (inClass) {
+      if (ch === "]") inClass = false;
+    } else if (ch === "[") {
+      inClass = true;
+    } else if (ch === "/") {
+      j++;
+      while (j < n && _offlineShadowIdentChar(src.charAt(j))) j++;
+      return j;
+    }
+    j++;
+  }
+  return -1;
+}
+function _offlineShadowRegexOk(prev, prevWord) {
+  if (prev === "w") return _OFFLINE_SHADOW_REGEX_PRECEDERS.indexOf(prevWord) >= 0;
+  return prev !== ")" && prev !== "]";
+}
+// A declaration keyword is followed by the name or pattern it binds, so anything else means the
+// word is not opening a declaration at all: a dynamic `import` call and `import.meta` are
+// expressions, a side-effect `import "./x"` and a `using` CALL bind nothing, and `{const: 1}` or
+// `{let: 1}` is a property key. Every one of those used to put the enclosing frame into binding
+// mode and report a shadow for the next `location` it saw, which suppressed a real sink.
+function _offlineShadowDeclStarts(after) {
+  if (after === "{" || after === "[" || after === "*") return true;
+  return after.length === 1 && _offlineShadowIdentChar(after);
+}
+function _offlineShadowFrame(ch, binding, decl, key, opener, template) {
+  return { ch: ch, binding: binding, decl: decl, key: key, named: false, inDefault: false, candidate: false, opener: opener, template: template };
+}
+// A frame is pushed per bracket. It is a BINDING context when it is a declaration list, a parameter
+// list (`function`, a generator, `catch`, a method or `constructor` shorthand, an arrow) or a
+// destructuring pattern nested inside one, and an EXPRESSION context otherwise. Inside a binding
+// context a name is a binding unless it is a property KEY, a computed key, or sits in a
+// default-value expression - the shapes that used to disarm the rule by merely mentioning the name.
+function _offlineLocalLocationShadow(src) {
+  const n = src.length;
+  const stack = [_offlineShadowFrame("", false, false, false, "", false)];
+  let overDepth = 0;
+  let pendingParams = false;
+  let expectName = false;
+  let pendingBreak = false;
+  let prev = "";
+  let prevWord = "";
+  let noRegexBefore = 0;
+  let i = 0;
+  while (i < n) {
+    const frame = stack[stack.length - 1];
+    const ch = src.charAt(i);
+    if (_OFFLINE_NAV_WS_RE.test(ch)) {
+      if (_OFFLINE_NAV_LINE_BREAK_RE.test(ch)) pendingBreak = true;
+      i++;
+      continue;
+    }
+    if (ch === "/" || ch === "<") {
+      const skipped = _offlineShadowSkipComment(src, i);
+      if (skipped >= 0) {
+        // A comment can carry the line break that ends a declaration, so it feeds the same ASI
+        // flag rather than being skipped silently.
+        if (_OFFLINE_NAV_LINE_BREAK_RE.test(src.slice(i, skipped))) pendingBreak = true;
+        i = skipped;
+        continue;
+      }
+    }
+    // ASI ends a declaration at a line break once it has bound a name, unless the next token
+    // continues the list. Without this, `let x` on its own line put every following `location` in
+    // binding position and reported a shadow the source never declared. The decision is made HERE,
+    // at the first token after the break, rather than by peeking from the break: peeking re-scanned
+    // the whole run of trivia at every newline in it, which is quadratic (20,000 newlines cost 4.5s
+    // in node and 57s in Python).
+    if (pendingBreak) {
+      pendingBreak = false;
+      if (frame.decl && frame.named && !frame.inDefault) {
+        if (!(ch === "," || (ch === "=" && !src.startsWith("=>", i)))) {
+          frame.binding = false;
+          frame.decl = false;
+          frame.named = false;
+        }
+      }
+    }
+    if (ch === "/") {
+      if (i >= noRegexBefore && _offlineShadowRegexOk(prev, prevWord)) {
+        const end = _offlineShadowSkipRegex(src, i);
+        if (end >= 0) { i = end; prev = "]"; prevWord = ""; continue; }
+        // A literal that never closes would be re-scanned from every later `/` on the same line,
+        // which is quadratic; one failed scan settles the whole line instead.
+        noRegexBefore = _offlineShadowLineEnd(src, i);
+      }
+      prev = "/"; prevWord = ""; i++; continue;
+    }
+    if (ch === "'" || ch === '"') {
+      const end = _offlineShadowSkipQuoted(src, i);
+      if (end >= 0) { i = end; prev = "]"; prevWord = ""; continue; }
+      prev = ch; prevWord = ""; i++; continue;
+    }
+    if (ch === "`") {
+      const scanned = _offlineShadowSkipTemplate(src, i);
+      i = scanned[0];
+      if (scanned[1]) {
+        if (stack.length < _OFFLINE_SHADOW_MAX_DEPTH) stack.push(_offlineShadowFrame("$", false, false, false, "", true));
+        else overDepth++;
+      }
+      prev = "]"; prevWord = ""; continue;
+    }
+    if (_offlineShadowIdentChar(ch)) {
+      let j = i + 1;
+      while (j < n && _offlineShadowIdentChar(src.charAt(j))) j++;
+      const word = _offlineNavAsciiLower(src.slice(i, j));
+      const member = prev === ".";
+      i = j;
+      prev = "w";
+      prevWord = member ? "" : word;
+      if (member) continue;
+      if (expectName) {
+        // The name a `function` or `class` declaration binds.
+        expectName = false;
+        if (word === "location") return true;
+        continue;
+      }
+      if (_OFFLINE_SHADOW_DECL_KEYWORDS.indexOf(word) >= 0) {
+        if (_offlineShadowDeclStarts(_offlineShadowNextSig(src, i, false))) {
+          frame.binding = true;
+          frame.decl = true;
+          frame.named = false;
+          frame.inDefault = false;
+        }
+        continue;
+      }
+      if (word === "function" || word === "class" || word === "catch") {
+        // Gated the same way a declaration keyword is: `{class: location}` and
+        // `[{catch: 1}, f(location)]` are property KEYS, and letting them arm the
+        // name/parameter-list state made an unrelated later call look like a declaration.
+        if (_offlineShadowNextSig(src, i, false) !== ":") {
+          expectName = word !== "catch";
+          pendingParams = word !== "class";
+        }
+        continue;
+      }
+      if ((word === "of" || word === "in") && frame.ch === "(" && frame.binding) {
+        // The head of `for (const x of EXPR)` turns to an EXPRESSION after `of`/`in`, exactly as a
+        // declarator does after `=`. Without this, the ordinary
+        // `for (const [k, v] of Object.entries({location, ...}))` idiom read `location` as a nested
+        // pattern and reported a shadow nothing declared.
+        frame.inDefault = true;
+        continue;
+      }
+      if (frame.binding && !frame.inDefault) frame.named = true;
+      if (word !== "location") continue;
+      // A property KEY, a member access, a call or an index - a declarator name is never followed
+      // by any of them, so none of these is the binding the arm looks for.
+      const nextAfterName = _offlineShadowNextSig(src, i, false);
+      if (nextAfterName === ":" || nextAfterName === "." || nextAfterName === "(" || nextAfterName === "[") continue;
+      // `import {location as renamed}` binds `renamed`; the name before `as` is the imported one,
+      // exactly like the key half of `{location: renamed}`.
+      if (_offlineShadowNextWord(src, i) === "as") continue;
+      if (frame.binding && !frame.inDefault) return true;
+      // The arrow test comes BEFORE the default-value skip: `let f = location => {}` reads
+      // `location` inside an initializer, and it is still that arrow's parameter.
+      if (_offlineShadowNextSig(src, i, true) === "=>") return true;
+      if (frame.inDefault) continue;
+      frame.candidate = true;
+      continue;
+    }
+    if (ch === "(" || ch === "[" || ch === "{") {
+      const params = pendingParams && ch === "(";
+      // A `[` where an object pattern expects a KEY is a computed key, not a nested pattern:
+      // `const {[location]: x}` reads the outer binding rather than declaring one.
+      const computedKey = ch === "[" && frame.ch === "{" && (prev === "{" || prev === ",");
+      const binding = params || (frame.binding && !frame.inDefault && !computedKey);
+      // A parameter list carries no opener, so the method rule below cannot fire on the function's
+      // own name: `function f(a = location) {}` declares no `location`. A `]` or a closing quote IS
+      // kept, because a computed or quoted method name ends in one.
+      const opener = params || ch !== "(" ? "" : (prev === "]" ? "]" : prevWord);
+      if (stack.length < _OFFLINE_SHADOW_MAX_DEPTH) stack.push(_offlineShadowFrame(ch, binding, false, computedKey, opener, false));
+      else overDepth++;
+      pendingParams = false;
+      expectName = false;
+      prev = ch; prevWord = ""; i++; continue;
+    }
+    if (ch === ")" || ch === "]" || ch === "}") {
+      if (overDepth > 0) {
+        overDepth--;
+      } else if (stack.length > 1) {
+        const done = stack.pop();
+        const parent = stack[stack.length - 1];
+        if (done.template && ch === "}") {
+          const scanned = _offlineShadowSkipTemplate(src, i);
+          i = scanned[0];
+          if (scanned[1]) {
+            if (stack.length < _OFFLINE_SHADOW_MAX_DEPTH) stack.push(_offlineShadowFrame("$", false, false, false, "", true));
+            else overDepth++;
+          }
+          prev = "]"; prevWord = ""; continue;
+        }
+        if (ch === ")" && done.candidate) {
+          // `=>` may not be preceded by a line terminator, and a `{` on a later line is a separate
+          // block statement - `report(location)` then a block is a CALL, not a method definition -
+          // so both peeks are same-line. A method shorthand also only exists inside an object
+          // literal or a class body.
+          const after = _offlineShadowNextSig(src, i + 1, true);
+          if (after === "=>") return true;
+          if (after === "{" && parent.ch === "{" && done.opener &&
+              _OFFLINE_SHADOW_NON_METHOD.indexOf(done.opener) < 0) return true;
+        }
+        // A name read inside a computed KEY, or inside a default-value expression, is a reference
+        // rather than a parameter, so it must not travel outwards and make the group it sits in
+        // look like a parameter list: `(q = foo(location)) => {}` and `({[location]: x}) => {}`
+        // declare nothing.
+        if (done.candidate && !done.key && !parent.inDefault) parent.candidate = true;
+        if (parent.binding && !parent.inDefault) parent.named = true;
+      }
+      // A keyword read INSIDE a group cannot arm a bracket outside it.
+      pendingParams = false;
+      expectName = false;
+      prev = ch; prevWord = ""; i++; continue;
+    }
+    if (ch === "." && src.startsWith("...", i)) {
+      // A rest element is a BINDING (`function f(...location)`, `const {a, ...location}`), so its
+      // dots must not leave the name looking like a member access.
+      i += 3; prev = ","; prevWord = ""; continue;
+    }
+    if ((ch === "+" && src.startsWith("++", i)) || (ch === "-" && src.startsWith("--", i))) {
+      // A postfix `++`/`--` ends a VALUE, so the `/` after it divides rather than opening a regex
+      // literal whose scan would swallow the declaration behind it.
+      i += 2; prev = "]"; prevWord = ""; continue;
+    }
+    if (ch === ";") {
+      frame.binding = false;
+      frame.decl = false;
+      frame.named = false;
+      frame.inDefault = false;
+      pendingParams = false;
+      expectName = false;
+    } else if (ch === ",") {
+      frame.inDefault = false;
+      frame.named = false;
+    } else if (ch === "=") {
+      if (src.startsWith("=>", i)) { i += 2; prev = ">"; prevWord = ""; continue; }
+      if (!src.startsWith("==", i) && _OFFLINE_SHADOW_COMPOUND_OPS.indexOf(prev) < 0) frame.inDefault = true;
+    }
+    prev = ch; prevWord = ""; i++;
+  }
+  return false;
 }
 function _offlineScriptNavigatesToNetwork(body) {
   const src = String(body || "");
@@ -781,7 +1060,7 @@ function _offlineScriptNavigatesToNetwork(body) {
   // one no matter what a local `location` shadows. This costs nothing an attacker did not already
   // have - aliasing (`var l = location; l.href = <url>`) is a cheaper bypass that has always
   // worked, and both are listed in the CMH-OFFLINE-05 residual.
-  if (_offlineLocalLocationIndex(src) >= 0) return _offlineNavSinkIndex(src, true) >= 0;
+  if (_offlineLocalLocationShadow(src)) return _offlineNavSinkIndex(src, true) >= 0;
   return true;
 }
 function _offlineScriptHasNetworkEgress(body) {

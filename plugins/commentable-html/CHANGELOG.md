@@ -4,6 +4,30 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.702.0] - 2026-08-05
+
+### Fixed
+
+- The offline shadow rule now decides on the SCRIPT'S OWN DECLARATIONS instead of a bounded
+  character window over raw source, so it stops deleting scripts that navigate nothing
+  (CMH-OFFLINE-05). The window could not see an arrow parameter, a method or `constructor`
+  shorthand, a generator, a nested destructuring or a default that spent a `}`, `]` or `)`
+  inside it, a comment between `catch (` and the name, a non-ASCII function name, or any binding
+  more than 400 characters into the list - every one of those made `Export Offline` drop an
+  author's script whole and made `validate.py --strict` reject the file the exporter had just
+  written. It also read a `location` merely MENTIONED in a comment, a string or a parameter
+  default as a declaration, which suppressed a real unprefixed sink beside it. The rule is now a
+  single left-to-right tokenizing pass (comments, string and template literals and regex literals
+  skipped; declaration lists, parameter lists and destructuring patterns tracked as binding
+  contexts; property keys and default-value expressions excluded), mirrored helper for helper in
+  the exporter and the strict validator and pinned in both engines. It stays linear on adversarial
+  input, and the arm is now recorded as what it is: a false-positive reducer, not a security
+  boundary.
+  This REPLACES the anchor-driven cursor scan added in 1.699.0: that change made the same
+  character-window decision cheap, and tokenizing the declaration removes the window (and so
+  the cursors, their head patterns and their tests) outright, at a comparable cost per
+  character.
+
 ## [1.701.0] - 2026-08-05
 
 ### Fixed
