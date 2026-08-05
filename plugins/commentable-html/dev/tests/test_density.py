@@ -166,6 +166,11 @@ class DensityAdvisoryTests(unittest.TestCase):
         self.assertEqual(len(warnings), 1)
         self.assertIn('"Section"', warnings[0])
 
+        half = LONG[:len(LONG) // 2]
+        nested_p = '<p>%s<span class="cm-skip"><p>ignore</p></span>%s</p>' % (half, half)
+        self.assertTrue(density.check_density(_doc(nested_p * 4))[1],
+                        "a paragraph inside inline cm-skip must not finalize the outer capture")
+
     def test_cmh_val_15_block_cm_skip_breaks_run_after_unclosed_paragraph(self):
         # A block-level cm-skip implicitly closes an open (unclosed) paragraph and breaks the run,
         # so paragraphs separated by block cm-skip blocks are not one consecutive wall.
@@ -331,6 +336,23 @@ class DensityAdvisoryTests(unittest.TestCase):
         self.assertTrue(density.check_density(_doc(para * 4))[1],
                         "an inline template must not split the paragraph around it")
 
+        # A block inside a template belongs to the fragment's own tree. It cannot trigger HTML's
+        # implicit paragraph close in the outer document.
+        para = "<p>%s<template><div>parked</div></template>%s</p>" % (half, half)
+        self.assertTrue(density.check_density(_doc(para * 4))[1],
+                        "a template-parked block must not close the outer paragraph")
+
+        # The inner paragraph and its closer are scoped to the inert fragment; closing it must not
+        # finalize the live paragraph capture that surrounds the template.
+        para = "<p>%s<template><p>parked</p></template>%s</p>" % (half, half)
+        self.assertTrue(density.check_density(_doc(para * 4))[1],
+                        "an inner </p> must not finalize the outer paragraph")
+
+        body = "<h2>Live <template><h2>Parked</h2></template>Heading</h2>%s" % (_p(LONG) * 4)
+        _errors, warnings = density.check_density(_doc_body(body))
+        self.assertTrue(any('"Live Heading"' in warning for warning in warnings))
+        self.assertFalse(any('"Live"' in warning for warning in warnings))
+
     def test_cmh_val_15_template_token_in_raw_text_is_not_a_tag(self):
         # Raw-text and RCDATA content is prose a reader SEES, so a `<template>` written inside
         # <title>/<textarea>/<noscript> is text, not a tag, and cannot switch the pass off. The
@@ -350,6 +372,49 @@ class DensityAdvisoryTests(unittest.TestCase):
         # inside it stays text and there is no live prose left to count either way.
         self.assertEqual(density.check_density(_doc("<textarea><template>" + _p(LONG) * 4))[1], [],
                          "an unclosed raw-text element runs to EOF")
+
+    def test_cmh_val_15_foreign_self_closed_template_is_not_inert(self):
+        # A trailing slash really closes a FOREIGN element. An SVG element named `template` is
+        # neither HTML's inert template nor left open, so the prose after the SVG stays live.
+        inner = "<svg><template/></svg>" + _p(LONG) * 4
+        self.assertTrue(density.check_density(_doc(inner))[1],
+                        "a self-closed foreign template must not suppress the following prose")
+        parser = density._DensityParser("<svg><template/>", 1, 1)
+        parser.parse_document("<svg><template/>")
+        self.assertEqual([tag for tag, _frame in parser._stack], ["svg"])
+        self.assertEqual(parser.template_depth, 0)
+        self.assertEqual(len(parser._stack), len(parser._ns))
+
+        parser = density._DensityParser("<svg><template>", 1, 1)
+        parser.parse_document("<svg><template>")
+        self.assertEqual([tag for tag, _frame in parser._stack], ["svg", "template"])
+        self.assertEqual(parser.template_depth, 0,
+                         "a foreign template name must not open an inert HTML fragment")
+
+    def test_cmh_val_15_foreign_raw_text_names_are_parsed_as_markup(self):
+        # SVG title/script bodies stay in the tokenizer's data state. The table in either body is
+        # therefore a real layout boundary, not text swallowed by HTML raw-text handling.
+        for foreign in (
+                "<svg><title><table><tr><td>x</td></tr></table></title></svg>",
+                "<svg><script><table><tr><td>x</td></tr></table></script></svg>"):
+            inner = _p(LONG) * 2 + foreign + _p(LONG) * 2
+            self.assertEqual(density.check_density(_doc(inner))[1], [],
+                             msg="foreign title/script markup must break the prose run: %s" % foreign)
+
+        # A foreign element that merely shares an HTML layout/section name has none of that HTML
+        # element's semantics, so it cannot split an otherwise continuous prose wall.
+        for name in ("figure", "canvas", "section"):
+            inner = _p(LONG) * 2 + "<svg><%s/></svg>" % name + _p(LONG) * 2
+            self.assertTrue(density.check_density(_doc(inner))[1],
+                            msg="a foreign <%s> must not act as an HTML boundary" % name)
+
+    def test_cmh_val_15_self_closed_html_section_stays_open(self):
+        # HTML ignores the slash on a non-void start tag. The wall belongs to the newly opened
+        # headless section, exactly as it does for an ordinary `<section>` start tag.
+        inner = "<section><h2>Outer</h2><section/>%s</section>" % (_p(LONG) * 4)
+        _errors, warnings = density.check_density(_doc_body(inner))
+        self.assertTrue(any('"(untitled section)"' in warning for warning in warnings))
+        self.assertFalse(any('"Outer"' in warning for warning in warnings))
 
     def test_cmh_val_15_template_parked_script_body_does_not_close_the_fragment(self):
         # A `</template>` inside a parked <script> body is script text, not the fragment's closer.

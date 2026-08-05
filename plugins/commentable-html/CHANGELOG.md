@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.689.0] - 2026-08-05
+
+### Fixed
+
+- The information-density advisory now drives the shared browser element-handler sequence and keeps
+  its contribution frames parallel to the shared namespace stack. A self-closed foreign
+  `<template/>` no longer opens an inert HTML fragment and suppresses every later density warning,
+  markup inside an SVG `<title>` or `<script>` is parsed instead of swallowed as HTML raw text, and
+  a slash on a non-void HTML start tag no longer makes the density pass close an element the shared
+  parser leaves open. Same-name paragraph and heading closers inside an inert template also stay
+  scoped to that fragment instead of finalizing live outer prose capture, and a paragraph nested
+  inside inline `cm-skip` no longer finalizes the surrounding live paragraph (CMH-VAL-15).
+
 ## [1.688.0] - 2026-08-05
 
 ### Fixed
