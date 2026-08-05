@@ -394,6 +394,174 @@ class NonShareableTests(unittest.TestCase):
             "  <template>\n" + self._DEMO_MARKUP + "  </template>\n", 1)
         self.assertFalse(validate._is_nonshareable(in_content))
 
+    # -- a foreign-namespace element is not the HTML element it is named after #
+    # No <template> is involved in any of these: an element merely NAMED `script` or `link` inside
+    # <math> is an ordinary unknown MathML element a browser never runs, never loads and never
+    # reveals. (`meta` cannot get there at all - it is an HTML5 foreign BREAKOUT start tag, so a
+    # browser pops the open foreign elements and inserts it in the HTML namespace, which is why
+    # its gate is a provable no-op and has no case here.) The layer views must apply the rule a
+    # BROWSER applies PER NAMESPACE, which is why the SVG control below stays live rather than
+    # being rejected too.
+    _WATCHDOG_JS = ("window.setTimeout(function () { "
+                    "if (!window.__commentableHtmlReady) {} }, 3000);")
+
+    def _in_layer(self, doc, markup):
+        """Put `markup` in the LAYER's own half of a builder document (outside #commentRoot)."""
+        out = doc.replace("<body>\n", "<body>\n" + markup + "\n", 1)
+        self.assertNotEqual(out, doc, "fixture premise: the layer markup was inserted")
+        return out
+
+    def _foreign_watchdog(self, root):
+        return "<%s><script>%s</script></%s>" % (root, self._WATCHDOG_JS, root)
+
+    def test_a_mathml_script_does_not_satisfy_the_bootstrap_watchdog(self):
+        # A browser does not RUN a MathML <script>, so the watchdog never arms and the
+        # missing-asset banner would never reveal itself.
+        doc = self._in_layer(build_nonshareable(watchdog=False), self._foreign_watchdog("math"))
+        self.assertNonShareableWarn(doc, "bootstrap watchdog")
+
+    def test_an_svg_script_still_satisfies_the_bootstrap_watchdog(self):
+        # The control that keeps the rule browser-accurate rather than "reject every foreign
+        # namespace": SVG really defines <script> and a browser really runs an inline one.
+        doc = self._in_layer(build_nonshareable(watchdog=False), self._foreign_watchdog("svg"))
+        errors, warnings = self._validate(doc)
+        self.assertEqual(errors, [], "svg watchdog errors: %r" % errors)
+        self.assertFalse(any("bootstrap watchdog" in w for w in warnings), warnings)
+
+    def test_a_mathml_companion_link_does_not_satisfy_the_stylesheet(self):
+        doc = self._in_layer(build_nonshareable(link=False),
+                             '<math><link rel="stylesheet" href="commentable-html.css"></math>')
+        self.assertEqual(validate._nonshareable_css_refs(doc), [])
+        self.assertNonShareableError(doc, "no commentable-html stylesheet")
+
+    def test_a_mathml_companion_script_ref_does_not_satisfy_the_runtime(self):
+        # An SVG script loads from `href`/`xlink:href` and a MathML one loads nothing at all, so
+        # `src` is only a companion reference in the HTML namespace.
+        doc = self._in_layer(build_nonshareable(runtime=False),
+                             '<math><script src="commentable-html.js"></script></math>')
+        self.assertEqual(validate._nonshareable_js_refs(doc), ["commentable-html.assets.js"])
+        self.assertNonShareableError(doc, "no commentable-html runtime")
+
+    def test_mathml_companion_markup_does_not_make_a_document_nonshareable(self):
+        doc = self._in_layer(build(),
+                             '<math><link rel="stylesheet" href="commentable-html.css">'
+                             '<script src="commentable-html.js"></script></math>')
+        self.assertFalse(validate._is_nonshareable(doc))
+        self.assertEqual(validate._nonshareable_css_refs(doc), [])
+        self.assertEqual(validate._nonshareable_js_refs(doc), [])
+
+    def test_a_mathml_asset_banner_does_not_satisfy_the_bootstrap(self):
+        # The runtime reveals and hides the banner through `.hidden`, an HTMLElement property the
+        # namespace-scoped UA `[hidden]` rule follows, so a MathML element carrying the id is
+        # found by getElementById and then can never be shown or hidden.
+        doc = self._in_layer(build_nonshareable(banner=False),
+                             '<math id="cmhAssetBanner" class="cm-skip"></math>')
+        self.assertNonShareableError(doc, "missing the #cmhAssetBanner element")
+
+    # The SVG half of the same rule. SVG is NOT simply "foreign, therefore rejected": it runs an
+    # inline <script> (above), but it defines no `link`, its script loads from `href`/`xlink:href`
+    # rather than `src`, and an SVGElement has no `.hidden`. These three pin that the layer TAG and
+    # ID views are `ns == "html"` and not the wider execute set, so unifying the two gates - the
+    # obvious later refactor - fails here instead of silently reopening the hole for SVG.
+    def test_an_svg_companion_link_does_not_satisfy_the_stylesheet(self):
+        doc = self._in_layer(build_nonshareable(link=False),
+                             '<svg><link rel="stylesheet" href="commentable-html.css"></svg>')
+        self.assertEqual(validate._nonshareable_css_refs(doc), [])
+        self.assertNonShareableError(doc, "no commentable-html stylesheet")
+
+    def test_an_svg_companion_script_ref_does_not_satisfy_the_runtime(self):
+        doc = self._in_layer(build_nonshareable(runtime=False),
+                             '<svg><script src="commentable-html.js"></script></svg>')
+        self.assertEqual(validate._nonshareable_js_refs(doc), ["commentable-html.assets.js"])
+        self.assertNonShareableError(doc, "no commentable-html runtime")
+
+    def test_an_svg_asset_banner_does_not_satisfy_the_bootstrap(self):
+        # Also covers the SELF-CLOSED foreign shape, which is recorded but never pushed.
+        for markup in ('<svg id="cmhAssetBanner" class="cm-skip"></svg>',
+                       '<svg id="cmhAssetBanner" class="cm-skip"/>'):
+            with self.subTest(markup=markup):
+                doc = self._in_layer(build_nonshareable(banner=False), markup)
+                self.assertNonShareableError(doc, "missing the #cmhAssetBanner element")
+
+    # The POSITIVE direction, which an "is there a <math>/<svg> ancestor?" implementation would
+    # get wrong: at an HTML integration point a browser puts the child back in the HTML namespace,
+    # so the layer's own markup written there is live and must still count.
+    def test_an_html_integration_point_script_still_satisfies_the_watchdog(self):
+        doc = self._in_layer(
+            build_nonshareable(watchdog=False),
+            "<svg><foreignObject><script>%s</script></foreignObject></svg>" % self._WATCHDOG_JS)
+        errors, warnings = self._validate(doc)
+        self.assertEqual(errors, [], "foreignObject watchdog errors: %r" % errors)
+        self.assertFalse(any("bootstrap watchdog" in w for w in warnings), warnings)
+
+    def test_an_html_integration_point_companion_link_still_counts(self):
+        # Both integration-point kinds, so an "is there a <math>/<svg> ancestor?" implementation
+        # fails here rather than silently dropping the layer's own markup.
+        for wrapper in ("<math><mtext>%s</mtext></math>",
+                        "<svg><foreignObject>%s</foreignObject></svg>"):
+            with self.subTest(wrapper=wrapper):
+                doc = self._in_layer(
+                    build(),
+                    wrapper % '<link rel="stylesheet" href="commentable-html.css">')
+                self.assertEqual(validate._nonshareable_css_refs(doc), ["commentable-html.css"])
+
+    def test_a_padded_annotation_xml_encoding_is_not_an_html_integration_point(self):
+        # HTML5 matches the `encoding` VALUE exactly (ASCII case-insensitively), with no trimming,
+        # so ` text/html` keeps the subtree in MathML and its <script> never runs. Accepting the
+        # padded value reopened this very bypass through one space. Both members of the accepted
+        # set are exercised, so trimming the set down to `text/html` is caught too.
+        for enc in ("text/html", "application/xhtml+xml"):
+            for padded in (" %s" % enc, "%s " % enc, "\t%s" % enc):
+                with self.subTest(encoding=padded):
+                    doc = self._in_layer(
+                        build_nonshareable(watchdog=False),
+                        '<math><annotation-xml encoding="%s"><script>%s</script>'
+                        "</annotation-xml></math>" % (padded, self._WATCHDOG_JS))
+                    self.assertNonShareableWarn(doc, "bootstrap watchdog")
+
+    def test_an_unpadded_annotation_xml_encoding_is_still_an_html_integration_point(self):
+        for enc in ("text/html", "TEXT/HTML", "application/xhtml+xml", "APPLICATION/XHTML+XML"):
+            with self.subTest(encoding=enc):
+                doc = self._in_layer(
+                    build_nonshareable(watchdog=False),
+                    '<math><annotation-xml encoding="%s"><script>%s</script>'
+                    "</annotation-xml></math>" % (enc, self._WATCHDOG_JS))
+                errors, warnings = self._validate(doc)
+                self.assertEqual(errors, [], "annotation-xml watchdog errors: %r" % errors)
+                self.assertFalse(any("bootstrap watchdog" in w for w in warnings), warnings)
+
+    def test_a_watchdog_in_an_externally_loaded_script_does_not_count(self):
+        # A browser that fetches an external script IGNORES the element's own child text, so a
+        # token folded into the companion tag never runs. The attribute is per namespace: `src`
+        # on an HTML script, `href`/`xlink:href` on an SVG one (an SVG script has no `src`). The
+        # test is attribute PRESENCE, not value: `<script src="">` fires an error event and still
+        # never runs the inline body, so the empty spellings are pinned alongside the real ones.
+        for markup in ('<script src="commentable-html.js">%s</script>',
+                       '<script src="">%s</script>',
+                       '<svg><script href="x.js">%s</script></svg>',
+                       '<svg><script href="">%s</script></svg>',
+                       '<svg><script xlink:href="x.js">%s</script></svg>',
+                       '<svg><script xlink:href="">%s</script></svg>'):
+            with self.subTest(markup=markup):
+                doc = self._in_layer(build_nonshareable(watchdog=False),
+                                     markup % self._WATCHDOG_JS)
+                self.assertNonShareableWarn(doc, "bootstrap watchdog")
+
+    def test_a_source_attribute_of_the_other_namespace_does_not_suppress_the_watchdog(self):
+        # The positive half of the same rule, and the control that keeps it PER NAMESPACE: an SVG
+        # script has no `src` (so one there is an inert unknown attribute and the inline body still
+        # runs), and an HTML script ignores `href`/`xlink:href` the same way. A gate that tested
+        # the union of the attributes would wrongly report these documents as having no watchdog.
+        for markup in ('<script href="x.js">%s</script>',
+                       '<script xlink:href="x.js">%s</script>',
+                       '<svg><script src="x.js">%s</script></svg>'):
+            with self.subTest(markup=markup):
+                doc = self._in_layer(build_nonshareable(watchdog=False),
+                                     markup % self._WATCHDOG_JS)
+                errors, warnings = self._validate(doc)
+                self.assertEqual(errors, [], "errors: %r" % errors)
+                self.assertFalse(any("bootstrap watchdog" in w for w in warnings), warnings)
+
     # -- a region that does not PARSE where it reads is refused ------------- #
     def test_a_content_end_marker_swallowed_by_a_style_body_errors(self):
         # The layer view is derived from the parse, so a region that does not open and close where

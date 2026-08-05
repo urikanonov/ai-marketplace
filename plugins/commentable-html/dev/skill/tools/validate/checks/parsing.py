@@ -447,6 +447,26 @@ _FOREIGN_BREAKOUT_TAGS = frozenset((
 ))
 _FONT_BREAKOUT_ATTRS = ("color", "face", "size")
 
+# The namespaces in which a browser really EXECUTES an inline `<script>` body. SVG defines
+# `<script>` and runs it; MathML defines none, so an element named that under `<math>` is an
+# ordinary unknown foreign element whose body is inert text. (`meta` is a breakout start tag, so
+# it can never stay foreign, but `link` and `script` can - see `_DocParser._record`.)
+_EXECUTING_SCRIPT_NAMESPACES = frozenset(("html", "svg"))
+
+# The attribute that gives a `<script>` an EXTERNAL source, per namespace. When one is PRESENT a
+# browser fetches that resource and never runs the element's own child text, so an inline body
+# written there is inert (an empty value still counts: the element has the attribute, so the
+# inline-body path is not taken). An SVG script has no `src` at all - it loads from `href`
+# (SVG 2) or `xlink:href` (SVG 1.1) - so the question is per namespace, like the one above.
+# an SVG one. The literal `xlink:href` key is what the vendored start-tag attribute tokenizer
+# produces (it ASCII-lowercases the name and keeps the colon; foreign attribute ADJUSTMENT, which
+# would split it into a namespaced name, is a DOM-building step this parser does not perform).
+_EXTERNAL_SCRIPT_SRC_ATTRS = {"html": ("src",), "svg": ("href", "xlink:href")}
+
+
+def _script_loads_externally(attrs, ns):
+    return any(a in attrs for a in _EXTERNAL_SCRIPT_SRC_ATTRS.get(ns, ()))
+
 # An ATTRIBUTE VALUE's character references, decoded the way a BROWSER decodes them: a NUMERIC
 # reference always resolves, a NAMED one only when it is an exact match that is not followed by
 # `=` - so `id="&notit;"` keeps the literal `&notit;`. Python 3.13 applies that rule; 3.12
@@ -1523,9 +1543,14 @@ class _BrowserBoundaries(_BrowserStartTag):
         parent_tag = top[0] if top is not None else None
         parent_ns = top[1] if top is not None else "html"
         parent_integration = top[2] if top is not None else False
-        if parent_integration and tag in _MATHML_GLYPH_TAGS and parent_ns == "math":
-            # `mglyph`/`malignmark` in a MathML TEXT integration point stay MathML, so a
-            # `<![CDATA[` under them is still a real section.
+        if (parent_ns == "math" and parent_tag in _MATHML_TEXT_INTEGRATION
+                and tag in _MATHML_GLYPH_TAGS):
+            # `mglyph`/`malignmark` stay MathML only under a MathML TEXT integration point, so a
+            # `<![CDATA[` under them is still a real section. Under an HTML integration point
+            # (`annotation-xml[encoding=text/html]`) HTML5 has no such exception - a browser
+            # inserts them in the HTML namespace, where a following `<![CDATA[` is a bogus comment
+            # and the markup after it is LIVE. Keying this on the generic integration flag hid
+            # that markup from every check built on the parse.
             return "math"
         if parent_ns == "html" or parent_integration:
             return "svg" if tag == "svg" else ("math" if tag == "math" else "html")
@@ -1559,8 +1584,13 @@ class _BrowserBoundaries(_BrowserStartTag):
         if ns == "math":
             if tag in _MATHML_TEXT_INTEGRATION:
                 return True
+            # An EXACT ASCII case-insensitive match, with no trimming: HTML5 compares the
+            # `encoding` VALUE, so `encoding=" text/html"` is NOT an integration point and a
+            # browser keeps that subtree in MathML. Stripping it read an inert MathML `<script>`,
+            # `<link>` or `#cmhAssetBanner` as live HTML markup - the same fail-open the
+            # namespace-aware layer views close (CMH-VAL-19), reachable through one space.
             return (tag == "annotation-xml"
-                    and (ad.get("encoding") or "").strip().lower() in _ANNOTATION_HTML_ENCODINGS)
+                    and _ascii_lower(ad.get("encoding") or "") in _ANNOTATION_HTML_ENCODINGS)
         return False
 
     # -- the element stack the namespace view runs parallel to --------------- #
@@ -1980,21 +2010,36 @@ class _DocParser(_BrowserBoundaries):
         merely contains the token must not stand in for it. The script must be the CURRENT NODE and
         must itself have been OPENED outside the content region, so text a browser reads as some
         other element's - or a script the author opened inside their own content and left open past
-        the end marker - cannot stand in for the layer's watchdog either."""
+        the end marker - cannot stand in for the layer's watchdog either.
+
+        NAMESPACE-AWARE (CMH-VAL-19): the script must be one a browser really EXECUTES, and the
+        INLINE BODY is what has to run. MathML defines no `script`, so an element named that under
+        `<math>` is an ordinary unknown foreign element whose body never runs - the watchdog would
+        never arm and the missing-asset banner would never reveal itself. SVG really does define
+        `<script>` and a browser really runs an inline one, so the rule is the browser's
+        per-namespace rule rather than "reject every foreign namespace". A script that loads
+        EXTERNALLY is excluded for the same reason in the other direction: a browser fetches the
+        external resource and ignores the element's own child text, so a token folded into the
+        companion `<script src>` tag (or an SVG `<script href>`) is inert."""
         if self.layer_ready_token or self._in_shadow_tree():
             return
         cap = self._current_raw_capture()
         if cap is None or cap["tag"] != "script" or cap["in_content"]:
+            return
+        if cap["ns"] not in _EXECUTING_SCRIPT_NAMESPACES:
+            return
+        if _script_loads_externally(cap["attrs"], cap["ns"]):
             return
         if not _is_executable_js(cap["attrs"]):
             return
         if READY_TOKEN in (text or "") and not self._in_commentable_content():
             self.layer_ready_token = True
 
-    def _open_raw_capture(self, tag, ad):
+    def _open_raw_capture(self, tag, ad, ns):
         """Start collecting a `<script>`/`<style>` body. Recorded BEFORE the element is pushed, so
-        its `depth` is the index it occupies and any truncation that removes it finalizes it."""
-        self._raw_captures.append({"tag": tag, "pos": self._off(), "attrs": ad,
+        its `depth` is the index it occupies and any truncation that removes it finalizes it. The
+        insertion NAMESPACE rides along because whether a browser runs the body depends on it."""
+        self._raw_captures.append({"tag": tag, "pos": self._off(), "attrs": ad, "ns": ns,
                                    "depth": len(self.stack), "parts": [],
                                    "in_content": self._in_commentable_content(),
                                    "in_content_root": self._in_comment_root()})
@@ -2069,12 +2114,26 @@ class _DocParser(_BrowserBoundaries):
         del self._mermaid_stack[depth:]
         del self._shadow_hosts[depth:]
 
-    def _record(self, tag, ad, own_skip):
+    def _record(self, tag, ad, own_skip, ns):
         if self._in_template() or self._in_shadow_tree():
             if "style" in ad:
                 self.template_inline_styles.append({"tag": tag, "value": ad.get("style", "")})
             return
-        if tag in self.layer_tags and not self._in_commentable_content():
+        # NAMESPACE-AWARE (CMH-VAL-19). The LAYER's own markup is HTML markup: a browser loads a
+        # stylesheet only from an HTML `<link>`, honors `src` only on an HTML `<script>` (an SVG
+        # script loads from `href`/`xlink:href`, and MathML defines no script at all), and reads
+        # the layer's version stamp only off an HTML `<meta name=...>` (that gate is a no-op in
+        # practice, since `meta` is a foreign BREAKOUT start tag). Filed by NAME alone, a
+        # companion reference written
+        # inside `<math>`/`<svg>` decided the document mode and satisfied "the stylesheet/runtime
+        # is here" while the layer never loaded - the validator asserting a guarantee the browser
+        # does not provide. `layer_ids` is HTML-only for the same reason its ONE consumer needs:
+        # the runtime reveals and hides `#cmhAssetBanner` through `.hidden`, an HTMLElement
+        # property whose UA `[hidden]` rule is namespace-scoped, so a foreign element carrying
+        # that id is found by `getElementById` and can then never be shown or hidden. `all_ids`
+        # stays namespace-blind, because `getElementById` itself is.
+        is_html = ns == "html"
+        if tag in self.layer_tags and is_html and not self._in_commentable_content():
             self.layer_tags[tag].append(ad)
         if not self._head_ended and (tag == "body" or tag not in _HEAD_TAGS):
             self._head_ended = True
@@ -2143,7 +2202,7 @@ class _DocParser(_BrowserBoundaries):
         idv = ad.get("id")
         if idv:
             self.all_ids.append(idv)
-            if not self._in_commentable_content():
+            if is_html and not self._in_commentable_content():
                 self.layer_ids.append(idv)
             if idv == "commentRoot":
                 self.has_comment_root = True
@@ -2193,13 +2252,13 @@ class _DocParser(_BrowserBoundaries):
             self._active_shadow_roots[-1]["has_slot"] = True
         before_mermaid = len(self.mermaid_blocks)
         if not is_shadow:
-            self._record(tag, ad, own_skip)
+            self._record(tag, ad, own_skip, ns)
         if tag == "svg" and self._mermaid_stack:
             idx = self._mermaid_stack[-1]
             if idx is not None:
                 self.mermaid_blocks[idx]["has_svg"] = True
         if tag in ("script", "style") and not self._in_template() and not self._in_shadow_tree():
-            self._open_raw_capture(tag, ad)
+            self._open_raw_capture(tag, ad, ns)
         if tag in ("script", "style") and (self._in_template() or self._in_shadow_tree()):
             # The stack DEPTH is carried so the state can never outlive its template: html.parser
             # keeps a raw-text element open to EOF, which matches a browser, but if any future path
@@ -2254,7 +2313,7 @@ class _DocParser(_BrowserBoundaries):
             if idx is not None:
                 self.mermaid_blocks[idx]["has_svg"] = True
         self._mark_light_child()
-        self._record(tag, ad, "cm-skip" in set((ad.get("class") or "").split()))
+        self._record(tag, ad, "cm-skip" in set((ad.get("class") or "").split()), ns)
         self._close_zero_width()
 
     def handle_data(self, data):

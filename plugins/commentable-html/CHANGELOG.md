@@ -4,6 +4,41 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.735.0] - 2026-08-05
+
+### Fixed
+
+- The validator's layer views are namespace-aware, so an element merely NAMED after an HTML one no
+  longer stands in for it (CMH-VAL-19). A browser does not RUN a MathML `<script>`: an element
+  named `script` in the MathML namespace is an ordinary unknown foreign element. Filed into the
+  layer views by TAG NAME alone, a bootstrap watchdog written inside `<math>` satisfied the
+  NonShareable watchdog check while the runtime never booted, and a companion `<link>` or
+  `<script src>` written there decided the document mode and satisfied "the stylesheet/runtime is
+  here" while the layer never loaded - the validator asserting a guarantee the browser does not
+  provide, with no `<template>` involved anywhere. The insertion namespace now rides along into
+  `_DocParser._record()` and onto every `<script>`/`<style>` capture, and the rule applied is the
+  browser's rule PER NAMESPACE rather than "reject every foreign namespace": the layer tag and id
+  views take HTML-namespace elements only (a browser loads a stylesheet only from an HTML `<link>`,
+  honors `src` only on an HTML `<script>` - an SVG script loads from `href`/`xlink:href` and MathML
+  defines no script at all - and the runtime reveals `#cmhAssetBanner` through `.hidden`, an
+  HTMLElement property whose UA `[hidden]` rule is namespace-scoped), while the bootstrap watchdog
+  token is still accepted from an SVG `<script>`, because a browser really does run one. `all_ids`
+  stays namespace-blind, because `getElementById` itself is.
+- The same fix closes two neighbouring divergences in the foreign-content bookkeeping the new
+  gates rest on (CMH-VAL-21). The `annotation-xml` `encoding` attribute is now matched EXACTLY and
+  ASCII-case-insensitively, with no trimming, as HTML5 compares it: a padded `encoding=" text/html"`
+  is NOT an HTML integration point, and treating it as one reopened this very bypass through one
+  space. And the MathML `mglyph`/`malignmark` carve-out now applies only under a MathML TEXT
+  integration point, not under an `annotation-xml[encoding=text/html]` HTML integration point,
+  where a browser inserts them in the HTML namespace - keying it on the generic integration flag
+  consumed a whole `<![CDATA[` section a browser reads as a bogus comment, hiding live markup from
+  every check built on the parse. Finally, the bootstrap watchdog token is only credited to a
+  script whose INLINE BODY runs: a browser that fetches an external script ignores the element's
+  own child text, so a token folded into a `<script src>` (or an SVG `<script href>` /
+  `<script xlink:href>`, since an SVG script has no `src`) no longer satisfies the check.
+
+
+
 ## [1.733.0] - 2026-08-05
 
 ### Fixed
