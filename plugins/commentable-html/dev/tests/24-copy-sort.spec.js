@@ -71,6 +71,47 @@ const NESTED_SORT_KEY_TABLES = [
   "</table>",
 ].join("\n");
 
+// THREE levels of sortable nesting: o3 > m1 > lf. Every level's sort key is the text of the level
+// below it, and the values are chosen so sorting the LEAF flips BOTH ancestors - m1 (nearest) and
+// o3 (one further out). A re-apply that stopped at the nearest ancestor would leave o3 wrong.
+// Adjacent cell tags are separated by a literal space: `_cellSortText` concatenates the text nodes
+// it walks, so `<td>a</td><td>b</td>` would key as "ab" and the plain-text cell the leaf is ranked
+// against has to read in the same shape for the comparison to be about the values.
+const THREE_LEVEL_TABLES = [
+  "<h1>Levels</h1>",
+  '<table id="o3">',
+  "  <thead><tr><th>Group</th> <th>Detail</th></tr></thead>",
+  "  <tbody>",
+  "    <tr><td>Alpha</td> <td>",
+  '      <table id="m1">',
+  "        <thead><tr><th>Item</th> <th>Sub</th></tr></thead>",
+  "        <tbody>",
+  "          <tr><td>aaa</td> <td>",
+  '            <table id="lf">',
+  "              <thead><tr><th>Leaf</th> <th>N</th></tr></thead>",
+  "              <tbody>",
+  "                <tr><td>zz</td> <td>2</td></tr>",
+  "                <tr><td>aa</td> <td>1</td></tr>",
+  "              </tbody>",
+  "            </table>",
+  "          </td></tr>",
+  "          <tr><td>ccc</td> <td>Leaf N mm 9 nn 9</td></tr>",
+  "        </tbody>",
+  "      </table>",
+  "    </td></tr>",
+  "    <tr><td>Beta</td> <td>",
+  '      <table id="m2">',
+  "        <thead><tr><th>Item</th> <th>Sub</th></tr></thead>",
+  "        <tbody>",
+  "          <tr><td>bbb</td> <td>Leaf N pp 3 qq 4</td></tr>",
+  "          <tr><td>ddd</td> <td>Leaf N rr 5 ss 6</td></tr>",
+  "        </tbody>",
+  "      </table>",
+  "    </td></tr>",
+  "  </tbody>",
+  "</table>",
+].join("\n");
+
 async function serviceOrder(page) {
   return page.$$eval("#commentRoot table.cmh-sortable tbody tr td:first-child", (tds) => tds.map((t) => t.textContent.trim()));
 }
@@ -314,6 +355,99 @@ test.describe("copy buttons + sortable tables", () => {
     await Promise.all([page.waitForEvent("download"), clickSidebarExport(page, "#btnSaveHtml")]);
     expect(await outerOrder(page)).toEqual(["Alpha", "Beta"]);
     expect(await firstCells(page, "#n1 > tbody > tr > td:first-child")).toEqual(["aa", "zz"]);
+  });
+
+  // #1053: the OTHER click order - sort the outer table on the column that HOLDS the nested tables
+  // FIRST, then sort a nested table. The outer table's live order was ranked against the nested
+  // table's OLD row order and nothing re-ranked it when that order changed, so the innermost-first
+  // load replay handed the reader back an order they never saw. Sorting (or clearing) a table now
+  // re-applies every sortable ANCESTOR's persisted sort, so the live view IS the replay's answer.
+  test("sorting a nested table re-applies its ancestor's persisted sort, so either click order replays the same (CMH-CONTENT-08)", async ({ page }) => {
+    const staged = stageContent(NESTED_SORT_KEY_TABLES, { key: "cmh-nested-sort-ancestor" });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    expect(await outerOrder(page)).toEqual(["Alpha", "Beta"]);
+
+    // Outer FIRST: ranked against the authored nested order, Beta's "mm..." beats Alpha's "zz...".
+    await sortCtrl(page, "outer", 2).click();
+    expect(await outerOrder(page)).toEqual(["Beta", "Alpha"]);
+
+    // Then the nested table: Alpha's cell now reads "aa...", which outranks "mm...", so the outer
+    // table's persisted sort is re-applied and Alpha leads - the same order the reload replay
+    // produces. Without the re-apply the reader keeps looking at Beta, Alpha.
+    await sortCtrl(page, "n1").click();
+    expect(await firstCells(page, "#n1 > tbody > tr > td:first-child")).toEqual(["aa", "zz"]);
+    expect(await outerOrder(page)).toEqual(["Alpha", "Beta"]);
+
+    await page.reload();
+    await ready(page);
+    expect(await firstCells(page, "#n1 > tbody > tr > td:first-child")).toEqual(["aa", "zz"]);
+    expect(await outerOrder(page)).toEqual(["Alpha", "Beta"]);
+
+    // The export canonical pass borrows the live row order and hands exactly it back.
+    await addTextComment(page, "#commentRoot h1", "title note");
+    await Promise.all([page.waitForEvent("download"), clickSidebarExport(page, "#btnSaveHtml")]);
+    expect(await outerOrder(page)).toEqual(["Alpha", "Beta"]);
+    expect(await firstCells(page, "#n1 > tbody > tr > td:first-child")).toEqual(["aa", "zz"]);
+
+    // Clearing the nested sort is the same class of change, so it re-ranks the ancestor too: the
+    // cell reads "zz..." again and Beta goes back on top - and a reload agrees. Drive this leg from
+    // the KEYBOARD: re-ranking the ancestor detaches and re-inserts the row that HOLDS this table,
+    // taking the pressed chevron with it, so focus has to be put back on the control the reader
+    // actuated or a keyboard reader is dumped on <body> mid-sort.
+    const n1Ctrl = sortCtrl(page, "n1");
+    const focusIsN1Ctrl = () => n1Ctrl.evaluate((el) => el === document.activeElement);
+    await n1Ctrl.focus();
+    await page.keyboard.press("Enter");   // desc, and the ancestor re-ranks around it
+    expect(await outerOrder(page)).toEqual(["Beta", "Alpha"]);
+    expect(await focusIsN1Ctrl()).toBe(true);
+    await page.keyboard.press("Enter");   // cleared, back to the authored zz, aa
+    expect(await firstCells(page, "#n1 > tbody > tr > td:first-child")).toEqual(["zz", "aa"]);
+    expect(await outerOrder(page)).toEqual(["Beta", "Alpha"]);
+    expect(await focusIsN1Ctrl()).toBe(true);
+    await page.reload();
+    await ready(page);
+    expect(await firstCells(page, "#n1 > tbody > tr > td:first-child")).toEqual(["zz", "aa"]);
+    expect(await outerOrder(page)).toEqual(["Beta", "Alpha"]);
+  });
+
+  // #1053: the walk must re-rank EVERY sortable ancestor, not just the nearest one. Three levels
+  // (o3 > m1 > lf) where each level's sort key is the text of the level below it: sorting the leaf
+  // flips m1, and m1's flip in turn flips o3. Stopping at the nearest ancestor leaves o3 showing an
+  // order no reload reproduces.
+  test("a nested sort re-ranks every sortable ancestor, not just the nearest (CMH-CONTENT-08)", async ({ page }) => {
+    const staged = stageContent(THREE_LEVEL_TABLES, { key: "cmh-nested-sort-3level" });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    const o3Order = () => firstCells(page, "#o3 > tbody > tr > td:first-child");
+    const m1Order = () => firstCells(page, "#m1 > tbody > tr > td:first-child");
+    const lfOrder = () => firstCells(page, "#lf > tbody > tr > td:first-child");
+    expect(await o3Order()).toEqual(["Alpha", "Beta"]);
+    expect(await m1Order()).toEqual(["aaa", "ccc"]);
+
+    // Outer first: m1's text still opens "Item Sub aaa ...", which ranks before m2's "... bbb ...".
+    await sortCtrl(page, "o3", 2).click();
+    expect(await o3Order()).toEqual(["Alpha", "Beta"]);
+
+    // Middle next: m1's rows rank by their Sub text, and the leaf's authored "zz ..." loses to
+    // "mm 9 nn 9", so ccc leads - which makes m1 open "Item Sub ccc ..." and re-ranks o3 to Beta.
+    await sortCtrl(page, "m1", 2).click();
+    expect(await m1Order()).toEqual(["ccc", "aaa"]);
+    expect(await o3Order()).toEqual(["Beta", "Alpha"]);
+
+    // Now the LEAF: "aa ..." beats "mm 9 nn 9", so m1 flips back to aaa - and o3 must follow it back
+    // to Alpha. A walk that stopped at m1 would leave o3 on Beta.
+    await sortCtrl(page, "lf").click();
+    expect(await lfOrder()).toEqual(["aa", "zz"]);
+    expect(await m1Order()).toEqual(["aaa", "ccc"]);
+    expect(await o3Order()).toEqual(["Alpha", "Beta"]);
+
+    // The innermost-first reload replay produces exactly that, at every level.
+    await page.reload();
+    await ready(page);
+    expect(await lfOrder()).toEqual(["aa", "zz"]);
+    expect(await m1Order()).toEqual(["aaa", "ccc"]);
+    expect(await o3Order()).toEqual(["Alpha", "Beta"]);
   });
 
   test("each code block has an always-visible Copy button that copies its exact text", async ({ page }) => {

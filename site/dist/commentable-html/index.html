@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.699.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.701.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.701.0] - 2026-08-05</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Sorting a table nested inside another sortable table now re-applies every sortable ancestor&#x27;s persisted sort, nearest first. An outer table sorted on a column whose cells HOLD a nested table ranks its rows by that cell&#x27;s text, so a reader who sorted the outer table FIRST and the nested one second was left looking at an order ranked against the nested table&#x27;s old rows - one that a reload (which replays the persisted sorts innermost-first) and an export never reproduced. Each ancestor is unsorted before it is re-sorted, matching the replay&#x27;s authored-order starting point, so the live view is exactly what a reload gives back for either click order. Clearing a nested sort re-ranks its ancestors too, and because re-ranking an ancestor detaches and re-inserts the row that holds the clicked table, focus is restored to the chevron the reader actuated instead of being dropped on the document body (CMH-CONTENT-08).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.699.0] - 2026-08-05</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>The offline navigation predicate&#x27;s LOCAL-BINDING half is now an anchored scan rather than a <code>search()</code> over the whole script, cutting its per-character cost by an order of magnitude (CMH-OFFLINE-05). It decides whether an inline script declares its own <code>location</code> - which drops the navigation verdict to the PREFIXED sinks - and two of its arms carried a bounded 400-character lookahead window, so every <code>const{</code> / <code>var[</code> / <code>function(</code> anchor in the text re-walked that window. Growth was already LINEAR, so this was not the ReDoS class earlier releases closed; the defect was the size of the CONSTANT. Densely packed declaration anchors measured ~2.2us per character in Python on <code>const{</code> repeated (0.031s at 12 KB, 0.375s at 120 KB, 2.7s at 1.2 MB) and ~3.4us on <code>var[</code>, with ~0.33-0.52us in node - an order above the anchored sink scan beside it, on input that is document-supplied and includes the vendored payload&#x27;s INFLATED bytes, where a few hundred base64 bytes buy megabytes. Every shape the pattern recognized ends in the literal <code>location</code>, so the scan is driven from THAT anchor, exactly as the sink search is, and every arm&#x27;s HEAD is a forward-only cursor over the same text: the keyword and <code>catch</code> arms declare when a head ends exactly at the anchor, and the two windowed arms take the last head ending at or before it, whose final character is the opener. A cursor never re-reads a head it has already matched, and the unbounded whitespace run in <code>const&lt;WS&gt;location</code> is consumed once by the compiled head rather than walked backwards per anchor. The same inputs now cost ~0.26us and ~0.27us per character in Python and at most ~0.05us in node, the same order as the sink scan. The recognized language is unchanged, pinned in both directions and in BOTH engines against the frozen pattern over a crossed corpus plus a seeded fuzz, and the scaling guard grew four shapes - declaration-anchor density, name-anchor density, a single unbounded whitespace run, and densely stacked heads - so the constant is measured rather than left unstated.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.696.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -509,8 +518,6 @@
               <li>An export whose canonical pass fails now says so instead of ending in silence. The pass that rewrites live comment offsets into authored-row coordinates ran on a bare line outside the try/catch that wraps the document build, so a throw there unwound the whole click handler: no file was downloaded and no message appeared, which a reader could not tell apart from a click that never registered. Save/Shareable, the NonShareable Standalone branch, and Offline now all run the pass through one guard that reports the failure as an assertive toast naming the cause, stating that no file was written and that the pass put comments and table sorting back. The report survives the awkward shapes a throw can take: a non-Error throwable (or one whose <code>message</code> getter itself throws) is still reported, and the cause is named whenever the thrown value can be turned into one; an unbounded message is capped so the actionable sentence stays on screen, the full value is left on the console for triage, and a toast that cannot be shown at all still aborts the export rather than restoring the original silence (CMH-EXP-23).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.694.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -540,19 +547,7 @@
               <li>A quoted region marker that shares its line with other markup no longer aims an export&#x27;s region strip either (CMH-EXP-22). The strips&#x27; <code>&lt;!--</code> prefix is not line-anchored, so an authored <code>&lt;p&gt;x&lt;/p&gt;&lt;!-- BEGIN: commentable-html - JS --&gt;</code> was invisible to the LINE locator - not counted, not a duplicate - and was still a perfectly good place for the strip to start, cutting from there through the real region. An anchor strictly BEFORE a region&#x27;s own BEGIN is now refused; an anchor at the marker is the healthy case, and a missing one only leaves the region unstripped, which the existing data-safety net already diagnoses.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.686.0] - 2026-08-05</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Declarative shadow DOM is now an explicit, bounded authoring contract rather than markup the tools silently treat as an ordinary inert template. A supported root must be on a browser-eligible HTML host, carry <code>shadowrootserializable</code>, contain no light-DOM siblings or <code>&lt;slot&gt;</code> distribution, and be exported in a browser with <code>Element.getHTML</code>; the validator reports each unsupported shape instead of guessing at composed-tree behavior or allowing an export that loses closed-root data.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The validator and table-of-contents generator no longer suppress rendered content inside the first declarative shadow root on a browser-eligible host. Both <code>shadowrootmode=&quot;open&quot;</code> and <code>&quot;closed&quot;</code> now contribute prose and headings, including a report title rendered through a shadow root, while an ineligible host, a second declaration on the same host, and any declaration inside an outer ordinary template contribute nothing. Script/style bodies remain non-visible raw text. Shadow-tree metadata, ids, layer markers, links, charts, and mermaid blocks remain outside the document&#x27;s light-DOM structural views.</li>
-              <li>The runtime&#x27;s template-aware walkers now record their shadow-DOM boundary explicitly. The infrastructure resolver still excludes shadow-root ids because <code>document.getElementById</code> cannot see them; Markdown and section review remain light-DOM-only because closed roots cannot be inspected and review anchors do not cross shadow boundaries. Save and export preserve supported open and closed roots through shadow-aware serialization; the validator requires <code>shadowrootserializable</code> and rejects mixed light/shadow children so every accepted document fits that durable model (slot distribution is rejected too, and shadow-DOM export requires a browser with <code>Element.getHTML</code>). Generated TOC entries target the outer light-DOM host because browser fragment navigation cannot target a heading inside a shadow tree.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">325 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">326 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
