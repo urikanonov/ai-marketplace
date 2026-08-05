@@ -57,6 +57,24 @@ test.describe("side-TOC search and aria-current", () => {
     await expect(links.nth(0)).toHaveAttribute("href", "#shadow-heading");
   });
 
+  test("runtime TOC labels ignore invalid and duplicate shadow declarations (CMH-VAL-23)", async ({ page }) => {
+    const { html } = stageContent(
+      '<h2 id="invalid-shadow"><template shadowrootmode="bogus">Invalid hidden</template></h2>'
+      + '<h2 id="valid-shadow"><template shadowrootmode="open" shadowrootserializable>'
+      + "Visible shadow</template><template shadowrootmode=\"closed\">Duplicate hidden</template></h2>"
+      + '<h2 id="light-heading">Light section</h2>',
+      { key: "cmh-shadow-toc-validity" },
+    );
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    const invalid = page.locator('#cmSideToc a[href="#invalid-shadow"]');
+    const valid = page.locator('#cmSideToc a[href="#valid-shadow"]');
+    await expect(invalid).not.toContainText("Invalid hidden");
+    await expect(valid).toContainText("Visible shadow");
+    await expect(valid).not.toContainText("Duplicate hidden");
+  });
+
   test("the search box filters visible sections by heading and body text, Escape clears (CMH-TOC-09)", async ({ page }) => {
     const toc = await openDoc(page);
     const search = toc.locator(".cm-side-toc-search");

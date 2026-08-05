@@ -19950,13 +19950,23 @@ function cmhHeadingText(h) {
     if (node.nodeType === 3) { text += node.nodeValue; return; }
     if (node.nodeType !== 1 && node.nodeType !== 11) return;
     if (node.nodeType === 1 && /^(SCRIPT|STYLE)$/.test(node.tagName)) return;
-    if (node.nodeType === 1 && node.tagName === "TEMPLATE") {
-      if (node.hasAttribute("shadowrootmode")) visit(node.content);
-      return;
-    }
-    node.childNodes.forEach(visit);
+    visitChildren(node);
   };
-  visit(holder.content);
+  const visitChildren = function (parent) {
+    let shadowUsed = false;
+    parent.childNodes.forEach(function (node) {
+      if (node.nodeType === 1 && node.tagName === "TEMPLATE") {
+        const mode = (node.getAttribute("shadowrootmode") || "").toLowerCase();
+        if (!shadowUsed && (mode === "open" || mode === "closed")) {
+          shadowUsed = true;
+          visitChildren(node.content);
+        }
+        return;
+      }
+      visit(node);
+    });
+  };
+  visitChildren(holder.content);
   return text.replace(/\s+/g, " ").trim();
 }
 // Every heading inside #commentRoot gets a stable id and becomes a deep-link: a plain

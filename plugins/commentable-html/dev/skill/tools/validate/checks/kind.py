@@ -28,6 +28,8 @@ def check_shadow_root_exports(parser):
         1 for root in parser.declarative_shadow_roots if root.get("mixed_light"))
     slots = sum(
         1 for root in parser.declarative_shadow_roots if root.get("has_slot"))
+    content_roots = sum(
+        1 for root in parser.declarative_shadow_roots if root.get("host_is_comment_root"))
     missing = sum(
         1 for root in parser.declarative_shadow_roots if not root.get("serializable"))
     errors = []
@@ -46,6 +48,11 @@ def check_shadow_root_exports(parser):
             "%d declarative shadow root(s) use <slot> distribution, which the validator does not "
             "model - remove the slot and keep all rendered content directly in the shadow template"
             % slots)
+    if content_roots:
+        errors.append(
+            "%d declarative shadow root(s) use #commentRoot itself as the host - the review layer "
+            "and generated TOC live inside that light-DOM root and would be hidden; place the "
+            "shadow host below #commentRoot instead" % content_roots)
     return errors
 
 

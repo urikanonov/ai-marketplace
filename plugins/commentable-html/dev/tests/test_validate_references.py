@@ -240,6 +240,27 @@ class TemplateProseTests(unittest.TestCase):
             kind="generic"))
         self.assertTrue(any("<slot> distribution" in e for e in errors), errors)
 
+    def test_a_slot_inside_an_inert_nested_template_is_not_distribution(self):
+        main = ('<main id="commentRoot" data-cmh-content-root data-comment-key="k" '
+                'data-doc-label="l" data-doc-source="s">\n'
+                '<div><template shadowrootmode="open" shadowrootserializable>'
+                "<template><slot>parked</slot></template><p>rendered</p>"
+                "</template></div>\n</main>")
+        errors, _ = _validate_text(build(
+            body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION],
+            kind="generic"))
+        self.assertFalse(any("<slot> distribution" in e for e in errors), errors)
+
+    def test_comment_root_cannot_itself_be_the_shadow_host(self):
+        main = ('<main id="commentRoot" data-cmh-content-root data-comment-key="k" '
+                'data-doc-label="l" data-doc-source="s">'
+                '<template shadowrootmode="open" shadowrootserializable>'
+                "<p>rendered</p></template></main>")
+        errors, _ = _validate_text(build(
+            body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION],
+            kind="generic"))
+        self.assertTrue(any("#commentRoot itself" in e for e in errors), errors)
+
 
 if __name__ == "__main__":
     unittest.main()

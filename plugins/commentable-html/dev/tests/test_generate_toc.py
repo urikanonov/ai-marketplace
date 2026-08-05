@@ -190,6 +190,13 @@ class GenerateTocTests(unittest.TestCase):
         self.assertIn('<a href="#shadow-host">Shadow Overview</a>', toc)
         self.assertNotIn("Shadow Detail", toc)
 
+    def test_comment_root_cannot_itself_be_a_shadow_toc_host(self):
+        html = (
+            '<main id="commentRoot"><template shadowrootmode="open">'
+            "<h2>Shadow Heading</h2></template></main>")
+        with self.assertRaisesRegex(ValueError, "commentRoot"):
+            generate_toc.rewrite_html(html)
+
     def test_a_declarative_shadow_root_inside_an_inert_template_is_not_listed(self):
         toc = generate_toc.build_toc(doc(
             '<template><div><template shadowrootmode="open">'
