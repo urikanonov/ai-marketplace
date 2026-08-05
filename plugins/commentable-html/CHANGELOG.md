@@ -4,6 +4,25 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.685.0] - 2026-08-05
+
+### Fixed
+
+- A chrome control focused while the comments panel is still SLIDING IN no longer loses its tooltip
+  for good (CMH-UI-14). The tip is only ever raised by `focusin`/`mouseover`, so a control that sat
+  outside the visible box during the 0.22s panel slide was suppressed with no second chance - a
+  keyboard user who opened the panel and immediately tabbed to Search, Sort, More or Help got
+  silence. A suppressed control now opens a bounded watch episode: the tip is raised the moment the
+  control lands (within 600ms), and the bubble then keeps following the control until its box holds
+  still, so it ends up beside the settled control with its arrow on the control's centre rather than
+  parked where the control was mid-slide. The suppression itself is unchanged for a control the
+  reviewer genuinely cannot see (a soft keyboard covering it, a pinch-panned page): an episode needs
+  the control to still be focused or hovered, is bounded as a whole so a never-settling animation
+  cannot renew it, and ends when focus or the pointer moves on, on the usual dismissals (focus out,
+  scroll, viewport change, Escape, mousedown), or when another control takes over - so it expires
+  quietly instead of parking a bubble over unrelated chrome or raising one over a control the
+  reviewer has already tabbed past.
+
 ## [1.684.0] - 2026-08-05
 
 ### Fixed

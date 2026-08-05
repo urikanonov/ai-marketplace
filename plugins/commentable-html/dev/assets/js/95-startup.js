@@ -148,6 +148,17 @@ function setupFooterSessionCopy(footer) {
 // buttons keep their name. Delegated at the document, so controls created later
 // (composers, add buttons, carets, copy buttons) are covered with no re-init.
 let _cmTipEl = null, _cmTipTimer = null, _cmTipFor = null, _cmTipPending = null;
+let _cmTipLandEl = null, _cmTipLandUntil = 0, _cmTipTrackUntil = 0, _cmTipLandRaf = null;
+let _cmTipLandRect = "", _cmTipLandStill = 0;
+// How long a suppressed tip keeps waiting for its control to land, and then how long it keeps
+// following that control. Comfortably longer than the 0.22s sidebar slide, and short enough that a
+// control which stays out of sight never gets a tip.
+const CM_TIP_LAND_MS = 600;
+// A monotonic clock where one exists: a wall-clock jump must not stretch (or cut short) the window.
+function _cmTipNow() {
+  return (typeof performance === "object" && performance && typeof performance.now === "function")
+    ? performance.now() : Date.now();
+}
 function _cmTipTarget(node) {
   let el = node;
   while (el && el.nodeType === 1) {
@@ -169,7 +180,83 @@ function _cmTipText(el) {
   }
   return el.getAttribute("data-cmh-tip") || "";
 }
+function _cmTipOnScreen(el) {
+  const r = el.getBoundingClientRect();
+  const vp = cmhViewportRect(6);
+  return r.bottom > vp.top && r.top < vp.bottom && r.right > vp.left && r.left < vp.right;
+}
+// A control focused (or hovered) while its panel is still SLIDING IN is momentarily outside the
+// visible box, so the tip is suppressed - and nothing would ever raise it again, because the tip
+// is only raised by focusin/mouseover. So keep watching the anchor for a bounded episode: show the
+// tip the moment the control is inside the visible box, then follow it until its box settles (an
+// anchor counts as visible as soon as it overlaps by a pixel, long before a slide ends). An anchor
+// the reviewer genuinely cannot see (a soft keyboard over it, a pinch-panned page) never becomes
+// visible, so the episode expires with no tip parked over unrelated chrome.
+function _cmTipWanted(el) {
+  if (!el || !el.isConnected) return false;
+  const a = document.activeElement;
+  if (a && (a === el || el.contains(a))) return true;
+  try { return el.matches(":hover"); } catch (_e) { return false; }
+}
+function _cmTipCancelLand() {
+  if (_cmTipLandRaf !== null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(_cmTipLandRaf);
+  _cmTipLandRaf = null; _cmTipLandEl = null; _cmTipLandUntil = 0; _cmTipTrackUntil = 0;
+  _cmTipLandRect = ""; _cmTipLandStill = 0;
+}
+function _cmTipTrack(el) {
+  if (typeof requestAnimationFrame !== "function") { _cmTipCancelLand(); return; }
+  const now = _cmTipNow();
+  if (_cmTipLandEl !== el) {
+    // ONE episode per anchor, covering both the wait for it to land and the follow after it does,
+    // so an animation that never settles cannot renew the loop for ever. A later event for the same
+    // control starts a fresh episode, because an expired one has already cleared this state.
+    _cmTipLandEl = el;
+    _cmTipLandUntil = now + CM_TIP_LAND_MS;
+    _cmTipTrackUntil = now + 2 * CM_TIP_LAND_MS;
+    _cmTipLandRect = ""; _cmTipLandStill = 0;
+  } else if (now > _cmTipTrackUntil) { _cmTipCancelLand(); return; }
+  if (_cmTipLandRaf === null) _cmTipLandRaf = requestAnimationFrame(_cmTipLandTick);
+}
+// Rounded to a half pixel: subpixel jitter must not read as movement, or a settled control would
+// keep the follow re-placing the bubble for the whole window.
+function _cmTipRectKey(r) {
+  return Math.round(r.left * 2) + "," + Math.round(r.top * 2) + "," + Math.round(r.width * 2) + "," + Math.round(r.height * 2);
+}
+function _cmTipLandTick() {
+  _cmTipLandRaf = null;
+  const el = _cmTipLandEl;
+  if (!el) return;
+  // The anchor is no longer one the reviewer is on (focus moved, pointer left, control removed):
+  // drop the episode, and take any bubble still showing for it with it.
+  if (!_cmTipWanted(el)) { if (_cmTipFor === el) _cmTipHide(); else _cmTipCancelLand(); return; }
+  const now = _cmTipNow();
+  // Visibility is read BEFORE the deadline, so a frame delayed past the budget - a backgrounded or
+  // throttled tab pauses `requestAnimationFrame` - still raises the tip for a control that did land
+  // rather than giving up on it.
+  if (!_cmTipOnScreen(el)) {
+    if (now > _cmTipLandUntil) { _cmTipCancelLand(); return; }
+    if (_cmTipLandRaf === null) _cmTipLandRaf = requestAnimationFrame(_cmTipLandTick);
+    return;
+  }
+  const key = _cmTipRectKey(el.getBoundingClientRect());
+  if (key !== _cmTipLandRect || _cmTipFor !== el) {
+    _cmTipLandRect = key; _cmTipLandStill = 0;
+    _cmTipShow(el); // re-suppresses (and keeps this episode) if the control moved away again
+    if (_cmTipFor !== el) {
+      // Nothing is showing: either the show re-armed the episode (a frame is in flight) or the
+      // anchor became unusable, in which case it must not be left dangling with no frame to clear it.
+      if (_cmTipLandEl === el && _cmTipLandRaf === null) _cmTipCancelLand();
+      return;
+    }
+  } else if (++_cmTipLandStill >= 2) {
+    _cmTipCancelLand(); // settled for two frames running: stop following
+    return;
+  }
+  if (now > _cmTipTrackUntil) { _cmTipCancelLand(); return; }
+  if (_cmTipLandRaf === null) _cmTipLandRaf = requestAnimationFrame(_cmTipLandTick);
+}
 function _cmTipShow(el) {
+  if (_cmTipLandEl && _cmTipLandEl !== el) _cmTipCancelLand(); // another anchor took over
   if (_cmTipTimer) { clearTimeout(_cmTipTimer); _cmTipTimer = null; }
   _cmTipPending = null;
   if (!el.isConnected) return;
@@ -189,10 +276,12 @@ function _cmTipShow(el) {
   const r = el.getBoundingClientRect();
   const vp = cmhViewportRect(6);
   // The tip belongs to its control: when the control itself is outside the visible box (a soft
-  // keyboard covering it, a pinch-panned page) there is nothing to point at, so hide rather than
-  // park a tip - with a `below` arrow aimed at nothing - over unrelated chrome.
-  if (!(r.bottom > vp.top && r.top < vp.bottom && r.right > vp.left && r.left < vp.right)) {
-    _cmTipHide();
+  // keyboard covering it, a pinch-panned page, a panel still sliding in) there is nothing to point
+  // at, so hide rather than park a tip - with a `below` arrow aimed at nothing - over unrelated
+  // chrome, and wait for it to land.
+  if (!_cmTipOnScreen(el)) {
+    _cmTipHideBubble();
+    _cmTipTrack(el);
     return;
   }
   const tw = _cmTipEl.offsetWidth, th = _cmTipEl.offsetHeight;
@@ -209,11 +298,20 @@ function _cmTipShow(el) {
   const cx = r.left + r.width / 2 - left;
   _cmTipEl.style.setProperty("--cm-tip-arrow", Math.max(10, Math.min(tw - 10, cx)) + "px");
   _cmTipEl.style.visibility = "";
+  // A control can still be MOVING when its tip is placed (a panel mid-slide reaches the visible box
+  // long before it settles), so keep following it until its box stops moving rather than leaving the
+  // bubble where the control used to be, with its arrow aimed at nothing.
+  _cmTipTrack(el);
+  _cmTipLandRect = _cmTipRectKey(r);
 }
-function _cmTipHide() {
+function _cmTipHideBubble() {
   if (_cmTipTimer) { clearTimeout(_cmTipTimer); _cmTipTimer = null; }
   _cmTipPending = null; _cmTipFor = null;
   if (_cmTipEl) _cmTipEl.classList.remove("is-visible");
+}
+function _cmTipHide() {
+  _cmTipCancelLand();
+  _cmTipHideBubble();
 }
 // Let a control that changes its own tooltip text while it is the one showing the bubble (e.g. the
 // 3-state sort cycle button, re-labelled on each keyboard activation) refresh the visible bubble in
@@ -224,6 +322,7 @@ window.__cmhRefreshTip = function (el) {
 function _cmTipSchedule(el) {
   if (el === _cmTipFor) { if (_cmTipTimer) { clearTimeout(_cmTipTimer); _cmTipTimer = null; } return; }
   if (el === _cmTipPending) return;
+  if (_cmTipLandEl && _cmTipLandEl !== el) _cmTipCancelLand();
   if (_cmTipTimer) clearTimeout(_cmTipTimer);
   _cmTipText(el); // strip the native title now so the browser tooltip cannot show during the delay
   _cmTipPending = el;
