@@ -63,7 +63,6 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | Feature id | Doc surface | Deck |
 | --- | --- | --- |
 | CMH-VAL-23 | opt-out: an authoring-time parser correctness fix plus an explicit runtime light-DOM boundary, with no new reader-facing capability | opt-out: parser and walker boundaries have nothing to demonstrate on a slide |
-| CMH-VAL-24 | opt-out: an authoring-time validator warning about what Export Offline will remove from a document; a reader of a document gains no new capability | opt-out: a validator warning has nothing for a viewer to see on a slide |
 | CMH-SEC-06 | opt-out: an internal threat-model and review-scope declaration for maintainers and review panels, not a reader-facing behavior - it documents what the export deliberately does NOT promise, and the promises it bounds (the zero-network CSP, CMH-OFFLINE-05) are already surfaced by their own rows | opt-out: a non-goals statement has nothing for a viewer to see on a slide |
 | CMH-HELP-COUNT-01 | help | opt-out: in-runtime Help/About panel topic, not a deck slide |
 | CMH-HELP-THREADS-01 | help | opt-out: in-runtime Help/About panel topic, not a deck slide |
@@ -163,6 +162,7 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-CORE-20 | opt-out: a scroll-stability invariant for the composer the tutorial and help already document - the reviewer sees the same composer over the same selection, only the page no longer jumps out from under it | opt-out: the absence of a jump is not something a slide can show - a deck viewer sees the same composer opening on the same text |
 | CMH-CORE-21 | opt-out: a robustness invariant for controls the tutorial, site, and help already document - a reviewer sees the same sort control, caret, review badge, and "Reset moves", they just cannot be suppressed by author markup that happens to reuse their class names | opt-out: a document-integrity invariant with nothing to demonstrate on a slide - a viewer sees the same controls working, which is exactly what they saw before |
 | CMH-CORE-22 | help | opt-out: the deck's own slides carry live demo comments, and the only way to demonstrate this action is to destroy one of them behind a browser confirm; the dialog the deck already shows is the same dialog, with one more button in its row |
+| CMH-CORE-23 | opt-out: a touch-target sizing invariant for a dialog the tutorial and help already document - the reviewer sees the same Delete / Close / Edit and Cancel / Save row, only large enough to hit with a thumb | opt-out: control sizing on a phone, with nothing new to demonstrate on a slide |
 | CMH-PORT-05 | tutorial, site, help | deck |
 | CMH-PORT-06 | opt-out: a compatibility guarantee - an existing document simply keeps validating, with nothing new for a reader to learn | opt-out: the viewer sees an old document continuing to work, which is not a slide |
 | CMH-PORT-07 | opt-out: an internal compatibility shim for already-shipped document markup; a reader sees no new capability | opt-out: a compatibility invariant with nothing to demonstrate on a slide |

@@ -4,6 +4,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.726.0] - 2026-08-05
+
+### Fixed
+
+- The in-document comment dialog's action buttons now meet the repo-wide `>=44px` touch target on a
+  phone viewport (`max-width: 640px`), in the note view (`Delete` / `Close` / `Edit`) and the edit
+  view (`Cancel` / `Save`) alike (CMH-CORE-23). Both rows measured 33px tall at a 320x720 viewport -
+  the last controls in the dialog a thumb had to aim at, since its formatting toolbar (CMH-RICH-20)
+  and the sidebar card's actions were already enlarged. With the shipped labels the enlarged row
+  still fits one line at 320px in every density scale, so the layout is unchanged; wrapping is a
+  fallback for a row that no longer fits (a localized label set, a larger host root font), and the
+  wrapped lines take a roomier row gap - in the same absolute unit as the touch target - so a
+  `Delete` pushed onto its own line keeps a deliberate gap from the button below it rather than
+  sitting a thumb-slip away. The confirmation `Delete` goes through (CMH-CORE-22) is unchanged.
+
 ## [1.723.0] - 2026-08-05
 
 ### Added

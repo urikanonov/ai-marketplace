@@ -13,7 +13,7 @@ order the directory listing gives.
 | --- | --- | --- |
 | `00-base.css` | CMH-THEME, CMH-CORE, CMH-DENSITY | Theme tokens (`--cp-*`) and base element styling. |
 | `10-layout.css` | CMH-CORE, CMH-RESP, CMH-DENSITY | Layout recipe, toolbar, and core chrome. |
-| `20-chrome.css` | CMH-SIDE, CMH-HELP, CMH-FOOT, CMH-DENSITY, CMH-RICH, CMH-GROW, CMH-MENU-PREF | Attribution footer, sidebar meta, help dialog, TOC chrome, the More menu's Preferences checkbox rows, the in-document comment dialog (including its compact formatting toolbar), and the composer / dialog textarea sizing bounds the autogrow layer grows within. |
+| `20-chrome.css` | CMH-SIDE, CMH-HELP, CMH-FOOT, CMH-DENSITY, CMH-RICH, CMH-GROW, CMH-MENU-PREF, CMH-CORE | Attribution footer, sidebar meta, help dialog, TOC chrome, the More menu's Preferences checkbox rows, the in-document comment dialog (including its compact formatting toolbar and its phone touch targets), and the composer / dialog textarea sizing bounds the autogrow layer grows within. |
 | `22-section-review.css` | CMH-REVIEW | Section-review badges (four states), TOC state dots, and the segmented review filter. |
 | `30-mermaid.css` | CMH-MMD, CMH-DENSITY | Mermaid commenting layer + NonShareable controls. |
 | `40-diff.css` | CMH-DIFF | Diff / code-review layer. |

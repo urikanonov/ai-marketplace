@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.723.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.726.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.726.0] - 2026-08-05</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The in-document comment dialog&#x27;s action buttons now meet the repo-wide <code>&gt;=44px</code> touch target on a phone viewport (<code>max-width: 640px</code>), in the note view (<code>Delete</code> / <code>Close</code> / <code>Edit</code>) and the edit view (<code>Cancel</code> / <code>Save</code>) alike (CMH-CORE-23). Both rows measured 33px tall at a 320x720 viewport - the last controls in the dialog a thumb had to aim at, since its formatting toolbar (CMH-RICH-20) and the sidebar card&#x27;s actions were already enlarged. With the shipped labels the enlarged row still fits one line at 320px in every density scale, so the layout is unchanged; wrapping is a fallback for a row that no longer fits (a localized label set, a larger host root font), and the wrapped lines take a roomier row gap - in the same absolute unit as the touch target - so a <code>Delete</code> pushed onto its own line keeps a deliberate gap from the button below it rather than sitting a thumb-slip away. The confirmation <code>Delete</code> goes through (CMH-CORE-22) is unchanged.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.723.0] - 2026-08-05</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -506,6 +513,8 @@
               <li>Recorded the decision behind that removal in the spec rather than leaving it as an omission (CMH-OFFLINE-04, CMH-SEC-06). Sanitizing the nested document instead of clearing it was prototyped on an abandoned branch, weighed, and rejected: it needs two independent recursive parsers - the exporter&#x27;s browser DOM and the validator&#x27;s pure-Python tokenizer - to agree at every depth on serialization, doctype reconstruction and rendering mode, fixed-point settling under serialize-then-reparse, and one shared parse budget; the content-preserving precedents in this layer are all edits inside a document both sides already parse; a value that will not settle still has to be removed, so sanitizing would trade a deterministic rule for parser-quirk roulette; and the author keeps the content regardless, since the export is a derived artifact. That last ground answers for the author and not for the recipient of an export, so the row also records the cheap middle option it does not take here - having the export replace the emptied frame with the nested markup as escaped inert text - as an open follow-up rather than a settled non-goal.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.722.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -513,8 +522,6 @@
               <li>The validated stamp is now written ATOMICALLY. <code>validate.py</code> stamped a strict-clean document by reopening it with mode <code>w</code>, which truncates the file before the stamped bytes exist, so an interrupted or failing write (a full disk, a killed run, an encoding error) destroyed a document that had just PASSED validation - and, because stamping is best-effort, the loss was reported as nothing worse than a NOTE. The stamp, and the single write <code>finalize.py</code> makes, now stage the new bytes in the target&#x27;s own directory and swap them in with <code>os.replace</code> (the shared <code>_atomic_io.atomic_write</code> the migration tools already use), so a failed write leaves the original bytes untouched and cleans up after itself. A partial install whose <code>validate.py</code> cannot import <code>_atomic_io</code> refuses to stamp rather than falling back to a truncating write.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.721.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -543,14 +550,7 @@
               <li>A NonShareable document that carries offline chart snapshots is no longer read one way by the runtime and another by the validator. A <code>data-cm-offline-chart</code> image marks a chart a self-contained offline document snapshotted (a legacy Offline export produced them; the current export inlines Chart.js and keeps the live canvas), so a document whose layer lives in companion files can never be one: the snapshot there is a contradiction rather than evidence of offline mode. The strict validator now refuses that shape (the &quot;snapshots force mode offline&quot; consistency rule used to sit in the non-NonShareable branch alone, so the shape drew no mode error at all), and reports it alongside a wrong declared mode rather than one problem per run. <code>isOfflineDocument()</code> stops treating the snapshot signal as evidence once the layer is detected loading from companion files, or the descriptor declares either spelling of the companion-file mode. Both sides now also read the snapshot at the same scope - inside <code>#commentRoot</code> - so an attribute in host chrome outside the content root no longer fails a document the runtime would never have read as offline. Nothing else moves: a self-contained document that declares no mode still falls back to the snapshot signal, a Shareable document carrying snapshots still fails the <code>mode must be &quot;offline&quot;</code> rule, and an Offline document carrying them stays clean.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.702.1] - 2026-08-05</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The offline strip no longer deletes a benign script because a local binding&#x27;s name happens to contain a non-ASCII letter (CMH-OFFLINE-05). The scripted-navigation scan decides where a sink can start by looking for an identifier BOUNDARY in front of it, and that class was ASCII-only, so any identifier character outside ASCII read as a boundary: a purely local <code>&lt;non-ASCII letter&gt;location.href = &lt;url&gt;</code> - which navigates nothing - was treated as the document&#x27;s own <code>location</code>, so Export Offline deleted the whole script and <code>validate.py --strict</code> rejected a file that navigates nowhere. That is the false-positive direction this check exists to avoid, because it silently destroys an author&#x27;s content. Both engines now spell the class as the COMPLEMENT of the boundary characters (every ASCII character that cannot appear in an identifier EXCEPT <code>.</code>, plus the exact whitespace set the scan already uses), byte-identically, because <code>\w</code> means different things in the two engines and Python has no Unicode property escape. The <code>.</code> exception is unchanged and load-bearing: a member-expression dot has to CONTINUE the chain, so that <code>cfg.location.href = &lt;url&gt;</code> stays some other object&#x27;s <code>location</code> rather than the document&#x27;s sink. The complement spelling also settles the astral case in one rule: a supplementary code point is a surrogate PAIR to JavaScript&#x27;s <code>charAt</code> and a single code point to Python, and neither reading is a boundary character now. Non-ASCII WHITESPACE is deliberately still a boundary, so a real sink one exotic space into a script is seen exactly as before, and the ASCII-only case fold beside it is untouched - it is what stops Python&#x27;s Unicode folding from folding a dotless i or a long s ONTO <code>location</code>, which is the opposite failure. Widening the identifier side can only ever remove matches, never invent one, so no benign document can start being deleted by this change. The identifier/boundary split is now ENUMERATED over every code point in both engines rather than sampled, because a sample corpus catches the whitespace carve-out being deleted wholesale but not one range going missing.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">334 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">335 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
