@@ -846,6 +846,8 @@ test("a preserved inline script cannot beacon by navigating the offline file to 
 <p id="nav-note">A preserved inline script must not be able to beacon by navigating away.</p>
 <meta name="referrer" content="unsafe-url">
 <meta http-equiv="Referrer-Policy" content="unsafe-url">
+<template id="parkedReferrer"><meta name="referrer" content="unsafe-url"><meta http-equiv="Referrer-Policy" content="unsafe-url"><a href="local.html" referrerpolicy="unsafe-url">parked</a></template>
+<noscript><meta name="referrer" content="unsafe-url"><a href="local.html" referrerpolicy="unsafe-url">fallback</a></noscript>
 <a id="docsLink" href="https://docs.example.org/guide" referrerpolicy="unsafe-url">Docs</a>
 <script>
 (function () {
@@ -1004,8 +1006,12 @@ https://evil.example/continued";
     await expect(page.locator("#toast")).toContainText(/\b9 scripts that load, prefetch, or navigate to the network were removed\./);
     // A navigation that does still happen (a user-clicked link, or a script that builds the
     // URL dynamically) must at least not leak where it came from. The fixture authors a
-    // PERMISSIVE `unsafe-url` policy both as a document meta and on the anchor itself, so this
-    // fails unless the export really replaces the meta and strips the attribute.
+    // PERMISSIVE `unsafe-url` policy as a document meta, as the pragma spelling, on the anchor
+    // itself, parked inside a `<template>` (which `querySelectorAll` does not descend into), AND
+    // inside a `<noscript>` (real ELEMENTS to the export's DOMParser, whose scripting flag is off
+    // - measured), so this fails unless the export really replaces the meta, strips the attribute,
+    // and reaches all three placements - the last of which is what keeps the export from emitting
+    // a file its own `--strict` run below then rejects (CMH-OFFLINE-10).
     const referrerMetas = exportedHtml.match(/<meta\b[^>]*\bname=["']referrer["'][^>]*>/gi) || [];
     expect(referrerMetas).toHaveLength(1);
     expect(referrerMetas[0]).toMatch(/content=["']no-referrer["']/i);
@@ -3545,7 +3551,8 @@ const SCHEME_PROBE_CANDIDATES = ["ftp", "ws", "wss", "filesystem", "custom", "go
 // would otherwise leave this probe green.
 const SCHEME_PROBE_LINK_RELS = [
   "stylesheet", "preload", "modulepreload", "preconnect", "dns-prefetch",
-  "icon", "apple-touch-icon", "manifest", "prefetch", "prerender",
+  "icon", "apple-touch-icon", "apple-touch-icon-precomposed", "manifest",
+  "prefetch", "prerender",
 ];
 const SCHEME_PROBE_CHANNELS = [
   "img-src", "img-srcset", "script-src", "iframe-src", "video-src", "video-poster",
@@ -3578,7 +3585,8 @@ const SCHEME_PROBE_LIVE_CHANNELS = [
 // notices) but they are not claimed as measured.
 const SCHEME_PROBE_UNOBSERVED_CHANNELS = [
   "track-src", "svg-use", "link-preconnect", "link-dns-prefetch",
-  "link-icon", "link-apple-touch-icon", "link-manifest", "link-prerender",
+  "link-icon", "link-apple-touch-icon", "link-apple-touch-icon-precomposed",
+  "link-manifest", "link-prerender",
 ];
 // The strip covers four more references that this probe deliberately does NOT carry, because none
 // of them is an automatic subresource LOAD and a TCP listener is therefore the wrong instrument:
@@ -3703,11 +3711,11 @@ test("CMH-OFFLINE-04: no authority-bearing scheme but http and https loads from 
     // The `rel` set is a hand copy of the exporter's own; pin it to the source so a rel added
     // there cannot silently stop being probed.
     const stripSource = fs.readFileSync(path.join(DEV, "assets", "js", "68-export-offline.js"), "utf8");
-    const relsMatch = stripSource.match(/const loads = \[([^\]]*)\];/);
-    expect(relsMatch, "the exporter no longer declares its link `loads` rel list where this test "
+    const relsMatch = stripSource.match(/const _OFFLINE_FETCHING_LINK_RELS = \[([^\]]*)\];/);
+    expect(relsMatch, "the exporter no longer declares _OFFLINE_FETCHING_LINK_RELS where this test "
                       + "reads it; re-point the extraction").toBeTruthy();
     expect(relsMatch[1].match(/"([^"]+)"/g).map((s) => s.slice(1, -1)).sort(),
-           "SCHEME_PROBE_LINK_RELS has drifted from the exporter's link `loads` list")
+           "SCHEME_PROBE_LINK_RELS has drifted from _OFFLINE_FETCHING_LINK_RELS")
       .toEqual([...SCHEME_PROBE_LINK_RELS].sort());
     const probe = path.join(dir, "scheme-probe.html");
     fs.writeFileSync(probe, `<!DOCTYPE html><html><head><meta charset="utf-8"><title>scheme probe</title></head>

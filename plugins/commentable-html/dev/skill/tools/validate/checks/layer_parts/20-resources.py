@@ -221,6 +221,69 @@ def _check_self_contained(html, parser):
                                   "names, which a single-file export can neither need nor show the "
                                   "reader, so the export removes it whatever it points at - remove "
                                   "the attribute here too" % label)
+        # CMH-OFFLINE-10. The referrer surface, the offline hardening the export does that this
+        # gate had no counterpart for. No meta-delivered CSP can restrict TOP-LEVEL NAVIGATION, so
+        # a reader's click is not blockable and the only thing left to control is that it carries
+        # no provenance. The export therefore removes every `referrerpolicy` attribute and replaces
+        # any authored referrer meta with `no-referrer`, while a hand-authored offline file
+        # carrying `referrerpolicy="unsafe-url"` validated clean.
+        #
+        # What is reported is what a browser would HONOUR as a policy WEAKER than no-referrer, not
+        # the mere presence of the attribute: an element policy that restates `no-referrer`, and a
+        # value that names no policy at all (which a browser ignores in favour of the document
+        # one), change nothing, so rejecting them would only cost an author content. That is the
+        # same contract shape the CSP rule above has - the export replaces the policy
+        # unconditionally while the gate accepts anything that MEETS the contract.
+        #
+        # Scoped to the elements the attribute has any meaning on (`REFERRER_POLICY_ELEMENTS`),
+        # the way the `ping` rule is scoped to `a`/`area`, and read through the shared EGRESS
+        # index so a `<template>`-parked element, a `<noscript>` fallback and a self-closed foreign
+        # element are judged alike. An `a`/`area` whose `rel` carries `noreferrer` is skipped: HTML
+        # sets that navigation's referrer to no-referrer regardless of the attribute, so the
+        # attribute there weakens nothing. That skip is namespace-blind like every other rule here,
+        # so an SVG `<a rel="noreferrer">` gets it too, and `rel` on `SVGAElement` is recent
+        # (Chrome 89, Firefox 79, Safari 15) - on an older engine the `rel` is inert and the
+        # attribute would apply. The residual is accepted rather than closed by dropping the skip:
+        # it reaches only a HAND-AUTHORED offline file (the export removes the attribute whatever
+        # it says), while dropping the skip would report the far commoner HTML anchor whose `rel`
+        # really does deliver no-referrer.
+        for tag in REFERRER_POLICY_ELEMENTS:
+            for el in _find_tag_attrs_egress(html, tag):
+                if "referrerpolicy" not in el:
+                    continue
+                policy = referrer_policy_attr(el.get("referrerpolicy", ""))
+                if not policy or policy == "no-referrer":
+                    continue
+                if tag in ("a", "area") and "noreferrer" in link_rel_tokens(el.get("rel")):
+                    continue
+                errors.append('offline mode: <%s referrerpolicy="%s"> overrides the document\'s '
+                              "no-referrer policy for that request, so a navigation from it "
+                              "carries this document's own URL - the export removes every "
+                              "referrerpolicy attribute, so remove it here too"
+                              % (tag, (el.get("referrerpolicy") or "")[:80]))
+        # The document half of the same surface. The policy is read the way HTML processes a
+        # referrer meta - the WHOLE content value, ASCII-lowercased, with the legacy aliases folded
+        # - rather than as the comma-separated list the HTTP header grammar uses, because that is
+        # what a real Chromium was measured doing (`content="no-referrer, unsafe-url"` and a padded
+        # `content=" unsafe-url "` both set NO policy there). Every permissive meta is reported
+        # rather than only the last one that wins: the flat tag index cannot tell a live meta from
+        # a `<template>`-parked one, so suppressing an earlier permissive meta because a later one
+        # restates `no-referrer` could be masked by an inert meta, and the export removes every one
+        # of them anyway, so "remove it" is the right remediation for each. The
+        # `http-equiv="referrer-policy"` pragma is deliberately NOT checked: it is not an HTML
+        # pragma directive and a real Chromium was measured ignoring it entirely, so it can weaken
+        # nothing; the export still strips it, which is the same canonicalizing over-reach the CSP
+        # meta gets.
+        for el in _find_tag_attrs_egress(html, "meta"):
+            if _ascii_lower(el.get("name") or "") != "referrer":
+                continue
+            policy = referrer_meta_policy(el.get("content", ""))
+            if not policy or policy == "no-referrer":
+                continue
+            errors.append('offline mode: <meta name="referrer" content="%s"> declares a referrer '
+                          "policy weaker than no-referrer - the export replaces it with "
+                          "no-referrer, so set it to no-referrer or remove it"
+                          % ((el.get("content") or "")[:80]))
         for el in _find_tag_attrs_egress(html, "meta"):
             if (el.get("http-equiv") or "").lower() != "refresh":
                 continue

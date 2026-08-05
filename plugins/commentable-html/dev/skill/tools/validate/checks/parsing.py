@@ -208,6 +208,23 @@ FETCHING_LINK_RELS = frozenset((
     "apple-touch-icon-precomposed", "manifest",
 ))
 
+# How a `rel` list is TOKENIZED, which is neither language's own idea of whitespace: HTML splits
+# the list on ASCII whitespace ONLY, while Python's argument-less `str.split()` also splits on
+# U+001C-U+001F and NBSP and a JS `\s` also splits on U+FEFF and NBSP. Each of those made one side
+# see two relations where the other saw one, so both spell the class out (`_OFFLINE_REL_WS_RE` in
+# `assets/js/68-export-offline.js`), pinned to each other as TEXT by the parity test.
+LINK_REL_WS_RE = re.compile(r"[\t\n\f\r ]+")
+
+
+def link_rel_tokens(value):
+    """The relations a `rel` attribute names, ASCII-folded - the reading both sides share.
+
+    ASCII-only case folding because HTML matches a `rel` keyword ASCII case-insensitively: a
+    Unicode fold maps U+212A onto `k` and U+017F onto `s`, so a look-alike would become a real
+    relation on the side whose engine happens to fold it.
+    """
+    return set(_ascii_lower(t) for t in LINK_REL_WS_RE.split(value or "") if t)
+
 # The head-content set for the CSP view. `_HEAD_TAGS` above deliberately mirrors
 # `tools/authoring/_favicon.py`, so the three obsolete elements the "in head" insertion mode also
 # holds are added here rather than there: without them a `<basefont>`/`<bgsound>`/`<noframes>`
@@ -2720,7 +2737,7 @@ def _csp_predecessor_fetches(tag, ad):
     if tag in _CSP_INERT_PREDECESSORS:
         return False
     if tag == "link":
-        return bool(set((ad.get("rel") or "").lower().split()) & FETCHING_LINK_RELS)
+        return bool(link_rel_tokens(ad.get("rel")) & FETCHING_LINK_RELS)
     if tag == "script":
         return bool(ad.get("src") or ad.get("href") or ad.get("xlink:href")) or _is_executable_js(ad)
     return True

@@ -1,4 +1,5 @@
 from _validate_helpers import *
+from checks import resources  # noqa: E402
 
 
 class NewCheckTests(unittest.TestCase):
@@ -258,6 +259,24 @@ class NewCheckTests(unittest.TestCase):
             "default-src 'none'", "default-src\u00a0'none'", 1)
         errors, _ = self._errs_warns(doc)
         self.assertTrue(any("default-src" in e for e in errors), errors)
+
+    def test_offline_mode_reads_a_late_csp_predecessor_link_through_the_shared_rel_set(self):
+        # The CSP-lateness rule asks the SAME "does this <link> fetch?" question the offline
+        # resource gate and the export strip ask, through the shared `FETCHING_LINK_RELS` /
+        # `link_rel_tokens` pair - so it has to move with them. A relation only one of the three
+        # readers knows (`apple-touch-icon-precomposed` was exactly that) would leave a policy
+        # written after a real fetch certified as covering the whole document; and a separator HTML
+        # does NOT tokenize on (U+001C, which Python's argument-less `str.split()` does) would make
+        # this reader see a relation a browser never does and reject a policy that is fine.
+        fetching = with_offline_mode(build()).replace(
+            "<head>\n", '<head>\n<link rel="apple-touch-icon-precomposed" href="icon.png">\n', 1)
+        errors, _ = self._errs_warns(fetching)
+        self.assertTrue(any("Content-Security-Policy" in e for e in errors), errors)
+        inert = with_offline_mode(build()).replace(
+            "<head>\n", '<head>\n<link rel="stylesheet\u001cx" href="local.css">\n', 1)
+        errors, warnings = self._errs_warns(inert)
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
 
     def test_offline_mode_rejects_a_csp_meta_a_fetching_element_already_preceded(self):
         # A meta-delivered policy is NOT retroactive: it governs only what the parser reaches after
@@ -526,6 +545,141 @@ class NewCheckTests(unittest.TestCase):
         markup = '<iframe srcdoc="&lt;p&gt;x&lt;/p&gt;"></iframe>'
         errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
         self.assertFalse(any("srcdoc" in e for e in errors), errors)
+
+    def test_offline_mode_rejects_a_permissive_element_referrer_policy(self):
+        # CMH-OFFLINE-10. The export removes every `referrerpolicy` attribute, because a
+        # per-element policy overrides the document one for that request - so a permissive one
+        # planted on an anchor defeats the `no-referrer` meta beside it and hands the document's
+        # own URL to whatever the reader clicks. The gate had no matching rule at all, so a
+        # hand-authored offline document carrying one validated clean.
+        for markup in ('<a href="local.html" referrerpolicy="unsafe-url">x</a>',
+                       '<a href="local.html" REFERRERPOLICY="Unsafe-URL">x</a>',
+                       '<img src="local.png" alt="x" referrerpolicy="origin">',
+                       '<iframe src="local.html" referrerpolicy="no-referrer-when-downgrade"></iframe>',
+                       '<link rel="icon" href="local.png" referrerpolicy="unsafe-url">',
+                       '<template><a href="local.html" referrerpolicy="unsafe-url">x</a></template>',
+                       '<noscript><a href="local.html" referrerpolicy="unsafe-url">x</a></noscript>',
+                       '<svg><a href="local.html" referrerpolicy="unsafe-url"/></svg>',
+                       '<script src="local.js" referrerpolicy="unsafe-url"></script>',
+                       '<map name="m"><area href="local.html" referrerpolicy="unsafe-url"></map>'):
+            with self.subTest(markup=markup):
+                doc = with_offline_mode(build(body=self._body(MAIN, markup)))
+                errors, _ = self._errs_warns(doc)
+                self.assertTrue(any("offline mode" in e and "referrerpolicy" in e for e in errors),
+                                "expected an offline referrerpolicy error for %r, got %r"
+                                % (markup, errors))
+
+    def test_offline_mode_accepts_an_element_policy_a_browser_does_not_honour(self):
+        # The controls the rule is measured by, every one of them checked in a real Chromium
+        # (`element.referrerPolicy` is the empty string - the invalid value state - for all four of
+        # the rejected spellings below, so each sets NO policy and the document's own stays in
+        # force). `referrerpolicy` is an ENUMERATED attribute: it is not trimmed, and the legacy
+        # meta aliases are not keywords for it. A policy that restates `no-referrer` weakens
+        # nothing either, and neither does the attribute on an element that issues no request - a
+        # `<div>`, and the three SVG-only fetchers SVG2 lists the attribute on but a real Chromium
+        # exposes no `referrerPolicy` for at all (`image`, `use`, `feImage` - measured, the IDL
+        # attribute is absent), so nothing there honours it. Nor does one on an `a`/`area` whose
+        # `rel` carries `noreferrer` (HTML sets that navigation's referrer to
+        # no-referrer whatever the attribute says). The far more common control is last: a
+        # document that carries no such attribute at all, which is what the export itself emits.
+        for markup in ('<a href="local.html" referrerpolicy="no-referrer">x</a>',
+                       '<a href="local.html" referrerpolicy="No-Referrer">x</a>',
+                       '<a href="local.html" referrerpolicy="always">x</a>',
+                       '<a href="local.html" referrerpolicy=" unsafe-url ">x</a>',
+                       '<a href="local.html" referrerpolicy="">x</a>',
+                       '<a href="local.html" referrerpolicy="bogus-policy">x</a>',
+                       '<a href="local.html" rel="noreferrer" referrerpolicy="unsafe-url">x</a>',
+                       '<a href="local.html" rel="NOREFERRER noopener" referrerpolicy="unsafe-url">x</a>',
+                       '<map name="m"><area href="local.html" rel="noreferrer" referrerpolicy="unsafe-url"></map>',
+                       '<div referrerpolicy="unsafe-url">x</div>',
+                       '<svg><image href="local.png" referrerpolicy="unsafe-url"/></svg>',
+                       '<svg><use href="local.svg#i" referrerpolicy="unsafe-url"/></svg>',
+                       '<svg><filter><feImage href="local.png" referrerpolicy="unsafe-url"/></filter></svg>',
+                       '<svg><a href="local.html" referrerpolicy="no-referrer"/></svg>',
+                       '<a href="local.html">x</a>'):
+            with self.subTest(markup=markup):
+                doc = with_offline_mode(build(body=self._body(MAIN, markup)))
+                errors, warnings = self._errs_warns(doc)
+                self.assertEqual(errors, [], errors)
+                self.assertEqual(warnings, [], warnings)
+
+    def test_offline_mode_rejects_a_permissive_referrer_meta(self):
+        # The document-level half of the same surface. The export replaces an authored referrer
+        # meta with `no-referrer` rather than merging it, because the LAST referrer meta a document
+        # declares wins. Every permissive one is reported rather than only the effective one: the
+        # flat tag index cannot tell a live meta from a `<template>`-parked one, so letting a later
+        # `no-referrer` suppress an earlier permissive meta could be masked by an inert meta, and
+        # the export removes every one of them anyway.
+        for markup in ('<meta name="referrer" content="unsafe-url">',
+                       '<meta name="referrer" content="always">',
+                       '<meta name="referrer" content="origin-when-crossorigin">',
+                       '<meta name="Referrer" content="Strict-Origin-When-Cross-Origin">',
+                       '<meta name="referrer" content="unsafe-url"><meta name="referrer" content="no-referrer">',
+                       '<template><meta name="referrer" content="unsafe-url"></template>',
+                       '<noscript><meta name="referrer" content="unsafe-url"></noscript>'):
+            with self.subTest(markup=markup):
+                doc = with_offline_mode(build(body=self._body(MAIN, markup)))
+                errors, _ = self._errs_warns(doc)
+                self.assertTrue(any("offline mode" in e and "referrer" in e for e in errors),
+                                "expected an offline referrer-meta error for %r, got %r"
+                                % (markup, errors))
+
+    def test_offline_mode_accepts_a_referrer_meta_a_browser_does_not_honour(self):
+        # The export's own output must validate: it writes exactly one `no-referrer` meta, and a
+        # document that declares none at all is what every other offline test here carries. The
+        # rest are values a real Chromium was MEASURED setting no policy from - a referrer meta is
+        # not the HTTP header, so its content is neither split on commas nor trimmed, and an
+        # unknown value simply sets nothing (each of these documents fell back to the browser
+        # default cross-origin rather than to the token in the value). The `referrer-policy`
+        # pragma is here for the same reason: it is not an HTML pragma directive and the same
+        # measurement showed Chromium ignoring it entirely, so it can weaken nothing.
+        for markup in ('<meta name="referrer" content="no-referrer">',
+                       '<meta name="referrer" content="never">',
+                       '<meta name="referrer" content="no-referrer, unsafe-url">',
+                       '<meta name="referrer" content="unsafe-url, no-referrer">',
+                       '<meta name="referrer" content=" unsafe-url ">',
+                       '<meta name="referrer" content=" origin-when-crossorigin ">',
+                       '<meta name="referrer" content="">',
+                       '<meta name="referrer" content="not-a-policy">',
+                       '<meta http-equiv="referrer-policy" content="unsafe-url">'):
+            with self.subTest(markup=markup):
+                doc = with_offline_mode(build(body=self._body(MAIN, markup)))
+                errors, warnings = self._errs_warns(doc)
+                self.assertEqual(errors, [], errors)
+                self.assertEqual(warnings, [], warnings)
+
+    def test_the_referrer_surface_is_left_alone_outside_offline_mode(self):
+        # Scoped to the mode whose contract it belongs to, like every other rule here: a shareable
+        # export runs no offline strip and makes no zero-network promise.
+        for markup in ('<a href="local.html" referrerpolicy="unsafe-url">x</a>',
+                       '<meta name="referrer" content="unsafe-url">'):
+            with self.subTest(markup=markup):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertFalse(any("referrer" in e for e in errors), errors)
+
+    def test_the_referrer_policy_readings_match_what_a_browser_honours(self):
+        # The two readings are deliberately DIFFERENT grammars, so pin each directly rather than
+        # only through the gate. Every expectation here was measured in a real Chromium: the
+        # attribute is an enumerated one (exact token, ASCII case-insensitive, no trim, no legacy
+        # alias), while a referrer meta folds HTML's legacy aliases but is neither split on commas
+        # nor trimmed. Sharing one parser between them - which an earlier revision of this rule did
+        # - reported two documents a browser treats as carrying no policy at all.
+        for value, expected in (("unsafe-url", "unsafe-url"), ("UNSAFE-URL", "unsafe-url"),
+                                ("no-referrer", "no-referrer"), (" unsafe-url ", ""),
+                                ("always", ""), ("never", ""), ("", ""), (None, ""),
+                                ("no-referrer, unsafe-url", ""), ("bogus", "")):
+            with self.subTest(attr=value):
+                self.assertEqual(resources.referrer_policy_attr(value), expected)
+        for value, expected in (("unsafe-url", "unsafe-url"), ("UNSAFE-URL", "unsafe-url"),
+                                ("no-referrer", "no-referrer"), ("always", "unsafe-url"),
+                                ("never", "no-referrer"), ("default", "no-referrer-when-downgrade"),
+                                ("origin-when-crossorigin", "origin-when-cross-origin"),
+                                ("ORIGIN-WHEN-CROSSORIGIN", "origin-when-cross-origin"),
+                                (" unsafe-url ", ""), ("no-referrer, unsafe-url", ""),
+                                ("unsafe-url, no-referrer", ""), ("unsafe-url, never", ""),
+                                ("", ""), (None, ""), ("bogus", "")):
+            with self.subTest(meta=value):
+                self.assertEqual(resources.referrer_meta_policy(value), expected)
 
     def test_offline_mode_rejects_network_resources_inside_noscript(self):
         # A <noscript> body is raw TEXT only while scripting is enabled; with scripting off a

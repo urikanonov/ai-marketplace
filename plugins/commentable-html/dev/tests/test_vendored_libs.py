@@ -1999,6 +1999,147 @@ class RuntimeParityTests(unittest.TestCase):
                 % (out, css))
 
 
+    # The `rel` spellings the two fetching-`<link>` readings must agree about. The export deletes a
+    # network `<link>` whose relation makes it FETCH, and the strict validator reports the same
+    # link, so a relation only ONE side reads as fetching is either a live preconnect the gate
+    # certifies as offline-clean or an exported file its own `--strict` run rejects - the
+    # CMH-OFFLINE-04 shape. The separators are half the point: HTML tokenizes a `rel` list on ASCII
+    # whitespace ONLY, while a JS `\s` takes U+FEFF and Python's argument-less `str.split()` takes
+    # U+001C-U+001F, and both take NBSP and the vertical tab - so each of those characters made one
+    # side see two tokens where the other saw one.
+    _LINK_REL_CORPUS = [
+        ("stylesheet", True), ("STYLESHEET", True), ("StyleSheet", True),
+        ("preload", True), ("modulepreload", True), ("prefetch", True), ("prerender", True),
+        ("preconnect", True), ("dns-prefetch", True), ("icon", True), ("manifest", True),
+        ("apple-touch-icon", True),
+        # The relation the exporter's list was missing outright: the strip KEPT such a link while
+        # the gate reported it, so the export produced a file its own `--strict` run rejects.
+        ("apple-touch-icon-precomposed", True), ("Apple-Touch-Icon-Precomposed", True),
+        ("alternate stylesheet", True), ("icon\nstylesheet", True), ("\ficon", True),
+        ("stylesheet\rx", True), ("x\ticon", True), ("  icon  ", True),
+        ("", False), ("   ", False), ("author", False), ("noopener noreferrer", False),
+        ("stylesheeticon", False), ("apple-touch-icon-precomposedx", False),
+        # Separators that are NOT HTML ASCII whitespace: a browser reads one token, and that token
+        # is no relation at all, so neither side may split here.
+        ("stylesheet\u001cx", False), ("stylesheet\u001fx", False), ("stylesheet\ufeffx", False),
+        ("stylesheet\u00a0x", False), ("stylesheet\u000bx", False), ("icon\u2028x", False),
+        ("icon\u3000x", False), ("icon\u0085x", False),
+        # ...and the CASE-folding half of the same pin. Both sides fold ASCII-only, because each
+        # engine's own Unicode fold maps a look-alike onto a real relation (Python's `str.lower()`
+        # takes U+212A to `k` and `re.IGNORECASE` folds U+017F onto `s`; a JS `toLowerCase()` has
+        # its own table), so a one-sided return to either would make one side see a relation the
+        # other cannot. None of these is a relation to a browser.
+        ("\u017ftylesheet", False), ("i\u212aon", False), ("STYLESHEET\u0130", False),
+        ("\u212aicon", False),
+    ]
+
+    def _runtime_link_rel_source(self):
+        """The exporter's whole fetching-`<link>` decision, as JS source, for evaluation in node.
+
+        Extracted as one contiguous region - the relation set, the tokenizer and the predicate
+        together - because reading only the set would keep passing after the tokenizer drifted,
+        which is exactly half of what this parity check exists to catch.
+        """
+        source = self._read("68-export-offline.js")
+        start = source.find("const _OFFLINE_FETCHING_LINK_RELS")
+        self.assertNotEqual(start, -1,
+                            "the runtime no longer declares _OFFLINE_FETCHING_LINK_RELS; the "
+                            "parity extraction is stale and must be re-pointed at what replaced it")
+        m = re.compile(r"function _offlineLinkLoads\(rel\) \{.*?\n\}", re.S).search(source, start)
+        self.assertIsNotNone(m, "the runtime no longer declares _offlineLinkLoads after the "
+                                "relation set; the parity extraction is stale")
+        region = source[start:m.end()]
+        for name in ("_OFFLINE_FETCHING_LINK_RELS", "_OFFLINE_REL_WS_RE",
+                     "_offlineLinkRelTokens", "_offlineLinkLoads"):
+            self.assertIn(name, region,
+                          "%s is no longer inside the extracted link-relation region, so the "
+                          "parity check would run a partial copy of the decision" % name)
+        self.assertEqual(region.count("{") - region.count("}"), 0,
+                         "the extracted link-relation region has unbalanced braces, so it was cut "
+                         "mid-function and the parity check would evaluate a truncated copy")
+        return region
+
+    def test_the_python_and_js_fetching_link_relation_sets_are_identical(self):
+        """Pin the two relation sets as TEXT, not only by the corpus verdicts.
+
+        A corpus proves the two sides agree on the spellings it carries; it cannot prove the SETS
+        are the same, and `apple-touch-icon-precomposed` is the proof - it sat in the validator's
+        set and not in the exporter's until a sample happened to name it. Comparing the lists
+        directly is what makes a future one-sided addition fail immediately.
+        """
+        source = self._read("68-export-offline.js")
+        m = re.search(r"const _OFFLINE_FETCHING_LINK_RELS = (\[[^\]]*\]);", source)
+        self.assertIsNotNone(m, "the runtime no longer declares _OFFLINE_FETCHING_LINK_RELS as a "
+                                "plain array literal, so this pin cannot read it")
+        try:
+            js_rels = json.loads(m.group(1))
+        except ValueError:
+            self.fail("the runtime's _OFFLINE_FETCHING_LINK_RELS is not a JSON-compatible array "
+                      "literal; keeping it one is what lets the two sides be compared")
+        self.assertEqual(sorted(js_rels), sorted(parsing.FETCHING_LINK_RELS),
+                         "the exporter's fetching-link relations and the validator's "
+                         "FETCHING_LINK_RELS have drifted. A relation only the GATE knows is a "
+                         "link the export keeps and its own --strict run then rejects; one only "
+                         "the STRIP knows is a link the export deletes and the gate blesses.")
+        self.assertEqual(len(js_rels), len(set(js_rels)),
+                         "the exporter's relation list carries a duplicate, so the two sets were "
+                         "compared as multisets rather than as sets")
+
+    def test_the_python_and_js_link_relation_tokenizers_are_textually_identical(self):
+        """The `rel` separator class is a hand-copied literal in two languages, so pin its TEXT.
+
+        Verdicts over a corpus cannot see a class that drifted on a character the corpus does not
+        carry, and this class exists precisely because each engine's own whitespace is wrong here.
+        """
+        source = self._read("68-export-offline.js")
+        m = re.search(r"const _OFFLINE_REL_WS_RE = /(.*?)/;", source)
+        self.assertIsNotNone(m, "the runtime no longer declares _OFFLINE_REL_WS_RE; the parity pin "
+                                "must be re-pointed at whatever tokenizes `rel` now")
+        self.assertEqual(m.group(1), parsing.LINK_REL_WS_RE.pattern,
+                         "the exporter splits a `rel` list on %r while the validator splits on %r; "
+                         "a character only one of them treats as a separator makes one side see a "
+                         "relation the other cannot" % (m.group(1), parsing.LINK_REL_WS_RE.pattern))
+
+    def test_the_python_and_js_fetching_link_predicates_agree(self):
+        """The offline strip (JS) and the strict validator (Python) must call the SAME `<link>` a
+        fetching one.
+
+        Run in node rather than re-implemented here, for the same reason the CSS pair is: the two
+        engines disagree about whitespace and case folding, and an engine difference is exactly
+        what this pins. Skipped when node is absent, like the other node-gated checks.
+        """
+        for rel, expected in self._LINK_REL_CORPUS:
+            self.assertEqual(
+                resources._link_loads({"rel": rel}), expected,
+                "the validator reads rel=%r as %s. A miss is a network <link> it certifies as "
+                "offline-clean; a false hit rejects a file the exporter just produced."
+                % (rel, "not fetching" if expected else "fetching"))
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine parity check needs it")
+        payload = {"corpus": [rel for rel, _ in self._LINK_REL_CORPUS]}
+        script = (
+            self._runtime_link_rel_source() + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);process.stdout.write(JSON.stringify("
+            "p.corpus.map(s=>_offlineLinkLoads(s))));});"
+        )
+        proc = subprocess.run([node, "-e", script], input=json.dumps(payload),
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0,
+                         "node could not evaluate the link-relation predicate: %s" % proc.stderr)
+        verdicts = json.loads(proc.stdout)
+        self.assertEqual(len(verdicts), len(self._LINK_REL_CORPUS),
+                         "node returned %d verdicts for %d samples"
+                         % (len(verdicts), len(self._LINK_REL_CORPUS)))
+        for (rel, expected), js_says in zip(self._LINK_REL_CORPUS, verdicts):
+            self.assertEqual(
+                js_says, expected,
+                "the exporter reads rel=%r as %s, so the strip and the gate have diverged. A link "
+                "only one of them calls fetching is either a live network load the gate blesses or "
+                "an exported file its own --strict run rejects."
+                % (rel, "fetching" if js_says else "not fetching"))
+
     # Attribute-name spellings the two `^on` predicates must agree about. `once`/`onward` are
     # deliberately in the MATCHED set: the exporter's test is literally `/^on/i`, so an attribute
     # merely starting with those two letters is stripped, and a validator that were cleverer than

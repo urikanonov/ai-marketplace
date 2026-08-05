@@ -452,13 +452,16 @@ function _ensureOfflineCsp(doc) {
   // least carry no provenance: an authored referrer policy is replaced rather than merged, because
   // the LAST referrer meta a document declares wins and a permissive one (`unsafe-url`) would
   // otherwise leak the local file path of the reviewed document to whatever it navigates to.
-  doc.querySelectorAll("meta[name]").forEach(function (m) {
+  // Template content is walked too, the way the LOAD strips are: a parked referrer meta is inert
+  // until a script adopts the fragment, but the strict validator's flat tokenizer reads it plainly,
+  // so leaving one would make the gate reject a file this export just produced.
+  _offlineQueryAll(doc, "meta[name]").forEach(function (m) {
     if ((m.getAttribute("name") || "").toLowerCase() === "referrer") m.remove();
   });
   // The pragma spelling is not in the HTML spec's pragma-directive list, so a conformant browser
   // ignores it - but it appears in the wild, this whole strip is precautionary anyway, and leaving
   // an authored `unsafe-url` in the file would be a confusing contradiction of the meta beside it.
-  doc.querySelectorAll("meta[http-equiv]").forEach(function (m) {
+  _offlineQueryAll(doc, "meta[http-equiv]").forEach(function (m) {
     if ((m.getAttribute("http-equiv") || "").toLowerCase() === "referrer-policy") m.remove();
   });
   const referrer = doc.createElement("meta");
@@ -1170,6 +1173,31 @@ function _offlineQueryAll(root, selector) {
   walk(root);
   return found;
 }
+// The link relations that make a `<link>` FETCH, and the reading of the `rel` list that decides
+// it. Both are the exporter's copy of the strict validator's `FETCHING_LINK_RELS` and
+// `link_rel_tokens`, pinned to them by a parity test over one corpus: a relation only the GATE
+// knows is a link this strip keeps and the export's own `--strict` run then rejects, and one only
+// the STRIP knows is a link the export deletes while the gate certifies the file.
+const _OFFLINE_FETCHING_LINK_RELS = ["stylesheet", "preload", "modulepreload", "preconnect", "dns-prefetch", "icon", "apple-touch-icon", "apple-touch-icon-precomposed", "manifest", "prefetch", "prerender"];
+// HTML tokenizes a `rel` list on ASCII WHITESPACE only, which is neither engine's own class: a JS
+// `\s` also takes U+FEFF and Python's argument-less `str.split()` also takes U+001C-U+001F, and
+// both take NBSP and the vertical tab - so each of those made one side see two relations where the
+// other saw one, in both directions. Written out as literal escapes on both sides for the same
+// reason the CSS and network-URL classes are (#961).
+const _OFFLINE_REL_WS_RE = /[\t\n\f\r ]+/;
+function _offlineLinkRelTokens(rel) {
+  // ASCII-only case folding, because a `rel` keyword is matched ASCII case-insensitively: a
+  // Unicode fold maps look-alikes (U+212A onto `k`, U+017F onto `s`) onto a real relation, and it
+  // does so differently in the two engines.
+  return String(rel || "").replace(/[A-Z]/g, function (c) {
+    return String.fromCharCode(c.charCodeAt(0) + 32);
+  }).split(_OFFLINE_REL_WS_RE).filter(Boolean);
+}
+function _offlineLinkLoads(rel) {
+  return _offlineLinkRelTokens(rel).some(function (r) {
+    return _OFFLINE_FETCHING_LINK_RELS.indexOf(r) >= 0;
+  });
+}
 function _stripOfflineNetworkLoads(doc) {
   let dropped = 0;
   let clearedBases = 0;
@@ -1207,9 +1235,7 @@ function _stripOfflineNetworkLoads(doc) {
   all("[referrerpolicy]").forEach(function (el) { el.removeAttribute("referrerpolicy"); });
   all("link[href]").forEach(function (link) {
     if (!_offlineIsNetworkUrl(link.getAttribute("href"))) return;
-    const rel = (link.getAttribute("rel") || "").toLowerCase().split(/\s+/);
-    const loads = ["stylesheet", "preload", "modulepreload", "preconnect", "dns-prefetch", "icon", "apple-touch-icon", "manifest", "prefetch", "prerender"];
-    if (rel.some(function (r) { return loads.includes(r); })) link.remove();
+    if (_offlineLinkLoads(link.getAttribute("rel"))) link.remove();
   });
   const clearAttr = function (el, attr) {
     if (!el.hasAttribute(attr)) return;
