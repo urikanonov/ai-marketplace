@@ -1647,7 +1647,8 @@ class _BrowserBoundaries(_BrowserStartTag):
     def handle_endtag(self, tag):
         tag = self._browser_tag(tag)
         index = self._innermost_open(tag)
-        self._visit_end(tag, index)
+        if self._visit_end(tag, index) is False:
+            return
         if index < 0:
             # An end tag with no open element is IGNORED, exactly as a browser ignores it.
             return
@@ -1694,7 +1695,7 @@ class _BrowserBoundaries(_BrowserStartTag):
     def _visit_end(self, tag, index):
         """An end tag, before anything is truncated. `index` is the stack index of the element it
         closes, or -1 when a browser would ignore it (nothing open by that name, or the only match
-        sits below the `<template>` floor)."""
+        sits below the `<template>` floor). Return False to keep a matched element open."""
 
 
 # The ancestor facts each tolerant parser asks about an element while it is being recorded. They
@@ -2198,24 +2199,29 @@ class _DocParser(_BrowserBoundaries):
         self.styles.sort(key=lambda s: s["pos"])
 
     def _visit_end(self, tag, index):
+        matched_foreign = index >= 0 and self._ns[index][1] != "html"
         if index < 0 and self._end_tag_floor(tag) > 0:
             # A closer an open `<template>` scopes away is one a browser IGNORES, so it must not
             # reach the STATE MACHINES either. Both holes were live: a `</head>` parked in a
             # template ended the head, dropping the favicon `<link>` a browser keeps IN it, and a
             # `</h2>` flushed a heading the author opened OUTSIDE the template - stopping that
             # heading's text at the template and collecting the rest of it as ordinary prose.
-            return
-        if tag == "head" and not self._in_template():
+            return False
+        if tag == "head" and not matched_foreign and not self._in_template():
             # The head a `</head>` inside a template ends is the TEMPLATE's own; ending the
             # document's head there dropped the favicon `<link>` written after it.
             self._head_ended = True
         if (not self._csp_head_over and tag in _CSP_HEAD_CLOSERS
-                and not self._in_template()):
+                and not matched_foreign and not self._in_template()):
             # `</body>`, `</html>` and `</br>` are "anything else" in both "in head" and "after
             # head": the head is popped and a <body> is inserted, so a policy <meta> written after
             # one is a BODY child whose pragma never runs. `</head>` deliberately does NOT do this
             # (see `csp_metas`), and no other end tag does either - both modes ignore the rest.
             self._csp_head_over = True
+        # In the HTML namespace these end tags switch insertion mode without popping. A same-named
+        # foreign element is ordinary content and still closes normally.
+        if index >= 0 and tag in ("body", "html") and self._ns[index][1] == "html":
+            return False
         # The base truncates to `index` from here (the heading ends where the ELEMENT being closed
         # ends, which `_truncate_stacks()` decides by DEPTH - flushing on the tag NAME alone let a
         # same-named heading nested inside a `<template>` end the one the author opened outside
@@ -2225,6 +2231,7 @@ class _DocParser(_BrowserBoundaries):
         # template-parked `<script>`/`<style>` is finalized the same way, so an INNER closer (only
         # reachable in foreign content, where those two hold markup) cannot end the outer block
         # early and drop the CSS or code a browser still reads from it.
+        return True
 
     def handle_comment(self, data):
         # A region marker is a comment the AUTHORING TOOLS wrote, so only a REAL comment whose

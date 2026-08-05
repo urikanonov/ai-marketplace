@@ -192,6 +192,53 @@ test.describe("content-bound validation stamp (CMH-STAMP-05)", () => {
     expect(jsHash).toMatch(/^[0-9a-z]+$/);
   });
 
+  test("shared parser boundaries preserve browser section-hash parity (CMH-VAL-21)", async ({ page }) => {
+    const cases = [
+      {
+        key: "cmh-boundary-implicit",
+        content: '<p class="cm-skip">Hidden<h2 id="shown">Shown</h2><p>Body</p>',
+      },
+      {
+        key: "cmh-boundary-self-close",
+        content: '<h2 id="shown"/>Shown</h2><p>Body</p>',
+      },
+      {
+        key: "cmh-boundary-list-item",
+        content: '<ul><li class="cm-skip">Hidden<li><h2 id="shown">Shown</h2><p>Body</p></ul>',
+      },
+      {
+        key: "cmh-boundary-rcdata",
+        content: '<textarea><h2 id="ghost">Ghost</h2></textarea><h2 id="shown">Shown</h2>',
+      },
+      {
+        key: "cmh-boundary-rcdata-reference",
+        content: '<h2 id="shown">Shown</h2><textarea>Fish &amp; Chips</textarea>',
+      },
+      {
+        key: "cmh-boundary-leading-lf",
+        content: '<h2 id="shown">Shown</h2><pre>\nBody</pre>',
+      },
+    ];
+    for (const entry of cases) {
+      const staged = stageContent(entry.content, { key: entry.key });
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      const jsSections = await page.evaluate(() => Object.fromEntries(
+        Array.from(document.querySelectorAll("#commentRoot h1, #commentRoot h2, #commentRoot h3, #commentRoot h4, #commentRoot h5, #commentRoot h6"))
+          .filter((heading) => heading.id && !heading.closest(".cm-skip"))
+          .map((heading) => [heading.id, window.__cmhReview.sectionHashOf(heading.id)]),
+      ));
+      const pySections = JSON.parse(execFileSync(PYTHON, ["-c", [
+        "import json,sys,section_hash",
+        "html=open(sys.argv[1],encoding='utf-8').read()",
+        "print(json.dumps({s['id']:s['hash'] for s in section_hash.extract_sections(html) if s['id']}))",
+      ].join(";"), staged.html], {
+        cwd: path.join(SKILL, "tools", "authoring"),
+      }).toString());
+      expect(pySections).toEqual(jsSections);
+    }
+  });
+
   test("a persisted table sort does not falsely invalidate the stamp (canonical hash)", async ({ page }) => {
     // A reader sorting a table is a runtime-only DOM reorder the source-order stamp never saw; the
     // canonical (unsorted) docHash must still match so the banner stays down after reload.

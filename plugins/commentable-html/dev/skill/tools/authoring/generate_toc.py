@@ -39,6 +39,7 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
         self.stack = []
         self.root_depth = None
         self.root_closed = False
+        self.root_seen = False
         self.root_start_end = None
         self.all_ids = []
         self.headings = []
@@ -90,7 +91,7 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
         self._heading_index = None
 
     def _in_template(self):
-        return any(tag == "template" for tag, _skip in self.stack)
+        return bool(self._tpl_stop) and self._tpl_stop[-1] >= 0
 
     def _skip_ancestor(self):
         return any(skip for _tag, skip in self.stack)
@@ -125,9 +126,13 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
             element_id = attrs_dict.get("id")
             if element_id:
                 self.all_ids.append(element_id)
-                if element_id == "commentRoot" and self.root_start_end is None:
-                    self.root_depth = len(self.stack)
-                    self.root_start_end = start + len(start_text)
+                if element_id == "commentRoot" and not self.root_seen:
+                    self.root_seen = True
+                    if opens:
+                        self.root_depth = len(self.stack)
+                        self.root_start_end = start + len(start_text)
+                    else:
+                        self.root_closed = True
 
         if (tag in HEADING_TAGS and self._heading is None and self._inside_root()
                 and not own_skip and not self._skip_ancestor() and not self._in_template()):
@@ -150,12 +155,22 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
             element_id = ad.get("id")
             if element_id:
                 self.all_ids.append(element_id)
+                if element_id == "commentRoot" and not self.root_seen:
+                    # The first matching DOM element is the runtime root even when it self-closes.
+                    # It has no insertion point for a generated TOC and no heading descendants.
+                    self.root_seen = True
+                    self.root_closed = True
 
     def handle_data(self, data):
         # A nested <template>'s text is inert (a browser renders none of it), so it is not part
         # of the heading a reader sees - the same rule the validator's heading capture applies.
         if self._heading is not None and not self._in_template():
             self._heading["text_parts"].append(data)
+
+    def _visit_end(self, tag, index):
+        # HTML5 changes insertion mode for these end tags without popping an HTML element. A
+        # same-named foreign element is real element content and still closes normally.
+        return not (index >= 0 and tag in ("body", "html") and self._ns[index][1] == "html")
 
     def close(self):
         super().close()

@@ -18,10 +18,10 @@ Two public entry points:
 import re
 import os
 import sys
-from html.parser import HTMLParser
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _browser_attrs  # noqa: E402
+import _browser_boundaries  # noqa: E402
 
 # Whitespace class collapsed to a single space, matching the runtime REVIEW_WS_RE
 # (/[ \t\n\r\f\v\u00a0]+/). \v is \x0b and \f is \x0c.
@@ -62,18 +62,15 @@ def cmh_section_hash(text):
     return _to_base36(h)
 
 
-class _SectionParser(_browser_attrs.BrowserTagNames):
+class _SectionParser(_browser_boundaries.BrowserBoundaries):
     """Collect the content-root text with cm-skip / script / style subtrees excluded, and record
     each heading's (id, level, start-offset, end-offset). convert_charrefs=True so entities arrive
     decoded, like DOM textContent."""
 
-    # The SHARED bounded TEXT decode (CMH-VAL-21): an oversized numeric character reference
-    # in prose resolves to U+FFFD instead of raising, so this tool reads the same document
-    # every validator parse reads (issue #946).
-    goahead = _browser_attrs.text_goahead(HTMLParser.goahead)
+    _track_offsets = False
 
-    def __init__(self, single_root=False):
-        super().__init__(convert_charrefs=True)
+    def __init__(self, single_root=False, html=""):
+        super().__init__("")
         self.parts = []
         self.length = 0
         self.headings = []          # list of dicts: {id, level, start, end}
@@ -92,13 +89,12 @@ class _SectionParser(_browser_attrs.BrowserTagNames):
     def _skipping(self):
         return bool(self._stack) and self._stack[-1]["skip"]
 
-    def handle_starttag(self, tag, attrs):
-        tag_l = self._browser_tag(tag)
-        # A void element opens no subtree (it has no end tag); it also contributes no text, so it is
-        # simply ignored - pushing it would corrupt the stack for every following sibling.
-        if tag_l in _VOID_ELEMENTS:
-            return
-        d = dict(attrs)
+    def _in_html_template(self):
+        return bool(self._tpl_stop) and self._tpl_stop[-1] >= 0
+
+    def _visit_start(self, tag_l, d, ns, opens):
+        if self._stack:
+            self._stack[-1]["strip_lf"] = False
         classes = (d.get("class") or "").split()
         # HTML5's h1-h6 start tag pops an open heading that is the CURRENT node, so a heading whose
         # end tag never arrived stops here instead of running on to collect the rest of the
@@ -108,9 +104,9 @@ class _SectionParser(_browser_attrs.BrowserTagNames):
         # inherited its skip, dropping a section a browser renders. This runs BEFORE the skip
         # inheritance below so that inheritance is read off the heading's parent, as in the DOM.
         # Mirrors the validator's _DocParser (CMH-VAL-21).
-        if (_HEADING_RE.match(tag_l) and self._stack
+        if (ns == "html" and _HEADING_RE.match(tag_l) and self._stack
                 and _HEADING_RE.match(self._stack[-1]["tag"])):
-            self._truncate(len(self._stack) - 1)
+            self._truncate_stacks(len(self._stack) - 1)
         parent_skip = self._skipping()
         # Skip cm-skip chrome, inert script/style/template/noscript, and runtime-transformed blocks
         # (rendered diffs, KQL, mermaid, chart canvases, editable notes) - the same set the JS
@@ -121,39 +117,43 @@ class _SectionParser(_browser_attrs.BrowserTagNames):
                 or bool(_SKIP_CLASSES.intersection(classes))
                 or tag_l in ("script", "style", "template", "canvas", "noscript")
                 or "data-cmh-note" in d)
-        is_root = (d.get("id") == "commentRoot") if self.single_root \
+        is_root = not self._in_html_template() and (
+            (d.get("id") == "commentRoot") if self.single_root
             else ((d.get("id") == "commentRoot") or ("data-cmh-content-root" in d))
-        entry = {"tag": tag_l, "skip": skip, "hidx": None}
-        self._stack.append(entry)
+        )
+        entry = {
+            "tag": tag_l,
+            "skip": skip,
+            "hidx": None,
+            "strip_lf": ns == "html" and tag_l in ("pre", "textarea", "listing"),
+        }
         # Open the root only when not already inside one and, in single_root mode, only the first
         # one (found_root latches True) - a later id=commentRoot never re-opens a subtree.
         if (is_root and self._root_depth is None
                 and not (self.single_root and self.found_root)):
-            self._root_depth = len(self._stack)
+            self._root_depth = len(self._stack) + 1
             self.found_root = True
         if self._in_root() and not skip and _HEADING_RE.match(tag_l):
             entry["hidx"] = len(self.headings)
             self.headings.append({"id": d.get("id") or "", "level": int(tag_l[1]),
                                   "start": self.length, "end": None})
+        return entry
 
-    def handle_startendtag(self, tag, attrs):
-        pass  # void / self-closing element: opens no subtree
+    def _push_element(self, _tag, _ad, _ns, entry):
+        self._stack.append(entry)
 
-    def handle_endtag(self, tag):
-        tag_l = self._browser_tag(tag)
-        # HTML5 does NOT pop for `</body>` or `</html>`: they only switch the insertion mode, and
-        # what follows is appended to the element still open - which, in a document truncated
-        # before `</main>`, is `#commentRoot` itself (verified in chromium: the trailing prose is
-        # part of `getElementById("commentRoot").textContent`). Popping here would drop text the
-        # runtime hashes, and this hash has to match `cmhDocContentHash` byte for byte.
-        if tag_l in ("body", "html"):
-            return
-        for i in range(len(self._stack) - 1, -1, -1):
-            if self._stack[i]["tag"] == tag_l:
-                self._truncate(i)
-                break
+    def _visit_void(self, _tag, _ad, _ns, _entry):
+        self._truncate_stacks(len(self._stack))
 
-    def _truncate(self, index):
+    def _visit_end(self, tag_l, index):
+        if self._stack:
+            self._stack[-1]["strip_lf"] = False
+        # In the HTML namespace, these end tags only switch insertion mode without popping. A
+        # same-named foreign element is ordinary content and still closes normally.
+        return not (index >= 0 and tag_l in ("body", "html")
+                    and self._ns[index][1] == "html")
+
+    def _truncate_stacks(self, index):
         """Pop the open-element stack back to `index`, applying every boundary that depth ends.
 
         A heading the popped subtree holds ends there, and so does the content root when an
@@ -161,7 +161,7 @@ class _SectionParser(_browser_attrs.BrowserTagNames):
         an ancestor closed over (`<section><main id="commentRoot">...</section>`) kept collecting
         the text and the headings a browser puts outside it into the last section. The validator's
         `_DocParser` and the table-of-contents parser read those two boundaries the same way
-        (CMH-VAL-21). `</body>` and `</html>` never reach here - see `handle_endtag`.
+        (CMH-VAL-21).
         """
         for entry in self._stack[index:]:
             hidx = entry.get("hidx")
@@ -169,6 +169,7 @@ class _SectionParser(_browser_attrs.BrowserTagNames):
                 self.headings[hidx]["end"] = self.length
         if self._root_depth is not None and (index + 1) <= self._root_depth:
             self._root_depth = None
+        super()._truncate_stacks(index)
         del self._stack[index:]
 
     def close(self):
@@ -182,18 +183,32 @@ class _SectionParser(_browser_attrs.BrowserTagNames):
                 heading["end"] = self.length
 
     def handle_data(self, data):
+        if self._stack and self._stack[-1]["strip_lf"]:
+            self._stack[-1]["strip_lf"] = False
+            if data.startswith("\n"):
+                data = data[1:]
+        if (self._stack and self._ns and self._stack[-1]["tag"] in ("title", "textarea")
+                and self._ns[-1][1] == "html"):
+            # Shared boundaries deliberately expose every raw-text/RCDATA body as stable raw
+            # source. The runtime hashes DOM textContent, so RCDATA references decode here while
+            # script/style/xmp/etc. remain literal.
+            data = _browser_attrs.unescape_text(data)
         if self._in_root() and not self._skipping() and data:
             self.parts.append(data)
             self.length += len(data)
+
+    def handle_comment(self, _data):
+        if self._stack:
+            self._stack[-1]["strip_lf"] = False
 
 
 def extract_sections(html):
     """Return a list of {id, level, headingText, hash} for every id'd heading in the content root,
     in document order. `hash` is the section content hash (heading through the next same-or-higher
     heading); `headingText` is the heading's own whitespace-collapsed text."""
-    p = _SectionParser()
-    p.feed(html or "")
-    p.close()
+    text = html or ""
+    p = _SectionParser(html=text)
+    p.parse_document(text)
     full = "".join(p.parts)
     heads = p.headings
     out = []
@@ -230,10 +245,9 @@ def document_content_hash(html):
     Returns None when the document has no content root: without one the runtime cannot reproduce a
     matching hash, so the stamp is left un-content-bound (timestamp only) rather than risk a false
     banner on a valid document."""
-    p = _SectionParser(single_root=True)
-    p.feed(html or "")
-    p.close()
+    text = html or ""
+    p = _SectionParser(single_root=True, html=text)
+    p.parse_document(text)
     if not p.found_root:
         return None
     return cmh_section_hash("".join(p.parts))
-
