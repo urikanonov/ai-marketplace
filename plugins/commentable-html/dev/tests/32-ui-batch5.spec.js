@@ -106,6 +106,76 @@ test.describe("custom tooltips (no jQuery/CDN)", () => {
     await page.locator("#btnToolbarMenu").focus();
     await expect(page.locator(".cm-tooltip.is-visible")).toBeVisible({ timeout: 1500 });
   });
+
+  test("a control focused while the panel is still sliding in gets its tooltip once it lands (CMH-UI-14)", async ({ page }) => {
+    await openInline(page);
+    // Slow the slide so the focus deterministically lands MID-animation: the shipped 0.22s
+    // transition is short enough that a fast machine can finish it before the focus arrives.
+    await page.addStyleTag({ content: ".cm-sidebar { transition-duration: 300ms !important; }" });
+    const tip = page.locator(".cm-tooltip.is-visible");
+    // Open the panel and focus a control inside it in the SAME task, while the sidebar is still
+    // translated off the right edge - so the anchor is genuinely outside the visible box at focus.
+    const offscreenAtFocus = await page.evaluate(() => {
+      document.getElementById("btnToggleSidebar").click();
+      const sort = document.getElementById("btnSort");
+      sort.focus();
+      return sort.getBoundingClientRect().left >= window.innerWidth;
+    });
+    expect(offscreenAtFocus).toBe(true);
+    // The tip is raised once the control lands, rather than being lost for good.
+    await expect(tip).toBeVisible({ timeout: 3000 });
+    await expect(tip).toContainText(/document position/i);
+    // And once the slide has settled it points AT the landed control: the arrow offset must match
+    // the button's real centre, not the position the button held mid-slide.
+    await page.waitForFunction(() => {
+      const t = getComputedStyle(document.querySelector(".cm-sidebar")).transform;
+      return t === "none" || t === "matrix(1, 0, 0, 1, 0, 0)";
+    });
+    const arrowError = await page.evaluate(() => {
+      const b = document.getElementById("btnSort").getBoundingClientRect();
+      const el = document.querySelector(".cm-tooltip.is-visible");
+      const t = el.getBoundingClientRect();
+      const arrow = parseFloat(getComputedStyle(el).getPropertyValue("--cm-tip-arrow"));
+      // The runtime clamps the arrow into the bubble, so compare against the same clamped value:
+      // an edge-clamped (but correctly placed) bubble must not read as a misplaced one.
+      const want = Math.max(10, Math.min(t.width - 10, b.left + b.width / 2 - t.left));
+      return Math.abs(arrow - want);
+    });
+    expect(arrowError).toBeLessThanOrEqual(12);
+  });
+
+  test("a control that never becomes visible gets no parked tooltip (CMH-UI-14)", async ({ page }) => {
+    await openInline(page);
+    const tip = page.locator(".cm-tooltip.is-visible");
+    // With the panel CLOSED the sidebar sits off the right edge for good, so focusing a control
+    // inside it must leave no bubble stranded over unrelated chrome - the deferred re-check has
+    // to expire quietly rather than show a tip for an anchor the reviewer cannot see.
+    const offscreen = await page.evaluate(() => {
+      const sort = document.getElementById("btnSort");
+      sort.focus();
+      return sort.getBoundingClientRect().left >= window.innerWidth;
+    });
+    expect(offscreen).toBe(true);
+    await page.waitForTimeout(1200);
+    await expect(tip).toBeHidden();
+  });
+
+  test("focus moving on before the control lands cancels the pending tooltip (CMH-UI-14)", async ({ page }) => {
+    await openInline(page);
+    await page.addStyleTag({ content: ".cm-sidebar { transition-duration: 300ms !important; }" });
+    const tip = page.locator(".cm-tooltip.is-visible");
+    // Focus a control mid-slide, then move on before it lands: the reviewer is no longer there, so
+    // the deferred tip must be dropped rather than popping up over a control they have tabbed past.
+    // A frame is yielded between the two, so the deferred wait is genuinely in flight when focus goes.
+    await page.evaluate(() => {
+      document.getElementById("btnToggleSidebar").click();
+      document.getElementById("btnSort").focus();
+    });
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+    await page.evaluate(() => document.getElementById("btnSort").blur());
+    await page.waitForTimeout(1200);
+    await expect(tip).toBeHidden();
+  });
 });
 
 test.describe("compact sidebar header", () => {

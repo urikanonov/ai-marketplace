@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.684.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.685.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.685.0] - 2026-08-05</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A chrome control focused while the comments panel is still SLIDING IN no longer loses its tooltip for good (CMH-UI-14). The tip is only ever raised by <code>focusin</code>/<code>mouseover</code>, so a control that sat outside the visible box during the 0.22s panel slide was suppressed with no second chance - a keyboard user who opened the panel and immediately tabbed to Search, Sort, More or Help got silence. A suppressed control now opens a bounded watch episode: the tip is raised the moment the control lands (within 600ms), and the bubble then keeps following the control until its box holds still, so it ends up beside the settled control with its arrow on the control&#x27;s centre rather than parked where the control was mid-slide. The suppression itself is unchanged for a control the reviewer genuinely cannot see (a soft keyboard covering it, a pinch-panned page): an episode needs the control to still be focused or hovered, is bounded as a whole so a never-settling animation cannot renew it, and ends when focus or the pointer moves on, on the usual dismissals (focus out, scroll, viewport change, Escape, mousedown), or when another control takes over - so it expires quietly instead of parking a bubble over unrelated chrome or raising one over a control the reviewer has already tabbed past.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.684.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>Startup diagnostics now share one aggregation path and appear together in a single alert toast. A startup storage read or write failure, duplicate reserved data blocks, an unresolved review-state block, and the handled-comment cleanup notice can no longer replace one another before the reader sees them.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.681.0] - 2026-08-04</h3></div>
             <div class="group-label">Changed</div>
@@ -509,8 +518,6 @@
               <li>The browser-accurate element-boundary SEQUENCE now lives in exactly one place (CMH-VAL-21). <code>handle_starttag()</code>, <code>handle_startendtag()</code> and <code>handle_endtag()</code> moved onto the shared <code>_BrowserBoundaries</code> base (and, identically, onto the degraded fallback a partial install gets) and drive overridable hooks - <code>_visit_start()</code>, <code>_push_element()</code>, <code>_visit_void()</code>, <code>_after_start()</code>, <code>_visit_self_closed()</code>, <code>_visit_end()</code> - so each of the thirteen parsers and authoring tools that derive from it now says only what it COLLECTS. The same ~25-line skeleton (browser tag name, browser attribute dict, child namespace, the implicit <code>&lt;/p&gt;</code> / <code>&lt;/li&gt;</code> close, the void and foreign self-closing carve-outs, the namespace push, the raw-text switch, and, for an end tag, the innermost open element then the truncation) was maintained in eleven independent copies, where one forgotten <code>_enter_raw_text()</code> would silently have parsed a <code>&lt;script&gt;</code> body as markup - the base deliberately disables the host&#x27;s own <code>_enter_cdata_mode()</code>, so no gate would have seen it. A new guard fails any subclass that writes a tag handler of its own, with a single named exception (the prose-density pass, which keeps no namespace stack and applies no implicit close, so sharing the sequence would change what it counts rather than share it). No behavior change to any tool: every parse this refactor touches reads a document exactly as it did.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.679.0] - 2026-08-04</h3></div>
             <div class="group-label">Fixed</div>
@@ -552,19 +559,7 @@
               <li>An <code>&lt;iframe srcdoc&gt;</code> no longer rides through an Offline export, or past <code>validate.py --strict</code> in offline mode, carrying a whole nested document (CMH-OFFLINE-04, CMH-OFFLINE-05). A <code>srcdoc</code> holds an entire document as an ATTRIBUTE VALUE, and neither side of the offline contract could see inside it: the exporter&#x27;s <code>_stripOfflineNetworkLoads</code> cleared an iframe&#x27;s <code>src</code> and left <code>srcdoc</code> untouched, and every walk it makes visits ELEMENTS, so nothing descends into the string; the strict validator&#x27;s offline resource check read <code>(&quot;iframe&quot;, (&quot;src&quot;,))</code> only, and its tag index tokenizes the document, so that nested markup was attribute text and never became tags. An inline event handler, a meta refresh, or a network loader parked inside one therefore travelled into a file that promises zero network AND was certified clean by the gate the export is measured by. The offline CSP does not close the channel either: <code>frame-src &#x27;none&#x27;</code> blocks a <code>src</code> LOAD, but a <code>srcdoc</code> frame is content the policy is INHERITED into rather than a fetch, and the inherited policy still allows inline script, which can navigate the top-level document. The direction chosen - the way the meta-refresh case was settled - is that an offline document may not carry <code>srcdoc</code> at all: the export now clears the attribute UNCONDITIONALLY (on presence, so an empty or inert one goes too, which is what stops the gate blessing a file an export would still change) and offline <code>--strict</code> rejects any that remains, so the two sides agree by construction rather than by keeping two independent nested-document parsers in step. The frame ELEMENT is kept - an author&#x27;s <code>title</code>, sizing and relative <code>src</code> are content - and the removal is counted in the export toast, because unlike a network strip this takes away content that worked offline. Both sides judge the same shapes: a <code>&lt;template&gt;</code>-parked frame, a <code>&lt;noscript&gt;</code> fallback and a self-closed foreign element, namespace-blind.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.671.0] - 2026-08-04</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The print appendix no longer moves the document content hash, and no longer treats an author&#x27;s element as its own. <code>beforeprint</code> materializes every open comment as real prose at the end of <code>#commentRoot</code>, so for as long as a print preview was open the hash - and with it the validated banner and every section review badge - reflected the REVIEWER&#x27;s notes rather than the document. Runtime-injected chrome is now excluded from the hash scan by IDENTITY (<code>CMH_HASH_EXCLUDED</code>, a set kept separate from the heuristic export-tail set so an over-capture there can never subtract document text) rather than by a class: the appendix cannot wear <code>cm-skip</code>, because the print stylesheet hides <code>body &gt; .cm-skip</code> and a document with no <code>#commentRoot</code> roots the layer at <code>&lt;body&gt;</code>, which would hide the appendix from the very print it exists for. The appendix is also resolved by identity instead of <code>getElementById</code>, so an author element that happens to carry <code>id=&quot;cmhPrintComments&quot;</code> is no longer overwritten on print, deleted afterwards (or immediately, when the document has no comments), or counted as reviewer chrome in the hash - the same rule as CMH-CORE-21.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Audited every runtime DOM mutation inside the content root for the stranded-authored-text class behind the table-sort bug, and gave the fix behind it a single shared home (CMH-CONTENT-21). Appending elements instead of permuting them through the slots they already occupy strands the whitespace text nodes an author leaves between them, which silently drifts the document and section content hashes and falsely raises the &quot;not validated&quot; banner. The audit checked the draggable widget/triage board, checklist control injection, editable notes, deck mode, the table-scroll wrapper and the code-line gutter against <code>window.__cmhReview.docHash()</code> and found all six text-neutral; the one intentional exception is a widget card MOVE on a board that is not <code>cm-skip</code>, where the arrangement IS the content, and <code>Reset moves</code> now has a test proving it restores the load hash exactly. The slot math itself moved into one place - <code>cmhPermuteChildrenInSlots</code> (writer) and <code>cmhPermutedChildNodes</code> (pure reader) in the preamble - with the table sorter and the canonical-hash scan rewired onto them, so the class cannot reappear in a third copy. A catch-all test loads every shipped example document and compares its live hash to the Python hash of the file on disk, so a NEW stranding mutation is caught even with no case written for it.</li>
-              <li>The persisted table-sort map is re-homed onto a null-prototype object like the checklist and notes state maps (CMH-SEC-02), so the runtime has one convention for a document-reachable state map rather than two. Its keys are <code>&lt;idx&gt;::&lt;header-sig&gt;</code>, so the prototype part is defense in depth; a non-map payload (an array) is now discarded rather than accepted, which used to eat the reader&#x27;s sort silently because <code>JSON.stringify</code> drops string keys written onto an array.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">315 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">316 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
