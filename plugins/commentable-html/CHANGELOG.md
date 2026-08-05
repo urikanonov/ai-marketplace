@@ -4,6 +4,24 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.715.0] - 2026-08-05
+
+### Fixed
+
+- The validator now reads a `file://` companion reference's HOST the way the URL parser reads it,
+  so a NonShareable document whose companion refs are written in a percent-encoded spelling of
+  `localhost` validates cleanly. The parser percent-decodes a file host and maps it through
+  domain-to-ASCII before the file-host state empties the exact string `localhost`, but the
+  resolver compared the raw, still-encoded host to the literal - so `file://local%68ost/...` fell
+  through to the authority branch, resolved to a bogus UNC path, and reported a companion file
+  that was right there on disk as missing. The ref now also goes through the same input cleanup
+  the network-URL predicate uses, so a BACKSLASH host terminator (`file://localhost\x`, which the
+  parser ends at the `\` exactly as at a `/`) is local too. A TRAILING DOT deliberately keeps a
+  real authority (`file://localhost./x` is the SMB path `\\localhost.\x`), matching the
+  network-URL predicate's decision, and the two are now pinned to agree about the `localhost`
+  spelling - IDNA/UTS-46 spellings included, which both sides read as an authority (the accepted
+  over-detection the network-URL predicate already records) (CMH-VAL-05).
+
 ## [1.711.0] - 2026-08-05
 
 ### Fixed

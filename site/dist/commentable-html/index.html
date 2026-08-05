@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.711.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.715.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.715.0] - 2026-08-05</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The validator now reads a <code>file://</code> companion reference&#x27;s HOST the way the URL parser reads it, so a NonShareable document whose companion refs are written in a percent-encoded spelling of <code>localhost</code> validates cleanly. The parser percent-decodes a file host and maps it through domain-to-ASCII before the file-host state empties the exact string <code>localhost</code>, but the resolver compared the raw, still-encoded host to the literal - so <code>file://local%68ost/...</code> fell through to the authority branch, resolved to a bogus UNC path, and reported a companion file that was right there on disk as missing. The ref now also goes through the same input cleanup the network-URL predicate uses, so a BACKSLASH host terminator (<code>file://localhost\x</code>, which the parser ends at the <code>\</code> exactly as at a <code>/</code>) is local too. A TRAILING DOT deliberately keeps a real authority (<code>file://localhost./x</code> is the SMB path <code>\\localhost.\x</code>), matching the network-URL predicate&#x27;s decision, and the two are now pinned to agree about the <code>localhost</code> spelling - IDNA/UTS-46 spellings included, which both sides read as an authority (the accepted over-detection the network-URL predicate already records) (CMH-VAL-05).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.711.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The validator now resolves the layer descriptor the way the runtime and the exporter do, so a document whose ONLY <code>commentableHtmlLayer</code> descriptor sits inside the content root is reported as missing a descriptor instead of validating completely clean (CMH-VAL-19). The layer deliberately reads its own reserved blocks OUTSIDE the content root (<code>cmhLayerBlocks</code>, so that &quot;a content-region decoy must not be able to declare what this document IS&quot;) and every export refuses such a file outright, but the validator took the first <code>&lt;script id=&quot;commentableHtmlLayer&quot;&gt;</code> anywhere in the parse - the parser computed the content-region flag per capture and then dropped it. A document with a live descriptor moved inside <code>#commentRoot</code> therefore got a clean bill of health for a file the layer resolves no descriptor for and no export will produce, and a decoy placed there ahead of the real descriptor decided the document&#x27;s declared mode - the one value that now keys the whole offline rule set, and one a decoy can set to the perfectly VALID <code>&quot;offline&quot;</code> without raising any mode error at all. The flags ride along to the flushed script and the descriptor is resolved through them, on the boundary <code>cmhLayerBlocks</code> actually tests: the whole <code>#commentRoot</code> SUBTREE, not just the part between the CONTENT markers, so a descriptor parked inside the root but ahead of the BEGIN marker (or past the END marker) is caught too. An absent flag fails CLOSED. The root subtree contains the authored region, so an authored DEMONSTRATION of the markup in prose is still content and the real descriptor in the head is still read, and the missing-descriptor error now says WHY.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.710.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -509,8 +518,6 @@
               <li>A NonShareable document that carries offline chart snapshots is no longer read one way by the runtime and another by the validator. A <code>data-cm-offline-chart</code> image marks a chart a self-contained offline document snapshotted (a legacy Offline export produced them; the current export inlines Chart.js and keeps the live canvas), so a document whose layer lives in companion files can never be one: the snapshot there is a contradiction rather than evidence of offline mode. The strict validator now refuses that shape (the &quot;snapshots force mode offline&quot; consistency rule used to sit in the non-NonShareable branch alone, so the shape drew no mode error at all), and reports it alongside a wrong declared mode rather than one problem per run. <code>isOfflineDocument()</code> stops treating the snapshot signal as evidence once the layer is detected loading from companion files, or the descriptor declares either spelling of the companion-file mode. Both sides now also read the snapshot at the same scope - inside <code>#commentRoot</code> - so an attribute in host chrome outside the content root no longer fails a document the runtime would never have read as offline. Nothing else moves: a self-contained document that declares no mode still falls back to the snapshot signal, a Shareable document carrying snapshots still fails the <code>mode must be &quot;offline&quot;</code> rule, and an Offline document carrying them stays clean.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.702.1] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -539,14 +546,7 @@
               <li>The offline navigation predicate&#x27;s LOCAL-BINDING half is now an anchored scan rather than a <code>search()</code> over the whole script, cutting its per-character cost by an order of magnitude (CMH-OFFLINE-05). It decides whether an inline script declares its own <code>location</code> - which drops the navigation verdict to the PREFIXED sinks - and two of its arms carried a bounded 400-character lookahead window, so every <code>const{</code> / <code>var[</code> / <code>function(</code> anchor in the text re-walked that window. Growth was already LINEAR, so this was not the ReDoS class earlier releases closed; the defect was the size of the CONSTANT. Densely packed declaration anchors measured ~2.2us per character in Python on <code>const{</code> repeated (0.031s at 12 KB, 0.375s at 120 KB, 2.7s at 1.2 MB) and ~3.4us on <code>var[</code>, with ~0.33-0.52us in node - an order above the anchored sink scan beside it, on input that is document-supplied and includes the vendored payload&#x27;s INFLATED bytes, where a few hundred base64 bytes buy megabytes. Every shape the pattern recognized ends in the literal <code>location</code>, so the scan is driven from THAT anchor, exactly as the sink search is, and every arm&#x27;s HEAD is a forward-only cursor over the same text: the keyword and <code>catch</code> arms declare when a head ends exactly at the anchor, and the two windowed arms take the last head ending at or before it, whose final character is the opener. A cursor never re-reads a head it has already matched, and the unbounded whitespace run in <code>const&lt;WS&gt;location</code> is consumed once by the compiled head rather than walked backwards per anchor. The same inputs now cost ~0.26us and ~0.27us per character in Python and at most ~0.05us in node, the same order as the sink scan. The recognized language is unchanged, pinned in both directions and in BOTH engines against the frozen pattern over a crossed corpus plus a seeded fuzz, and the scaling guard grew four shapes - declaration-anchor density, name-anchor density, a single unbounded whitespace run, and densely stacked heads - so the constant is measured rather than left unstated.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.696.0] - 2026-08-05</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>An export whose canonical pass fails now says so instead of ending in silence. The pass that rewrites live comment offsets into authored-row coordinates ran on a bare line outside the try/catch that wraps the document build, so a throw there unwound the whole click handler: no file was downloaded and no message appeared, which a reader could not tell apart from a click that never registered. Save/Shareable, the NonShareable Standalone branch, and Offline now all run the pass through one guard that reports the failure as an assertive toast naming the cause, stating that no file was written and that the pass put comments and table sorting back. The report survives the awkward shapes a throw can take: a non-Error throwable (or one whose <code>message</code> getter itself throws) is still reported, and the cause is named whenever the thrown value can be turned into one; an unbounded message is capped so the actionable sentence stays on screen, the full value is left on the console for triage, and a toast that cannot be shown at all still aborts the export rather than restoring the original silence (CMH-EXP-23).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">330 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">331 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
