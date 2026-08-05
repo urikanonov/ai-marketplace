@@ -1077,9 +1077,12 @@ class SpecTestReferenceTests(unittest.TestCase):
         )
 
     def test_every_spec_target_is_fully_reverse_mapped(self):
-        # No shipped target is still restricted to the `*.test.*` / regressions subset. A target
-        # that genuinely must start restricted registers itself in `INTENTIONALLY_RESTRICTED_SPECS`
-        # (empty today), so the exemption is a reviewed one-line edit, not a silent omission.
+        # No shipped JS target is still restricted to the `*.test.*` / regressions subset, and a
+        # target that genuinely must be restricted registers itself in
+        # `INTENTIONALLY_RESTRICTED_SPECS`, so the exemption is a reviewed one-line edit rather
+        # than a silent omission. One target is listed today: the flat Python `scripts/SPEC.md`,
+        # whose `Class.method` test names cannot carry a hyphenated feature id, so it has no
+        # reverse citation to graduate to.
         restricted = {spec.resolve() for spec, _base in refs.SPEC_TARGETS
                       if spec.resolve() not in refs.FULLY_REVERSE_MAPPED_SPECS}
 
@@ -1168,6 +1171,313 @@ class SpecTestReferenceTests(unittest.TestCase):
     def test_real_specs_have_current_test_references(self):
         issues = refs.check_all()
         self.assertEqual([], [issue.format() for issue in issues])
+
+
+class FlatPythonSuiteTests(unittest.TestCase):
+    """A target whose tests are a FLAT `test_*.py` set beside the code, not a `tests/` directory.
+
+    `scripts/SPEC.md` is that shape (issue #1002). Before it was taught, `_tests_dir` looked only
+    at `<spec dir>/tests` and `<base>/tests`, so `check_all` failed closed with "no tests directory
+    found" and the spec had to be held to a second, per-suite copy of the same check. Registering
+    the shape is what lets the ONE registry gate it.
+    """
+
+    def setUp(self):
+        self.root = Path(__file__).resolve().parent.parent
+        self.sandbox = Path(tempfile.mkdtemp(prefix="flat-py-"))
+        self.addCleanup(shutil.rmtree, self.sandbox, ignore_errors=True)
+        # A real `test_*.py` beside the spec, so the registered directory holds a suite. The
+        # CITATIONS point at the repository's own `scripts/` suites, which is the spelling a flat
+        # target uses - `_resolve_test_path` resolves a `scripts/` path from the repo root.
+        (self.sandbox / "test_sandbox_guard.py").write_text(
+            "import unittest\n\n\nclass SandboxTests(unittest.TestCase):\n"
+            "    def test_ok(self):\n        pass\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+
+    def _spec(self, rows):
+        return self._write_spec(self.sandbox / "SPEC.md", rows)
+
+    def _spec_at(self, directory, feature_id):
+        """A minimal, fully covered spec in *directory*, for a test about the DIRECTORY."""
+        return self._write_spec(
+            directory / "SPEC.md",
+            ((feature_id,
+              "`scripts/test_check_forbidden_files.py` - "
+              "`IsForbiddenTest.test_allows_safe_files`"),),
+        )
+
+    def _write_spec(self, spec, rows):
+        spec.write_text(
+            "# Spec\n\n"
+            "| Feature id | Behavior | Covering tests |\n"
+            "| --- | --- | --- |\n"
+            + "".join(
+                "| %s | Demo behavior. | %s |\n" % (feature_id, coverage)
+                for feature_id, coverage in rows
+            ),
+            encoding="utf-8",
+            newline="\n",
+        )
+        return spec
+
+    def _check_all(self, spec, flat=None):
+        registered = frozenset({spec.resolve()}) if flat is None else flat
+        with mock.patch.object(refs, "FLAT_PYTHON_SUITES", registered):
+            return refs.check_all(((spec, self.root),), frozenset())
+
+    def test_a_flat_python_suite_target_is_located_and_passes(self):
+        spec = self._spec(((
+            "GUARD-01",
+            "`scripts/test_check_forbidden_files.py` - `IsForbiddenTest.test_allows_safe_files`",
+        ),))
+
+        self.assertEqual([issue.format() for issue in self._check_all(spec)], [])
+
+    def test_a_missing_cited_file_fails(self):
+        spec = self._spec((
+            ("GUARD-01", "`scripts/test_not_a_real_suite.py` - `SandboxTests.test_ok`"),
+        ))
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("missing test file `scripts/test_not_a_real_suite.py`", messages[0])
+
+    def test_a_renamed_method_fails(self):
+        spec = self._spec(((
+            "GUARD-01",
+            "`scripts/test_check_forbidden_files.py` - `IsForbiddenTest.test_renamed_away`",
+        ),))
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn(
+            "`IsForbiddenTest.test_renamed_away` not found in "
+            "`scripts/test_check_forbidden_files.py`",
+            messages[0],
+        )
+
+    def test_a_duplicate_row_fails(self):
+        cell = ("`scripts/test_check_forbidden_files.py` - "
+                "`IsForbiddenTest.test_allows_safe_files`")
+        spec = self._spec((("GUARD-01", cell), ("GUARD-01", cell)))
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("feature id `GUARD-01` is the id cell of 2 spec rows", messages[0])
+
+    def test_a_registered_directory_with_no_python_suite_fails_closed(self):
+        bare = self.sandbox / "bare"
+        bare.mkdir()
+        spec = self._spec_at(bare, "GUARD-01")
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("no tests directory found for this target", messages[0])
+        self.assertIn("test_*.py", messages[0])
+
+    def test_the_corpus_is_the_flat_python_suite(self):
+        spec = (self.root / "scripts" / "SPEC.md").resolve()
+
+        corpus = {path.name for path in refs._test_corpus(spec, self.root)}
+
+        self.assertIn("test_check_forbidden_files.py", corpus)
+        self.assertIn("test_check_workflow_policy.py", corpus)
+        self.assertNotIn("check_forbidden_files.py", corpus)
+
+    def test_the_js_grammar_directions_skip_a_python_file(self):
+        # A flat Python corpus is FULL of feature-id-shaped fixture strings (`CMH-FOO-01`,
+        # `DEMO-01`, `ORPHAN-99`, `HTTP-404`) written for the checkers' own unit tests. Reading a
+        # `.py` file with the JS title grammar would turn every one of them into a bogus
+        # "has no spec row", so the reverse and duplicate directions read JS/TS files only.
+        carrier = self.sandbox / "test_carrier.py"
+        carrier.write_text(
+            "FIXTURE = '''\n"
+            "test('a borrowed behavior (ORPHAN-99)', async () => {});\n"
+            "'''\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec((("GUARD-01", "prose only"),))
+
+        self.assertEqual([], refs.check_test_id_mappings(spec, self.root, (carrier,)))
+        with mock.patch.object(refs, "FLAT_PYTHON_SUITES", frozenset({spec.resolve()})):
+            self.assertEqual([], refs.check_duplicate_feature_ids(((spec, self.root),)))
+
+    def test_a_bare_file_citation_with_no_test_names_fails(self):
+        # The gap the per-suite checks this registry replaced used to cover: a row that points at a
+        # real suite but names nothing in it. A JS target is caught from the other side (the
+        # reverse direction demands the citation), but a flat Python target has no other side.
+        spec = self._spec((("GUARD-01", "`scripts/test_check_forbidden_files.py`"),))
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("is cited with no ` - ` clause naming a test", messages[0])
+
+    def test_a_bare_file_citation_is_still_allowed_for_a_js_target(self):
+        # The same shape is legitimate in a JS spec, which records partial or manual coverage that
+        # way ("partial - `tests/16-formatting.spec.js` verifies ..."), so the new demand must not
+        # leak outside the flat Python shape.
+        base = self.sandbox / "js-base"
+        (base / "tests").mkdir(parents=True)
+        (base / "tests" / "demo.spec.js").write_text(
+            "test('a behavior (DEMO-01)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = base / "SPEC.md"
+        spec.write_text(
+            "# Spec\n\n"
+            "| Feature id | Behavior | Covering tests |\n"
+            "| --- | --- | --- |\n"
+            "| DEMO-01 | Demo behavior. | partial - `tests/demo.spec.js` covers the happy path |\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+
+        self.assertEqual([], refs.check_spec(spec, base))
+
+    def test_a_row_that_cites_nothing_at_all_fails(self):
+        # The other half of the same gap: not a bare FILE reference but no reference at all. A JS
+        # target is caught from the other side (its test titles carry the id); a Python
+        # `Class.method` name cannot, so the row itself must name the test.
+        spec = self._spec((("GUARD-01", "Manual verification covers the behavior."),))
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("row `GUARD-01` names no covering test", messages[0])
+
+    def test_a_row_may_still_record_manual_coverage(self):
+        # AGENTS.md keeps `manual` for a behavior that genuinely cannot be automated, so the row
+        # rule must demand a NAMED test rather than forbid the documented escape hatch - provided
+        # the row is also listed under "Coverage gaps", which is the other half of that bargain.
+        spec = self.sandbox / "SPEC.md"
+        spec.write_text(
+            "# Spec\n\n"
+            "| Feature id | Behavior | Covering tests |\n"
+            "| --- | --- | --- |\n"
+            "| GUARD-01 | Demo behavior. | `manual` - an agent convention, not automatable |\n"
+            "\n## Coverage gaps\n\n"
+            "GUARD-01 is a prompt-level convention with no automatable surface.\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+
+        self.assertEqual([issue.format() for issue in self._check_all(spec)], [])
+
+    def test_a_manual_row_must_be_listed_under_coverage_gaps(self):
+        spec = self._spec((("GUARD-01", "`manual` - an agent convention, not automatable"),))
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("is not listed under \"Coverage gaps\"", messages[0])
+
+    def test_a_registered_spec_with_no_feature_rows_fails(self):
+        # The per-suite checks this replaced asserted their spec still declared rows. Without that,
+        # an emptied or renamed table would leave a vacuously green gate behind.
+        spec = self.sandbox / "SPEC.md"
+        spec.write_text("# Spec\n\nProse only.\n", encoding="utf-8", newline="\n")
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("declares no feature rows", messages[0])
+
+    def test_a_directory_named_like_a_test_file_is_not_a_suite(self):
+        # `_test_corpus` skips a directory, so accepting one here would hand back an empty corpus
+        # while reporting the target as located - the silent no-op the fail-closed branch exists
+        # to prevent.
+        bare = self.sandbox / "dir-suite"
+        (bare / "test_not_a_file.py").mkdir(parents=True)
+        spec = self._spec_at(bare, "GUARD-01")
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("no tests directory found for this target", messages[0])
+
+    def test_an_uppercase_extension_still_carries_js_titles(self):
+        # `_JS_TEST_FILE_RE` admits `foo.spec.JS`, so such a file IS in the corpus; bounding the
+        # JS-title directions by a case-SENSITIVE suffix would have let it evade both of them.
+        base = self.sandbox / "shouty"
+        (base / "tests").mkdir(parents=True)
+        carrier = base / "tests" / "loud.SPEC.JS"
+        carrier.write_text(
+            "test('an unowned behavior (ORPHAN-99)', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = base / "SPEC.md"
+        spec.write_text(
+            "# Spec\n\n"
+            "| Feature id | Behavior | Covering tests |\n"
+            "| --- | --- | --- |\n"
+            "| DEMO-01 | Demo behavior. | `tests/loud.SPEC.JS` - "
+            "`an unowned behavior (ORPHAN-99)` |\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+
+        self.assertTrue(refs._carries_js_titles(carrier))
+        self.assertIn(
+            "feature id `ORPHAN-99` has no spec row",
+            [issue.message for issue in refs.check_test_id_mappings(spec, base, (carrier,))],
+        )
+
+    def test_a_partial_marker_does_not_excuse_a_flat_row(self):
+        # `partial` asserts a test EXISTS, so a flat row must name it. Only `manual` - a behavior
+        # that genuinely cannot be automated - is a no-test declaration here.
+        spec = self._spec((("GUARD-01", "partial - covered elsewhere"),))
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("row `GUARD-01` names no covering test", messages[0])
+
+    def test_a_row_missing_its_trailing_pipe_is_reported_not_skipped(self):
+        # GFM makes the trailing `|` optional, so this renders as an ordinary row - but neither
+        # `_row_cells` nor the coverage gate reads it, and a flat target has no reverse direction
+        # to notice. Skipping it would reopen the bare-citation gap on a row that looks normal.
+        spec = self.sandbox / "SPEC.md"
+        spec.write_text(
+            "# Spec\n\n"
+            "| Feature id | Behavior | Covering tests |\n"
+            "| --- | --- | --- |\n"
+            "| GUARD-01 | Demo behavior. | `scripts/test_check_forbidden_files.py`\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+
+        messages = [issue.message for issue in self._check_all(spec)]
+
+        self.assertEqual(1, len(messages), messages)
+        self.assertIn("row `GUARD-01` is not a well-formed table row", messages[0])
+
+    def test_every_flat_python_suite_is_a_registered_target(self):
+        # A `FLAT_PYTHON_SUITES` entry that is not also in `SPEC_TARGETS` is dead weight: nothing
+        # would ever ask for its tests directory, so the registration would look done and check
+        # nothing.
+        registered = {spec.resolve() for spec, _base in refs.SPEC_TARGETS}
+
+        self.assertLessEqual(refs.FLAT_PYTHON_SUITES, registered)
+
+    def test_the_scripts_spec_is_a_registered_flat_python_target(self):
+        spec = (self.root / "scripts" / "SPEC.md").resolve()
+
+        self.assertIn(spec, {path.resolve() for path, _base in refs.SPEC_TARGETS})
+        self.assertIn(spec, refs.FLAT_PYTHON_SUITES)
+        # A Python method name cannot carry a hyphenated feature id, so there is no reverse
+        # citation to demand; the target is registered restricted with that reason recorded.
+        self.assertIn(spec, refs.INTENTIONALLY_RESTRICTED_SPECS)
+        self.assertEqual(refs._tests_dir(spec, self.root), self.root / "scripts")
 
 
 class DuplicateSpecRowTests(unittest.TestCase):

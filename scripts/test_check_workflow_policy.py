@@ -430,54 +430,6 @@ class ChangesJobCheckoutTests(unittest.TestCase):
                 "the suites, since a rename shows up as a delete plus an add)")
 
 
-class SpecCoverageTest(unittest.TestCase):
-    """`scripts/SPEC.md`'s CI-POLICY rows must name tests that exist in this suite.
-
-    Same self-enforcing shape as the REPO-GUARD rows in `scripts/test_check_forbidden_files.py`:
-    the rows are held to the spec-and-test discipline locally, so a row cannot promise coverage
-    that nobody checks.
-    """
-
-    _SPEC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "SPEC.md")
-
-    def _rows(self):
-        with open(self._SPEC, "r", encoding="utf-8") as fh:
-            text = fh.read()
-        return [line for line in text.splitlines() if line.startswith("| CI-POLICY-")]
-
-    def test_every_named_test_exists(self):
-        import re
-        module = sys.modules[__name__]
-        rows = self._rows()
-        self.assertTrue(rows, "the spec declares no CI-POLICY feature ids")
-        for line in rows:
-            feature_id = line.split("|")[1].strip()
-            coverage = line.split("|")[3]
-            named = re.findall(r"`([A-Za-z_]\w*Test(?:s)?\.test_\w+)`", coverage)
-            with self.subTest(feature_id=feature_id):
-                self.assertTrue(named, f"{feature_id} names no covering test")
-                foreign = [
-                    ref for ref in re.findall(r"`(scripts/[\w./-]+\.py)`", coverage)
-                    if ref != "scripts/test_check_workflow_policy.py"
-                ]
-                self.assertEqual(
-                    foreign, [],
-                    f"{feature_id} cites a suite this test cannot verify",
-                )
-                for ref in named:
-                    cls_name, method = ref.split(".", 1)
-                    cls = getattr(module, cls_name, None)
-                    self.assertIsNotNone(cls, f"{feature_id}: {cls_name} is not in this suite")
-                    self.assertTrue(
-                        callable(getattr(cls, method, None)), f"{feature_id}: {ref} does not exist"
-                    )
-
-    def test_every_feature_id_is_declared_once(self):
-        ids = [line.split("|")[1].strip() for line in self._rows()]
-        self.assertTrue(ids, "the spec declares no CI-POLICY feature ids")
-        self.assertEqual(len(ids), len(set(ids)), f"duplicate feature-id rows: {ids}")
-
-
 class RealRepoTests(unittest.TestCase):
     def test_current_workflows_satisfy_the_policy(self):
         self.assertEqual(cwp.main(), 0)
