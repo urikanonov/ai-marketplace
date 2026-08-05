@@ -978,6 +978,162 @@ class NonShareableTests(unittest.TestCase):
             'src="vscode://extension/commentable-html.js"')
         self.assertNonShareableError(html, "non-file URL scheme")
 
+    # `file:` refs that name no path at all: an IPv6 literal, a host:port and its `|` spelling (the
+    # same drive delimiter to `nturl2path`), and the bracketed authorities `urlsplit` ITSELF
+    # rejects - those raise on every platform, unlike the Windows-only `url2pathname` raise.
+    _MALFORMED_FILE_HOST_REFS = ("file://[::1]/dist/commentable-html.css",
+                                 "file://host:8080/dist/commentable-html.css",
+                                 "file://host|8080/dist/commentable-html.css",
+                                 "file://host%7C8080/dist/commentable-html.css",
+                                 "file://[foo]/dist/commentable-html.css",
+                                 "file://[127.0.0.1]/dist/commentable-html.css",
+                                 "file://[::1/dist/commentable-html.css",
+                                 "file://host]/dist/commentable-html.css",
+                                 "file://c:evil:80/dist/commentable-html.css",
+                                 "file:////host:8080/dist/commentable-html.css",
+                                 "file:////host%7C8080/dist/commentable-html.css")
+
+    # `file:` refs whose PATH - not host - is a shape the platform resolver rejects. Their verdict
+    # is legitimately platform-specific (`nturl2path` rejects them, the POSIX resolver hands the
+    # string back), so what is pinned for these is crash-safety, not parity.
+    _RESOLVER_REJECTED_PATH_REFS = ("file::/dist/commentable-html.css",
+                                    "file:|dist/commentable-html.css",
+                                    "file:/:/commentable-html.css",
+                                    "file:///C:/dir/a:b/commentable-html.css")
+
+    def _malformed_file_host_doc(self, spelling):
+        return build_nonshareable().replace('href="commentable-html.css"',
+                                            'href="%s"' % spelling)
+
+    def test_malformed_file_host_companion_ref_reports_a_finding(self):
+        # CMH-VAL-05: `nturl2path.url2pathname` RAISES ("Bad URL: //[||1]/dist/...") on an authority
+        # it cannot map to a UNC path, and `urlsplit` raises on a bracketed authority it refuses to
+        # parse at all, and nothing caught either, so a companion ref spelled
+        # `file://[::1]/dist/commentable-html.css` killed `validate()` with a raw traceback. Every
+        # fail-closed caller (`retrofit.py`, `content_replace.py`, `chart_block.py`,
+        # `finalize.py`) then saw a traceback instead of a finding, and a validator that crashes on
+        # hostile or merely odd input is strictly worse than one that reports the problem. The
+        # finding has to name the REAL problem - the ref resolves to no local file - so resolving
+        # to `None` instead is not the fix: that falls through to the "non-file URL scheme" branch
+        # and blames the scheme, which is the one part of the ref that is right.
+        for spelling in self._MALFORMED_FILE_HOST_REFS:
+            errors, _ = self._validate(self._malformed_file_host_doc(spelling))
+            self.assertTrue(any("does not resolve to a local file path" in e for e in errors),
+                            "%s: expected a local-file finding, got: %r" % (spelling, errors))
+            self.assertFalse(any("non-file URL scheme" in e for e in errors),
+                             "%s: the scheme IS `file:` - what follows it is what cannot be "
+                             "resolved: %r" % (spelling, errors))
+
+    def test_malformed_file_host_verdict_does_not_depend_on_the_platform_resolver(self):
+        # CMH-VAL-05: the pinned claim is the SHARED verdict, not one platform's exception.
+        # `url2pathname` is platform-specific - the Windows implementation raises on these
+        # authorities while the POSIX one hands the string straight back - so the resolver must
+        # settle these shapes ITSELF rather than letting the platform decide. All three
+        # implementations below (the native one, a POSIX stand-in, and one that raises on
+        # everything) must therefore reach exactly the same errors and warnings. The residual
+        # try/except that survives a RAISING resolver is pinned separately by
+        # `test_a_raising_path_resolver_becomes_a_finding_too`, because these refs are settled
+        # before `url2pathname` is reached at all - which is the point of this test.
+        from unittest import mock
+        from urllib.parse import unquote
+        from checks import resources as _r
+
+        def _raises(url):
+            raise OSError("Bad URL: " + url)
+
+        for spelling in self._MALFORMED_FILE_HOST_REFS:
+            html = self._malformed_file_host_doc(spelling)
+            native = self._validate(html)
+            for name, impl in (("posix", unquote), ("raising", _raises)):
+                with mock.patch.object(_r, "url2pathname", impl):
+                    self.assertEqual(self._validate(html), native,
+                                     "%s: the %s resolver must reach the same verdict as the "
+                                     "native one" % (spelling, name))
+
+    def test_a_raising_path_resolver_becomes_a_finding_too(self):
+        # CMH-VAL-05: the screened host shapes never reach `url2pathname`, so the residual
+        # try/except - the half of the guarantee that covers everything a host test cannot see -
+        # needs its own pin, or deleting it would leave every other test green. It is not
+        # defensive-only: `nturl2path` rejects PATH shapes too (`file:///C:/dir/a:b/x.css` carries
+        # two drive delimiters), and this asserts the resolver is genuinely REACHED so the test
+        # cannot rot into another screened case.
+        from unittest import mock
+        from checks import resources as _r
+        calls = []
+
+        def _raises(url):
+            calls.append(url)
+            raise OSError("Bad URL: " + url)
+
+        html = self._malformed_file_host_doc("file://server/share/commentable-html.css")
+        with mock.patch.object(_r, "url2pathname", _raises):
+            errors, _ = self._validate(html)
+        self.assertTrue(calls, "the patched resolver must actually be reached")
+        self.assertTrue(any("does not resolve to a local file path" in e for e in errors),
+                        "a raising resolver must become a finding, not a traceback: %r" % errors)
+
+    def test_a_resolver_rejected_path_shape_is_a_finding_not_a_traceback(self):
+        # CMH-VAL-05: the companion refs above are settled before `url2pathname` is reached and the
+        # test above reaches it only through a MOCK, so neither drives the REAL resolver into a
+        # rejection - and the real one rejects a path shape with more than one exception type.
+        # `nturl2path` raises `OSError('Bad URL')` for `/C:/dir/a:b/x.css` but `IndexError` when the
+        # drive delimiter LEADS the path (`file::/x`, `file:|x`, where it indexes an empty first
+        # component), which is why the residual catch is by outcome and not an enumerated tuple.
+        # Only the VERDICT CLASS is shared here: the POSIX resolver accepts these strings and
+        # reports a missing companion instead, so what every platform owes is a finding rather than
+        # a traceback (the first two spellings are red on Windows without the catch).
+        for spelling in self._RESOLVER_REJECTED_PATH_REFS:
+            errors, _ = self._validate(self._malformed_file_host_doc(spelling))
+            self.assertTrue(any(spelling in e for e in errors),
+                            "%s: expected a finding naming the ref, got: %r" % (spelling, errors))
+
+    def test_an_unparseable_non_file_ref_still_reports_the_scheme(self):
+        # CMH-VAL-05 control for the other half of the parse guard: a ref the URL parser REFUSES is
+        # only unresolvable when it is a `file:` URL. `vscode://[foo]/x` is refused for the same
+        # bracket reason, but its problem really is the scheme, so it must keep the scheme finding
+        # rather than inherit the new one - without this, collapsing the guard to always return the
+        # sentinel would leave every other test green. The PADDED spellings carry the other half of
+        # the claim: the resolver reads the ref the way the URL parser does (leading C0-or-space
+        # stripped), so the caller's ANCHORED classification regexes have to read the same value or
+        # the parser's own padding hides the scheme from them and a remote or wrong-scheme
+        # companion is quietly resolved as a relative path instead.
+        from checks import resources as _r
+        for ref in ("vscode://[foo]/commentable-html.js",
+                    " vscode://[foo]/commentable-html.js",
+                    "\tvscode://extension/commentable-html.js"):
+            self.assertIsNone(_r._file_url_to_path(ref), ref)
+            html = build_nonshareable().replace('src="commentable-html.js"', 'src="%s"' % ref)
+            errors, _ = self._validate(html)
+            self.assertTrue(any("non-file URL scheme" in e for e in errors),
+                            "%r: %r" % (ref, errors))
+            self.assertFalse(any("does not resolve to a local file path" in e for e in errors),
+                             "%r: %r" % (ref, errors))
+        html = build_nonshareable().replace('href="commentable-html.css"',
+                                            'href=" https://cdn.example.com/commentable-html.css"')
+        errors, _ = self._validate(html)
+        self.assertTrue(any("remote/CDN URL" in e for e in errors),
+                        "a padded remote URL is still remote: %r" % errors)
+
+    def test_malformed_file_url_resolves_to_the_unresolvable_sentinel(self):
+        # CMH-VAL-05 unit control: the resolver distinguishes "not a `file:` URL at all" (None,
+        # which the caller reads as a scheme problem) from "a `file:` URL that names no local
+        # path" (the sentinel). A well-formed host still resolves to a path, so the sentinel does
+        # not swallow the ordinary UNC/local spellings - and a Windows DRIVE-LETTER authority is
+        # exempt in every spelling the URL parser reads as a drive, including the separatorless
+        # `file://c:evil.example/x` the egress predicate also calls local, so this does not quietly
+        # widen what the validator rejects.
+        from checks import resources as _r
+        for spelling in self._MALFORMED_FILE_HOST_REFS:
+            self.assertIs(_r._file_url_to_path(spelling), _r._UNRESOLVABLE_FILE_URL, spelling)
+        self.assertIsNone(_r._file_url_to_path("vscode://extension/commentable-html.js"))
+        for spelling in ("file:///dist/commentable-html.js",
+                         "file://localhost/dist/commentable-html.js",
+                         "file://server/share/commentable-html.js",
+                         "file://C:/dist/commentable-html.js",
+                         "file://C|/dist/commentable-html.js",
+                         "file://c:evil.example/dist/commentable-html.js"):
+            self.assertIsInstance(_r._file_url_to_path(spelling), str, spelling)
+
     def test_nonshareable_demo_key_survivor_is_flagged(self):
         # The real nonshareable template (nonshareable demo key + nonshareable demo title) is clean,
         # but changing only the title while keeping the demo key is a survived retrofit.

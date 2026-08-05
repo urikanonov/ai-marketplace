@@ -169,6 +169,7 @@ from checks.resources import (  # noqa: F401,E402
     OFFLINE_CSP_REQUIRED,
     SPECULATIVE_LINK_RELS,
     _ADX_RUN_HOST,
+    _UNRESOLVABLE_FILE_URL,
     _check_nonshareable,
     _csp_directives,
     _file_url_to_path,

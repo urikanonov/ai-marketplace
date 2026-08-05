@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.735.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.737.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.737.0] - 2026-08-05</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A malformed <code>file:</code> companion reference on a NonShareable document is now reported as a validation FINDING instead of killing the validator. Two stages could throw on such a reference and neither was caught: <code>urlparse</code> VALIDATES a bracketed authority, so <code>file://[foo]/x</code>, <code>file://[127.0.0.1]/x</code> and the unclosed <code>file://[::1/x</code> raised <code>ValueError</code> on every platform, and <code>url2pathname</code> rejects an authority or path shape it cannot map - as <code>OSError(&#x27;Bad URL: //[||1]/dist/...&#x27;)</code> for <code>file://[::1]/dist/commentable-html.js</code>, and as <code>IndexError</code> when the drive delimiter leads the path (<code>file::/x</code>, <code>file:|x</code>) - so either ended <code>validate()</code> with a raw traceback. Every fail-closed caller (<code>retrofit.py</code>, <code>content_replace.py</code>, <code>chart_block.py</code>, <code>finalize.py</code>) then saw that traceback where a finding belongs, and a validator that crashes on hostile or merely odd input is strictly worse than one that reports the problem. The finding names the real problem - the reference does not resolve to a local file path - rather than blaming the scheme, which is the one part of such a reference that is right. The authorities that name no path (an IPv6 literal, a <code>host:port</code>, and its <code>|</code> spelling, which the resolver reads as the same drive delimiter as <code>:</code>, whether written as the host or a slash deeper as <code>file:////host:8080/x</code>) are settled by the resolver itself rather than by the platform&#x27;s <code>url2pathname</code>, which raises on Windows, hands the string back unchanged on POSIX, and mangles a <code>host:port</code> into the bogus drive path <code>T:8080\x</code>, so their verdict is now identical on both platforms. A Windows drive-letter prefix still resolves in every spelling the URL parser reads as a drive (<code>file://C:/dir/x.js</code>, <code>file://C|/dir/x.js</code>, and the separatorless <code>file://c:evil.example/x</code>), so nothing that validated before is newly rejected.</li>
+              <li>A NonShareable companion reference is now CLASSIFIED (remote, non-<code>file</code> scheme, drive letter) on the reference as the URL parser reads it, the same value the path resolver uses. Those tests are anchored, so reading the raw attribute let the parser&#x27;s own leading C0-or-space padding hide the scheme from all of them: <code>&lt;link href=&quot; https://cdn.example.com/commentable-html.css&quot;&gt;</code> and <code>&lt;script src=&quot; vscode://x.js&quot;&gt;</code> fell through to the relative-path branch and were reported as a missing companion file instead of as the remote or wrong-scheme reference the browser actually fetches.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.735.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -503,6 +511,8 @@
               <li>The same fix closes two neighbouring divergences in the foreign-content bookkeeping the new gates rest on (CMH-VAL-21). The <code>annotation-xml</code> <code>encoding</code> attribute is now matched EXACTLY and ASCII-case-insensitively, with no trimming, as HTML5 compares it: a padded <code>encoding=&quot; text/html&quot;</code> is NOT an HTML integration point, and treating it as one reopened this very bypass through one space. And the MathML <code>mglyph</code>/<code>malignmark</code> carve-out now applies only under a MathML TEXT integration point, not under an <code>annotation-xml[encoding=text/html]</code> HTML integration point, where a browser inserts them in the HTML namespace - keying it on the generic integration flag consumed a whole <code>&lt;![CDATA[</code> section a browser reads as a bogus comment, hiding live markup from every check built on the parse. Finally, the bootstrap watchdog token is only credited to a script whose INLINE BODY runs: a browser that fetches an external script ignores the element&#x27;s own child text, so a token folded into a <code>&lt;script src&gt;</code> (or an SVG <code>&lt;script href&gt;</code> / <code>&lt;script xlink:href&gt;</code>, since an SVG script has no <code>src</code>) no longer satisfies the check.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.733.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -519,8 +529,6 @@
               <li>Recorded the decision behind that removal in the spec rather than leaving it as an omission (CMH-OFFLINE-04, CMH-SEC-06). Sanitizing the nested document instead of clearing it was prototyped on an abandoned branch, weighed, and rejected: it needs two independent recursive parsers - the exporter&#x27;s browser DOM and the validator&#x27;s pure-Python tokenizer - to agree at every depth on serialization, doctype reconstruction and rendering mode, fixed-point settling under serialize-then-reparse, and one shared parse budget; the content-preserving precedents in this layer are all edits inside a document both sides already parse; a value that will not settle still has to be removed, so sanitizing would trade a deterministic rule for parser-quirk roulette; and the author keeps the content regardless, since the export is a derived artifact. That last ground answers for the author and not for the recipient of an export, so the row also records the cheap middle option it does not take here - having the export replace the emptied frame with the nested markup as escaped inert text - as an open follow-up rather than a settled non-goal.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.731.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -556,14 +564,7 @@
               <li>Recorded the decision behind that removal in the spec rather than leaving it as an omission (CMH-OFFLINE-04, CMH-SEC-06). Sanitizing the nested document instead of clearing it was prototyped on an abandoned branch, weighed, and rejected: it needs two independent recursive parsers - the exporter&#x27;s browser DOM and the validator&#x27;s pure-Python tokenizer - to agree at every depth on serialization, doctype reconstruction and rendering mode, fixed-point settling under serialize-then-reparse, and one shared parse budget; the content-preserving precedents in this layer are all edits inside a document both sides already parse; a value that will not settle still has to be removed, so sanitizing would trade a deterministic rule for parser-quirk roulette; and the author keeps the content regardless, since the export is a derived artifact. That last ground answers for the author and not for the recipient of an export, so the row also records the cheap middle option it does not take here - having the export replace the emptied frame with the nested markup as escaped inert text - as an open follow-up rather than a settled non-goal.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.722.0] - 2026-08-05</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The validated stamp is now written ATOMICALLY. <code>validate.py</code> stamped a strict-clean document by reopening it with mode <code>w</code>, which truncates the file before the stamped bytes exist, so an interrupted or failing write (a full disk, a killed run, an encoding error) destroyed a document that had just PASSED validation - and, because stamping is best-effort, the loss was reported as nothing worse than a NOTE. The stamp, and the single write <code>finalize.py</code> makes, now stage the new bytes in the target&#x27;s own directory and swap them in with <code>os.replace</code> (the shared <code>_atomic_io.atomic_write</code> the migration tools already use), so a failed write leaves the original bytes untouched and cleans up after itself. A partial install whose <code>validate.py</code> cannot import <code>_atomic_io</code> refuses to stamp rather than falling back to a truncating write.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">339 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">340 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

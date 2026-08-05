@@ -1837,19 +1837,102 @@ def _file_host_is_local(netloc):
     path segment (`file://localhost/../dist/x.js`) as egress for canonicalization-stability reasons
     that do not apply to a path resolver, which resolves it the way the parser does. None costs
     anything beyond a rare spurious "companion file not found": this function gates no egress, it
-    only resolves a companion ref to a path for an on-disk existence check.
+    only resolves a companion ref to a path for an on-disk existence check. (The drive-letter
+    shapes ARE partly mirrored one function down: `_file_host_names_no_path` keeps them resolvable
+    so this resolver does not reject a host the predicate calls local - edit drive handling there,
+    not here.)
     """
     if not netloc:
         return True
     return _ascii_lower(unquote(netloc)) == "localhost"
 
 
+# Sentinel: the ref IS a `file:` URL, but it names no local path. It is deliberately NOT `None`
+# (which means "not a `file:` URL at all"): the caller reports None as a wrong SCHEME, and the
+# scheme is the one part of `file://[::1]/x` that is right.
+_UNRESOLVABLE_FILE_URL = object()
+
+# The scheme test for a ref the URL parser REFUSED, so `parsed.scheme` is unavailable. The parser
+# strips leading C0 controls and spaces before reading a scheme, so this does too.
+_FILE_SCHEME_PREFIX_RE = re.compile(r"^[\x00-\x20]*file:", re.I)
+
+# A Windows drive-letter authority PREFIX. The URL parser reads `file://C:/x`, `file://C|/x` and
+# even the separatorless `file://c:evil.example/x` as a local drive path rather than a host - the
+# same call `NETWORK_URL_RE` makes (all three are non-egress there) - and `nturl2path` resolves
+# them to a real local path, so they are not among the hostless shapes below. The test is on the
+# RAW netloc: an ENCODED colon (`file://C%3A/x`) is not a drive letter to the parser either, and
+# `:` is a forbidden host code point, so that spelling names nothing (the egress predicate calls
+# it network for the same reason).
+_DRIVE_LETTER_HOST_RE = re.compile(r"^[a-zA-Z][:|]")
+
+
+def _file_host_names_no_path(netloc):
+    """True when this non-local `file:` authority cannot name a local path at all.
+
+    A UNC server name is a bare hostname, so an IPv6 literal (`file://[::1]/x`), a host:port
+    (`file://host:8080/x`) and its `|` spelling (`file://host|8080/x`, which `nturl2path` reads as
+    the same drive delimiter as `:`) are not one - none resolves to anything an OS could open.
+
+    The test lives HERE, rather than being left to `url2pathname`, because that function is
+    PLATFORM-SPECIFIC and disagrees about exactly these shapes: `nturl2path.url2pathname` RAISES
+    `OSError('Bad URL: //[||1]/x')` on the IPv6 literal and silently mangles `//host:8080/x` into
+    the bogus drive path `T:8080\\x`, while the POSIX implementation hands the string back
+    unchanged. Deciding it here is what makes the verdict the same on every platform.
+
+    The host is read PERCENT-DECODED, the same reading `_file_host_is_local` uses, because the URL
+    parser decodes a file host before anything else looks at it. A DRIVE-LETTER prefix is dropped
+    rather than exempting the whole string: `file://c:evil.example/x` is a drive path to the parser
+    and resolves, but `file://c:evil:80/x` is not - screening only the prefix would send it to a
+    resolver that rejects it on Windows and accepts it on POSIX, which is the split this function
+    exists to remove.
+    """
+    host = unquote(netloc or "")
+    if _DRIVE_LETTER_HOST_RE.match(netloc or ""):
+        host = host[2:]
+    return any(ch in host for ch in ":[]|")
+
+
 def _file_url_to_path(ref):
-    parsed = urlparse(normalize_url_value(ref))
+    """The local filesystem path a `file:` companion ref names, or `None` when the ref is not a
+    `file:` URL, or `_UNRESOLVABLE_FILE_URL` when it is one that names no local path.
+
+    Nothing here may raise: a validator must REPORT malformed input, and an uncaught exception
+    hands every fail-closed caller (`retrofit.py`, `content_replace.py`, `chart_block.py`,
+    `finalize.py`) a traceback where a finding belongs. Both stages can throw on hostile input -
+    `urlsplit` VALIDATES a bracketed authority, and `nturl2path.url2pathname` rejects authority and
+    path shapes it cannot map - so both are guarded."""
+    value = normalize_url_value(ref)
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        # `file://[foo]/x`, `file://[127.0.0.1]/x` and the unclosed `file://[::1/x` never reach a
+        # host test: the parser rejects the authority first, on EVERY platform. A ref the parser
+        # refuses names no local path either.
+        return _UNRESOLVABLE_FILE_URL if _FILE_SCHEME_PREFIX_RE.match(value or "") else None
     if parsed.scheme.lower() != "file":
         return None
-    raw = parsed.path if _file_host_is_local(parsed.netloc) else "//" + parsed.netloc + parsed.path
-    return os.path.abspath(url2pathname(raw))
+    if _file_host_is_local(parsed.netloc):
+        raw = parsed.path
+        # An empty authority can still carry one a slash deeper (`file:////host:8080/x` parses to
+        # the PATH `//host:8080/x`), and the resolver maps that exactly as it maps an authority, so
+        # it is screened exactly as one - otherwise the guard is one keystroke away from bypassed.
+        if raw.startswith("//") and _file_host_names_no_path(raw[2:].split("/", 1)[0]):
+            return _UNRESOLVABLE_FILE_URL
+    elif _file_host_names_no_path(parsed.netloc):
+        return _UNRESOLVABLE_FILE_URL
+    else:
+        raw = "//" + parsed.netloc + parsed.path
+    try:
+        return os.path.abspath(url2pathname(raw))
+    except Exception:
+        # The residual catch: the host shapes are screened above, but `nturl2path` also rejects
+        # PATH shapes no host test can see, and it signals that rejection with MORE THAN ONE
+        # exception type - `OSError('Bad URL')` for `/C:/dir/a:b/x.css`, but `IndexError` when the
+        # drive delimiter LEADS the path (`file::/x`, `file:|x`, where it indexes an empty first
+        # component). Catching by outcome rather than by type is deliberate: the try body is two
+        # stdlib calls on a string with no logic of ours to mask, and 3.14 replaces the `nturl2path`
+        # implementation outright, so an enumerated tuple is a list that goes stale into a crash.
+        return _UNRESOLVABLE_FILE_URL
 
 
 # Well-known OS temporary-directory path shapes, as the cross-machine fallback for when a companion
@@ -2044,16 +2127,31 @@ def _check_nonshareable(doc, base_dir, id_counts):
     # structure is still validated.
     doc_dir = os.path.abspath(base_dir) if base_dir is not None else None
     for ref in css_refs + js_refs:
-        if re.match(r"(?:https?:)?//", ref, re.I):
+        # CLASSIFY (is this remote? a non-file scheme? a drive letter?) on the ref as the URL
+        # PARSER reads it, the same value `_file_url_to_path` resolves. These regexes are anchored,
+        # so reading the raw ref instead let the parser's own leading C0-or-space padding hide a
+        # scheme from them: ` https://cdn/x.css` and ` vscode://x.js` both fell past every
+        # classification and were resolved as RELATIVE paths, reported as a missing companion
+        # rather than as the remote or wrong-scheme reference the browser will actually fetch.
+        # Path RESOLUTION below still uses `norm`, which maps backslashes without moving anything.
+        probe = normalize_url_value(ref)
+        if re.match(r"(?:https?:)?//", probe, re.I):
             errors.append('nonshareable mode: companion reference "%s" must be a local file, not a remote/CDN URL (the layer must stay self-contained)' % ref)
             continue
         norm = ref.replace("\\", "/")
         file_target = _file_url_to_path(ref)
+        if file_target is _UNRESOLVABLE_FILE_URL:
+            # The scheme is right and what follows it is what is wrong, so this must not fall
+            # through to the non-file-scheme branch below (which would blame the scheme). The
+            # wording stays cause-neutral: a bad authority and a path shape the platform resolver
+            # rejects both land here.
+            errors.append('nonshareable mode: companion reference "%s" is a file: URL that does not resolve to a local file path - point the <link>/<script src> at the skill dist/ folder, or copy dist/ next to the document' % ref)
+            continue
         baked_absolute = False
         if file_target is not None:
             target = file_target
             baked_absolute = True
-        elif re.match(r"[a-zA-Z][a-zA-Z0-9+.\-]*:", ref) and not re.match(r"[a-zA-Z]:[\\/]", ref):
+        elif re.match(r"[a-zA-Z][a-zA-Z0-9+.\-]*:", probe) and not re.match(r"[a-zA-Z]:[\\/]", probe):
             errors.append('nonshareable mode: companion reference "%s" must be a local file, not a non-file URL scheme' % ref)
             continue
         elif norm.startswith("/") or re.match(r"[a-zA-Z]:", ref):
