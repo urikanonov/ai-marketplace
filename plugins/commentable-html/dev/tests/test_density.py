@@ -374,6 +374,17 @@ class DensityAdvisoryTests(unittest.TestCase):
         inner = "<svg><template/></svg>" + _p(LONG) * 4
         self.assertTrue(density.check_density(_doc(inner))[1],
                         "a self-closed foreign template must not suppress the following prose")
+        parser = density._DensityParser("<svg><template/>", 1, 1)
+        parser.parse_document("<svg><template/>")
+        self.assertEqual([tag for tag, _frame in parser._stack], ["svg"])
+        self.assertEqual(parser.template_depth, 0)
+        self.assertEqual(len(parser._stack), len(parser._ns))
+
+        parser = density._DensityParser("<svg><template>", 1, 1)
+        parser.parse_document("<svg><template>")
+        self.assertEqual([tag for tag, _frame in parser._stack], ["svg", "template"])
+        self.assertEqual(parser.template_depth, 0,
+                         "a foreign template name must not open an inert HTML fragment")
 
     def test_cmh_val_15_foreign_raw_text_names_are_parsed_as_markup(self):
         # SVG title/script bodies stay in the tokenizer's data state. The table in either body is
