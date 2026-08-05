@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.728.0" />
+<meta name="commentable-html-version" content="1.731.0" />
 <meta name="commentable-html-kind" content="board" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.728.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.731.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Incident Triage Board</title>
 
@@ -4530,7 +4530,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.728.0";
+const CMH_VERSION = "1.731.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -18574,6 +18574,219 @@ function _stripOfflineStraddlingNoscript(doc) {
   walk(doc);
   return dropped;
 }
+// A `<noscript>` in the HEAD is the one place the strip above cannot reach, because there the
+// fallback is not an ordinary element to a scripting-DISABLED parse at all. The "in head noscript"
+// insertion mode allows only `link`, `style`, `meta`, `basefont`, `bgsound`, `noframes`, comments
+// and whitespace; anything else is a parse error that POPS the fallback and REPROCESSES that node -
+// and everything after it - under the "in head" rules, so it becomes a head SIBLING (a `<script>`)
+// or ends the head and lands in the body (a `<p>`, a line of prose). `DOMParser` has scripting off,
+// so that promotion happens INSIDE `_offlineDocFromHtml`, before any pass or ancestry check can see
+// it, and a promoted node is indistinguishable in the DOM from one the author really wrote as a
+// sibling. The export therefore ACTIVATES what the source document never ran: opening the source
+// leaves a head `<noscript><script>` inert (raw text to a scripting-ENABLED reader), while opening
+// the export runs it. So this is decided BEFORE the parse, on the SOURCE STRING, read the way the
+// reviewer's tokenizer reads it - a start tag, then raw text to the first `</noscript` - and the
+// whole fallback is dropped, for the same reason a straddling one is: the two readings cannot be
+// reconciled from here, and the reviewer's is the one that matters.
+// What the mode ALLOWS is untouched, so this is not a blanket head-fallback removal: a fallback
+// carrying only those elements stays inside its `<noscript>` under both readings and travels.
+const _OFFLINE_HEAD_NOSCRIPT_OK_RE = /^(?:link|style|meta|basefont|bgsound|noframes)$/;
+// What keeps a parser in "in head". A start tag outside this set (`<body>` included), an explicit
+// `</head>`, or non-whitespace character data ends the head, and a `<noscript>` after that is an
+// ordinary element both readings agree about.
+const _OFFLINE_HEAD_ELEMENT_RE =
+  /^(?:html|head|base|basefont|bgsound|link|meta|noframes|noscript|script|style|template|title)$/;
+const _OFFLINE_NON_SPACE_RE = /[^\t\n\f\r ]/;
+// A tag name folded the way HTML folds one: ASCII ONLY. `String.prototype.toLowerCase` is
+// Unicode-aware, so it reads `lin<U+212A>` (KELVIN SIGN) as `link` while a browser does not - and
+// measured in chromium that element really does POP a head fallback, so folding it into the allowed
+// set would leave the promotion undetected. Mirrored by `_offline_ascii_tag_name` in the strict
+// validator, which uses the `_ascii_lower` the other predicates there already fold with.
+function _offlineAsciiTagName(html, from) {
+  let i = from;
+  while (i < html.length && !_CMH_NAME_END_CH.test(html[i])) i += 1;
+  return html.slice(from, i).replace(/[A-Z]/g, function (c) { return c.toLowerCase(); });
+}
+// A character reference that decodes to ASCII whitespace, spelled out because HTML decodes
+// references in CHARACTER DATA while a byte scan reads them as content. Measured in chromium: a
+// `&Tab;` before a head fallback keeps the parser in the head (so the fallback is still head
+// content the mode judges), and a `&#9;` inside one leaves the fallback standing. The numeric forms
+// may omit the semicolon, so each carries the class that stops `&#320;` (U+0140) being read as
+// `&#32` plus a `0`.
+const _OFFLINE_WS_CHAR_REF_RE =
+  /&(?:Tab;|NewLine;|#(?:0*(?:9|10|12|13|32)(?![0-9])|[xX]0*(?:9|[aAcCdD]|20)(?![0-9A-Fa-f]));?)/g;
+// Character data as the PARSER reads it rather than as the bytes read. Besides the references
+// above, a U+0000 is dropped outright (measured: a NUL before a head fallback keeps the parser in
+// the head, and one inside a fallback body leaves it standing), so neither ends the head nor pops a
+// fallback. Mirrored by `_offline_char_data_has_content` in the strict validator.
+function _offlineCharDataHasContent(text) {
+  return _OFFLINE_NON_SPACE_RE.test(
+    String(text).replace(/\u0000/g, "").replace(_OFFLINE_WS_CHAR_REF_RE, " "));
+}
+// The comment open, spelled in two pieces because this source is served INSIDE a `<script>`: a
+// literal comment-open sequence in script data puts the tokenizer in the escaped state, where the
+// layer's own closing script tag stops closing the element and the rest of the document becomes
+// script text. (A comment here that merely NAMES the sequence has the same effect, so the prose
+// above spells it out only where a closing `-->` balances it.)
+const _OFFLINE_COMMENT_OPEN = "<" + "!--";
+// Would a scripting-disabled parse take this head fallback apart? Mirrored predicate for predicate
+// by `offline_head_noscript_promotes` in the strict validator, so the gate rejects exactly what
+// this drops.
+function _offlineHeadNoscriptPromotes(body) {
+  const src = String(body == null ? "" : body);
+  let pos = 0;
+  while (pos < src.length) {
+    const lt = src.indexOf("<", pos);
+    // Promoted content need not be an element: a character token that is not whitespace is
+    // "anything else" too, so a line of fallback prose becomes the start of the BODY.
+    if (_offlineCharDataHasContent(lt < 0 ? src.slice(pos) : src.slice(pos, lt))) return true;
+    if (lt < 0) return false;
+    if (src.slice(lt, lt + 4) === _OFFLINE_COMMENT_OPEN) { pos = _cmhCommentEnd(src, lt); continue; }
+    const lead = src.charAt(lt + 1);
+    if (lead === "!" || lead === "?") {
+      // A DOCTYPE and a bogus comment are both tokens this mode ignores.
+      const gt = src.indexOf(">", lt + 1);
+      pos = gt < 0 ? src.length : gt + 1;
+      continue;
+    }
+    if (lead === "/") {
+      const endName = _offlineAsciiTagName(src, lt + 2);
+      const gt = _cmhTagEnd(src, lt);
+      // `</br>` is the one end tag the mode treats as "anything else"; every other one is a parse
+      // error it ignores, so it promotes nothing.
+      if (endName === "br") return true;
+      pos = gt < 0 ? src.length : gt + 1;
+      continue;
+    }
+    if (!/[A-Za-z]/.test(lead)) return true;  // a `<` that opens no tag is character data
+    const end = _cmhTagEnd(src, lt);
+    if (end < 0) return true;  // a truncated tag: fail closed rather than guess how it ends
+    const name = _offlineAsciiTagName(src, lt + 1);
+    // An `<html>` or a nested `<noscript>` start tag is NOT a pop: this mode processes the first
+    // with the in-body rules (which only merge its attributes) and ignores the second as a parse
+    // error, and a real chromium agrees with the spec on both (measured - a `<meta>` written after
+    // either stays inside the fallback). A `<head>` start tag is a parse error the SPEC also says
+    // to ignore, but chromium POPS the fallback on it (measured), and the browser that does the
+    // promoting is the one that matters, so it is read as "anything else" like everything below.
+    if (name === "html" || name === "noscript") { pos = end + 1; continue; }
+    if (!_OFFLINE_HEAD_NOSCRIPT_OK_RE.test(name)) return true;
+    pos = end + 1;
+    if (_CMH_RAW_TEXT.test(name)) {
+      const close = _cmhRawTextClose(src, name, pos);
+      const closeEnd = close < 0 ? -1 : _cmhTagEnd(src, close);
+      // A raw-text child the fallback never closes runs PAST the seam the scripting-enabled reader
+      // stops at, so the two readings disagree about the rest of the document: fail closed.
+      if (closeEnd < 0) return true;
+      pos = closeEnd + 1;
+    }
+  }
+  return false;
+}
+// Drop every head `<noscript>` the mode above would take apart, on the SOURCE STRING. Returns the
+// rewritten HTML and the count, so the removal is named in the toast rather than silent.
+function _stripOfflineHeadNoscript(html) {
+  const src = String(html == null ? "" : html);
+  const cuts = [];
+  // A leading BOM is dropped when a browser DECODES the file, so a real load never sees it as
+  // character data and the head runs on past it. `DOMParser` is the exception - it takes a STRING,
+  // does no decode, and reads a leading U+FEFF as content (measured) - but the exporter's own base
+  // never carries one (`Response.text()` strips it), while the file the GATE reads does. Skipping it
+  // keeps the two sides identical and models the reviewer's own load; reading it as content would
+  // stop the walk at position 0 and turn the rule off for exactly the hand-authored file it exists
+  // to catch.
+  let pos = src.charAt(0) === "\ufeff" ? 1 : 0;
+  let templateDepth = 0;
+  for (;;) {
+    const lt = src.indexOf("<", pos);
+    if (lt < 0) break;
+    // Character data is only the head's business outside a `<template>`, whose content is parsed
+    // in its own fragment and never reaches the "in head noscript" mode at all.
+    if (templateDepth === 0 && _offlineCharDataHasContent(src.slice(pos, lt))) break;
+    if (src.slice(lt, lt + 4) === _OFFLINE_COMMENT_OPEN) { pos = _cmhCommentEnd(src, lt); continue; }
+    const lead = src.charAt(lt + 1);
+    if (lead === "!" || lead === "?") {
+      const gt = src.indexOf(">", lt + 1);
+      pos = gt < 0 ? src.length : gt + 1;
+      continue;
+    }
+    if (lead === "/") {
+      const endName = _offlineAsciiTagName(src, lt + 2);
+      const gt = _cmhTagEnd(src, lt);
+      if (templateDepth > 0) {
+        if (endName === "template") templateDepth -= 1;
+      } else if (endName === "head" || endName === "html" || endName === "body" || endName === "br") {
+        // Every end tag "in head" treats as "anything else" leaves the head, `</br>` included
+        // (measured - a fallback written after one is BODY content, which the mode never judges).
+        break;
+      }
+      pos = gt < 0 ? src.length : gt + 1;
+      continue;
+    }
+    if (!/[A-Za-z]/.test(lead)) {
+      if (templateDepth === 0) break;
+      pos = lt + 1;
+      continue;
+    }
+    const end = _cmhTagEnd(src, lt);
+    if (end < 0) break;
+    const name = _offlineAsciiTagName(src, lt + 1);
+    if (templateDepth === 0 && !_OFFLINE_HEAD_ELEMENT_RE.test(name)) break;
+    let next = end + 1;
+    if (_CMH_RAW_TEXT.test(name)) {
+      const close = _cmhRawTextClose(src, name, end + 1);
+      const closeEnd = close < 0 ? -1 : _cmhTagEnd(src, close);
+      if (closeEnd < 0) {
+        // The element never closes (or its end tag is truncated), so its body runs to the end of
+        // the document for both readings. A head fallback the insertion mode would still take
+        // apart is cut to EOF rather than left standing - the scripting-disabled parse pops it and
+        // promotes what follows just the same (measured) - and either way there is no further head
+        // markup to judge.
+        if (templateDepth === 0 && name === "noscript"
+            && _offlineHeadNoscriptPromotes(src.slice(end + 1, close < 0 ? src.length : close))) {
+          cuts.push([lt, src.length]);
+        }
+        break;
+      }
+      if (templateDepth === 0 && name === "noscript"
+          && _offlineHeadNoscriptPromotes(src.slice(end + 1, close))) {
+        cuts.push([lt, closeEnd + 1]);
+      }
+      next = closeEnd + 1;
+    } else if (name === "template") {
+      templateDepth += 1;
+    }
+    pos = next;
+  }
+  if (!cuts.length) return { html: src, dropped: 0 };
+  // Built in ONE forward pass. Slicing the document per cut would rebuild the whole multi-megabyte
+  // string each time, so a head carrying N promoting fallbacks would cost O(N x document).
+  const kept = [];
+  let at = 0;
+  for (let i = 0; i < cuts.length; i += 1) {
+    kept.push(src.slice(at, cuts[i][0]));
+    at = cuts[i][1];
+  }
+  kept.push(src.slice(at));
+  return { html: kept.join(""), dropped: cuts.length };
+}
+// The strip is a SINGLE pass, and a single pass is not a fixed point: removing a fallback splices
+// the bytes on either side of it together, and that can put a LATER fallback in head scope that the
+// walk had already stopped short of (`&#9` followed by a cut, then a `;`, fuses into a whitespace
+// reference and the head runs on). Measured: the once-stripped document then parses with the second
+// fallback's script promoted into the head - the very activation this rule exists to close, and one
+// the gate would bless, since it only ever sees the finished file. So the export runs the pass to a
+// FIXED POINT. It terminates because every iteration that does anything removes at least one
+// fallback. The gate deliberately does NOT iterate: it judges the document in front of it.
+function _stripOfflineHeadNoscriptStable(html) {
+  let out = String(html == null ? "" : html);
+  let dropped = 0;
+  for (;;) {
+    const pass = _stripOfflineHeadNoscript(out);
+    if (!pass.dropped) return { html: out, dropped: dropped };
+    out = pass.html;
+    dropped += pass.dropped;
+  }
+}
 function _ensureOfflineCsp(doc) {
   const html = doc.documentElement || doc.querySelector("html");
   let head = doc.head || doc.querySelector("head");
@@ -20140,7 +20353,11 @@ async function _buildOfflineHtml(shareableHtml) {
   // author's runnable script as inert data and overwrite the very bytes the neutralizer promises
   // to keep verbatim. Stamping first means the descriptor rule judges the document as authored.
   const retargeted = _retargetLayerDescriptor(shareableHtml, "offline");
-  const doc = _offlineDocFromHtml(retargeted);
+  // BEFORE the parse, because the parse is where the damage happens: a head `<noscript>` body the
+  // "in head noscript" insertion mode does not allow is promoted out of the fallback by `DOMParser`
+  // itself, and no pass that walks the resulting DOM can tell a promoted node from an authored one.
+  const headFallbacks = _stripOfflineHeadNoscriptStable(retargeted);
+  const doc = _offlineDocFromHtml(headFallbacks.html);
   // Make the layer's reserved-id data blocks inert BEFORE anything else reads or strips the
   // document, so every later pass exempts them on the ordinary runnable-type test and a decoy that
   // borrowed one of those ids cannot buy itself an exemption from either strip.
@@ -20168,6 +20385,7 @@ async function _buildOfflineHtml(shareableHtml) {
     html: html,
     droppedScripts: stripped.dropped,
     droppedFallbacks: droppedFallbacks,
+    droppedHeadFallbacks: headFallbacks.dropped,
     clearedBases: stripped.clearedBases,
     clearedSrcdocs: stripped.clearedSrcdocs,
     neutralizedScripts: _offlineCountKeptNeutralized(doc, neutralizedScripts),
@@ -20181,6 +20399,15 @@ async function saveOffline() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
   catch (e) { showToast("Could not load base HTML.", _OFFLINE_EXPORT_ERROR_TOAST); return; }
+  // FIRST, on the authored bytes, before ANY pass that parses and re-serializes the document. The
+  // state appliers below each round-trip through `DOMParser` when they have something to write, and
+  // that parse promotes a head fallback's body out of it exactly as the export's own parse does -
+  // so a document with a pending checklist, note, widget or review change would reach
+  // `_buildOfflineHtml` with the promotion already baked in and no fallback left to judge. The pass
+  // inside `_buildOfflineHtml` still runs (nothing downstream may depend on the order of two
+  // callers), and finds nothing left once this one has run.
+  const headFallbacks = _stripOfflineHeadNoscriptStable(baseHtml);
+  baseHtml = headFallbacks.html;
   baseHtml = _applyWidgetLayoutToHtml(baseHtml);
   baseHtml = _applyChecklistStateToHtml(baseHtml);
   baseHtml = _applyNoteStateToHtml(baseHtml);
@@ -20219,6 +20446,13 @@ async function saveOffline() {
   const fallbackNote = f > 0
     ? " " + f + " noscript fallback " + (f === 1 ? "block whose end a scripting-enabled reader reads differently was" : "blocks whose end a scripting-enabled reader reads differently were") + " removed."
     : "";
+  // A head fallback goes for a different reason again: not a seam, but an insertion mode that takes
+  // its body apart before any pass can read it - so keeping it would ACTIVATE code the source
+  // document never ran.
+  const hf = built.droppedHeadFallbacks + headFallbacks.dropped;
+  const headFallbackNote = hf > 0
+    ? " " + hf + " noscript fallback " + (hf === 1 ? "block in the document head, whose body a scripting-disabled parse takes apart, was" : "blocks in the document head, whose bodies a scripting-disabled parse takes apart, were") + " removed."
+    : "";
   // Clearing a base href is the one change here that re-points references which still WORK -
   // author links included - so the author is told rather than left to discover it.
   const b = built.clearedBases;
@@ -20232,7 +20466,7 @@ async function saveOffline() {
   const srcdocNote = s > 0
     ? " " + s + " <iframe srcdoc> nested document" + (s === 1 ? " was" : "s were") + " removed - an offline export cannot inspect a document carried inside an attribute."
     : "";
-  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + fallbackNote + baseNote + srcdocNote + review.note, { center: true });
+  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + fallbackNote + headFallbackNote + baseNote + srcdocNote + review.note, { center: true });
 }
 ["btnExportOffline", "btnExportOfflineTop"].forEach(function (id) {
   const b = document.getElementById(id);

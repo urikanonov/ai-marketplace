@@ -1,6 +1,11 @@
 from _validate_helpers import *
 from checks import resources  # noqa: E402
 
+import difflib  # noqa: E402  the cut-boundary oracle in the head-fallback parity check
+import shutil  # noqa: E402  the node-gated cross-engine parity check needs `which`
+
+from checks import resources  # noqa: E402  the gate's own offline predicates, tested directly
+
 
 class NewCheckTests(unittest.TestCase):
     """Coverage for the self-contained-guarantee, embedded-comment schema, duplicate-heading,
@@ -1566,6 +1571,464 @@ class NewCheckTests(unittest.TestCase):
             r_strict = subprocess.run([sys.executable, VALIDATE_PY, "--strict", p], capture_output=True, text=True)
             self.assertEqual(r_strict.returncode, 1, r_strict.stdout + r_strict.stderr)
             self.assertIn("strict", r_strict.stdout.lower())
+
+
+class OfflineHeadNoscriptTests(unittest.TestCase, ValidateAssertions):
+    """CMH-OFFLINE-05: a HEAD `<noscript>` a scripting-disabled parse takes apart.
+
+    The "in head noscript" insertion mode allows only `link`, `style`, `meta`, `basefont`,
+    `bgsound`, `noframes`, comments and whitespace; anything else POPS the fallback and reprocesses
+    that node - and everything after it - as a head SIBLING. The export re-parses with `DOMParser`
+    (scripting off), so that promotion happens inside the parse, and the export ACTIVATES markup a
+    reader only ever sees as inert text. The exporter drops such a fallback in a PRE-PARSE pass;
+    these hold the gate to the same verdicts, in both directions, so neither side can drift into
+    blessing a file the other changes.
+    """
+
+    def _head(self, doc, injected):
+        return doc.replace("<head>\n", "<head>\n" + injected + "\n", 1)
+
+    def _offline(self, injected):
+        return self._head(with_offline_mode(build()), injected)
+
+    PROMOTING = '<noscript><script>window.__probe = 1;</script></noscript>'
+    ALLOWED = ('<noscript><!-- a fallback note --><meta name="cmh-fallback" content="1">'
+               '<style>.cmh-fallback { color: #333; }</style></noscript>')
+
+    def _head_noscript_errors(self, content):
+        errors, _ = _validate_text(content)
+        return [e for e in errors if "in head noscript" in e]
+
+    def test_a_head_fallback_the_parse_takes_apart_is_rejected(self):
+        self.assertTrue(self._head_noscript_errors(self._offline(self.PROMOTING)))
+
+    def test_a_head_fallback_of_only_allowed_content_is_accepted(self):
+        self.assertEqual(self._head_noscript_errors(self._offline(self.ALLOWED)), [])
+
+    def test_the_same_fallback_in_the_body_is_an_ordinary_element(self):
+        # With scripting off a BODY `<noscript>` is transparent, so nothing is promoted out of it
+        # and the whole rule is head-scoped. Flagging one here would be pure content loss.
+        doc = with_offline_mode(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(),
+                                            MAIN, self.PROMOTING, JS_REGION]))
+        self.assertEqual(self._head_noscript_errors(doc), [])
+
+    def test_a_shareable_document_is_unaffected(self):
+        # Shareable makes no zero-network promise and preserves the author's bytes, so the export
+        # never rewrites this and the gate must not reject it either.
+        self.assertEqual(self._head_noscript_errors(self._head(build(), self.PROMOTING)), [])
+
+    def test_the_predicate_pops_on_everything_the_mode_does_not_allow(self):
+        for body in (
+            "<script>window.x = 1</script>",       # the shape that started this
+            "enable JavaScript to review this",    # a character token is "anything else" too
+            "<p>fallback prose</p>",
+            "<template><meta charset='utf-8'></template>",
+            "</br>",                               # the one end tag the mode does not ignore
+            "<img src='data:image/gif;base64,AA'>",
+            "< not a tag",
+            "<meta name='x'",                      # a truncated tag: fail closed
+            "<style>/* unclosed",                  # raw text running past the fallback's own end
+        ):
+            with self.subTest(body=body):
+                self.assertTrue(resources.offline_head_noscript_promotes(body), body)
+
+    def test_the_predicate_keeps_what_the_mode_allows(self):
+        for body in (
+            "",
+            "   \n\t ",
+            "<!-- a fallback note -->",
+            "<!DOCTYPE html>",
+            '<link rel="stylesheet" href="fallback.css">',
+            '<meta name="x" content="y">',
+            "<style>.x { color: red }</style>",
+            "<noframes>fallback</noframes>",
+            "<basefont><bgsound>",
+            "</span>",                             # an end tag this mode ignores
+            '<html class="no-js">',                # processed with the in-body rules: attributes only
+            '<style>p::after { content: "<p>" }</style>',
+        ):
+            with self.subTest(body=body):
+                self.assertFalse(resources.offline_head_noscript_promotes(body), body)
+
+    def test_only_a_head_scoped_fallback_is_reported(self):
+        promotions = resources.offline_head_noscript_promotions(
+            "<html><head><title>t</title>" + self.PROMOTING + "</head><body>"
+            + self.PROMOTING + "</body></html>")
+        self.assertEqual(len(promotions), 1, promotions)
+
+    def test_a_templated_fallback_is_not_head_content(self):
+        # A `<template>`'s content is parsed in its own fragment and never reaches the "in head
+        # noscript" mode, so removing one would be content loss - and the scan must still find a
+        # real head fallback that FOLLOWS the template rather than stopping at it.
+        promotions = resources.offline_head_noscript_promotions(
+            "<html><head><template>" + self.PROMOTING + "</template>"
+            + self.PROMOTING + "</head><body>b</body></html>")
+        self.assertEqual(len(promotions), 1, promotions)
+
+    def test_a_fallback_after_an_explicit_head_close_is_body_content(self):
+        self.assertEqual(resources.offline_head_noscript_promotions(
+            "<html><head><title>t</title></head>" + self.PROMOTING + "</html>"), [])
+
+    def test_a_script_body_naming_the_head_end_does_not_end_the_head(self):
+        # `</head>` inside a script body is TEXT to a browser, so the head runs on and the fallback
+        # after it is head content. A scan that read the raw string would miss it.
+        promotions = resources.offline_head_noscript_promotions(
+            "<html><head><script>var s = '</head>';</script>" + self.PROMOTING
+            + "</head><body>b</body></html>")
+        self.assertEqual(len(promotions), 1, promotions)
+
+
+class OfflineHeadNoscriptParityTests(unittest.TestCase):
+    """The gate's copy of the head-fallback model must be the exporter's copy - by EXECUTION.
+
+    The two are independent implementations on purpose (one runs in a browser, one in Python), and
+    an exporter that strips what the gate blesses - or a gate that rejects a file the exporter left
+    byte-identical - is the self-contradiction the offline parity work exists to remove. So the
+    shared SETS are pinned by text and the SCANNERS are pinned by running the exporter's own source
+    in node over a shared corpus: a set comparison structurally cannot see a loop that drifted, and
+    the one real divergence found in review (a Python `re.IGNORECASE` folding `s` onto U+017F where
+    a JS `/i` never does) passed the set comparison green.
+    """
+
+    # `(html, promotions)` - what `_stripOfflineHeadNoscript` / `offline_head_noscript_promotions`
+    # must both report. Every verdict that turns on a parsing subtlety was MEASURED in a real
+    # chromium `DOMParser` first (which is the parse that does the promoting), not read off the
+    # spec. The one row that is a MODEL rather than a measurement is the leading BOM: a browser
+    # drops it when it DECODES a file, but `DOMParser` takes a string and reads it as content, so
+    # the row records the reviewer's own file load, which is what the gate is judging.
+    _DOC_CORPUS = (
+        ("<html><head><title>t</title><noscript><script>window.x=1</script></noscript></head>"
+         "<body>b</body></html>", 1),
+        # What the mode allows stays inside the fallback under both readings: content, not a
+        # promotion.
+        ('<html><head><noscript><!-- n --><meta name="x" content="y">'
+         '<link rel="stylesheet" href="f.css"><style>p{color:red}</style></noscript></head>'
+         "<body>b</body></html>", 0),
+        # A BODY fallback is transparent to a scripting-disabled parse - nothing is promoted out.
+        ("<html><head><title>t</title></head><body><noscript><script>window.x=1</script>"
+         "</noscript></body></html>", 0),
+        # A `<template>`'s content is parsed in its own fragment and never reaches the mode, and a
+        # real head fallback AFTER one must still be found.
+        ("<html><head><template><noscript><script>window.x=1</script></noscript></template>"
+         "<noscript><script>window.y=1</script></noscript></head><body>b</body></html>", 1),
+        # An explicit `</head>`, and `</br>` (which "in head" routes to anything else), both leave
+        # the head, so a fallback after one is BODY content.
+        ("<html><head><title>t</title></head><noscript><script>window.x=1</script></noscript>"
+         "</html>", 0),
+        ("<html><head><title>t</title></br><noscript><script>window.x=1</script></noscript>"
+         "</html>", 0),
+        # Character data as the PARSER reads it: a whitespace character reference and a U+0000 are
+        # not content, so the head runs on and the fallback after them is still head-scoped.
+        ("<html><head><title>t</title>&Tab;<noscript><script>window.x=1</script></noscript>"
+         "</head><body>b</body></html>", 1),
+        ("<html><head><title>t</title>\x00<noscript><script>window.x=1</script></noscript>"
+         "</head><body>b</body></html>", 1),
+        ("<html><head><title>t</title>text<noscript><script>window.x=1</script></noscript>"
+         "</head><body>b</body></html>", 0),
+        # The same two INSIDE a fallback body leave it standing.
+        ("<html><head><noscript>&#x20;&#9;\x00<meta charset=utf-8></noscript></head>"
+         "<body>b</body></html>", 0),
+        # ... but `&#320;` is U+0140, not a space followed by a zero.
+        ("<html><head><noscript>&#320;<meta charset=utf-8></noscript></head><body>b</body></html>",
+         1),
+        # A fallback that never closes (or whose end tag is truncated) is popped and promoted by the
+        # scripting-disabled parse just the same, so it may not fail open.
+        ("<html><head><noscript><script>window.x=1</script>", 1),
+        ("<html><head><noscript><script>window.x=1</script></noscript", 1),
+        # A close tag whose name is a Unicode look-alike closes nothing in a browser - the fallback
+        # runs on unterminated. This is the divergence a set comparison could not see.
+        ("<html><head><noscript></no\u017Fcript><script>window.x=1</script></noscript></head>"
+         "<body>b</body></html>", 1),
+        ("<html><head><noscript><p>js off</p></no\u017Fcript></head><body>b</body></html>", 1),
+        # `</head>` inside a script body is TEXT, so the head runs on to the real fallback.
+        ("<html><head><script>var s = '</head>';</script><noscript><script>window.x=1</script>"
+         "</noscript></head><body>b</body></html>", 1),
+        # A leading BOM is dropped when a browser DECODES the file, so a real load runs on past it.
+        # (`DOMParser` takes a string and does not decode, so it alone reads one as content.)
+        ("\ufeff<html><head><noscript><script>window.x=1</script></noscript></head>"
+         "<body>b</body></html>", 1),
+        # Two promoting fallbacks around a kept one: every cut lands on an element boundary.
+        ("<html><head><noscript><p>a</p></noscript><noscript><meta charset=utf-8></noscript>"
+         "<noscript><script>window.x=1</script></noscript></head><body>b</body></html>", 2),
+        # A `<template>` fallback, a BOM and a whitespace-reference run composed: the template depth
+        # must not consume the head scope the BOM skip and the char-data rule then run in.
+        ("\ufeff<html><head><template><noscript><script>window.x=1</script></noscript></template>"
+         "&#x20;\x00<noscript><script>window.y=1</script></noscript></head><body>b</body></html>", 1),
+        # A `<head>` start tag inside a fallback pops it in a real chromium, whatever the spec says;
+        # a nested `<noscript>` does not, and deleting that fallback would be content loss.
+        ("<html><head><noscript><head><meta charset=utf-8></noscript></head><body>b</body></html>", 1),
+        ("<html><head><noscript><noscript><meta charset=utf-8></noscript></head>"
+         "<body>b</body></html>", 0),
+        # A name only `toLowerCase`/`lower` reads as an allowed element pops the fallback in a real
+        # browser, so an ASCII-only fold is what keeps the promotion visible.
+        ("<html><head><noscript><lin\u212A rel=x></noscript></head><body>b</body></html>", 1),
+        ("<html><head></head><body>b</body></html>", 0),
+        ("", 0),
+    )
+
+    # A single pass is not a fixed point: removing a fallback splices the bytes on either side
+    # together, and that can put a LATER fallback in head scope the walk had already stopped short
+    # of. Each row is `(html, first_pass_drops, stable_drops)`; the gate reports the FIRST-pass
+    # number (it judges the document in front of it) while the exporter runs to the stable one.
+    _FIXED_POINT_CORPUS = (
+        # `&#9` + a cut + `;` fuse into a whitespace reference, so the head runs on to the second
+        # fallback. Measured: the once-stripped document parses with `b=1` live in the head.
+        ("<html><head>&#9<noscript><script>a=1</script></noscript>;"
+         "<noscript><script>b=1</script></noscript></head><body>b</body></html>", 1, 2),
+    )
+
+    # `(body, promotes)` - the fallback-body predicate on its own, where the tokenizer states live.
+    _BODY_CORPUS = (
+        ("", False),
+        ("   \n\t ", False),
+        ("<!-- a note -->", False),
+        ("<!-->", False),
+        ("<!-- a --!>", False),
+        ("<!DOCTYPE html>", False),
+        # In HTML content `<![CDATA[` is a BOGUS COMMENT ending at the first `>`, so this whole
+        # body is one comment token the mode inserts rather than pops on.
+        ("<![CDATA[x]]>", False),
+        # ... and one that keeps a `>` of its own ends there, leaving live markup behind it.
+        ("<![CDATA[x>]]><p>a</p>", True),
+        ('<link rel="stylesheet" href="f.css">', False),
+        ('<meta name="x" content="y">', False),
+        ("<style>.x { color: red }</style>", False),
+        ('<style>p::after { content: "<p>" }</style>', False),
+        ("<noframes>fallback</noframes>", False),
+        ("<basefont><bgsound>", False),
+        ("</span>", False),
+        # The SPEC says this mode ignores a `<head>` or `<noscript>` start tag. A real chromium pops
+        # the fallback on `<head>` - and the browser doing the promoting is the one that matters -
+        # while it agrees with the spec on a nested `<noscript>`, where what follows stays inside.
+        ("<noscript>", False),
+        ("<noscript><meta charset=utf-8>", False),
+        ("<head>", True),
+        ("<head><meta charset=utf-8>", True),
+        # ... and an `<html>` really is processed with the in-body rules and merges attributes only,
+        # so what follows it stays inside the fallback.
+        ('<html class="no-js"><meta charset=utf-8>', False),
+        # A tag name is folded ASCII-ONLY, as HTML folds one: `lin<U+212A>` is not a `link` to a
+        # browser (measured - it pops the fallback), though `String.toLowerCase`/`str.lower` both
+        # read it as one.
+        ("<lin\u212A rel=x>", True),
+        ("<LINK REL=X>", False),
+        ("</br>", True),
+        ("<script>window.x=1</script>", True),
+        ("<p>fallback prose</p>", True),
+        ("enable JavaScript", True),
+        ("< not a tag", True),
+        ("<meta name='x'", True),
+        ("<style>/* unclosed", True),
+        # The whitespace character references, at their boundaries. A named one REQUIRES its
+        # semicolon; a numeric one may omit it, but then the digits that follow belong to it, so
+        # `&#320;` is U+0140 and `&#9a` is U+0009 followed by an `a` (which is content).
+        ("&#320;", True),
+        ("&#0320;", True),
+        ("&Tab", True),
+        ("&NewLine", True),
+        ("&#9a", True),
+        ("&#x20g", True),
+        ("&#0009;&#x0020;&#X20;", False),
+        ("&nbsp;", True),
+        ("&Tab;&NewLine;&#9;&#10;&#12;&#13;&#32;&#x9;&#xA;&#xC;&#xD;&#x20;\x00", False),
+        ("&#9&#10&#12&#13&#32", False),
+    )
+
+    def _runtime(self):
+        with open(os.path.join(_paths.ASSETS, "js", "68-export-offline.js"),
+                  encoding="utf-8", newline="") as fh:
+            return fh.read()
+
+    def _shareable(self):
+        with open(os.path.join(_paths.ASSETS, "js", "65-export-shareable.js"),
+                  encoding="utf-8", newline="") as fh:
+            return fh.read()
+
+    def _alternation(self, source, name):
+        m = re.search(r"const " + name + r"\s*=\s*\n?\s*/\^\(\?:([^)]*)\)\$/", source)
+        self.assertIsNotNone(m, "the runtime no longer declares %s; this parity check is stale" % name)
+        return frozenset(m.group(1).split("|"))
+
+    def _region(self, source, first, last, path):
+        """The contiguous source region from `first`'s declaration to the end of `last`."""
+        start = source.find(first)
+        self.assertNotEqual(start, -1, "%s no longer declares %s; the parity extraction is stale"
+                            % (path, first))
+        end = source.find(last, start)
+        self.assertNotEqual(end, -1, "%s no longer declares %s after %s; the parity extraction is "
+                                     "stale" % (path, last, first))
+        end = source.find("\n}", end)
+        self.assertNotEqual(end, -1, "could not find the end of %s in %s" % (last, path))
+        return source[start:end + 2]
+
+    def _scanner_source(self):
+        """The exporter's own head-fallback scanner, as JS source, for evaluation in node."""
+        tokenizer = self._region(self._shareable(), "const _CMH_SPACE_CH = ",
+                                 "function _cmhRawTextClose(", "65-export-shareable.js")
+        for name in ("_cmhTagEnd", "_cmhTagName", "_cmhCommentEnd", "_cmhScriptDataClose",
+                     "_CMH_RAW_TEXT"):
+            self.assertIn(name, tokenizer,
+                          "%s is no longer inside the extracted tokenizer region, so the parity "
+                          "check would run a partial copy of the scanner" % name)
+        scanner = self._region(self._runtime(), "const _OFFLINE_HEAD_NOSCRIPT_OK_RE = ",
+                               "function _stripOfflineHeadNoscriptStable(", "68-export-offline.js")
+        for name in ("_offlineCharDataHasContent", "_offlineHeadNoscriptPromotes",
+                     "_OFFLINE_WS_CHAR_REF_RE", "_OFFLINE_COMMENT_OPEN", "_OFFLINE_NON_SPACE_RE",
+                     "_OFFLINE_HEAD_ELEMENT_RE", "_offlineAsciiTagName",
+                     "function _stripOfflineHeadNoscript("):
+            self.assertIn(name, scanner,
+                          "%s is no longer inside the extracted head-fallback region, so the "
+                          "parity check would run a partial copy of the scanner" % name)
+        # The region is cut at the first column-0 `}`, which is only the function's END while the
+        # partials keep their functions at top level. Pin the tail explicitly so a future wrapper
+        # (a namespace, an IIFE) truncates the extraction LOUDLY here rather than silently handing
+        # node a partial scanner that still mentions every name above.
+        self.assertIn("return { html: out, dropped: dropped };", scanner,
+                      "the extracted region no longer reaches the end of "
+                      "_stripOfflineHeadNoscriptStable; the parity check would run a truncated copy "
+                      "of the scanner")
+        return tokenizer + "\n" + scanner + "\n"
+
+    def _run_node(self, node, script, payload, what, timeout=180):
+        # Passed as a `-e` argument, so it competes with the Windows 32,767-character command-line
+        # limit: fail on a budget here rather than on a truncated command later.
+        self.assertLess(len(script), 20000,
+                        "the extracted scanner no longer fits in a `node -e` argument; write it to "
+                        "a temp file and run that instead")
+        try:
+            proc = subprocess.run([node, "-e", script], input=json.dumps(payload),
+                                  capture_output=True, text=True, encoding="utf-8", timeout=timeout)
+        except subprocess.TimeoutExpired:
+            self.fail("node did not finish %s within %ds - the scan is superlinear, which is one of "
+                      "the things this guard exists to catch" % (what, timeout))
+        self.assertEqual(proc.returncode, 0, "node could not evaluate %s: %s" % (what, proc.stderr))
+        return json.loads(proc.stdout)
+
+    def test_the_allowed_head_fallback_content_matches(self):
+        self.assertEqual(self._alternation(self._runtime(), "_OFFLINE_HEAD_NOSCRIPT_OK_RE"),
+                         resources.OFFLINE_HEAD_NOSCRIPT_OK)
+
+    def test_the_head_element_set_matches(self):
+        self.assertEqual(self._alternation(self._runtime(), "_OFFLINE_HEAD_ELEMENT_RE"),
+                         resources.OFFLINE_HEAD_ELEMENTS)
+
+    def test_the_raw_text_element_set_matches(self):
+        """The third shared set, and the easiest to drift: the runtime reads it from
+        `65-export-shareable.js`, which the SHAREABLE export owns, so an edit made for that export
+        would silently change where this head scan finds each close tag on one side only."""
+        self.assertEqual(self._alternation(self._shareable(), "_CMH_RAW_TEXT"),
+                         resources.OFFLINE_RAW_TEXT_ELEMENTS)
+
+    def test_the_validator_answers_the_shared_corpus(self):
+        for html, promotions in self._DOC_CORPUS:
+            with self.subTest(html=html[:60]):
+                self.assertEqual(len(resources.offline_head_noscript_promotions(html)), promotions,
+                                 "the gate reports the wrong number of head fallbacks for %r" % html)
+        for body, promotes in self._BODY_CORPUS:
+            with self.subTest(body=body[:60]):
+                self.assertEqual(resources.offline_head_noscript_promotes(body), promotes,
+                                 "the gate's verdict on the fallback body %r is wrong" % body)
+
+    def _assertCutsAreWholeFallbacks(self, html, rewritten, promotions):
+        """Every difference between the input and what the exporter emitted is a whole `<noscript>`.
+
+        The oracle is a plain diff, deliberately not a second copy of the scanner: it can only say
+        WHERE the bytes went, which is exactly the property the count-and-body comparison cannot
+        reach. An off-by-one cut still drops the right number of fallbacks and still shortens the
+        document, so nothing else in this suite would notice it.
+        """
+        ops = [op for op in difflib.SequenceMatcher(None, html, rewritten, autojunk=False)
+               .get_opcodes() if op[0] != "equal"]
+        self.assertTrue(all(op[0] == "delete" for op in ops),
+                        "the exporter added or rewrote bytes in %r rather than only deleting: %r"
+                        % (html, ops))
+        self.assertEqual(len(ops), promotions,
+                         "the exporter made %d edits to %r for %d promoting fallbacks"
+                         % (len(ops), html, promotions))
+        for _tag, i1, i2, _j1, _j2 in ops:
+            # A deletion has a whole FAMILY of equivalent alignments when the characters on either
+            # side match (`</title>[<noscript>..</noscript>]</head>` and `</title><[noscript>..
+            # </noscript><]` remove the same bytes), and a diff may report any of them. Slide to the
+            # leftmost, then walk right through the family: the cut is a whole fallback if ANY
+            # alignment in it is.
+            a, b = i1, i2
+            while a > 0 and html[a - 1] == html[b - 1]:
+                a -= 1
+                b -= 1
+            whole = False
+            while True:
+                cut = html[a:b]
+                if cut[:9].lower() == "<noscript" and (cut.endswith(">") or b == len(html)):
+                    whole = True
+                    break
+                if b < len(html) and html[a] == html[b]:
+                    a += 1
+                    b += 1
+                else:
+                    break
+            self.assertTrue(whole,
+                            "a cut in %r is not a whole `<noscript>` element in any equivalent "
+                            "alignment: %r" % (html, html[i1:i2][:60]))
+
+    def test_the_exporter_answers_the_shared_corpus_in_the_real_js_engine(self):
+        """The exporter's own scanner, run in node over the corpus the gate just answered.
+
+        Text equality of the shared sets can only prove the two agree about NAMES; the scanners are
+        hand-mirrored loops, so only running one of them can prove they agree about DOCUMENTS.
+        Skipped when node is absent, the way the repo's other node-gated checks degrade - CI always
+        has it.
+        """
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine parity check needs it")
+        script = (
+            self._scanner_source()
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);process.stdout.write(JSON.stringify({"
+            "docs:p.docs.map(h=>{const r=_stripOfflineHeadNoscript(h);"
+            "return [r.dropped, r.html];}),"
+            "stable:p.stable.map(h=>{const f=_stripOfflineHeadNoscript(h);"
+            "const s=_stripOfflineHeadNoscriptStable(h);return [f.dropped, s.dropped, s.html];}),"
+            "bodies:p.bodies.map(b=>_offlineHeadNoscriptPromotes(b))}));});"
+        )
+        got = self._run_node(node, script,
+                             {"docs": [h for h, _ in self._DOC_CORPUS],
+                              "stable": [h for h, _, _ in self._FIXED_POINT_CORPUS],
+                              "bodies": [b for b, _ in self._BODY_CORPUS]},
+                             "the head-fallback corpus")
+        self.assertEqual(len(got["docs"]), len(self._DOC_CORPUS))
+        self.assertEqual(len(got["bodies"]), len(self._BODY_CORPUS))
+        for (html, promotions), (dropped, rewritten) in zip(self._DOC_CORPUS, got["docs"]):
+            self.assertEqual(dropped, promotions,
+                             "the REAL JS engine drops %d head fallbacks where the gate reports %d "
+                             "for %r - the exporter and its own --strict gate disagree"
+                             % (dropped, promotions, html))
+            # The BYTES, not just the count: an off-by-one in a cut range keeps the count right and
+            # the output shorter, and the gate - which returns bodies rather than ranges - could
+            # never see it. Checked against an INDEPENDENT oracle (a plain diff) rather than a
+            # second copy of the scanner: what a cut removes must be exactly whole `<noscript>`
+            # elements, and nothing may be added or reordered.
+            self._assertCutsAreWholeFallbacks(html, rewritten, promotions)
+        for (html, first, stable), (js_first, js_stable, js_html) in zip(self._FIXED_POINT_CORPUS,
+                                                                        got["stable"]):
+            self.assertEqual(js_first, first,
+                             "the first pass over %r dropped %d, not %d" % (html, js_first, first))
+            self.assertEqual(js_stable, stable,
+                             "running the strip to a fixed point over %r dropped %d, not %d"
+                             % (html, js_stable, stable))
+            self.assertEqual(resources.offline_head_noscript_promotions(js_html), [],
+                             "the gate still reports a promoting head fallback in what the exporter "
+                             "settled on for %r - the strip is not a fixed point" % html)
+        # The same invariant over the whole document corpus: whatever the exporter emits, the gate
+        # must have nothing left to report about it.
+        for (html, _), (_, rewritten) in zip(self._DOC_CORPUS, got["docs"]):
+            self.assertEqual(resources.offline_head_noscript_promotions(rewritten), [],
+                             "the gate still reports a promoting head fallback in what the exporter "
+                             "emitted for %r" % html)
+        for (body, promotes), js_promotes in zip(self._BODY_CORPUS, got["bodies"]):
+            self.assertEqual(js_promotes, promotes,
+                             "the REAL JS engine reads the fallback body %r as %s where the gate "
+                             "reads it as %s" % (body, js_promotes, promotes))
 
 
 if __name__ == "__main__":

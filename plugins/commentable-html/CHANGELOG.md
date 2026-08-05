@@ -4,6 +4,38 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.731.0] - 2026-08-05
+
+### Fixed
+
+- An offline export no longer ACTIVATES a `<noscript>` fallback the document keeps in its HEAD.
+  A head `<noscript>` is not an ordinary element to a scripting-disabled parse: the "in head
+  noscript" insertion mode allows only `link`, `style`, `meta`, `basefont`, `bgsound`, `noframes`,
+  comments and whitespace, and anything else is a parse error that POPS the fallback and
+  REPROCESSES that node - and everything after it - under the "in head" rules, so it becomes a head
+  SIBLING (a `<script>`) or ends the head and lands in the body (a `<p>`). The export re-parses with
+  `DOMParser` (scripting off), so the promotion happened INSIDE that parse, before any strip or
+  ancestry check could see it, and a promoted node is indistinguishable in the DOM from one the
+  author wrote as a sibling. Opening the SOURCE left a head `<noscript><script>` inert (with
+  scripting on a fallback body is raw text); opening the EXPORT ran it. The exporter now reads the
+  head fallbacks the way the reviewer's scripting-ENABLED tokenizer does - a start tag, then raw
+  text to the first `</noscript` - in a PRE-PARSE pass over the source string, and drops whole any
+  fallback the insertion mode would take apart, counting it in the download toast the way a
+  straddling fallback and a dropped script already are. A head fallback carrying only what the mode
+  allows is untouched, so this is not a blanket head-fallback removal, and a BODY fallback is
+  unaffected (with scripting off it is transparent, and nothing is promoted out of it). Offline
+  `--strict` rejects the same shape through a mirrored predicate, and the two are held to the same
+  verdicts over a shared corpus by running the exporter's own scanner in node, so on every shape the
+  corpus covers the exporter cannot emit a file its own gate refuses to certify. What both model is
+  the parser's reading rather than the bytes': a U+0000 and a whitespace character reference are not
+  content, a leading BOM is dropped by the file decode a real load performs, a tag name is folded
+  ASCII-only (so `lin<U+212A>` is not a `link`), an `</br>` ends the head, an `<html>` or a nested
+  `<noscript>` start tag inside a fallback is not a pop while a `<head>` is, and a fallback that
+  never closes is cut to the end of the document rather than left standing. The exporter runs the
+  pass to a FIXED POINT, because removing one fallback can splice the bytes around it into a head
+  scope that reaches the next one (CMH-OFFLINE-05).
+
+
 ## [1.728.0] - 2026-08-05
 
 ### Fixed

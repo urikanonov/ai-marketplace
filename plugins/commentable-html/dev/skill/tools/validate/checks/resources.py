@@ -1195,6 +1195,265 @@ def meta_refresh_navigates_to_network(content):
 # authority prefix, which accepts a BACKSLASH as well as a slash in either position because a
 # special scheme's relative and relative-slash states treat the two alike. An unparseable body, or a
 # `src`, is rejected as well.
+# A `<noscript>` in the HEAD is the one shape where the two readings of a fallback body diverge
+# before any pass on either side can look at it. The "in head noscript" insertion mode allows only
+# `link`, `style`, `meta`, `basefont`, `bgsound`, `noframes`, comments and whitespace; anything else
+# is a parse error that POPS the fallback and reprocesses that node - and everything after it - as a
+# head SIBLING. The export re-parses with `DOMParser` (scripting off), so the promotion happens
+# INSIDE that parse, and a promoted node is indistinguishable in the DOM from one the author wrote
+# as a sibling: opening the SOURCE leaves a head `<noscript><script>` inert, opening the export runs
+# it. The export therefore drops such a fallback in a PRE-PARSE pass over the source string, and
+# this is the mirror of it - written as its own scanner rather than read off the shared tag index
+# because it has to model the same tokenizer STATES the strip does, and the two must agree by
+# construction rather than by coincidence.
+OFFLINE_HEAD_NOSCRIPT_OK = frozenset(("link", "style", "meta", "basefont", "bgsound", "noframes"))
+# What keeps a parser in "in head": a start tag outside this set (`<body>` included), an explicit
+# `</head>`, or non-whitespace character data ends it, and a `<noscript>` after that is an ordinary
+# element both readings agree about.
+OFFLINE_HEAD_ELEMENTS = frozenset((
+    "html", "head", "base", "basefont", "bgsound", "link", "meta", "noframes", "noscript",
+    "script", "style", "template", "title"))
+# Elements whose CONTENT a browser reads as text, mirroring the runtime's `_CMH_RAW_TEXT`.
+OFFLINE_RAW_TEXT_ELEMENTS = frozenset((
+    "script", "style", "textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript"))
+# ASCII whitespace, as HTML defines it - not Python's `\s`, which is Unicode-aware and would read a
+# NBSP as a delimiter a browser never treats as one.
+OFFLINE_NON_SPACE_RE = re.compile(r"[^\t\n\f\r ]", re.ASCII)
+# A character reference that decodes to ASCII whitespace, spelled out because HTML decodes
+# references in CHARACTER DATA while a byte scan reads them as content. Measured in chromium: a
+# `&Tab;` before a head fallback keeps the parser in the head, and a `&#9;` inside one leaves the
+# fallback standing. The numeric forms may omit the semicolon, so each carries the class that stops
+# `&#320;` (U+0140) being read as `&#32` plus a `0`.
+OFFLINE_WS_CHAR_REF_RE = re.compile(
+    r"&(?:Tab;|NewLine;|#(?:0*(?:9|10|12|13|32)(?![0-9])|[xX]0*(?:9|[aAcCdD]|20)(?![0-9A-Fa-f]));?)",
+    re.ASCII)
+OFFLINE_NAME_END_RE = re.compile(r"[\t\n\f\r />]", re.ASCII)
+OFFLINE_TAG_LEAD_RE = re.compile(r"[A-Za-z]", re.ASCII)
+
+
+def _offline_char_data_has_content(text):
+    """Character data as the PARSER reads it rather than as the bytes read: a U+0000 is dropped
+    outright and a whitespace character reference is whitespace, so neither ends the head nor pops a
+    fallback. Mirrors `_offlineCharDataHasContent` in the runtime."""
+    return bool(OFFLINE_NON_SPACE_RE.search(
+        OFFLINE_WS_CHAR_REF_RE.sub(" ", (text or "").replace("\x00", ""))))
+
+
+def _offline_tag_end(html, start):
+    """The index of the `>` that ends the tag opening at `start`, or -1. A quote only opens an
+    attribute value directly after `=`, so a stray apostrophe inside a tag does not swallow the
+    rest of the document."""
+    quote = ""
+    after_equals = False
+    i = start + 1
+    while i < len(html):
+        ch = html[i]
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in ('"', "'"):
+            if after_equals:
+                quote = ch
+            after_equals = False
+        elif ch == "=":
+            after_equals = True
+        elif ch in "\t\n\f\r ":
+            pass
+        elif ch == ">":
+            return i
+        else:
+            after_equals = False
+        i += 1
+    return -1
+
+
+def _offline_tag_name(html, frm):
+    """The tag name, folded the way HTML folds one: ASCII ONLY. `str.lower()` is Unicode-aware, so
+    it reads `lin<U+212A>` (KELVIN SIGN) as `link` while a browser does not - and that element
+    really does POP a head fallback, so folding it into the allowed set would leave the promotion
+    undetected. Mirrors `_offlineAsciiTagName` in the runtime."""
+    m = OFFLINE_NAME_END_RE.search(html, frm)
+    return _ascii_lower(html[frm:(m.start() if m else len(html))])
+
+
+def _offline_comment_end(html, start):
+    """The index just past the comment opening at `start`. `<!-->` and `<!--->` are complete (empty)
+    comments and `--!>` also terminates one, so a legal comment cannot swallow the document."""
+    i = start + 4
+    if html[i:i + 1] == ">":
+        return i + 1
+    if html[i:i + 2] == "->":
+        return i + 2
+    m = re.compile(r"--!?>").search(html, i)
+    return (m.end() if m else len(html))
+
+
+def _offline_script_data_close(html, frm):
+    """The index of the `</script` that really closes a script body, honouring the escaped and
+    double-escaped script-data states (the classic `<!--<script>` idiom)."""
+    rx = re.compile(r"<!--|-->|</?script(?=[\t\n\f\r />])", re.IGNORECASE | re.ASCII)
+    escaped = False
+    doubled = False
+    for m in rx.finditer(html, frm):
+        tok = m.group(0).lower()
+        if tok == "<!--":
+            escaped = True
+        elif tok.startswith("-"):
+            escaped = False
+            doubled = False
+        elif tok == "<script":
+            if escaped:
+                doubled = True
+        elif doubled:
+            doubled = False
+        else:
+            return m.start()
+    return -1
+
+
+def _offline_raw_text_close(html, name, frm):
+    """The index of the end tag that closes the raw-text element `name`. An end tag only closes one
+    when its name is followed by whitespace, `/` or `>`, so a `</scriptfoo>` is text."""
+    if name == "script":
+        return _offline_script_data_close(html, frm)
+    m = re.compile("</" + re.escape(name) + r"(?=[\t\n\f\r />])",
+                   re.IGNORECASE | re.ASCII).search(html, frm)
+    return m.start() if m else -1
+
+
+def offline_head_noscript_promotes(body):
+    """Would a scripting-disabled parse take this HEAD fallback body apart? Mirrors
+    `_offlineHeadNoscriptPromotes` in `assets/js/68-export-offline.js` token for token."""
+    src = body or ""
+    pos = 0
+    while pos < len(src):
+        lt = src.find("<", pos)
+        # Promoted content need not be an element: a character token that is not whitespace is
+        # "anything else" too, so a line of fallback prose becomes the start of the BODY.
+        if _offline_char_data_has_content(src[pos:] if lt < 0 else src[pos:lt]):
+            return True
+        if lt < 0:
+            return False
+        if src[lt:lt + 4] == "<!--":
+            pos = _offline_comment_end(src, lt)
+            continue
+        lead = src[lt + 1:lt + 2]
+        if lead in ("!", "?"):
+            # A DOCTYPE and a bogus comment are both tokens this mode ignores.
+            gt = src.find(">", lt + 1)
+            pos = len(src) if gt < 0 else gt + 1
+            continue
+        if lead == "/":
+            end_name = _offline_tag_name(src, lt + 2)
+            gt = _offline_tag_end(src, lt)
+            # `</br>` is the one end tag the mode treats as "anything else"; every other one is a
+            # parse error it ignores, so it promotes nothing.
+            if end_name == "br":
+                return True
+            pos = len(src) if gt < 0 else gt + 1
+            continue
+        if not OFFLINE_TAG_LEAD_RE.match(lead):
+            return True  # a `<` that opens no tag is character data
+        end = _offline_tag_end(src, lt)
+        if end < 0:
+            return True  # a truncated tag: fail closed rather than guess how it ends
+        name = _offline_tag_name(src, lt + 1)
+        # An `<html>` or a nested `<noscript>` start tag is NOT a pop: this mode processes the first
+        # with the in-body rules (which only merge its attributes) and ignores the second as a parse
+        # error, and a real chromium agrees with the spec on both. A `<head>` start tag is a parse
+        # error the SPEC also says to ignore, but chromium POPS the fallback on it, and the browser
+        # that does the promoting is the one that matters, so it is read as "anything else" below.
+        if name in ("html", "noscript"):
+            pos = end + 1
+            continue
+        if name not in OFFLINE_HEAD_NOSCRIPT_OK:
+            return True
+        pos = end + 1
+        if name in OFFLINE_RAW_TEXT_ELEMENTS:
+            close = _offline_raw_text_close(src, name, pos)
+            close_end = -1 if close < 0 else _offline_tag_end(src, close)
+            # A raw-text child the fallback never closes runs PAST the seam the scripting-enabled
+            # reader stops at, so the two readings disagree about the rest of the document.
+            if close_end < 0:
+                return True
+            pos = close_end + 1
+    return False
+
+
+def offline_head_noscript_promotions(html):
+    """The body of every HEAD `<noscript>` a scripting-disabled parse would take apart, in document
+    order. Mirrors `_stripOfflineHeadNoscript`, which removes exactly these."""
+    src = html or ""
+    found = []
+    # A leading BOM is dropped when a browser DECODES the file, so a real load never sees it as
+    # character data and the head runs on past it. `validate.py` reads the file as plain `utf-8`, so
+    # a hand-authored file keeps its BOM here, and reading that as content would stop the walk at
+    # position 0 - turning this rule off for exactly the file it exists to catch.
+    pos = 1 if src[:1] == "\ufeff" else 0
+    template_depth = 0
+    while True:
+        lt = src.find("<", pos)
+        if lt < 0:
+            break
+        # Character data is only the head's business outside a `<template>`, whose content is parsed
+        # in its own fragment and never reaches the "in head noscript" mode at all.
+        if template_depth == 0 and _offline_char_data_has_content(src[pos:lt]):
+            break
+        if src[lt:lt + 4] == "<!--":
+            pos = _offline_comment_end(src, lt)
+            continue
+        lead = src[lt + 1:lt + 2]
+        if lead in ("!", "?"):
+            gt = src.find(">", lt + 1)
+            pos = len(src) if gt < 0 else gt + 1
+            continue
+        if lead == "/":
+            end_name = _offline_tag_name(src, lt + 2)
+            gt = _offline_tag_end(src, lt)
+            if template_depth > 0:
+                if end_name == "template":
+                    template_depth -= 1
+            elif end_name in ("head", "html", "body", "br"):
+                # Every end tag "in head" treats as "anything else" leaves the head, `</br>`
+                # included, so a fallback written after one is BODY content this mode never judges.
+                break
+            pos = len(src) if gt < 0 else gt + 1
+            continue
+        if not OFFLINE_TAG_LEAD_RE.match(lead):
+            if template_depth == 0:
+                break
+            pos = lt + 1
+            continue
+        end = _offline_tag_end(src, lt)
+        if end < 0:
+            break
+        name = _offline_tag_name(src, lt + 1)
+        if template_depth == 0 and name not in OFFLINE_HEAD_ELEMENTS:
+            break
+        nxt = end + 1
+        if name in OFFLINE_RAW_TEXT_ELEMENTS:
+            close = _offline_raw_text_close(src, name, end + 1)
+            close_end = -1 if close < 0 else _offline_tag_end(src, close)
+            if close_end < 0:
+                # The element never closes (or its end tag is truncated), so its body runs to the
+                # end of the document for both readings. A head fallback the insertion mode would
+                # still take apart is reported rather than left standing - the scripting-disabled
+                # parse pops it and promotes what follows just the same.
+                if (template_depth == 0 and name == "noscript"
+                        and offline_head_noscript_promotes(
+                            src[end + 1:(len(src) if close < 0 else close)])):
+                    found.append(src[end + 1:(len(src) if close < 0 else close)])
+                break
+            if (template_depth == 0 and name == "noscript"
+                    and offline_head_noscript_promotes(src[end + 1:close])):
+                found.append(src[end + 1:close])
+            nxt = close_end + 1
+        elif name == "template":
+            template_depth += 1
+        pos = nxt
+    return found
+
+
 OFFLINE_ACTIVE_DATA_TYPES = ("importmap", "speculationrules")
 OFFLINE_NONLOCAL_REF_RE = re.compile(r"^(?:[A-Za-z][A-Za-z0-9+.\-]*:|[/\\][/\\])")
 
