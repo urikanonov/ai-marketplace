@@ -210,6 +210,31 @@ class DocParserTemplateBoundaryTests(unittest.TestCase):
         self.assertEqual(self._prose(doc), [])
 
 
+class DocParserBodyEndTests(unittest.TestCase):
+    def test_body_and_html_end_tags_do_not_close_an_open_comment_root(self):
+        for tag in ("body", "html"):
+            with self.subTest(tag=tag):
+                doc = parsing._parse_document(
+                    '<body><main id="commentRoot"><p>keep</p></%s><p>outside</p>' % tag)
+                self.assertEqual(
+                    "".join(doc.commentroot_prose).replace(" ", ""),
+                    "keepoutside",
+                )
+
+    def test_a_foreign_html_end_tag_closes_the_real_foreign_element(self):
+        doc = parsing._parse_document('<svg><html></html><rect id="after">')
+        self.assertEqual([tag for tag, _skip in doc.stack], ["svg", "rect"])
+
+    def test_a_foreign_html_end_tag_does_not_change_html_head_state(self):
+        parser = parsing._DocParser("<svg><html>")
+        parser.feed("<svg><html>")
+        parser._head_ended = False
+        parser._csp_head_over = False
+        parser.handle_endtag("html")
+        self.assertFalse(parser._head_ended)
+        self.assertFalse(parser._csp_head_over)
+
+
 class DocParserRawTextTests(unittest.TestCase):
     """The raw-text / RCDATA set, applied explicitly so it does not drift with the host."""
 

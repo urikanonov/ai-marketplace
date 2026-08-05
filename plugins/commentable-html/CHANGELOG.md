@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.685.3] - 2026-08-05
+
+### Fixed
+
+- Section review hashes now use the same browser-boundary parser as the validator and other
+  authoring tools. Implicit paragraph/list-item closes, non-void HTML tags written with `/>`, and
+  headings quoted inside raw-text or RCDATA elements therefore produce the same sections and
+  hashes in Python and Chromium; RCDATA character references and the leading-LF rule still match
+  DOM `textContent`, and an inert template cannot hide the live content root.
+- The validator document parser and table-of-contents generator no longer treat `</body>` or
+  `</html>` in the HTML namespace as closing an open content root. HTML5 changes insertion mode
+  for those tags without popping the open elements, so trailing content stays inside the root
+  exactly as it does in a browser; same-named foreign elements still close normally. The TOC
+  parser also keeps foreign-template content live and never selects a duplicate root after the
+  browser's first root is a void or self-closed foreign element.
+
 ## [1.685.2] - 2026-08-05
 
 ### Fixed

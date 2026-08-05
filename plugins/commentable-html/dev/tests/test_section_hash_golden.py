@@ -143,6 +143,17 @@ class DocumentContentHashTests(unittest.TestCase):
             '<main id="commentRoot">A</main><aside data-cmh-content-root>B</aside>')
         self.assertEqual(a, b)
 
+    def test_a_template_parked_root_does_not_hide_the_live_root(self):
+        html = ('<template><main id="commentRoot">Hidden</main></template>'
+                '<main id="commentRoot">Real</main>')
+        self.assertEqual(section_hash.document_content_hash(html),
+                         section_hash.cmh_section_hash("Real"))
+
+    def test_a_foreign_template_ancestor_does_not_hide_the_selected_root(self):
+        html = '<svg><template><g id="commentRoot">Real</g></template></svg>'
+        self.assertEqual(section_hash.document_content_hash(html),
+                         section_hash.cmh_section_hash("Real"))
+
     def test_only_id_commentRoot_is_the_root_not_a_bare_data_attr(self):
         # A bare data-cmh-content-root is not getElementById("commentRoot"); only id=commentRoot is.
         self.assertIsNone(section_hash.document_content_hash('<aside data-cmh-content-root>X</aside>'))
@@ -217,6 +228,57 @@ class HeadingBoundaryTests(unittest.TestCase):
         secs = section_hash.extract_sections(
             '<body><main id="commentRoot"><h2 id="a">Alpha</h2></body><h2 id="c">Gamma</h2>')
         self.assertEqual([s["id"] for s in secs], ["a", "c"])
+
+    def test_a_block_start_closes_an_open_cm_skip_paragraph(self):
+        html = ('<main id="commentRoot"><p class="cm-skip">Hidden'
+                '<h2 id="shown">Shown</h2><p>Body</p></main>')
+        secs = {s["id"]: s for s in section_hash.extract_sections(html)}
+        self.assertEqual(list(secs), ["shown"])
+        self.assertEqual(secs["shown"]["headingText"], "Shown")
+        self.assertEqual(section_hash.document_content_hash(html),
+                         section_hash.cmh_section_hash("ShownBody"))
+
+    def test_a_new_list_item_closes_an_open_cm_skip_item(self):
+        html = ('<main id="commentRoot"><ul><li class="cm-skip">Hidden'
+                '<li><h2 id="shown">Shown</h2><p>Body</p></ul></main>')
+        secs = {s["id"]: s for s in section_hash.extract_sections(html)}
+        self.assertEqual(list(secs), ["shown"])
+        self.assertEqual(section_hash.document_content_hash(html),
+                         section_hash.cmh_section_hash("ShownBody"))
+
+    def test_a_self_closing_nonvoid_html_heading_opens_normally(self):
+        html = '<main id="commentRoot"><h2 id="shown"/>Shown</h2><p>Body</p></main>'
+        secs = {s["id"]: s for s in section_hash.extract_sections(html)}
+        self.assertEqual(list(secs), ["shown"])
+        self.assertEqual(secs["shown"]["headingText"], "Shown")
+
+    def test_a_heading_quoted_in_rcdata_is_not_a_section(self):
+        html = ('<main id="commentRoot"><textarea><h2 id="ghost">Ghost</h2></textarea>'
+                '<h2 id="shown">Shown</h2></main>')
+        secs = {s["id"]: s for s in section_hash.extract_sections(html)}
+        self.assertEqual(list(secs), ["shown"])
+        self.assertEqual(secs["shown"]["headingText"], "Shown")
+
+    def test_rcdata_references_match_dom_text_content(self):
+        html = '<main id="commentRoot"><textarea>Fish &amp; Chips</textarea></main>'
+        self.assertEqual(section_hash.document_content_hash(html),
+                         section_hash.cmh_section_hash("Fish & Chips"))
+
+    def test_the_first_lf_after_textarea_is_ignored_like_the_dom(self):
+        html = '<main id="commentRoot"><textarea>\nBody</textarea></main>'
+        self.assertEqual(section_hash.document_content_hash(html),
+                         section_hash.cmh_section_hash("Body"))
+
+    def test_the_first_lf_after_pre_is_ignored_like_the_dom(self):
+        html = '<main id="commentRoot"><span>Shown</span><pre>\nBody</pre></main>'
+        self.assertEqual(section_hash.document_content_hash(html),
+                         section_hash.cmh_section_hash("ShownBody"))
+
+    def test_a_foreign_html_end_tag_closes_the_real_foreign_element(self):
+        html = ('<main id="commentRoot"><svg><html class="cm-skip">Hidden</html>'
+                '<text>Visible</text></svg></main>')
+        self.assertEqual(section_hash.document_content_hash(html),
+                         section_hash.cmh_section_hash("Visible"))
 
     def test_a_heading_the_parser_did_not_hash_is_still_popped(self):
         # The pop is STRUCTURAL: a browser pops any open h1-h6 that is the current node, so a

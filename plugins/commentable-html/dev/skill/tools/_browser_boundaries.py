@@ -185,7 +185,8 @@ class _FallbackBoundaries(HTMLParser):
     def handle_endtag(self, tag):
         tag = self._browser_tag(tag)
         index = self._innermost_open(tag)
-        self._visit_end(tag, index)
+        if self._visit_end(tag, index) is False:
+            return
         if index < 0:
             return
         self._end_tag_close = True
@@ -212,7 +213,7 @@ class _FallbackBoundaries(HTMLParser):
         self._visit_void(tag, ad, ns, self._visit_start(tag, ad, ns, False))
 
     def _visit_end(self, tag, index):
-        """An end tag, before anything is truncated."""
+        """An end tag before truncation; return False to keep a matched element open."""
 
 
 class _RefreshedLineStarts:
@@ -224,7 +225,8 @@ class _RefreshedLineStarts:
     here rather than in each subclass keeps the nine tools honest with one line."""
 
     def parse_document(self, html):
-        self._starts = _line_starts(html)
+        if getattr(self, "_track_offsets", True):
+            self._starts = _line_starts(html)
         super().parse_document(html)
 
 

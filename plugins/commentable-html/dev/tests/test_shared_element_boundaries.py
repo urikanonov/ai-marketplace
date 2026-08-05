@@ -48,6 +48,7 @@ import deck_validate  # noqa: E402
 import doc_stats  # noqa: E402
 import fix_skip  # noqa: E402
 import generate_toc  # noqa: E402
+import section_hash  # noqa: E402
 import wrap_sections  # noqa: E402
 from cmhval import contrast  # noqa: E402
 
@@ -76,10 +77,17 @@ class SharedBoundariesShimTests(unittest.TestCase):
         base = _browser_boundaries.BrowserBoundaries
         for cls in (wrap_sections._TopLevelLocator, wrap_sections._ContentRootLocator,
                     generate_toc._TocParser, doc_stats._StatsParser,
+                    section_hash._SectionParser,
                     fix_skip._MermaidPreLocator, deck_validate._ActiveContentScanner,
                     deck_validate._AuthoredContentScanner, contrast._StyleScanner,
                     contrast._DocumentScanner):
             self.assertTrue(issubclass(cls, base), cls.__name__)
+
+    def test_section_hash_does_not_build_an_unused_line_offset_index(self):
+        html = '<main id="commentRoot">\n<p>one</p>\n<p>two</p></main>'
+        parser = section_hash._SectionParser(html=html)
+        parser.parse_document(html)
+        self.assertEqual(parser._starts, [0])
 
     def test_the_degraded_base_still_parses(self):
         # Only a broken/partial install gets here (the warning is emitted at import). It must keep
@@ -102,6 +110,14 @@ class SharedBoundariesShimTests(unittest.TestCase):
         probe.parse_document(html)
         self.assertEqual(seen, [("div", "a", 0, len('<DIV ID="a">'))])
         self.assertFalse(probe._foreign_self_closes("html"))
+
+    def test_the_degraded_base_can_find_an_open_end_tag_target(self):
+        probe = _browser_boundaries._FallbackBoundaries("")
+        probe._push_ns("div", "html", {})
+        probe._push_ns("span", "html", {})
+        self.assertEqual(probe._innermost_open("div"), 0)
+        self.assertEqual(probe._innermost_open("span"), 1)
+        self.assertEqual(probe._innermost_open("p"), -1)
 
 
 class WrapSectionsBoundaryTests(unittest.TestCase):

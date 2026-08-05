@@ -68,6 +68,34 @@ class GenerateTocTests(unittest.TestCase):
         self.assertNotIn("after-root", toc)
         self.assertNotIn("After Root", toc)
 
+    def test_body_and_html_end_tags_do_not_close_an_open_root(self):
+        for tag in ("body", "html"):
+            with self.subTest(tag=tag):
+                toc = generate_toc.build_toc(
+                    '<body><main id="commentRoot"><h2 id="inside">Inside</h2>'
+                    '</%s><h2 id="after">After</h2>' % tag)
+                self.assertIn('<a href="#inside">Inside</a>', toc)
+                self.assertIn('<a href="#after">After</a>', toc)
+
+    def test_a_foreign_html_end_tag_closes_the_real_foreign_element(self):
+        html = '<svg><html></html><rect id="after">'
+        parser = generate_toc._TocParser(html)
+        parser.feed(html)
+        self.assertEqual([tag for tag, _skip in parser.stack], ["svg", "rect"])
+
+    def test_an_id_on_a_foreign_template_is_reserved(self):
+        toc = generate_toc.build_toc(
+            '<main id="commentRoot"><svg><template><g id="alpha"></g></template></svg>'
+            '<h2>Alpha</h2></main>')
+        self.assertIn('<a href="#alpha-2">Alpha</a>', toc)
+
+    def test_a_self_closed_foreign_root_prevents_selecting_a_duplicate(self):
+        for first in ('<svg id="commentRoot"/>', '<img id="commentRoot">'):
+            with self.subTest(first=first):
+                toc = generate_toc.build_toc(
+                    first + '<main id="commentRoot"><h2 id="after">After</h2></main>')
+                self.assertNotIn("#after", toc)
+
     def test_heading_text_inside_a_template_is_not_part_of_the_title(self):
         # A nested <template> is inert, so its text is neither rendered nor part of the heading
         # the TOC links to - the validator's heading capture reads it the same way.
