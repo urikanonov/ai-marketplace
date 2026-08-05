@@ -555,6 +555,96 @@ test.describe("comment interactions", () => {
     expect((await storedComments(page)).length).toBe(0);
   });
 
+  test("CMH-CORE-22: the in-document dialog deletes the comment it is showing", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "delete me from the dialog", 0);
+    await addTextComment(page, "#commentRoot section p", "the surviving note", 1);
+    const cid = (await allCids(page))[0];
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await expect(pop).toBeVisible();
+
+    // The note view offers Delete alongside Close and Edit, and the keyboard REACHES it: the dialog
+    // opens with focus on Edit, so tabbing round the actions row must land on Delete (a Delete taken
+    // out of the tab order - tabindex="-1", disabled, aria-hidden - would fail here).
+    const del = pop.locator('[data-act="popover-del"]');
+    await expect(del).toBeVisible();
+    // Named the way the sidebar card's delete is named, so the impact is clear before the confirm.
+    await expect(del).toHaveAttribute("aria-label", "Delete this comment");
+    await expect(pop.locator('[data-act="close"]')).toBeVisible();
+    await expect(pop.locator('[data-act="edit"]')).toBeVisible();
+    await expect(pop.locator('[data-act="edit"]')).toBeFocused();
+    let reached = false;
+    for (let i = 0; i < 4 && !reached; i++) {
+      await page.keyboard.press("Shift+Tab");
+      reached = await del.evaluate((el) => el === document.activeElement);
+    }
+    expect(reached).toBe(true);
+
+    // Delete is not offered while the dialog is in its in-place edit state.
+    await pop.locator('[data-act="edit"]').click();
+    await expect(pop.locator(".cm-comment-popover-edit textarea")).toBeVisible();
+    await expect(pop.locator('[data-act="popover-del"]')).toHaveCount(0);
+    await pop.locator('[data-act="edit-cancel"]').click();
+    await expect(pop.locator('[data-act="popover-del"]')).toBeVisible();
+
+    // Declining the confirmation keeps the comment and leaves the dialog open.
+    let asked = "";
+    page.once("dialog", (d) => { asked = d.message(); d.dismiss(); });
+    await del.click();
+    expect(asked).toBe("Delete this comment?");
+    await expect(pop).toBeVisible();
+    // Declining puts the reader back on the control they declined from, not on <body>.
+    await expect(del).toBeFocused();
+    expect((await storedComments(page)).length).toBe(2);
+
+    // Confirming removes the comment, its highlight, and its card, and closes the dialog.
+    page.once("dialog", (d) => d.accept());
+    await pop.locator('[data-act="popover-del"]').click();
+    await expect(page.locator(".cm-comment-popover")).toHaveCount(0);
+    await expect(page.locator(`mark.cm-hl[data-cid="${cid}"]`)).toHaveCount(0);
+    await expect(page.locator("#commentList")).not.toContainText("delete me from the dialog");
+    await expect(page.locator("#commentList")).toContainText("the surviving note");
+    const stored = await storedComments(page);
+    expect(stored.length).toBe(1);
+    expect(stored[0].note).toBe("the surviving note");
+    // Focus lands on the comments list itself rather than falling to <body>, so the keyboard order
+    // resumes beside the surviving cards instead of restarting at the top of the page.
+    expect(await page.evaluate(() => {
+      const a = document.activeElement;
+      return a && a.id ? a.id : (a ? a.tagName : "none");
+    })).toBe("commentList");
+  });
+
+  test("CMH-CORE-22: a dialog delete matches the sidebar card's thread semantics", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "thread root note", 0);
+    const cid = (await allCids(page))[0];
+    await page.locator(`.cm-card[data-cid="${cid}"] .cm-reply-btn`).click();
+    const composer = page.locator(`.cm-card[data-cid="${cid}"] .cm-reply-compose`).last();
+    await composer.locator("textarea").fill("a reply that goes with it");
+    await composer.locator(".cm-reply-save").click();
+    expect((await storedComments(page)).length).toBe(2);
+
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await expect(pop).toBeVisible();
+    // A thread root's Delete says so in its accessible name, matching the sidebar card's title.
+    await expect(pop.locator('[data-act="popover-del"]'))
+      .toHaveAttribute("aria-label", "Delete this comment and its replies");
+    // Same confirmation wording the sidebar card uses for a thread root...
+    let asked = "";
+    page.once("dialog", (d) => { asked = d.message(); d.accept(); });
+    await pop.locator('[data-act="popover-del"]').click();
+    expect(asked).toBe("Delete this comment and its 1 reply?");
+    // ...and the same outcome: the whole thread goes, and the dialog does not linger.
+    await expect(page.locator(".cm-comment-popover")).toHaveCount(0);
+    expect((await storedComments(page)).length).toBe(0);
+    await expect(page.locator(`mark.cm-hl[data-cid="${cid}"]`)).toHaveCount(0);
+  });
+
   test("CMH-CORE-16: an Escape meant for another overlay does not discard the dialog draft", async ({ page }) => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section p", "keep my draft", 0);

@@ -936,6 +936,9 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 }
 .cm-comment-popover-input.cm-invalid { border-color: var(--cp-danger, #dc2626); }
 .cm-comment-popover-acts { display: flex; justify-content: flex-end; gap: var(--cp-chrome-gap); flex: none; }
+/* Delete sits apart from Close/Edit (issue #1031) so the destructive action is never the neighbour
+   of the one the reader reaches for by muscle memory. */
+.cm-comment-popover-acts .cm-comment-popover-del { margin-right: auto; }
 .cm-comment-popover button {
   background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
   padding: var(--cp-chrome-control-y) var(--cp-chrome-control-x); border-radius: 6px; cursor: pointer;
@@ -944,6 +947,7 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-comment-popover button.primary { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); }
 .cm-comment-popover button.primary:hover { background: var(--cp-accent-hover); }
 .cm-comment-popover button:not(.primary):hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.cm-comment-popover button.cm-comment-popover-del:hover { border-color: var(--cp-danger, #dc2626); color: var(--cp-danger, #dc2626); }
 
 .cm-toast {
   position: fixed; bottom: 1.5rem; left: 50%;
