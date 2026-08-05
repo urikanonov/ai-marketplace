@@ -4,6 +4,38 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.744.0] - 2026-08-05
+
+### Fixed
+
+- The self-contained guarantee now reaches inside an `<iframe srcdoc>` in shareable mode
+  (CMH-VAL-25). Every resource rule reads ELEMENTS, and a `srcdoc` carries a whole document as an
+  attribute VALUE, so the validator's tag index read that markup as attribute TEXT: an
+  `<img src="https://evil.example/x.png">` was a hard error, while the byte-identical load written
+  as `<iframe srcdoc="&lt;img src=https://evil.example/x.png&gt;">` passed `--strict` and the file
+  was stamped `commentable-html-validated` - a recipient handed a document that fetches from a host
+  in the very load set the stamp covers. (Shareable mode's enforced set is `img`, `script`,
+  `iframe`, `link` and `base`; the wider media, CSS, form and meta-refresh set is checked in offline
+  mode only, at the top level and inside a frame alike.) The nested value is now read as a FRAGMENT
+  through the SAME shared
+  tag index and judged by the SAME predicates as the top level (`img` `src`/`srcset`, `script`
+  `src`/`href`/`xlink:href`, `iframe` `src`, a loading `link` `href`, and a nested `<base href>` on
+  the stricter non-local-reference test), at the SAME severity element for element (a network
+  `link` is a warning, as it is at the top level; everything else is an error), so a nested element
+  gets exactly the verdict its top-level twin gets and there is no second notion of what a load is.
+  Scanning the raw `srcdoc` text instead was rejected: it cannot tell an `<a href>`, a `data:` URI
+  or a URL in prose from a load, so it would block benign nested markup. Unlike the offline
+  `srcdoc` decision this carries no two-parser drift risk - shareable mode has no exporter strip
+  pass, so the gate is the only implementation. The one deliberate strictness difference is the
+  Chart.js CDN loader: the top-level exemption exists for a single documented opt-in, the
+  loader that draws THIS document's canvas charts, and a copy inside a frame can never be that
+  loader because a frame cannot draw into its host's canvas - so the exemption has nothing to
+  exempt rather than being withheld. Offline mode is unchanged (it rejects a `srcdoc` on presence,
+  which is stronger),
+  parked frames (`<template>`, `<noscript>`, a self-closed foreign element) are judged alike, a
+  frame inside a frame is walked to a bounded depth, and an unreadable nested fragment or nesting
+  past that depth is reported rather than read as clean.
+
 ## [1.742.0] - 2026-08-05
 
 ### Fixed
