@@ -32,6 +32,32 @@ from checks import parsing  # noqa: E402
 from checks import resources  # noqa: E402
 
 
+CONTENT_SPEC = os.path.join(_paths.DEV, "spec", "40-content.md")
+
+
+def _spec_row(feature_id):
+    """The one `dev/spec` table row a feature id owns, or "" when it has none.
+
+    Every partial is searched rather than the one that holds the row today, so moving a row between
+    partials (a routine reorganization) is not a test failure. `utf-8-sig` because a row that
+    happened to land on line 1 of a BOM-bearing file would otherwise never match.
+    """
+    head = "| " + feature_id + " |"
+    for path in sorted(glob.glob(os.path.join(_paths.DEV, "spec", "*.md"))):
+        with open(path, "r", encoding="utf-8-sig") as fh:
+            for line in fh:
+                if line.startswith(head):
+                    return line
+    return ""
+
+
+def _read_validator_resources():
+    """The validator's mirror of the exporter's offline scanners."""
+    path = os.path.join(_paths.DEV, "skill", "tools", "validate", "checks", "resources.py")
+    with open(path, "r", encoding="utf-8", newline="") as fh:
+        return fh.read()
+
+
 def _doc(fragment):
     with open(_paths.TEMPLATE, "r", encoding="utf-8", newline="") as fh:
         template = fh.read()
@@ -3369,6 +3395,300 @@ class RuntimeParityTests(unittest.TestCase):
         self.assertEqual(int(depth.group(1)), resources.OFFLINE_SHADOW_MAX_DEPTH,
                          "the exporter and the validator cap the frame stack at different depths, "
                          "so a deeply nested script would be read differently by each")
+
+    # The bounded window the tokenizer replaced ran from the declaration OPENER to the `location`
+    # name, and each copy measured it with a string index - UTF-16 code units in JavaScript,
+    # Unicode code points in Python - so an astral-bearing window was two different lengths to the
+    # two engines. The padding below is therefore sized from that WINDOW rather than from itself:
+    # the `/*`, the `*/` and the space between them contribute 5 units on top of the padding, so a
+    # window of W code units needs W - 5 units of padding. The widths bracket the old 400 (399 and
+    # 400 inside it, 401 past it), which is exactly where a code-unit bound and a code-point bound
+    # part company; 500 is not a historical constant, it is a SECOND, wider bound, so the corpus is
+    # not tuned to catch exactly one number (#1112). The geometry is ASSERTED below rather than
+    # described here, so these counts cannot quietly stop meaning what this comment says.
+    _SHADOW_ASTRAL = "\U0001F600"
+    _SHADOW_WINDOW_OVERHEAD = len("/*") + len("*/ ")
+    _SHADOW_WINDOW_UNITS = (399, 400, 401, 500)
+
+    def _shadow_unit_padding(self, units, astral):
+        """Padding exactly `units` UTF-16 code units wide, from astral characters or from ASCII.
+
+        An astral character is 2 code units and 1 code point, so an astral padding is half as many
+        CHARACTERS as it is units - which is the whole asymmetry this corpus exists to exercise. An
+        odd width takes one ASCII character to land on it exactly.
+        """
+        if not astral:
+            return "a" * units
+        return self._SHADOW_ASTRAL * (units // 2) + "a" * (units % 2)
+
+    @staticmethod
+    def _shadow_window_widths(sample):
+        """The sample's opener-to-`location` window, as (code units, code points)."""
+        opener = sample.index("/*") - 1
+        window = sample[opener + 1:sample.index("location", opener)]
+        return sum(2 if ord(ch) > 0xFFFF else 1 for ch in window), len(window)
+
+    def _shadow_unit_samples(self):
+        """`(label, script)` pairs whose window the two index models measure differently.
+
+        Each script DECLARES its own `location` and then assigns a network URL to an unprefixed
+        one, so the correct verdict is the same for every sample: a shadow, and therefore no
+        navigation. Pinning that absolute verdict as well as the cross-engine agreement is what
+        stops the check passing if the two engines ever agree on the WRONG answer.
+        """
+        pairs = []
+        for units in self._SHADOW_WINDOW_UNITS:
+            for kind in ("astral", "ascii"):
+                pad = self._shadow_unit_padding(units - self._SHADOW_WINDOW_OVERHEAD,
+                                                kind == "astral")
+                for arm, opener in (("destructuring", "var {"), ("parameters", "function f(")):
+                    closer = "} = {};" if arm == "destructuring" else ") {}"
+                    pairs.append(("%s/%s/%d" % (arm, kind, units),
+                                  opener + "/*" + pad + "*/ location" + closer
+                                  + self._NAV_SHADOW_SINK))
+        return pairs
+
+    def _shadow_unit_site_samples(self):
+        """Samples for the length comparisons the CMH-OFFLINE-05 unit model enumerates as SAFE.
+
+        Only ONE of those sites can regress: the single-token peek after a declaration keyword,
+        which is safe because each engine's peek is exactly one unit OF THAT ENGINE. The others are
+        unit-IMMUNE rather than merely unit-insensitive - respelling them in code points (an
+        astral-aware escape advance, an `Array.from` prefix tail, an `Array.from(m[0]).length`
+        anchor width) changes no verdict on any input, because what they measure is ASCII either
+        way. So the peek samples below are GUARDS - each one splits the two engines under exactly
+        the regression the spec row names - and the rest are ILLUSTRATIONS that the shapes are
+        reached and agreed on, not tripwires.
+        """
+        astral = self._SHADOW_ASTRAL
+        return [
+            # GUARDS. The peek decides whether `var` arms binding mode, so `location` in the same
+            # declaration list is a shadow only if the peek said yes. Spelling the JS peek with
+            # `String.fromCodePoint` without mirroring Python splits both of these: Python keeps
+            # shadow=True while node drops to shadow=False and reports a navigation.
+            ("decl-peek", "var " + astral + "x, location;" + self._NAV_SHADOW_SINK),
+            ("decl-peek-pattern",
+             "var " + astral + "a, {location} = {};" + self._NAV_SHADOW_SINK),
+            # ILLUSTRATIONS. The fixed-width escape advances in the quoted, template and regex
+            # skips, including the regex character-class path, where JavaScript steps past the
+            # backslash and ONE unit and Python past the whole code point.
+            ("quoted-escape", 'var s = "\\' + astral + ' location";' + self._NAV_SHADOW_SINK),
+            ("template-escape", "var t = `\\" + astral + " location`;" + self._NAV_SHADOW_SINK),
+            ("regex-escape", "var r = /\\" + astral + "location/;" + self._NAV_SHADOW_SINK),
+            ("regex-escape-in-class", "var r = /[\\" + astral + "]/;" + self._NAV_SHADOW_SINK),
+            # The backwards prefix tail, reached by an astral character sitting immediately in
+            # front of a chain. The anchor match WIDTH has no sample: the anchor alternatives are
+            # the fixed ASCII literals `location` and `open`, so no input can put a non-ASCII
+            # character inside the match it measures.
+            ("prefix-tail", astral + 'top.location.href = "https://evil.example";'),
+            ("prefix-tail-chain", astral + 'window.open("https://evil.example");'),
+        ]
+
+    def test_the_two_shadow_scanners_agree_on_an_astral_bearing_window(self):
+        """CMH-OFFLINE-05: the unit model holds - no verdict depends on a source-distance count.
+
+        Nothing else exercises this class. The shadow corpus beside it is entirely ASCII, where a
+        JavaScript index and a Python index count the same thing, so every existing sample agrees
+        by construction no matter which unit either copy measures in; and the oracle-based
+        navigation checks compare each engine against a copy of the replaced pattern compiled in
+        that SAME engine, which cannot see a split at all (the Python oracle and the Python scanner
+        count code points together, and the JS pair counts code units together, so both agree while
+        disagreeing with each other). This one runs the PYTHON verdict and the NODE verdict on the
+        SAME astral-bearing sample and compares those.
+
+        The direction this failed in costs an author content rather than letting a beacon out: the
+        validator saw the local binding and accepted the document while the exporter saw none, read
+        the unprefixed sink beside it as the document's own `location`, and DELETED the script.
+        """
+        samples = self._shadow_unit_samples()
+        for label, sample in samples:
+            with self.subTest(geometry=label):
+                units, points = self._shadow_window_widths(sample)
+                self.assertEqual(
+                    units, int(label.rsplit("/", 1)[1]),
+                    "%s does not have the window width its label claims, so the corpus no longer "
+                    "brackets the bound it was built to bracket" % label)
+                if "/astral/" in label:
+                    self.assertLess(
+                        points, units,
+                        "%s is meant to be measured DIFFERENTLY by the two index models, but its "
+                        "window is the same width in code points and code units" % label)
+                else:
+                    self.assertEqual(
+                        points, units,
+                        "%s is the ASCII control, so both index models must measure it identically"
+                        % label)
+        # The absolute verdict is Python-only, so it is pinned BEFORE the node skip below: on a
+        # machine without node the cross-engine half cannot run, but this half still stops the
+        # corpus from agreeing on the wrong answer.
+        #
+        # The ASCII samples are a CONTROL, not a confirmation: an ASCII input agrees across the two
+        # engines whatever unit either copy measures in, so they cannot fail from a unit-model
+        # regression. What they do pin is that the window WIDTH decides nothing - the same verdict
+        # at 399, 400, 401 and 500 - which is the observable form of criterion 4 ("no ASCII input
+        # changes verdict"); the stronger argument for that criterion is that no shipped code
+        # changed at all.
+        for label, sample in samples:
+            with self.subTest(verdict=label):
+                self.assertTrue(
+                    resources.offline_local_location_shadow(sample),
+                    "%s declares its own `location`, so reporting no shadow would delete a script "
+                    "that navigates nothing" % label)
+                self.assertFalse(
+                    resources.offline_script_navigates_to_network(sample),
+                    "%s declares a `location` of its own, so the shadow rule measures it against "
+                    "the PREFIXED sinks only and the unprefixed sink beside it must not count"
+                    % label)
+        node = shutil.which("node")
+        if not node:
+            # CI sets CMH_REQUIRE_NODE because it PROVISIONS node (see the plugin-tests workflow):
+            # there, a missing interpreter means the provisioning step was dropped, and skipping
+            # would let a required check go green having run none of the cross-engine guards.
+            if os.environ.get("CMH_REQUIRE_NODE"):
+                self.fail("CMH_REQUIRE_NODE is set but node is not on PATH, so the cross-engine "
+                          "parity guards would silently skip on a runner that is meant to provide "
+                          "node")
+            self.skipTest("node is not on PATH; the cross-engine half of this check needs it")
+        cross = samples + self._shadow_unit_site_samples()
+        script = (
+            self._runtime_nav_source() + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);"
+            "process.stdout.write(JSON.stringify(p.map(s=>["
+            "_offlineScriptNavigatesToNetwork(s),_offlineLocalLocationShadow(s)])));});"
+        )
+        verdicts = self._run_nav_node(node, script, [sample for _, sample in cross],
+                                      "the astral-bearing local-binding windows")
+        self.assertEqual(len(verdicts), len(cross),
+                         "node returned %d verdicts for %d unit samples"
+                         % (len(verdicts), len(cross)))
+        for (label, sample), (js_navigates, js_shadow) in zip(cross, verdicts):
+            with self.subTest(parity=label):
+                self.assertEqual(
+                    resources.offline_local_location_shadow(sample), js_shadow,
+                    "the two engines disagree about the local binding in %s: node says shadow=%s. "
+                    "A decision that depends on a character COUNT reads a supplementary code point "
+                    "as 1 to Python and 2 to JavaScript, which is the split CMH-OFFLINE-05's unit "
+                    "model forbids." % (label, js_shadow))
+                self.assertEqual(
+                    resources.offline_script_navigates_to_network(sample), js_navigates,
+                    "the two engines disagree about %s: node says navigates=%s, so the exporter "
+                    "and `--strict` would treat the same document differently"
+                    % (label, js_navigates))
+
+    def test_neither_shadow_scanner_bounds_a_span_of_source_text(self):
+        """CMH-OFFLINE-05: the FORBIDDEN shape cannot reappear without a deliberate decision.
+
+        The corpus beside this pins the unit model at the widths it was built around, which is what
+        catches a bound near those magnitudes - but no finite corpus can bracket an arbitrary future
+        bound, so a mirrored 600-unit window would leave every sample on the same side in both
+        engines and this suite would stay green while astral input around 600 diverged again.
+
+        So the general ban is enforced against the SOURCE instead, in the two spellings the bug has
+        actually worn: a bounded regex quantifier over a run of source (the pre-#1106 window,
+        `[^}\\]]{0,399}`), and a subtraction of two source positions used in a comparison (its
+        replacement, `at - opener > _OFFLINE_LOCAL_WINDOW_MAX + 1`). Both measure a span of
+        arbitrary source text in whichever unit the engine indexes in, which is exactly what the
+        unit model forbids. Anything genuinely safe earns an entry here and a class in the spec row
+        - a deliberate, reviewed act rather than a line that slips in.
+        """
+        allowed = {
+            # The anchor match WIDTH that selects the sink arm. Class (a): the anchor alternatives
+            # are the fixed ASCII literals `location` and `open`, so this is the width of an ASCII
+            # token and is the same number in either index model.
+            "after - at ==",
+        }
+        span = re.compile(r"[A-Za-z_$][\w$]*\s*-\s*[A-Za-z_$][\w$]*\s*(?:[<>]=?|[=!]==?)")
+        quantifier = re.compile(r"\{\d*,\s*\d+\}")
+        for name, source in (("the exporter", self._read("68-export-offline.js")),
+                             ("the validator", _read_validator_resources())):
+            region = self._offline_scanner_region(name, source)
+            for m in span.finditer(region):
+                text = " ".join(m.group(0).split())
+                self.assertTrue(
+                    any(text.startswith(ok) for ok in allowed),
+                    "%s now compares the DISTANCE between two source positions (%r). A JavaScript "
+                    "index counts UTF-16 code units and a Python index counts code points, so a "
+                    "span measured this way is two different lengths to the two copies - the exact "
+                    "shape of #1112. Spell the bound in UTF-16 code units on BOTH sides and add it "
+                    "to the allowlist here with a class in the CMH-OFFLINE-05 unit model, or do "
+                    "not bound the span." % (name, text))
+            for m in quantifier.finditer(region):
+                self.fail(
+                    "%s now bounds a run of source with the quantifier %s. That is the ORIGINAL "
+                    "spelling of #1112 (`[^}\\]]{0,399}`): the two engines count the run in "
+                    "different units, so the same window is two different lengths to them. See the "
+                    "CMH-OFFLINE-05 unit model." % (name, m.group(0)))
+
+    def _offline_scanner_region(self, name, source):
+        """The offline navigation and shadow scanners, without the rest of their file.
+
+        Bounded so the guard above judges the mirrored pair rather than every unrelated helper that
+        happens to share the file - a false red there would teach a maintainer to widen the
+        allowlist, which is the opposite of what it exists to do.
+        """
+        for start_marker, end_marker in (
+                ("const _OFFLINE_NAV_ANCHOR_RE = ", "function _offlineScriptNavigatesToNetwork"),
+                ("OFFLINE_SHADOW_IDENT_ASCII_RE = ", "def offline_script_navigates_to_network")):
+            start = source.find(start_marker)
+            if start < 0:
+                continue
+            end = source.find(end_marker, start)
+            self.assertGreater(
+                end, start,
+                "%s no longer defines %s after %s, so this guard would scan the wrong region"
+                % (name, end_marker, start_marker))
+            return source[start:end]
+        self.fail("could not find the offline scanner region in %s, so the source guard would "
+                  "scan nothing and pass vacuously" % name)
+
+    def test_the_spec_declares_the_shadow_scanners_unit_model(self):
+        """CMH-OFFLINE-05: the unit the two copies measure in is WRITTEN DOWN, not implicit.
+
+        The scanners are hand-mirrored in two languages whose string indices count different
+        things, so the rule that keeps them equivalent has to live somewhere a future author adding
+        a bound will read. Leaving it implicit is what let the two copies disagree for as long as
+        the bounded window existed.
+        """
+        row = _spec_row("CMH-OFFLINE-05")
+        self.assertTrue(row, "CMH-OFFLINE-05 has no row in dev/spec/40-content.md")
+        # The prose phrases are matched case-insensitively: their capitalization is a house
+        # emphasis convention, so a copyedit that lowercases one is not a change of decision and
+        # must not red this check. The identifiers and the test name are matched exactly, because
+        # those ARE the thing being named.
+        lowered = row.lower()
+        for phrase in ("unit model", "unit-insensitive", "utf-16 code units", "code points",
+                       "distance"):
+            self.assertIn(
+                phrase, lowered,
+                "CMH-OFFLINE-05 must state '" + phrase + "' so the unit the two scanners measure "
+                "in is a recorded decision rather than an accident of two languages.")
+        # Every surviving length comparison the model declares SAFE has to be named, so a future
+        # author can audit the list instead of rediscovering the sites one regression at a time.
+        # The names are then checked against the SOURCE, so a rename cannot leave the row pointing
+        # at a site that no longer exists - the spec going stale is the failure mode that makes an
+        # enumeration worse than no enumeration.
+        sites = {
+            "OFFLINE_NAV_PREFIX_MAX": (self._read("68-export-offline.js"), "the exporter"),
+            "_offlineShadowDeclStarts": (self._read("68-export-offline.js"), "the exporter"),
+            "OFFLINE_SHADOW_MAX_DEPTH": (_read_validator_resources(), "the validator"),
+            "_offline_shadow_decl_starts": (_read_validator_resources(), "the validator"),
+        }
+        for name, (source, where) in sites.items():
+            self.assertIn(
+                name, row,
+                "CMH-OFFLINE-05 must name " + name + ": the unit model claims every surviving "
+                "length comparison is unit-insensitive, and an unnamed one is a claim nobody can "
+                "check.")
+            self.assertIn(
+                name, source,
+                "CMH-OFFLINE-05 names " + name + " as one of the length comparisons it vouches "
+                "for, but " + where + " no longer defines it - so the enumeration is now pointing "
+                "at a site that does not exist.")
+        self.assertIn(
+            "test_the_two_shadow_scanners_agree_on_an_astral_bearing_window", row,
+            "CMH-OFFLINE-05 must name the test that pins the unit model behaviourally; the prose "
+            "is the decision, but that test is the enforcement.")
 
     # The regex literals and name lists the exporter's navigation SCAN is built from, each paired
     # with the validator constant that must mirror it byte for byte, and with the JS flags it must
