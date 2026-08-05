@@ -84,6 +84,33 @@ class DocParserTemplateRawTextTests(unittest.TestCase):
         self.assertEqual(doc.styles, [])
 
 
+class DocParserDeclarativeShadowTests(unittest.TestCase):
+    """Rendered shadow prose is visible, but shadow elements are not in the document tree."""
+
+    def test_shadow_content_reaches_prose_and_headings_but_not_light_dom_views(self):
+        doc = parsing._parse_document(
+            '<main id="commentRoot"><div><template shadowrootmode="open">'
+            '<h2 id="shadow-heading">Shadow heading</h2>'
+            '<p>Rendered shadow prose</p><a href="#outside">Shadow link</a>'
+            '<canvas id="shadow-canvas"></canvas><pre class="mermaid">graph TD; A-->B</pre>'
+            '<script id="commentableHtmlLayer">shadowScript()</script>'
+            '<style>.shadow { color: red; }</style>'
+            "</template></div></main>")
+
+        self.assertEqual([h["text"] for h in doc.headings], ["Shadow heading"])
+        self.assertIn("Rendered shadow prose", "".join(doc.commentroot_prose))
+        self.assertEqual(doc.all_ids, ["commentRoot"])
+        self.assertEqual(doc.anchors, [])
+        self.assertEqual(doc.canvases, [])
+        self.assertEqual(doc.mermaid_blocks, [])
+        self.assertEqual(doc.scripts, [])
+        self.assertEqual(doc.styles, [])
+        self.assertEqual(
+            [s["body"] for s in doc.template_scripts], ["shadowScript()"])
+        self.assertEqual(
+            [s["body"] for s in doc.template_styles], [".shadow { color: red; }"])
+
+
 class DocParserTemplateBoundaryTests(unittest.TestCase):
     """An END TAG written inside an open `<template>` cannot close an element opened OUTSIDE it.
 

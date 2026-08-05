@@ -308,7 +308,7 @@ def _check_heading_ids(parser):
     errors, warnings = [], []
     # 11f) Duplicate heading ids collide in-page anchors: the TOC and prose links bind
     #      to the first occurrence, so later sections become unreachable.
-    _hids = [h.get("id") for h in parser.headings if h.get("id")]
+    _hids = [h.get("id") for h in parser.headings if h.get("id") and not h.get("shadow")]
     _dup_hids = sorted(hid for hid, cnt in Counter(_hids).items() if cnt > 1)
     if _dup_hids:
         warnings.append("duplicate heading id(s) detected: %s - in-page anchors and the generated TOC "

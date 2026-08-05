@@ -4,6 +4,35 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.686.0] - 2026-08-05
+
+### Changed
+
+- Declarative shadow DOM is now an explicit, bounded authoring contract rather than markup the
+  tools silently treat as an ordinary inert template. A supported root must be on a browser-eligible
+  HTML host, carry `shadowrootserializable`, contain no light-DOM siblings or `<slot>` distribution,
+  and be exported in a browser with `Element.getHTML`; the validator reports each unsupported shape
+  instead of guessing at composed-tree behavior or allowing an export that loses closed-root data.
+
+### Fixed
+
+- The validator and table-of-contents generator no longer suppress rendered content inside the
+  first declarative shadow root on a browser-eligible host. Both `shadowrootmode="open"` and
+  `"closed"` now contribute prose and headings, including a report title rendered through a shadow
+  root, while an ineligible host, a second declaration on the same host, and any declaration inside
+  an outer ordinary template contribute nothing. Script/style bodies remain non-visible raw text.
+  Shadow-tree metadata, ids, layer markers, links, charts, and mermaid blocks remain outside the
+  document's light-DOM structural views.
+- The runtime's template-aware walkers now record their shadow-DOM boundary explicitly. The
+  infrastructure resolver still excludes shadow-root ids because `document.getElementById` cannot
+  see them; Markdown and section review remain light-DOM-only because closed roots cannot be
+  inspected and review anchors do not cross shadow boundaries. Save and export preserve supported
+  open and closed roots through shadow-aware serialization; the validator requires
+  `shadowrootserializable` and rejects mixed light/shadow children so every accepted document fits
+  that durable model (slot distribution is rejected too, and shadow-DOM export requires a browser
+  with `Element.getHTML`). Generated TOC entries target the outer light-DOM host because browser
+  fragment navigation cannot target a heading inside a shadow tree.
+
 ## [1.685.3] - 2026-08-05
 
 ### Fixed

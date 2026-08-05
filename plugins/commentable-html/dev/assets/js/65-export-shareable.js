@@ -120,9 +120,11 @@ function _cmhRawTextClose(html, name, from) {
 }
 // Walk an HTML string's element tags in document order the way an HTML parser does: consume
 // comments, DOCTYPEs, bogus declarations and processing instructions; skip the TEXT content of
-// raw-text elements; and never report a tag inside <template> content (which is an inert
-// fragment, invisible to getElementById). `visit` gets each open tag and returns a truthy value
-// to stop the walk and hand that value back. All indexes are offsets into the ORIGINAL string.
+// raw-text elements; and never report a tag inside <template> content. An ordinary template is
+// inert, while a declarative-shadow-root template renders - but both are outside the document
+// tree and therefore invisible to the getElementById result this infrastructure resolver must
+// cross-check. `visit` gets each open tag and returns a truthy value to stop the walk and hand
+// that value back. All indexes are offsets into the ORIGINAL string.
 function _cmhForEachTag(html, visit) {
   const raw = String(html == null ? "" : html);
   let templateDepth = 0;
@@ -455,7 +457,7 @@ function _snapshotWithTail() {
       // script; host content authored after the JS region (e.g. a chart canvas + init
       // scripts, which are themselves cm-skip) must be kept.
       if (_isInjectedChrome(n)) return "";
-      return n.outerHTML;
+      return cmhSerializeElement(n);
     }
     if (n.nodeType === 8) return "<!--" + n.nodeValue + "-->";
     if (n.nodeType === 3) return n.nodeValue;
@@ -505,7 +507,8 @@ function _applyWidgetLayoutToHtml(html) {
     const slot = firstInWidget(widget, "[data-cm-slot]", "data-cm-slot", move.slot);
     if (part && slot && !part.contains(slot)) slot.appendChild(part);
   });
-  return (/^\s*<!doctype/i.test(String(html || "")) ? "<!DOCTYPE html>\n" : "") + doc.documentElement.outerHTML;
+  return (/^\s*<!doctype/i.test(String(html || "")) ? "<!DOCTYPE html>\n" : "")
+    + cmhSerializeElement(doc.documentElement);
 }
 function _buildSavedHtml(baseHtml, commentArr) {
   // Escape "<" as \u003c so a comment note containing a closing script tag (or an

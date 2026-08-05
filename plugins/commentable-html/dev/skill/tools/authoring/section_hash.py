@@ -111,8 +111,10 @@ class _SectionParser(_browser_boundaries.BrowserBoundaries):
         # Skip cm-skip chrome, inert script/style/template/noscript, and runtime-transformed blocks
         # (rendered diffs, KQL, mermaid, chart canvases, editable notes) - the same set the JS
         # runtime walk excludes - so the hash covers the section's stable prose and the two
-        # extractors agree. noscript is excluded because with scripting ON the browser exposes its
-        # markup as literal text, which would diverge from this tag-parsing extractor.
+        # extractors agree. Declarative shadow roots stay outside this contract too: the runtime
+        # cannot inspect a closed root, and review anchors remain in the light DOM. noscript is
+        # excluded because with scripting ON the browser exposes its markup as literal text, which
+        # would diverge from this tag-parsing extractor.
         own_skip = (bool(_SKIP_CLASSES.intersection(classes))
                     or tag_l in ("script", "style", "template", "canvas", "noscript")
                     or "data-cmh-note" in d)

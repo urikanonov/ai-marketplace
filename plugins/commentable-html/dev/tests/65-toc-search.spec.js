@@ -41,6 +41,22 @@ test.describe("side-TOC search and aria-current", () => {
     await expect(toc.locator('.cm-side-toc-list a[aria-current="location"]')).toContainText("Gamma appendix");
   });
 
+  test("a serializable closed shadow heading supplies its runtime TOC label (CMH-VAL-23)", async ({ page }) => {
+    const { html } = stageContent(
+      '<h2 id="shadow-heading"><template shadowrootmode="closed" shadowrootserializable>'
+      + "Shadow section</template></h2>"
+      + '<h2 id="light-heading">Light section</h2>',
+      { key: "cmh-shadow-toc-label" },
+    );
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    const links = page.locator("#cmSideToc .cm-side-toc-list a");
+    await expect(links).toHaveCount(2);
+    await expect(links.nth(0)).toContainText("Shadow section");
+    await expect(links.nth(0)).toHaveAttribute("href", "#shadow-heading");
+  });
+
   test("the search box filters visible sections by heading and body text, Escape clears (CMH-TOC-09)", async ({ page }) => {
     const toc = await openDoc(page);
     const search = toc.locator(".cm-side-toc-search");

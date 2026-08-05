@@ -103,6 +103,7 @@ else:
 _shared_attrs = getattr(_parsing, "browser_attrs", None)
 _shared_attrs_dict = getattr(_parsing, "browser_attrs_dict", None)
 _shared_ascii_lower = getattr(_parsing, "ascii_lower", None)
+_shared_can_host_shadow_root = getattr(_parsing, "can_host_shadow_root", None)
 _shared_tag_names = getattr(_parsing, "BrowserTagNames", None)
 
 
@@ -111,6 +112,19 @@ def ascii_lower(name):
     if _shared_ascii_lower is None:
         return (name or "").lower()
     return _shared_ascii_lower(name or "")
+
+
+def can_host_shadow_root(tag, namespace="html"):
+    if _shared_can_host_shadow_root is not None:
+        return _shared_can_host_shadow_root(tag, namespace)
+    name = ascii_lower(tag or "")
+    return namespace == "html" and (
+        name in {
+            "article", "aside", "blockquote", "body", "div", "footer", "h1", "h2", "h3",
+            "h4", "h5", "h6", "header", "main", "nav", "p", "section", "span",
+        }
+        or ("-" in name and name[:1].isascii() and name[:1].islower())
+    )
 
 
 class _FallbackTagNames(HTMLParser):

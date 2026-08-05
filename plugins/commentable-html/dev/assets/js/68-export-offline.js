@@ -117,7 +117,7 @@ function _offlineDocFromHtml(html) {
   return new DOMParser().parseFromString(String(html || ""), "text/html");
 }
 function _serializeOfflineDoc(doc) {
-  return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
+  return "<!DOCTYPE html>\n" + cmhSerializeElement(doc.documentElement);
 }
 // A network URL in an attribute value, read AFTER the URL parser's own input cleanup (see
 // `_offlineNormalizeUrlValue`), so the spellings a browser normalizes into a network load - an

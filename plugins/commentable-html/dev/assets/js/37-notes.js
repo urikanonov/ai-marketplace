@@ -211,7 +211,7 @@ function _applyNoteStateToHtml(html) {
     }
   });
   const doctype = /^\s*<!doctype/i.test(String(html || "")) ? "<!DOCTYPE html>\n" : "";
-  return doctype + doc.documentElement.outerHTML;
+  return doctype + cmhSerializeElement(doc.documentElement);
 }
 function setupNotesLayer() {
   notes.length = 0;

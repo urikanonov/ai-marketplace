@@ -11,7 +11,9 @@ section cards). All findings are non-fatal warnings, matching the section-wrappi
 """
 import re
 
-from .parsing import _BrowserBoundaries, _ascii_lower, _browser_attrs_dict
+from .parsing import (
+    _BrowserBoundaries, _ascii_lower, _browser_attrs_dict, _can_host_shadow_root,
+)
 
 MIN_LONG_PARAGRAPH_CHARS = 240
 MAX_CONSECUTIVE_LONG = 4
@@ -103,11 +105,12 @@ class _DensityParser(_BrowserBoundaries):
     def template_depth(self):
         return len(self._template_floors)
 
-    def _push_template(self):
+    def _push_template(self, ns, d):
         self._template_floors.append(len(self._stack))
         self._stack.append(("template", _frame(template=True)))
+        self._push_ns("template", ns, d)
 
-    def _attaches_shadow_root(self, d):
+    def _attaches_shadow_root(self, d, ns):
         """Whether this `<template>` really becomes the parent's rendered shadow tree.
 
         Two conditions a browser applies, both of which decide RENDERED vs inert here. The
@@ -120,6 +123,9 @@ class _DensityParser(_BrowserBoundaries):
             return False
         if not self._stack:
             return False        # no open host element for the shadow tree to attach to
+        host_ns = self._ns[-1][1] if self._ns else None
+        if ns != "html" or not _can_host_shadow_root(self._stack[-1][0], host_ns):
+            return False
         host = self._stack[-1][1]
         if host.get("shadow_used"):
             return False
@@ -170,31 +176,33 @@ class _DensityParser(_BrowserBoundaries):
 
     def handle_starttag(self, tag, attrs):
         tag = self._browser_tag(tag)
+        d = self._attrs(tag, attrs)
+        ns = self._child_namespace(tag, d)
         if self.template_depth > 0:
             # Inert fragment: nothing inside contributes prose, a heading, a section, a layout
             # break, or the kind. Only the nesting is tracked, so `</template>` lands on the
             # right frame. A nested declarative shadow root is inert too - its host is inside a
             # fragment a browser never renders, so no shadow tree is ever attached.
-            if tag == "template":
-                self._push_template()
-            elif tag not in _VOID:
+            if tag == "template" and ns == "html":
+                self._push_template(ns, d)
+            elif tag not in _VOID or ns != "html":
                 self._stack.append((tag, _frame()))
-            self._enter_raw_text(tag, "html")
+                self._push_ns(tag, ns, d)
+            self._enter_raw_text(tag, ns)
             return
-        d = self._attrs(tag, attrs)
-        is_shadow = tag == "template" and self._attaches_shadow_root(d)
-        if tag == "template" and not is_shadow:
+        is_shadow = tag == "template" and self._attaches_shadow_root(d, ns)
+        if tag == "template" and ns == "html" and not is_shadow:
 
             # A <template>'s contents live in a DocumentFragment a browser never renders, so the
             # element itself is invisible too: it neither counts as prose nor breaks a run (its
             # own attributes cannot make it a layout block either). A DECLARATIVE SHADOW ROOT is
             # the exception - a browser renders that content - so it falls through and is read as
             # the ordinary transparent container it displays as.
-            self._push_template()
+            self._push_template(ns, d)
             return
         if tag == "meta":
             self._note_kind(d)
-        is_root = self._is_root(tag, d)
+        is_root = self.shadow_depth == 0 and self._is_root(tag, d)
         is_skip = "cm-skip" in self._classes(d)
         is_layout = self.root_depth > 0 and self.skip_depth == 0 and self._is_layout(tag, d)
         in_scope = self.root_depth > 0 and self.skip_depth == 0
@@ -228,10 +236,11 @@ class _DensityParser(_BrowserBoundaries):
         if tag == "p" and in_scope and self.layout_depth == 0:
             self._p_prose = True
             self._p_text = []
-        if tag in _VOID:
+        if tag in _VOID and ns == "html":
             return
         self._stack.append((tag, _frame(root=is_root, skip=is_skip, layout=is_layout,
                                         section=pushes_section, shadow=is_shadow)))
+        self._push_ns(tag, ns, d)
         if is_root:
             self.root_depth += 1
         if is_skip:
@@ -240,7 +249,7 @@ class _DensityParser(_BrowserBoundaries):
             self.layout_depth += 1
         if is_shadow:
             self.shadow_depth += 1
-        self._enter_raw_text(tag, "html")
+        self._enter_raw_text(tag, ns)
 
     def handle_startendtag(self, tag, attrs):
         # HTML5 ignores a trailing slash on a non-void HTML tag, so `<template/>` OPENS the inert
@@ -297,10 +306,29 @@ class _DensityParser(_BrowserBoundaries):
         floor = self._template_floors[-1]
         for i in range(len(self._stack) - 1, floor - 1, -1):
             if self._stack[i][0] == tag:
-                del self._stack[i:]
-                while self._template_floors and self._template_floors[-1] >= i:
-                    self._template_floors.pop()
+                self._truncate_stacks(i)
                 break
+
+    def _truncate_stacks(self, depth):
+        popped = self._stack[depth:]
+        del self._stack[depth:]
+        while self._template_floors and self._template_floors[-1] >= depth:
+            self._template_floors.pop()
+        for _tag, contrib in reversed(popped):
+            if contrib["section"]:
+                self._break_run()
+                if self._sections:
+                    self._sections.pop()
+            if contrib["root"]:
+                self._break_run()
+                self.root_depth -= 1
+            if contrib["skip"]:
+                self.skip_depth -= 1
+            if contrib["layout"]:
+                self.layout_depth -= 1
+            if contrib["shadow"]:
+                self.shadow_depth -= 1
+        super()._truncate_stacks(depth)
 
     def handle_endtag(self, tag):
         tag = self._browser_tag(tag)
@@ -314,25 +342,7 @@ class _DensityParser(_BrowserBoundaries):
             self._heading_capture = False
         for i in range(len(self._stack) - 1, -1, -1):
             if self._stack[i][0] == tag:
-                popped = self._stack[i:]
-                del self._stack[i:]
-                for _t, contrib in reversed(popped):
-                    if contrib["section"]:
-                        # Flush/attribute the closing section's wall to it, then restore the parent
-                        # heading. (A section inside cm-skip was never pushed, so this never fires
-                        # there.)
-                        self._break_run()
-                        if self._sections:
-                            self._sections.pop()
-                    if contrib["root"]:
-                        self._break_run()  # leaving the content root ends any open run
-                        self.root_depth -= 1
-                    if contrib["skip"]:
-                        self.skip_depth -= 1
-                    if contrib["layout"]:
-                        self.layout_depth -= 1
-                    if contrib["shadow"]:
-                        self.shadow_depth -= 1
+                self._truncate_stacks(i)
                 break
 
 

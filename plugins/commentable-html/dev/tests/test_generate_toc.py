@@ -3,6 +3,7 @@
 import contextlib
 import io
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -104,12 +105,123 @@ class GenerateTocTests(unittest.TestCase):
         self.assertIn('<li><a href="#alpha">RealTail</a></li>', toc)
         self.assertNotIn("Hidden", toc)
 
+    def test_shadow_heading_text_excludes_script_and_style_bodies(self):
+        toc = generate_toc.build_toc(doc(
+            '<div id="host"><template shadowrootmode="open">'
+            '<h2 id="shadow">Shown<script>hiddenScript()</script>'
+            "<style>.hidden{}</style>Tail</h2>"
+            "</template></div>"))
+        self.assertIn('<a href="#host">ShownTail</a>', toc)
+        self.assertNotIn("hiddenScript", toc)
+        self.assertNotIn(".hidden", toc)
+
     def test_a_heading_whose_text_is_only_a_template_is_not_listed(self):
         toc = generate_toc.build_toc(
             doc('<h2 id="alpha"><template>Hidden</template></h2><h2 id="beta">Beta</h2>'))
         self.assertNotIn("Hidden", toc)
         self.assertNotIn("#alpha", toc)
         self.assertIn('<li><a href="#beta">Beta</a></li>', toc)
+
+    def test_a_declarative_shadow_root_heading_is_listed(self):
+        for mode in ("open", "closed"):
+            with self.subTest(mode=mode):
+                toc = generate_toc.build_toc(doc(
+                    '<div><template shadowrootmode="%s">'
+                    '<h2 id="shadow">Rendered Shadow Heading</h2>'
+                    "</template></div>" % mode))
+                self.assertIn(
+                    '<li><a href="#shadow-shadow-host">Rendered Shadow Heading</a></li>', toc)
+
+    def test_only_the_first_declarative_shadow_root_on_a_host_is_listed(self):
+        toc = generate_toc.build_toc(doc(
+            '<div><template shadowrootmode="open">'
+            '<h2 id="first-shadow">First Shadow Heading</h2></template>'
+            '<template shadowrootmode="closed">'
+            '<h2 id="second-shadow">Second Shadow Heading</h2></template></div>'))
+        self.assertIn(
+            '<li><a href="#first-shadow-shadow-host">First Shadow Heading</a></li>', toc)
+        self.assertNotIn("Second Shadow Heading", toc)
+        self.assertNotIn("#second-shadow", toc)
+
+    def test_a_shadow_template_on_an_ineligible_host_is_not_listed(self):
+        toc = generate_toc.build_toc(doc(
+            '<button><template shadowrootmode="open">'
+            '<h2 id="hidden">Hidden Heading</h2></template></button>'
+            '<h2 id="live">Live Heading</h2>'))
+        self.assertNotIn("Hidden Heading", toc)
+        self.assertNotIn("#hidden", toc)
+        self.assertIn('<li><a href="#live">Live Heading</a></li>', toc)
+
+    def test_an_autonomous_custom_element_can_host_a_shadow_root(self):
+        toc = generate_toc.build_toc(doc(
+            '<review-card><template shadowrootmode="open">'
+            '<h2 id="shadow">Custom Element Heading</h2>'
+            "</template></review-card>"))
+        self.assertIn(
+            '<li><a href="#shadow-shadow-host">Custom Element Heading</a></li>', toc)
+
+    def test_rewrite_links_a_shadow_heading_to_its_navigable_host(self):
+        out = generate_toc.rewrite_html(doc(
+            '<div class="shadow-host"><template shadowrootmode="closed">'
+            '<h2 id="shadow-heading">Shadow Heading</h2>'
+            "</template></div>"))
+        host = re.search(r'<div class="shadow-host" id="([^"]+)">', out)
+        self.assertIsNotNone(host)
+        self.assertIn('<a href="#%s">Shadow Heading</a>' % host.group(1), out)
+        self.assertIn('<h2 id="shadow-heading">Shadow Heading</h2>', out)
+
+    def test_nested_shadow_heading_links_to_the_outer_light_dom_host(self):
+        out = generate_toc.rewrite_html(doc(
+            '<div class="outer-host"><template shadowrootmode="open">'
+            '<span><template shadowrootmode="open">'
+            "<h2>Nested Shadow Heading</h2>"
+            "</template></span></template></div>"))
+        outer = re.search(r'<div class="outer-host" id="([^"]+)">', out)
+        self.assertIsNotNone(outer)
+        self.assertIn(
+            '<a href="#%s">Nested Shadow Heading</a>' % outer.group(1), out)
+        self.assertNotRegex(out, r"<span id=")
+
+    def test_only_the_first_heading_per_shadow_host_is_listed(self):
+        toc = generate_toc.build_toc(doc(
+            '<div id="shadow-host"><template shadowrootmode="open">'
+            "<h2>Shadow Overview</h2><h3>Shadow Detail</h3>"
+            "</template></div>"))
+        self.assertIn('<a href="#shadow-host">Shadow Overview</a>', toc)
+        self.assertNotIn("Shadow Detail", toc)
+
+    def test_a_declarative_shadow_root_inside_an_inert_template_is_not_listed(self):
+        toc = generate_toc.build_toc(doc(
+            '<template><div><template shadowrootmode="open">'
+            '<h2 id="parked-shadow">Parked Shadow Heading</h2>'
+            "</template></div></template>"
+            '<h2 id="live">Live Heading</h2>'))
+        self.assertNotIn("Parked Shadow Heading", toc)
+        self.assertNotIn("#parked-shadow", toc)
+        self.assertIn('<li><a href="#live">Live Heading</a></li>', toc)
+
+    def test_shadow_ids_and_toc_markup_do_not_establish_document_scope(self):
+        html = (
+            '<div><template shadowrootmode="open">'
+            '<main id="commentRoot"><nav class="cm-toc">Shadow nav</nav>'
+            '<h2 id="shadow-outside">Outside heading</h2></main>'
+            "</template></div>"
+            '<main id="commentRoot"><h2 id="live">Live heading</h2></main>')
+        parsed = generate_toc._parse(html)
+        self.assertEqual(parsed.root_start_end, html.rindex('<main id="commentRoot">')
+                         + len('<main id="commentRoot">'))
+        self.assertEqual(parsed.toc_spans, [])
+        toc = generate_toc.build_toc(html)
+        self.assertNotIn("Outside heading", toc)
+        self.assertIn('<li><a href="#live">Live heading</a></li>', toc)
+
+    def test_a_shadow_only_id_does_not_shift_a_light_dom_slug(self):
+        out = generate_toc.rewrite_html(doc(
+            '<div><template shadowrootmode="open">'
+            '<p id="alpha">Shadow id</p></template></div>'
+            "<h2>Alpha</h2>"))
+        self.assertIn('<h2 id="alpha">Alpha</h2>', out)
+        self.assertNotIn('id="alpha-2"', out)
 
     def test_only_headings_inside_comment_root_and_not_cm_skip_are_included(self):
         html = (
