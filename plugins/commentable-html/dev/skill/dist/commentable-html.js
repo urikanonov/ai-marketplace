@@ -12386,12 +12386,14 @@ const _EXPORT_CANONICAL_FAILURE_TOAST = { alert: true, duration: 10000 };
 function _cmhThrownDetail(e) {
   let detail = "";
   try {
-    const raw = (e && typeof e === "object" && "message" in e) ? e.message : e;
+    const obj = e && (typeof e === "object" || typeof e === "function");
+    const raw = (obj && "message" in e) ? e.message : e;
     detail = (raw === undefined || raw === null) ? "" : String(raw).trim();
   } catch (e2) { detail = ""; }
-  // A thrown plain object stringifies to the default object tag, which names no cause at all;
-  // showing it would be noise dressed up as a diagnosis.
-  if (detail === "[object Object]") detail = "";
+  // A value that only stringifies to its default object tag names no cause at all; showing it
+  // would be noise dressed up as a diagnosis. The tag is matched by SHAPE, not by the one literal
+  // `[object Object]`, because a Map, a Set, or anything carrying Symbol.toStringTag has its own.
+  if (/^\[object [A-Za-z][A-Za-z0-9]*\]$/.test(detail)) detail = "";
   return detail.length > 200 ? detail.slice(0, 200) + "..." : detail;
 }
 // Every export entry point runs the canonical pass through this guard rather than calling

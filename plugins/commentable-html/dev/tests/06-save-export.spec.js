@@ -590,30 +590,35 @@ test.describe("Save comments / Export plain", () => {
         document.createTreeWalker = function (node, ...rest) {
           if (node && node.id === "commentRoot") {
             const t = window.__cmhThrown;
+            if (t.tag) throw new Map();
             throw t.primitive ? t.value : new Error(t.value);
           }
           return orig(node, ...rest);
         };
       });
     };
+    // Asserting the toast live is safe because a failure toast lasts 10s and hideToast() only drops
+    // the .show class - it never clears the text or the role. Resetting the role too keeps the
+    // alert assertion from passing on the previous phase's leftover rather than this failure's own.
     const resetToast = (p) => p.evaluate(() => {
       const t = document.getElementById("toast");
       t.classList.remove("show");
       t.textContent = "";
-      // Reset the role too, so the alert assertion below cannot pass on a leftover from the
-      // previous phase rather than on this failure's own toast.
       t.setAttribute("role", "status");
     });
     // Register the download waiter BEFORE the click: an export that really did produce a file must
-    // fail this, not merely time out into a passing assertion. Asserting the toast live is safe
-    // because a failure toast lasts 10s and hideToast() only drops the .show class - it never
-    // clears the text or the role.
-    async function expectExportReports(p, control, detail) {
+    // fail this, not merely time out into a passing assertion. It is a REGRESSION guard rather than
+    // the discriminating check - an unguarded throw downloads nothing either - so the toast
+    // assertions are what tell a reported failure apart from a silent one, and they run first.
+    // Only a timeout counts as "no download"; any other waiter error is a real failure.
+    async function expectExportReports(p, control, detail, absent) {
       await resetToast(p);
-      const downloaded = p.waitForEvent("download", { timeout: 2000 }).then(() => true).catch(() => false);
+      const downloaded = p.waitForEvent("download", { timeout: 750 }).then(() => true)
+        .catch((err) => { if (err && err.name === "TimeoutError") return false; throw err; });
       await clickSidebarExport(p, control);
       await expect(p.locator("#toast")).toContainText("Export failed - nothing was downloaded");
-      await expect(p.locator("#toast")).toContainText(detail);
+      if (detail) await expect(p.locator("#toast")).toContainText(detail);
+      if (absent) await expect(p.locator("#toast")).not.toContainText(absent);
       await expect(p.locator("#toast")).toHaveAttribute("role", "alert");
       expect(await downloaded).toBe(false);
     }
@@ -632,12 +637,48 @@ test.describe("Save comments / Export plain", () => {
       await addTextComment(page, "#commentRoot section p", "inline note");
       await breakCanonicalPass(page, { value: "recompute boom" });
       // #btnSaveHtml binds saveStandalone(), which on an inline document delegates straight to
-      // saveHtml() - so this exercises saveHtml's guard; saveStandalone's own is phase 3 below.
+      // saveHtml() - so this exercises saveHtml's guard. saveStandalone's OWN guard is only
+      // reachable on a NonShareable document, which is the last phase below.
       await expectExportReports(page, "#btnSaveHtml", "recompute boom");
       await expectExportReports(page, "#btnExportOffline", "recompute boom"); // saveOffline()
       // A bare `throw "..."` is legal JS and carries no `.message`; the cause must still be named.
       await throwAs(page, { primitive: true, value: "primitive boom" });
       await expectExportReports(page, "#btnSaveHtml", "primitive boom");
+      await expectExportReports(page, "#btnExportOffline", "primitive boom");
+      // A value that only stringifies to its default object tag names no cause, so the report must
+      // fall back to the plain sentence instead of showing that tag as the diagnosis...
+      await throwAs(page, { primitive: true, tag: true });
+      await expectExportReports(page, "#btnSaveHtml", null, "[object ");
+      // ...and an unbounded message is capped, so the actionable sentence stays on screen.
+      await throwAs(page, { value: "b".repeat(400) });
+      await expectExportReports(page, "#btnSaveHtml", "safe to try again", "b".repeat(220));
+      // The report itself must not be able to fail the way the export just did. Make the toast
+      // element reject exactly the assertive role the FAILURE toast sets, so showToast throws for
+      // that toast only (the CMH-EXP-15 announcement sets role="status" and still works, or its own
+      // listener would raise the page error this phase is looking for). The click must still end
+      // quietly: the guard tried to report, nothing downloaded, and no exception escaped to the
+      // page. Without the guard's inner catch the throw unwinds saveHtml's promise and Chromium
+      // reports it, which is what makes this phase red on that regression.
+      const pageErrors = [];
+      page.on("pageerror", (err) => pageErrors.push(String(err)));
+      await page.evaluate(() => {
+        const t = document.getElementById("toast");
+        const real = t.setAttribute.bind(t);
+        window.__cmhReportAttempts = 0;
+        t.setAttribute = function (name, value) {
+          if (name === "role" && value === "alert") {
+            window.__cmhReportAttempts++;
+            throw new Error("toast down");
+          }
+          return real(name, value);
+        };
+      });
+      const noDownload = page.waitForEvent("download", { timeout: 750 }).then(() => true)
+        .catch((err) => { if (err && err.name === "TimeoutError") return false; throw err; });
+      await clickSidebarExport(page, "#btnSaveHtml");
+      expect(await noDownload).toBe(false);
+      expect(await page.evaluate(() => window.__cmhReportAttempts)).toBeGreaterThan(0);
+      expect(pageErrors).toEqual([]);
 
       // NonShareable takes the OTHER branch of the Shareable button: saveStandalone() runs the pass
       // itself instead of delegating to saveHtml().

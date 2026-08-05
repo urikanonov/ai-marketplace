@@ -16,7 +16,8 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   run the pass through one guard that reports the failure as an assertive toast naming the cause,
   stating that no file was written and that the pass put comments and table sorting back. The
   report survives the awkward shapes a throw can take: a non-Error throwable (or one whose
-  `message` getter itself throws) is still named, an unbounded message is capped so the actionable
+  `message` getter itself throws) is still reported, and the cause is named whenever the thrown
+  value can be turned into one; an unbounded message is capped so the actionable
   sentence stays on screen, the full value is left on the console for triage, and a toast that
   cannot be shown at all still aborts the export rather than restoring the original silence
   (CMH-EXP-23).
