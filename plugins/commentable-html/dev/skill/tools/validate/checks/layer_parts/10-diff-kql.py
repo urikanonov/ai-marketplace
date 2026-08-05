@@ -38,7 +38,7 @@ def _check_kql_blocks(html):
         if not href.startswith("https://dataexplorer.azure.com/"):
             warnings.append('a "cmh-kql-run" link does not point at https://dataexplorer.azure.com/ '
                             "(build it with tools/kusto_link.py): " + (href[:80] or "(empty href)"))
-        if a.get("target", "") == "_blank" and "noopener" not in (a.get("rel") or "").lower().split():
+        if a.get("target", "") == "_blank" and "noopener" not in link_rel_tokens(a.get("rel")):
             warnings.append('a "cmh-kql-run" link uses target="_blank" without rel="noopener" '
                             "(reverse-tabnabbing risk); add rel=\"noopener noreferrer\"")
 

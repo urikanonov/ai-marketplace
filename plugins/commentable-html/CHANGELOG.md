@@ -4,38 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.737.0] - 2026-08-05
+## [1.741.0] - 2026-08-05
 
 ### Fixed
 
-- A malformed `file:` companion reference on a NonShareable document is now reported as a
-  validation FINDING instead of killing the validator. Two stages could throw on such a reference
-  and neither was caught: `urlparse` VALIDATES a bracketed authority, so `file://[foo]/x`,
-  `file://[127.0.0.1]/x` and the unclosed `file://[::1/x` raised `ValueError` on every platform,
-  and `url2pathname` rejects an authority or path shape it cannot map - as
-  `OSError('Bad URL: //[||1]/dist/...')` for `file://[::1]/dist/commentable-html.js`, and as
-  `IndexError` when the drive delimiter leads the path (`file::/x`, `file:|x`) - so either ended
-  `validate()` with a raw traceback. Every fail-closed caller (`retrofit.py`,
-  `content_replace.py`, `chart_block.py`, `finalize.py`) then saw that traceback where a finding
-  belongs, and a validator that crashes on hostile or merely odd input is strictly worse than one
-  that reports the problem. The finding names the real problem - the reference does not resolve to
-  a local file path - rather than blaming the scheme, which is the one part of such a reference
-  that is right. The authorities that name no path (an IPv6 literal, a `host:port`, and its `|`
-  spelling, which the resolver reads as the same drive delimiter as `:`, whether written as the
-  host or a slash deeper as `file:////host:8080/x`) are settled by the resolver itself rather than
-  by the platform's `url2pathname`, which raises on Windows, hands the string back unchanged on
-  POSIX, and mangles a `host:port` into the bogus drive path `T:8080\x`, so their verdict is now
-  identical on both platforms. A Windows drive-letter prefix still resolves in every spelling the
-  URL parser reads as a drive (`file://C:/dir/x.js`, `file://C|/dir/x.js`, and the separatorless
-  `file://c:evil.example/x`), so nothing that validated before is newly rejected.
-- A NonShareable companion reference is now CLASSIFIED (remote, non-`file` scheme, drive letter) on
-  the reference as the URL parser reads it, the same value the path resolver uses. Those tests are
-  anchored, so reading the raw attribute let the parser's own leading C0-or-space padding hide the
-  scheme from all of them: `<link href=" https://cdn.example.com/commentable-html.css">` and
-  `<script src=" vscode://x.js">` fell through to the relative-path branch and were reported as a
-  missing companion file instead of as the remote or wrong-scheme reference the browser actually
-  fetches.
-
+- The two remaining validator readers of a `rel` list now tokenize it the way HTML does rather than
+  the way Python does, so the gate's verdict and the browser's reading of the same attribute agree
+  (CMH-KQL-05, CMH-KIND-05). HTML splits a `rel` attribute on ASCII whitespace ONLY (tab, LF, FF,
+  CR, space); Python's argument-less `str.split()` is Unicode-aware and additionally splits on the
+  vertical tab U+000B, NBSP, and U+001C-U+001F. So `<a target="_blank" rel="noopener&#x0b;x">`
+  passed the reverse-tabnabbing gate on a link whose single opaque relation a browser never matches
+  - `window.opener` stayed exposed and the opened page could navigate the document the reader is
+  looking at - and `<link rel="icon&#x0b;x">` satisfied the mandatory-favicon check with a link the
+  browser never fetches. Both now read the shared `link_rel_tokens`, which the three egress readers
+  already used; the authoring tools' favicon helper (`tools/authoring/_favicon.py`, which decides
+  when `retrofit`/`upgrade` inject a favicon) reads the same split through `tools/_browser_attrs.py`,
+  so it keeps injecting exactly when the validator would warn.
 ## [1.735.0] - 2026-08-05
 
 ### Fixed

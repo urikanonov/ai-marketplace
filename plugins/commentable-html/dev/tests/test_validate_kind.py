@@ -136,6 +136,20 @@ class FaviconTests(ValidateAssertions, unittest.TestCase):
         doc = build().replace(FAVICON_LINK, '<link rel="apple-touch-icon" href="/a.png" />', 1)
         self.assertWarn(doc, "no favicon")
 
+    def test_icon_rel_is_tokenized_the_way_html_tokenizes_it(self):
+        # CMH-KIND-05: HTML splits a `rel` list on ASCII whitespace ONLY, so `icon<U+000B>` is ONE
+        # opaque relation and the browser fetches nothing - the tab still shows the generic globe.
+        # Python's argument-less `str.split()` also splits on the vertical tab, NBSP and
+        # U+001C-U+001F, so the collector counted a link the browser ignores and the mandatory
+        # favicon check was satisfied by a favicon that does not exist.
+        for sep in ("\u000b", "\u00a0", "\u001c", "\u001f"):
+            doc = build().replace(FAVICON_LINK,
+                                  '<link rel="icon%sx" href="/f.ico" />' % sep, 1)
+            self.assertWarn(doc, "no favicon")
+        # The control: the same two tokens separated by an ASCII space really do name `icon`.
+        doc = build().replace(FAVICON_LINK, '<link rel="icon x" href="/f.ico" />', 1)
+        self.assertOkNoWarn(doc)
+
     def test_body_only_favicon_warns(self):
         # A favicon only satisfies the check when it is in the head (before <body>); a
         # <link rel="icon"> placed in the body is not a tab favicon, so the document still warns.

@@ -76,6 +76,27 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
         self.assertWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
                         'without rel="noopener"')
 
+    def test_kusto_run_link_rel_is_tokenized_the_way_html_tokenizes_it(self):
+        # CMH-KQL-05: HTML splits a `rel` list on ASCII whitespace ONLY, so `noopener<U+000B>x` is
+        # ONE opaque relation a browser never matches - `window.opener` stays exposed and the opened
+        # page can navigate the document the reader is looking at. Python's argument-less
+        # `str.split()` is Unicode-aware and additionally splits on the vertical tab, NBSP and
+        # U+001C-U+001F, so it saw the token `noopener` and passed the gate on a link a browser
+        # leaves unprotected. Read through the shared `link_rel_tokens` instead, so the gate and the
+        # browser tokenize the same attribute the same way.
+        for sep in ("\u000b", "\u00a0", "\u001c", "\u001f"):
+            link = ('<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
+                    'target="_blank" rel="noopener%sx">Run</a>' % sep)
+            main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
+            self.assertWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
+                            'without rel="noopener"')
+        # The control: an ordinary ASCII-space-separated list really does name `noopener`, so it
+        # must still pass - the fix must not turn a protected link into a false warning.
+        link = ('<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
+                'target="_blank" rel="noopener noreferrer">Run</a>')
+        main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
+        self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+
     def test_bare_kusto_without_no_cluster_marker_errors(self):
         # CMH-KQL-08: a bare KQL code block that is neither framed in a figure.cmh-kql (with a Run in
         # Azure Data Explorer link) nor explicitly marked data-cmh-kql-no-cluster is a hard error -

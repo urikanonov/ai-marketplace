@@ -229,6 +229,14 @@ LINK_REL_WS_RE = re.compile(r"[\t\n\f\r ]+")
 def link_rel_tokens(value):
     """The relations a `rel` attribute names, ASCII-folded - the reading both sides share.
 
+    EVERY reader of a `rel` list goes through this, not only the egress gates it was introduced
+    for (#1076): the offline link-relation gate, the CSP-lateness "does this <link> fetch?" test,
+    the export strip's own copy, the reverse-tabnabbing gate on a `cmh-kql-run` link, and the
+    favicon collector (plus `tools/authoring/_favicon.py`, which reads it through
+    `tools/_browser_attrs.py`). A reader left on `str.split()` has a parser differential against
+    the browser all of its own - it accepted a `noopener` and counted a favicon a browser never
+    honors (#1120) - so a new one is added here rather than beside its check.
+
     ASCII-only case folding because HTML matches a `rel` keyword ASCII case-insensitively: a
     Unicode fold maps U+212A onto `k` and U+017F onto `s`, so a look-alike would become a real
     relation on the side whose engine happens to fold it.
@@ -2159,8 +2167,11 @@ class _DocParser(_BrowserBoundaries):
             self._csp_fetch_seen = True
         if tag == "link" and not self._head_ended:
             # Head-scoped: only a <link rel~="icon"> in the head is a favicon a browser tab honors,
-            # so a body-level icon link does not satisfy the favicon check.
-            rels = (ad.get("rel") or "").lower().split()
+            # so a body-level icon link does not satisfy the favicon check. The `rel` list is read
+            # through the shared tokenizer: `str.split()` also splits on the vertical tab, NBSP and
+            # U+001C-U+001F, so it counted `rel="icon<VT>x"` - one opaque relation a browser never
+            # fetches - as a favicon.
+            rels = link_rel_tokens(ad.get("rel"))
             if "icon" in rels:
                 self.icon_links.append({"rel": ad.get("rel") or "", "href": ad.get("href") or ""})
         if tag == "canvas":
