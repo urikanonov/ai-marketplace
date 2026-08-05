@@ -649,7 +649,8 @@ def _partition_val_warnings(warnings):
     """Split validator warnings into (fatal, advisory) for retrofit's hard-fail path.
 
     Two prefixes stay OUT of it: the never-blocking advisories every tool tolerates
-    (`validate.ADVISORY_PREFIXES` - today a deliberately hand-written code block, CMH-VAL-11),
+    (`validate.ADVISORY_PREFIXES`, whose membership is CMH-VAL-18's business and is deliberately
+    not restated here),
     plus retrofit's own long-standing carve-out for the theme-contrast near-miss/unresolved
     advisory (CMH-THEME-02), which other tools still treat as fatal. A bad-contrast ERROR is not
     a warning and continues to block the retrofit; every OTHER validator warning stays fatal,

@@ -3074,6 +3074,12 @@ const SRCDOC_CONTENT = [
   // ...and no further. A frame that carries no nested document is ordinary content: the ELEMENT,
   // its title and its relative src all survive intact.
   '<iframe id="cmh-srcdoc-keep" title="keep" src="beacon.html"></iframe>',
+  // Both at once. `srcdoc` wins over `src` while it is there, so removing it does NOT always
+  // leave an empty frame - the strip clears only a NETWORK `src`, so this one reopens showing
+  // the local file instead. CMH-VAL-24's authoring advisory says exactly that, and this is what
+  // pins the claim.
+  '<iframe id="cmh-srcdoc-both" title="both" src="beacon.html" '
+    + `srcdoc="${srcdocAttr(SRCDOC_NESTED)}"></iframe>`,
 ].join("\n");
 
 // Every frame that still carries a nested document, read by PARSING the exported bytes in the
@@ -3121,7 +3127,7 @@ test("CMH-OFFLINE-04: an iframe srcdoc carries a nested document neither the str
     // ...and the positive control for the reader below: it finds all five nested documents in the
     // source, so an empty result after the export is a strip that ran, not a blind helper.
     expect(await iframeSrcdocValues(page, fs.readFileSync(staged.html, "utf8")),
-      "the srcdoc reader must see the frames the source really carries").toHaveLength(5);
+      "the srcdoc reader must see the frames the source really carries").toHaveLength(6);
 
     await openToolbarMenu(page);
     await Promise.all([
@@ -3134,17 +3140,24 @@ test("CMH-OFFLINE-04: an iframe srcdoc carries a nested document neither the str
     expect(exportedHtml, "the nested document must leave with the attribute").not.toContain("evil.example");
     // Cleared, not deleted: the frames themselves are content, and so is a relative src.
     for (const id of ["cmh-srcdoc-beacon", "cmh-srcdoc-template", "cmh-srcdoc-noscript",
-      "cmh-srcdoc-foreign", "cmh-srcdoc-empty", "cmh-srcdoc-keep"]) {
+      "cmh-srcdoc-foreign", "cmh-srcdoc-empty", "cmh-srcdoc-keep", "cmh-srcdoc-both"]) {
       expect(exportedHtml, `${id} must be kept as an element`).toContain(`id="${id}"`);
     }
     expect(exportedHtml).toContain('src="beacon.html"');
     expect(exportedHtml).toContain('title="keep"');
+    // The frame that carried BOTH keeps its local src, so it reopens showing that file rather than
+    // empty - which is why CMH-VAL-24's advisory does not promise an empty frame.
+    expect(await page.evaluate((html) => {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const f = doc.getElementById("cmh-srcdoc-both");
+      return f ? [f.hasAttribute("srcdoc"), f.getAttribute("src")] : null;
+    }, exportedHtml), "a local src must survive beside the removed srcdoc").toEqual([false, "beacon.html"]);
     expect(networkLoadRefs(exportedHtml)).toEqual([]);
     // Removing a nested document removes content that WORKED offline, so unlike a network strip it
-    // must not be silent. 5 = the beacon, template-parked, noscript-parked, foreign and empty
-    // frames above; the srcdoc-free control is not counted.
+    // must not be silent. 6 = the beacon, template-parked, noscript-parked, foreign, empty and
+    // both-attributes frames above; the srcdoc-free control is not counted.
     await expect(page.locator("#toast")).toContainText(
-      "5 <iframe srcdoc> nested documents were removed - an offline export cannot inspect a document carried inside an attribute.");
+      "6 <iframe srcdoc> nested documents were removed - an offline export cannot inspect a document carried inside an attribute.");
 
     const exportedPath = path.join(outDir, "offline-srcdoc.html");
     fs.writeFileSync(exportedPath, exportedHtml);

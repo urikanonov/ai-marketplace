@@ -1,3 +1,39 @@
+# The offline-export notice on an `<iframe srcdoc>` (CMH-VAL-24) reports what a DIFFERENT mode's
+# export would REMOVE, so it must never be the thing that blocks a document: it carries a stable
+# prefix so `validate.ADVISORY_PREFIXES` keeps it out of every fail-closed path. That classification
+# is scoped to the CONTENT-LOSS question and is NOT a ruling that a nested document is safe: this
+# gate cannot see inside an attribute value, so a network load or a beacon parked in one is
+# unaudited either way - a gap that predates this notice and is tracked separately (issue #1125),
+# not one the advisory channel decides.
+SRCDOC_ADVISORY_PREFIX = "offline export advisory: "
+
+# Whatever `str.split()` does not already treat as whitespace: the C0 controls (NUL, BEL,
+# backspace, and ESC, which starts an ANSI escape sequence) and the C1 range.
+_REPORT_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
+# Far more than 80 collapsed characters can ever need, and it bounds the work on a `srcdoc` that
+# carries a whole document.
+_REPORT_SCAN_LIMIT = 4096
+
+
+def _report_value(value):
+    """Normalize an attribute value for a report message: bounded, one line, printable.
+
+    A report line is printed line-oriented, and a `srcdoc` carries a whole DOCUMENT, so the raw
+    value would split one finding across untagged lines. It is also authored text on its way to a
+    terminal, so the non-whitespace C0/C1 controls that `str.split()` does NOT touch (NUL, BEL,
+    backspace, and ESC, which starts an ANSI escape sequence) are replaced rather than passed
+    through. The value is bounded BEFORE it is normalized, since normalizing megabytes of nested
+    document to keep 80 characters is pure waste.
+    """
+    text = _REPORT_CONTROL_RE.sub(" ", (value or "")[:_REPORT_SCAN_LIMIT])
+    out = " ".join(text.split())[:80]
+    # A value that opens with a long run of blank or control text (a licence comment, deep
+    # indentation) would otherwise report identically to a genuinely empty one.
+    if not out and value:
+        return "..."
+    return out
+
+
 def _check_self_contained(html, parser):
     errors, warnings = [], []
     # The whole guarantee is read off the shared tag index, so a parse that could not be built
@@ -199,7 +235,7 @@ def _check_self_contained(html, parser):
                               "neither the offline strips nor this gate can inspect, and the "
                               "offline CSP is inherited into it rather than blocking it - the "
                               "export clears the attribute, so remove it here too"
-                              % ((el.get("srcdoc") or "")[:80]))
+                              % _report_value(el.get("srcdoc")))
         for el in _find_tag_attrs_egress(html, "form"):
             _check_network_attr("form", el, "action")
         for tag in ("button", "input"):
@@ -383,6 +419,36 @@ def _check_self_contained(html, parser):
                               "document (reviewer comments included) and no CSP directive in a "
                               "<meta> can stop it; remove the navigation, or reword the comment or "
                               "string literal that matches it")
+    else:
+        # The other half of the srcdoc decision (issue #1080). Sanitizing the nested document was
+        # weighed against clearing it and REJECTED: it needs two independent recursive parsers -
+        # this pure-Python tokenizer and the exporter's browser DOM - to agree at every depth on
+        # serialization, doctype and rendering mode, fixed-point settling under reparse, and one
+        # shared parse budget, which is exactly the drift the clear-outright rule removes; and it
+        # would not even end the loss, since a value that will not settle still has to go. So the
+        # cost stays real: Export Offline removes the nested document. The author used to meet
+        # that only in a toast AFTER exporting, which is why this says it while they are still
+        # AUTHORING. Presence, off the same shared EGRESS index the offline rule reads, so it
+        # names the same frames the export will really empty and still parses nothing nested.
+        # ADVISORY, not a blocking warning: this branch is "not known to be offline" rather than
+        # "known to be shareable" (a MISSING or malformed descriptor lands here too), and a
+        # `srcdoc` is legitimate content in every mode that makes no zero-network promise. A
+        # blocking warning would fail `--strict`, withhold the validated stamp - leaving the
+        # runtime "not validated" banner permanently up - and make `retrofit` refuse to write, so
+        # the only way to a clean run would be DELETING the nested document: the very loss this
+        # exists to announce (see ADVISORY_PREFIXES in validate.py).
+        # The value is collapsed before truncation because a `srcdoc` is a whole DOCUMENT and is
+        # almost always multi-line, and a report line is printed line-oriented.
+        for el in _find_tag_attrs_egress(html, "iframe"):
+            if "srcdoc" in el:
+                warnings.append(SRCDOC_ADVISORY_PREFIX +
+                                '<iframe srcdoc="%s"> carries a nested document that Export '
+                                "Offline removes outright - an offline export deliberately does "
+                                "not inspect or preserve a document carried inside an attribute "
+                                "value - so an offline copy of this file shows whatever local "
+                                "`src` the frame also carries, or an empty frame; inline the "
+                                "snippet (a <pre><code> block, say) if it has to survive one"
+                                % _report_value(el.get("srcdoc")))
     return errors, warnings
 
 
