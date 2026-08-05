@@ -46,7 +46,6 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   cutting from there through the real region. An anchor strictly BEFORE a region's own BEGIN is
   now refused; an anchor at the marker is the healthy case, and a missing one only leaves the
   region unstripped, which the existing data-safety net already diagnoses.
-
 ## [1.686.0] - 2026-08-05
 
 ### Changed
@@ -75,6 +74,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   that durable model (slot distribution is rejected too, and shadow-DOM export requires a browser
   with `Element.getHTML`). Generated TOC entries target the outer light-DOM host because browser
   fragment navigation cannot target a heading inside a shadow tree.
+
 ## [1.685.3] - 2026-08-05
 
 ### Fixed
