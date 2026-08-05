@@ -182,7 +182,7 @@ class _DensityParser(_BrowserBoundaries):
 
     def _note_kind(self, d):
         # Keep the FIRST kind meta (matching the main parser), so a later duplicate cannot flip
-        # the scope. A template-parked copy never reaches here at all - `handle_starttag` returns
+        # the scope. A template-parked copy never reaches here at all - `_visit_start` returns
         # before the meta branch inside an inert fragment - and one inside a declarative SHADOW
         # tree is skipped too: a browser renders that content but never applies a shadow tree's
         # metadata to the document, so it must not decide whether this advisory runs.
