@@ -4,6 +4,18 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.689.0] - 2026-08-05
+
+### Fixed
+
+- The information-density advisory now drives the shared browser element-handler sequence and keeps
+  its contribution frames parallel to the shared namespace stack. A self-closed foreign
+  `<template/>` no longer opens an inert HTML fragment and suppresses every later density warning,
+  markup inside an SVG `<title>` or `<script>` is parsed instead of swallowed as HTML raw text, and
+  a slash on a non-void HTML start tag no longer makes the density pass close an element the shared
+  parser leaves open. Same-name paragraph and heading closers inside an inert template also stay
+  scoped to that fragment instead of finalizing live outer prose capture (CMH-VAL-15).
+
 ## [1.688.0] - 2026-08-05
 
 ### Fixed
@@ -33,6 +45,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   cutting from there through the real region. An anchor strictly BEFORE a region's own BEGIN is
   now refused; an anchor at the marker is the healthy case, and a missing one only leaves the
   region unstripped, which the existing data-safety net already diagnoses.
+
 ## [1.686.0] - 2026-08-05
 
 ### Changed
@@ -61,7 +74,6 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   that durable model (slot distribution is rejected too, and shadow-DOM export requires a browser
   with `Element.getHTML`). Generated TOC entries target the outer light-DOM host because browser
   fragment navigation cannot target a heading inside a shadow tree.
-
 ## [1.685.3] - 2026-08-05
 
 ### Fixed

@@ -824,12 +824,8 @@ def _tool_class_bases():
 # The two names the shared skeleton itself lives under: `checks/parsing._BrowserBoundaries` and the
 # `tools/_browser_boundaries.BrowserBoundaries` shim every tool outside that package derives from.
 _SKELETON_ROOTS = frozenset(("_BrowserBoundaries", "BrowserBoundaries"))
-# The ONE subclass allowed to write its own tag handlers, with the reason. Density keeps no
-# namespace stack and applies no implicit close (a documented foreign-content gap), so the shared
-# sequence would silently CHANGE what it counts rather than share it.
-_HANDLER_ALLOWLIST = {
-    "_DensityParser": "keeps no namespace stack and applies no implicit close",
-}
+# No subclass may write its own tag handlers; every pass now drives the shared hook sequence.
+_HANDLER_ALLOWLIST = {}
 _TAG_HANDLERS = ("handle_starttag", "handle_startendtag", "handle_endtag")
 
 

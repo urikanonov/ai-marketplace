@@ -11,9 +11,7 @@ section cards). All findings are non-fatal warnings, matching the section-wrappi
 """
 import re
 
-from .parsing import (
-    _BrowserBoundaries, _ascii_lower, _browser_attrs_dict, _can_host_shadow_root,
-)
+from .parsing import _BrowserBoundaries, _ascii_lower, _can_host_shadow_root
 
 MIN_LONG_PARAGRAPH_CHARS = 240
 MAX_CONSECUTIVE_LONG = 4
@@ -53,20 +51,16 @@ def _frame(root=False, skip=False, layout=False, section=False, template=False, 
 class _DensityParser(_BrowserBoundaries):
     """The prose-density advisory's own pass over a document.
 
-    The ONE `_BrowserBoundaries` subclass that does not drive the shared handler skeleton: it
-    keeps no namespace stack and applies no implicit `</p>` / `</li>` close, so it reads every
-    element as HTML and unwinds its own frames (a `<template>`'s inert fragment is the structure
-    it tracks). `tests/test_shared_element_boundaries.py` names it as the single, reasoned
-    exception, so any OTHER subclass that defines a tag handler fails that guard.
+    It drives the shared handler skeleton and keeps its contribution frames parallel to the base's
+    namespace stack. Its hooks say only what affects prose density; the base owns where elements
+    begin and end.
     """
 
     def __init__(self, html, min_chars, max_run):
         # The SHARED element boundaries, not the host's: the raw-text / RCDATA set, the
         # `</name` + whitespace/`/`/`>` closer, and the EOF rules are what decide whether a
         # `<template>` written inside <title>/<textarea>/<noscript> TEXT is a tag at all, and
-        # html.parser answers that differently per interpreter (CMH-VAL-21). This pass has no
-        # namespace stack, so it reads every element as HTML (see the foreign-content gap
-        # recorded against this parser).
+        # html.parser answers that differently per interpreter (CMH-VAL-21).
         super().__init__(html)
         self.min_chars = min_chars
         self.max_run = max_run
@@ -93,8 +87,10 @@ class _DensityParser(_BrowserBoundaries):
         self._root_heading = ""   # heading of top-level (unsectioned) content
         self.findings = []        # section labels whose prose run reached the threshold
         self._p_prose = False     # inside a prose-level <p>
+        self._p_index = None
         self._p_text = []
         self._heading_capture = False
+        self._heading_index = None
         self._heading_text = []
 
     @property
@@ -105,10 +101,36 @@ class _DensityParser(_BrowserBoundaries):
     def template_depth(self):
         return len(self._template_floors)
 
-    def _push_template(self, ns, d):
+    def _template_frame(self):
         self._template_floors.append(len(self._stack))
-        self._stack.append(("template", _frame(template=True)))
-        self._push_ns("template", ns, d)
+        return _frame(template=True)
+
+    def _truncate_stacks(self, depth):
+        if self._p_index is not None and depth <= self._p_index:
+            self._close_paragraph()
+        if self._heading_index is not None and depth <= self._heading_index:
+            self._close_heading()
+        popped = self._stack[depth:]
+        for _tag, contrib in reversed(popped):
+            if contrib["section"]:
+                # Flush/attribute the closing section's wall to it, then restore the parent
+                # heading. (A section inside cm-skip was never pushed, so this never fires there.)
+                self._break_run()
+                if self._sections:
+                    self._sections.pop()
+            if contrib["root"]:
+                self._break_run()
+                self.root_depth -= 1
+            if contrib["skip"]:
+                self.skip_depth -= 1
+            if contrib["layout"]:
+                self.layout_depth -= 1
+            if contrib["shadow"]:
+                self.shadow_depth -= 1
+        while self._template_floors and self._template_floors[-1] >= depth:
+            self._template_floors.pop()
+        super()._truncate_stacks(depth)
+        del self._stack[depth:]
 
     def _attaches_shadow_root(self, d, ns):
         """Whether this `<template>` really becomes the parent's rendered shadow tree.
@@ -131,11 +153,6 @@ class _DensityParser(_BrowserBoundaries):
             return False
         host["shadow_used"] = True
         return True
-
-    def _attrs(self, tag, attrs):
-        # Browser attribute-value decoding, shared with the document parser, so the content
-        # root and the kind meta read the same on every interpreter (CMH-VAL-21).
-        return _browser_attrs_dict(self, tag, attrs)
 
     @staticmethod
     def _classes(d):
@@ -174,32 +191,29 @@ class _DensityParser(_BrowserBoundaries):
         if not self.kind and (d.get("name") or "").lower() == _KIND_META_NAME:
             self.kind = (d.get("content") or "").strip().lower()
 
-    def handle_starttag(self, tag, attrs):
-        tag = self._browser_tag(tag)
-        d = self._attrs(tag, attrs)
-        ns = self._child_namespace(tag, d)
+    def _implicit_close(self, tag):
+        # Markup authored inside cm-skip is excluded as one source subtree, even when an invalid
+        # block child would make the browser implicitly close an outer paragraph.
+        if self.skip_depth == 0:
+            super()._implicit_close(tag)
+
+    def _visit_start(self, tag, d, ns, opens):
         if self.template_depth > 0:
             # Inert fragment: nothing inside contributes prose, a heading, a section, a layout
             # break, or the kind. Only the nesting is tracked, so `</template>` lands on the
             # right frame. A nested declarative shadow root is inert too - its host is inside a
             # fragment a browser never renders, so no shadow tree is ever attached.
-            if tag == "template" and ns == "html":
-                self._push_template(ns, d)
-            elif tag not in _VOID or ns != "html":
-                self._stack.append((tag, _frame()))
-                self._push_ns(tag, ns, d)
-            self._enter_raw_text(tag, ns)
-            return
-        is_shadow = tag == "template" and self._attaches_shadow_root(d, ns)
-        if tag == "template" and ns == "html" and not is_shadow:
+            return self._template_frame() if tag == "template" and ns == "html" else _frame()
+        is_html_template = tag == "template" and ns == "html"
+        is_shadow = is_html_template and self._attaches_shadow_root(d, ns)
+        if is_html_template and not is_shadow:
 
             # A <template>'s contents live in a DocumentFragment a browser never renders, so the
             # element itself is invisible too: it neither counts as prose nor breaks a run (its
             # own attributes cannot make it a layout block either). A DECLARATIVE SHADOW ROOT is
             # the exception - a browser renders that content - so it falls through and is read as
             # the ordinary transparent container it displays as.
-            self._push_template(ns, d)
-            return
+            return self._template_frame()
         if tag == "meta":
             self._note_kind(d)
         is_root = self.shadow_depth == 0 and self._is_root(tag, d)
@@ -231,39 +245,35 @@ class _DensityParser(_BrowserBoundaries):
         # the current section.
         if tag in _HEADINGS and in_scope and self.layout_depth == 0:
             self._heading_capture = True
+            self._heading_index = len(self._stack)
             self._heading_text = []
         # Count a paragraph only when it sits at prose level (inside root, not skip, not layout).
         if tag == "p" and in_scope and self.layout_depth == 0:
             self._p_prose = True
+            self._p_index = len(self._stack)
             self._p_text = []
-        if tag in _VOID and ns == "html":
-            return
-        self._stack.append((tag, _frame(root=is_root, skip=is_skip, layout=is_layout,
-                                        section=pushes_section, shadow=is_shadow)))
-        self._push_ns(tag, ns, d)
-        if is_root:
-            self.root_depth += 1
-        if is_skip:
-            self.skip_depth += 1
-        if is_layout:
-            self.layout_depth += 1
-        if is_shadow:
-            self.shadow_depth += 1
-        self._enter_raw_text(tag, ns)
+        return _frame(root=is_root, skip=is_skip, layout=is_layout,
+                      section=pushes_section, shadow=is_shadow)
 
-    def handle_startendtag(self, tag, attrs):
-        # HTML5 ignores a trailing slash on a non-void HTML tag, so `<template/>` OPENS the inert
-        # fragment rather than opening and closing it. Every other tag keeps the host's
-        # open-then-close reading, which is why this pass does NOT drive the shared handler
-        # skeleton: that skeleton resolves a self-closed tag by NAMESPACE (only a foreign element
-        # really closes at once), and this pass deliberately keeps no namespace stack - it reads
-        # every element as HTML (see the foreign-content gap recorded against this parser).
-        tag = self._browser_tag(tag)
-        if tag == "template":
-            self.handle_starttag(tag, attrs)
-            return
-        self.handle_starttag(tag, attrs)
-        self.handle_endtag(tag)
+    def _push_element(self, tag, d, ns, info):
+        self._stack.append((tag, info))
+        if info["root"]:
+            self.root_depth += 1
+        if info["skip"]:
+            self.skip_depth += 1
+        if info["layout"]:
+            self.layout_depth += 1
+        if info["shadow"]:
+            self.shadow_depth += 1
+
+    def _visit_self_closed(self, tag, d, ns):
+        # The start hook's run/heading effects still apply to a real foreign element, but every
+        # depth contribution ends immediately because the element never remains open.
+        depth = len(self._stack)
+        info = self._visit_start(tag, d, ns, True)
+        self._push_element(tag, d, ns, info)
+        self._push_ns(tag, ns, d)
+        self._truncate_stacks(depth)
 
     def handle_data(self, data):
         if self.template_depth > 0:
@@ -279,9 +289,16 @@ class _DensityParser(_BrowserBoundaries):
         else:
             self._root_heading = text
 
+    def _close_heading(self):
+        self._set_current_heading("".join(self._heading_text).strip())
+        self._heading_capture = False
+        self._heading_index = None
+        self._heading_text = []
+
     def _close_paragraph(self):
         text = re.sub(r"\s+", " ", "".join(self._p_text)).strip()
         self._p_prose = False
+        self._p_index = None
         self._p_text = []
         if len(text) >= self.min_chars:
             self.run += 1
@@ -295,56 +312,6 @@ class _DensityParser(_BrowserBoundaries):
             # A short paragraph interrupts consecutiveness of long ones; reset without recursing
             # back through _break_run (the paragraph is already closed).
             self.run = 0
-
-    def _end_inside_template(self, tag):
-        # Unwind only WITHIN the innermost open template: an end tag inside an inert fragment
-        # must never close an element that opened outside it (a parked `</main>` cannot retire
-        # the live content root). The floor is read off `_template_floors` in O(1) rather than
-        # rescanned, so closing well-nested markup inside a template costs the same as closing it
-        # anywhere else. An end tag with no match inside the fragment is ignored, as a browser
-        # ignores it.
-        floor = self._template_floors[-1]
-        for i in range(len(self._stack) - 1, floor - 1, -1):
-            if self._stack[i][0] == tag:
-                self._truncate_stacks(i)
-                break
-
-    def _truncate_stacks(self, depth):
-        popped = self._stack[depth:]
-        del self._stack[depth:]
-        while self._template_floors and self._template_floors[-1] >= depth:
-            self._template_floors.pop()
-        for _tag, contrib in reversed(popped):
-            if contrib["section"]:
-                self._break_run()
-                if self._sections:
-                    self._sections.pop()
-            if contrib["root"]:
-                self._break_run()
-                self.root_depth -= 1
-            if contrib["skip"]:
-                self.skip_depth -= 1
-            if contrib["layout"]:
-                self.layout_depth -= 1
-            if contrib["shadow"]:
-                self.shadow_depth -= 1
-        super()._truncate_stacks(depth)
-
-    def handle_endtag(self, tag):
-        tag = self._browser_tag(tag)
-        if self.template_depth > 0:
-            self._end_inside_template(tag)
-            return
-        if tag == "p" and self._p_prose:
-            self._close_paragraph()
-        if tag in _HEADINGS and self._heading_capture:
-            self._set_current_heading("".join(self._heading_text).strip())
-            self._heading_capture = False
-        for i in range(len(self._stack) - 1, -1, -1):
-            if self._stack[i][0] == tag:
-                self._truncate_stacks(i)
-                break
-
 
 def check_density(html, min_chars=MIN_LONG_PARAGRAPH_CHARS, max_run=MAX_CONSECUTIVE_LONG):
     """Return (errors, warnings). Warn once per report/plan section whose content is a run of

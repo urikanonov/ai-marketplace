@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.688.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.689.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.689.0] - 2026-08-05</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The information-density advisory now drives the shared browser element-handler sequence and keeps its contribution frames parallel to the shared namespace stack. A self-closed foreign <code>&lt;template/&gt;</code> no longer opens an inert HTML fragment and suppresses every later density warning, markup inside an SVG <code>&lt;title&gt;</code> or <code>&lt;script&gt;</code> is parsed instead of swallowed as HTML raw text, and a slash on a non-void HTML start tag no longer makes the density pass close an element the shared parser leaves open. Same-name paragraph and heading closers inside an inert template also stay scoped to that fragment instead of finalizing live outer prose capture (CMH-VAL-15).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.688.0] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -503,6 +510,8 @@
               <li>A quoted region marker that shares its line with other markup no longer aims an export&#x27;s region strip either (CMH-EXP-22). The strips&#x27; <code>&lt;!--</code> prefix is not line-anchored, so an authored <code>&lt;p&gt;x&lt;/p&gt;&lt;!-- BEGIN: commentable-html - JS --&gt;</code> was invisible to the LINE locator - not counted, not a duplicate - and was still a perfectly good place for the strip to start, cutting from there through the real region. An anchor strictly BEFORE a region&#x27;s own BEGIN is now refused; an anchor at the marker is the healthy case, and a missing one only leaves the region unstripped, which the existing data-safety net already diagnoses.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.686.0] - 2026-08-05</h3></div>
             <div class="group-label">Changed</div>
@@ -515,8 +524,6 @@
               <li>The runtime&#x27;s template-aware walkers now record their shadow-DOM boundary explicitly. The infrastructure resolver still excludes shadow-root ids because <code>document.getElementById</code> cannot see them; Markdown and section review remain light-DOM-only because closed roots cannot be inspected and review anchors do not cross shadow boundaries. Save and export preserve supported open and closed roots through shadow-aware serialization; the validator requires <code>shadowrootserializable</code> and rejects mixed light/shadow children so every accepted document fits that durable model (slot distribution is rejected too, and shadow-DOM export requires a browser with <code>Element.getHTML</code>). Generated TOC entries target the outer light-DOM host because browser fragment navigation cannot target a heading inside a shadow tree.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.685.3] - 2026-08-05</h3></div>
             <div class="group-label">Fixed</div>
@@ -546,14 +553,7 @@
               <li>Startup diagnostics now share one aggregation path and appear together in a single alert toast. A startup storage read or write failure, duplicate reserved data blocks, an unresolved review-state block, and the handled-comment cleanup notice can no longer replace one another before the reader sees them.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.681.0] - 2026-08-04</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The browser-accurate element-boundary SEQUENCE now lives in exactly one place (CMH-VAL-21). <code>handle_starttag()</code>, <code>handle_startendtag()</code> and <code>handle_endtag()</code> moved onto the shared <code>_BrowserBoundaries</code> base (and, identically, onto the degraded fallback a partial install gets) and drive overridable hooks - <code>_visit_start()</code>, <code>_push_element()</code>, <code>_visit_void()</code>, <code>_after_start()</code>, <code>_visit_self_closed()</code>, <code>_visit_end()</code> - so each of the thirteen parsers and authoring tools that derive from it now says only what it COLLECTS. The same ~25-line skeleton (browser tag name, browser attribute dict, child namespace, the implicit <code>&lt;/p&gt;</code> / <code>&lt;/li&gt;</code> close, the void and foreign self-closing carve-outs, the namespace push, the raw-text switch, and, for an end tag, the innermost open element then the truncation) was maintained in eleven independent copies, where one forgotten <code>_enter_raw_text()</code> would silently have parsed a <code>&lt;script&gt;</code> body as markup - the base deliberately disables the host&#x27;s own <code>_enter_cdata_mode()</code>, so no gate would have seen it. A new guard fails any subclass that writes a tag handler of its own, with a single named exception (the prose-density pass, which keeps no namespace stack and applies no implicit close, so sharing the sequence would change what it counts rather than share it). No behavior change to any tool: every parse this refactor touches reads a document exactly as it did.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">320 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">321 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
