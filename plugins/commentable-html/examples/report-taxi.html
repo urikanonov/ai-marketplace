@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.723.0" />
+<meta name="commentable-html-version" content="1.726.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.723.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.726.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>NYC Taxi 2014 Report</title>
 
@@ -1135,6 +1135,18 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 /* Delete sits apart from Close/Edit (issue #1031) so the destructive action is never the neighbour
    of the one the reader reaches for by muscle memory. */
 .cm-comment-popover-acts .cm-comment-popover-del { margin-right: auto; }
+/* On phones the dialog's actions are still a touch surface, so they keep the repo-wide >=44px touch
+   target (as the card actions and this dialog's own formatting toolbar already do). With the shipped
+   labels the enlarged row still fits one line at 320px; it is allowed to WRAP so a wider label or a
+   looser density scale costs a second line rather than a button dragged past the dialog's
+   `overflow: hidden` edge. The wrapped lines get a roomier gap than the inline one, in the same
+   ABSOLUTE unit as the touch target rather than a rem the host document's root font-size scales, so
+   a `Delete` pushed onto its own line is not a thumb-slip above the button below it - the horizontal
+   separation `margin-right: auto` gives it (CMH-CORE-22) has no meaning between two lines. */
+@media (max-width: 640px) {
+  .cm-comment-popover-acts { flex-wrap: wrap; row-gap: 12px; }
+  .cm-comment-popover-acts button { min-width: 44px; min-height: 44px; }
+}
 .cm-comment-popover button {
   background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
   padding: var(--cp-chrome-control-y) var(--cp-chrome-control-x); border-radius: 6px; cursor: pointer;
@@ -4724,7 +4736,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.723.0";
+const CMH_VERSION = "1.726.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

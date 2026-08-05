@@ -645,6 +645,153 @@ test.describe("comment interactions", () => {
     await expect(page.locator(`mark.cm-hl[data-cid="${cid}"]`)).toHaveCount(0);
   });
 
+  // Opens a commented passage's in-document dialog on a narrow phone (320x720), where the three
+  // enlarged note-view buttons plus their gaps are the tightest fit the actions row has.
+  async function openPhoneDialog(page, note) {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", note, 0);
+    const cid = (await allCids(page))[0];
+    await page.setViewportSize({ width: 320, height: 720 });
+    // On a phone the comments pane is a full-width sheet over the document, so close it before
+    // reaching for the highlight and its hover bubble.
+    if (await page.evaluate(() => document.body.classList.contains("sidebar-open"))) {
+      await page.locator("#btnCloseSidebar").click();
+      await expect(page.locator("body")).not.toHaveClass(/sidebar-open/);
+    }
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await expect(pop).toBeVisible();
+    return pop;
+  }
+
+  // Measures the actions row against the dialog's own CONTENT box (inside its padding and border),
+  // so a button merely painted over the dialog's edge still counts as clipped. The dialog is
+  // re-fitted from a ResizeObserver, so settle two frames first rather than racing it.
+  async function measureActs(page, pop) {
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    return pop.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      const box = el.getBoundingClientRect();
+      const row = el.querySelector(".cm-comment-popover-acts");
+      return {
+        left: box.left + parseFloat(cs.paddingLeft) + parseFloat(cs.borderLeftWidth),
+        right: box.right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth),
+        bottom: box.bottom - parseFloat(cs.paddingBottom) - parseFloat(cs.borderBottomWidth),
+        dialogLeft: box.left,
+        dialogRight: box.right,
+        rowGap: parseFloat(getComputedStyle(row).rowGap),
+        vw: window.innerWidth,
+        boxes: Array.from(row.querySelectorAll("button")).map((b) => {
+          const r = b.getBoundingClientRect();
+          return {
+            act: b.getAttribute("data-act"),
+            w: r.width, h: r.height, top: r.top, left: r.left, right: r.right, bottom: r.bottom,
+            // A button squeezed narrower than its label truncates it, which no box measurement sees.
+            overflowX: b.scrollWidth - b.clientWidth,
+          };
+        }),
+      };
+    });
+  }
+
+  // Every action button is a >=44px target that stays inside the dialog with its label intact. The
+  // row is right-aligned, so an overflowing line spills past the START edge, which the dialog's own
+  // `scrollWidth` never reports - the containment checks below, not a scrollWidth probe on the
+  // dialog, are what catch a button dragged off the edge.
+  function expectActsFit(info, acts) {
+    expect(info.boxes.map((b) => b.act).sort()).toEqual([...acts].sort());
+    expect(info.dialogLeft).toBeGreaterThanOrEqual(-0.5);
+    expect(info.dialogRight).toBeLessThanOrEqual(info.vw + 0.5);
+    for (const b of info.boxes) {
+      expect(b.h).toBeGreaterThanOrEqual(44);
+      expect(b.w).toBeGreaterThanOrEqual(44);
+      expect(b.left).toBeGreaterThanOrEqual(info.left - 0.5);
+      expect(b.right).toBeLessThanOrEqual(info.right + 0.5);
+      expect(b.bottom).toBeLessThanOrEqual(info.bottom + 0.5);
+      expect(b.overflowX).toBeLessThanOrEqual(1);
+    }
+  }
+
+  const actRows = (info) => new Set(info.boxes.map((b) => Math.round(b.top))).size;
+  const act = (info, name) => info.boxes.find((b) => b.act === name);
+  // The shipped density presets each redefine the control padding, font size and gap
+  // (`assets/css/00-base.css`), so the row's fit is measured under all three, not just the default.
+  const DENSITIES = ["", "compact", "comfortable"];
+  const setDensity = (page, d) => page.evaluate((v) => {
+    if (v) document.body.setAttribute("data-cm-density", v);
+    else document.body.removeAttribute("data-cm-density");
+  }, d);
+
+  test("CMH-CORE-23: the in-document dialog's action buttons keep >=44px touch targets on a phone", async ({ page }) => {
+    const pop = await openPhoneDialog(page, "phone touch targets");
+
+    for (const density of DENSITIES) {
+      await setDensity(page, density);
+      const note = await measureActs(page, pop);
+      expectActsFit(note, ["popover-del", "close", "edit"]);
+      // With the shipped labels the enlarged row still fits ONE line at 320px, so the wrap below is
+      // a fallback rather than the everyday layout...
+      expect(actRows(note), density).toBe(1);
+      // ...and on that line the phone layout is still the desktop one: Edit ends at the row's right
+      // edge, with Delete held well clear of the pair rather than a plain gap away (CMH-CORE-22).
+      expect(act(note, "edit").right).toBeGreaterThanOrEqual(note.right - 0.5);
+      expect(act(note, "close").left - act(note, "popover-del").right).toBeGreaterThanOrEqual(20);
+    }
+
+    // The edit view's Cancel / Save row is enlarged the same way (it was 33px too, not just the
+    // note view's row).
+    await pop.locator('[data-act="edit"]').click();
+    await expect(pop.locator("textarea.cm-comment-popover-input")).toBeVisible();
+    for (const density of DENSITIES) {
+      await setDensity(page, density);
+      const edit = await measureActs(page, pop);
+      expectActsFit(edit, ["edit-cancel", "edit-save"]);
+      expect(actRows(edit), density).toBe(1);
+      expect(act(edit, "edit-save").right).toBeGreaterThanOrEqual(edit.right - 0.5);
+    }
+    await setDensity(page, "");
+
+    // The enlarged buttons still do their job at that size.
+    await pop.locator("textarea.cm-comment-popover-input").fill("saved from a phone");
+    await pop.locator('[data-act="edit-save"]').click();
+    await expect(pop.locator(".cm-comment-popover-note.cmh-rich")).toHaveText("saved from a phone");
+    expect((await storedComments(page))[0].note).toBe("saved from a phone");
+    await pop.locator('[data-act="close"]').click();
+    await expect(page.locator(".cm-comment-popover")).toHaveCount(0);
+  });
+
+  test("CMH-CORE-23: an actions row too wide for one line wraps instead of clipping, and Delete stays apart", async ({ page }) => {
+    const pop = await openPhoneDialog(page, "wrapped actions row");
+    // Stand in for the thing that would actually overflow the row - a localized label set, or a
+    // host document whose root font-size is larger - by widening the buttons themselves, so the
+    // fallback is exercised rather than merely declared.
+    await page.addStyleTag({
+      content: ".cm-comment-popover-acts button { padding-left: 55px !important; padding-right: 55px !important; }",
+    });
+    const info = await measureActs(page, pop);
+    expectActsFit(info, ["popover-del", "close", "edit"]);
+    expect(actRows(info)).toBeGreaterThan(1);
+
+    // Delete is held apart from the buttons reached for by habit (CMH-CORE-22). Once the row wraps,
+    // `margin-right: auto` cannot do that across lines, so the wrapped row-gap has to: a Delete on
+    // its own line must not sit a thumb-slip above the button below it.
+    const del = act(info, "popover-del");
+    const stacked = info.boxes.filter((b) => b !== del && b.left < del.right - 0.5 && b.right > del.left + 0.5);
+    // Assert the premise, so the loop below can never quietly stop testing anything.
+    expect(stacked.length).toBeGreaterThan(0);
+    for (const b of stacked) {
+      expect(Math.max(b.top - del.bottom, del.top - b.bottom)).toBeGreaterThanOrEqual(10);
+    }
+
+    // The edit view's shorter row wraps by the same rule.
+    await pop.locator('[data-act="edit"]').click();
+    await expect(pop.locator("textarea.cm-comment-popover-input")).toBeVisible();
+    const edit = await measureActs(page, pop);
+    expectActsFit(edit, ["edit-cancel", "edit-save"]);
+    expect(actRows(edit)).toBeGreaterThan(1);
+  });
+
   test("CMH-CORE-16: an Escape meant for another overlay does not discard the dialog draft", async ({ page }) => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section p", "keep my draft", 0);

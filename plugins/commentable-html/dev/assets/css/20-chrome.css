@@ -374,6 +374,18 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 /* Delete sits apart from Close/Edit (issue #1031) so the destructive action is never the neighbour
    of the one the reader reaches for by muscle memory. */
 .cm-comment-popover-acts .cm-comment-popover-del { margin-right: auto; }
+/* On phones the dialog's actions are still a touch surface, so they keep the repo-wide >=44px touch
+   target (as the card actions and this dialog's own formatting toolbar already do). With the shipped
+   labels the enlarged row still fits one line at 320px; it is allowed to WRAP so a wider label or a
+   looser density scale costs a second line rather than a button dragged past the dialog's
+   `overflow: hidden` edge. The wrapped lines get a roomier gap than the inline one, in the same
+   ABSOLUTE unit as the touch target rather than a rem the host document's root font-size scales, so
+   a `Delete` pushed onto its own line is not a thumb-slip above the button below it - the horizontal
+   separation `margin-right: auto` gives it (CMH-CORE-22) has no meaning between two lines. */
+@media (max-width: 640px) {
+  .cm-comment-popover-acts { flex-wrap: wrap; row-gap: 12px; }
+  .cm-comment-popover-acts button { min-width: 44px; min-height: 44px; }
+}
 .cm-comment-popover button {
   background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
   padding: var(--cp-chrome-control-y) var(--cp-chrome-control-x); border-radius: 6px; cursor: pointer;
