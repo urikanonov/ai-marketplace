@@ -581,23 +581,28 @@ function _suggestedOfflineFilename() {
 function _downloadHtml(text, filename) {
   const blob = new Blob([text], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  // Once the object URL exists, every later step cleans up on its way out. A throw after the anchor
-  // is attached would otherwise leave it in the document - and it is not injected chrome, so
-  // `_snapshotWithTail()` would serialize it into the base of every later export - while the URL
-  // stayed unrevoked, making the download failure's "nothing in this document changed" false.
+  // Everything after the object URL exists cleans up on its way out, the anchor's own creation
+  // included. A throw after the anchor is attached would otherwise leave it in the document - and it
+  // is not injected chrome, so `_snapshotWithTail()` would serialize it into the base of every later
+  // export - while the URL stayed unrevoked, making the download failure's "nothing in this document
+  // changed" false.
+  let a = null;
   try {
+    a = document.createElement("a");
     a.href = url;
     a.download = filename;
     a.style.display = "none";
     document.body.appendChild(a);
     a.click();
   } catch (e) {
-    try { URL.revokeObjectURL(url); } catch (e2) {}
-    try { a.remove(); } catch (e2) {}
+    _cmhReleaseDownloadAnchor(url, a);
     throw e;
   }
-  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+  // The handoff already happened, so scheduling the cleanup is best-effort: a throw from here would
+  // report a failure for a file the browser has taken.
+  try {
+    setTimeout(function () { _cmhReleaseDownloadAnchor(url, a); }, 0);
+  } catch (e) { _cmhReleaseDownloadAnchor(url, a); }
 }
 function _layerDescriptorJson(mode) {
   return JSON.stringify({ version: CMH_VERSION, mode, regions: CMH_REGION_NAMES });
@@ -684,7 +689,7 @@ function _retargetLayerDescriptor(html, mode) {
 async function saveHtml() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
-  catch (e) { showToast("Could not load base HTML."); return; }
+  catch (e) { _reportExportLoadFailure(); return; }
   // The state-baking prelude is one guarded step, not four bare lines: each applier does a
   // DOMParser round-trip (and the widget one a live query), any of which can throw, and a throw
   // used to unwind the whole click handler with no file and no toast - the #1052 failure reached

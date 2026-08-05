@@ -394,21 +394,34 @@ function buildMarkdownDoc() {
   if (appendix) md += "\n" + appendix;
   return md;
 }
+// Release a download anchor and its object URL, each independently and best-effort: a throw from one
+// must not skip the other, and neither must escape a timer callback. Shared with `_downloadHtml`
+// (65-export-shareable.js) - the partials share one hoisted scope, see MODULES.md. Both operations
+// are idempotent (revoking an already-revoked URL and removing an unattached node are no-ops), so
+// the failure path and the scheduled cleanup can each call it.
+function _cmhReleaseDownloadAnchor(url, a) {
+  try { URL.revokeObjectURL(url); } catch (e) {}
+  try { if (a) a.remove(); } catch (e) {}
+}
 function _downloadTextFile(text, filename, mime) {
   const blob = new Blob([text], { type: (mime || "text/plain") + ";charset=utf-8" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
   // Clean up on the way out of a throw, so a failed download leaves neither an unrevoked object URL
   // nor a stray anchor in the document (see _downloadHtml).
+  let a = null;
   try {
+    a = document.createElement("a");
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); a.remove();
   } catch (e) {
-    try { URL.revokeObjectURL(url); } catch (e2) {}
-    try { a.remove(); } catch (e2) {}
+    _cmhReleaseDownloadAnchor(url, a);
     throw e;
   }
-  setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 1000);
+  // The handoff already happened, so scheduling the cleanup is best-effort: a throw from here would
+  // report a failure for a file the browser has taken.
+  try {
+    setTimeout(function () { _cmhReleaseDownloadAnchor(url, a); }, 1000);
+  } catch (e) { _cmhReleaseDownloadAnchor(url, a); }
 }
 function _mdFilename() {
   let stem = "document";

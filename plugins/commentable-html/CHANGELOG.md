@@ -25,10 +25,13 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   is safe, and leaves the full thrown value on the console; Markdown, which bakes no state, gets its
   own conversion message rather than being filed under a baking pass that never ran. A document
   build still shows the message its builder wrote for the reader, and only falls back to the shared
-  report when there is no message to show. A download that throws no longer falls through to the
-  success toast, so an export never claims a file it did not write, and both download helpers now
-  revoke the object URL and remove their anchor if the throw lands after the URL exists - an anchor
-  left in the document would otherwise be serialized into the base of every later export.
+  report when there is no message to show - but it now goes out as the same assertive, long-duration
+  toast as every other export failure, rather than with the 3s pacing of a confirmation. A failure to
+  load the document's own base HTML reports the same best-effort way, so that step cannot unwind the
+  handler either. A download that throws no longer falls through to the success toast, so an export
+  never claims a file it did not write, and both download helpers now revoke the object URL and
+  remove their anchor if the throw lands after the URL exists - an anchor left in the document would
+  otherwise be serialized into the base of every later export.
 
 
 ## [1.741.0] - 2026-08-05

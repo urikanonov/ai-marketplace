@@ -302,8 +302,8 @@ const _EXPORT_FAILURE_CANONICAL = {
     + " safe to try again.",
 };
 const _EXPORT_FAILURE_PREPARE = {
-  log: "export state-baking pass failed",
-  cause: "This document's current state could not be prepared for export",
+  log: "export preparation pass failed",
+  cause: "This document could not be prepared for export",
   tail: "No file was written and nothing in this document changed, so it is safe to try again.",
 };
 const _EXPORT_FAILURE_DOWNLOAD = {
@@ -331,13 +331,13 @@ const _EXPORT_FAILURE_CONVERT = {
 // silence this reporter exists to remove, so the report is best-effort and the abort is
 // unconditional. The toast is truncated and transient, so the full thrown value (stack included)
 // is left on the console for whoever has to triage the report.
-function _reportExportFailure(e, parts) {
+function _reportExportFailure(e, parts, opts) {
   const detail = _cmhThrownDetail(e);
   try { console.warn("commentable-html: " + parts.log, e); } catch (e2) {}
   try {
     showToast("Export failed - nothing was downloaded. " + parts.cause
       + (detail ? " (" + detail + ")" : "") + ". " + parts.tail,
-    _EXPORT_FAILURE_TOAST);
+    opts || _EXPORT_FAILURE_TOAST);
   } catch (e2) { /* the export still aborts */ }
 }
 // The document build throws a message written FOR the reader (which reserved block is contested,
@@ -353,9 +353,21 @@ function _reportExportBuildFailure(e, opts) {
     const raw = (obj && "message" in e) ? e.message : "";
     msg = (raw === undefined || raw === null) ? "" : String(raw).trim();
   } catch (e2) { msg = ""; }
-  if (!msg) { _reportExportFailure(e, _EXPORT_FAILURE_BUILD); return; }
+  if (!msg) { _reportExportFailure(e, _EXPORT_FAILURE_BUILD, opts); return; }
   try { console.warn("commentable-html: " + _EXPORT_FAILURE_BUILD.log, e); } catch (e2) {}
-  try { showToast(msg, opts); } catch (e2) { /* the export still aborts */ }
+  // A failed export is a message a reader must not miss, so it goes out with the assertive,
+  // long-duration timing whatever the caller passed - the builder's own text used to get the 3s
+  // confirmation pacing, which is how a message that does NOT matter is shown.
+  try { showToast(msg, opts || _EXPORT_FAILURE_TOAST); } catch (e2) { /* the export still aborts */ }
+}
+// The base HTML failing to LOAD names its own cause and has no thrown value worth showing, but the
+// report must be best-effort like the others: an unguarded showToast here would unwind the click
+// handler and restore the very silence these guards remove.
+function _reportExportLoadFailure(opts) {
+  try { console.warn("commentable-html: export could not load the base HTML"); } catch (e2) {}
+  try {
+    showToast("Could not load base HTML.", opts || _EXPORT_FAILURE_TOAST);
+  } catch (e2) { /* the export still aborts */ }
 }
 // Every export entry point runs the canonical pass through this guard rather than calling
 // `_exportableComments()` bare. The pass can throw, and it used to sit OUTSIDE the try/catch that
