@@ -134,9 +134,9 @@ def prepare_slides(fragment: str):
             classes.append("active")
         first[0] = False
         # The start tag is RE-SERIALIZED from the parsed attributes for EVERY slide, so the class
-        # lands in the double-quoted form `deck_validate`'s structural scan can see (issue #1159)
-        # and every value is re-escaped exactly once from its DECODED form - escaping the raw text
-        # instead turned an authored `x&amp;y` into the literal `x&amp;y`.
+        # is written back in one canonical form and every value is re-escaped exactly once from its
+        # DECODED form - escaping the raw text instead turned an authored `x&amp;y` into the
+        # literal `x&amp;y`.
         rebuilt = []
         for name, value in pairs:
             if name == "class":
