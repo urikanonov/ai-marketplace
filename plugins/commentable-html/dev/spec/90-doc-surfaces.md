@@ -138,6 +138,7 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-RESP-10 | opt-out: a rendering-correctness fix; a reader sees a table that is no longer broken, with nothing new to learn | opt-out: a layout fix with nothing to demonstrate on a slide |
 | CMH-RESP-11 | opt-out: a layout-containment fix; a wide table scrolls in its box exactly as it already did on a phone, so there is no new capability to document | opt-out: a layout fix with nothing to demonstrate on a slide |
 | CMH-RESP-12 | opt-out: a placement-correctness fix to floating controls that already promised to respect a clipped container (CMH-RESP-02); the reader sees a bubble that no longer strays over unrelated content, with nothing new to learn or do | opt-out: a placement fix with nothing to demonstrate on a slide - the control behaves exactly as a viewer already expects it to |
+| CMH-RESP-13 | opt-out: a mobile touch-target sizing invariant for composers the tutorial and help already document - the reviewer sees the same Cancel / Save row, only large enough to hit with a thumb | opt-out: control sizing on a phone, with nothing new to demonstrate on a slide |
 | CMH-PORT-01 | tutorial | opt-out: a one-off migration command for legacy documents; nothing to demonstrate on a slide |
 | CMH-PORT-02 | site | opt-out: a compatibility guarantee - the viewer sees an old document simply continuing to work |
 | CMH-PORT-03 | tutorial, site | opt-out: a default-mode change; the slide shows the document, not which mode produced it |

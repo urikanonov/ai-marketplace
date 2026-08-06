@@ -4,6 +4,24 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.750.0] - 2026-08-05
+
+### Fixed
+
+- The comment COMPOSERS' action buttons are now a `>=44px` touch target on a phone viewport
+  (`max-width: 640px`), matching every other control the layer already enlarged there. The
+  floating composer's `Cancel` / `Save comment` row (`.cm-composer .row`) and the side
+  pane's reply / edit actions (`.cm-reply-compose-actions`) had been left at the compact
+  ~33px control height while only their formatting toolbars (CMH-RICH-17, CMH-RICH-22) and the
+  in-document dialog's row (CMH-CORE-23) were enlarged - even though the composer is the surface
+  a reviewer touches FIRST. With the shipped labels each row still fits ONE line at a 320px
+  viewport in every density preset, so nothing about the desktop layout changes; the gap between
+  the buttons is widened to match the enlarged targets, on both axes and as an absolute FLOOR, so a
+  thumb aimed at `Save comment` does not land on the `Cancel` that discards the draft and a
+  large-root host keeps the roomier gap it already had. A row that no longer fits (a localized
+  label set, or a host document with a larger root font) WRAPS rather than dragging a button past
+  its surface's edge (CMH-RESP-13).
+
 ## [1.748.0] - 2026-08-05
 
 ### Fixed

@@ -160,6 +160,14 @@ html[data-theme="dark"] .cm-author-pill {
   color: var(--cp-accent-fg, #fff);
 }
 .cm-reply-compose-actions .cm-reply-cancel:hover { background: var(--cp-accent-soft); }
+/* On phones the side pane is the primary editing surface, so its reply / edit actions keep the
+   repo-wide >=44px touch target too, with the same absolute both-axis gap FLOOR and the same wrap
+   fallback (and the same `min-width` caveat) as the floating composer's rule in 20-chrome.css, so
+   an over-wide row costs a second line rather than spilling out of the card. */
+@media (max-width: 640px) {
+  .cm-reply-compose-actions { flex-wrap: wrap; gap: max(12px, var(--cp-chrome-gap)); }
+  .cm-reply-compose-actions button { min-width: 44px; min-height: 44px; }
+}
 
 /* Print: show the author pill and replies as plain indented text. */
 @media print {
