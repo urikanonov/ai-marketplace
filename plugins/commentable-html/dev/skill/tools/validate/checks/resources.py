@@ -382,7 +382,10 @@ def srcset_has_network(value):
 # HTML `src` spelling: it loads through SVG2 `href` or the legacy `xlink:href`, and its body is
 # empty, so a `src`-only check saw nothing at all. Kept beside the predicate above because the
 # offline strip carries the same list as `_OFFLINE_SCRIPT_LOAD_ATTRS`, and
-# `test_the_python_and_js_script_load_attributes_agree` pins the two together.
+# `test_the_python_and_js_script_load_attributes_agree` pins the two together. WHICH scripts really
+# load through `src` is a further question, decided by TYPE with `_is_executable_js` (the predicate
+# pinned to the exporter's own runnable-type test); the two SVG spellings stay unconditional, since
+# this tokenizer has no namespace to consult.
 SCRIPT_LOAD_ATTRS = ("src", "href", "xlink:href")
 
 

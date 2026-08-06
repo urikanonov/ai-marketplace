@@ -3072,13 +3072,32 @@ def _is_executable_js(ad):
     Deliberately TYPE-ONLY and deliberately over-inclusive, and NOT the predicate to reach for
     when the question is "will a browser run this". It is the validator half of a pair pinned to
     the exporter's `_offlineIsRunnableScriptType` (`assets/js/68-export-offline.js`, pinned by
-    `tests/test_vendored_libs.py`), and both are used where over-inclusion is the SAFE direction:
-    the offline egress scan (a body it skipped would be a network import nobody looked at) and
-    `_csp_predecessor_fetches` (a predecessor it missed would bless a policy that really is too
-    late). For an EXECUTION decision use `script_code_runs()` / `script_runs_inline_body()` /
+    `tests/test_vendored_libs.py`), and every caller is one where over-inclusion is the SAFE
+    direction: the offline egress scan (a body it skipped would be a network import nobody looked
+    at), `_csp_predecessor_fetches` (a predecessor it missed would bless a policy that really is too
+    late), and the self-contained gate's `src` arm (`layer_parts/20-resources.py`, issue #1144),
+    which reads a script's `src` as a LOAD only for a type this predicate calls executable.
+
+    That last caller is why the PAIR matters more here than exactness: the gate and the offline
+    strip must call the same scripts loaders (CMH-OFFLINE-04), so the gate uses this predicate
+    rather than `script_code_runs` even though `script_code_runs` is the spec-exact one. The cost is
+    a recorded residual - every shape where this is broader than `script_code_runs` (a MIME
+    PARAMETER, `nomodule`, the legacy `event`+`for` pair, a whitespace-only `type`, the `language`
+    fallback) is a script a browser does not run whose `src` is still reported and whose element the
+    export still deletes. That over-reports rather than blesses, and moving it means moving BOTH
+    sides together. Do not "simplify" this caller to `script_code_runs` on its own.
+
+    The trim is HTML's own ASCII whitespace class, not `str.strip()`, for the same reason the
+    exporter's copy spells it out: the two engines' defaults disagree in BOTH directions (JS
+    `trim()` also takes NBSP and U+FEFF, Python's also takes U+001C-U+001F), and once this predicate
+    decides whether a `src` is a load, that disagreement is a document the gate blesses and the
+    export then deletes. A browser trims ASCII whitespace only, so both spellings are data blocks
+    and both sides now say so.
+
+    For an EXECUTION decision use `script_code_runs()` / `script_runs_inline_body()` /
     `script_external_load()` below, which apply HTML's actual rule and whose over-inclusion would
     be the fail-OPEN direction instead."""
-    return (ad.get("type", "") or "").split(";")[0].strip().lower() in _JS_TYPES
+    return (ad.get("type", "") or "").split(";")[0].strip(_HTML_WHITESPACE).lower() in _JS_TYPES
 
 
 def script_code_runs(ad, ns="html"):
@@ -3199,16 +3218,19 @@ def _csp_predecessor_fetches(tag, ad):
     Decided by CAPABILITY rather than by tag name wherever the tag alone cannot answer it: a
     `rel=canonical` link loads nothing and a `type=application/json` block neither runs nor loads,
     so treating either as a fetch would reject a clean document with a message claiming something
-    the element cannot do. A `<script>` still counts when it carries any of the load attributes the
-    self-contained gate reads (`src`, and the SVG spellings, since an SVG script uses no `src` at
-    all), or when its type is one a browser RUNS - which is the exporter's own `_JS_TYPES` set, so
-    the two agree about what executes."""
+    the element cannot do. A `<script>` counts when its type is one a browser RUNS - which is the
+    exporter's own `_JS_TYPES` set, so the two agree about what executes - or when it carries one of
+    the SVG load attributes (`href` / `xlink:href`, since an SVG script uses no `src` at all). A
+    bare `src` is deliberately NOT read on its own: it fetches only on a script that runs, which the
+    executable test already covers, and counting it alone made a head-placed inert data block mark a
+    following policy `<meta>` late and rejected an otherwise clean offline document with a
+    missing-CSP error, for a request no browser makes (#1144)."""
     if tag in _CSP_INERT_PREDECESSORS:
         return False
     if tag == "link":
         return bool(link_rel_tokens(ad.get("rel")) & FETCHING_LINK_RELS)
     if tag == "script":
-        return bool(ad.get("src") or ad.get("href") or ad.get("xlink:href")) or _is_executable_js(ad)
+        return bool(ad.get("href") or ad.get("xlink:href")) or _is_executable_js(ad)
     return True
 
 

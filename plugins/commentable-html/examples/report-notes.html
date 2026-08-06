@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.762.0" />
+<meta name="commentable-html-version" content="1.764.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.762.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.764.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Design review sign-off</title>
 
@@ -4574,7 +4574,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.762.0";
+const CMH_VERSION = "1.764.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -18413,9 +18413,15 @@ function _offlineIsInlinedLibScript(s) {
   return lib === "chartjs" || lib === "mermaid";
 }
 // The HTML "JavaScript MIME type" set: a legacy type such as `text/ecmascript` still executes, so a
-// content scan that ignored it would miss real code.
+// content scan that ignored it would miss real code. The trim is HTML's own ASCII whitespace class,
+// written as literal code points rather than left to `trim()`, because the two engines' defaults
+// disagree in BOTH directions and this predicate now decides whether a `src` is a LOAD: JS `trim()`
+// also takes NBSP and U+FEFF while Python's `str.strip()` also takes U+001C-U+001F, so a
+// `type="&#xFEFF;text/javascript"` was runnable to the exporter and inert to the gate (the export
+// deleted an element the gate had just blessed) and a U+001C-padded one was the reverse. A browser
+// trims ASCII whitespace only, so both of those are DATA BLOCKS and both sides now say so.
 function _offlineIsRunnableScriptType(type) {
-  const t = String(type || "").split(";")[0].trim().toLowerCase();
+  const t = String(type || "").split(";")[0].replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, "").toLowerCase();
   if (!t || t === "module") return true;
   return /^(?:text|application)\/(?:x-)?(?:java|ecma)script$/.test(t) ||
     /^text\/(?:javascript1\.[0-5]|jscript|livescript)$/.test(t);
@@ -19770,16 +19776,49 @@ const _OFFLINE_SVG_NS = "http://www.w3.org/2000/svg";
 function _offlinePingTargets(value) {
   return (value || "").split(/[\t\n\f\r ]+/).filter(function (t) { return t !== ""; }).length;
 }
-// Take the load away, and take no more than that. `src` loads on any script, and an `href` /
-// `xlink:href` loads on an SVG one, so those elements go (dropping just the attribute from an SVG
-// script would start EXECUTING a body SVG2 says is ignored while `href` is present). On an HTML
-// script the same attributes are inert - they fetch nothing, in HTML or in XHTML - so deleting the
+// Whether this `<script>`'s `src` is a reference a browser would really request. The strict
+// validator's `_is_executable_js` is the same type test, pinned to this one over a shared corpus -
+// the whitespace class included - by `test_the_python_and_js_runnable_script_type_predicates_agree`,
+// which evaluates THIS function in a real JS engine.
+// HTML decides it by TYPE, and the answer is exactly the set of types a browser RUNS: "prepare the
+// script element" makes a script whose type is not a JavaScript MIME type, `module`, `importmap` or
+// `speculationrules` a DATA BLOCK and returns BEFORE the fetch step, and for the last two keyword
+// types the `src` step fires an `error` event and returns, because external import maps and external
+// speculation rule sets are not supported (a ruleset arrives inline or through the
+// `Speculation-Rules` response header, never through `src`). So only a classic or module script
+// fetches. Named separately from the runnable-type predicate because it answers a DIFFERENT
+// question - would a browser FETCH this, not would it RUN this - and a future HTML change adding an
+// external path for either keyword type lands here. The `neutralized` branch has no validator
+// counterpart on purpose: the gate reads the document as AUTHORED, where such a block is still a
+// runnable script, so both sides call it a loader.
+function _offlineScriptSrcFetches(s, neutralized) {
+  // A block the exporter itself neutralized was RUNNABLE as authored, so its `src` was a real load
+  // and the element goes - a decoy that borrowed a reserved layer id must not buy itself the
+  // data-block treatment with a type this very export just rewrote.
+  if (neutralized && neutralized.has(s)) return true;
+  return _offlineIsRunnableScriptType(s.getAttribute("type"));
+}
+// Take the load away, and take no more than that. `src` loads on a script a browser RUNS, and an
+// `href` / `xlink:href` loads on an SVG one, so those elements go (dropping just the attribute from
+// an SVG script would start EXECUTING a body SVG2 says is ignored while `href` is present). On a
+// DATA BLOCK the same `src` is inert - the browser never requests it - so removing the element would
+// destroy an author's data over a dead attribute; the attribute alone goes, exactly as it does for
+// the inert `href` case below, which keeps the export free of network-looking references without
+// costing content. An ACTIVE-DATA block (`importmap`, `speculationrules`) is the one shape whose
+// `src` is left ALONE here: the active-data pass judges the BLOCK by it - a browser hard-fails a map
+// or a ruleset that carries one, so that pass removes the whole element - and clearing the attribute
+// first would hide it from that pass and leave a map the SOURCE browser ignored live in the export.
+// An exporter must never add behavior the source did not have. On an HTML script the `href` /
+// `xlink:href` spellings are inert too - they fetch nothing, in HTML or in XHTML - so deleting the
 // element would destroy an author's running code for a dead attribute; the attribute alone is
 // removed instead, which leaves the strict validator (whose flat tokenizer has no namespace to
-// consult and so reads all three attributes on every script) nothing to complain about. Returns
+// consult and so reads both those attributes on every script) nothing to complain about. Returns
 // whether the ELEMENT was removed, so one carrying two network attributes is counted exactly once.
-function _offlineStripScriptLoad(s) {
-  if (_offlineIsNetworkUrl(s.getAttribute("src"))) { s.remove(); return true; }
+function _offlineStripScriptLoad(s, neutralized) {
+  if (_offlineIsNetworkUrl(s.getAttribute("src"))) {
+    if (_offlineScriptSrcFetches(s, neutralized)) { s.remove(); return true; }
+    if (!_offlineActiveDataScriptType(s.getAttribute("type"))) s.removeAttribute("src");
+  }
   const loading = ["href", "xlink:href"].filter(function (attr) {
     return _offlineIsNetworkUrl(s.getAttribute(attr));
   });
@@ -19962,14 +20001,14 @@ function _offlineCountKeptSrcdocs(doc, preserved) {
   return _offlineQueryAll(doc, "details.cmh-srcdoc-export")
     .filter(function (el) { return mine.has(el); }).length;
 }
-function _stripOfflineNetworkLoads(doc) {
+function _stripOfflineNetworkLoads(doc, neutralized) {
   let dropped = 0;
   let clearedBases = 0;
   let clearedSrcdocs = 0;
   const preservedSrcdocs = [];
   const all = function (selector) { return _offlineQueryAll(doc, selector); };
   all("script").forEach(function (s) {
-    if (_offlineStripScriptLoad(s)) { dropped += 1; }
+    if (_offlineStripScriptLoad(s, neutralized)) { dropped += 1; }
   });
   // The inline-egress scan walks templates too. Template content does not execute ON ITS OWN, but
   // serialization preserves it verbatim and a second, benign-looking script can adopt the fragment
@@ -20166,7 +20205,7 @@ function _stripOfflineNetworkLoads(doc) {
   });
   return { dropped: dropped, clearedBases: clearedBases, clearedSrcdocs: clearedSrcdocs, preservedSrcdocs: preservedSrcdocs };
 }
-function _stripOfflineRichRenderers(doc) {
+function _stripOfflineRichRenderers(doc, neutralized) {
   // On a re-export of an already-offline document, remove any previously inlined library notice
   // comments so they are re-emitted exactly once (the inlined lib scripts below are stripped and
   // re-added the same way); otherwise each re-export would append another duplicate notice.
@@ -20187,6 +20226,13 @@ function _stripOfflineRichRenderers(doc) {
     if (_offlineIsInlinedLibScript(s)) s.remove();
   });
   doc.querySelectorAll("script[src]").forEach(function (s) {
+    // A renderer-shaped FILENAME is not on its own a reason to delete an element: the same
+    // type test the load strip applies decides this too, so a DATA BLOCK that merely points at a
+    // chart-shaped name keeps its body (its `src` fetches nothing, and the load strip below takes
+    // the dead attribute). Without this, an `application/json` block whose `src` ended in a
+    // chart bundle name was blessed by the gate and deleted here - exactly the gate/strip
+    // divergence CMH-OFFLINE-04 exists to prevent.
+    if (!_offlineScriptSrcFetches(s, neutralized)) return;
     const src = s.getAttribute("src") || "";
     if (/(^|\/)(?:mermaid(?:\.esm)?(?:\.min)?\.mjs|mermaid(?:\.min)?\.js|chart(?:\.umd)?(?:\.min)?\.js)(?:[?#]|$)/i.test(src) ||
         /\/chart\.js@/i.test(src)) {
@@ -20774,8 +20820,9 @@ async function _buildOfflineHtml(shareableHtml) {
   // "infrastructure" candidate and refuse a document that is perfectly fine.
   const vendoredPayload = _offlineResolveVendoredPayload(doc);
   const inlinedRichLibs = _offlineCaptureInlinedRichLibs(doc);
-  _stripOfflineRichRenderers(doc);
-  const stripped = _stripOfflineNetworkLoads(doc);
+  const neutralizedSet = new Set(neutralizedScripts);
+  _stripOfflineRichRenderers(doc, neutralizedSet);
+  const stripped = _stripOfflineNetworkLoads(doc, neutralizedSet);
   _stripOfflineEventHandlers(doc);
   // Last of the passes that read a fallback body, because it judges what those passes LEFT: a seam
   // the handler scrub or the CSS strip has just taken away is no longer a disagreement.

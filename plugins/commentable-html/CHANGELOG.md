@@ -4,6 +4,56 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.764.0] - 2026-08-06
+
+### Fixed
+
+- The self-contained gate no longer reports a DATA BLOCK's `src` as a network load (CMH-VAL-08).
+  HTML decides which scripts fetch a `src` by TYPE: "prepare the script element" classifies a
+  `<script>` whose type is neither a JavaScript MIME type nor `module` nor `importmap` nor
+  `speculationrules` as a data block and returns before the fetch step, and for the two remaining
+  keyword types the `src` step fires an error event and returns, because external import maps and
+  external speculation rule sets are not supported. So
+  `<script type="application/json" src="https://host/x.json">` requests nothing at all - yet the
+  loader rule read the `src` without consulting the type, refused the document, failed `--strict`
+  and withheld the `commentable-html-validated` stamp for a load that never happens. The predicate
+  is the type-only `_is_executable_js`, the one pinned to the exporter's own runnable-type test, so
+  the gate and the offline strip keep calling the same scripts loaders. That pin leaves a
+  deliberate, recorded RESIDUAL: a MIME-parameter type, `nomodule`, the legacy `event`+`for` pair, a
+  whitespace-only `type` and the `language` fallback are all scripts a modern browser does not run
+  whose `src` is still reported, and whose whole element the offline export still removes. Offline
+  mode also still rejects an `importmap` or `speculationrules` block through the active-data rule,
+  which is the one error an author acts on. Only `src` is decided by type - the SVG `href` /
+  `xlink:href` arm stays unconditional, since the validator's flat tokenizer has no namespace to
+  consult. CMH-VAL-25 inherits the verdict, so the same block inside an `<iframe srcdoc>` is clean
+  too.
+- Both sides now trim HTML's own ASCII whitespace class rather than each engine's default
+  (CMH-OFFLINE-04). JavaScript's `trim()` also removes NBSP and U+FEFF while Python's `str.strip()`
+  also removes U+001C-U+001F, so a `type="&#xFEFF;text/javascript"` was a runnable script to the
+  exporter and an inert data block to the validator - and once the type decides whether a `src` is a
+  load, that is a document the gate passes and the export then deletes. A browser trims ASCII
+  whitespace only, so both spellings are data blocks and both sides now say so; the cross-engine
+  parity test evaluates the real runtime function instead of re-implementing its normalization,
+  which is what had hidden the divergence.
+- The same false positive no longer reaches the CSP-predecessor rule (CMH-VAL-08). It counted a bare
+  `<script src>` placed before a policy `<meta>` as a fetching predecessor, so a head-placed inert
+  data block marked the policy late, the offline CSP requirement then saw no policy at all, and the
+  document was refused with `offline mode: missing Content-Security-Policy meta tag` for the very
+  same request no browser makes. A script's `src` is now read there through what EXECUTES.
+- Export Offline no longer deletes an inert data block over that same dead attribute
+  (CMH-OFFLINE-04). The strip removed the whole `<script>` element for any network `src`, so an
+  author's `<script type="application/json" src="...">` data lost its body along with the attribute
+  a browser never reads. It now removes only the ATTRIBUTE from a data block - exactly what it
+  already did for an inert `href` on an HTML script - and keeps removing a fetching script outright,
+  so the export still carries no network-looking reference and the gate and the strip agree by
+  construction. Two shapes keep the old treatment: an ACTIVE-DATA block keeps its `src` through that
+  pass, because `_offlineActiveDataBlockIsRemovable` judges an import map by whether it carries one
+  and clearing it first would have left a map the source browser IGNORED live in the export; and a
+  reserved-id block this export NEUTRALIZED is still removed whole, since it was runnable as
+  authored and must not earn the data-block treatment from a type the export itself just rewrote.
+  The RENDERER strip, which removes a chart or mermaid bundle by its FILENAME, asks the same question
+  for the same reason: a filename is not a reason to delete a data block that fetches nothing.
+
 ## [1.762.0] - 2026-08-06
 
 ### Changed

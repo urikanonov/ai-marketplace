@@ -126,6 +126,10 @@ def _srcdoc_network_findings(value, depth=1):
         for el in _find_tag_attrs_egress(text, tag):
             if tag == "link" and not _link_loads(el):
                 continue
+            # The nested verdict is the top-level one element for element, so an inert data
+            # block's `src` is no more a load in here than out there (CMH-VAL-08, #1144).
+            if tag == "script" and attr == "src" and not _is_executable_js(el):
+                continue
             val = el.get(attr, "")
             if not val:
                 continue
@@ -248,6 +252,17 @@ def _check_self_contained(html, parser):
         return None
     def _check_network_attr(tag, attrs, attr, srcset=False):
         if tag == "link" and attr == "href" and not _link_loads(attrs):
+            return
+        # A `<script>` whose type makes it a DATA BLOCK never fetches its `src` (CMH-VAL-08,
+        # #1144): HTML's "prepare the script element" returns before the fetch step, so
+        # reporting one refused a document for a request no browser makes. The predicate is the
+        # type-only, deliberately over-inclusive `_is_executable_js` rather than the spec-exact
+        # `script_code_runs`, because it is the one PINNED to the exporter's
+        # `_offlineIsRunnableScriptType`: the gate and the offline strip have to call the same
+        # scripts loaders (CMH-OFFLINE-04), and over-inclusion here over-reports rather than
+        # blesses. `href` / `xlink:href` are NOT gated on type at all - this tokenizer has no
+        # namespace to consult, and an SVG <script> has no data-block concept to read instead.
+        if tag == "script" and attr == "src" and not _is_executable_js(attrs):
             return
         val = attrs.get(attr, "")
         if not val:
