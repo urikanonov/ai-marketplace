@@ -49,27 +49,29 @@ _SAME_CONTEXT_TARGETS = frozenset(("", "_self", "_parent", "_top"))
 # The elements that DECLARE a named browsing context inside this document. A `target` naming one of
 # them navigates a context that already exists (an `<iframe name="win1">`), which gets no opener -
 # so the gate below must not call that reverse-tabnabbing. Names are matched EXACTLY, as HTML
-# matches a browsing-context name (only the four keywords are case-insensitive).
-_NAMED_CONTEXT_TAGS = ("iframe", "frame", "object")
+# matches a browsing-context name (only the four keywords are case-insensitive). The set itself is
+# collected by the document PARSER (`_DocParser.named_contexts`), which is namespace-aware and skips
+# inert `<template>` / declarative-shadow content: a name scan of the markup counted an `<iframe>` a
+# browser never instantiates, so a parked one made an unresolvable name look resolvable and silenced
+# this gate on a link that really does open a new auxiliary context.
 
 
-def _named_browsing_contexts(html):
-    """The browsing-context names this document declares."""
-    names = set()
-    for tag in _NAMED_CONTEXT_TAGS:
-        for el in _find_tag_attrs(html, tag):
-            if el.get("name"):
-                names.add(el["name"])
-    return names
-
-
-def _check_kql_blocks(html):
+def _check_kql_blocks(html, parser):
     errors, warnings = [], []
-    named_contexts = _named_browsing_contexts(html)
+    named_contexts = parser.named_contexts
+    # The document's first LIVE HTML `<base target>` - what an anchor with no `target` of its own
+    # inherits. Read off the document PARSER, not a name scan of the markup: the parser is
+    # namespace-aware and skips inert `<template>` / declarative-shadow content, so a `<base>` a
+    # browser never applies cannot decide this (see `_DocParser.base_targets`).
+    base_target = parser.base_targets[0] if parser.base_targets else None
     # 11c) "Run in Azure Data Explorer" links (class cmh-kql-run) must point at the ADX web UX over
     #      https and open safely. This fires ONLY on the explicit run-link class, so
-    #      it never false-positives on a plain KQL code block or a syntax example.
-    for a in _find_tag_attrs(html, "a"):
+    #      it never false-positives on a plain KQL code block or a syntax example. The anchors come
+    #      from the PARSER rather than a name scan for the same reason the two sets above do: a run
+    #      link parked in an inert `<template>` is one a browser never navigates, so inheriting the
+    #      document's `<base target>` on its behalf invented a warning - fatal under `--strict`.
+    for anchor in parser.anchors:
+        a = anchor["attrs"]
         if "cmh-kql-run" not in class_tokens(a.get("class")):
             continue
         href = a.get("href", "")
@@ -77,31 +79,52 @@ def _check_kql_blocks(html):
             warnings.append('a "cmh-kql-run" link does not point at https://dataexplorer.azure.com/ '
                             "(build it with tools/kusto_link.py): " + (href[:80] or "(empty href)"))
         # The condition is the one a BROWSER actually applies: does this target CREATE an auxiliary
-        # browsing context, whose `window.opener` points back at this document? HTML matches the
-        # four keywords ASCII case-insensitively and does NOT trim the value, so `_BLANK` is the
-        # keyword, a padded ` _blank` is a NAME, and a name that resolves to nothing in this
-        # document creates a new auxiliary context just as `_blank` does. A Python `==` against the
-        # literal `_blank` saw none of those, so a run link carrying no `rel` at all passed in
-        # silence (#1120). A name that DOES resolve - an `<iframe name="win1">` written in the same
-        # document - navigates a context that already exists and gets no opener, so it is exempt:
-        # warning there would be a false positive, and taking the advice would CHANGE behavior
-        # (`noopener` makes a named target stop reusing the frame and open a new tab instead).
+        # browsing context, whose `window.opener` points back at this document? The operand is the
+        # EFFECTIVE target HTML resolves (`effective_link_target`, the one reading the render-time
+        # stamper shares), not the raw attribute: an anchor with no `target` of its own inherits the
+        # document's first `<base target>`, and a name carrying both an ASCII tab-or-newline and a
+        # U+003C is coerced to `_blank`. HTML then matches the four keywords ASCII case-insensitively
+        # and does NOT trim the value, so `_BLANK` is the keyword, a padded ` _blank` is a NAME, and a
+        # name that resolves to nothing in this document creates a new auxiliary context just as
+        # `_blank` does. A Python `==` against the literal `_blank` saw none of those, so a run link
+        # carrying no `rel` at all passed in silence (#1120), and reading the raw attribute missed the
+        # two effective-target rules entirely (#1141). A name that DOES resolve - an
+        # `<iframe name="win1">` written in the same document - navigates a context that already
+        # exists and gets no opener, so it is exempt: warning there would be a false positive, and
+        # taking the advice would CHANGE behavior (`noopener` makes a named target stop reusing the
+        # frame and open a new tab instead).
         #
         # This gate is the ONLY reverse-tabnabbing control on a `cmh-kql-run` link: CMH-KQL-01 puts
         # the run link inside `figcaption.cm-skip`, and BOTH the render-time stamper
         # (`assets/js/31-links.js` returns early on `.cm-skip`) and `checks/links.py` (which skips a
         # skip-marked anchor) pass it by.
-        raw_target = a.get("target") or ""
+        own_target = a.get("target")
+        # Only an HTML anchor INHERITS: HTML's "get an element's target" is defined for an HTML
+        # `a`/`area`/`form`, so a foreign (SVG/MathML) run link inherits nothing - the same rule the
+        # render-time stamper applies. Without it a `<base target="_blank">` document warned about
+        # every foreign run link, which `--strict` turns into a hard failure.
+        inherited = None if anchor["foreign"] else base_target
+        raw_target = effective_link_target(own_target, inherited)
         target = _ascii_lower(raw_target)
         opens_auxiliary = (target not in _SAME_CONTEXT_TARGETS
                            and (target == "_blank" or raw_target not in named_contexts))
         if opens_auxiliary and "noopener" not in link_rel_tokens(a.get("rel")):
-            # `%r` because the value is authored text: the covered spellings include control
-            # characters (a tab, a newline, a vertical tab), and interpolating one raw would break
-            # the diagnostic across lines or drive the reader's terminal.
+            # Report the AUTHORED value and name the rule that turned it into the effective one, so
+            # the diagnostic points at markup the author can actually find: telling someone whose
+            # link carries no `target` at all that it is `target='_blank'` sends them looking for an
+            # attribute that is not there, and hides that a `<base target>` (or the `<`-coercion) is
+            # what decided it. `%r` because the value is authored text: the covered spellings
+            # include control characters (a tab, a newline, a vertical tab), and interpolating one
+            # raw would break the diagnostic across lines or drive the reader's terminal.
+            authored = own_target if own_target is not None else inherited
+            source = "target" if own_target is not None else "inherited <base target>"
+            if authored == raw_target:
+                shown = "%s=%r" % (source, authored[:40])
+            else:
+                shown = "%s=%r, which HTML coerces to %r" % (source, authored[:40], raw_target)
             warnings.append('a "cmh-kql-run" link opens an auxiliary browsing context '
-                            '(target=%r) without rel="noopener" (reverse-tabnabbing risk); '
-                            'add rel="noopener noreferrer"' % raw_target[:40])
+                            '(%s) without rel="noopener" (reverse-tabnabbing risk); '
+                            'add rel="noopener noreferrer"' % shown)
 
     # 11d) A framed KQL figure (figure.cmh-kql) must carry a working "Run in Azure Data Explorer"
     #      link (a real <a class="cmh-kql-run"> element) so the reader can open the query in ADX.

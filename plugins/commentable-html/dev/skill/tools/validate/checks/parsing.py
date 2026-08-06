@@ -331,6 +331,49 @@ def class_tokens(value):
     return set(html_ws_tokens(value))
 
 
+# HTML's "ASCII tab or newline" (Infra): U+0009 TAB, U+000A LF, U+000D CR - and nothing else. It is
+# the first half of the `<`-coercion below, written out as a literal class for the same reason the
+# `rel` separator class is: neither engine's own whitespace idea is this set (a Python `\s` and a JS
+# `\s` both take more, and Python's also takes U+001C-U+001F), so a shared rule cannot be spelled
+# with either. The JS twin is `_CMH_TARGET_COERCE_WS_RE` in `assets/js/31-links.js`, pinned to this
+# pattern as TEXT by the parity test.
+TARGET_COERCE_WS_RE = re.compile(r"[\t\n\r]")
+
+
+def effective_link_target(own, base):
+    """HTML's "get an element's target" - the target a BROWSER resolves for a hyperlink.
+
+    `own` is the anchor's own `target` attribute value or None when it has none; `base` is the value
+    of the document's FIRST `<base target>` or None. Returns the effective target, with the absent
+    value spelled as `""` (which HTML navigates the same as `_self`).
+
+    Two rules that reading the raw attribute does not model, and each is reachable here:
+
+    1. `<base target>` INHERITANCE. An anchor with no `target` of its own inherits the document's
+       first `<base target>`, so in a `<base target="_blank">` document a link whose `target`
+       attribute is absent still opens an auxiliary browsing context with a live `window.opener`.
+       A `<base>` is legal in a commentable document - the offline gate deliberately preserves its
+       `target` while acting on its `href` - so this is reachable rather than theoretical.
+    2. The `<`-COERCION. A target containing BOTH an ASCII tab-or-newline and a U+003C LESS-THAN SIGN
+       is not a usable navigable target name (it is what a dangling-markup injection produces), so
+       HTML replaces it with `_blank`. It applies AFTER the base lookup, so an inherited value is
+       coerced too. Both characters are required: `x<` on its own is an ordinary name.
+
+    The RUNTIME reader is the bundle's `_cmhEffectiveTarget` (`assets/js/31-links.js`), pinned to
+    this function as TEXT and over a corpus by the parity test, so the render-time
+    `rel="noopener noreferrer"` stamper and this gate cannot disagree about which links open a new
+    tab. What each side DOES with the answer still differs on purpose: the gate only WARNS, so it may
+    call an unresolvable NAME an auxiliary context, while the stamper MUTATES the document and stays
+    on the `_blank` keyword - adding `noopener` to a named target would stop it reusing the context
+    the author named and open a new tab instead.
+    """
+    target = own if own is not None else base
+    if target is None:
+        return ""
+    if TARGET_COERCE_WS_RE.search(target) and "<" in target:
+        return "_blank"
+    return target
+
 # The head-content set for the CSP view. `_HEAD_TAGS` above deliberately mirrors
 # `tools/authoring/_favicon.py`, so the three obsolete elements the "in head" insertion mode also
 # holds are added here rather than there: without them a `<basefont>`/`<bgsound>`/`<noframes>`
@@ -2048,6 +2091,25 @@ class _DocParser(_BrowserBoundaries):
         self.content_region_opened = False
         self.content_region_closed = False
         self.anchors = []        # [{"href", "target", "skip", "foreign", "in_root"}] per <a>
+        # The `target` of every LIVE HTML `<base target>`, in document order. The first is what an
+        # anchor with no `target` of its own inherits (HTML's "get an element's target"), so this
+        # must be the browser's view of "the document contains a base element", not a name scan:
+        # a `<base>` parked in an inert `<template>` or a declarative shadow root is not in the
+        # document tree at all, and one written under `<svg>`/`<math>` is a foreign element a
+        # browser never treats as a base (`base` is not a foreign BREAKOUT tag, so it stays there).
+        # A raw `_find_tag_attrs(html, "base")` saw all three, and an SVG `<base target="_self">`
+        # written before the real `<base target="_blank">` therefore masked it - the gate went
+        # silent on a run link a browser really does open in a new tab (#1141). Recorded here,
+        # after the template/shadow early return above, so both exclusions come for free.
+        self.base_targets = []
+        # The browsing-context NAMES this document really declares - the `name` of every LIVE HTML
+        # <iframe>/<frame>/<object>. A `target` naming one of these navigates a context that already
+        # exists, so it gets no opener and the reverse-tabnabbing gate must not warn about it. Read
+        # here for the same reason `base_targets` is: a name scan of the markup also saw an
+        # <iframe> parked in an inert <template> or written under <svg>/<math>, and one of those
+        # made an unresolvable name look resolvable - silencing the gate on a link that really does
+        # open a new auxiliary context.
+        self.named_contexts = set()
         self.metas = {}          # {meta name (lowercased): content} for <meta name content>
         # Every <meta http-equiv=content-security-policy> a browser really APPLIES, in document
         # order, as {"content", "late"}. Collected here rather than off the shared tag index
@@ -2320,6 +2382,10 @@ class _DocParser(_BrowserBoundaries):
             if "style" in ad:
                 self.template_inline_styles.append({"tag": tag, "value": ad.get("style", "")})
             return
+        if tag == "base" and ns == "html" and ad.get("target") is not None:
+            self.base_targets.append(ad["target"])
+        if tag in ("iframe", "frame", "object") and ns == "html" and ad.get("name"):
+            self.named_contexts.add(ad["name"])
         # NAMESPACE-AWARE (CMH-VAL-19). The LAYER's own markup is HTML markup: a browser loads a
         # stylesheet only from an HTML `<link>`, honors `src` only on an HTML `<script>` (an SVG
         # script loads from `href`/`xlink:href`, and MathML defines no script at all), and reads
@@ -2386,6 +2452,7 @@ class _DocParser(_BrowserBoundaries):
             # positive that is fatal under `--strict`) while an <a> under `<svg><desc>` or
             # `<svg><title>` was exempted though a browser really does stamp it.
             self.anchors.append({"href": ad.get("href"), "target": ad.get("target"),
+                                 "attrs": dict(ad),
                                  "skip": self._skip_ancestor() or own_skip,
                                  "foreign": ns != "html",
                                  "in_root": self._in_comment_root()})

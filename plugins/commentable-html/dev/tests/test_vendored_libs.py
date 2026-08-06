@@ -586,6 +586,11 @@ class RuntimeParityTests(unittest.TestCase):
         with open(path, "r", encoding="utf-8", newline="") as fh:
             return fh.read()
 
+    def _read_test(self, *parts):
+        path = os.path.join(_paths.DEV, "tests", *parts)
+        with open(path, "r", encoding="utf-8", newline="") as fh:
+            return fh.read()
+
     def _read_css(self, *parts):
         path = os.path.join(_paths.DEV, "assets", "css", *parts)
         with open(path, "r", encoding="utf-8", newline="") as fh:
@@ -2280,6 +2285,142 @@ class RuntimeParityTests(unittest.TestCase):
                              "must carry no hint (or the gate rejects the exported file) and must "
                              "keep every other relation (or an author's reference is lost)."
                              % (rel, js_kept, kept))
+
+    # (own `target` attribute or None, first `<base target>` value or None) -> the EFFECTIVE target
+    # HTML resolves. The two sides must agree on every row or the render-time stamp and the
+    # `cmh-kql-run` gate disagree about which links open an auxiliary browsing context.
+    _EFFECTIVE_TARGET_CORPUS = [
+        # The plain readings: the anchor's own value wins, absent inherits the base, and absent on
+        # both is the empty (current-context) value.
+        ("_blank", None), ("_self", None), ("", None), (None, None),
+        (None, "_blank"), (None, "_BLANK"), (None, "_self"), (None, "win1"), (None, ""),
+        # An OWN value wins over the base in both directions, including an explicitly empty one -
+        # HTML falls through to the base only when the attribute is ABSENT.
+        ("_self", "_blank"), ("_blank", "_self"), ("", "_blank"), ("win1", "_blank"),
+        # The `<`-coercion: BOTH an ASCII tab-or-newline and a U+003C, in either order, anywhere.
+        ("x\n<", None), ("<\tx", None), ("a\rb<c", None), ("<\n", None),
+        (None, "x\n<"),  # ...applied to an INHERITED value too
+        # ...and the near misses, which are ordinary names: one character without the other, and
+        # separators that are NOT an HTML ASCII tab-or-newline (a JS `\s` and a Python `\s` both
+        # take the vertical tab and the form feed; Python's also takes U+001C-U+001F, and a JS
+        # `\s` also takes NBSP, U+FEFF and the Unicode Zs class).
+        ("x<", None), ("x\ny", None), ("<", None), ("\n", None),
+        ("x\u000b<", None), ("x\u000c<", None), ("x\u00a0<", None), ("x\u001c<", None),
+        ("x\ufeff<", None), ("x\u2028<", None), ("x\u0085<", None),
+        (None, "x\u000b<"), (None, "x<"),
+        # Case is NOT folded by this reading - each side folds when it matches the keyword, so a
+        # fold here would be a second, divergent one. The padded and case-variant pseudo-keywords
+        # are here because the RUNTIME's keyword match is deliberately broader than HTML's (it
+        # trims and Unicode-lowercases the result, which only ever stamps MORE links): the shared
+        # reading must hand both sides the same value, and the broadening must live on one side
+        # only.
+        ("_BLANK", None), ("X\n<", None),
+        (" _blank ", None), (None, " _blank "), (None, "\t_BLANK\n"), (None, "_BLAN\u212a"),
+    ]
+
+    def _runtime_effective_target_source(self):
+        """The runtime's whole effective-target reading, as JS source, for evaluation in node.
+
+        Extracted as one contiguous region - the coercion class and the function together - because
+        reading only the class would keep passing after the function drifted.
+        """
+        source = self._read("31-links.js")
+        start = source.find("const _CMH_TARGET_COERCE_WS_RE")
+        self.assertNotEqual(start, -1,
+                            "the runtime no longer declares _CMH_TARGET_COERCE_WS_RE; the parity "
+                            "extraction is stale and must be re-pointed at what replaced it")
+        m = re.compile(r"function _cmhEffectiveTarget\(own, base\) \{.*?\n\}", re.S).search(source, start)
+        self.assertIsNotNone(m, "the runtime no longer declares _cmhEffectiveTarget after the "
+                                "coercion class; the parity extraction is stale")
+        region = source[start:m.end()]
+        self.assertEqual(region.count("{") - region.count("}"), 0,
+                         "the extracted effective-target region has unbalanced braces, so it was "
+                         "cut mid-function and the parity check would evaluate a truncated copy")
+        return region
+
+    def test_the_python_and_js_target_coercion_classes_are_textually_identical(self):
+        """The `<`-coercion whitespace class is a hand-copied literal in two languages, so pin its
+        TEXT.
+
+        Verdicts over a corpus cannot see a class that drifted on a character the corpus does not
+        carry, and this class exists precisely because neither engine's own whitespace is HTML's
+        "ASCII tab or newline".
+        """
+        source = self._read("31-links.js")
+        m = re.search(r"const _CMH_TARGET_COERCE_WS_RE = /(.*?)/;", source)
+        self.assertIsNotNone(m, "the runtime no longer declares _CMH_TARGET_COERCE_WS_RE; the parity "
+                                "pin must be re-pointed at whatever coerces a target now")
+        self.assertEqual(m.group(1), parsing.TARGET_COERCE_WS_RE.pattern,
+                         "the stamper coerces a target on %r while the validator coerces on %r; a "
+                         "character only one of them counts makes one side call a link a new tab "
+                         "the other reads as a named context"
+                         % (m.group(1), parsing.TARGET_COERCE_WS_RE.pattern))
+
+    def test_the_python_and_js_effective_target_readings_agree(self):
+        """The render-time stamper (JS) and the `cmh-kql-run` gate (Python) must resolve the SAME
+        effective target.
+
+        Run in node rather than re-implemented here, for the same reason the `rel` pair is: the two
+        engines disagree about whitespace, and an engine difference is exactly what this pins.
+        Skipped when node is absent, like the other node-gated checks.
+        """
+        expected = [parsing.effective_link_target(own, base)
+                    for own, base in self._EFFECTIVE_TARGET_CORPUS]
+        # The absent value is spelled "" on both sides, never None/null, so a caller can fold it.
+        for value in expected:
+            self.assertIsInstance(value, str)
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine parity check needs it")
+        payload = {"corpus": [list(pair) for pair in self._EFFECTIVE_TARGET_CORPUS]}
+        script = (
+            self._runtime_effective_target_source() + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);process.stdout.write(JSON.stringify("
+            "p.corpus.map(a=>_cmhEffectiveTarget(a[0]===null?null:a[0],a[1]===null?null:a[1]))));});"
+        )
+        proc = subprocess.run([node, "-e", script], input=json.dumps(payload),
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0,
+                         "node could not evaluate the effective-target reading: %s" % proc.stderr)
+        verdicts = json.loads(proc.stdout)
+        self.assertEqual(len(verdicts), len(self._EFFECTIVE_TARGET_CORPUS),
+                         "node returned %d verdicts for %d samples"
+                         % (len(verdicts), len(self._EFFECTIVE_TARGET_CORPUS)))
+        for (own, base), js_says, py_says in zip(self._EFFECTIVE_TARGET_CORPUS, verdicts, expected):
+            self.assertEqual(
+                js_says, py_says,
+                "target=%r with <base target>=%r resolves to %r in the runtime and %r in the "
+                "validator. A link only one of them calls _blank is either a new tab the gate "
+                "blesses without rel=noopener or a named context the stamper newly breaks."
+                % (own, base, js_says, py_says))
+
+    def test_the_python_and_js_parked_base_corpora_are_identical(self):
+        """The two readers' parked-`<base>` corpora are hand-copied markup lists, so pin their TEXT.
+
+        The effective-target parity test pins the pure COMBINE function, whose `base` operand is
+        already resolved. The resolution itself is now a real implementation on each side - the
+        validator's `_DocParser.base_targets` (parser state: namespace, template and shadow rules)
+        and the runtime's `querySelectorAll("base[target]")` plus a namespace filter - and nothing
+        makes them agree except being checked against the same document shapes. A shape added to one
+        list and forgotten in the other silently leaves one reader unchecked on it.
+        """
+        js = self._read_test("74-links.spec.js")
+        m = re.search(r"const PARKED_BASES = \[\n(.*?)\n\];", js, re.S)
+        self.assertIsNotNone(m, "74-links.spec.js no longer declares PARKED_BASES; the parity pin "
+                                "must be re-pointed at whatever corpus replaced it")
+        js_shapes = re.findall(r"^\s*'(.*?)',$", m.group(1), re.M)
+        self.assertEqual(len(js_shapes), len(m.group(1).strip().splitlines()),
+                         "a PARKED_BASES entry is not a single-quoted one-line literal, so the "
+                         "extraction read a partial corpus")
+        py = self._read_test("test_validate_kql.py")
+        m = re.search(r"PARKED_BASES = \(\n(.*?)\n    \)", py, re.S)
+        self.assertIsNotNone(m, "test_validate_kql.py no longer declares PARKED_BASES")
+        py_shapes = re.findall(r"^\s*'(.*?)',$", m.group(1), re.M)
+        self.assertEqual(js_shapes, py_shapes,
+                         "the runtime is checked against %r and the validator against %r; a shape "
+                         "only one of them stages is a `<base>` only one reader is known to read "
+                         "the way a browser does" % (js_shapes, py_shapes))
 
     def test_the_python_and_js_link_relation_tokenizers_are_textually_identical(self):
         """The `rel` separator class is a hand-copied literal in two languages, so pin its TEXT.
