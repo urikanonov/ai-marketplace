@@ -1764,6 +1764,25 @@ function typeSlug(type) {
   return type.replace(/[^a-z0-9]+/gi, "-");
 }
 
+// A DATA BLOCK carrying a network `src`. HTML's "prepare the script element" returns before the
+// fetch step for such a type, so the browser never requests it - the ELEMENT is an author's data and
+// must survive, while the dead attribute goes, so the export carries no network-looking reference
+// and its own --strict gate (which no longer reads that src as a load, CMH-VAL-08 / #1144) agrees.
+function inertSrcBlock(type) {
+  return '<script type="' + type + '" id="cmh-inert-src-' + typeSlug(type) + '" '
+    + 'src="https://evil.example/inert-' + typeSlug(type) + '.json">\n'
+    + '{"cmh-inert-src-body": "' + typeSlug(type) + '"}\n'
+    + "</script>";
+}
+// The same shape wearing a RENDERER-shaped filename. The renderer strip removes a chart/mermaid
+// bundle by its name, and a name is not a reason to delete a DATA BLOCK: this element fetches
+// nothing, so the gate passes it and the export must not silently take the author's data with it.
+const INERT_RENDERER_SRC_BLOCK =
+  '<script type="application/json" id="cmh-inert-chart-name" '
+  + 'src="https://cdn.example/cmh-inert-chart.umd.js">\n'
+  + '{"cmh-inert-chart-body": 1}\n'
+  + "</script>";
+
 // Built by concatenation rather than nested template literals: a template literal interpolating
 // another one confuses the spec-reference checker's title scanner, which then cannot see the test
 // titles defined after it.
@@ -1788,7 +1807,13 @@ const LEGACY_TYPE_CONTENT = [
     "/* cmh-legacy-chart-loader pulls chart.umd.js */",
     "</script>",
   ],
-  INERT_SCRIPT_TYPES.map((t) => scriptBlock(t, "cmh-inert-" + typeSlug(t), "inert-" + typeSlug(t) + ".js"))
+  INERT_SCRIPT_TYPES.map((t) => scriptBlock(t, "cmh-inert-" + typeSlug(t), "inert-" + typeSlug(t) + ".js")),
+  INERT_SCRIPT_TYPES.map(inertSrcBlock),
+  [
+    INERT_RENDERER_SRC_BLOCK,
+    // The control in the other direction: a script a browser RUNS goes entirely, src and all.
+    '<script type="text/x-javascript" id="cmh-runnable-src" src="https://evil.example/runnable-src.js"></script>',
+  ]
 ).join("\n");
 test("CMH-OFFLINE-04: the offline strips cover every executable script MIME type, not only the modern three", async ({ page }) => {
   test.setTimeout(90000);
@@ -1822,7 +1847,22 @@ test("CMH-OFFLINE-04: the offline strips cover every executable script MIME type
     for (const type of INERT_SCRIPT_TYPES) {
       expect(exportedHtml, `inert type ${type} is data, not code`).toContain(`cmh-inert-${typeSlug(type)}`);
       expect(exportedHtml, `inert type ${type} keeps its text`).toContain(`inert-${typeSlug(type)}.js`);
+      // ...and a network `src` on such a block is a DEAD attribute, not a load (CMH-VAL-08,
+      // #1144): the element is the author's data and stays, the attribute goes, so the export
+      // carries no network-looking reference and the strict gate has nothing to report either way.
+      expect(exportedHtml, `inert type ${type} keeps its data block`).toContain(`cmh-inert-src-${typeSlug(type)}`);
+      expect(exportedHtml, `inert type ${type} keeps its body`).toContain(`"cmh-inert-src-body": "${typeSlug(type)}"`);
+      expect(exportedHtml, `inert type ${type} loses the dead src`).not.toContain(`inert-${typeSlug(type)}.json`);
     }
+    // The control: a script a browser RUNS loses the whole element, not just the attribute.
+    expect(exportedHtml, "a runnable script with a network src goes entirely").not.toContain("cmh-runnable-src");
+    expect(exportedHtml, "a runnable script's src target").not.toContain("runnable-src.js");
+    // A RENDERER-shaped filename is not a reason to delete a data block either: the renderer strip
+    // removes a chart/mermaid bundle by name, and this element fetches nothing, so its body stays
+    // and only the dead attribute goes - otherwise the gate would bless a file the export mutates.
+    expect(exportedHtml, "a data block wearing a renderer filename keeps its element").toContain("cmh-inert-chart-name");
+    expect(exportedHtml, "...and its body").toContain('"cmh-inert-chart-body": 1');
+    expect(exportedHtml, "...and loses the dead src").not.toContain("cmh-inert-chart.umd.js");
     expect(networkLoadRefs(exportedHtml)).toEqual([]);
   } finally {
     fs.rmSync(staged.dir, { recursive: true, force: true });
@@ -3828,6 +3868,12 @@ const ACTIVE_DATA_TEMPLATE_CONTENT = [
   '<script type="importmap">{"scopes": {"https://cdn.example/scoped-beacon/": {"x": "./x.js"}}}</script>',
   '<script type="importmap">{"imports": {"broken": "./ok.js"} oops-invalid-json</script>',
   '<script type="importmap" src="cmh-external-map.json"></script>',
+  // The same shape on a NETWORK src, with a body that is entirely LOCAL. A browser ignores this map
+  // outright (its `src` step fires an error and returns), so the whole element must go: clearing
+  // only the dead attribute would hide it from the active-data pass and leave a LIVE map in the
+  // export that the source never had - and the strict gate, which reads the ORIGINAL attributes,
+  // rejects the same document, so keeping it would put the two sides in disagreement.
+  '<script type="importmap" id="cmhNetworkMap" src="https://evil.example/cmh-external-network-map.json">{"imports": {"local-only": "./cmh-network-map-body.js"}}</script>',
   // Local-only: preserved, exactly as a relative media reference is.
   '<script type="importmap" id="localMap">{"imports": {"local-lib": "./local-lib.js"}}</script>',
   // A MIME-parameter spelling is NOT the keyword type, so a browser treats it as inert data and
@@ -3901,6 +3947,11 @@ test("CMH-OFFLINE-04: the offline strips inspect speculationrules, importmap, an
     expect(exportedHtml, "a network scopes KEY is a reference too").not.toContain("scoped-beacon");
     expect(exportedHtml, "an unparseable map fails closed").not.toContain("oops-invalid-json");
     expect(exportedHtml, "an external import map is removed").not.toContain("cmh-external-map.json");
+    // The ELEMENT goes, not just the attribute: asserting the src string alone would pass even if
+    // the block survived with the attribute cleared, which is the shape that would make an ignored
+    // map live in the export.
+    expect(exportedHtml, "an external import map on a network src is removed outright").not.toContain("cmhNetworkMap");
+    expect(exportedHtml, "...and its local body goes with the element").not.toContain("cmh-network-map-body.js");
     expect(exportedHtml, "a template-parked network import map is removed").not.toContain("parked-map.js");
     // The local one is content and survives untouched, and so does the parameterized spelling,
     // which is inert data to a browser rather than an import map at all.
@@ -3918,12 +3969,13 @@ test("CMH-OFFLINE-04: the offline strips inspect speculationrules, importmap, an
     expect(exportedHtml).toContain("./benign.js");
     expect(exportedHtml).toContain(".benign { color: #123456; }");
     // Both quiet outcomes are named to the author rather than left to be discovered. The removed
-    // count is 4 rulesets (network, local, document-source, external) + 7 import maps (network,
-    // escaped, backslash, blob, scopes key, invalid, external) + the template-parked import map +
+    // count is 4 rulesets (network, local, document-source, external) + 8 import maps (network,
+    // escaped, backslash, blob, scopes key, invalid, external, external-on-a-network-src) + the
+    // template-parked import map +
     // the parked beacon + the nested beacon; the kept count is the two template-parked reserved-id
     // blocks (one at each depth).
     const toast = page.locator("#toast");
-    await expect(toast).toContainText("14 scripts that load, prefetch, or navigate to the network were removed.");
+    await expect(toast).toContainText("15 scripts that load, prefetch, or navigate to the network were removed.");
     await expect(toast).toContainText("2 scripts carrying a reserved commentable-html data id were kept as inert data.");
 
     const exportedPath = path.join(outDir, "offline-active-data.html");

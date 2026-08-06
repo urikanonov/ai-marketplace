@@ -1646,6 +1646,143 @@ class NewCheckTests(unittest.TestCase):
                 self.assertTrue(any("self-contained guarantee" in e and "<script %s" % attr in e
                                     for e in errors), (attr, errors))
 
+    # CMH-VAL-08 (#1144): a `<script>` whose type is neither a JavaScript MIME type nor `module`
+    # nor `importmap` nor `speculationrules` is a DATA BLOCK - HTML's "prepare the script element"
+    # returns BEFORE the fetch step - so its `src` is inert and no browser ever requests it.
+    # Reporting one refused a document for a load that never happens: `--strict` failed and the
+    # `commentable-html-validated` stamp was withheld over a dead attribute, which is the
+    # false-positive direction a gate cannot afford. Checked in BOTH modes, because offline mode
+    # reads the same loader rule.
+    def test_a_data_blocks_src_is_not_a_network_load(self):
+        for stype in ("application/json", "application/ld+json", "text/plain", "text/template",
+                      "text/x-handlebars-template", "text/babel", "text/vbscript"):
+            markup = ('<script type="%s" src="https://evil.example/x.json">{"a": 1}</script>'
+                      % stype)
+            for mode, doc in (("shareable", build(body=self._body(MAIN, markup))),
+                              ("offline",
+                               with_offline_mode(build(body=self._body(MAIN, markup))))):
+                with self.subTest(type=stype, mode=mode):
+                    errors, warnings = self._errs_warns(doc)
+                    # The whole document, not just the messages that echo the URL: a rejection that
+                    # stopped naming the host would otherwise satisfy a URL-filtered assertion while
+                    # still failing `--strict` and withholding the stamp.
+                    self.assertEqual(errors, [], errors)
+                    self.assertEqual([w for w in warnings if not validate.is_advisory(w)], [],
+                                     warnings)
+
+    # The control for the rule above, in the direction that matters: a type a browser RUNS still
+    # fetches its `src`, so widening nothing here is what keeps the guarantee real. The predicate is
+    # the exporter-pinned `_is_executable_js`, which reads the type's MIME ESSENCE and folds a
+    # whitespace-only type to the classic branch, so the shapes below are still reported even where
+    # `script_code_runs` (CMH-VAL-27) says a browser would not run them. That RESIDUAL is
+    # deliberate and is pinned here on purpose: the gate and the offline strip must call the same
+    # scripts loaders (CMH-OFFLINE-04), and a later move to the spec-exact predicate has to move
+    # BOTH sides - when it does, the residual cases below are the ones that change.
+    def test_an_executable_scripts_src_is_still_a_network_load(self):
+        runs = ("", "module", "text/javascript", "application/ecmascript",
+                "text/javascript1.5", "TEXT/JavaScript", "\ttext/javascript ")
+        residual = ("text/javascript; charset=utf-8", " ")
+        for stype in runs + residual:
+            attr = "" if stype == "" else ' type="%s"' % stype
+            markup = '<script%s src="https://evil.example/x.js"></script>' % attr
+            with self.subTest(type=stype, residual=stype in residual):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any("self-contained guarantee" in e and "evil.example" in e
+                                    for e in errors), (stype, errors))
+
+    # `speculationrules` and `importmap` are the two HTML KEYWORD types that are ACTIVE without
+    # being JavaScript, and NEITHER fetches through `src`: HTML's `src` step fires an error event at
+    # both, because external import maps and external speculation rule sets are unsupported (a
+    # ruleset arrives inline or through the `Speculation-Rules` response header). So the loader rule
+    # must not report either - offline mode still rejects the BLOCK through the active-data rule,
+    # and that error is the one an author acts on; a second, wrong error about a request no browser
+    # makes would only send them after a load that never happens.
+    def test_an_active_data_src_is_not_a_load_but_offline_still_rejects_the_block(self):
+        for stype in ("importmap", "speculationrules"):
+            markup = ('<script type="%s" src="https://evil.example/x.json"></script>' % stype)
+            with self.subTest(type=stype):
+                errors, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertEqual([e for e in errors if "evil.example" in e], [], errors)
+                self.assertEqual([w for w in warnings if "evil.example" in w], [], warnings)
+                offline, _ = self._errs_warns(
+                    with_offline_mode(build(body=self._body(MAIN, markup))))
+                self.assertTrue(any("offline mode" in e and stype in e for e in offline), offline)
+                self.assertEqual([e for e in offline if "loads over the network" in e], [], offline)
+
+    # The type gate is scoped to `src` ALONE. The SVG `href` / `xlink:href` spellings stay
+    # unconditional - this tokenizer has no namespace to consult - so a data-block TYPE must not
+    # smuggle one of those past the loader rule.
+    def test_the_data_block_carve_out_does_not_reach_the_svg_load_attributes(self):
+        for attr in ("href", "xlink:href"):
+            svg = ('<svg><script type="application/json" %s="https://evil.example/x.js">'
+                   "</script></svg>" % attr)
+            with self.subTest(attr=attr):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, svg)))
+                self.assertTrue(any("self-contained guarantee" in e and "<script %s" % attr in e
+                                    for e in errors), (attr, errors))
+
+    # The same false positive reached the CSP-predecessor rule, which decides whether a policy
+    # `<meta>` comes too late to be the document's guarantee. It counted a bare `<script src>` in
+    # the head as a fetching predecessor, so an inert data block parked before the policy marked it
+    # `late`, the offline CSP requirement then saw no policy at all, and the document was rejected
+    # with a different message for the very same request no browser makes.
+    def test_a_head_data_block_src_does_not_make_the_offline_policy_late(self):
+        doc = with_offline_mode(build(body=self._body(MAIN)))
+        block = ('<script type="application/json" id="cmhHeadData" '
+                 'src="https://evil.example/x.json">{"a": 1}</script>\n')
+        doc = doc.replace("<head>\n", "<head>\n" + block, 1)
+        # The fixture-shaped `replace` above is the only thing that puts the block before the
+        # policy, so a `build()` that ever emits `<head >` or CRLF would make this a silent no-op
+        # and the test would pass against the buggy code too. Fail loudly instead.
+        self.assertIn(block, doc, "the head insertion did not take - the fixture shape moved")
+        self.assertLess(doc.index(block), doc.index("Content-Security-Policy"),
+                        "the block must precede the policy meta or this tests nothing")
+        errors, _ = self._errs_warns(doc)
+        self.assertEqual([e for e in errors if "Content-Security-Policy" in e or "evil.example" in e],
+                         [], errors)
+
+    # The inverse control: a script a browser really RUNS, placed the same way, must still make the
+    # policy late. Without this the narrowing above could go all the way to "no script is ever a
+    # predecessor" and nothing would notice.
+    def test_a_head_executable_script_src_still_makes_the_offline_policy_late(self):
+        doc = with_offline_mode(build(body=self._body(MAIN)))
+        block = '<script src="https://evil.example/x.js"></script>\n'
+        doc = doc.replace("<head>\n", "<head>\n" + block, 1)
+        self.assertIn(block, doc, "the head insertion did not take - the fixture shape moved")
+        errors, _ = self._errs_warns(doc)
+        self.assertTrue(any("Content-Security-Policy" in e and "after an element that can fetch"
+                            in e for e in errors), errors)
+
+    # CMH-VAL-25 inherits the top-level verdict element for element, so the nested spelling of a
+    # data block's inert `src` is clean too, and the nested spelling of a live one is not.
+    def test_the_nested_read_inherits_the_data_block_verdict(self):
+        inert = ('&lt;script type=&quot;application/json&quot; '
+                 'src=&quot;https://evil.example/x.json&quot;&gt;&lt;/script&gt;')
+        errors, warnings = self._errs_warns(
+            build(body=self._body(MAIN, '<iframe srcdoc="%s"></iframe>' % inert)))
+        self.assertEqual(errors, [], errors)
+        self.assertEqual([w for w in warnings if not validate.is_advisory(w)], [], warnings)
+        live = ('&lt;script type=&quot;text/javascript&quot; '
+                'src=&quot;https://evil.example/x.js&quot;&gt;&lt;/script&gt;')
+        errors, _ = self._errs_warns(
+            build(body=self._body(MAIN, '<iframe srcdoc="%s"></iframe>' % live)))
+        self.assertTrue(
+            any('carries a nested <script src="https://evil.example/x.js">' in e
+                for e in errors), errors)
+        # ...and the nested arm is scoped to `src` exactly as the top-level one is: a data-block
+        # TYPE must not smuggle an SVG `href` / `xlink:href` past the nested rule either. Without
+        # this, dropping `attr == "src"` from the nested guard would pass every other test here,
+        # because the pre-existing nested SVG cases carry no `type` at all.
+        for attr in ("href", "xlink:href"):
+            svg = ('&lt;script type=&quot;application/json&quot; %s=&quot;'
+                   'https://evil.example/x.js&quot;&gt;&lt;/script&gt;' % attr)
+            with self.subTest(attr=attr):
+                errors, _ = self._errs_warns(
+                    build(body=self._body(MAIN, '<iframe srcdoc="%s"></iframe>' % svg)))
+                self.assertTrue(
+                    any('carries a nested <script %s="https://evil.example/x.js">' % attr in e
+                        for e in errors), (attr, errors))
+
     # A `speculationrules` or `importmap` block is ACTIVE but is not JavaScript, so the
     # executable-type predicate never looked at it: a speculation ruleset makes the browser
     # prefetch/prerender (a `"source": "document"` one needs no URL literal at all), and an import

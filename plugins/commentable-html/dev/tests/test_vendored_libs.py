@@ -1241,22 +1241,17 @@ class RuntimeParityTests(unittest.TestCase):
         implementation drops a type or gains one the other does not have.
         """
         source = self._read("68-export-offline.js")
-        start = source.find("function _offlineIsRunnableScriptType")
-        self.assertNotEqual(start, -1,
-                            "the runtime no longer defines _offlineIsRunnableScriptType; the "
-                            "parity check is stale and must be re-pointed at whatever replaced it")
-        body = source[start:source.find("\n}", start)]
-        patterns = re.findall(r"/\^((?:[^/\\]|\\.)*)\$/", body)
-        self.assertEqual(len(patterns), 2,
-                         "expected exactly 2 anchored type regexes in the runtime predicate, got "
-                         "%r - the extraction is stale" % (patterns,))
-        runtime_res = [re.compile("^" + p.replace("\\/", "/") + "$") for p in patterns]
-
-        def runtime_says_runnable(raw):
-            normalized = str(raw or "").split(";")[0].strip().lower()
-            if not normalized or normalized == "module":
-                return True
-            return any(rx.match(normalized) for rx in runtime_res)
+        body = self._runtime_fn(source, "_offlineIsRunnableScriptType")
+        # A structural guard beside the behavioural one below: the trim must stay the literal HTML
+        # ASCII class. `trim()` would pass most of the corpus and diverge only on the exotic
+        # spellings, so naming it here says WHY the literal is there to the next reader.
+        self.assertIn("[\\t\\n\\f\\r ]+", body,
+                      "the runtime predicate no longer trims the literal HTML ASCII whitespace "
+                      "class; `trim()` also takes NBSP and U+FEFF, which Python's str.strip() does "
+                      "not, and this predicate decides whether a script's `src` is a load")
+        self.assertNotIn(".trim()", body,
+                         "the runtime predicate is back on `trim()`, whose whitespace class "
+                         "differs from Python's in both directions")
 
         # The accepted list is written out LITERALLY rather than derived from `_JS_TYPES`: a corpus
         # built from the set under test shrinks with it, so removing a type would silently remove
@@ -1277,22 +1272,57 @@ class RuntimeParityTests(unittest.TestCase):
             # near misses and normalization
             "text/javascript1.6", "text/javascript1.", "text/ecmascript6", "javascript",
             "  TEXT/JavaScript  ", "text/javascript; charset=utf-8", "module; x=1",
+            # The WHITESPACE class, which the two engines' defaults disagree about in BOTH
+            # directions: JS `trim()` also takes NBSP and U+FEFF, Python's `str.strip()` also takes
+            # U+001C-U+001F and U+0085. A browser trims HTML ASCII whitespace only, so every one of
+            # these is a DATA BLOCK, and a divergence here is a document one side calls a loader and
+            # the other blesses - which, since this predicate decides whether a `src` is a load
+            # (#1144), is an element the export deletes after the gate has passed it.
+            "\ufefftext/javascript", "text/javascript\ufeff",
+            "\u001ctext/javascript", "text/javascript\u001f",
+            "\u00a0text/javascript", "text/javascript\u0085",
+            "\u2028text/javascript", "\u3000text/javascript",
+            # ...and the ASCII class itself, which both sides MUST trim.
+            "\ttext/javascript", "text/javascript\n", "\f\rtext/javascript ",
         })
         for raw in accepted:
-            self.assertTrue(runtime_says_runnable(raw),
-                            "the runtime predicate no longer runs %r, which the HTML JavaScript "
+            self.assertTrue(parsing._is_executable_js({"type": raw}),
+                            "the validator predicate no longer runs %r, which the HTML JavaScript "
                             "MIME type set says a browser executes" % raw)
         self.assertEqual(
             accepted, set(parsing._JS_TYPES),
             "the literal accepted-type list in this test and the validator's _JS_TYPES have "
             "diverged. Both are deliberate spellings of the HTML JavaScript MIME type set; move "
             "them together, or the corpus silently stops covering whatever was dropped.")
-        for raw in corpus:
+
+        # The REAL runtime function is evaluated in node rather than re-implemented here. A Python
+        # re-implementation of the normalization is what let the trim classes above diverge
+        # unnoticed: it could only ever prove what PYTHON does with the extracted regexes, and the
+        # step it re-implemented (`.trim()` vs `str.strip()`) was exactly the one that differed.
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine parity check needs it")
+        script = (
+            self._runtime_fn(source, "_offlineIsRunnableScriptType") + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);"
+            "process.stdout.write(JSON.stringify(p.map(_offlineIsRunnableScriptType)));});"
+        )
+        proc = subprocess.run([node, "-e", script], input=json.dumps(corpus),
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0,
+                         "node could not evaluate the runnable-type predicate: %s" % proc.stderr)
+        verdicts = json.loads(proc.stdout)
+        self.assertEqual(len(verdicts), len(corpus),
+                         "node returned %d verdicts for %d samples" % (len(verdicts), len(corpus)))
+        for raw, got in zip(corpus, verdicts):
             self.assertEqual(
-                runtime_says_runnable(raw), parsing._is_executable_js({"type": raw}),
-                "the runtime's _offlineIsRunnableScriptType and the validator's _JS_TYPES "
-                "disagree about %r. Update BOTH: a type only one of them runs is either an "
-                "unstripped executable script the gate blesses, or a false rejection." % raw)
+                got, parsing._is_executable_js({"type": raw}),
+                "the REAL JS engine's _offlineIsRunnableScriptType and the validator's "
+                "_is_executable_js disagree about %r. Update BOTH: a type only one of them runs is "
+                "either an unstripped executable script the gate blesses, or a false rejection - "
+                "and since this predicate decides whether a `src` is a load, a disagreement is an "
+                "element the export deletes after the gate has already passed it." % raw)
 
 
     def test_the_python_and_js_script_load_attributes_agree(self):
@@ -1320,6 +1350,76 @@ class RuntimeParityTests(unittest.TestCase):
                          "reads is either an unstripped remote loader the gate blesses, or an "
                          "exported file its own --strict run rejects."
                          % (runtime_attrs, tuple(resources.SCRIPT_LOAD_ATTRS)))
+
+    def test_the_offline_strip_leaves_an_active_data_blocks_src_for_the_active_data_pass(self):
+        """`_offlineStripScriptLoad` must not clear an active-data block's `src`.
+
+        `_offlineActiveDataBlockIsRemovable` decides an import map by `hasAttribute("src")`, and the
+        strip runs FIRST over every script, so clearing the attribute there hides it from the pass
+        that owns the block: an import map the SOURCE browser IGNORED (its `src` step fires an error
+        and returns) would be kept, and the export would carry it LIVE. An exporter must never add
+        behavior the source did not have, and the Python gate - which reads the ORIGINAL attributes -
+        rejects that same document, so the two would disagree about the same bytes (CMH-OFFLINE-04).
+        """
+        source = self._read("68-export-offline.js")
+        body = self._runtime_fn(source, "_offlineStripScriptLoad")
+        self.assertIn("_offlineActiveDataScriptType", body,
+                      "_offlineStripScriptLoad no longer consults the active-data type before "
+                      "clearing a src, so an import map that carries one can survive the export "
+                      "as a LIVE map the source browser ignored")
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine parity check needs it")
+        # The URL predicate is STUBBED rather than extracted: this test pins the TYPE branching, and
+        # `_OFFLINE_NETWORK_URL_RE` is assembled from four further constants whose extraction would
+        # add breakage that says nothing about the branch under test. The network-URL predicate has
+        # its own cross-engine parity test over its own corpus.
+        region = "\n".join([
+            self._runtime_const(source, "_OFFLINE_ACTIVE_DATA_TYPES"),
+            self._runtime_fn(source, "_offlineActiveDataScriptType"),
+            self._runtime_fn(source, "_offlineIsRunnableScriptType"),
+            self._runtime_fn(source, "_offlineScriptSrcFetches"),
+            'const _offlineIsNetworkUrl = (v) => /^https?:\\/\\//i.test(v || "");',
+            body,
+        ])
+        script = (
+            region + "\n"
+            + "const mk=(t)=>{const a={type:t,src:'https://evil.example/x.json'};"
+            "return {removed:false,getAttribute:(n)=>(n in a?a[n]:null),"
+            "hasAttribute:(n)=>(n in a),removeAttribute:(n)=>{delete a[n];},"
+            "remove(){this.removed=true;},attrs:a};};"
+            "const out={};['importmap','speculationrules','application/json','text/javascript']"
+            ".forEach((t)=>{const s=mk(t);const gone=_offlineStripScriptLoad(s);"
+            "out[t]={removedElement:gone||s.removed,keptSrc:'src' in s.attrs};});"
+            # A block the export itself neutralized: its type now READS as a data block, but it was
+            # runnable as authored, so the strip must still take the whole element.
+            "const n=mk('application/json');const nGone=_offlineStripScriptLoad(n,new Set([n]));"
+            "out.neutralized={removedElement:nGone||n.removed,keptSrc:'src' in n.attrs};"
+            "process.stdout.write(JSON.stringify(out));"
+        )
+        proc = subprocess.run([node, "-e", script], capture_output=True, text=True,
+                              encoding="utf-8")
+        self.assertEqual(proc.returncode, 0,
+                         "node could not evaluate the script-load strip: %s" % proc.stderr)
+        got = json.loads(proc.stdout)
+        for stype in ("importmap", "speculationrules"):
+            self.assertFalse(got[stype]["removedElement"],
+                             "the strip now deletes a %r element itself; the active-data pass owns "
+                             "that decision" % stype)
+            self.assertTrue(got[stype]["keptSrc"],
+                            "the strip cleared a %r block's src, hiding it from the active-data "
+                            "pass that judges the block by it" % stype)
+        self.assertFalse(got["application/json"]["removedElement"],
+                         "an inert data block's element must survive")
+        self.assertFalse(got["application/json"]["keptSrc"],
+                         "an inert data block's dead src must be removed")
+        self.assertTrue(got["text/javascript"]["removedElement"],
+                        "a script a browser runs must lose the whole element")
+        self.assertTrue(got["neutralized"]["removedElement"],
+                        "a block THIS export neutralized was runnable as authored, so its network "
+                        "src is a real load and the element must go - a decoy that borrowed a "
+                        "reserved layer id must not earn the data-block treatment from a type the "
+                        "export itself just rewrote")
 
     # A browser removes leading C0 controls and spaces (U+0000-U+0020) before it parses a URL, so a
     # value padded with those still loads while one padded with NBSP or U+FEFF does not resolve as a
@@ -2630,6 +2730,28 @@ class RuntimeParityTests(unittest.TestCase):
         ("text/javascript", ""),
         ("", ""),
     ]
+
+    def _runtime_const(self, source, name):
+        """One runtime `const NAME = [...];` declaration, as JS source, for evaluation in node."""
+        m = re.search(r"^const %s = \[.*?\];$" % re.escape(name), source, re.M)
+        self.assertIsNotNone(m, "the runtime no longer declares %s on one line; the parity "
+                                "extraction is stale and must be re-pointed at whatever replaced "
+                                "it" % name)
+        return m.group(0)
+
+    def _runtime_fn(self, source, name):
+        """One runtime function, as JS source, for evaluation in node.
+
+        Extracted rather than re-implemented in Python: a re-implementation keeps passing after the
+        runtime drifts, which is the whole failure the parity tests exist to catch.
+        """
+        start = source.find("function %s(" % name)
+        self.assertNotEqual(start, -1,
+                            "the runtime no longer defines %s; the parity extraction is stale and "
+                            "must be re-pointed at whatever replaced it" % name)
+        end = source.find("\n}", start)
+        self.assertNotEqual(end, -1, "could not find the end of %s" % name)
+        return source[start:end + 2]
 
     def _runtime_active_data_source(self):
         """The exporter's whole active-data decision, as JS source, for evaluation in node.
