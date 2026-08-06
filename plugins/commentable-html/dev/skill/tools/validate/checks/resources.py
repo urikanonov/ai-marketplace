@@ -148,9 +148,14 @@ CSS_NETWORK_IMAGE_SET_RE = re.compile(
     re.IGNORECASE | re.ASCII)
 # An unquoted one of these ends a CSS declaration or is markup, so the scan stops there. A `<` or
 # `>` inside a QUOTE is a legal CSS string character, so it only stops the scan on the SECOND
-# reading below - the one used when the list never closed.
+# reading below - the one used when the list never closed. A NEWLINE inside a quote is different
+# again: an unescaped LF, CR or FF makes a bad-string token, so the declaration is dropped and the
+# string does not continue. Reading on past it let a broken earlier declaration swallow a later
+# valid rule - and with it a real remote candidate the browser does fetch, because it recovers at
+# the `}` (raised by the Copilot reviewer on this PR).
 _CSS_IMAGE_SET_MARKUP = "<>"
 _CSS_IMAGE_SET_STOP = "<>;{}"
+_CSS_BAD_STRING = "\n\r\f"
 # A candidate is read ANCHORED at its own start, exactly as `CSS_NETWORK_URL_RE` anchors immediately
 # after `url(` and its optional quote. Searching the args string for a network prefix ANYWHERE
 # instead was wrong in both directions: it reported a bare `data:image/svg+xml,<svg
@@ -176,6 +181,8 @@ def _css_image_set_scan(text, start, markup_ends_a_string):
         if quote:
             if ch == quote:
                 quote = ""
+            elif ch in _CSS_BAD_STRING:
+                return i, False
             elif markup_ends_a_string and ch in _CSS_IMAGE_SET_MARKUP:
                 return i, False
         elif ch in "'\"":

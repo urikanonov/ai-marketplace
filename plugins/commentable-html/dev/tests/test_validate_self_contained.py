@@ -2239,7 +2239,18 @@ class NewCheckTests(unittest.TestCase):
                 errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
                 self.assertEqual([e for e in errors if "image-set(" in e], [], (value, errors))
 
-    # The DECLARED gaps, pinned as controls so each is a decision rather than an accident (#1166).
+    # An unescaped LF, CR or FF inside a CSS string makes a BAD-STRING token: the browser drops that
+    # declaration and recovers at the `}`, so a LATER rule still applies and still fetches. Reading
+    # the string on past the newline let the broken declaration swallow that later rule, and the
+    # remote candidate in it went unreported (raised by the Copilot reviewer on this PR).
+    def test_a_bad_string_token_does_not_swallow_a_later_remote_candidate(self):
+        markup = ('<style>.a { background-image: image-set("broken\n'
+                  "} .b { background-image: image-set('//evil.example/x.png' 1x) }</style>")
+        errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+        self.assertTrue(any("style block contains a network image-set(" in e for e in errors),
+                        errors)
+
+
     # `image-set()` takes a `<string>`, and `var()` substitution happens on the token stream BEFORE
     # the property grammar is read, so `image-set(var(--u) 1x)` with `--u: "https://..."` really
     # does fetch - unlike `url(var(--x))`, which no browser supports because `url(` is a url-token

@@ -722,6 +722,7 @@ class DeckValidateTests(unittest.TestCase):
             "image-set(",                                    # nothing after the open paren
             "image-set('x' 1x); background:image-set('//evil/y' 1x)",   # two lists
             "a { background: image-set('//evil/x' 1x) } b { color: red }",
+            'a { background: image-set("broken\n} b { background: image-set(\'//evil/x\' 1x) }',
         )
         for text in corpus:
             with self.subTest(text=text):

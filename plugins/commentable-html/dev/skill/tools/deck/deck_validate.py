@@ -92,6 +92,7 @@ _CSS_IMAGE_SET_FALLBACK_RE = re.compile(
 _IMAGE_SET_OPEN_FALLBACK_RE = re.compile(r"image-set\(", re.IGNORECASE | re.ASCII)
 _IMAGE_SET_FALLBACK_MARKUP = "<>"
 _IMAGE_SET_FALLBACK_STOP = "<>;{}"
+_IMAGE_SET_FALLBACK_BAD_STRING = "\n\r\f"
 _CSS_IMAGE_SET_RE = CSS_NETWORK_IMAGE_SET_RE
 # The characters the URL parser removes from a reference that CSS also permits inside a quoted
 # string. It removes ASCII tab (and LF/CR) from ANYWHERE, but every OTHER C0 control only from the
@@ -130,6 +131,8 @@ def _scan_image_set_fallback(text, start, markup_ends_a_string):
         if quote:
             if ch == quote:
                 quote = ""
+            elif ch in _IMAGE_SET_FALLBACK_BAD_STRING:
+                return i, False
             elif markup_ends_a_string and ch in _IMAGE_SET_FALLBACK_MARKUP:
                 return i, False
         elif ch in "'\"":

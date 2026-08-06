@@ -462,8 +462,8 @@ def _check_self_contained(html, parser):
     # `if`s, not an `elif`: a body is usually the whole inlined stylesheet, so suppressing it on a
     # `url()` hit hid a network `image-set()` in an unrelated RULE and the author learned about the
     # second reference only after fixing the first. One DECLARATION that spells both is still
-    # reported once, because `css_network_image_set` blanks the `url(...)` spans the other reading
-    # already owns.
+    # reported once, because `css_network_image_set` reads candidate by candidate and skips one that
+    # IS a complete `url(...)` function token - the other reading's to report.
     def _css_error(offline_text, shareable_text):
         errors.append(("offline mode: " + offline_text) if offline_mode else shareable_text)
     for style in parser.styles + parser.template_styles + _find_noscript_styles(html):
