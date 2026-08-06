@@ -99,6 +99,20 @@ def _strip_tags(html: str) -> str:
     return re.sub(r"<[^>]+>", " ", html)
 
 
+def _slide_classes(pairs):
+    """The class tokens a parsed start tag names, IN ORDER.
+
+    The ORDERED shared reading, not `str.split()`: the caller REWRITES the class attribute from
+    these tokens, so they go back in the order the author wrote them - and Python's split would
+    turn a `class="a\u000bb"` (ONE class to a browser) into two real classes on the way through.
+    """
+    return _browser_attrs.html_ws_tokens(next((v for n, v in pairs if n == "class"), None))
+
+
+def _is_slide(pairs):
+    return "slide" in _slide_classes(pairs)
+
+
 def _slide_id_attr(pairs):
     """The `data-slide-id` a parsed start tag names, or None when it names none.
 
@@ -122,7 +136,13 @@ def prepare_slides(fragment: str):
         # leaves it out of `taken` and lets `slide_id()` mint it again - a deck the scaffold's own
         # deck contract then refuses as a duplicate. It also decodes character references and
         # ignores a `data-slide-id=` spelled inside another attribute's quoted value.
-        sid = _slide_id_attr(_browser_attrs.raw_attrs_pairs(m.group(1)))
+        pairs = _browser_attrs.raw_attrs_pairs(m.group(1))
+        # Only a SLIDE's id is reserved, which is the only id `deck_validate` reads. Reserving an
+        # unrelated `<section>`'s would push a real slide onto the `-2` branch and make that slide's
+        # supposedly stable id depend on content that is not a slide at all.
+        if not _is_slide(pairs):
+            continue
+        sid = _slide_id_attr(pairs)
         if sid:
             taken.add(sid)
     ids = []
@@ -136,11 +156,7 @@ def prepare_slides(fragment: str):
         # decodes character references (`class='sl&#105;de'` IS a slide to a browser), keeps the
         # FIRST of a duplicated attribute as HTML5 does, and reads all three quoting forms.
         pairs = _browser_attrs.raw_attrs_pairs(attrs)
-        cls_value = next((v for n, v in pairs if n == "class"), None)
-        # The ORDERED shared reading, not `str.split()`: this REWRITES the class attribute below,
-        # so the tokens go back in the order the author wrote them - and Python's split would turn
-        # a `class="a\u000bb"` (ONE class to a browser) into two real classes on the way through.
-        classes = _browser_attrs.html_ws_tokens(cls_value)
+        classes = _slide_classes(pairs)
         if "slide" not in classes:
             return m.group(0)  # not a slide section; leave untouched
         sid = _slide_id_attr(pairs)

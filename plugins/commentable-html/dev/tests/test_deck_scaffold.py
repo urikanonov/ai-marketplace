@@ -236,6 +236,20 @@ class DeckScaffoldTests(unittest.TestCase):
             out = self._make("--content", frag, "--force")
             self.assertEqual(re.findall(r'data-slide-id="([^"]+)"', out), [minted, shadowed], first)
 
+    def test_a_non_slide_section_does_not_reserve_a_slide_id(self):
+        # Only a SLIDE's id is reserved. `deck_validate` reads ids from `section.slide` alone, so
+        # reserving an unrelated section's would push a real slide onto the `-2` branch and make
+        # that slide's supposedly stable id depend on content that is not a slide - deleting the
+        # unrelated section would then silently rename the slide.
+        body = "<p>two</p>"
+        minted = slide_id(deck_scaffold._strip_tags(body), set())
+        frag = os.path.join(self.tmp, "nonslide.html")
+        Path(frag).write_text(
+            '<section data-slide-id="%s"><p>not a slide</p></section>\n'
+            '<section class="slide">%s</section>\n' % (minted, body), encoding="utf-8")
+        out = self._make("--content", frag, "--force")
+        self.assertIn('<section class="slide active" data-slide-id="%s">' % minted, out)
+
     def test_deterministic_ids(self):
         frag = os.path.join(self.tmp, "frag.html")
         Path(frag).write_text('<section class="slide"><p>stable body</p></section>\n', encoding="utf-8")
