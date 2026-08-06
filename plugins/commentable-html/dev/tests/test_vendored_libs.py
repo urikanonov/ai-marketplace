@@ -116,9 +116,13 @@ _JS_ID_CHAR = re.compile(r"[\w$]", re.UNICODE)
 # delimiter stack, and reading division as a regex swallows code - so the walk reports a mismatched
 # or unwound delimiter as a PROBLEM rather than carrying on quietly.
 _JS_REGEX_AFTER_WORD = frozenset((
-    "return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "throw",
+    "return", "typeof", "instanceof", "in", "new", "delete", "void", "throw",
     "case", "do", "else", "yield", "await",
 ))
+# `of` is CONTEXTUAL: a keyword only in a `for (... of ...)` header, and an ordinary identifier
+# anywhere else. So `of / 2` is division and `for (const m of /re/.exec(s))` is a regex, and the
+# walk has to know which paren it is inside to tell them apart.
+_JS_REGEX_AFTER_WORD_IN_FOR = frozenset(("of",))
 _JS_REGEX_AFTER_PUNCT = frozenset("([{,;=:?!&|+-*%~^<>}")
 # Where a DECLARATION may start. `function` and `class` are also EXPRESSIONS
 # (`const f = function g() {}` binds `g` only inside itself, and `c ? function g() {} : null` is
@@ -246,6 +250,8 @@ def _js_shared_scope_declarations(source):
     in_declarator_list = False
     declarator_kind = ""
     in_template_text = False
+    pending_for = False       # a `for` whose `(` is about to open a loop header
+    for_parens = set()        # stack depths of the `(`s that are `for` headers
 
     def skip_trivia(j):
         while j < n:
@@ -345,7 +351,9 @@ def _js_shared_scope_declarations(source):
             i += 1
             continue
         if ch == "/":
-            if prev in _JS_REGEX_AFTER_PUNCT or prev in _JS_REGEX_AFTER_WORD or prev == "":
+            in_for_header = bool(stack) and (len(stack) - 1) in for_parens
+            if prev in _JS_REGEX_AFTER_PUNCT or prev in _JS_REGEX_AFTER_WORD or prev == "" \
+                    or (in_for_header and prev in _JS_REGEX_AFTER_WORD_IN_FOR):
                 j = i + 1
                 in_class = False
                 closed = False
@@ -379,6 +387,9 @@ def _js_shared_scope_declarations(source):
             i += 1
             continue
         if ch in "([":
+            if ch == "(" and pending_for:
+                for_parens.add(len(stack))
+            pending_for = False
             stack.append(ch)
             prev = ch
             line_break = False
@@ -386,6 +397,7 @@ def _js_shared_scope_declarations(source):
             continue
         if ch in ")]}":
             opener = stack.pop() if stack else ""
+            for_parens.discard(len(stack))
             if not closes(opener, ch):
                 problems.append((i, "a %r closed a %r" % (ch, opener or "nothing")))
             if ch == "}" and opener == "${":
@@ -473,6 +485,7 @@ def _js_shared_scope_declarations(source):
                 # does separate declarators rather than sitting inside a call or an array.
                 declarations.append((declarator_kind, word, i))
             pending_async = word == "async" and shared and statement
+            pending_for = word == "for"
             # A keyword used as a PROPERTY (`obj.of`, `obj.return`) must not put the walk in a
             # value position, or the next `/` is read as a regex and swallows the line.
             prev = "'member'" if member else word
@@ -5624,6 +5637,12 @@ class RuntimeParityTests(unittest.TestCase):
         ("a trailing comment holding a brace after the wrapper closes",
          "(() => {\nfunction f() {}\n})();\n// a trailing note with a { brace\n",
          set(), {"f"}),
+        ("`of` as a plain identifier before a division, not a for-of keyword",
+         "(() => {\nvar first = of / 2, dup = 1 / divisor;\nvar dup = 2;\n})();",
+         {"dup"}, {"first", "dup"}),
+        ("a regex in a for-of header, where `of` IS the keyword",
+         "(() => {\nfor (const m of /a/.exec(s)) { use(m); }\nfunction dup() {}\n"
+         "function dup() {}\n})();", {"dup"}, {"dup"}),
         ("a line comment ended by U+2028, which also terminates one",
          "(() => {\n// note\u2028function dup() {}\nfunction dup() {}\n})();",
          {"dup"}, {"dup"}),
