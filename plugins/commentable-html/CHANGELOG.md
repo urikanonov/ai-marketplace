@@ -4,6 +4,47 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.781.0] - 2026-08-06
+
+### Fixed
+
+- The comments side pane's last controls below the repo-wide 44px touch target now meet it on a
+  phone (CMH-RESP-15) - the Export- and More-menu items and the card `edit` action on every phone
+  viewport, and the search row's field and clear (X) button on any phone viewport at least 360px
+  TALL (below that the row is deliberately left as it is; see the gate below). Measured at a 320px
+  viewport in every density preset, the search field was 33.5/30.3/36.8px tall, its clear (X) button
+  24.8/22.1/27.5px square, every menu item 31.4/28.5/35.3px tall - including `Clear all comments`,
+  the layer's most destructive action, behind a menu toggle that already got 44px - and the card
+  `edit` action 41.9/40.3/43.0px WIDE while its height was already 44px, so the pane shipped two
+  different definitions of the same target. Each control is enlarged the way its own cost allows.
+  The menu items grow for real: the menus are absolutely-positioned overlays, so this costs the
+  sidebar header nothing, and the enlarged menus still fit a 320x720 portrait phone without becoming
+  scrollers (on a 640x320 landscape phone their `max-height` cap already made them scrollers before
+  this change; what is promised there is that every item can still be scrolled fully into view). The
+  card `edit` action takes a `min-width` floor beside its existing `min-height`, its row is allowed
+  to wrap so a long localized or `(edited)` timestamp beside it costs a second line rather than an
+  action pushed past the card's edge (the actions keep an auto start margin so they stay end-aligned
+  on that wrapped line, which also keeps `delete` clear of the `Reply` button below it), and
+  CMH-RESP-07's wording is corrected to the both-axis standard so the specs agree. The search field
+  is the one control here that cannot take an overlaid
+  tap target - a replaced element renders no `::after` - so it grows for real and the row grows with
+  it, which is header height spent out of the comment list. On a 640x320 landscape phone that list is
+  already at its limit with this row and the identity editor both open (a ~22px layout box of which
+  only ~6.5px is visible, with the pane already overflowing - a pre-existing defect now tracked as
+  issue #1180), and forcing the field to 44px there takes the last of the visible list. The full
+  target is therefore gated on the viewport having the room (`min-height: 360px`, which clears every
+  phone the repo targets except the 320px-wide one rotated; at 640x360 five of the six measured
+  states hold the whole list with no pane overflow and the sixth overflows by 14px rather than 47):
+  above the gate the row is enlarged, below it it keeps exactly the height it has today while both
+  controls still take the WCAG 2.5.8 AA 24x24 floor, so only the 2.5.5 AAA target is waived and never
+  AA. Both floors are `min-width`/`min-height` rather than a flat size, so a host
+  document with a large root font-size keeps the larger button it already had. CMH-RESP-14's
+  landscape guard is extended (not duplicated) with a search-open dimension, a better metric and the
+  threshold measurement: it now pins the comment list's layout height, its VISIBLE height, and a
+  ceiling on the pane's own vertical overflow in all twelve 640x320 states, the gate's existence
+  there, and the six search-open states at 640x360; the gate's THRESHOLD is pinned by a 320x359 /
+  320x360 boundary pass. The desktop layout is unchanged and the test pins that too.
+
 ## [1.780.0] - 2026-08-06
 
 ### Fixed
