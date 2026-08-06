@@ -131,6 +131,12 @@ _JS_STATEMENT_AFTER_WORD = frozenset(("else", "do", "try", "finally"))
 # Word tokens that CONTINUE an expression, so a line break in front of one does not end the
 # statement: `const a = {}\n instanceof Object, b = 2` is one declarator list, not two statements.
 _JS_CONTINUES_EXPRESSION = frozenset(("in", "instanceof", "of"))
+# ... and word tokens that DEMAND an operand, so a line break after one does not end a statement
+# either: `const a = new\n Foo(), b = 2` is still one list. The restricted productions (`return`,
+# `throw`, `yield`) are deliberately absent - ASI does apply after those.
+_JS_NO_ASI_AFTER_WORD = frozenset((
+    "typeof", "instanceof", "in", "of", "new", "delete", "void", "await",
+))
 # ASI: a line break ends a statement UNLESS the previous token demands a continuation. So a
 # `function` on a fresh line after `const a = 1` (no semicolon - legal, and #1183's shape could
 # hide behind it) is still a declaration, while the one after `const handler =` is not. A postfix
@@ -153,6 +159,15 @@ def _js_line_end(source, i):
     ends = [source.find(brk, i) for brk in _JS_LINE_BREAKS]
     found = [at for at in ends if at >= 0]
     return min(found) if found else -1
+
+
+def _js_ends_statement(prev):
+    """Whether the token before a line break can END a statement, the other half of ASI.
+
+    `const a = one +` cannot, so the break after it does not end the declarator list; `const a =
+    one` can. Both halves have to agree before a break is a statement boundary.
+    """
+    return prev not in _JS_NO_ASI_AFTER and prev not in _JS_NO_ASI_AFTER_WORD
 
 
 def _js_starts_statement(source, i):
@@ -302,13 +317,13 @@ def _js_shared_scope_declarations(source):
                 i = end + 2
             continue
         # Reached only by a real token, never by trivia. A declarator list ends at a real ASI
-        # boundary, and ASI is decided by the CURRENT token, not the previous one: after a wrapped
-        # initializer (`var a = one\n || two, dup = 2;`) the next token plainly CONTINUES the
-        # expression, so the list is still open and `dup` is still a declaration. Only a token
-        # that cannot continue an expression starts a new statement here. (A bare `}` or `)` does
-        # not end the list either - `const a = {} instanceof Object, dup = 2;` is one list.)
+        # boundary, and ASI needs BOTH sides of the break: the token before it must be able to END
+        # a statement (`one +` cannot), and the token after it must not be able to CONTINUE the
+        # expression (`|| two`, `.prop`, `[0]` all can). Getting either half wrong drops every
+        # declarator after a wrapped initializer, which is a silent under-report.
         if in_declarator_list and line_break and scope_key is not None \
-                and tuple(stack) == scope_key and _js_starts_statement(source, i):
+                and tuple(stack) == scope_key and _js_ends_statement(prev) \
+                and _js_starts_statement(source, i):
             in_declarator_list = False
         if ch in "'\"":
             j = i + 1
@@ -410,7 +425,7 @@ def _js_shared_scope_declarations(source):
                 code_after_unwind = True
             shared = scope_key is not None and tuple(stack) == scope_key
             statement = (prev in _JS_STATEMENT_HEAD or prev in _JS_STATEMENT_AFTER_WORD
-                         or (line_break and prev not in _JS_NO_ASI_AFTER))
+                         or (line_break and _js_ends_statement(prev)))
             if shared and statement:
                 # A LABEL, not an expression or a declaration: `retry: function dup() {}` declares
                 # `dup` in this scope just as a bare declaration would (sloppy mode), and `let:
@@ -5554,6 +5569,15 @@ class RuntimeParityTests(unittest.TestCase):
         ("a statement that only LOOKS like a declarator continuation",
          "(() => {\nlet first = 1\nlog(first)\nvalue, notADeclaration = 2;\n})();",
          set(), {"first"}),
+        ("a declarator list wrapping AFTER a binary operator (the other half of ASI)",
+         "(() => {\nvar a = one +\n  two, dup = 1;\nfunction dup() {}\n})();",
+         {"dup"}, {"a", "dup"}),
+        ("a declarator list wrapping after a keyword that demands an operand",
+         "(() => {\nconst a = new\n  Thing(), dup = 2;\nconst dup = 3;\n})();",
+         {"dup"}, {"a", "dup"}),
+        ("a declarator list wrapping after typeof",
+         "(() => {\nconst a = typeof\n  value, dup = 2;\nconst dup = 3;\n})();",
+         {"dup"}, {"a", "dup"}),
         ("a declarator list whose initializer WRAPS onto a continuation line",
          "(() => {\nconst a = one\n  || two, dup = 2;\nconst dup = 3;\n})();",
          {"dup"}, {"a", "dup"}),
