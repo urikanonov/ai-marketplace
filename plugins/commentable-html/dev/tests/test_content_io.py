@@ -398,6 +398,64 @@ class KqlEditLoopTests(_DocCase):
         self.assertEqual(kusto_link.decode_query(payload), "StormEvents | take 99",
                          "the Run button must not execute the pre-edit query")
 
+    def test_a_kql_figure_is_selected_by_class_token_not_by_substring(self):
+        # CMH-VAL-21 clause 11 (#1139): which figures `refresh_kql_links` rebuilds is decided by
+        # the shared class reading, not by a `class="[^"]*cmh-kql[^"]*"` substring. That regex
+        # over-matched (a `my-cmh-kql-ish` figure), and - being double-quote only - never saw a
+        # single-quoted or unquoted class, so THAT figure's Run link silently kept the pre-edit
+        # query. Nesting matters too: a KQL figure inside a plain one must still be found.
+        import kql_highlight
+
+        def _figure(class_attr, query):
+            built = kql_highlight.render_block(
+                "help.kusto.windows.net", "Samples", "Demo", query)
+            return built.replace('<figure class="cmh-kql">', "<figure %s>" % class_attr, 1)
+
+        def _refreshed(fragment, query):
+            # A distinctive multi-word query, because the substitution below is textual and the
+            # Run link's href carries a base64 payload a short token could appear inside.
+            out = content_replace.refresh_kql_links(fragment.replace(query, query + " | take 1"))
+            return (query + " | take 1") in _decoded_run_queries(out)
+
+        self.assertTrue(_refreshed(_figure("class='cmh-kql'", "StormEventsA"), "StormEventsA"),
+                        "a single-quoted class is the same class to a browser")
+        self.assertTrue(_refreshed(_figure("class=cmh-kql", "StormEventsB"), "StormEventsB"),
+                        "an unquoted class is the same class to a browser")
+        self.assertTrue(
+            _refreshed(_figure('title="a>b" class="cmh-kql"', "StormEventsE"), "StormEventsE"),
+            "a quoted `>` in the start tag must not hide the class")
+        self.assertTrue(
+            _refreshed("<figure class=\"plain\">%s</figure>"
+                       % _figure('class="cmh-kql"', "StormEventsC"), "StormEventsC"),
+            "a KQL figure nested inside a plain figure must still be refreshed")
+        self.assertTrue(
+            _refreshed("<figure class=\"my-cmh-kql-ish\">%s</figure>"
+                       % _figure('class="cmh-kql"', "StormEventsF"), "StormEventsF"),
+            "an outer figure that merely MENTIONS the substring must not swallow the real one")
+        self.assertTrue(
+            _refreshed(_figure('class="cmh-kql"', "StormEventsG").replace("</figure>", "</FIGURE>"),
+                       "StormEventsG"),
+            "an HTML tag name is ASCII case-insensitive, so </FIGURE> closes the figure")
+        # ...and the over-match direction: a look-alike class is not the class, so the figure is
+        # left exactly as authored.
+        held = _figure('class="my-cmh-kql-ish"', "StormEventsD")
+        edited = held.replace("StormEventsD", "StormEventsD | take 1")
+        self.assertEqual(content_replace.refresh_kql_links(edited), edited,
+                         "a `my-cmh-kql-ish` figure is not a cmh-kql figure")
+
+
+def _decoded_run_queries(fragment):
+    """Every ADX Run link's decoded query text, for the KQL-figure selection test above."""
+    import html as _h
+    from urllib.parse import unquote, urlparse
+    import kusto_link
+    out = []
+    for m in re.finditer(r'class="cmh-kql-run" href="([^"]*)"', fragment):
+        parsed = urlparse(_h.unescape(m.group(1)))
+        payload = unquote(parsed.query.split("query=", 1)[1])
+        out.append(kusto_link.decode_query(payload))
+    return out
+
 
 if __name__ == "__main__":
     unittest.main()

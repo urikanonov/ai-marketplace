@@ -53,6 +53,23 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
         self.assertIn("diff block #1", raw[0])
         self.assertIn("diff block #2", raw[1])
 
+    def test_diff_block_class_is_read_the_way_a_browser_reads_it(self):
+        # CMH-VAL-21 clause 11 (#1139). The 11b gate keys on `pre.cmh-diff`, which the layer
+        # matches as a CSS SELECTOR, so it is matched by EXACT code points: `<pre class="CMH-DIFF">`
+        # is not an authored diff block to a browser either (nothing renders it as one), so the
+        # escaped-diff-text requirement does not apply to it.
+        main = MAIN.replace("<p>content</p>", '<pre class="CMH-DIFF">@@ -1 +1 @@\n<img src=x>\n</pre>')
+        errors, _ = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+        self.assertEqual([e for e in errors if "raw HTML tag" in e], [],
+                         "an uppercase class is not `cmh-diff` in a standards-mode document")
+        # A character reference IS decoded, exactly as `classList` decodes it, so this really is
+        # a `cmh-diff` block and the gate must fire: reading the RAW text with a `class=` regex
+        # missed it and failed a hard gate open.
+        main = MAIN.replace("<p>content</p>",
+                            '<pre class="cmh-&#100;iff">@@ -1 +1 @@\n<img src=x>\n</pre>')
+        self.assertError(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
+                         "raw HTML tag")
+
     def test_minimal_document_crlf_is_clean(self):
         errors, warnings = _validate_text(build(), crlf=True)
         self.assertEqual(errors, [])
@@ -96,6 +113,32 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
                 'target="_blank" rel="noopener noreferrer">Run</a>')
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
         self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+
+    def test_kusto_run_link_class_is_tokenized_the_way_html_tokenizes_it(self):
+        # CMH-VAL-21 clause 11 (#1139), the FALSE-POSITIVE direction: 11c is a WARNING gate keyed
+        # on the run-link class, so a class reader that sees more tokens than a browser warns about
+        # a link that is not a run link at all. `class="cmh-kql-run\u000bx"` is ONE opaque class to
+        # a browser - `.cmh-kql-run` never matches it - so nothing about it is a Run link and the
+        # author has nothing to fix. Python's argument-less `str.split()` split it and warned.
+        for sep in ("\u000b", "\u00a0", "\u001c", "\u001f"):
+            link = ('<a class="cmh-kql-run%sx" href="https://evil.example.com/x" '
+                    'target="_blank">Run</a>' % sep)
+            main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
+            _, warnings = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(),
+                                                     main, JS_REGION]))
+            self.assertEqual([w for w in warnings if "cmh-kql-run" in w], [],
+                             "%r joins the class into one opaque token, so no run-link gate "
+                             "applies" % sep)
+        # The control: a real, ASCII-space-separated `cmh-kql-run` class still trips both arms.
+        link = ('<a class="cmh-kql-run extra" href="https://evil.example.com/x" '
+                'target="_blank">Run</a>')
+        main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
+        _, warnings = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(),
+                                                 main, JS_REGION]))
+        self.assertTrue([w for w in warnings if "does not point at https://dataexplorer.azure.com/" in w],
+                        "the control must still be read as a run link: %r" % warnings)
+        self.assertTrue([w for w in warnings if 'without rel="noopener"' in w],
+                        "the control must still be read as a run link: %r" % warnings)
 
     def test_kusto_run_link_blank_target_is_read_the_way_a_browser_reads_it(self):
         # CMH-KQL-05: the condition is the one a browser applies - does the target open an AUXILIARY
@@ -304,6 +347,29 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + fig)
         return build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION])
 
+    def test_a_quoted_gt_in_the_start_tag_does_not_hide_a_diff_or_kql_gate(self):
+        # HTML lets a `>` sit inside a QUOTED attribute value, so a `[^>]*` scan truncated the
+        # start tag before its class and both HARD gates then skipped an element a browser really
+        # does render as a diff block / a framed KQL figure.
+        main = MAIN.replace("<p>content</p>",
+                            '<pre title="a>b" class="cmh-diff">@@ -1 +1 @@\n<img src=x>\n</pre>')
+        self.assertError(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
+                         "raw HTML tag")
+        fig = ('<figure title="a>b" class="cmh-kql"><figcaption class="cm-skip">'
+               '<button class="cmh-kql-title" type="button">cluster</button></figcaption>'
+               '<pre><code class="language-kusto">%s</code></pre></figure>' % KQL_INNER)
+        self.assertError(self._kql_doc(fig),
+                         'figure.cmh-kql has no "Run in Azure Data Explorer" link')
+
+    def test_a_kql_figure_nested_in_a_plain_figure_is_still_gated(self):
+        # A plain outer `<figure>` used to consume the inner `cmh-kql` figure through the FIRST
+        # `</figure>`, so the inner frame's missing Run link passed a hard gate in silence.
+        inner = ('<figure class="cmh-kql"><figcaption class="cm-skip">'
+                 '<button class="cmh-kql-title" type="button">cluster</button></figcaption>'
+                 '<pre><code class="language-kusto">%s</code></pre></figure>' % KQL_INNER)
+        self.assertError(self._kql_doc("<figure><figcaption>wrap</figcaption>%s</figure>" % inner),
+                         'figure.cmh-kql has no "Run in Azure Data Explorer" link')
+
     def test_kql_figure_javascript_run_link_errors(self):
         # CMH-KQL-07 hardening: a PRESENT cmh-kql-run link with a non-https / non-ADX href on a
         # framed figure is a hard ERROR, not a warning - a javascript: URL must never pass.
@@ -337,6 +403,74 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
                '<button class="cmh-kql-title" type="button">cluster</button></figcaption>'
                '<pre><code class="language-kusto">T | where note == "cmh-kql-run"</code></pre></figure>')
         self.assertError(self._kql_doc(fig), 'figure.cmh-kql has no "Run in Azure Data Explorer" link')
+
+    def test_kql_figure_run_link_class_is_tokenized_the_way_html_tokenizes_it(self):
+        # CMH-VAL-21 clause 11 (#1139), the UNDER-REJECTION direction: 11d is a PRESENCE
+        # requirement, so a class reader that sees more tokens than a browser accepts a figure the
+        # reader can never run. HTML splits a `class` on ASCII whitespace ONLY, so
+        # `class="cmh-kql-run\u000bx"` is ONE opaque class: `.cmh-kql-run` never matches it, the
+        # layer never styles or binds it, and no Run link is rendered at all. Python's
+        # argument-less `str.split()` saw the token `cmh-kql-run` and passed the figure.
+        for sep in ("\u000b", "\u00a0", "\u001c", "\u001f"):
+            fig = self._kql_figure('<a class="cmh-kql-run%sx" href="https://dataexplorer.azure.com/x" '
+                                   'target="_blank" rel="noopener noreferrer">Run</a>' % sep)
+            self.assertError(self._kql_doc(fig),
+                             'figure.cmh-kql has no "Run in Azure Data Explorer" link')
+        # A Unicode fold is no way in either: U+212A KELVIN SIGN casefolds onto `k`, so
+        # `cmh-\u212aql-run` was a run link for the validator and never for a browser.
+        fig = self._kql_figure('<a class="cmh-\u212aql-run" href="https://dataexplorer.azure.com/x" '
+                               'target="_blank" rel="noopener noreferrer">Run</a>')
+        self.assertError(self._kql_doc(fig),
+                         'figure.cmh-kql has no "Run in Azure Data Explorer" link')
+        # The control: an ordinary ASCII-space-separated class really does name `cmh-kql-run`, so
+        # the figure must still pass - the fix must not reject a document a browser renders.
+        fig = self._kql_figure('<a class="cmh-kql-run extra" href="https://dataexplorer.azure.com/x" '
+                               'target="_blank" rel="noopener noreferrer">Run</a>')
+        self.assertOkNoWarn(self._kql_doc(fig))
+
+    def test_kql_figure_class_is_matched_by_exact_code_points(self):
+        # CMH-VAL-21 clause 11 (#1139): a standards-mode document matches a class selector by
+        # EXACT code points, so `class="cmh-\u212aql"` is NOT a `.cmh-kql` figure - the frame the
+        # gate assumes is there is not rendered. `casefold()` mapped U+212A KELVIN SIGN onto `k`
+        # and read it as one, which is the FALSE-POSITIVE direction: it demanded a Run link on a
+        # figure a reader never sees framed. Read exactly, the block is simply unframed, which
+        # CMH-KQL-08 reports as what it is.
+        fig = ('<figure class="cmh-\u212aql"><figcaption class="cm-skip">'
+               '<button class="cmh-kql-title" type="button">cluster</button></figcaption>'
+               '<pre><code class="language-kusto">%s</code></pre></figure>' % KQL_INNER)
+        errors, _ = _validate_text(self._kql_doc(fig))
+        self.assertFalse([e for e in errors if 'figure.cmh-kql has no' in e],
+                         "a look-alike class is not a cmh-kql figure, got: %r" % errors)
+        self.assertTrue([e for e in errors if "not runnable" in e or "figure.cmh-kql" in e],
+                        "the block is unframed, so CMH-KQL-08 must report it: %r" % errors)
+
+    def test_a_kql_figure_class_is_decoded_before_it_is_matched(self):
+        # CMH-VAL-21 clause 11 (#1139): the raw-start-tag reader decodes character references, as
+        # `classList` does, so `class="cmh-&#107;ql"` IS a framed KQL figure and its missing Run
+        # link is the hard error it should be. Reading the raw text with a `class=` regex saw an
+        # undecoded `cmh-&#107;ql`, so this document passed the gate a browser would have failed.
+        fig = ('<figure class="cmh-&#107;ql"><figcaption class="cm-skip">'
+               '<button class="cmh-kql-title" type="button">cluster</button></figcaption>'
+               '<pre><code class="language-kusto">%s</code></pre></figure>' % KQL_INNER)
+        self.assertError(self._kql_doc(fig),
+                         'figure.cmh-kql has no "Run in Azure Data Explorer" link')
+
+    def test_a_kusto_language_label_is_folded_ascii_only_not_matched_exactly(self):
+        # The class LIST is tokenized exactly, but a `language-XXX` LABEL inside a token is read
+        # as a LABEL, not matched as a CSS selector: the highlighter that consumes it and the
+        # runtime's own `language-` pattern both fold it ASCII-insensitively, so `language-KUSTO`
+        # must still be a KQL block - matching it exactly would have stopped CMH-KQL-08's "not
+        # runnable" error firing on a block a reader still sees highlighted as Kusto.
+        main = MAIN.replace("<p>content</p>",
+                            '<pre><code class="language-KUSTO">T | take 1</code></pre>')
+        self.assertError(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
+                         "not runnable")
+        # ...and the Unicode fold that is gone: U+212A must NOT become a `k`.
+        main = MAIN.replace("<p>content</p>",
+                            '<pre><code class="language-\u212austo">T | take 1</code></pre>')
+        errors, _ = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+        self.assertEqual([e for e in errors if "not runnable" in e], [],
+                         "a look-alike language label is not kusto, got: %r" % errors)
 
 
 if __name__ == "__main__":

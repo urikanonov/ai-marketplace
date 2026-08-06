@@ -101,7 +101,7 @@ class _DocScan(_browser_attrs.BrowserTagNames):
     def handle_starttag(self, tag, attrs):
         tag = self._browser_tag(tag)
         attrs = dict(attrs)
-        classes = set((attrs.get("class") or "").split())
+        classes = _browser_attrs.class_tokens(attrs.get("class"))
         if tag == "main" and attrs.get("id") == "commentRoot" and self._root_inner_start is None:
             self._root_inner_start = self._end_of_current_tag()
             self._root_depth = len(self._stack)

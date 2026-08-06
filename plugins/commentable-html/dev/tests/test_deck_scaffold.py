@@ -132,6 +132,45 @@ class DeckScaffoldTests(unittest.TestCase):
         self.assertEqual(ids[0], "slide-deadbeef")
         self.assertRegex(ids[1], SLIDE_ID_RE)
 
+    def test_a_slide_class_is_read_in_every_html_quoting_form(self):
+        # CMH-VAL-21 clause 11 (#1139): `class\s*=\s*"([^"]*)"` read only the double-quoted form,
+        # so `<section class='slide'>` and `<section class=slide>` - the same class to a browser -
+        # were silently not slides at all, and, having no attribute-name boundary, the rewrite it
+        # drives turned an unrelated `myclass="foo"` into `myclass="foo active"`.
+        for spelling in ("class='slide'", "class=slide", 'class="slide"'):
+            frag = os.path.join(self.tmp, "q.html")
+            Path(frag).write_text("<section %s><p>body</p></section>\n" % spelling, encoding="utf-8")
+            out = self._make("--content", frag, "--force")
+            self.assertEqual(len(re.findall(r'data-slide-id="([^"]+)"', out)), 1, spelling)
+            self.assertNotIn('myclass="foo active"', out)
+        frag = os.path.join(self.tmp, "decoy.html")
+        Path(frag).write_text(
+            '<section myclass="foo" class="slide"><p>body</p></section>\n', encoding="utf-8")
+        out = self._make("--content", frag, "--force")
+        self.assertIn('myclass="foo"', out,
+                      "an unrelated attribute whose name ENDS in `class` must not be rewritten")
+        # A `class=` spelled inside ANOTHER attribute's quoted value is not the class either. The
+        # scaffold reads it correctly now (it parses the start tag); the deck VALIDATOR's
+        # structural scan still matches such a decoy, which is issue #1159, so this pins the
+        # scaffold's own reading through `prepare_slides` rather than an end-to-end scaffold.
+        prepared, sids = deck_scaffold.prepare_slides(
+            '<section title=\' class="slide"\'><p>decoy</p></section>')
+        self.assertEqual(sids, [])
+        self.assertNotIn("data-slide-id", prepared)
+
+    def test_a_slide_class_is_decoded_before_it_is_read_and_rewritten(self):
+        # CMH-VAL-21 clause 11 (#1139): the start tag is PARSED, so a character reference is
+        # decoded the way `classList` decodes it (`sl&#105;de` IS `slide`), and every value is
+        # re-escaped once from its DECODED form - escaping the RAW text instead turned an authored
+        # `x&amp;y` into the literal `x&amp;y`.
+        frag = os.path.join(self.tmp, "entity.html")
+        Path(frag).write_text(
+            '<section class=\'sl&#105;de x&amp;y\'><p>body</p></section>\n', encoding="utf-8")
+        out = self._make("--content", frag, "--force")
+        self.assertEqual(len(re.findall(r'data-slide-id="([^"]+)"', out)), 1)
+        self.assertIn('class="slide x&amp;y active"', out)
+        self.assertNotIn("&amp;amp;", out)
+
     def test_deterministic_ids(self):
         frag = os.path.join(self.tmp, "frag.html")
         Path(frag).write_text('<section class="slide"><p>stable body</p></section>\n', encoding="utf-8")

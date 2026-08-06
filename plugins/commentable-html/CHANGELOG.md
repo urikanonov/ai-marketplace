@@ -4,6 +4,58 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.759.0] - 2026-08-06
+
+### Fixed
+
+- The validator and the authoring tools now read a `class` attribute the way HTML reads one, through
+  ONE shared reading rather than Python's own defaults. Four readings diverged from the browser, and
+  not in one direction, which is why the effect depended on the gate. (1) The argument-less
+  `str.split()` is Unicode-aware, so it additionally splits on the vertical tab U+000B, NBSP and
+  U+001C-U+001F: a `class="cmh-kql-run\u000bx"` is ONE opaque class to a browser - `.cmh-kql-run`
+  never matches it, so the layer never styles or binds it and no Run link is rendered - but the
+  readers saw the token `cmh-kql-run` in it. In a WARNING gate that OVER-detected (the
+  reverse-tabnabbing warning fired on a link that is not a run link at all, so the author was asked
+  to fix nothing); in a PRESENCE requirement it UNDER-rejected (a `figure.cmh-kql` whose only run
+  link carried such a class was accepted, though the reader can never run the query). (2) The two
+  shared helpers matched a class with `casefold()`, a UNICODE fold that maps U+212A KELVIN SIGN onto
+  `k` and U+017F onto `s`, so `class="cmh-\u212aql"` was a `cmh-kql` figure for the validator and
+  never for a browser. (3) The RAW-start-tag reader matched a `class=` regex against the undecoded
+  text, so `class="cmh-&#107;ql"` - a real `cmh-kql` to a browser's `classList` - failed the hard
+  "a framed KQL figure must carry a Run link" gate OPEN; the same regex also read `data-class=` as
+  `class=`, read a `class=` spelled inside another attribute's quoted value, and accepted any of
+  several duplicate `class` attributes where HTML5 keeps the first. It now runs the same vendored
+  start-tag tokenizer the parsed views are built from, so the raw and parsed answers cannot differ.
+  (4) Two tools matched a class by SUBSTRING: `content_replace.refresh_kql_links` located its
+  figures with `class="[^"]*cmh-kql[^"]*"`, which over-matched a `my-cmh-kql-ish` figure and never
+  saw a single-quoted or unquoted class at all (so that figure's Run link silently kept encoding the
+  pre-edit query), and the deck scaffold's `class\s*=\s*"([^"]*)"` missed a `<section class='slide'>`
+  entirely and, having no attribute-name boundary, rewrote an unrelated `myclass="foo"` into
+  `myclass="foo active"`. Every class reader in the validator's checks, the contrast scanner, the
+  deck tools and the authoring tools now goes through `class_tokens` / `html_ws_tokens` /
+  `raw_attrs_class_tokens` (the ones outside the validator package through `tools/_browser_attrs`,
+  whose partial-install fallback carries the same reading). The two callers that REWRITE the
+  attribute - `retrofit.py` and the deck scaffold - use the ORDERED reading, so a `class="a\u000bb"`
+  (one class) is no longer written back as two.
+
+### Changed
+
+- A class token is now matched by EXACT code points wherever it is a CSS SELECTOR (`cm-skip`,
+  `cmh-kql`, `cmh-diff`, `cmh-lede`, `mermaid`, `slide`, ...), which is how a standards-mode document
+  matches a class selector and how the runtime's own `classList` reads one. The two shared helpers
+  were the only case-insensitive class readers left; every other one already matched exactly, so this
+  is what makes the validator, the tools beside it and the browser give one answer. The visible
+  consequence is that an uppercase or look-alike spelling stops being read as the class: a
+  `<figure class="CMH-KQL">` is no longer treated as a framed KQL figure, so CMH-KQL-08 reports the
+  block inside it as unframed - what a reader actually sees - instead of demanding a Run in Azure
+  Data Explorer link on a frame that is never rendered, and a `<pre class="CMH-DIFF">` is no longer
+  an authored diff block, so the escaped-diff-text requirement does not apply to it. A `language-XXX`
+  LABEL is deliberately NOT in that set: it is read as a label rather than matched as a selector, so
+  it keeps an ASCII-only fold, matching the highlighter that consumes it and the runtime's own
+  `language-` pattern - `class="language-KUSTO"` is still a Kusto block. That label is also read
+  first-wins in author order again: reading it out of a set had made a
+  `class="language-csharp language-text"` block's verdict depend on the process hash seed.
+
 ## [1.758.0] - 2026-08-06
 
 ### Fixed

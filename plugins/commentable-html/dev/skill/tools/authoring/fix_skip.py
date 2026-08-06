@@ -64,7 +64,7 @@ class _MermaidPreLocator(_browser_boundaries.BrowserBoundaries):
         # a duplicated attribute, and a named character reference resolves only on an exact
         # match - so `class="mermaid &nbspcm-skip"` carries ONE literal token, not a `cm-skip`
         # the author never wrote (which made a block look already fixed).
-        classes = set((ad.get("class") or "").split())
+        classes = _browser_attrs.class_tokens(ad.get("class"))
         if "mermaid" in classes and "cm-skip" not in classes:
             start = self._off()
             self.spans.append((start, self._start_tag_end()))

@@ -520,7 +520,7 @@ def _element_source(tag, attrs):
     label = tag
     if attrs.get("id"):
         label += "#" + attrs["id"]
-    classes = [part for part in attrs.get("class", "").split() if part]
+    classes = _browser_attrs.html_ws_tokens(attrs.get("class"))
     if classes:
         label += "." + ".".join(classes)
     return f"element <{label}>"
@@ -670,7 +670,7 @@ def _selector_matches_part(node, part):
         return False
     if part["id"] and node.attrs.get("id") != part["id"]:
         return False
-    classes = {cls for cls in node.attrs.get("class", "").split() if cls}
+    classes = _browser_attrs.class_tokens(node.attrs.get("class"))
     if not part["classes"].issubset(classes):
         return False
     for name, value in part["attrs"]:

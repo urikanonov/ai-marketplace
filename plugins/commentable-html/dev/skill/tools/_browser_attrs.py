@@ -107,13 +107,22 @@ _shared_ascii_lower = getattr(_parsing, "ascii_lower", None)
 _shared_can_host_shadow_root = getattr(_parsing, "can_host_shadow_root", None)
 _shared_link_rel_tokens = getattr(_parsing, "link_rel_tokens", None)
 _shared_link_href_is_set = getattr(_parsing, "link_href_is_set", None)
+
+
+_shared_class_tokens = getattr(_parsing, "class_tokens", None)
+_shared_html_ws_tokens = getattr(_parsing, "html_ws_tokens", None)
+_shared_raw_attrs_class_tokens = getattr(_parsing, "raw_attrs_class_tokens", None)
+_shared_raw_attrs_pairs = getattr(_parsing, "raw_attrs_pairs", None)
 _shared_tag_names = getattr(_parsing, "BrowserTagNames", None)
 
-# The fallback's copy of the shared `rel` split, for a partial install only. HTML tokenizes a `rel`
-# list on ASCII whitespace ONLY: Python's argument-less `str.split()` also splits on the vertical
-# tab, NBSP and U+001C-U+001F, so it names relations a browser never matches (#1120). Spelled out
-# as literal escapes, like the shared one it degrades from, and pinned to it by a parity test.
-_FALLBACK_REL_WS_RE = _re.compile(r"[\t\n\f\r ]+")
+# The fallback's copy of the shared attribute-list split, for a partial install only. HTML tokenizes
+# a `rel` or `class` list on ASCII whitespace ONLY: Python's argument-less `str.split()` also splits
+# on the vertical tab, NBSP and U+001C-U+001F, so it names relations a browser never matches (#1120)
+# and classes a browser never has (#1139). Spelled out as literal escapes, like the shared one it
+# degrades from, and pinned to it by a parity test. `_FALLBACK_REL_WS_RE` is the name that pin
+# reads.
+_FALLBACK_HTML_WS_RE = _re.compile(r"[\t\n\f\r ]+")
+_FALLBACK_REL_WS_RE = _FALLBACK_HTML_WS_RE
 _FALLBACK_ASCII_UPPER_RE = _re.compile(r"[A-Z]")
 
 # The fallback's copy of the URL parser's end trim, for the href emptiness test. Python's
@@ -144,7 +153,7 @@ def link_rel_tokens(value):
     """
     if _shared_link_rel_tokens is None:
         return set(_FALLBACK_ASCII_UPPER_RE.sub(lambda m: m.group(0).lower(), t)
-                   for t in _FALLBACK_REL_WS_RE.split(value or "") if t)
+                   for t in _FALLBACK_HTML_WS_RE.split(value or "") if t)
     return _shared_link_rel_tokens(value)
 
 
@@ -159,6 +168,84 @@ def link_href_is_set(value):
     if _shared_link_href_is_set is None:
         return bool((value or "").strip(_FALLBACK_URL_ENDS_TRIM))
     return _shared_link_href_is_set(value)
+
+
+def html_ws_tokens(value):
+    """The tokens of a space-separated attribute list, IN ORDER, split HTML's way - the shared
+    reading (`checks/parsing.html_ws_tokens`), for a caller that REWRITES the attribute and so
+    must put the tokens back in the order the author wrote them."""
+    if _shared_html_ws_tokens is None:
+        return [t for t in _FALLBACK_HTML_WS_RE.split(value or "") if t]
+    return _shared_html_ws_tokens(value)
+
+
+def class_tokens(value):
+    """The classes a `class` attribute names, read the way HTML reads them.
+
+    The shared reading (`checks/parsing.class_tokens`), so a tool outside the validator's `checks`
+    package - the deck tools, the authoring tools - reads a `class` exactly as the gate that would
+    flag the same document does: split on ASCII whitespace ONLY, and matched by EXACT code points
+    (which is how a standards-mode document matches a class selector, and how the runtime's own
+    `classList` reads one). There is no fold to degrade, so unlike `link_rel_tokens` the fallback
+    needs nothing beyond the split.
+    """
+    if _shared_class_tokens is None:
+        return set(_FALLBACK_HTML_WS_RE.split(value or "")) - {""}
+    return _shared_class_tokens(value)
+
+
+# The fallback's copy of the raw `class=` attribute match, for a partial install only. All three
+# HTML quoting forms (a class written `class=cmh-kql` or `class='cmh-kql'` is the same class), an
+# attribute-name boundary so `data-class=` is not read as `class=`, HTML's own unquoted-value
+# terminator (which is ASCII whitespace or `>` ONLY - a `"`, `'`, `<`, `=` or backtick is a parse
+# error a browser KEEPS in the value), and `re.ASCII` beside `re.IGNORECASE` so Python's Unicode
+# fold does not read `cla\u017f\u017f=` as `class=`. It is a DEGRADED stand-in for the shared
+# start-tag tokenizer: it cannot decode character references, and - being a search rather than a
+# parse - it can be fooled by a `class=` spelled inside ANOTHER attribute's quoted value when a
+# space precedes it (`title=" class=cmh-kql"`). Both are exactly why the shared reading exists and
+# why this runs only in its absence, which the shim warns about at import.
+_FALLBACK_CLASS_ATTR_RE = _re.compile(
+    r"""(?<![^\t\n\f\r /])class[\t\n\f\r ]*=[\t\n\f\r ]*"""
+    r"""(?:"([^"]*)"|'([^']*)'|([^\t\n\f\r >]+))""", _re.IGNORECASE | _re.ASCII)
+
+
+def raw_attrs_class_tokens(attrs):
+    """The class tokens a RAW start-tag attribute string names, IN ORDER.
+
+    The shared reading (`checks/parsing.raw_attrs_class_tokens`), for a tool that has the start
+    tag as TEXT rather than as a parsed attribute dict - the KQL-figure refresh and the two
+    `language-XXX` label readers, each of which kept its own `class=` regex before.
+    """
+    if _shared_raw_attrs_class_tokens is None:
+        m = _FALLBACK_CLASS_ATTR_RE.search(attrs or "")
+        if m is None:
+            return []
+        return html_ws_tokens(next((g for g in m.groups() if g is not None), ""))
+    return _shared_raw_attrs_class_tokens(attrs)
+
+
+def raw_attrs_pairs(attrs):
+    """A RAW start-tag attribute string's `(name, value)` pairs, browser-decoded and in order.
+
+    The shared reading (`checks/parsing.raw_attrs_pairs`), for a tool that REWRITES a start tag
+    and so must not locate an attribute by searching the raw text: a `class=` search matches one
+    spelled inside ANOTHER attribute's quoted value and then rewrites THAT. The degraded fallback
+    can only offer the class, which is all its one caller needs.
+    """
+    if _shared_raw_attrs_pairs is None:
+        return [("class", " ".join(raw_attrs_class_tokens(attrs)))] if attrs else []
+    return _shared_raw_attrs_pairs(attrs)
+
+
+def attrs_have_class(raw_attrs, class_name):
+    """Whether a RAW start-tag attribute string carries `class_name` as a class token.
+
+    The shared reading, so a tool outside the validator's `checks` package matches the gate that
+    would flag the same document. Matching a class by SUBSTRING instead - the
+    `class="[^"]*cmh-kql[^"]*"` shape a regex invites - both over-matches (`my-cmh-kql-ish` is not
+    `cmh-kql`) and under-matches (it never sees a single-quoted or unquoted class at all).
+    """
+    return class_name in set(raw_attrs_class_tokens(raw_attrs))
 
 
 def can_host_shadow_root(tag, namespace="html"):

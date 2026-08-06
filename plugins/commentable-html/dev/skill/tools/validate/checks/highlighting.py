@@ -4,7 +4,7 @@ that shipped without highlight spans)."""
 import re
 
 import _toolpath
-from .parsing import code_block_spans
+from .parsing import code_block_spans, html_ws_tokens, _ascii_lower
 
 _toolpath.ensure()
 import _highlight_core  # noqa: E402
@@ -73,9 +73,17 @@ def _highlight_language_table():
 
 
 def _code_block_language(attrs):
-    """The XXX of a `language-XXX` class token on a parsed <code> element, or None."""
-    for token in (attrs.get("class") or "").split():
-        if token.lower().startswith("language-"):
+    """The XXX of a `language-XXX` class token on a parsed <code> element, or None.
+
+    The ORDERED reading (`html_ws_tokens`), not the `class_tokens` set: this is a FIRST-WINS
+    read, so a `class="language-python language-kusto"` must always answer `python` - out of a
+    set it answered whichever token the process's hash seed put first. The `language-` PREFIX is
+    folded ASCII-only, so a `LANGUAGE-` spelling is still a label while a `\u212a` look-alike is
+    not a `k`; the LABEL itself is then normalized by the highlighter's own `str.lower()`, which
+    folds the way a JS `toLowerCase()` does, so the two sides agree there too.
+    """
+    for token in html_ws_tokens(attrs.get("class")):
+        if _ascii_lower(token).startswith("language-"):
             return token[len("language-"):]
     return None
 

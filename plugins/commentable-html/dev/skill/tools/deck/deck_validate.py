@@ -405,7 +405,7 @@ class _AuthoredContentRegion:
 
 
 def _classes(attrs):
-    return set((attrs.get("class") or "").split())
+    return _browser_attrs.class_tokens(attrs.get("class"))
 
 
 def _authored_element_count(tag, attrs):

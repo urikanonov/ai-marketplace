@@ -23,7 +23,7 @@ SHADOW_ROOT_MODES = frozenset(("open", "closed"))
 
 
 def _has_class(attrs, class_name):
-    return class_name in set((attrs.get("class") or "").split())
+    return class_name in _browser_attrs.class_tokens(attrs.get("class"))
 
 
 class _TocParser(_browser_boundaries.BrowserBoundaries):

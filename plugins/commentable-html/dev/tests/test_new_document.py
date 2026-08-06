@@ -842,6 +842,20 @@ class DocTitleTests(unittest.TestCase):
         frag = '<header class="cmh-lede"><h1>Lede</h1></header><p>x</p>'
         self.assertEqual(new_document.ensure_doc_title(frag, "Ignored"), frag)
 
+    def test_ensure_doc_title_reads_the_lede_class_the_way_html_reads_it(self):
+        # CMH-VAL-21 clause 11 (#1139): the lede class is tokenized on ASCII whitespace ONLY and
+        # matched by exact code points, the same reading `_DocParser` gives the same attribute.
+        # A `(^|\s)cmh-lede(\s|$)` regex used Python's Unicode `\s`, so a `class="x\u000bcmh-lede"`
+        # - ONE opaque class a browser never matches - suppressed the generated title header for a
+        # document the validator reports as having no top-level lede.
+        for cls in ("x\u000bcmh-lede", "x\u00a0cmh-lede", "CMH-LEDE", "cmh-\u2113ede"):
+            frag = '<header class="%s"><p>x</p></header>' % cls
+            out = new_document.ensure_doc_title(frag, "Real Title")
+            self.assertTrue(out.startswith('<header class="cmh-lede">'), repr(cls))
+        # The control: a class list HTML really does tokenize into `cmh-lede` still suppresses it.
+        frag = '<header class="a\tcmh-lede\nb"><h1>Lede</h1></header><p>x</p>'
+        self.assertEqual(new_document.ensure_doc_title(frag, "Ignored"), frag)
+
     def test_ensure_doc_title_ignores_h1_inside_comment(self):
         # P2: an <h1> that only appears inside an HTML comment is not a rendered title, so
         # the raw-text scan wrongly suppressed the header; the parser-based check prepends one.
