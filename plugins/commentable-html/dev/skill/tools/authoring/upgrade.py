@@ -701,6 +701,14 @@ def main(argv):
         print("%s already up to date; nothing to do." % args.file)
         return 0
 
+    # The upgraded document replaces args.file, which is fine - that IS the same artifact. The
+    # TEMPLATE is not: a destination that resolves to it would replace the skill's own dist
+    # template with an upgraded document (CMH-TOOL-23). The check sits here, immediately before
+    # the first write, so the read-only modes above (--check, and an already-up-to-date run)
+    # are never refused for a write they do not make.
+    if _atomic_io.refuse_aliased_output("upgrade", args.out or args.file, [args.template]):
+        return 1
+
     out_path = args.out or args.file
     # Follow a symlink to its target (as _atomic_io.atomic_write does): replacing the LINK would
     # turn it into a regular file and strand the real document with stale content. The original

@@ -745,6 +745,27 @@ def main(argv):
     # default) can stay accepted without ever contradicting the file that gets written.
     args.shareable = not (args.nonshareable or selected_asset_modes)
 
+    # Retrofitting rewrites args.file, which is the SAME artifact. The brand profile and the
+    # templates it reads are not, so a destination that resolves to any of them would replace it
+    # with the layered page (CMH-TOOL-23). SHAREABLE mode reads BOTH templates - the NonShareable
+    # one supplies the theme variables (`_layer_parts`) - so both are listed. --copy-assets writes
+    # three MORE destinations on fixed names beside the output, so each of those is checked too,
+    # against args.file as well, since a companion landing on the page being retrofitted would
+    # lose it.
+    templates = [new_document._default_template(nonshareable=not args.shareable)]
+    if args.shareable:
+        templates.append(new_document._default_template(nonshareable=True))
+    inputs = [args.brand] + templates
+    if _atomic_io.refuse_aliased_output("retrofit", out_path, inputs):
+        return 1
+    if not args.shareable and args.copy_assets:
+        asset_dir = os.path.dirname(os.path.abspath(out_path)) or "."
+        for name in new_document.COMPANIONS:
+            if _atomic_io.refuse_aliased_output(
+                    "retrofit", os.path.join(asset_dir, name), inputs + [args.file],
+                    what="the --copy-assets companion"):
+                return 1
+
     try:
         if args.shareable:
             args.assets_prefix = ""

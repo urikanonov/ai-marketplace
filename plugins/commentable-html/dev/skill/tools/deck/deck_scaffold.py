@@ -237,6 +237,16 @@ def main(argv=None):
               "Reiteration edits the deck in place, it does not re-scaffold.", file=sys.stderr)
         return 1
 
+    # The deck is a DIFFERENT artifact than every file it is built FROM, including the two the
+    # tool reads off its own install rather than off the command line (CMH-TOOL-23). The theme
+    # is compared as the file `load` would READ, since a bare preset name resolves into themes/.
+    if _atomic_io.refuse_aliased_output(
+            "deck_scaffold", args.out,
+            [_atomic_io.not_stdin(args.content), args.brand,
+             _deck_theme.resolved_spec_path(args.theme),
+             os.fspath(TEMPLATE), os.fspath(VIEWPORT_CSS)]):
+        return 1
+
     if args.slides is not None:
         if args.slides < 1:
             print("deck_scaffold: --slides must be >= 1", file=sys.stderr)

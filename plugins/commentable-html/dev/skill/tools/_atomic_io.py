@@ -20,6 +20,86 @@ import tempfile
 import time
 
 
+def same_file(a, b):
+    """True when two paths name the same file on disk, canonically rather than textually.
+
+    `os.path.samefile` is the authority when both paths exist: it compares device plus inode,
+    so a symlink, a junction, a hard link, a bind mount or a different spelling of the same
+    name all answer True. It raises when either path is missing (and `ValueError` for a path
+    the platform cannot represent at all, an embedded NUL for example), so fall back to
+    comparing fully resolved paths - `realpath` follows symlinks and normalizes `.` / `..`,
+    and `normcase` folds the case a Windows or macOS filesystem ignores. The fallback is
+    weaker only for a HARD LINK, which is not a case this has to catch: the writer swaps in a
+    NEW inode, so the other name keeps the original bytes either way.
+
+    A `-` is NOT special here. A path is a path, and only a CALLER knows whether its own `-`
+    means a stream; `refuse_aliased_output` decides that by asking whether the input is an
+    existing FILE, which is the only kind of input a tool can have read."""
+    if not a or not b:
+        return False
+    try:
+        return os.path.samefile(a, b)
+    except (OSError, ValueError):
+        pass
+    try:
+        return (os.path.normcase(os.path.realpath(os.path.abspath(a)))
+                == os.path.normcase(os.path.realpath(os.path.abspath(b))))
+    except (OSError, ValueError):
+        return False
+
+
+def not_stdin(value):
+    """The path an argument names, or None when it is the `-` stdin sentinel.
+
+    The sentinel is stripped HERE rather than inside `same_file` because only a CALLER knows
+    whether its own `-` means stdin: `checklist_scaffold --in -` reads stdin and cannot lose a
+    file, while `content_extract`'s positional argument is always a real path, so a file
+    genuinely NAMED `-` stays protected there."""
+    return None if value == "-" else value
+
+
+def _resolved(path):
+    """`path` fully resolved, for the error message; the raw path if it cannot be resolved."""
+    try:
+        return os.path.realpath(os.path.abspath(path))
+    except (OSError, ValueError):
+        return path
+
+
+def refuse_aliased_output(tool, out, inputs, what="the --out path"):
+    """Report and refuse a destination that resolves to one of the tool's own INPUTS.
+
+    A tool that writes a DIFFERENT artifact than it reads (a CONTENT fragment from a document,
+    a deck from a slide fragment, markup from an outline, a document from a template or a brand
+    profile) must never land that artifact on the file it read: the writer above replaces the
+    target completely and atomically, so the user's input is gone with nothing to recover and
+    the command exits 0. Comparing the paths TEXTUALLY would miss the dangerous spellings, so
+    this goes through `same_file`.
+
+    An input that is not an existing FILE is skipped: the tool cannot have READ it, so it
+    cannot lose it. That is what makes an absent optional input and a directory-valued argument
+    answer "no alias" without the caller having to special-case either. A caller whose argument
+    genuinely means stdin passes it through `not_stdin` first, and one whose argument may name
+    a built-in preset rather than a path resolves it first, so what arrives here is always the
+    file the run actually reads.
+
+    `what` names the destination in the message for a caller whose write target is not spelled
+    `--out`. Returns True when the caller must stop; the reason has already been reported on
+    stderr, naming both paths and the file they resolve to."""
+    if not out:
+        return False
+    for source in inputs:
+        if not source or not os.path.isfile(source) or not same_file(out, source):
+            continue
+        sys.stderr.write(
+            "%s: refusing to write over the tool's own input: %s %s and the input %s are the "
+            "same file (%s). This tool writes a DIFFERENT artifact than it reads, so the write "
+            "would replace the input with the output. Point the two at different files.\n"
+            % (tool, what, out, source, _resolved(out)))
+        return True
+    return False
+
+
 def quiet_remove(path):
     """Best-effort delete. Clears a read-only bit first: on Windows the staged file inherits the
     target's mode, and a read-only staged file cannot be removed, so cleanup would leak it."""

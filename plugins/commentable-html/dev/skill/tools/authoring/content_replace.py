@@ -339,6 +339,16 @@ def main(argv):
                     help="allow validator warnings (errors still abort the write)")
     args = ap.parse_args(argv)
 
+    # The write target here is the POSITIONAL document, not an --out, but the hazard is the
+    # same one CMH-TOOL-23 closes: --content naming the document itself would splice the whole
+    # file in as its own CONTENT fragment and replace it, and a Copy-all bundle is not a
+    # document either.
+    if _atomic_io.refuse_aliased_output("content_replace", args.file,
+                                        [_atomic_io.not_stdin(args.content),
+                                         args.handled_from_bundle],
+                                        what="the document"):
+        return 1
+
     handled = None
     try:
         if args.handled_from_bundle:

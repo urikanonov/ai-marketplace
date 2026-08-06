@@ -799,6 +799,15 @@ def main(argv):
         template_path = _toolpath.resolve_template_path(args.template)
     else:
         template_path = _default_template(nonshareable=False)
+    # The document is a DIFFERENT artifact than any of the files it is built FROM, so a
+    # destination that resolves to the content fragment, the template or the brand profile
+    # would replace that input with the document. The check is against the RESOLVED target:
+    # without --force `resolve_output_path` has already redirected an existing --out to a
+    # suffixed sibling, which cannot lose a byte, so refusing there would be a false alarm.
+    if _atomic_io.refuse_aliased_output("new_document", out_path,
+                                        [_atomic_io.not_stdin(args.content), template_path,
+                                         args.brand]):
+        return 1
     try:
         template_html = _read_file(template_path)
     except OSError as exc:
@@ -945,6 +954,18 @@ def main(argv):
         # Copy companions BEFORE writing the HTML, so a copy failure never leaves a
         # written document that references companions missing from its folder.
         if copy_here:
+            # The companions land on FIXED filenames beside the document, so one of them can
+            # collide with an input the run already read (a content fragment or brand profile
+            # named commentable-html.js in the output directory). Refuse before staging any of
+            # them: this is the same class as an aliasing --out, just a destination the caller
+            # did not spell out.
+            dest_dir = os.path.dirname(os.path.abspath(out_path))
+            for name in COMPANIONS:
+                if _atomic_io.refuse_aliased_output(
+                        "new_document", os.path.join(dest_dir, name),
+                        [_atomic_io.not_stdin(args.content), template_path, args.brand],
+                        what="the --copy-assets companion"):
+                    return 1
             try:
                 _copy_companions(os.path.dirname(os.path.abspath(out_path)))
             except OSError as exc:
