@@ -4,7 +4,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.791.0] - 2026-08-06
+## [1.795.0] - 2026-08-06
 
 ### Fixed
 
@@ -36,6 +36,52 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   accessible name and the layer's own inset focus ring while - and only while - it actually scrolls.
   Below 320px the list floor scales with the viewport, so the whole guarantee still holds at 640x240.
   The desktop layout is unchanged.
+
+## [1.794.0] - 2026-08-06
+
+### Fixed
+
+- The deck scaffold's slide rewrite is now round-trip faithful for a VALUELESS attribute:
+  `deck/deck_scaffold.py`'s `prepare_slides` writes one back as `name=""` instead of as a bare
+  name. Re-serializing it bare dropped the `/` HTML uses to terminate an attribute name, so two
+  ADJACENT valueless attributes whose second name legally begins with `=` (HTML5's
+  unexpected-equals-sign-before-attribute-name state) FUSED into one attribute carrying a value:
+  `<section class="slide" data-a/=onload>` was written back as `data-a =onload`, which re-parses
+  as `data-a="onload"` - a value the input document never had. An absent value IS the empty
+  string to a browser, so the quoted empty value is the same attribute and cannot be terminated
+  by the next name's `=`. The fused NAME could be an `on*` one (`onclick/=alert(1)` fused into
+  `onclick="alert(1)"`), but no deck the scaffold EMITS could carry a handler minted that way: on
+  a slide `<section>` the deck contract gate rejects an attribute whose name starts with `on` -
+  valued or valueless alike - and the scaffold runs it on the final HTML before it writes `--out`,
+  so that shape failed closed on both sides of this fix. Correctness, not security either way: a
+  document's own author is trusted (`CMH-SEC-01`), so this granted no capability they did not
+  already have.
+
+## [1.792.0] - 2026-08-06
+
+### Fixed
+
+- A partial install (one where the validator's `checks/parsing` cannot be imported) no longer lets
+  `deck/deck_scaffold.py` write a deck whose slide start tags carry values the rendered document
+  does not (CMH-DECK-02). The scaffold RE-SERIALIZES every slide's start tag from the attribute
+  pairs `tools/_browser_attrs.raw_attrs_pairs` hands back, so that reading decides which attributes
+  survive and what they say. Its partial-install fallback already answered the whole attribute
+  list, but it read two things the host's way rather than the browser's, and the scaffold wrote
+  both differences into the deck: it did not fold a NUL, where a browser writes U+FFFD in an
+  attribute name and value alike, and it decoded values with `html.unescape`, which resolves a
+  named reference that is only a PREFIX of the value or is followed by `=` (an authored
+  `title="x&ampy"` was rewritten as `x&y`, `&notit;` as `\u00acit;`) and DELETES the code points it
+  considers invalid (`&#1;`, `&#x7f;` and `&#xfffe;` all vanished, where a browser keeps them).
+  Both are silent and both pass the deck contract with a zero exit. The degraded reading now folds
+  a NUL and applies the browser's attribute-value rule from its own copies of
+  `checks/parsing._fold_nul`, `_ATTR_CHARREF_RE`, `_numeric_charref` and `_unescape_attr_value`,
+  pinned to the shared ones as data and answer-for-answer by parity tests, so a partial install
+  writes the deck a full one writes. The `data-slide-id` was NOT spared by its shape gate, either:
+  because the host's decode deletes a character a browser keeps, an authored
+  `data-slide-id="slide-aaaaaaaa&#1;"` - which a browser reads as the shape-invalid
+  `slide-aaaaaaaa\u0001` and which must therefore fail the scaffold closed - decoded to the
+  perfectly valid `slide-aaaaaaaa`, passed the deck contract and was written, silently renaming the
+  authored id that create-only exists to keep stable.
 
 ## [1.790.0] - 2026-08-06
 

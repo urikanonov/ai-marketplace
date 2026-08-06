@@ -5,13 +5,16 @@ The scaffolded deck must validate, be commentable-native (data-cmh-mode + fixed 
 every slide a stable data-slide-id with the first active, carry no inline editor or remote
 fonts, and be create-only (refuse to overwrite unless --force).
 """
+import html as _html
 import os
 from pathlib import Path
 import re
+import contextlib
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402
@@ -19,11 +22,35 @@ import _paths  # noqa: E402
 DECK = os.path.join(_paths.PKG, "tools", "deck")
 sys.path.insert(0, DECK)
 sys.path.insert(0, _paths.TOOLS)
+import _browser_attrs  # noqa: E402
 import deck_scaffold  # noqa: E402
 import validate as cmh_validate  # noqa: E402
 from deck_common import SLIDE_ID_RE, slide_id  # noqa: E402
 
 TOOL = os.path.join(DECK, "deck_scaffold.py")
+
+
+@contextlib.contextmanager
+def _partial_install():
+    """`_browser_attrs` as a PARTIAL install sees it: the resolved decoder gone, every `_shared_*`
+    binding it exposes gone with it, and the two classes bound at import (`BrowserTagNames`,
+    `StartTagParser`) swapped for their fallbacks - patching `_shared_tag_names` alone would leave
+    those still pointing at the shared ones, which is the hybrid this exists to avoid.
+
+    Entered as a context manager so the patches go on in `__enter__` and come off in `__exit__`
+    whatever happens: an `ExitStack` populated before the caller's `with` leaks every patch it
+    already entered if a later one raises.
+    """
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(mock.patch.object(_browser_attrs, "_parsing", None))
+        for name in dir(_browser_attrs):
+            if name.startswith("_shared_"):
+                stack.enter_context(mock.patch.object(_browser_attrs, name, None))
+        stack.enter_context(mock.patch.object(_browser_attrs, "BrowserTagNames",
+                                              _browser_attrs._FallbackTagNames))
+        stack.enter_context(mock.patch.object(_browser_attrs, "StartTagParser",
+                                              _browser_attrs._start_tag_parser(None)))
+        yield
 
 
 def _scaffold(out, *args):
@@ -236,6 +263,67 @@ class DeckScaffoldTests(unittest.TestCase):
             out = self._make("--content", frag, "--force")
             self.assertEqual(re.findall(r'data-slide-id="([^"]+)"', out), [minted, shadowed], first)
 
+    def test_a_valueless_attribute_cannot_fuse_with_the_next_one(self):
+        # #1191: the rewrite RE-SERIALIZES the start tag from the parsed pairs, and a valueless
+        # attribute was written back as a bare name - dropping the `/` HTML uses to terminate an
+        # attribute name. Two ADJACENT valueless attributes whose second name legally begins with
+        # `=` (the unexpected-equals-sign-before-attribute-name state) then FUSED into one attribute
+        # WITH a value on the way through: `data-a/=onload` came back as `data-a =onload`, which
+        # re-parses as `data-a="onload"`. Writing `name=""` is the same attribute to a browser (an
+        # absent value IS the empty string) and cannot be terminated by the next name's `=`.
+        def norm(pairs):
+            return [(n, v or "") for n, v in pairs]
+
+        for attrs in ('class="slide" data-a/=onload',
+                      'class="slide" data-a/=x data-b',
+                      'class="slide" hidden',
+                      'class="slide" data-a=""',
+                      'class="slide" data-a/=',
+                      'class="slide" data-a/==x',
+                      'class="slide" data-a=""/=x',
+                      'class="slide active x" data-a/=onload'):
+            prepared, sids = deck_scaffold.prepare_slides(
+                "<section %s><p>x</p></section>" % attrs)
+            self.assertEqual(len(sids), 1, attrs)
+            m = deck_scaffold.SECTION_RE.search(prepared)
+            self.assertIsNotNone(m, attrs)
+            # BOTH sides are read the way a browser reads them - an absent value IS the empty
+            # string - so this pins the round trip itself and not the spelling that achieves it.
+            # An authored EMPTY value collapses into the same bucket, which is the point: the two
+            # are one attribute to a browser and must come back as one. The expected class is
+            # DERIVED from the input's own tokens, so a case whose class is not exactly `slide`
+            # does not fail for a reason unrelated to fusion.
+            got = norm(_browser_attrs.raw_attrs_pairs(m.group(1)))
+            in_pairs = norm(_browser_attrs.raw_attrs_pairs(attrs))
+            classes = _browser_attrs.html_ws_tokens(
+                next(v for n, v in in_pairs if n == "class"))
+            if "active" not in classes:
+                classes.append("active")
+            want = [(n, " ".join(classes) if n == "class" else v) for n, v in in_pairs]
+            want.append(("data-slide-id", sids[0]))
+            self.assertEqual(got, want, attrs)
+            # And the stronger FORM guard the fix rests on: EVERY attribute is written back in the
+            # one canonical ` name="value"` shape, so none is left bare for a following name's `=`
+            # to terminate. Asserting the whole attribute region equals that reconstruction is what
+            # keeps a later "simplification" from quietly reintroducing a bare spelling. It also
+            # deliberately rules out the other faithful spelling, re-emitting the `/` name
+            # terminator (` data-a/`): that one lands as the self-closing `/>` solidus whenever the
+            # valueless attribute is written LAST - reachable whenever the tag already carries a
+            # `data-slide-id`, since nothing is appended after it - while `name=""` is the same
+            # attribute to a browser in every position.
+            self.assertEqual(
+                m.group(1),
+                "".join(' %s="%s"' % (n, _html.escape(v, quote=True)) for n, v in got), attrs)
+        # End to end, through both gates: the fix makes the scaffold emit an attribute literally
+        # NAMED `=onload`, so pin that the base validator and the deck contract still accept it and
+        # the deck is written - otherwise a later tightening could turn a writable deck into a hard
+        # failure with nothing recording the loss.
+        frag = os.path.join(self.tmp, "fuse.html")
+        Path(frag).write_text(
+            '<section class="slide" data-a/=onload><p>x</p></section>\n', encoding="utf-8")
+        out = self._make("--content", frag, "--force")
+        self.assertIn('<section class="slide active" data-a="" =onload="" data-slide-id=', out)
+
     def test_a_non_slide_section_does_not_reserve_a_slide_id(self):
         # Only a SLIDE's id is reserved. `deck_validate` reads ids from `section.slide` alone, so
         # reserving an unrelated section's would push a real slide onto the `-2` branch and make
@@ -249,6 +337,55 @@ class DeckScaffoldTests(unittest.TestCase):
             '<section class="slide">%s</section>\n' % (minted, body), encoding="utf-8")
         out = self._make("--content", frag, "--force")
         self.assertIn('<section class="slide active" data-slide-id="%s">' % minted, out)
+
+    def test_a_partial_install_rewrites_a_slide_without_losing_its_attributes(self):
+        # `prepare_slides` RE-SERIALIZES every slide start tag from the pairs
+        # `_browser_attrs.raw_attrs_pairs` hands back, so whatever the DEGRADED reading a partial
+        # install falls back to answers differently is written into the deck - silently, and with
+        # a zero exit, because the deck contract passes. A class-only stand-in there dropped every
+        # other attribute; the host's own value decode rewrote an authored `x&ampy` as `x&y` and
+        # DELETED the code points it considers invalid; and an unfolded NUL left a value the
+        # rendered DOM never carries.
+        self.assertIsNotNone(_browser_attrs._shared_raw_attrs_pairs,
+                             "this host has no shared reading, so the parity check below would "
+                             "compare the degraded answer with itself")
+        frag = ('<section class="slide" id="intro" data-slide-id="slide-aaaaaaaa"'
+                ' aria-label="Intro"><p>one</p></section>')
+        hostile = ('<section class="slide" data\x00-x="v" aria-label="a\x00b" title="x&ampy"'
+                   ' lang="&#1;"><p>two</p></section>')
+        shared_out = (deck_scaffold.prepare_slides(frag), deck_scaffold.prepare_slides(hostile))
+        with _partial_install():
+            degraded, ids = deck_scaffold.prepare_slides(frag)
+            degraded_hostile, hostile_ids = deck_scaffold.prepare_slides(hostile)
+        self.assertEqual(ids, ["slide-aaaaaaaa"])
+        self.assertEqual(degraded,
+                         '<section class="slide active" id="intro"'
+                         ' data-slide-id="slide-aaaaaaaa" aria-label="Intro">'
+                         '<p>one</p></section>')
+        self.assertIn('data\ufffd-x="v"', degraded_hostile)
+        self.assertIn('aria-label="a\ufffdb"', degraded_hostile)
+        self.assertIn('title="x&amp;ampy"', degraded_hostile)
+        self.assertIn('lang="\x01"', degraded_hostile)
+        # And it is the SAME deck the shared reading writes, so a partial install degrades nothing
+        # a document can observe.
+        self.assertEqual(shared_out, ((degraded, ids), (degraded_hostile, hostile_ids)))
+
+    def test_a_partial_install_cannot_mint_a_valid_slide_id_from_an_invalid_one(self):
+        # The id is the one attribute whose SHAPE is gated - `deck_validate` errors on anything
+        # outside `SLIDE_ID_RE` (`slide-[0-9a-f]{8}(-N)?`), so a mangled one fails the scaffold
+        # closed rather than shipping. But that gate is only as good as the decode feeding it. The
+        # host's decode DELETES the code points it considers invalid, so an authored
+        # `data-slide-id="slide-aaaaaaaa&#1;"` - which a browser reads as the SHAPE-INVALID
+        # `slide-aaaaaaaa\x01`, and which therefore must fail closed - decoded to the perfectly
+        # valid `slide-aaaaaaaa`, passed the contract and was written: the authored id silently
+        # RENAMED, which is what create-only exists to prevent. The browser rule keeps the
+        # character, so the shape gate sees what a browser sees on both readings.
+        frag = '<section class="slide" data-slide-id="slide-aaaaaaaa&#1;"><p>x</p></section>'
+        expected = "slide-aaaaaaaa\x01"
+        self.assertFalse(SLIDE_ID_RE.match(expected))
+        self.assertEqual(deck_scaffold.prepare_slides(frag)[1], [expected])
+        with _partial_install():
+            self.assertEqual(deck_scaffold.prepare_slides(frag)[1], [expected])
 
     def test_deterministic_ids(self):
         frag = os.path.join(self.tmp, "frag.html")

@@ -185,7 +185,14 @@ def prepare_slides(fragment: str):
                 wrote_sid = True
                 value = sid
             if value is None:
-                rebuilt.append(" " + name)
+                # A valueless attribute is written back as `name=""`, NOT as a bare name. The bare
+                # name drops the `/` HTML uses to terminate an attribute name, so the NEXT
+                # attribute - whose name legally begins with `=` (the
+                # unexpected-equals-sign-before-attribute-name state) - fused into this one and
+                # gave it a VALUE the input never had (`data-a/=onload` came back as
+                # `data-a =onload`). An absent value IS the empty string to a browser, so the
+                # quoted empty value is the same attribute and cannot be terminated that way.
+                rebuilt.append(' %s=""' % name)
             else:
                 rebuilt.append(' %s="%s"' % (name, _html.escape(value, quote=True)))
         if not wrote_sid:
