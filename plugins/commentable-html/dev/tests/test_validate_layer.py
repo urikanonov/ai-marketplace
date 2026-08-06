@@ -650,6 +650,120 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
                               '<span data-id="btnCopyAll" class="cm-skip"></span>')
         self.assertError(doc, 'required element id="btnCopyAll" is missing')
 
+    # CMH-VAL-26. The PRESENCE half of the required-id check is namespace-scoped: these controls
+    # are wired as HTML elements (the layer renders them as buttons and menu rows, and reveals or
+    # hides many of them through `.hidden`, whose UA rule is namespace-scoped), so a `<math>`/
+    # `<svg>` element carrying the id is not an HTMLElement at all and satisfies nothing.
+    _AUTO_OPEN_SPAN = '<span id="btnAutoOpenPanel" class="cm-skip"></span>'
+    # A `<button>`, NOT a `<span>`: `span` is an HTML BREAKOUT start tag, so `<svg><span>` lands in
+    # the HTML namespace on its own and the integration-point tests below would pass even with
+    # integration points disabled. `button` is not a breakout tag, so it stays foreign unless a
+    # real integration point puts it back in the HTML namespace.
+    _AUTO_OPEN_BUTTON = '<button id="btnAutoOpenPanel" class="cm-skip"></button>'
+
+    def _replacing_auto_open(self, markup):
+        doc = build()
+        self.assertIn(self._AUTO_OPEN_SPAN, doc,
+                      "MAIN no longer carries the expected btnAutoOpenPanel control")
+        return doc.replace(self._AUTO_OPEN_SPAN, markup)
+
+    def test_a_foreign_namespace_element_does_not_satisfy_a_required_id(self):
+        # Both foreign namespaces, and the SELF-CLOSED foreign shape (recorded, never pushed).
+        for markup in ('<svg><rect id="btnAutoOpenPanel" class="cm-skip"/></svg>',
+                       '<svg><rect id="btnAutoOpenPanel" class="cm-skip"></rect></svg>',
+                       '<math><mi id="btnAutoOpenPanel" class="cm-skip"></mi></math>'):
+            with self.subTest(markup=markup):
+                doc = self._replacing_auto_open(markup)
+                self.assertError(doc, 'required element id="btnAutoOpenPanel" is missing - the '
+                                      "only element carrying it is outside the HTML namespace")
+
+    def test_a_required_id_duplicated_across_namespaces_is_still_a_duplicate(self):
+        # The DUPLICATE half stays namespace-BLIND, because `getElementById` really is: the SVG
+        # element can win the lookup and shadow the real control. The negative half matters just
+        # as much - the HTML carrier IS present, so a gate keyed on "any foreign carrier" or on
+        # `html_count != all_count` must not also report the control missing.
+        doc = build().replace("</main>", '<svg><rect id="sidebar"/></svg></main>')
+        self.assertError(doc, 'required element id="sidebar" appears 2 times')
+        errors, _ = _validate_text(doc)
+        self.assertFalse([e for e in errors if 'id="sidebar" is missing' in e],
+                         "an HTML #sidebar is present, so it must not be reported missing: %r"
+                         % errors)
+
+    def test_an_all_foreign_duplicate_reports_both_the_absence_and_the_collision(self):
+        # Presence and duplicate are reported INDEPENDENTLY: with two foreign carriers and no HTML
+        # one the control is missing AND the id still collides, and the absence message must not
+        # claim there is only one carrier.
+        doc = self._replacing_auto_open('<svg><rect id="btnAutoOpenPanel" class="cm-skip"/>'
+                                        '<rect id="btnAutoOpenPanel" class="cm-skip"/></svg>')
+        self.assertError(doc, "all 2 elements carrying it are outside the HTML namespace")
+        self.assertError(doc, 'required element id="btnAutoOpenPanel" appears 2 times')
+
+    def test_a_required_id_at_an_html_integration_point_still_counts(self):
+        # The POSITIVE direction, which an "is there a <math>/<svg> ancestor?" implementation
+        # would get wrong: at an HTML integration point a browser puts the child back in the HTML
+        # namespace, so a control written there is a real HTMLElement and must still count. Both
+        # `annotation-xml` encodings are covered, because both are integration points.
+        for wrapper in ("<svg><foreignObject>%s</foreignObject></svg>",
+                        "<math><mtext>%s</mtext></math>",
+                        '<math><annotation-xml encoding="text/html">%s</annotation-xml></math>',
+                        '<math><annotation-xml encoding="application/xhtml+xml">%s'
+                        "</annotation-xml></math>"):
+            with self.subTest(wrapper=wrapper):
+                self.assertOkNoWarn(
+                    self._replacing_auto_open(wrapper % self._AUTO_OPEN_BUTTON))
+
+    def test_a_padded_annotation_xml_encoding_is_not_an_integration_point_for_a_required_id(self):
+        # The negative twin, which pins that the gate is driven by the real insertion NAMESPACE
+        # rather than by the presence of an integration-point-looking wrapper: HTML5 compares the
+        # `encoding` value exactly, so `encoding=" text/html"` is not an integration point and the
+        # control stays MathML.
+        doc = self._replacing_auto_open(
+            '<math><annotation-xml encoding=" text/html">%s</annotation-xml></math>'
+            % self._AUTO_OPEN_BUTTON)
+        self.assertError(doc, "outside the HTML namespace")
+
+    def test_a_foreign_namespace_content_root_does_not_satisfy_comment_root(self):
+        # The content root gets the same split, and the reachable shape is the INTEGRATION-POINT
+        # one: with a bare `<svg>`/`<math>` root the CONTENT markers stay foreign and the region
+        # check already refuses the document, but at an integration point the region parses and
+        # the whole document validated clean while the root was an SVGElement/MathMLElement the
+        # layer cannot render the authored document into.
+        opened = re.search(r"<main [^>]*>", build())
+        self.assertIsNotNone(opened, "MAIN no longer opens with a <main> start tag")
+        attrs = opened.group(0)[len("<main"):-1]
+        for open_tag, close_tag in (
+                ("<svg><foreignObject%s>" % attrs, "</foreignObject></svg>"),
+                ("<math><mtext%s>" % attrs, "</mtext></math>"),
+                ('<math><annotation-xml encoding="text/html"%s>' % attrs,
+                 "</annotation-xml></math>")):
+            with self.subTest(open_tag=open_tag):
+                doc = (build().replace(opened.group(0), open_tag, 1)
+                              .replace("</main>", close_tag, 1))
+                self.assertError(doc, 'the element with id="commentRoot" is outside the HTML '
+                                      "namespace")
+
+    def test_a_foreign_content_root_beside_the_real_one_is_still_a_duplicate(self):
+        # The content root's DUPLICATE half stays namespace-blind too, so making PRESENCE
+        # namespace-scoped must not stop a foreign decoy beside the real root from being reported.
+        doc = build().replace("</main>", '<svg><rect id="commentRoot"/></svg></main>')
+        self.assertError(doc, 'id="commentRoot" appears 2 times')
+        errors, _ = _validate_text(doc)
+        self.assertFalse([e for e in errors if "commentRoot\" is outside the HTML" in e],
+                         "an HTML #commentRoot is present, so it must not be reported foreign: %r"
+                         % errors)
+
+    def test_an_all_foreign_duplicate_content_root_reports_both(self):
+        # The two halves are INDEPENDENT here as well: with every carrier foreign the document is
+        # told the root is not an HTML element AND that the id collides, so removing one carrier
+        # does not reveal a second error that was there all along.
+        opened = re.search(r"<main [^>]*>", build())
+        self.assertIsNotNone(opened, "MAIN no longer opens with a <main> start tag")
+        attrs = opened.group(0)[len("<main"):-1]
+        doc = (build().replace(opened.group(0), "<svg><foreignObject%s>" % attrs, 1)
+                      .replace("</main>", '</foreignObject><rect id="commentRoot"/></svg>', 1))
+        self.assertError(doc, 'the element with id="commentRoot" is outside the HTML namespace')
+        self.assertError(doc, 'id="commentRoot" appears 2 times')
+
     def test_reintroduced_export_id_warns(self):
         body = [HANDLED_REGION, EMBEDDED_REGION,
                 comment_ui(extra='  <button id="btnExport"></button>\n'), MAIN, JS_REGION]

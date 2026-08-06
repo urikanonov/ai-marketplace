@@ -1904,6 +1904,15 @@ class _DocParser(_BrowserBoundaries):
         self.template_comment_spans = []    # the same, parked inside an inert <template>
         self.shadow_comment_spans = []      # real comments parsed inside a shadow tree
         self.all_ids = []        # every element id value, in document order
+        # The same values filtered to the HTML namespace (CMH-VAL-26). `all_ids` answers "could
+        # `getElementById` return an element with this id?", which is namespace-BLIND and is the
+        # right view for a DUPLICATE. It is the wrong view for PRESENCE: the layer's companion UI
+        # and its content root are HTML, and `hidden` - the toggle the layer uses to reveal and
+        # hide many of its controls - is an IDL attribute of `HTMLElement` alone, so setting it on
+        # an SVG/MathML carrier writes a plain expando that matches no CSS rule. An id at an HTML
+        # integration point IS here, because a browser really inserts that element in the HTML
+        # namespace.
+        self.html_ids = []
         # The LAYER's own markup: everything the parser sees OUTSIDE the authored CONTENT region
         # (`_in_commentable_content()`). A document about commentable-html can DEMONSTRATE the
         # companion markup in its prose, so the mode determination and the NonShareable checks read
@@ -2174,7 +2183,8 @@ class _DocParser(_BrowserBoundaries):
         # the runtime reveals and hides `#cmhAssetBanner` through `.hidden`, an HTMLElement
         # property whose UA `[hidden]` rule is namespace-scoped, so a foreign element carrying
         # that id is found by `getElementById` and can then never be shown or hidden. `all_ids`
-        # stays namespace-blind, because `getElementById` itself is.
+        # stays namespace-blind, because `getElementById` itself is; `html_ids` is the
+        # namespace-scoped view the PRESENCE checks need (CMH-VAL-26).
         is_html = ns == "html"
         if tag in self.layer_tags and is_html and not self._in_commentable_content():
             self.layer_tags[tag].append(ad)
@@ -2253,6 +2263,8 @@ class _DocParser(_BrowserBoundaries):
         idv = ad.get("id")
         if idv:
             self.all_ids.append(idv)
+            if is_html:
+                self.html_ids.append(idv)
             if is_html and not self._in_commentable_content():
                 self.layer_ids.append(idv)
             if idv == "commentRoot":
