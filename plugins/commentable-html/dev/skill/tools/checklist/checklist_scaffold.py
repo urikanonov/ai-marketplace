@@ -151,6 +151,9 @@ def main(argv):
     parser.add_argument("--out", help="write to FILE instead of stdout")
     args = parser.parse_args(argv[1:])
 
+    if _atomic_io.refuse_aliased_output("checklist_scaffold", args.out,
+                                        [_atomic_io.not_stdin(args.infile)]):
+        return 1
     if not re.match(r"^[A-Za-z0-9][A-Za-z0-9_-]*$", args.id):
         sys.stderr.write("checklist_scaffold: --id must be a simple slug (letters, digits, - or _)\n")
         return 1

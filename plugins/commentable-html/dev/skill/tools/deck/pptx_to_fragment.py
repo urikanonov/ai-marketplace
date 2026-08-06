@@ -273,6 +273,10 @@ def main(argv=None):
     ap.add_argument("--out", help="write the fragment here (default: stdout)")
     args = ap.parse_args(argv)
 
+    if _atomic_io.refuse_aliased_output("pptx_to_fragment", args.out,
+                                        [_atomic_io.not_stdin(args.input), args.pptx]):
+        return 1
+
     if args.pptx:
         slides = _extract_via_local(args.pptx)
     else:

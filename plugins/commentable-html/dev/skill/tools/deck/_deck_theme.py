@@ -177,6 +177,19 @@ def _self_check_contrast(label, tokens, data):
                 % (label, fg_name, bg_name, ratio, _MIN_AA, values[fg_name], values[bg_name]))
 
 
+def resolved_spec_path(spec):
+    """The FILE `load(spec)` would read, or None when the spec resolves to nothing.
+
+    Public because a caller must be able to compare its write destination against the file a
+    `--theme` actually reads (CMH-TOOL-23): a bare preset NAME resolves into `themes/`, so
+    comparing the raw spelling would both miss the preset file the run reads and false-alarm on
+    an unrelated output file that happens to share the name."""
+    try:
+        return os.fspath(_resolve_spec(spec)) if spec else None
+    except (DeckThemeError, TypeError, ValueError):
+        return None
+
+
 def load(spec):
     path = _resolve_spec(spec)
     data = _read_json(path)

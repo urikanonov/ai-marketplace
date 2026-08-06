@@ -4,6 +4,47 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.776.0] - 2026-08-06
+
+### Fixed
+
+- A tool no longer lands a write on a file it READ as a different artifact.
+  `content_extract.py`, `checklist_scaffold.py`, `deck/pptx_to_fragment.py`,
+  `deck/deck_scaffold.py --force` and `new_document.py --force` compared nothing, so
+  `--out <the input>` replaced the user's document, outline, slide fragment, brand profile or
+  deck theme with the artifact derived from it and exited 0 - and because the shared crash-safe
+  writer (CMH-TOOL-22) makes that replacement clean and complete, there was nothing left to
+  recover. Every file input a run will read is now compared with the destination, and an alias
+  is refused before the write with a non-zero exit that names both paths.
+  - The hazard is per INPUT, not per tool, so the tools that legitimately rewrite their
+    document in place are guarded on their OTHER inputs: `upgrade.py --template` (which could
+    replace the skill's own `dist/SHAREABLE.html` with an upgraded document), `retrofit.py`
+    (`--brand` and both templates it reads - Shareable mode consults the NonShareable one for
+    its theme variables) and `deck_theme.py --theme`. `new_document.py`
+    guards its resolved `--template` and `--brand` as well as `--content`.
+  - An input is not always named on the command line: `deck_scaffold` reads the shipped
+    `dist/SHAREABLE.html` and `viewport-base.css` off its own install, and a bare `--theme`
+    preset name resolves into the shipped `themes/` directory, so those are compared as the
+    files the run actually reads rather than as the strings the caller typed.
+  - Nor is a destination: `new_document --copy-assets` and `retrofit --copy-assets` write three
+    companions on fixed names beside the document, and each is checked before any is staged;
+    `content_replace.py` rewrites a positional document, so its `--content` and
+    `--handled-from-bundle` are checked against it.
+  - The comparison is canonical rather than textual (`_atomic_io.same_file`:
+    `os.path.samefile`, falling back to `realpath` + `normcase`), so a symlink to the input -
+    the dangerous case, since the writer follows a symlink to its target - an alternate
+    spelling of the same path, or a differently-cased path on a case-insensitive filesystem is
+    caught too.
+  - It does not over-refuse: an in-place transform may still write its `--out` over its own
+    input (`normalize_typography --out <input>`), a read-only mode writes nothing so it is not
+    refused (`upgrade --check`), an input that is not an existing file is never an alias, and
+    `new_document` without `--force` compares the target it has already redirected to a
+    suffixed sibling, so that run still succeeds.
+  - A static guard fails any future tool with an `--out` that neither checks nor is listed as
+    needing no check with its reason, and it only accepts a check that actually gates `main`'s
+    control flow - an ignored return, an inverted or conditional test, or a call parked in an
+    unrelated helper all read as unguarded (CMH-TOOL-23).
+
 ## [1.775.0] - 2026-08-06
 
 ### Fixed

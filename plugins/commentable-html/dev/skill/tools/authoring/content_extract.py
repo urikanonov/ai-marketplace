@@ -149,6 +149,9 @@ def main(argv):
     ap.add_argument("--out", help="write to this path instead of stdout")
     args = ap.parse_args(argv)
 
+    if _atomic_io.refuse_aliased_output("content_extract", args.out, [args.file]):
+        return 1
+
     refusals = []
     try:
         fragment = extract(_read(args.file), refusals=refusals)

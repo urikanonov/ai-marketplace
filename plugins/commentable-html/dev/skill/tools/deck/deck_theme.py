@@ -84,6 +84,12 @@ def main(argv=None):
     if not os.path.isfile(args.deck):
         print(f"deck_theme: no such file: {args.deck}", file=sys.stderr)
         return 2
+    # Re-theming rewrites the deck, which is the SAME artifact. The theme profile is not: a
+    # destination that resolves to the file `load` would READ - a `--theme` given as a path, or
+    # the shipped preset a bare NAME resolves to - would replace it with the deck (CMH-TOOL-23).
+    if _atomic_io.refuse_aliased_output("deck_theme", args.out or args.deck,
+                                        [_deck_theme.resolved_spec_path(args.theme)]):
+        return 1
     if _is_repo_example(args.deck) and not args.force:
         print("deck_theme: refusing to re-theme a repo example/source deck (it is rebuilt from "
               "dev/examples/src by build.py); pass --force only if you know why.", file=sys.stderr)
