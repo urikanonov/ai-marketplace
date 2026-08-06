@@ -41,7 +41,8 @@
       // clip mid-word. SVG <text> labels (htmlLabels:false) scale with the diagram and never re-flow, so
       // a deck renders correctly; non-deck documents keep the richer HTML labels (line breaks, entities).
       const htmlLabels = !document.querySelector(".deck-stage");
-      m.initialize({ startOnLoad: false, theme, securityLevel: "strict", htmlLabels, flowchart: { htmlLabels, curve: "basis" } });
+      const initLabels = (v) => m.initialize({ startOnLoad: false, theme, securityLevel: "strict", htmlLabels: v, flowchart: { htmlLabels: v, curve: "basis" } });
+      initLabels(htmlLabels);
       const isHidden = (el) => !(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
       // mermaid shares internal state across renders, so serialize every render on one chain to avoid
       // the corruption that appears when many diagrams render at once.
@@ -83,8 +84,54 @@
           }, cleanup);
         }, () => {});
       };
+      // The layer verifies every rendered report diagram and, when one came out wrong (labels
+      // clipped by under-sized boxes, or a viewBox far larger than what was drawn), repairs THAT
+      // diagram through this hook by re-rendering it with SVG <text> labels, which scale with the
+      // diagram and cannot re-flow (CMH-MMD-12). The render happens on an off-screen clone, so the
+      // live element is only replaced once a good SVG exists, and the document's default label mode
+      // is restored afterwards so other diagrams keep the richer HTML labels. The source is a deep
+      // DOM CLONE taken before the first render, not serialized text: mermaid reads the diagram from
+      // `innerHTML` (it normalizes `<br/>` in a node label), so a textContent round-trip would drop
+      // the authored line breaks and re-render a DIFFERENT diagram.
+      const pristine = new WeakMap();
+      window.__cmhMermaidRerender = (el, opts) => {
+        const src = pristine.get(el);
+        if (!src) return Promise.resolve(false);
+        const want = !!(opts && opts.htmlLabels);
+        chain = chain.then(() => {
+          const sandbox = document.createElement("div");
+          sandbox.setAttribute("aria-hidden", "true");
+          sandbox.style.cssText = "position:fixed;left:-99999px;top:0;width:1000px;visibility:hidden;pointer-events:none;";
+          const clone = src.cloneNode(true);
+          clone.removeAttribute("id");
+          clone.removeAttribute("data-processed");
+          sandbox.appendChild(clone);
+          document.body.appendChild(sandbox);
+          const cleanup = () => {
+            if (sandbox.parentNode) sandbox.parentNode.removeChild(sandbox);
+            try { initLabels(htmlLabels); } catch (e) {}
+          };
+          let ran;
+          try { initLabels(want); ran = m.run({ nodes: [clone] }); } catch (e) { cleanup(); return false; }
+          return Promise.resolve(ran).then(() => {
+            const svg = clone.querySelector("svg");
+            if (!svg) return false;
+            el.textContent = "";
+            el.appendChild(svg);
+            el.setAttribute("data-processed", "true");
+            return true;
+          }, () => false).then((ok) => { cleanup(); return ok; }, () => { cleanup(); return false; });
+        }, () => false);
+        // Keep the published readiness promise covering the repair too, so a print/screenshot
+        // pipeline that awaits it does not capture the diagram mid-repair.
+        window.__cmhMermaidReady = chain;
+        return chain;
+      };
       const start = () => {
         const all = [...document.querySelectorAll("pre.mermaid, div.mermaid")];
+        // Snapshot each diagram's authored markup before mermaid replaces the element with rendered
+        // SVG, so a render the layer later finds broken can be re-rendered from it (CMH-MMD-12).
+        all.forEach((el) => { if (!pristine.has(el)) pristine.set(el, el.cloneNode(true)); });
         runVisible(all.filter((el) => !el.hasAttribute("data-processed") && !isHidden(el)));
         all.filter((el) => !el.hasAttribute("data-processed") && isHidden(el)).forEach(renderHidden);
         // Diagrams render asynchronously; expose a promise that settles once every render has

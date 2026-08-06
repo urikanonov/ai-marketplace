@@ -379,7 +379,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.805.0";
+const CMH_VERSION = "1.809.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -1965,6 +1965,275 @@ function mermaidViewBoxDims(svg) {
   }
   return null;
 }
+
+/* ---------- Render self-check (CMH-MMD-12) ----------
+   A report diagram is rendered with HTML node labels inside a <foreignObject>, whose content the
+   browser re-lays-out against whatever context the SVG ends up in. When that goes wrong the node
+   boxes are too small for their labels (clipped mid-word) and the viewBox is much larger than what
+   was actually drawn (the diagram sits small in a corner with the rest blank). Both are measurable
+   after the fact, so the layer measures them once per diagram and repairs a bad render instead of
+   laying it out faithfully. */
+
+// Slack on a label box, in SVG user units. mermaid sizes each box from its own text measurement, so
+// a healthy render overflows by exactly 0 (measured across every shipped example); the allowance
+// only absorbs sub-pixel rounding.
+var MMD_LABEL_SLACK = 4;
+// The drawn content must fill at least this fraction of the viewBox. Only an UNDER-fill in BOTH
+// dimensions counts as broken: over-filling is normal (a gantt draws grid lines well past its
+// viewBox) and one small dimension is a legitimate aspect ratio. The worst healthy fill across the
+// shipped examples is 0.88; the reported failure sat near 0.5 in both dimensions.
+var MMD_FILL_MIN = 0.7;
+// Absolute allowance for the diagram's own padding (mermaid insets its content by 8 user units per
+// side), so a small diagram is not judged broken by its own margins.
+var MMD_FILL_PAD = 24;
+// Re-measure a host only when its rendered scale has moved by more than this fraction. The fault is
+// scale-dependent (an HTML label re-flows against the SCALED context), so a diagram that was healthy
+// at load can break when the column - and with it the diagram's CSS scale - changes on a resize,
+// rotation or reveal. Re-measuring on every ResizeObserver callback would be wasteful, and
+// re-measuring never would miss exactly the case this feature exists for.
+var MMD_RESCALE_MIN = 0.05;
+// Applied-repair count, for automation and the regression suite (a healthy document stays at 0).
+window.__cmhMermaidRepairs = 0;
+// Settles once every audit the layer has RESERVED has finished, including any repair render. The
+// slot for a diagram's first audit is reserved SYNCHRONOUSLY the moment its render is observed
+// (before the deferred measurement runs), so `await __cmhMermaidReady` then
+// `await __cmhMermaidAuditsSettled` genuinely covers the verification - awaiting the render promise
+// alone does not, because the audit is queued after it settles.
+window.__cmhMermaidAuditsSettled = Promise.resolve();
+function trackMermaidAudit(promise) {
+  window.__cmhMermaidAuditsSettled = Promise.all([window.__cmhMermaidAuditsSettled, promise])
+    .then(function () {}, function () {});
+  return promise;
+}
+
+// Client px per SVG user unit, so a CSS-scaled diagram is measured in its own design units.
+function mermaidUserScale(svg) {
+  try {
+    const ctm = svg.getScreenCTM && svg.getScreenCTM();
+    if (ctm && isFinite(ctm.a) && ctm.a > 0) return ctm.a;
+  } catch (e) {}
+  const vb = mermaidViewBoxDims(svg);
+  const w = svg.getBoundingClientRect ? svg.getBoundingClientRect().width : 0;
+  if (vb && w > 0) return w / vb.w;
+  return 1;
+}
+// Worst amount (SVG user units) by which a laid-out label sticks out of the box that was sized for
+// it, plus how many boxes were actually compared. An HTML label is measured against its
+// <foreignObject>, an SVG <text> label against its node shape; measuring BOTH modes is what keeps a
+// post-repair comparison honest, since an htmlLabels:false render has no <foreignObject> at all. The
+// COUNT matters because a worst of 0 means either "everything fits" or "nothing was measurable", and
+// only the caller can tell those apart.
+function mermaidLabelOverflow(svg) {
+  const out = { worst: 0, boxes: 0 };
+  if (!svg || !svg.querySelectorAll) return out;
+  const scale = mermaidUserScale(svg);
+  svg.querySelectorAll("foreignObject").forEach(function (fo) {
+    const bw = fo.width && fo.width.baseVal ? fo.width.baseVal.value : parseFloat(fo.getAttribute("width"));
+    const bh = fo.height && fo.height.baseVal ? fo.height.baseVal.value : parseFloat(fo.getAttribute("height"));
+    const kid = fo.firstElementChild;
+    if (!kid || !(bw > 0) || !(bh > 0)) return;
+    const r = kid.getBoundingClientRect();
+    if (!(r.width > 0) && !(r.height > 0)) return;
+    out.boxes += 1;
+    out.worst = Math.max(out.worst, r.width / scale - bw, r.height / scale - bh);
+  });
+  // SVG <text> labels are already in user units, so the shape and the label are compared directly.
+  // Deliberately narrow: only a `g.node` that owns BOTH a direct-child shape and mermaid's
+  // direct-child `g.label` wrapper is measured. Diagram families that lay text out against a
+  // composite or path-backed shape (class, requirement) or that place free text with no owning
+  // shape at all (sequence, gantt, pie) match neither and are left unmeasured, so they can never be
+  // repaired on this signal - measuring them would risk a FALSE POSITIVE, which would re-render a
+  // healthy diagram, and a missed clip is the safer error.
+  svg.querySelectorAll("g.node").forEach(function (node) {
+    if (node.querySelector("foreignObject")) return;
+    const label = node.querySelector(":scope > g.label text");
+    const shape = node.querySelector(":scope > rect, :scope > polygon, :scope > circle, :scope > ellipse");
+    if (!label || !shape || !label.getBBox || !shape.getBBox) return;
+    let lb, sb;
+    try { lb = label.getBBox(); sb = shape.getBBox(); } catch (e) { return; }
+    if (!(sb.width > 0) || !(sb.height > 0) || !(lb.width > 0)) return;
+    out.boxes += 1;
+    out.worst = Math.max(out.worst, lb.width - sb.width, lb.height - sb.height);
+  });
+  out.worst = Math.max(0, out.worst);
+  return out;
+}
+// How much of the viewBox the drawn content covers, per axis, plus the viewBox and the intersection
+// rectangle. The coverage is the INTERSECTION of the content bbox with the viewBox, not the raw bbox
+// size, so content drawn off to one side is judged by what actually lands inside the box - a raw
+// size comparison would pass a diagram whose content sits entirely outside its viewBox. null when
+// unmeasurable (no viewBox, or a host with no layout box).
+function mermaidContentFill(svg) {
+  const vb = ((svg && svg.getAttribute("viewBox")) || "").trim().split(/[\s,]+/).map(Number);
+  if (vb.length !== 4 || !vb.every(isFinite) || !(vb[2] > 0) || !(vb[3] > 0)) return null;
+  if (!svg.getBBox) return null;
+  let box;
+  try { box = svg.getBBox(); } catch (e) { return null; }
+  if (!box || !(box.width > 0) || !(box.height > 0)) return null;
+  const x = Math.max(box.x, vb[0]), y = Math.max(box.y, vb[1]);
+  const overlapW = Math.max(0, Math.min(box.x + box.width, vb[0] + vb[2]) - x);
+  const overlapH = Math.max(0, Math.min(box.y + box.height, vb[1] + vb[3]) - y);
+  return {
+    w: (overlapW + MMD_FILL_PAD) / vb[2],
+    h: (overlapH + MMD_FILL_PAD) / vb[3],
+    vb: vb,
+    inner: { x: x, y: y, w: overlapW, h: overlapH },
+  };
+}
+// The two invariants as one verdict; `bad` is what triggers a repair.
+function mermaidRenderFaults(svg) {
+  const labels = mermaidLabelOverflow(svg);
+  const fill = mermaidContentFill(svg);
+  const underfilled = !!fill && fill.w < MMD_FILL_MIN && fill.h < MMD_FILL_MIN;
+  return {
+    overflow: labels.worst,
+    labelBoxes: labels.boxes,
+    fill: fill,
+    bad: labels.worst > MMD_LABEL_SLACK || underfilled,
+  };
+}
+// The tighter of the two fill ratios. Unmeasurable bounds score 0, NOT 1: this value only ever
+// feeds a "did the repair improve things" comparison, so losing measurable bounds has to read as a
+// downgrade (roll back) and gaining them as an upgrade (keep), never the reverse.
+function mermaidFillFloor(faults) {
+  return faults && faults.fill ? Math.min(faults.fill.w, faults.fill.h) : 0;
+}
+// A presentation size mermaid wrote as a literal length (not the responsive `width="100%"` that
+// pairs with an inline max-width, which must be left alone).
+function mermaidPxAttr(value) {
+  return typeof value === "string" && /^\s*\d*\.?\d+(px)?\s*$/.test(value);
+}
+// Re-fit an over-sized viewBox to the content that was actually drawn, so the diagram is not laid
+// out small inside a box of blank space. SHRINK-ONLY and clamped to the content that lands INSIDE
+// the current viewBox: the fault being repaired is "the box is bigger than the drawing", so a
+// rewrite that would enlarge the box (which a diagram drawing far outside its viewBox - a gantt's
+// grid lines, say - would otherwise produce) is refused outright rather than shrinking the diagram
+// to a speck. Returns true when it rewrote the viewBox, and rolls the rewrite back unless the
+// re-measured render is strictly better on the bounds and no worse on the labels.
+function refitMermaidViewBox(svg) {
+  const before = mermaidRenderFaults(svg);
+  const fill = before.fill;
+  if (!fill || !(fill.w < MMD_FILL_MIN && fill.h < MMD_FILL_MIN)) return false;
+  if (!(fill.inner.w > 0) || !(fill.inner.h > 0)) return false;
+  const pad = 8;
+  const w = fill.inner.w + pad * 2, h = fill.inner.h + pad * 2;
+  if (!(w < fill.vb[2]) || !(h < fill.vb[3])) return false;
+  const beforeFill = mermaidFillFloor(before);
+  const prevViewBox = svg.getAttribute("viewBox");
+  const hadMaxWidth = !!(svg.style && svg.style.maxWidth);
+  const prevMaxWidth = svg.style ? svg.style.maxWidth : "";
+  const prevWidthAttr = svg.getAttribute("width"), prevHeightAttr = svg.getAttribute("height");
+  svg.setAttribute("viewBox", (fill.inner.x - pad) + " " + (fill.inner.y - pad) + " " + w + " " + h);
+  // mermaid pins the presentation size from the OLD viewBox: an inline max-width when useMaxWidth is
+  // on, and literal px width/height ATTRIBUTES when the author turned it off. Re-derive whichever is
+  // in use, or the diagram keeps reserving the stale (too wide) box.
+  if (hadMaxWidth) svg.style.maxWidth = w + "px";
+  if (mermaidPxAttr(prevWidthAttr) && mermaidPxAttr(prevHeightAttr)) {
+    svg.setAttribute("width", String(w));
+    svg.setAttribute("height", String(h));
+  }
+  const after = mermaidRenderFaults(svg);
+  if (mermaidFillFloor(after) > beforeFill && after.overflow <= before.overflow + 0.5) return true;
+  if (prevViewBox === null) svg.removeAttribute("viewBox"); else svg.setAttribute("viewBox", prevViewBox);
+  if (hadMaxWidth) svg.style.maxWidth = prevMaxWidth;
+  if (prevWidthAttr === null) svg.removeAttribute("width"); else svg.setAttribute("width", prevWidthAttr);
+  if (prevHeightAttr === null) svg.removeAttribute("height"); else svg.setAttribute("height", prevHeightAttr);
+  return false;
+}
+// Verify one rendered report diagram and repair it at most once. The repair is the deck-proven path
+// (CMH-MMD-08): re-render THIS host with SVG <text> labels, which scale with the diagram and cannot
+// re-flow, then re-fit the viewBox if the bounds are still wrong. The original SVG is kept aside and
+// put back whenever the re-render loses content or does not improve either measurement, so a
+// diagram is never left worse than it rendered. Resolves true when a repair was applied.
+function auditMermaidRender(host) {
+  // A deck already renders every label as SVG <text> (CMH-MMD-08) and owns its own contain-fit
+  // sizing, so there is nothing here to repair.
+  if (!host || !host.querySelector || IS_DECK) return Promise.resolve(false);
+  if (host._cmhMmdRepairTried) return Promise.resolve(false);
+  const svg = host.querySelector("svg");
+  if (!svg) return Promise.resolve(false);
+  // Nothing is measurable while the host has no layout box (a collapsed section); the reveal
+  // ResizeObserver runs the audit again once it has one.
+  if (!(host.offsetWidth || host.offsetHeight || (host.getClientRects && host.getClientRects().length))) {
+    return Promise.resolve(false);
+  }
+  host._cmhMmdAuditScale = mermaidUserScale(svg);
+  const before = mermaidRenderFaults(svg);
+  if (!before.bad) return Promise.resolve(false);
+  const beforeNodes = host.querySelectorAll(MERMAID_RENDERED_SEL).length;
+  const beforeFill = mermaidFillFloor(before);
+  const finish = (repaired) => {
+    if (!repaired) return false;
+    window.__cmhMermaidRepairs += 1;
+    // A replaced SVG carries no comment rings and needs its width class recomputed against the
+    // corrected intrinsic width. Never let a re-attach failure turn a successful repair into a
+    // rejected promise.
+    try {
+      const i = parseInt(host.dataset.cmMermaidIndex, 10) || 0;
+      comments.forEach(function (c) {
+        if (c.anchorType === "mermaid" && c.diagramIndex === i) applyMermaidHighlight(c);
+      });
+      refreshDeckDiagram(host);
+      updateMermaidWidthClass(host);
+      attachMermaidHostHandlers(host);
+      const fixed = host.querySelector("svg");
+      if (fixed) host._cmhMmdAuditScale = mermaidUserScale(fixed);
+    } catch (e) {}
+    return true;
+  };
+  const rerender = window.__cmhMermaidRerender;
+  if (typeof rerender !== "function") {
+    // No re-render hook (for example a hand-vendored loader that predates it): the bounds can still
+    // be re-fitted in place, which only rewrites this host's own viewBox and rolls itself back
+    // unless the whole re-measured render improved.
+    host._cmhMmdRepairTried = true;
+    return Promise.resolve(finish(refitMermaidViewBox(svg)));
+  }
+  host._cmhMmdRepairTried = true;
+  return Promise.resolve(rerender(host, { htmlLabels: false })).then(function (ok) {
+    const fresh = ok && host.querySelector("svg");
+    // The hook could not act (no pristine snapshot, or its render failed). Degrade exactly like the
+    // no-hook path rather than leaving the diagram broken: an in-place bounds re-fit is still
+    // available and only ever rewrites this host's own viewBox.
+    if (!fresh || fresh === svg) return refitMermaidViewBox(svg);
+    refitMermaidViewBox(fresh);
+    const after = mermaidRenderFaults(fresh);
+    const afterFill = mermaidFillFloor(after);
+    // A worst overflow of 0 means either "every label fits" or "no label box was measurable", so the
+    // label arm only votes when the fresh render actually compared boxes; otherwise the fill is the
+    // only evidence there is, and it has to be a strict improvement.
+    const labelsComparable = after.labelBoxes > 0;
+    const notWorse = host.querySelectorAll(MERMAID_RENDERED_SEL).length >= beforeNodes &&
+      (!labelsComparable || after.overflow <= before.overflow + 0.5) &&
+      afterFill >= beforeFill - 0.01;
+    const strictlyBetter = (labelsComparable && after.overflow < before.overflow - 0.5) ||
+      afterFill > beforeFill + 0.01;
+    // Keep the replacement only when it is no worse AND it actually achieved something: a
+    // re-render that comes back just as broken must not be presented (or counted) as a repair.
+    if (notWorse && (!after.bad || strictlyBetter) && (labelsComparable || strictlyBetter)) return true;
+    host.textContent = "";
+    host.appendChild(svg);
+    return false;
+  }, function () { return false; }).then(finish, function () { return false; });
+}
+// The automatic (render / reveal / resize) call sites measure a host once, and then again only when
+// its rendered scale has moved materially - the fault is scale-dependent, so a diagram that was
+// healthy at load can break when the column width changes, and re-measuring on every callback would
+// be wasteful. A host whose one repair attempt is spent is never re-measured at all. Returns the
+// audit promise so the caller can fold it into the settled-audits signal.
+function maybeAuditMermaidRender(host) {
+  if (!host || host._cmhMmdRepairTried) return Promise.resolve(false);
+  const prev = host._cmhMmdAuditScale;
+  if (typeof prev === "number") {
+    const svg = host.querySelector && host.querySelector("svg");
+    if (!svg) return Promise.resolve(false);
+    const now = mermaidUserScale(svg);
+    if (!(prev > 0) || Math.abs(now - prev) / prev < MMD_RESCALE_MIN) return Promise.resolve(false);
+  }
+  return trackMermaidAudit(auditMermaidRender(host));
+}
+window.__cmhMermaidAudit = auditMermaidRender;
+
 // Rich (non-text) blocks other than a mermaid diagram. A deck slide carrying one of these beside a
 // diagram is a mixed layout and is left alone; a slide whose only non-text content is a single
 // diagram is a "diagram slide" that should hand the diagram the whole slide.
@@ -2376,6 +2645,12 @@ function setupMermaidLayer() {
     host.dataset.processed === "true" ||
     !!host.querySelector(MERMAID_RENDERED_SEL);
   const restoreForHost = (host) => {
+    // Reserve this host's audit slot NOW, synchronously, so `__cmhMermaidAuditsSettled` is already
+    // pending by the time the render promise settles; the measurement itself has to wait a frame
+    // (below), and a slot reserved only then would let an automation pipeline read an
+    // already-settled signal and capture the unverified diagram (CMH-MMD-12).
+    let settleAudit;
+    trackMermaidAudit(new Promise(function (resolve) { settleAudit = resolve; }));
     // Defer one frame: mermaid stamps data-processed before the SVG nodes
     // are actually in the DOM in some versions, so highlight application
     // must wait until the painted nodes exist.
@@ -2389,6 +2664,8 @@ function setupMermaidLayer() {
       refreshDeckDiagram(host);
       updateMermaidWidthClass(host);
       attachMermaidHostHandlers(host);
+      // Verify what mermaid actually drew and repair a bad render (CMH-MMD-12).
+      maybeAuditMermaidRender(host).then(settleAudit, settleAudit);
     };
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(apply);
     else setTimeout(apply, 0);
@@ -2428,7 +2705,13 @@ function setupMermaidLayer() {
   if (typeof ResizeObserver === "function") {
     if (setupMermaidLayer._widthObs) setupMermaidLayer._widthObs.disconnect();
     const widthObs = new ResizeObserver(function (entries) {
-      entries.forEach(function (e) { updateMermaidWidthClass(e.target); refreshDeckDiagram(e.target); });
+      entries.forEach(function (e) {
+        updateMermaidWidthClass(e.target);
+        refreshDeckDiagram(e.target);
+        // A diagram rendered while its section was collapsed was unmeasurable then; audit it the
+        // first time it has a real layout box (CMH-MMD-12).
+        maybeAuditMermaidRender(e.target);
+      });
     });
     mermaidDiagrams.forEach(function (host) { widthObs.observe(host); });
     setupMermaidLayer._widthObs = widthObs;
@@ -16832,12 +17115,47 @@ async function _offlineInlineRichLibs(doc, referencesChartLib, inlinedLibs, payl
       + "      }, cleanup);\n"
       + "    }, function () {});\n"
       + "  };\n"
+      + "  var initLabels = function (v) { window.mermaid.initialize({ startOnLoad: false, theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default', securityLevel: 'strict', htmlLabels: v, flowchart: { htmlLabels: v, curve: 'basis' } }); };\n"
+      + "  var pristine = new WeakMap();\n"
+      + "  window.__cmhMermaidRerender = function (el, opts) {\n"
+      + "    var src = pristine.get(el);\n"
+      + "    if (!src) return Promise.resolve(false);\n"
+      + "    var want = !!(opts && opts.htmlLabels);\n"
+      + "    var base = !document.querySelector('.deck-stage');\n"
+      + "    chain = chain.then(function () {\n"
+      + "      var sandbox = document.createElement('div');\n"
+      + "      sandbox.setAttribute('aria-hidden', 'true');\n"
+      + "      sandbox.style.cssText = 'position:fixed;left:-99999px;top:0;width:1000px;visibility:hidden;pointer-events:none;';\n"
+      + "      var clone = src.cloneNode(true);\n"
+      + "      clone.removeAttribute('id');\n"
+      + "      clone.removeAttribute('data-processed');\n"
+      + "      sandbox.appendChild(clone);\n"
+      + "      document.body.appendChild(sandbox);\n"
+      + "      var cleanup = function () {\n"
+      + "        if (sandbox.parentNode) sandbox.parentNode.removeChild(sandbox);\n"
+      + "        try { initLabels(base); } catch (e) {}\n"
+      + "      };\n"
+      + "      var ran;\n"
+      + "      try { initLabels(want); ran = window.mermaid.run({ nodes: [clone] }); } catch (e) { cleanup(); return false; }\n"
+      + "      return Promise.resolve(ran).then(function () {\n"
+      + "        var svg = clone.querySelector('svg');\n"
+      + "        if (!svg) return false;\n"
+      + "        el.textContent = '';\n"
+      + "        el.appendChild(svg);\n"
+      + "        el.setAttribute('data-processed', 'true');\n"
+      + "        return true;\n"
+      + "      }, function () { return false; }).then(function (ok) { cleanup(); return ok; }, function () { cleanup(); return false; });\n"
+      + "    }, function () { return false; });\n"
+      + "    window.__cmhMermaidReady = chain;\n"
+      + "    return chain;\n"
+      + "  };\n"
       + "  var run = function () {\n"
       + "    var theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default';\n"
       + "    var htmlLabels = !document.querySelector('.deck-stage');\n"
       + "    try { window.mermaid.initialize({ startOnLoad: false, theme: theme, securityLevel: 'strict', htmlLabels: htmlLabels, flowchart: { htmlLabels: htmlLabels, curve: 'basis' } }); }\n"
       + "    catch (e) { return; }\n"
       + "    var all = Array.prototype.slice.call(document.querySelectorAll(" + JSON.stringify(CMH_MERMAID_SEL) + "));\n"
+      + "    all.forEach(function (el) { if (!pristine.has(el)) pristine.set(el, el.cloneNode(true)); });\n"
       + "    runVisible(all.filter(function (el) { return !el.hasAttribute('data-processed') && !isHidden(el); }));\n"
       + "    all.filter(function (el) { return !el.hasAttribute('data-processed') && isHidden(el); }).forEach(renderHidden);\n"
       + "    window.__cmhMermaidReady = chain;\n"
