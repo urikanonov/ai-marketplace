@@ -37,6 +37,30 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   Below 320px the list floor scales with the viewport, so the whole guarantee still holds at 640x240.
   The desktop layout is unchanged.
 
+## [1.796.0] - 2026-08-06
+
+### Fixed
+
+- The render-time link classifier now stamps a document reference whose href `new URL()` cannot
+  RESOLVE against the document (CMH-LINK-01). That is two populations: an href the URL parser
+  REJECTS outright - `http://[`, `http://%`, `file://[`, `https://?` - and any relative reference in
+  a document whose base URL has an opaque path (`about:blank`, `blob:`, `data:`). `new URL()` throws
+  for both, and the fallback read `a.protocol`, which the HTML getter answers `":"` for an anchor
+  whose URL record is null: that matches none of `http:`/`https:`/`file:`, so the link was
+  classified as a NON-document reference, was not stamped `target="_blank"`, did not gain
+  `rel="noopener noreferrer"`, and an author-set `target="_self"` on it stood - a click navigated
+  the reviewer's own tab away from the report and their comments. The fallback is now the
+  CMH-LINK-05 gate's own string reading (`_cmhHrefIsDocumentReference`: the URL parser's inner
+  ASCII tab/LF/CR strip and its C0-and-space END trim, then the anchored scheme regex against
+  `http`/`https`/`file`, a scheme-less reference counting because it inherits the document's
+  protocol), so the two are pinned to one verdict. Both cleanups are load-bearing: without the end
+  trim `<SP>foo://[` reads as scheme-less and would be stamped, and without the inner strip so does
+  `ja<TAB>vascript://[`. The change can only ever ADD a stamp - the branch it replaced answered
+  false for every href that reached it - and it closes the half of the runtime/gate divergence the
+  CMH-LINK-05 row recorded, where the gate warned about a same-tab link the runtime never actually
+  protected. Note that a link this newly admits also becomes commentable, so the `linkIndex` of the
+  links after it in the document shifts; a stored comment re-anchors by its href, which both sides
+  now read through the same `_cmhLinkHrefKey`.
 ## [1.794.0] - 2026-08-06
 
 ### Fixed

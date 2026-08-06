@@ -8874,6 +8874,38 @@ function _cmhLinkHrefKey(value) {
 function _cmhLegacyLinkHrefKey(value) {
   return String(value == null ? "" : value).replace(/[\r\n\t]+/g, " ").trim();
 }
+// The validator's own reading of an `<a href>` (`tools/validate/checks/links.py` - `_browser_href`,
+// `_href_scheme`, `_is_document_reference`), mirrored here for the case the browser cannot answer:
+// an href `new URL()` refuses to resolve against this document. Each class is written out as an
+// explicit range for the same reason `_CMH_URL_ENDS_TRIM_RE` above is - neither engine's own trim or
+// `\s` is the parser's set - and each is pinned to the validator's as TEXT, and the pair over a
+// corpus, by `tests/test_vendored_libs.py`.
+//
+// Two cleanups, both the URL parser's own input handling: ASCII tab/LF/CR removed from ANYWHERE
+// (so `ja<TAB>vascript://[` is the non-document scheme it really is), then the ENDS trimmed through
+// the shared `_cmhUrlEndsTrim` above, so a padded `<SP>foo://[` is not misread as the scheme-less
+// relative reference it is not. This is deliberately NOT `_offlineNormalizeUrlValue`
+// (68-export-offline), which also maps backslash onto slash: that mapping is right for an ORIGIN
+// decision and wrong for a mirror of `_browser_href`, which omits it on purpose. Keep this reading
+// pinned to the validator's, not to the exporter's.
+const _CMH_URL_INNER_STRIP_RE = /[\t\n\r]/g;
+// Anchored, and its class excludes `/`, `?` and `#`, so a ":" belonging to a path or query
+// ("path/to:x") never reads as a scheme. The document schemes are the ones the stamp is for.
+const _CMH_HREF_SCHEME_RE = /^[A-Za-z][A-Za-z0-9+.\-]*:/;
+const _CMH_DOC_SCHEMES = ["http", "https", "file"];
+function _cmhBrowserHref(href) {
+  return _cmhUrlEndsTrim(String(href == null ? "" : href).replace(_CMH_URL_INNER_STRIP_RE, ""));
+}
+// Whether `href` names a DOCUMENT a click would navigate to, decided on the STRING - the reading the
+// authoring gate (CMH-LINK-05) uses, and the only one available once `new URL()` has thrown. A
+// scheme-less reference inherits the document's protocol, so it counts.
+function _cmhHrefIsDocumentReference(href) {
+  const raw = _cmhBrowserHref(href);
+  if (!raw || raw.charAt(0) === "#") return false;
+  const m = _CMH_HREF_SCHEME_RE.exec(raw);
+  if (!m) return true;
+  return _CMH_DOC_SCHEMES.indexOf(m[0].slice(0, -1).toLowerCase()) !== -1;
+}
 
 // Author-facing reference links only: real href, not UI chrome, not an in-page
 // fragment (those navigate within the document, so a new tab would be wrong and
@@ -8892,6 +8924,19 @@ function _cmhLegacyLinkHrefKey(value) {
 // exemption they gate is then confirmed against the URL a browser RESOLVES (`_cmhSamePageHref`),
 // so a `<base href>` that re-points an empty or `#fragment` href at another document cannot buy an
 // exemption from a navigation that really does leave this page.
+//
+// When `new URL()` cannot RESOLVE the href against this document there is no normalized protocol to
+// read. That is two populations, not one: an href the parser rejects outright (`http://[`,
+// `http://%`, `file://[`, `https://?`), and ANY relative reference in a document whose base URL has
+// an opaque path (`about:blank`, `blob:`, `data:`), which has no base to resolve against.
+// `a.protocol` is not the answer for either: it is ":" for an anchor whose URL record is null (the
+// HTML getter's defined value, not a Chromium quirk), which matches none of the three document
+// schemes - so such a link was left unstamped and an author-set `target="_self"` on it stood, and
+// the reviewer's own tab navigated away from the report and their comments. It also put the runtime
+// and the CMH-LINK-05 gate, which classifies the same href on the string and calls it a document
+// reference, on opposite sides of the same link. The fallback is therefore that same string
+// reading (#1183), which is what the gate would say and can only ever ADD a stamp: the old branch
+// answered false for every href that reached it.
 function _cmhCommentableLink(a) {
   if (!a || a.tagName !== "A" || !a.hasAttribute("href")) return false;
   if (a.closest(".cm-skip")) return false;
@@ -8899,7 +8944,7 @@ function _cmhCommentableLink(a) {
   if ((!raw || raw.charAt(0) === "#") && _cmhSamePageHref(a)) return false; // same-page fragment
   let proto = "";
   try { proto = new URL(a.href, document.baseURI).protocol.toLowerCase(); }
-  catch (e) { proto = (a.protocol || "").toLowerCase(); }
+  catch (e) { return _cmhHrefIsDocumentReference(a.getAttribute("href")); }
   return proto === "http:" || proto === "https:" || proto === "file:";
 }
 // The EFFECTIVE target a browser resolves for a hyperlink (HTML's "get an element's target"), which
