@@ -4,6 +4,45 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.751.0] - 2026-08-05
+
+### Fixed
+
+- The deck gate (`deck/deck_validate.py`, CMH-DECK-04) now decides "is this reference remote" with
+  the SHARED network-URL predicate every other surface asks, so a scheme-only or single-slash
+  spelling can no longer walk a remote fetch past it. It read the question with its own
+  `^(?:https?:)?//`, which REQUIRES the two slashes; the URL parser does not - its
+  special-authority states consume the whole slash run after a special scheme - so
+  `https:evil.example/x.png`, `https:/evil.example/x.png` and `https:\evil.example/x.png` all
+  resolve to exactly the same host as `https://evil.example/x.png` and are really fetched. A deck
+  body could therefore carry `<source srcset="https:evil.example/x.png 1x">`, pass the gate clean,
+  and still egress; outside descriptor mode `offline` the base validator's media rules do not run,
+  so for a deck this gate is the only checker `source[srcset]` gets. The egress attributes now ask
+  `checks/resources.py`'s `is_network_url` and the CSS `url()` / `@import` reads ask that module's
+  patterns - the same readings the strict validator and the offline strip were widened to for
+  these spellings earlier (CMH-OFFLINE-04) - so all three surfaces agree about what a browser
+  fetches for the scheme-and-slash-run spellings, and the
+  deck-only `image-set()` reader carries the same prefix. A relative reference, a `data:` URL, a
+  local path and an external hyperlink are unaffected. As with the shared srcset reader, a broken
+  or partial install warns through `_toolpath.warn_missing_tool` and degrades to a strictly
+  over-inclusive local reading rather than crashing the gate (for CSS that reading is now selected
+  per call, so it is reachable from a test).
+- The deck gate's `image-set()` reading, which has no shared counterpart, is built from the shared
+  prefix and host-character fragments instead of a hand copy, and it now scans EVERY candidate in
+  the list with a quote- and paren-aware scanner: `image-set('local.png' 1x, 'https://evil/x' 2x)`
+  and `image-set(url("a.png") 1x, "//evil/x" 2x)` both fetch the second candidate at 2x DPR, and a
+  regex that stopped at the first `)` saw neither. An unclosed `image-set(` now ends at the
+  declaration boundary instead of swallowing the rest of the slide, so an allowed `<a href>`
+  further down is no longer reported as a remote CSS reference.
+- Both CSS reads also run over a copy of the deck body with the parser-removed controls
+  normalized away, which the URL parser does in two different ways: it removes ASCII tab from
+  ANYWHERE, but every other C0 control only from the LEADING run of a reference. So
+  `url("//<TAB>host/x.png")` and `url("<VT>//host/x.png")` really load `//host/x.png` and are now
+  reported, while the mid-token `url("/<SOH>/host/x.png")` stays local and is not. LF and CR are
+  kept in both readings (a newline in a CSS string drops the declaration, so nothing loads). This
+  is a deck-local compensation - the strict validator and the offline strip still read those
+  spellings with the shared patterns alone.
+
 ## [1.750.0] - 2026-08-05
 
 ### Fixed
