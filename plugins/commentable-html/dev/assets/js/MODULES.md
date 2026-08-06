@@ -43,7 +43,8 @@ Conventions for these partials (they share ONE closure scope after concatenation
   relations a `rel` attribute names. 31-links owns the matching reading of the other operand:
   `_cmhEffectiveTarget` / `_CMH_TARGET_COERCE_WS_RE` is the bundle's single copy of HTML's "get an
   element's target" (`<base target>` inheritance plus the `<`-coercion), pinned as TEXT and over a
-  corpus to the validator's `effective_link_target`.
+  corpus to the validator's `effective_link_target`. Its `<base>` lookup (`_cmhBaseTarget`) also
+  reads `_OFFLINE_HTML_NS` (68-export-offline) to keep a foreign `<base>` out.
 
 | Module | SPEC areas | Purpose |
 | --- | --- | --- |

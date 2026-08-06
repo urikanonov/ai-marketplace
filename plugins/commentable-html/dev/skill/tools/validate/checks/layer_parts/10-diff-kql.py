@@ -63,22 +63,14 @@ def _named_browsing_contexts(html):
     return names
 
 
-def _first_base_target(html):
-    """The value of this document's FIRST `<base target>`, or None when it declares none.
-
-    That is what an anchor with no `target` of its own inherits (HTML's "get an element's target"):
-    every later `<base target>` is ignored, exactly as HTML ignores all but the first.
-    """
-    for el in _find_tag_attrs(html, "base"):
-        if el.get("target") is not None:
-            return el["target"]
-    return None
-
-
-def _check_kql_blocks(html):
+def _check_kql_blocks(html, parser):
     errors, warnings = [], []
     named_contexts = _named_browsing_contexts(html)
-    base_target = _first_base_target(html)
+    # The document's first LIVE HTML `<base target>` - what an anchor with no `target` of its own
+    # inherits. Read off the document PARSER, not a name scan of the markup: the parser is
+    # namespace-aware and skips inert `<template>` / declarative-shadow content, so a `<base>` a
+    # browser never applies cannot decide this (see `_DocParser.base_targets`).
+    base_target = parser.base_targets[0] if parser.base_targets else None
     # 11c) "Run in Azure Data Explorer" links (class cmh-kql-run) must point at the ADX web UX over
     #      https and open safely. This fires ONLY on the explicit run-link class, so
     #      it never false-positives on a plain KQL code block or a syntax example.
@@ -109,17 +101,28 @@ def _check_kql_blocks(html):
         # the run link inside `figcaption.cm-skip`, and BOTH the render-time stamper
         # (`assets/js/31-links.js` returns early on `.cm-skip`) and `checks/links.py` (which skips a
         # skip-marked anchor) pass it by.
-        raw_target = effective_link_target(a.get("target"), base_target)
+        own_target = a.get("target")
+        raw_target = effective_link_target(own_target, base_target)
         target = _ascii_lower(raw_target)
         opens_auxiliary = (target not in _SAME_CONTEXT_TARGETS
                            and (target == "_blank" or raw_target not in named_contexts))
         if opens_auxiliary and "noopener" not in link_rel_tokens(a.get("rel")):
-            # `%r` because the value is authored text: the covered spellings include control
-            # characters (a tab, a newline, a vertical tab), and interpolating one raw would break
-            # the diagnostic across lines or drive the reader's terminal.
+            # Report the AUTHORED value and name the rule that turned it into the effective one, so
+            # the diagnostic points at markup the author can actually find: telling someone whose
+            # link carries no `target` at all that it is `target='_blank'` sends them looking for an
+            # attribute that is not there, and hides that a `<base target>` (or the `<`-coercion) is
+            # what decided it. `%r` because the value is authored text: the covered spellings
+            # include control characters (a tab, a newline, a vertical tab), and interpolating one
+            # raw would break the diagnostic across lines or drive the reader's terminal.
+            if own_target is None:
+                shown = "inherited target=%r from <base target>" % raw_target[:40]
+            elif own_target != raw_target:
+                shown = "target=%r, which HTML coerces to %r" % (own_target[:40], raw_target)
+            else:
+                shown = "target=%r" % raw_target[:40]
             warnings.append('a "cmh-kql-run" link opens an auxiliary browsing context '
-                            '(target=%r) without rel="noopener" (reverse-tabnabbing risk); '
-                            'add rel="noopener noreferrer"' % raw_target[:40])
+                            '(%s) without rel="noopener" (reverse-tabnabbing risk); '
+                            'add rel="noopener noreferrer"' % shown)
 
     # 11d) A framed KQL figure (figure.cmh-kql) must carry a working "Run in Azure Data Explorer"
     #      link (a real <a class="cmh-kql-run"> element) so the reader can open the query in ADX.

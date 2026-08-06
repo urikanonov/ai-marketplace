@@ -8717,14 +8717,28 @@ function _cmhCommentableLink(a) {
 // neither engine's own `\s` is this set.
 const _CMH_TARGET_COERCE_WS_RE = /[\t\n\r]/;
 function _cmhEffectiveTarget(own, base) {
-  const target = own !== null ? own : base;
-  if (target === null) return "";
+  // `== null` (not `===`) so an `undefined` from a caller that read a missing property behaves like
+  // the absent value rather than reaching `.trim()` as `undefined` and throwing mid-render. Python
+  // has only `None`, so the twin's `is not None` is the same test.
+  const target = own != null ? own : base;
+  if (target == null) return "";
   if (_CMH_TARGET_COERCE_WS_RE.test(target) && target.indexOf("<") !== -1) return "_blank";
   return target;
 }
 function _cmhBaseTarget(doc) {
-  const b = (doc || document).querySelector("base[target]");
-  return b ? b.getAttribute("target") : null;
+  // The FIRST LIVE HTML `<base target>`. The namespace filter is the whole point: a bare CSS type
+  // selector matches ANY namespace, so `document.querySelector("base[target]")` returns an
+  // `<svg><base target="_self">` - which is a foreign element a browser never treats as a base
+  // (`base` is not a foreign breakout tag, so it stays in the SVG namespace) - and an author who
+  // wrote one before the real `<base target="_blank">` silently lost the stamp on every link that
+  // inherits it, measured in Chromium (#1141). `<template>` and shadow content need no filter here:
+  // template content is a separate document fragment and a shadow tree is not in the light DOM, so
+  // neither is reachable from this query at all - which is exactly what a browser does too.
+  const bases = (doc || document).querySelectorAll("base[target]");
+  for (let i = 0; i < bases.length; i++) {
+    if (bases[i].namespaceURI === _OFFLINE_HTML_NS) return bases[i].getAttribute("target");
+  }
+  return null;
 }
 // Render-time defaults. Two independent concerns:
 // - NEW-TAB stamping: open author-facing document references (http/https/file only) in a new
@@ -8748,7 +8762,14 @@ function stampLinkTargets() {
     if (a.closest(".cm-skip")) return; // never touch runtime UI chrome
     if (_cmhCommentableLink(a)) a.setAttribute("target", "_blank");
     const effective = _cmhEffectiveTarget(
-      a.hasAttribute("target") ? a.getAttribute("target") : null, baseTarget);
+      a.hasAttribute("target") ? a.getAttribute("target") : null,
+      // Only an HTML anchor INHERITS: HTML's "get an element's target" is defined for an HTML
+      // `a`/`area`/`form`, so a foreign `<a>` (an SVG one, which mermaid emits for a clickable
+      // node) inherits nothing and navigates the current context. Without this a
+      // `<base target="_blank">` document would newly stamp every SVG anchor - and `noreferrer`
+      // on a same-tab navigation is not a no-op, it suppresses the Referer. An own `target` on a
+      // foreign anchor still reads as before, so no stamp that exists today is taken away.
+      a.namespaceURI === _OFFLINE_HTML_NS ? baseTarget : null);
     if (effective.trim().toLowerCase() === "_blank") {
       // HTML tokenizes a `rel` list on ASCII whitespace ONLY, so read it through the bundle's one
       // reading (`_offlineLinkRelTokens`, pinned to the validator's `link_rel_tokens`) rather than

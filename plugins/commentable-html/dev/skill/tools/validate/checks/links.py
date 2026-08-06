@@ -12,6 +12,8 @@ data:/...) are exempt - a new tab for those would strand a dead tab.
 
 import re
 
+from .parsing import effective_link_target
+
 # Schemes that ARE document references (mirrors _cmhCommentableLink, which stamps only
 # http/https/file). Everything else with an explicit scheme (mailto/tel/javascript/data/
 # blob/...) is exempt from the new-tab rule.
@@ -56,7 +58,15 @@ def check_links(parser):
     MathML), which the runtime does not stamp because its tagName is "a", not "A". An <a> at an
     HTML integration point (<svg><foreignObject>, <svg><desc>, <svg><title>, <math><mtext> and the
     other MathML text integration points, or an <annotation-xml> whose encoding a browser matches
-    exactly) is HTML and IS checked. Returns a list of warning strings."""
+    exactly) is HTML and IS checked. Returns a list of warning strings.
+
+    The AUTHORED target is read through the shared `effective_link_target` (CMH-LINK-01) so the
+    `<`-coercion applies here too: `target="x&#10;<"` is a name HTML replaces with `_blank`, so it
+    opens a NEW tab and reporting it as opening in the same one is a false positive - fatal under
+    `--strict`. The document's `<base target>` is deliberately NOT fed in: this check's question is
+    whether the AUTHOR asked for the same tab, and the runtime overrides a document reference to
+    `_blank` regardless of what the base says, so inheriting one here would invent a warning about
+    markup the author never wrote on the link."""
     seen = []
     for a in parser.anchors:
         if a.get("skip") or a.get("foreign") or not a.get("in_root"):
@@ -64,7 +74,7 @@ def check_links(parser):
         target = a.get("target")
         if target is None:
             continue
-        if target.strip().lower() == "_blank":
+        if effective_link_target(target, None).strip().lower() == "_blank":
             continue
         if not _is_document_reference(a.get("href")):
             continue

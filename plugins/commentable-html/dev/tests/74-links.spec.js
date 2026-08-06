@@ -43,7 +43,9 @@ async function stage(page, { init } = {}) {
 // Links whose EFFECTIVE target a browser resolves from something other than the anchor's own
 // attribute. All are NON-commentable (a fragment, a mailto:), because the runtime hands every
 // commentable document reference an explicit target="_blank" of its own - so only these can show
-// whether the stamper reads the raw attribute or the target a browser actually resolves.
+// whether the stamper reads the raw attribute or the target a browser actually resolves. The SVG
+// anchor is here for the opposite reason: HTML's "get an element's target" is defined for an HTML
+// anchor, so a foreign one must inherit NOTHING.
 const BASE_CONTENT = `
 <h2 id="base-lead">Base target</h2>
 <p id="base-p"><a id="binherit" href="#base-section">inherits</a>
@@ -51,14 +53,15 @@ const BASE_CONTENT = `
 <a id="bself" href="#base-section" target="_self">explicit self</a>
 <a id="bcoerce" href="#base-section" target="x&#10;&lt;">coerced to blank</a>
 <a id="bname" href="#base-section" target="x&lt;">plain name</a></p>
+<svg id="bsvg" width="10" height="10"><a id="bsvga" href="#base-section"><title>svg link</title></a></svg>
 <h2 id="base-section">Base section</h2>`;
 
-// Stage BASE_CONTENT with (or, for the control, without) a `<base target>` in the head.
-async function stageBase(page, baseTarget) {
+// Stage BASE_CONTENT with (or, for the control, without) `<base target>` markup in the head.
+// `head` is raw markup, so a test can park a base a browser never applies before the live one.
+async function stageBase(page, head) {
   const { html } = stageContent(BASE_CONTENT, { key: KEY + "-base" });
-  if (baseTarget !== null) {
-    const src = fs.readFileSync(html, "utf8")
-      .replace("<head>", '<head>\n<base target="' + baseTarget + '">');
+  if (head !== null) {
+    const src = fs.readFileSync(html, "utf8").replace("<head>", "<head>\n" + head);
     fs.writeFileSync(html, src);
   }
   await page.goto(fileUrl(html));
@@ -161,7 +164,7 @@ test.describe("link handling", () => {
     // `target` of its own inherits the document's first `<base target>`, so in a
     // `<base target="_blank">` document these links open an auxiliary context with a live
     // `window.opener` - and the raw read saw `null` and stamped nothing.
-    await stageBase(page, "_blank");
+    await stageBase(page, '<base target="_blank">');
     for (const id of ["binherit", "bmail"]) {
       const tokens = await relTokens(page, id);
       expect(tokens, id).toContain("noopener");
@@ -177,13 +180,57 @@ test.describe("link handling", () => {
     await popup.close();
     // An explicit same-context target on the link WINS over the base, so it stays unstamped.
     expect(await relTokens(page, "bself"), "bself").toEqual([]);
+    // A FOREIGN anchor inherits nothing: HTML's "get an element's target" is defined for an HTML
+    // anchor, so an SVG one (mermaid emits these for clickable nodes) navigates the CURRENT tab.
+    // Stamping it would suppress the Referer on a same-tab navigation.
+    expect(await relTokens(page, "bsvga"), "bsvga").toEqual([]);
 
     // The control: the same document with NO `<base target>` navigates all of these in the current
     // tab, so none of them may gain the rel - the stamp follows the effective target, it is not a
     // blanket rewrite of every non-commentable link.
     await stageBase(page, null);
-    for (const id of ["binherit", "bmail", "bself"]) {
+    for (const id of ["binherit", "bmail", "bself", "bsvga"]) {
       expect(await relTokens(page, id), id).toEqual([]);
+    }
+  });
+
+  test("a <base target> a browser never applies cannot decide the stamp (CMH-LINK-01)", async ({ page }) => {
+    // "The document contains a base element" is the BROWSER's view. A `<base>` parked in an inert
+    // `<template>` or a declarative shadow root is not in the document tree, and one written under
+    // `<svg>`/`<math>` is a foreign element (`base` is not a foreign breakout tag, so it stays
+    // there) - a browser applies neither. A bare CSS type selector matches ANY namespace, so
+    // `querySelector("base[target]")` returned the SVG one and an author who wrote a same-context
+    // base before the real one silently lost the stamp on every link that inherits it.
+    const parked = [
+      '<template><base target="_self"></template>',
+      '<svg><base target="_self"></svg>',
+      '<math><base target="_self"></math>',
+      '<div><template shadowrootmode="open"><base target="_self"></template></div>',
+    ];
+    for (const head of parked) {
+      await stageBase(page, head + '<base target="_blank">');
+      const tokens = await relTokens(page, "binherit");
+      expect(tokens, head).toContain("noopener");
+      expect(tokens, head).toContain("noreferrer");
+    }
+    // ...and on its own such a base inherits NOTHING, so no link may be stamped.
+    for (const head of parked) {
+      await stageBase(page, head.replace(/_self/g, "_blank"));
+      expect(await relTokens(page, "binherit"), head).toEqual([]);
+    }
+  });
+
+  test("a padded or case-variant inherited _blank is still stamped (CMH-LINK-01)", async ({ page }) => {
+    // The stamper matches the keyword with a JS `.trim().toLowerCase()`, deliberately BROADER than
+    // HTML's untrimmed ASCII-case-insensitive match. That is the safe direction and must stay: HTML
+    // reads ` _blank ` as a NAME, and a name this document does not declare opens a brand-new
+    // auxiliary context with a live `window.opener` - so tightening the match to the letter of the
+    // spec would REMOVE a stamp these links need.
+    for (const value of [" _blank ", "&#9;_BLANK&#10;", "_BLAN&#x212a;"]) {
+      await stageBase(page, '<base target="' + value + '">');
+      const tokens = await relTokens(page, "binherit");
+      expect(tokens, value).toContain("noopener");
+      expect(tokens, value).toContain("noreferrer");
     }
   });
 

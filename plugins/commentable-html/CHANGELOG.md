@@ -18,7 +18,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   a target of its own - opened an auxiliary browsing context with a live `window.opener` and was
   never stamped; and a target name carrying both an ASCII tab-or-newline and a `<` is replaced by
   `_blank`, so `target="x&#10;<"` opened a new tab the raw string compare did not recognize. The
-  gate had the same gap for an inherited target. The stamp deliberately stays on the `_blank`
+  gate had the same gap for an inherited target. The `<base>` both sides read is the one a BROWSER
+  applies: the runtime filters `querySelector("base[target]")` to the HTML namespace (a bare CSS
+  type selector matches ANY namespace, so an `<svg><base target="_self">` written before the real
+  `<base target="_blank">` masked it and silently lost the stamp on every link that inherits it,
+  measured in Chromium), and the validator reads the namespace-aware document parser, which also
+  skips a `<base>` parked in an inert `<template>` or a declarative shadow root where its old name
+  scan saw one. Only an HTML anchor INHERITS - HTML's rule is defined for an HTML `a`/`area`/`form`
+  - so a foreign (SVG/MathML) `<a>`, which mermaid emits for a clickable node, is no longer given a
+  `noreferrer` that would suppress the Referer on a same-tab navigation. The gate's warning now
+  names the AUTHORED markup and the rule that transformed it, rather than reporting a `target` the
+  element does not carry. The same shared reading also settles the `<`-coercion for the same-tab
+  link check (`checks/links.py`, CMH-LINK-05), which used to report `target="x&#10;<"` - a new tab
+  - as opening in the same one, a false positive that is fatal under `--strict`. The stamp
+  deliberately stays on the `_blank`
   keyword rather than the gate's broader "opens an auxiliary context": the gate only warns, while
   the stamp mutates the document, and adding `noopener` to a link the author targeted by NAME would
   stop it reusing the context it named.

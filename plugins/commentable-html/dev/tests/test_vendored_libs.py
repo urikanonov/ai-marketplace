@@ -2304,8 +2304,13 @@ class RuntimeParityTests(unittest.TestCase):
         ("x\ufeff<", None), ("x\u2028<", None), ("x\u0085<", None),
         (None, "x\u000b<"), (None, "x<"),
         # Case is NOT folded by this reading - each side folds when it matches the keyword, so a
-        # fold here would be a second, divergent one.
+        # fold here would be a second, divergent one. The padded and case-variant pseudo-keywords
+        # are here because the RUNTIME's keyword match is deliberately broader than HTML's (it
+        # trims and Unicode-lowercases the result, which only ever stamps MORE links): the shared
+        # reading must hand both sides the same value, and the broadening must live on one side
+        # only.
         ("_BLANK", None), ("X\n<", None),
+        (" _blank ", None), (None, " _blank "), (None, "\t_BLANK\n"), (None, "_BLAN\u212a"),
     ]
 
     def _runtime_effective_target_source(self):

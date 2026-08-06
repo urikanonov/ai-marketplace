@@ -2091,6 +2091,17 @@ class _DocParser(_BrowserBoundaries):
         self.content_region_opened = False
         self.content_region_closed = False
         self.anchors = []        # [{"href", "target", "skip", "foreign", "in_root"}] per <a>
+        # The `target` of every LIVE HTML `<base target>`, in document order. The first is what an
+        # anchor with no `target` of its own inherits (HTML's "get an element's target"), so this
+        # must be the browser's view of "the document contains a base element", not a name scan:
+        # a `<base>` parked in an inert `<template>` or a declarative shadow root is not in the
+        # document tree at all, and one written under `<svg>`/`<math>` is a foreign element a
+        # browser never treats as a base (`base` is not a foreign BREAKOUT tag, so it stays there).
+        # A raw `_find_tag_attrs(html, "base")` saw all three, and an SVG `<base target="_self">`
+        # written before the real `<base target="_blank">` therefore masked it - the gate went
+        # silent on a run link a browser really does open in a new tab (#1141). Recorded here,
+        # after the template/shadow early return above, so both exclusions come for free.
+        self.base_targets = []
         self.metas = {}          # {meta name (lowercased): content} for <meta name content>
         # Every <meta http-equiv=content-security-policy> a browser really APPLIES, in document
         # order, as {"content", "late"}. Collected here rather than off the shared tag index
@@ -2363,6 +2374,8 @@ class _DocParser(_BrowserBoundaries):
             if "style" in ad:
                 self.template_inline_styles.append({"tag": tag, "value": ad.get("style", "")})
             return
+        if tag == "base" and ns == "html" and ad.get("target") is not None:
+            self.base_targets.append(ad["target"])
         # NAMESPACE-AWARE (CMH-VAL-19). The LAYER's own markup is HTML markup: a browser loads a
         # stylesheet only from an HTML `<link>`, honors `src` only on an HTML `<script>` (an SVG
         # script loads from `href`/`xlink:href`, and MathML defines no script at all), and reads

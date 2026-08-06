@@ -108,6 +108,27 @@ class LinkTargetTests(unittest.TestCase):
         self.assertFalse(self._warns(
             '<p><math><annotation-xml encoding=" text/html">'
             '<a href="page.html" target="_self">x</a></annotation-xml></math></p>'))
+    def test_a_target_html_coerces_to_blank_is_not_reported_as_same_tab(self):
+        # CMH-LINK-05 / CMH-LINK-01: the AUTHORED target is read through the shared
+        # `effective_link_target`, so a name carrying both an ASCII tab-or-newline and a U+003C is
+        # the `_blank` HTML replaces it with - a NEW tab. Reporting it as opening in the same tab
+        # was a false positive, and a warning is fatal under --strict.
+        for spelling in ("x&#10;&lt;", "&lt;&#9;x", "a&#13;b&lt;c"):
+            self.assertFalse(self._warns('<p><a href="page.html" target="%s">x</a></p>' % spelling),
+                             spelling)
+        # The coercion needs BOTH characters, so these stay ordinary same-tab names and are still
+        # reported - the fix removes a false positive, it does not blunt the check.
+        for spelling in ("x&lt;", "x&#10;y", "viewer"):
+            self.assertTrue(self._warns('<p><a href="page.html" target="%s">x</a></p>' % spelling),
+                            spelling)
+
+    def test_a_document_reference_with_no_target_is_exempt_whatever_the_base_says(self):
+        # The document's `<base target>` is deliberately NOT fed into this check: its question is
+        # whether the AUTHOR asked for the same tab, and the runtime overrides a document reference
+        # to `_blank` regardless of the base, so inheriting one here would invent a warning about
+        # markup the author never wrote on the link.
+        for base in ('<base target="_self">', '<base target="_blank">', '<base target="viewer">'):
+            self.assertFalse(self._warns(base + '<p><a href="page.html">x</a></p>'), base)
 
 
 if __name__ == "__main__":

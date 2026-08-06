@@ -252,6 +252,50 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
         warnings = warnings_for(base % "x&#10;&lt;", "", '<iframe name="x&#10;&lt;" title="f"></iframe>')
         self.assertTrue(any('without rel="noopener"' in w for w in warnings), warnings)
 
+        # 3. The diagnostic names the AUTHORED markup and the rule that transformed it, so an author
+        #    whose link carries no `target` at all is not sent looking for an attribute that is not
+        #    there, and a coerced name is not silently reported as `_blank`.
+        warnings = warnings_for(base % "_blank", "")
+        self.assertTrue(any("inherited target='_blank' from <base target>" in w for w in warnings),
+                        warnings)
+        warnings = warnings_for("", ' target="x&#10;&lt;"')
+        self.assertTrue(any("which HTML coerces to '_blank'" in w for w in warnings), warnings)
+        warnings = warnings_for("", ' target="_blank"')
+        self.assertTrue(any("(target='_blank')" in w for w in warnings), warnings)
+
+    def test_kusto_run_link_base_target_is_read_the_way_a_browser_reads_it(self):
+        # CMH-KQL-05: "the document contains a base element" is the BROWSER's view, not a name scan
+        # of the markup. `_find_tag_attrs` saw a `<base>` a browser never applies, and the first one
+        # it found decided the inherited target - so a single parked or foreign `<base>` written
+        # before the real one silenced this gate on a link a browser does open in a new tab. The
+        # parser-backed reading (`_DocParser.base_targets`) skips both.
+        run = '<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x">Run</a>'
+
+        def warnings_for(head_extra):
+            main = MAIN.replace("<p>content</p>", head_extra + "<p>content</p>" + run)
+            _, warnings = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(),
+                                                     main, JS_REGION]))
+            return [w for w in warnings if 'without rel="noopener"' in w]
+
+        # A `<base>` a browser never applies must not mask the real one. Each of these writes a
+        # same-context base BEFORE the live `<base target="_blank">`; Chromium opens the link in a
+        # new tab in every one of them (measured), so the gate must warn.
+        for parked in ('<template><base target="_self"></template>',
+                       '<svg><base target="_self"></svg>',
+                       '<math><base target="_self"></math>',
+                       '<div><template shadowrootmode="open"><base target="_self">'
+                       '</template></div>'):
+            self.assertTrue(warnings_for(parked + '<base target="_blank">'),
+                            "%r did not mask the live base" % parked)
+        # ...and on its own, a parked or foreign base inherits NOTHING, so a run link under one is
+        # clean. Warning there would be a false positive, which is fatal under --strict.
+        for parked in ('<template><base target="_blank"></template>',
+                       '<svg><base target="_blank"></svg>',
+                       '<math><base target="_blank"></math>',
+                       '<div><template shadowrootmode="open"><base target="_blank">'
+                       '</template></div>'):
+            self.assertEqual(warnings_for(parked), [], parked)
+
     def test_bare_kusto_without_no_cluster_marker_errors(self):
         # CMH-KQL-08: a bare KQL code block that is neither framed in a figure.cmh-kql (with a Run in
         # Azure Data Explorer link) nor explicitly marked data-cmh-kql-no-cluster is a hard error -

@@ -173,7 +173,7 @@ def check_layer(html, parser, base_dir=None):
     errors += e
     warnings += w
 
-    e, w = _check_kql_blocks(html)
+    e, w = _check_kql_blocks(html, parser)
     errors += e
     warnings += w
 
