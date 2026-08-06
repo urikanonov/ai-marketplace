@@ -32,11 +32,13 @@ import _browser_attrs  # noqa: E402
 import _browser_boundaries  # noqa: E402
 from deck_common import SLIDE_ID_RE  # noqa: E402
 try:
-    from checks.resources import (CSS_HOST_CHAR, CSS_NETWORK_IMPORT_RE,  # noqa: E402
-                                  CSS_NETWORK_PREFIX, CSS_NETWORK_URL_RE, CSS_WS,
+    from checks.resources import (CSS_HOST_CHAR, CSS_NETWORK_IMAGE_SET_RE,  # noqa: E402
+                                  CSS_NETWORK_IMPORT_RE, CSS_NETWORK_PREFIX, CSS_NETWORK_URL_RE,
+                                  CSS_WS, css_image_set_args, css_network_image_set,
                                   is_network_url, srcset_candidate_urls)
 except Exception:  # pragma: no cover - only a broken/partial install reaches this
-    CSS_HOST_CHAR = CSS_NETWORK_IMPORT_RE = CSS_NETWORK_PREFIX = CSS_NETWORK_URL_RE = None
+    CSS_HOST_CHAR = CSS_NETWORK_IMAGE_SET_RE = CSS_NETWORK_IMPORT_RE = CSS_NETWORK_PREFIX = None
+    CSS_NETWORK_URL_RE = css_image_set_args = css_network_image_set = None
     CSS_WS = is_network_url = srcset_candidate_urls = None
     _toolpath.warn_missing_tool(
         "checks.resources", "the shared network-URL predicate and srcset candidate tokenization")
@@ -74,21 +76,24 @@ _CSS_IMPORT_FALLBACK_RE = re.compile(
     r"@import[\t\n\f\r ]*(?:url\([\t\n\f\r ]*)?['\"]?[\t\n\f\r ]*" + _CSS_FALLBACK_PREFIX,
     re.IGNORECASE | re.ASCII)
 # `image-set()` can carry a bare remote string with no `url()` wrapper, which the shared `url()`
-# pattern cannot see and no other surface reads - so the READER is deck-only, but its prefix and
-# host-character rule come from the shared fragments rather than a hand copy. It scans EVERY
-# candidate, not just the one abutting `image-set(`: `image-set('local.png' 1x, '//h/x.png' 2x)`
-# really does fetch the second one at 2x DPR, and anchoring on the open paren saw only the first.
-_IMAGE_SET_OPEN_RE = re.compile(r"image-set\(", re.IGNORECASE | re.ASCII)
-# An unquoted one of these ends a CSS declaration or is markup, so the scan stops there. A `<` or
-# `>` inside a QUOTE is a legal CSS string character, so it only stops the scan on the SECOND
-# reading below - the one used when the list never closed.
-_IMAGE_SET_MARKUP = "<>"
-_IMAGE_SET_STOP = "<>;{}"
+# pattern cannot see. Both the candidate-list READER and its candidate pattern now live in the
+# shared CSS reading (`checks/resources.py`), because the strict gate needs the same question
+# answered in shareable mode (#1166); this module keeps only the DEGRADED spellings a broken
+# install falls back to. The degraded READER is a local COPY of the same quote- and paren-aware
+# scanner rather than a cruder regex, and that duplication is deliberate: a regex that stops at an
+# unquoted `;`/`{`/`}` truncates at the `;` INSIDE a quoted `data:` candidate and drops every
+# candidate after it, so `image-set("data:image/png;base64,AAAA" 1x, "//evil/x.png" 2x)` read clean
+# in the degraded path - a fail-OPEN in the one path whose whole point is to fail CLOSED (found by
+# the round-1 multi-duck panel, 6 of 8 ducks). Sharing the PATTERN is what #1129 asks for; the
+# fallback scanner is by definition the code that runs when nothing is shared.
 _IMAGE_SET_TOKEN_START = r"(?:^|['\",(]|" + (CSS_WS or r"[\t\n\f\r ]") + r")"
 _CSS_IMAGE_SET_FALLBACK_RE = re.compile(
     _IMAGE_SET_TOKEN_START + _CSS_FALLBACK_PREFIX, re.IGNORECASE | re.ASCII)
-_CSS_IMAGE_SET_RE = None if CSS_NETWORK_PREFIX is None else re.compile(
-    _IMAGE_SET_TOKEN_START + CSS_NETWORK_PREFIX + CSS_HOST_CHAR, re.IGNORECASE | re.ASCII)
+_IMAGE_SET_OPEN_FALLBACK_RE = re.compile(r"image-set\(", re.IGNORECASE | re.ASCII)
+_IMAGE_SET_FALLBACK_MARKUP = "<>"
+_IMAGE_SET_FALLBACK_STOP = "<>;{}"
+_IMAGE_SET_FALLBACK_BAD_STRING = "\n\r\f"
+_CSS_IMAGE_SET_RE = CSS_NETWORK_IMAGE_SET_RE
 # The characters the URL parser removes from a reference that CSS also permits inside a quoted
 # string. It removes ASCII tab (and LF/CR) from ANYWHERE, but every OTHER C0 control only from the
 # LEADING run - so the two are normalized differently: deleting a mid-token `\x01` would turn the
@@ -101,7 +106,21 @@ _CSS_IMAGE_SET_RE = None if CSS_NETWORK_PREFIX is None else re.compile(
 _CSS_LEADING_C0_RE = re.compile(r"([('\",\t\n\f\r ])[\x00-\x08\x0b\x0c\x0e-\x1f]+")
 
 
-def _scan_image_set(text, start, markup_ends_a_string):
+def _image_set_args_fallback(text):
+    """The degraded copy of the shared reader, used only when `checks.resources` did not import."""
+    out, pos = [], 0
+    while True:
+        m = _IMAGE_SET_OPEN_FALLBACK_RE.search(text, pos)
+        if not m:
+            return out
+        stop, closed = _scan_image_set_fallback(text, m.end(), False)
+        if not closed:
+            stop = _scan_image_set_fallback(text, m.end(), True)[0]
+        out.append(text[m.end():stop])
+        pos = stop + 1
+
+
+def _scan_image_set_fallback(text, start, markup_ends_a_string):
     """Where one `image-set(` argument list ends, and whether it CLOSED with its own `)`."""
     depth, i, quote, end = 1, start, "", len(text)
     while i < end:
@@ -112,7 +131,9 @@ def _scan_image_set(text, start, markup_ends_a_string):
         if quote:
             if ch == quote:
                 quote = ""
-            elif markup_ends_a_string and ch in _IMAGE_SET_MARKUP:
+            elif ch in _IMAGE_SET_FALLBACK_BAD_STRING:
+                return i, False
+            elif markup_ends_a_string and ch in _IMAGE_SET_FALLBACK_MARKUP:
                 return i, False
         elif ch in "'\"":
             quote = ch
@@ -122,36 +143,17 @@ def _scan_image_set(text, start, markup_ends_a_string):
             depth -= 1
             if depth == 0:
                 return i, True
-        elif ch in _IMAGE_SET_STOP:
+        elif ch in _IMAGE_SET_FALLBACK_STOP:
             return i, False
         i += 1
     return end, False
 
 
 def _image_set_args(text):
-    """Every `image-set(...)` argument list, read with a depth counter rather than a regex.
-
-    A `[^)]*` capture stopped at the FIRST `)`, which in real CSS is the `)` of a nested
-    `url(...)`/`type(...)` or a literal `)` inside a quoted candidate - so
-    `image-set(url("a.png") 1x, "//evil/x.png" 2x)` hid the candidate a 2x browser fetches.
-
-    A list that never CLOSES is re-read with markup as a hard boundary, even inside a quote: the
-    open quote is then almost certainly the one ending the `style` attribute rather than a CSS
-    string, and reading on would swallow the rest of the slide and report an allowed `<a href>`
-    further down as a remote CSS reference. A CLOSED list keeps the quote-faithful reading, so a
-    legal `<` inside a candidate (`image-set("a<b.png" 1x, "//evil/x.png" 2x)`) cannot hide the
-    candidate after it.
-    """
-    out, pos = [], 0
-    while True:
-        m = _IMAGE_SET_OPEN_RE.search(text, pos)
-        if not m:
-            return out
-        stop, closed = _scan_image_set(text, m.end(), False)
-        if not closed:
-            stop = _scan_image_set(text, m.end(), True)[0]
-        out.append(text[m.end():stop])
-        pos = stop + 1
+    """Every `image-set(...)` argument list, from the shared reader (or the degraded copy)."""
+    if css_image_set_args is not None:
+        return css_image_set_args(text)
+    return _image_set_args_fallback(text)
 
 
 def _css_bodies(body):
@@ -170,8 +172,13 @@ def _css_url_is_remote(bodies):
     pattern = CSS_NETWORK_URL_RE or _CSS_URL_FALLBACK_RE
     if any(pattern.search(b) for b in bodies):
         return True
-    image_set = _CSS_IMAGE_SET_RE or _CSS_IMAGE_SET_FALLBACK_RE
-    return any(image_set.search(args) for b in bodies for args in _image_set_args(b))
+    if css_network_image_set is not None:
+        return any(css_network_image_set(b) for b in bodies)
+    # The degraded reading: the shared per-candidate one is gone, so every candidate list is
+    # searched whole with the over-inclusive fallback pattern. That over-reports where the shared
+    # reading is precise, which is the safe direction for a broken install.
+    return any(_CSS_IMAGE_SET_FALLBACK_RE.search(args)
+               for b in bodies for args in _image_set_args(b))
 
 
 
@@ -212,20 +219,41 @@ DEFAULT_OVERLOAD_LINE_CHARS = 90
 # cannot bypass them with a solidus attribute separator (<svg/onload=...>), an entity-encoded
 # scheme (&#106;avascript:), an unquoted attribute (<img src=//evil>), or an SVG <image>/<use>.
 _ACTIVE_TAGS = {"iframe", "object", "embed"}
-_URL_ATTRS = {"href", "src", "xlink:href", "poster", "background", "lowsrc", "action", "formaction", "data"}
+_URL_ATTRS = {"href", "src", "xlink:href", "poster", "background", "action", "formaction", "data"}
 # Elements whose URL attribute triggers a network FETCH on load (egress), not a mere hyperlink.
 # A <link> or <base> with a remote href is egress/redirect just like remote media, so they are
 # included; a plain <a href="https://..."> hyperlink is deliberately NOT (it fetches nothing).
+# Pinned to the strict layer gate's `_MEDIA_LOAD_ATTRS` (plus its core groups) and to the offline
+# export strips by `tests/test_egress_list_parity.py` (CMH-BUILD-22): a deck is checked by THIS gate
+# and, outside descriptor mode `offline`, by nothing else, so a pair the other two carry and this
+# one does not is a live hole rather than a stylistic difference - which is exactly what `feimage`
+# was, from #992 until #1179. `HTMLParser` lowercases the tag, so the key is `feimage` while the
+# export selector spells it `feImage`; both readings are namespace-blind for the reason that row
+# records.
 _EGRESS_ATTRS = {
     "img": {"src", "srcset"}, "video": {"src", "poster"}, "audio": {"src"},
     "source": {"src", "srcset"}, "track": {"src"}, "input": {"src"},
     "image": {"href", "xlink:href", "src", "srcset"}, "use": {"href", "xlink:href"},
+    "feimage": {"href", "xlink:href"},
     "iframe": {"src"}, "embed": {"src"}, "object": {"data"},
     "link": {"href"}, "base": {"href"},
 }
-# Legacy presentational URL attributes that fetch on ANY element (a browser rewrites a bare
-# <image> to <img>, and body/table background / img lowsrc still load), independent of tag.
-_EGRESS_ANY_ATTRS = {"background", "lowsrc"}
+# Legacy presentational URL attributes that fetch on ANY element (body/table background still
+# loads), independent of tag. `lowsrc` used to be in here, on a comment asserting it still loads;
+# it does not. The warrant is stated exactly, because a retirement is only as good as its evidence:
+# (1) HTML's own spec lists `lowsrc` as a NON-CONFORMING legacy feature and gives it no step in the
+# embedded-content loading algorithm - the IDL attribute merely reflects a URL; (2) it is not
+# documented as a supported feature by MDN and has no browser-compat entry at all (so nothing
+# records support for it, which is different from something recording its absence); (3) it is
+# MEASURED not to fetch in the engine CI runs - `tests/62-deck-regressions.spec.js` puts the
+# `lowsrc` image FIRST in the document, settles the page, and records that a plain `src` and a
+# legacy `background` are both requested while the `lowsrc` is not requested at all. IE fetched it
+# historically; no evergreen engine does. The strict layer gate never had a rule for `lowsrc` and
+# the offline export strips none, so this gate was the only one of the three that rejected an inert
+# attribute - and it rejected an authored `lowsrc="../x.png"` as a traversal too, which is why the
+# attribute leaves `_URL_ATTRS` with the egress rule. Reviving it means moving all three lists
+# together, which the CMH-BUILD-22 parity test enforces (#1179).
+_EGRESS_ANY_ATTRS = {"background"}
 _DANGER_SCHEME_RE = re.compile(r"^\s*(?:javascript|vbscript|livescript|mocha)\s*:", re.I)
 _DATA_HTML_RE = re.compile(r"^\s*data\s*:\s*text/html", re.I)
 # The strictly OVER-inclusive stand-in for the shared network predicate, used only by a broken or

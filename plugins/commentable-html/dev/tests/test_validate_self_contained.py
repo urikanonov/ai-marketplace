@@ -2082,6 +2082,195 @@ class NewCheckTests(unittest.TestCase):
                             "expected a shareable CSS error for %s, got %r" % (needle, errors))
         self.assertFalse(any("offline mode" in e for e in errors), errors)
 
+    # `image-set()` takes a BARE string candidate with no `url()` wrapper, so the shared `url()`
+    # pattern cannot see it at all: `image-set("https://evil.example/x.png" 1x)` in a `<style>`
+    # block or a `style=` attribute validated STRICT-CLEAN and was handed the
+    # `commentable-html-validated` stamp (issue #1166, measured by the #1145 review panel). The
+    # deck gate already read it; the strict gate now asks the same shared reader.
+    def test_shareable_mode_rejects_a_network_image_set_candidate(self):
+        for value, needle in (
+                ('image-set("https://evil.example/x.png" 1x)', "style block"),
+                ("image-set('//evil.example/x.png' 1x)", "style block"),
+                ("image-set('https:evil.example/x.png' 1x)", "style block"),
+                ("image-set('https:/evil.example/x.png' 1x)", "style block"),
+                # A later candidate is the one a 2x-DPR browser fetches, and a nested `url(...)`
+                # or `type(...)` paren must not hide it.
+                ("image-set('local.png' 1x, '//evil.example/x.png' 2x)", "style block"),
+                ('image-set(url("local.png") 1x, "https://evil.example/x.png" 2x)', "style block"),
+                ("-webkit-image-set('//evil.example/x.png' 1x)", "style block")):
+            markup = "<style>.a { background-image: %s; }</style>" % value
+            with self.subTest(value=value):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any("self-contained guarantee" in e and "image-set(" in e
+                                    and needle in e for e in errors), (value, errors))
+        for markup in ('<div style=\'background-image: image-set("https://evil.example/x.png" 1x)\'>'
+                       "f</div>",
+                       "<div style=\"background-image: image-set('local.png' 1x, "
+                       "'//evil.example/x.png' 2x)\">f</div>"):
+            with self.subTest(inline=markup):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any("self-contained guarantee" in e and "image-set(" in e
+                                    and "inline style on <div>" in e for e in errors),
+                                (markup, errors))
+
+    # CMH-VAL-25: the nested read mirrors the top-level set, so the same candidate written inside an
+    # `<iframe srcdoc>` is reported too - that walk is shareable-only, so it needs no mode test.
+    def test_a_nested_image_set_candidate_inside_a_srcdoc_is_an_error(self):
+        for nested, clause in (
+                ("&lt;p style=&quot;background-image:image-set('//evil.example/x.png' 1x)&quot;&gt;"
+                 "&lt;/p&gt;",
+                 "carries a nested inline style on <p> with a network image-set("),
+                ("&lt;style&gt;.a{background-image:image-set('https://evil.example/x.png' 1x)}"
+                 "&lt;/style&gt;",
+                 "carries a nested <style> block with a network image-set(")):
+            markup = '<iframe srcdoc="%s"></iframe>' % nested
+            with self.subTest(nested=nested):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any(clause in e for e in errors),
+                                "expected %r for %r, got %r" % (clause, nested, errors))
+
+    # The no-false-positive control: a candidate that resolves inside the file reaches no network,
+    # and an EMPTY authority (`//`) is a parse failure that fetches nothing, so neither may be
+    # reported - a gate that rejects a document with no egress at all is the one failure mode this
+    # check cannot afford.
+    def test_shareable_mode_accepts_a_local_or_data_image_set_candidate(self):
+        markup = ("<style>.a { background-image: image-set('local.png' 1x, './img/y.png' 2x); }\n"
+                  ".b { background-image: image-set(url('local.png') 1x, "
+                  "'data:image/gif;base64,R0lGODlhAQABAAAAACw=' 2x); }\n"
+                  ".c { background-image: image-set('//' 1x); }\n"
+                  ".d { background-image: image-set(url(x.png) type('image/png')); }</style>"
+                  "<div style=\"background-image:image-set('local.png' 1x)\">f</div>")
+        errors, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    # The SCOPE decision, pinned so it cannot drift into a silent widening (#1166). Offline mode
+    # deliberately does NOT read `image-set()`: there the zero-network CSP, not the parser-level
+    # pattern, is what enforces fetch egress (CMH-SEC-06, the ground #1007 and #1029 were closed
+    # on), and widening the gate alone would make it reject a file the exporter's
+    # `_offlineCssNoNetwork` had just produced - the #961 precedent and the CMH-OFFLINE-04 drift.
+    # The `url()` reading beside it must still fire in offline mode, so this is a scope test and
+    # not a "CSS is unchecked offline" test.
+    def test_offline_mode_leaves_the_image_set_reading_to_its_csp(self):
+        markup = ("<style>.a { background-image: image-set('https://evil.example/x.png' 1x); }"
+                  "</style>"
+                  "<div style=\"background-image:image-set('//evil.example/y.png' 1x)\">f</div>")
+        errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, markup))))
+        self.assertEqual([e for e in errors if "image-set(" in e], [], errors)
+        wrapped = "<style>.a { background-image: url(https://evil.example/x.png); }</style>"
+        errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, wrapped))))
+        self.assertTrue(any("offline mode" in e and "style block contains a network url("
+                            in e for e in errors), errors)
+
+    # One declaration that spells BOTH readings is one finding, not two: a candidate that IS a
+    # `url(...)` function belongs to the `url()` reading, so the bare-string one skips it. But the
+    # two readings are otherwise INDEPENDENT - a `url()` hit in one rule must not suppress an
+    # `image-set()` in a DIFFERENT rule of the same block, which an `elif` did (round-1 panel).
+    def test_a_declaration_that_spells_both_css_readings_is_reported_once(self):
+        markup = ("<style>.a { background-image: image-set(url(https://evil.example/x.png) 1x); }"
+                  "</style>")
+        errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+        css = [e for e in errors if "style block contains a network" in e]
+        self.assertEqual(len(css), 1, errors)
+        self.assertIn("url(", css[0])
+        self.assertNotIn("image-set(", css[0])
+
+    def test_a_network_url_in_one_rule_does_not_hide_an_image_set_in_another(self):
+        markup = ("<style>.a { background: url(https://evil.example/a.png); }\n"
+                  ".b { background-image: image-set('//evil.example/b.png' 1x); }</style>")
+        errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+        self.assertTrue(any("style block contains a network url(" in e for e in errors), errors)
+        self.assertTrue(any("style block contains a network image-set(" in e for e in errors),
+                        errors)
+        inline = ('<div style="background:url(https://evil.example/a.png);'
+                  "background-image:image-set('//evil.example/b.png' 1x)\">f</div>")
+        errors, _ = self._errs_warns(build(body=self._body(MAIN, inline)))
+        self.assertTrue(any("inline style on <div> contains a network url(" in e for e in errors),
+                        errors)
+        self.assertTrue(any("inline style on <div> contains a network image-set(" in e
+                            for e in errors), errors)
+
+    # The nested walk mirrors the top-level set, so the independent-reading property has to hold
+    # there too - an `elif` regression on the nested path alone would otherwise stay green.
+    def test_a_nested_network_url_does_not_hide_a_nested_image_set(self):
+        nested = ("&lt;style&gt;.a{background:url(https://evil.example/a.png)}\n"
+                  ".b{background-image:image-set('//evil.example/b.png' 1x)}&lt;/style&gt;")
+        markup = '<iframe srcdoc="%s"></iframe>' % nested
+        errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+        self.assertTrue(any("nested <style> block with a network url(" in e for e in errors),
+                        errors)
+        self.assertTrue(any("nested <style> block with a network image-set(" in e for e in errors),
+                         errors)
+
+    # The round-2 panel's measured BYPASS (4 of 8 ducks): a candidate that merely CONTAINS the text
+    # `url(` is not a `url()` function, and reading the args as one string let it swallow every
+    # candidate after it - so a 2x-DPR browser fetched from a file the gate had stamped. Each
+    # candidate is now read on its own, anchored at its own start.
+    def test_a_quoted_candidate_containing_url_does_not_hide_a_later_remote_candidate(self):
+        for value in ('image-set("url(local.png" 1x, "//evil.example/x.png" 2x)',
+                      'image-set("x.png?q=url(" 1x, "https://evil.example/x.png" 2x)',
+                      'image-set("asset-url(foo" 1x, "https://evil.example/x.png" 2x)',
+                      'image-set(url(local.png) 1x, "//evil.example/x.png" 2x)'):
+            with self.subTest(value=value):
+                markup = "<style>.a { background-image: %s; }</style>" % value
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any("style block contains a network image-set(" in e
+                                    for e in errors), (value, errors))
+                inline = '<div style=\'background-image: %s\'>f</div>' % value
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, inline)))
+                self.assertTrue(any("inline style on <div> contains a network image-set(" in e
+                                    for e in errors), (value, errors))
+
+    # The other direction the round-2 panel measured: a candidate is read ANCHORED at its own start,
+    # so a `data:` payload that merely CONTAINS a URL further in is not egress. Every inline SVG
+    # data URI carries `xmlns="http://www.w3.org/2000/svg"`, so an unanchored search rejected a
+    # document with no egress at all - the false positive this gate can least afford.
+    def test_a_url_inside_a_data_candidate_is_not_egress(self):
+        for value in ("image-set(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'>"
+                      "</svg>\" 1x)",
+                      'image-set(url("a), //evil.example/x.png") 1x)',
+                      "image-set('data:text/plain,see https://example.com/docs' 1x)",
+                      # An UNQUOTED `url(` whose contents carry whitespace is a bad-url-token: the
+                      # whole declaration is a parse error and a browser drops it, so the candidate
+                      # after it is never selected and reporting one would reject a non-fetch.
+                      'image-set(url(local.png 1x, "//evil.example/x.png" 2x)'):
+            with self.subTest(value=value):
+                markup = "<style>.a { background-image: %s; }</style>" % value
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertEqual([e for e in errors if "image-set(" in e], [], (value, errors))
+
+    # An unescaped LF, CR or FF inside a CSS string makes a BAD-STRING token: the browser drops that
+    # declaration and recovers at the `}`, so a LATER rule still applies and still fetches. Reading
+    # the string on past the newline let the broken declaration swallow that later rule, and the
+    # remote candidate in it went unreported (raised by the Copilot reviewer on this PR).
+    def test_a_bad_string_token_does_not_swallow_a_later_remote_candidate(self):
+        markup = ('<style>.a { background-image: image-set("broken\n'
+                  "} .b { background-image: image-set('//evil.example/x.png' 1x) }</style>")
+        errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+        self.assertTrue(any("style block contains a network image-set(" in e for e in errors),
+                        errors)
+
+
+    # `image-set()` takes a `<string>`, and `var()` substitution happens on the token stream BEFORE
+    # the property grammar is read, so `image-set(var(--u) 1x)` with `--u: "https://..."` really
+    # does fetch - unlike `url(var(--x))`, which no browser supports because `url(` is a url-token
+    # rather than a function. Reading it needs custom-property resolution, and failing CLOSED on a
+    # bare `var(` would reject `image-set(var(--logo) 1x)` whose variable holds a local path -
+    # deleting an author's value over a reference that loads nothing. The CSS-ESCAPE and
+    # comment-as-whitespace spellings are the shared literal-pattern gap #1029 tracks, and closing
+    # them means moving the exporter's strip in the same change.
+    def test_the_recorded_shareable_css_residuals_are_knowingly_not_read(self):
+        for markup in (
+                "<style>:root { --u: \"https://evil.example/x.png\"; }\n"
+                ".a { background-image: image-set(var(--u) 1x); }</style>",
+                "<style>.a { background: u\\72 l(https://evil.example/x.png); }</style>",
+                '<style>@im\\70 ort "https://evil.example/t.css";</style>',
+                "<style>@import/**/\"https://evil.example/t.css\";</style>"):
+            with self.subTest(markup=markup):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertEqual([e for e in errors if "image-set(" in e or "url(" in e
+                                  or "@import" in e], [], (markup, errors))
+
     # The control that makes the widening safe: a relative or `data:` reference resolves inside the
     # file and reaches no network, so none of the newly covered shapes may start rejecting a
     # document that has no egress at all.

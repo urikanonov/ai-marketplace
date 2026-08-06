@@ -21,7 +21,7 @@ sys.path.insert(0, DECK)
 sys.path.insert(0, _paths.TOOLS)
 import deck_scaffold  # noqa: E402
 import validate as cmh_validate  # noqa: E402
-from deck_common import SLIDE_ID_RE  # noqa: E402
+from deck_common import SLIDE_ID_RE, slide_id  # noqa: E402
 
 TOOL = os.path.join(DECK, "deck_scaffold.py")
 
@@ -170,6 +170,85 @@ class DeckScaffoldTests(unittest.TestCase):
         self.assertEqual(len(re.findall(r'data-slide-id="([^"]+)"', out)), 1)
         self.assertIn('class="slide x&amp;y active"', out)
         self.assertNotIn("&amp;amp;", out)
+
+    def test_an_existing_slide_id_is_read_in_every_html_quoting_form(self):
+        # #1173: the ids already TAKEN in the fragment were collected with
+        # `data-slide-id\s*=\s*"([^"]*)"`, the double-quoted form only, so a hand-authored
+        # `data-slide-id='...'` or `data-slide-id=...` - the same id to a browser, and the one
+        # `deck_validate` compares - was invisible and could be minted again for another slide.
+        # The scaffold's own `deck_checks` gate then refused the deck it had just produced.
+        body = "<p>two</p>"
+        minted = slide_id(deck_scaffold._strip_tags(body), set())
+        for spelling in ("data-slide-id='%s'" % minted, "data-slide-id=%s" % minted):
+            frag = os.path.join(self.tmp, "taken.html")
+            Path(frag).write_text(
+                '<section class="slide" %s><p>one</p></section>\n'
+                '<section class="slide">%s</section>\n' % (spelling, body),
+                encoding="utf-8")
+            out = self._make("--content", frag, "--force")
+            ids = re.findall(r'data-slide-id="([^"]+)"', out)
+            self.assertEqual(len(ids), 2, spelling)
+            self.assertEqual(ids[0], minted, spelling)
+            self.assertEqual(len(set(ids)), 2,
+                             "%s is already taken and must not be minted again" % spelling)
+
+    def test_an_existing_slide_id_is_decoded_before_it_is_compared(self):
+        # The value compared is the BROWSER-DECODED one, matching `deck_validate`: an authored
+        # `data-slide-id="slide&#45;deadbeef"` IS `slide-deadbeef` to a browser, so a second slide
+        # must not mint that id. Comparing the RAW text instead reads the two as different and
+        # produces the duplicate the deck contract then rejects.
+        body = "<p>encoded</p>"
+        minted = slide_id(deck_scaffold._strip_tags(body), set())
+        frag = os.path.join(self.tmp, "encoded.html")
+        Path(frag).write_text(
+            '<section class="slide" data-slide-id="%s"><p>one</p></section>\n'
+            '<section class="slide">%s</section>\n' % (minted.replace("-", "&#45;", 1), body),
+            encoding="utf-8")
+        out = self._make("--content", frag, "--force")
+        ids = re.findall(r'data-slide-id="([^"]+)"', out)
+        self.assertEqual(ids[0], minted)
+        self.assertEqual(len(set(ids)), 2)
+        # A `data-slide-id=` spelled inside ANOTHER attribute's quoted value is not an id at all.
+        # The phantom is the id the slide's own body mints, so a raw SEARCH would have put it in
+        # `taken` and forced this slide onto the `-2` collision branch; the parse leaves it alone.
+        phantom = slide_id(deck_scaffold._strip_tags("<p>two</p>"), set())
+        prepared, sids = deck_scaffold.prepare_slides(
+            '<section class="slide" title=\' data-slide-id="%s"\'><p>two</p></section>' % phantom)
+        self.assertEqual(sids, [phantom])
+        self.assertIn('data-slide-id="%s"' % phantom, prepared)
+
+    def test_a_duplicated_slide_id_keeps_the_first_occurrence(self):
+        # HTML5 keeps the FIRST of a duplicated attribute, and `deck_validate` reads the parsed
+        # (first) one - so a valueless or empty first `data-slide-id` names NO id, whatever a later
+        # duplicate says. Taking the first NON-EMPTY one instead adopted an id the browser never
+        # sees on BOTH sides: the slide kept the shadowed id, and the taken-id pre-scan reserved it,
+        # pushing the SECOND slide - whose own body mints exactly that id - onto the `-2` branch.
+        # The id is also written back ONCE, so a raw-text scan does not count the slide twice.
+        body = "<p>two</p>"
+        shadowed = slide_id(deck_scaffold._strip_tags(body), set())
+        minted = slide_id(deck_scaffold._strip_tags("<p>one</p>"), set())
+        for first in ("data-slide-id", 'data-slide-id=""'):
+            frag = os.path.join(self.tmp, "dupe.html")
+            Path(frag).write_text(
+                '<section class="slide" %s data-slide-id="%s"><p>one</p></section>\n'
+                '<section class="slide">%s</section>\n' % (first, shadowed, body),
+                encoding="utf-8")
+            out = self._make("--content", frag, "--force")
+            self.assertEqual(re.findall(r'data-slide-id="([^"]+)"', out), [minted, shadowed], first)
+
+    def test_a_non_slide_section_does_not_reserve_a_slide_id(self):
+        # Only a SLIDE's id is reserved. `deck_validate` reads ids from `section.slide` alone, so
+        # reserving an unrelated section's would push a real slide onto the `-2` branch and make
+        # that slide's supposedly stable id depend on content that is not a slide - deleting the
+        # unrelated section would then silently rename the slide.
+        body = "<p>two</p>"
+        minted = slide_id(deck_scaffold._strip_tags(body), set())
+        frag = os.path.join(self.tmp, "nonslide.html")
+        Path(frag).write_text(
+            '<section data-slide-id="%s"><p>not a slide</p></section>\n'
+            '<section class="slide">%s</section>\n' % (minted, body), encoding="utf-8")
+        out = self._make("--content", frag, "--force")
+        self.assertIn('<section class="slide active" data-slide-id="%s">' % minted, out)
 
     def test_deterministic_ids(self):
         frag = os.path.join(self.tmp, "frag.html")

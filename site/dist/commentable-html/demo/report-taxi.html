@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.781.0" />
+<meta name="commentable-html-version" content="1.785.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.781.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.785.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>NYC Taxi 2014 Report</title>
 
@@ -983,6 +983,15 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
 .cm-sidebar .cm-sidebar-more-menu button.cm-menu-check-sub { padding-left: calc(var(--cp-chrome-action-x) + 0.9rem); }
+/* On phones every ITEM in either dropdown is a touch target too (CMH-RESP-15). Both menu TOGGLES
+   already get 44px from CMH-SIDE-12, so leaving the items at ~31px made a thumb-sized door onto a
+   sliver-sized menu - and one of those items is `Clear all comments`, the layer's most destructive
+   action. These menus are absolutely-positioned overlays, so this costs the sidebar header nothing;
+   it costs menu height, which the `max-height` above already turns into a scroll rather than an
+   overflow, and which still fits without scrolling on a portrait phone. */
+@media (max-width: 640px) {
+  .cm-sidebar .cm-sidebar-export-menu button { box-sizing: border-box; min-height: 44px; }
+}
 
 /* Comment search / filter row: a single text field with a leading magnifier, a clear (X)
    button, and a shown/total count. Filtered-out cards are hidden with an explicit class
@@ -1004,6 +1013,26 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-search-clear[hidden] { display: none; }
 .cm-search-count { flex: none; font-size: var(--cp-chrome-tiny-font); color: var(--cp-text-soft); min-width: 2.2rem; text-align: right; font-variant-numeric: tabular-nums; }
 .cm-search-count[hidden] { display: none; }
+/* On phones the search row is a touch surface too (CMH-RESP-15). Unlike every other compact control
+   the layer has enlarged, this one cannot take an OVERLAID `::after` target: `.cm-search-input` is a
+   replaced element and renders no pseudo-element, so the field has to grow for REAL and the row
+   grows with it - header height spent out of the comment list, which a 640x320 landscape phone
+   cannot afford (see CMH-RESP-15 for the measurements and issue #1180 for the pre-existing
+   starvation there). So the FULL target is gated on the viewport having the room, and below the gate
+   both controls keep the WCAG 2.5.8 AA 24x24 floor, which costs no header height at all.
+   Note the gate reads the LAYOUT viewport, so it also disengages under heavy browser zoom; only the
+   AA floor is guaranteed there. Both floors are `min-*` rather than a flat `width`/`height` so a
+   host document with a large root font keeps the larger density-scaled control it already had.
+   `box-sizing` is set explicitly, as CMH-RESP-14's controls are, because the `border-box` reset
+   lives in the document theme rather than the layer. */
+@media (max-width: 640px) {
+  .cm-search-input { box-sizing: border-box; min-height: 24px; }
+  .cm-search-clear { box-sizing: border-box; min-width: 24px; min-height: 24px; }
+}
+@media (max-width: 640px) and (min-height: 360px) {
+  .cm-search-input { min-height: 44px; }
+  .cm-search-clear { min-width: 44px; min-height: 44px; }
+}
 .cm-card.cm-hidden { display: none !important; }
 .cm-search-empty[hidden] { display: none; }
 
@@ -1045,10 +1074,22 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-card .meta button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
 .cm-card .meta button.del:hover { background: rgba(220, 38, 38, 0.12); color: var(--cp-danger); }
 
-/* On phones the card action buttons (jump/edit/delete) get a comfortable >=44px
-   touch height without changing their compact look on desktop. */
+/* On phones the card action buttons (jump/edit/delete, and a reply's edit/delete) get a comfortable
+   >=44px touch target on BOTH axes. Height alone left `edit` 40-43px WIDE - a second definition of
+   the same target in the same pane, since CMH-CORE-23, CMH-RESP-13 and CMH-RESP-14 all measure both
+   axes - so the width floor is what makes the pane ship one standard (CMH-RESP-15). The row it sits
+   in is allowed to WRAP, in the same absolute-unit rhythm the composer rows use: `.meta` is a
+   `space-between` flex whose other half is a timestamp that a locale, or an `(edited)` suffix, can
+   make long, and the width floor spends what slack was left - so an over-long meta line costs a
+   second line rather than pushing an action past the card's edge. `.acts` keeps an auto start margin
+   so it stays END-aligned on that wrapped line too: `space-between` puts a lone item at the START,
+   which would both move the actions under the reader's mental model of "actions live at the right"
+   and, on a two-button card, bring `delete` within a thumb-slip of the `Reply` button below it
+   (measured 14.4px, against CMH-RESP-14's 12px floor). Their compact look on desktop is unchanged. */
 @media (max-width: 640px) {
-  .cm-card .meta .acts button { min-height: 44px; padding: 0.4rem 0.7rem; }
+  .cm-card .meta { flex-wrap: wrap; row-gap: max(8px, var(--cp-chrome-gap)); }
+  .cm-card .meta .acts { margin-inline-start: auto; }
+  .cm-card .meta .acts button { box-sizing: border-box; min-width: 44px; min-height: 44px; padding: 0.4rem 0.7rem; }
 }
 
 /* Stack the menu's options vertically (one pill below the next) with a small gap, so a deck's
@@ -4866,7 +4907,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.781.0";
+const CMH_VERSION = "1.785.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

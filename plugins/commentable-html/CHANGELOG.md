@@ -4,7 +4,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.781.0] - 2026-08-06
+## [1.785.0] - 2026-08-06
 
 ### Fixed
 
@@ -32,6 +32,131 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   takes a keyboard tab stop, `role="group"` and an accessible name while - and only while - it
   actually scrolls. Below 320px both floors yield rather than let the pinned chrome overrun the
   list. The desktop layout is unchanged.
+
+## [1.784.0] - 2026-08-06
+
+### Fixed
+
+- The deck validator now reports an SVG filter primitive that fetches: `<feImage href="https://...">`
+  (and its `xlink:href` spelling) is a remote media/resource error, as it already was for the strict
+  validator and the offline export strip since 1.670.0 (CMH-DECK-04, CMH-VAL-08). Outside descriptor
+  mode `offline` the deck gate is the ONLY checker a deck's egress gets, so a deck could still fetch
+  through one.
+- The deck validator no longer treats the legacy `lowsrc` attribute as a fetch, and `lowsrc` is out
+  of its URL-attribute set with it (CMH-DECK-04). It does not load: HTML lists it as a
+  non-conforming legacy feature with no step in the embedded-content loading algorithm, it has no
+  browser-compat entry at all, and it is measured not to fetch in the engine CI runs - with the
+  `lowsrc` image FIRST in the document and the page settled, a plain `src` and a legacy
+  `background` are both requested and the `lowsrc` is not. So the deck was the only one of the
+  three egress surfaces with a rule for it, and that rule rejected a deck over an inert attribute
+  (an authored `lowsrc="../x.png"` was reported as a parent-directory reference too).
+
+### Added
+
+- The three media load-attribute lists - the strict validator's, the deck validator's, and the offline
+  export strips' - are pinned to each other by a parity test (CMH-BUILD-22). It reads all three from
+  their real sources and fails when a widening lands on one side only, with every intentional
+  difference named in the test as data with a reason. Both fixes above are divergences it found.
+
+## [1.782.0] - 2026-08-06
+
+### Fixed
+
+- The shareable self-contained gate now reads a network `image-set()` candidate (CMH-VAL-08).
+  `image-set()` takes a BARE string candidate with no `url()` wrapper, so the shared `url()`
+  pattern could not see it at all: `background-image: image-set("https://evil.example/x.png" 1x)`
+  in a `<style>` block, in a `style=` attribute or inside an `<iframe srcdoc>` validated
+  STRICT-CLEAN and was handed the `commentable-html-validated` stamp, while the byte-identical
+  fetch written `url(https://evil.example/x.png)` was refused. The candidate-list reader the deck
+  gate already carried moved into the shared CSS reading, so both gates now ask ONE question
+  instead of two that agreed only by accident: every candidate in the list is read (not just the
+  one abutting the open paren, since a 2x-DPR browser really does fetch a later one), through a
+  quote- and paren-aware scanner that a nested `url(...)` / `type(...)` paren cannot truncate, and
+  the `-webkit-` alias and the scheme-only / slash-run spellings are covered. Each candidate is
+  read ANCHORED at its own start, the way the `url()` reading anchors after `url(`, so a relative,
+  `data:` or empty-authority candidate stays clean and an inline SVG payload carrying
+  `xmlns="http://www.w3.org/2000/svg"` is not mistaken for egress. This is a BREAKING change for
+  authored documents: a shareable file that carried such a candidate passed before and now fails
+  `--strict` and is refused the stamp.
+- The reading is asked in SHAREABLE mode ONLY, and the scope is the decision rather than an
+  omission: offline mode has a zero-network CSP behind the gate and shareable has none, which is
+  what makes the spelling reachable there, and widening the offline gate alone would make it
+  reject a file the offline export's own CSS strip had just produced. The export strip and its
+  cross-engine parity corpus are therefore untouched. The `url(...)` and `image-set(...)` readings
+  are independent, so a network `url()` in one rule no longer hides a network `image-set()` in
+  another, while a candidate that IS a complete `url(...)` function is left to the reading that
+  owns it. The CSS-ESCAPE (`u\72l(...)`), comment-as-whitespace and custom-property
+  (`image-set(var(--u) 1x)`) spellings remain recorded shareable-only residuals on CMH-VAL-08,
+  pinned by a control test: the first two need a CSS-token-aware reader on the gate and the export
+  strip in one change, and failing closed on a bare `var(` would reject a variable holding a local
+  path.
+- An unescaped LF, CR or FF inside a CSS string is a bad-string token, so the browser drops that
+  declaration and recovers at the next brace - a LATER rule still applies and still fetches. The
+  candidate scanner kept the string open across it, letting a broken earlier declaration swallow
+  the later rule and the remote candidate in it; it now stops at the bad-string token.
+- The deck gate's broken-install fallback no longer fails open. Its `image-set()` argument-list
+  reader had been reduced to a regex that stopped at a `;`, `{` or `}` even inside a quoted
+  candidate, so a `data:` payload's own `;` truncated the list and dropped every candidate after it
+  in the one path whose purpose is to fail closed; it now keeps a local copy of the same quote- and
+  paren-aware scanner, pinned to the shared one by a corpus test.
+
+## [1.781.0] - 2026-08-06
+
+### Fixed
+
+- The comments side pane's last controls below the repo-wide 44px touch target now meet it on a
+  phone (CMH-RESP-15) - the Export- and More-menu items and the card `edit` action on every phone
+  viewport, and the search row's field and clear (X) button on any phone viewport at least 360px
+  TALL (below that the row is deliberately left as it is; see the gate below). Measured at a 320px
+  viewport in every density preset, the search field was 33.5/30.3/36.8px tall, its clear (X) button
+  24.8/22.1/27.5px square, every menu item 31.4/28.5/35.3px tall - including `Clear all comments`,
+  the layer's most destructive action, behind a menu toggle that already got 44px - and the card
+  `edit` action 41.9/40.3/43.0px WIDE while its height was already 44px, so the pane shipped two
+  different definitions of the same target. Each control is enlarged the way its own cost allows.
+  The menu items grow for real: the menus are absolutely-positioned overlays, so this costs the
+  sidebar header nothing, and the enlarged menus still fit a 320x720 portrait phone without becoming
+  scrollers (on a 640x320 landscape phone their `max-height` cap already made them scrollers before
+  this change; what is promised there is that every item can still be scrolled fully into view). The
+  card `edit` action takes a `min-width` floor beside its existing `min-height`, its row is allowed
+  to wrap so a long localized or `(edited)` timestamp beside it costs a second line rather than an
+  action pushed past the card's edge (the actions keep an auto start margin so they stay end-aligned
+  on that wrapped line, which also keeps `delete` clear of the `Reply` button below it), and
+  CMH-RESP-07's wording is corrected to the both-axis standard so the specs agree. The search field
+  is the one control here that cannot take an overlaid
+  tap target - a replaced element renders no `::after` - so it grows for real and the row grows with
+  it, which is header height spent out of the comment list. On a 640x320 landscape phone that list is
+  already at its limit with this row and the identity editor both open (a ~22px layout box of which
+  only ~6.5px is visible, with the pane already overflowing - a pre-existing defect now tracked as
+  issue #1180), and forcing the field to 44px there takes the last of the visible list. The full
+  target is therefore gated on the viewport having the room (`min-height: 360px`, which clears every
+  phone the repo targets except the 320px-wide one rotated; at 640x360 five of the six measured
+  states hold the whole list with no pane overflow and the sixth overflows by 14px rather than 47):
+  above the gate the row is enlarged, below it it keeps exactly the height it has today while both
+  controls still take the WCAG 2.5.8 AA 24x24 floor, so only the 2.5.5 AAA target is waived and never
+  AA. Both floors are `min-width`/`min-height` rather than a flat size, so a host
+  document with a large root font-size keeps the larger button it already had. CMH-RESP-14's
+  landscape guard is extended (not duplicated) with a search-open dimension, a better metric and the
+  threshold measurement: it now pins the comment list's layout height, its VISIBLE height, and a
+  ceiling on the pane's own vertical overflow in all twelve 640x320 states, the gate's existence
+  there, and the six search-open states at 640x360; the gate's THRESHOLD is pinned by a 320x359 /
+  320x360 boundary pass. The desktop layout is unchanged and the test pins that too.
+
+## [1.780.0] - 2026-08-06
+
+### Fixed
+
+- `deck/deck_scaffold.py` no longer mints a slide id that the input fragment already uses. It
+  collected the ids already taken with a `data-slide-id\s*=\s*"([^"]*)"` search, the double-quoted
+  form only, so a hand-authored `data-slide-id='slide-1a2b3c4d'` (or an unquoted
+  `data-slide-id=slide-1a2b3c4d`), which is the same id to a browser, was invisible and could be
+  minted again for another slide, leaving the scaffold to refuse the deck it had just produced with
+  `deck: duplicate slide id(s)`. The taken ids now come from the shared raw start-tag reading
+  (`_browser_attrs.raw_attrs_pairs`), so every quoting form is seen, the value is compared
+  browser-DECODED exactly as `deck_validate` compares it, and a `data-slide-id=` spelled inside
+  another attribute's quoted value is not mistaken for one. A DUPLICATED `data-slide-id` now reads
+  its FIRST occurrence on both sides, as HTML5 and `deck_validate` do, so a valueless or empty
+  first one names no id whatever a later duplicate says, and it is written back once rather than
+  once per occurrence.
 
 ## [1.779.0] - 2026-08-06
 
