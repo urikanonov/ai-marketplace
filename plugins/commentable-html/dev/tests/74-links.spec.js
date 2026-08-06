@@ -188,13 +188,18 @@ async function stageBase(page, head) {
 // duplicates apart, so a stored index that has gone stale by one lands on the wrong one of them and
 // the href test still passes - only the stored TEXT can say which link the comment was authored
 // against. `#dupfirst` is the leading link a re-index (a change to WHICH links are commentable)
-// would insert, so the seeded index below is exactly the one such a shift produces.
+// would insert, so the seeded index below is exactly the one such a shift produces. `#dupbare` is
+// the empty-text member of a second same-href pair: its comment stores an EMPTY text, which is
+// information (this link had no text) rather than an absent key, and must disambiguate it from its
+// labelled twin.
 const DUP_CONTENT = `
 <h2 id="dup-lead">Duplicate hrefs</h2>
 <p id="dup-p"><a id="dupfirst" href="https://example.com/first">leading link</a>
 <a id="dupa" href="https://example.com/same">first duplicate</a>
 <a id="dupb" href="https://example.com/same">second duplicate</a>
-<a id="duprenamed" href="https://example.com/renamed">renamed since the comment</a></p>`;
+<a id="duprenamed" href="https://example.com/renamed">renamed since the comment</a>
+<a id="dupbare" href="https://example.com/bare"></a>
+<a id="dupbarelabel" href="https://example.com/bare">the labelled twin</a></p>`;
 
 async function stageDup(page, init) {
   const { html } = stageContent(DUP_CONTENT, { key: KEY + "-dup" });
@@ -436,6 +441,65 @@ test.describe("link handling", () => {
     });
     await expect(page.locator('a.cm-link-hl[data-cid="cdupkept1"]#duprenamed')).toHaveCount(1);
     await expect(page.locator('a.cm-link-hl[data-cid="cdupheal1"]#dupfirst')).toHaveCount(1);
+  });
+
+  test("two same-href links each keep their own comment when both indexes are stale (CMH-LINK-02)", async ({ page }) => {
+    // The pair case, and the direction the single-comment test above cannot show: one index has
+    // drifted FORWARD onto the sibling and the other BACKWARD onto it, so a resolver that simply
+    // preferred the first same-href link (or the indexed one) would collapse both comments onto one
+    // link. Each must land on the link its stored text names.
+    await stageDup(page, () => {
+      const at = new Date().toISOString();
+      localStorage.setItem("cmh-link-test-dup", JSON.stringify([
+        { id: "cdupboth1", anchorType: "link", linkIndex: 2, linkHref: "https://example.com/same",
+          linkText: "first duplicate", quote: "first duplicate", note: "authored on the first",
+          createdAt: at },
+        { id: "cdupboth2", anchorType: "link", linkIndex: 1, linkHref: "https://example.com/same",
+          linkText: "second duplicate", quote: "second duplicate", note: "authored on the second",
+          createdAt: at },
+      ]));
+    });
+    await expect(page.locator('a.cm-link-hl[data-cids~="cdupboth1"]#dupa')).toHaveCount(1);
+    await expect(page.locator('a.cm-link-hl[data-cids~="cdupboth2"]#dupb')).toHaveCount(1);
+    await expect(page.locator("a.cm-link-hl")).toHaveCount(2);
+  });
+
+  test("an empty stored link text still tells a bare link from its labelled twin (CMH-LINK-02)", async ({ page }) => {
+    // `#dupbare` has no text at all, so its comment stores `linkText: ""`. That empty string is
+    // INFORMATION (this link had no text), not an absent key: reading it as "no text stored" would
+    // leave exactly the links that cannot be told apart by their label - image-only and bare links -
+    // exposed to the same-href re-anchor this row is about. The seeded index lands on the twin.
+    await stageDup(page, () => {
+      localStorage.setItem("cmh-link-test-dup", JSON.stringify([{
+        id: "cdupbare1", anchorType: "link", linkIndex: 5, linkHref: "https://example.com/bare",
+        linkText: "", quote: "link: https://example.com/bare", note: "authored on the bare link",
+        createdAt: new Date().toISOString(),
+      }]));
+    });
+    await expect(page.locator('a.cm-link-hl[data-cid="cdupbare1"]#dupbare')).toHaveCount(1);
+    await expect(page.locator("a.cm-link-hl")).toHaveCount(1);
+  });
+
+  test("a linkText that is not a string is no anchor key at all (CMH-LINK-02)", async ({ page }) => {
+    // A hand-edited, imported, or otherwise poisoned record can carry any JSON value. Coercing it
+    // with `String()` would invent a text key the record never meant - an array of one string
+    // stringifies to that string, a number to its digits - and would THROW on `{"toString": "x"}`,
+    // which resolves during the highlight restore and would drop every later link comment. A
+    // non-string carries no text key, so both records below resolve by href alone - to the FIRST
+    // link carrying it, which the coerced array would have moved to `#dupb`.
+    await stageDup(page, () => {
+      const at = new Date().toISOString();
+      localStorage.setItem("cmh-link-test-dup", JSON.stringify([
+        { id: "cdupbad1", anchorType: "link", linkIndex: 99, linkHref: "https://example.com/same",
+          linkText: ["second duplicate"], quote: "poisoned array", note: "array text",
+          createdAt: at },
+        { id: "cdupbad2", anchorType: "link", linkIndex: 99, linkHref: "https://example.com/first",
+          linkText: 42, quote: "poisoned number", note: "numeric text",
+          createdAt: at },
+      ]));
+    });
+    await expect(page.locator('a.cm-link-hl[data-cids~="cdupbad1"]#dupa')).toHaveCount(1);
+    await expect(page.locator('a.cm-link-hl[data-cids~="cdupbad2"]#dupfirst')).toHaveCount(1);
   });
 
   test("marks an older runtime left on a link this one does not index are cleared (CMH-LINK-02)", async ({ page }) => {

@@ -14,11 +14,17 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   re-index (any change to WHICH links are commentable shifts every later index) moved the stored
   index onto a same-href sibling, the href test passed, the heal never ran, and the comment silently
   attached to the wrong link - a document with two references to one URL is enough to reproduce it.
-  Resolution is now by KEY STRENGTH - href + text, href alone, then the same two under the
-  pre-1.790.0 href reading - with the indexed candidate winning the first tier it satisfies, so the
-  stored `linkText` disambiguates links the href cannot tell apart while a comment whose index is
-  still right never moves. A link whose label was merely edited still heals by href alone, since no
-  link satisfies a text tier.
+  Resolution is now by KEY STRENGTH within each href reading (the current one, then the pre-1.790.0
+  one): the link matching href + text, then the indexed candidate if its href matches, then the first
+  href match. The stored `linkText` disambiguates links the href cannot tell apart, so text BEATS the
+  index when they disagree - the index is the most fragile key the record holds. The mirror case is
+  accepted and indistinguishable from the same stored fields: if a link's own label is edited AND a
+  same-href sibling carries the label it used to have, the comment follows the text onto that sibling.
+  A link whose label was edited with no same-href twin still heals by href alone, and two links
+  sharing BOTH keys stay indistinguishable, with the index still deciding. An EMPTY stored text is
+  information (a bare or image-only link had none) and still disambiguates; a `linkText` that is not
+  a string carries no text key at all, so a hand-edited or imported record can neither invent a key
+  nor abort the highlight restore by throwing when coerced.
 
 ## [1.800.0] - 2026-08-06
 

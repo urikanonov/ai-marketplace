@@ -245,10 +245,9 @@ function findLinkEl(index) {
   if (!/^\d+$/.test(String(index))) return null;
   return linkEls[index] || root.querySelector(`[data-cm-link-index="${index}"]`) || null;
 }
-// Resolve a link comment to its current element: by the stored keys in strength order (href + text,
-// then href alone, then the legacy href readings), with the indexed candidate winning the first tier
-// it satisfies, so an index that is still right never moves the comment and a stale one is healed.
-// Used everywhere a link anchor
+// Resolve a link comment to its current element: among the links whose href key the comment stored
+// (the CURRENT reading first, the pre-1.790.0 one only as a fallback), the one whose TEXT the comment
+// stored, and only then the indexed candidate or the first href match. Used everywhere a link anchor
 // is looked up (highlight, jump, edit, section review) so all consumers relocate the
 // same way - not just the highlight restore. The stored key is compared AS WRITTEN against the live
 // attribute, read the CURRENT way first and the pre-1.790.0 way only as a fallback, so a record
@@ -258,6 +257,17 @@ function findLinkEl(index) {
 // parser trim empties both paddings, and the comment would silently relocate to a DIFFERENT link.
 // The legacy reading has the mirror hazard (it empties the paddings the parser keeps), which is why
 // it runs only after the current reading has found nothing.
+//
+// Text BEATS the index when the two disagree, and that is a deliberate trade, not an oversight. The
+// index is the most fragile key the record holds - any change to WHICH links are commentable shifts
+// every later one - so an index that lands on a link whose href matches proves nothing when a
+// SAME-HREF sibling carries the stored text: that is the silent re-anchor this order exists to undo.
+// The cost is the mirror case, which the stored fields cannot tell apart from it: if a link's own
+// label is edited AND a same-href sibling happens to carry the label it used to have, the comment
+// follows the text onto that sibling even though its index was still right. Both links had the same
+// href AND the same text when the comment was written, so the record could not name one of them even
+// then. A link whose label was edited with no same-href twin still heals by href alone, unchanged.
+// Two links that share BOTH keys remain indistinguishable, and the index still decides between them.
 function resolveLinkEl(comment) {
   if (!comment) return null;
   const a = findLinkEl(comment.linkIndex);
@@ -265,24 +275,25 @@ function resolveLinkEl(comment) {
   if (!key) return a || null;
   const exact = (l) => _cmhLinkHrefKey(l.getAttribute("href")) === key;
   const legacy = (l) => _cmhLegacyLinkHrefKey(l.getAttribute("href")) === key;
-  // The stored text only ever NARROWS a set the href already accepts, and only when it was stored
-  // non-empty (an image-only link stores none, and an older record may carry none).
-  const want = _cmhLinkTextKey(comment.linkText);
-  const textOk = (l) => !want || _cmhLinkTextKey(l.textContent) === want;
-  // Resolution order, strongest key first: href + text, href alone, then the pre-1.790.0 href
-  // reading with and without the text. The indexed candidate wins the first tier it satisfies, so a
-  // comment whose index is still right never moves; a tier it fails hands the comment to the first
-  // link that does satisfy that tier. That is what undoes a stale index landing on a SAME-HREF
-  // sibling (the href test alone cannot tell two references to one URL apart, so the heal never ran
-  // and the comment silently re-anchored), while a link whose label was merely edited - no link
-  // satisfies a text tier - still heals by href exactly as before.
-  const tiers = [(l) => exact(l) && textOk(l), exact, (l) => legacy(l) && textOk(l), legacy];
-  for (const ok of tiers) {
-    if (a && ok(a)) return a;
-    const found = linkEls.find(ok);
-    if (found) return found;
-  }
-  return a || null;
+  // PRESENCE, not truthiness, gates the text: an empty stored text is information (the link had no
+  // text), so it still disambiguates, while a record that predates the field - or a hand-edited or
+  // imported one whose `linkText` is not a string at all - carries no text key and is resolved by
+  // href alone, exactly as before. `String()` is never applied to the stored side: a value such as
+  // `{"toString": "x"}` throws when coerced, and a number or array would otherwise become a text key
+  // no record ever meant to write.
+  const want = typeof comment.linkText === "string" ? _cmhLinkTextKey(comment.linkText) : null;
+  const textOk = (l) => want === null || _cmhLinkTextKey(l.textContent) === want;
+  // The href key is read once per link per reading, and the text only for the links that reading
+  // already accepts.
+  const pick = (hrefOk) => {
+    if (a && hrefOk(a) && textOk(a)) return a;
+    const matches = linkEls.filter(hrefOk);
+    const byText = matches.find(textOk);
+    if (byText) return byText;
+    if (a && hrefOk(a)) return a;
+    return matches[0] || null;
+  };
+  return pick(exact) || pick(legacy) || a || null;
 }
 function linkInfo(a) {
   const i = parseInt(a.dataset.cmLinkIndex, 10) || 0;
