@@ -5,6 +5,7 @@ The scaffolded deck must validate, be commentable-native (data-cmh-mode + fixed 
 every slide a stable data-slide-id with the first active, carry no inline editor or remote
 fonts, and be create-only (refuse to overwrite unless --force).
 """
+import html as _html
 import os
 from pathlib import Path
 import re
@@ -261,6 +262,67 @@ class DeckScaffoldTests(unittest.TestCase):
                 encoding="utf-8")
             out = self._make("--content", frag, "--force")
             self.assertEqual(re.findall(r'data-slide-id="([^"]+)"', out), [minted, shadowed], first)
+
+    def test_a_valueless_attribute_cannot_fuse_with_the_next_one(self):
+        # #1191: the rewrite RE-SERIALIZES the start tag from the parsed pairs, and a valueless
+        # attribute was written back as a bare name - dropping the `/` HTML uses to terminate an
+        # attribute name. Two ADJACENT valueless attributes whose second name legally begins with
+        # `=` (the unexpected-equals-sign-before-attribute-name state) then FUSED into one attribute
+        # WITH a value on the way through: `data-a/=onload` came back as `data-a =onload`, which
+        # re-parses as `data-a="onload"`. Writing `name=""` is the same attribute to a browser (an
+        # absent value IS the empty string) and cannot be terminated by the next name's `=`.
+        def norm(pairs):
+            return [(n, v or "") for n, v in pairs]
+
+        for attrs in ('class="slide" data-a/=onload',
+                      'class="slide" data-a/=x data-b',
+                      'class="slide" hidden',
+                      'class="slide" data-a=""',
+                      'class="slide" data-a/=',
+                      'class="slide" data-a/==x',
+                      'class="slide" data-a=""/=x',
+                      'class="slide active x" data-a/=onload'):
+            prepared, sids = deck_scaffold.prepare_slides(
+                "<section %s><p>x</p></section>" % attrs)
+            self.assertEqual(len(sids), 1, attrs)
+            m = deck_scaffold.SECTION_RE.search(prepared)
+            self.assertIsNotNone(m, attrs)
+            # BOTH sides are read the way a browser reads them - an absent value IS the empty
+            # string - so this pins the round trip itself and not the spelling that achieves it.
+            # An authored EMPTY value collapses into the same bucket, which is the point: the two
+            # are one attribute to a browser and must come back as one. The expected class is
+            # DERIVED from the input's own tokens, so a case whose class is not exactly `slide`
+            # does not fail for a reason unrelated to fusion.
+            got = norm(_browser_attrs.raw_attrs_pairs(m.group(1)))
+            in_pairs = norm(_browser_attrs.raw_attrs_pairs(attrs))
+            classes = _browser_attrs.html_ws_tokens(
+                next(v for n, v in in_pairs if n == "class"))
+            if "active" not in classes:
+                classes.append("active")
+            want = [(n, " ".join(classes) if n == "class" else v) for n, v in in_pairs]
+            want.append(("data-slide-id", sids[0]))
+            self.assertEqual(got, want, attrs)
+            # And the stronger FORM guard the fix rests on: EVERY attribute is written back in the
+            # one canonical ` name="value"` shape, so none is left bare for a following name's `=`
+            # to terminate. Asserting the whole attribute region equals that reconstruction is what
+            # keeps a later "simplification" from quietly reintroducing a bare spelling. It also
+            # deliberately rules out the other faithful spelling, re-emitting the `/` name
+            # terminator (` data-a/`): that one lands as the self-closing `/>` solidus whenever the
+            # valueless attribute is written LAST - reachable whenever the tag already carries a
+            # `data-slide-id`, since nothing is appended after it - while `name=""` is the same
+            # attribute to a browser in every position.
+            self.assertEqual(
+                m.group(1),
+                "".join(' %s="%s"' % (n, _html.escape(v, quote=True)) for n, v in got), attrs)
+        # End to end, through both gates: the fix makes the scaffold emit an attribute literally
+        # NAMED `=onload`, so pin that the base validator and the deck contract still accept it and
+        # the deck is written - otherwise a later tightening could turn a writable deck into a hard
+        # failure with nothing recording the loss.
+        frag = os.path.join(self.tmp, "fuse.html")
+        Path(frag).write_text(
+            '<section class="slide" data-a/=onload><p>x</p></section>\n', encoding="utf-8")
+        out = self._make("--content", frag, "--force")
+        self.assertIn('<section class="slide active" data-a="" =onload="" data-slide-id=', out)
 
     def test_a_non_slide_section_does_not_reserve_a_slide_id(self):
         # Only a SLIDE's id is reserved. `deck_validate` reads ids from `section.slide` alone, so

@@ -4,6 +4,26 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.794.0] - 2026-08-06
+
+### Fixed
+
+- The deck scaffold's slide rewrite is now round-trip faithful for a VALUELESS attribute:
+  `deck/deck_scaffold.py`'s `prepare_slides` writes one back as `name=""` instead of as a bare
+  name. Re-serializing it bare dropped the `/` HTML uses to terminate an attribute name, so two
+  ADJACENT valueless attributes whose second name legally begins with `=` (HTML5's
+  unexpected-equals-sign-before-attribute-name state) FUSED into one attribute carrying a value:
+  `<section class="slide" data-a/=onload>` was written back as `data-a =onload`, which re-parses
+  as `data-a="onload"` - a value the input document never had. An absent value IS the empty
+  string to a browser, so the quoted empty value is the same attribute and cannot be terminated
+  by the next name's `=`. The fused NAME could be an `on*` one (`onclick/=alert(1)` fused into
+  `onclick="alert(1)"`), but no deck the scaffold EMITS could carry a handler minted that way: on
+  a slide `<section>` the deck contract gate rejects an attribute whose name starts with `on` -
+  valued or valueless alike - and the scaffold runs it on the final HTML before it writes `--out`,
+  so that shape failed closed on both sides of this fix. Correctness, not security either way: a
+  document's own author is trusted (`CMH-SEC-01`), so this granted no capability they did not
+  already have.
+
 ## [1.792.0] - 2026-08-06
 
 ### Fixed
