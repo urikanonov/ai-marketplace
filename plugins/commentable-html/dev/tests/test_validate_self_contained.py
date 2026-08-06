@@ -793,6 +793,55 @@ class NewCheckTests(unittest.TestCase):
                 self.assertEqual(errors, [], errors)
                 self.assertFalse(any("srcdoc" in w for w in warnings), warnings)
 
+    def test_the_srcdoc_advisory_says_the_markup_is_kept_as_inert_text(self):
+        # CMH-VAL-24 / CMH-OFFLINE-04 (issue #1119): the export no longer drops the nested document
+        # on the floor - it keeps the markup beside the emptied frame as escaped inert text - so an
+        # advisory that still said the content was removed outright would send an author off to
+        # duplicate by hand exactly what the export already preserves. The notice stays (the frame
+        # really does stop RENDERING the nested document), but it must describe what survives.
+        _, warnings = self._errs_warns(
+            build(body=self._body(MAIN, '<iframe srcdoc="&lt;p&gt;x&lt;/p&gt;"></iframe>')))
+        notices = [w for w in warnings if "srcdoc" in w]
+        self.assertEqual(len(notices), 1, warnings)
+        self.assertIn("inert", notices[0])
+        self.assertNotIn("removes outright", notices[0])
+
+    def test_the_srcdoc_advisory_promises_nothing_kept_for_an_empty_value(self):
+        # CMH-VAL-24: the exporter keeps NOTHING for an empty or whitespace-only `srcdoc` (there is
+        # no nested document), and that case is trivially visible to this tokenizer - so promising
+        # preserved markup here would describe behavior the exporter does not have, the one-sided
+        # rule CMH-OFFLINE-04 exists to prevent. The frame is still reported: the attribute goes on
+        # PRESENCE, so the author still needs to know an offline copy will not carry it.
+        for markup in ('<iframe srcdoc=""></iframe>',
+                       "<iframe srcdoc></iframe>",
+                       '<iframe srcdoc="  &#10; "></iframe>',
+                       # Every character of the shared ASCII class, including the ones the engines'
+                       # own trims disagree about at the edges.
+                       '<iframe srcdoc="&#9;&#10;&#12;&#13; "></iframe>'):
+            with self.subTest(markup=markup):
+                _, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+                notices = [w for w in warnings if "srcdoc" in w]
+                self.assertEqual(len(notices), 1, warnings)
+                self.assertIn("no nested document to keep", notices[0])
+                self.assertNotIn("kept beside it", notices[0])
+
+    def test_the_srcdoc_emptiness_test_is_the_exporters_ascii_class_not_the_engines(self):
+        # CMH-VAL-24 parity: `str.strip()` also takes U+001C-U+001F and U+0085 while JS `trim()`
+        # also takes NBSP and U+FEFF, so the two engines' defaults disagreed in BOTH directions on
+        # real values and the advisory promised a block the exporter never inserted (and denied one
+        # it did). Both sides now read the literal HTML ASCII set, so a value carrying anything else
+        # is CONTENT here exactly as it is to the exporter's `_OFFLINE_SRCDOC_CONTENT_RE`.
+        for markup in ('<iframe srcdoc="&#xFEFF;"></iframe>',       # JS trim() would take this
+                       '<iframe srcdoc="&#28;"></iframe>',          # str.strip() would take this
+                       '<iframe srcdoc="&#160;"></iframe>',         # NBSP: trimmed by JS, not here
+                       '<iframe srcdoc="&#133;"></iframe>'):        # U+0085: stripped by Python
+            with self.subTest(markup=markup):
+                _, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+                notices = [w for w in warnings if "srcdoc" in w]
+                self.assertEqual(len(notices), 1, warnings)
+                self.assertIn("kept beside it", notices[0])
+                self.assertNotIn("no nested document to keep", notices[0])
+
     def test_an_offline_document_reports_the_srcdoc_once_as_an_error(self):
         # CMH-VAL-24: an offline document is past the point the advisory is useful - the export
         # already ran and the file is being certified - so the two must not double-report. The

@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.744.0" />
+<meta name="commentable-html-version" content="1.747.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.744.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.747.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Design review sign-off</title>
 
@@ -4502,7 +4502,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.744.0";
+const CMH_VERSION = "1.747.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -19717,10 +19717,128 @@ function _offlineRelWithoutHints(rel) {
   });
   return kept.length ? kept.join(" ") : null;
 }
+// What counts as a nested document worth keeping. The HTML ASCII whitespace set, written as literal
+// escapes for exactly the reason `_OFFLINE_REL_WS_RE` above is: JS `String.prototype.trim()` also
+// takes NBSP, U+FEFF and the whole Unicode Zs class, while Python's `str.strip()` also takes
+// U+001C-U+001F and U+0085 - so "whitespace-only" meant two different things on the two sides, and
+// the gate's advisory promised a preserved block the exporter never inserted (`srcdoc="&#xFEFF;"`)
+// and denied one it did (`srcdoc="&#28;"`). One literal class, spelled the same in both engines, is
+// the only way they agree. The validator's copy is the matching `nested.strip(" \t\n\f\r")` in
+// `tools/validate/checks/layer_parts/20-resources.py`.
+const _OFFLINE_SRCDOC_CONTENT_RE = /[^\t\n\f\r ]/;
+// True when the frame did not render at all because it, or an ancestor, is declaratively HIDDEN.
+// The placement rule is that the block is visible to exactly the reader the nested document was
+// visible to, and a `hidden` frame showed nobody anything - so its block is hidden too, or an export
+// would newly EXPOSE markup that never rendered (worse for a `<p hidden>`, where the paragraph
+// re-anchor lifts the block out of the hidden container). Only the declarative attribute is read:
+// the exporter parses a detached document with no stylesheets and no layout, so a CSS-hidden
+// subtree is not knowable here, and guessing would be worse than the bounded rule.
+function _offlineSrcdocHidden(frame) {
+  for (let n = frame; n && n.nodeType === 1; n = n.parentNode) {
+    if (n.namespaceURI === _OFFLINE_HTML_NS && n.hasAttribute("hidden")) return true;
+  }
+  return false;
+}
+// Where a preserved block may legally sit. The block is FLOW content and an `<iframe>` is PHRASING,
+// so a block left inside a `<p>` would make the recipient's parser close the paragraph at the
+// `<details>` start tag - re-parenting any text after the frame and leaving a stray empty `<p>`, so
+// the export would not be serialize/reparse stable. A frame inside a paragraph therefore anchors
+// after that PARAGRAPH. `<p>` is the whole rule rather than a phrasing-host list, because it is the
+// only element the parser auto-closes on a `details` start tag. The walk stops at the first
+// NON-HTML ancestor: an `<iframe>` inside `<svg><foreignObject>` is HTML-namespaced and does render,
+// but the `<p>` auto-close does not reach across foreign content, so re-anchoring to an HTML `<p>`
+// outside the `<svg>` would move the text out of the container the frame actually renders in.
+function _offlineSrcdocAnchor(frame) {
+  for (let n = frame.parentNode; n && n.nodeType === 1 && n.namespaceURI === _OFFLINE_HTML_NS; n = n.parentNode) {
+    if (n.localName === "p") return n.parentNode ? n : frame;
+  }
+  return frame;
+}
+// Keep a removed `srcdoc` beside its frame as escaped inert TEXT (issue #1119). The four grounds
+// that rejected SANITIZING the nested document (CMH-OFFLINE-04) all turn on PARSING it; this parses
+// nothing. It needs only escaping on this side and NOTHING on the gate side - the presence rule is
+// unchanged, so the exporter and the strict validator still agree by construction - and it lands
+// content both sides already read as text, which is the same precedent that lets a `<base>` keep its
+// `target` and a reserved-id block become inert JSON.
+//
+// The placement rule is one sentence: the block goes where the FRAME is, so it is visible to exactly
+// the reader the nested document was visible to. That is what settles the parked cases rather than a
+// list of exceptions - a `<template>`-parked frame renders nothing and neither does its block; a
+// `<noscript>`-parked one renders nothing for a scripting-ON reader (the body is raw text in a
+// `display:none` element) and renders for the scripting-OFF reader, and the block follows it in both
+// directions. Nothing is lost that was ever shown, and nothing is shown that was not.
+//
+// Bounds, each of which would otherwise add content where none was lost:
+// - EMPTY or WHITESPACE-ONLY value (`_OFFLINE_SRCDOC_CONTENT_RE`): nothing to keep, so no block - a
+//   `<summary>` announcing a preserved document over an empty `<pre>` is noise. Trimming is safe
+//   HERE and would not be on the removal rule: the attribute still goes on PRESENCE, so what is
+//   PRESERVED and what is REMOVED are separate questions and only the second one the gate sees.
+// - FOREIGN namespace: an `<iframe>` inside `<svg>` renders nothing in any browser, so its nested
+//   document was never visible - and an HTML block serialized inside foreign content would not
+//   render either. The frame is still emptied; only the block is skipped. An `<iframe>` inside
+//   `<foreignObject>` IS HTML-namespaced and does render, so it correctly gets one.
+// - The anchor is `_offlineSrcdocAnchor`'s (see there), and a block already sitting after that
+//   anchor is stepped over: two frames in ONE paragraph share an anchor, so inserting each at
+//   `anchor.nextSibling` would emit them in REVERSE order and pair each nested document with the
+//   wrong frame - the one thing a reader auditing preserved markup must be able to trust.
+// - `cm-skip`: the block is layer-injected content inside the content root, exactly like every other
+//   in-root control, so it must stay out of the section-hash and document-hash walks (`_cmhScanSkip`
+//   here, `_SKIP_CLASSES` in the Python `section_hash`) and out of the anchor/selection walks.
+//   Without it an export would shift its own section hashes, flip an already-reviewed section to
+//   "changed", and invalidate the validated stamp it carries - trading one loss for a worse one. It
+//   also means a Markdown export omits the block, which loses nothing: an `<iframe>` has no Markdown
+//   representation either, so the nested document was never in a `.md` export to begin with.
+// Collapsed `<details>`, because a `srcdoc` can be a whole document and an always-open `<pre>` would
+// dominate the page; bounding the LAYOUT beats capping the TEXT, which would reintroduce the loss.
+// The text is never capped or truncated. Two normalizations reach it, and both are there so the
+// export is a FIXED POINT: CR and CRLF become LF here (the HTML tokenizer does that to any text it
+// reparses, so a script-built `srcdoc` carrying CRLF would otherwise come back different on the
+// second export), and the file-wide `\n{3,}` -> `\n\n` collapse every offline serialization already
+// applies reaches it exactly as it reaches an authored `<pre>` - the block is treated as the code
+// block it is rather than specially.
+// Idempotent by construction: the attribute is gone, so a re-export finds no `srcdoc` and inserts
+// nothing, and `textContent` means the markup is escaped once, by the serializer, never re-escaped.
+function _offlinePreserveSrcdoc(frame, nested) {
+  if (!nested || !_OFFLINE_SRCDOC_CONTENT_RE.test(nested)) return null;
+  if (frame.namespaceURI !== _OFFLINE_HTML_NS) return null;
+  let anchor = _offlineSrcdocAnchor(frame);
+  const parent = anchor.parentNode;
+  if (!parent) return null;
+  while (anchor.nextElementSibling && anchor.nextElementSibling.classList
+    && anchor.nextElementSibling.classList.contains("cmh-srcdoc-export")) {
+    anchor = anchor.nextElementSibling;
+  }
+  const doc = frame.ownerDocument;
+  const block = doc.createElementNS(_OFFLINE_HTML_NS, "details");
+  block.setAttribute("class", "cm-skip cmh-srcdoc-export");
+  if (_offlineSrcdocHidden(frame)) block.setAttribute("hidden", "");
+  const summary = doc.createElementNS(_OFFLINE_HTML_NS, "summary");
+  summary.textContent = "Nested <iframe srcdoc> document, emptied by Export Offline and kept here as inert text";
+  const pre = doc.createElementNS(_OFFLINE_HTML_NS, "pre");
+  const code = doc.createElementNS(_OFFLINE_HTML_NS, "code");
+  code.textContent = nested.replace(/\r\n?/g, "\n");
+  pre.appendChild(code);
+  block.appendChild(summary);
+  block.appendChild(pre);
+  parent.insertBefore(block, anchor.nextSibling);
+  return block;
+}
+// A preserved block that survived every later pass, counted the way `_offlineCountKeptNeutralized`
+// counts a neutralized script: by IDENTITY, never by the class name. `cmh-srcdoc-export` is public
+// markup a source can legitimately (or hostilely) already carry - a previously exported file
+// re-imported, say - so a class-name walk would report an authored block as preserved markup and
+// could claim more kept documents than there were emptied frames.
+function _offlineCountKeptSrcdocs(doc, preserved) {
+  if (!preserved.length) return 0;
+  const mine = new Set(preserved);
+  return _offlineQueryAll(doc, "details.cmh-srcdoc-export")
+    .filter(function (el) { return mine.has(el); }).length;
+}
 function _stripOfflineNetworkLoads(doc) {
   let dropped = 0;
   let clearedBases = 0;
   let clearedSrcdocs = 0;
+  const preservedSrcdocs = [];
   const all = function (selector) { return _offlineQueryAll(doc, selector); };
   all("script").forEach(function (s) {
     if (_offlineStripScriptLoad(s)) { dropped += 1; }
@@ -19845,11 +19963,25 @@ function _stripOfflineNetworkLoads(doc) {
   // keeping two independent parsers in step is the drift this whole file is written to avoid.
   // Unconditional, not value-inspected: a nested document is not something the zero-network promise
   // can judge, and a narrower test would leave the validator rejecting what this kept. The ELEMENT
-  // stays (an author's `title`, sizing, and any local `src` are content); only the nested document
-  // goes. Counted, because unlike a network strip this removes content that WORKED offline.
+  // stays (an author's `title`, sizing, and any local `src` are content); the nested document stops
+  // RENDERING, but it is no longer LOST: `_offlinePreserveSrcdoc` keeps the markup beside the frame
+  // as escaped inert text (issue #1119). Counted twice in the toast for that reason - what changed,
+  // and what survived.
   all("iframe").forEach(function (el) {
     clearAttr(el, "src");
-    if (el.hasAttribute("srcdoc")) { el.removeAttribute("srcdoc"); clearedSrcdocs += 1; }
+    if (!el.hasAttribute("srcdoc")) return;
+    const nested = el.getAttribute("srcdoc") || "";
+    el.removeAttribute("srcdoc");
+    clearedSrcdocs += 1;
+    // A preservation must never cost the export. The frame is already emptied at this point, which
+    // is the pre-#1119 behavior and still passes `--strict`, so any failure here degrades to that
+    // rather than aborting `_buildOfflineHtml` and turning Export Offline into an error toast. No
+    // shape in the corpus reaches it - this is the invariant, not a known crash, so do not delete
+    // it as defensive noise.
+    try {
+      const block = _offlinePreserveSrcdoc(el, nested);
+      if (block) preservedSrcdocs.push(block);
+    } catch (err) { void err; }
   });
   all("video").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "poster"); });
   all("audio").forEach(function (el) { clearAttr(el, "src"); });
@@ -19904,7 +20036,7 @@ function _stripOfflineNetworkLoads(doc) {
     if (next) el.setAttribute("style", next);
     else el.removeAttribute("style");
   });
-  return { dropped: dropped, clearedBases: clearedBases, clearedSrcdocs: clearedSrcdocs };
+  return { dropped: dropped, clearedBases: clearedBases, clearedSrcdocs: clearedSrcdocs, preservedSrcdocs: preservedSrcdocs };
 }
 function _stripOfflineRichRenderers(doc) {
   // On a re-export of an already-offline document, remove any previously inlined library notice
@@ -20531,6 +20663,13 @@ async function _buildOfflineHtml(shareableHtml) {
     droppedHeadFallbacks: headFallbacks.dropped,
     clearedBases: stripped.clearedBases,
     clearedSrcdocs: stripped.clearedSrcdocs,
+    // Counted from the FINISHED document, not banked when each block is inserted: a later pass can
+    // still take one away (`_stripOfflineStraddlingNoscript` removes a `<noscript>` whose body
+    // straddles its own end tag, and a block parked inside goes with it). Reporting "N are kept" for
+    // markup the file does not carry would reintroduce exactly the silent loss this feature ends,
+    // now with a positive claim behind it. By IDENTITY, never by the class name, for the same reason
+    // `_offlineCountKeptNeutralized` is.
+    keptSrcdocs: _offlineCountKeptSrcdocs(doc, stripped.preservedSrcdocs),
     neutralizedScripts: _offlineCountKeptNeutralized(doc, neutralizedScripts),
   };
 }
@@ -20610,11 +20749,23 @@ async function saveOffline() {
     ? " " + b + " <base href> pointing away from this file " + (b === 1 ? "was" : "were") + " cleared, so relative references and links now resolve beside the file."
     : "";
   // An `<iframe srcdoc>` renders offline perfectly well, so unlike every network strip this one
-  // removes content that WORKED - a nested document the zero-network promise simply cannot inspect.
-  // Silently emptying the frame would leave the author hunting for their missing content.
+  // changes content that WORKED - a nested document the zero-network promise simply cannot inspect.
+  // Silently emptying the frame would leave the author hunting for their missing content. Two
+  // counts, because two different things happened: every one of them stopped RENDERING, and most of
+  // them were kept beside their frame as inert escaped text (issue #1119). "Emptied" rather than
+  // "removed", because the markup is no longer gone. The kept count is reported only when there is
+  // one, so a document whose only frames were empty or foreign - which keep nothing, and lose
+  // nothing a reader could see - says only what was emptied.
   const s = built.clearedSrcdocs;
+  const k = built.keptSrcdocs;
   const srcdocNote = s > 0
-    ? " " + s + " <iframe srcdoc> nested document" + (s === 1 ? " was" : "s were") + " removed - an offline export cannot inspect a document carried inside an attribute."
+    ? " " + s + " <iframe srcdoc> nested document" + (s === 1 ? " was" : "s were")
+      + " emptied from " + (s === 1 ? "its frame" : "their frames")
+      + " - an offline export cannot inspect a document carried inside an attribute"
+      + (k > 0
+        ? "; " + k + (k === 1 ? " is kept beside its frame" : " are kept beside their frames")
+          + " as inert escaped text."
+        : ".")
     : "";
   showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + fallbackNote + headFallbackNote + baseNote + srcdocNote + review.note, { center: true });
 }

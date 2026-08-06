@@ -3208,7 +3208,28 @@ const SRCDOC_NESTED = [
   '<meta http-equiv="refresh" content="0;url=https://evil.example/refresh">',
   '<img src="https://evil.example/pixel.png" alt="p">',
   '<body onload="new Image().src = \'https://evil.example/steal\'">',
+  // The two egress shapes the gate reads through views OTHER than its tag index - a CSS @import and
+  // a module import - so the preserved text is proved not to reach those scans either.
+  '<style>@import url(https://evil.example/nested.css);</style>',
+  '<script type="module">import "https://evil.example/nested.mjs";</script>',
 ].join("");
+
+// A SECOND, distinct nested document, so the frame-to-block pairing is testable at all: with one
+// shared constant a pass that collected every value first and re-inserted them in the wrong order
+// would satisfy the suite, and "beside its frame" is the whole point.
+const SRCDOC_NESTED_2 = '<p id="second-nested">a different nested document</p>';
+const SRCDOC_NESTED_3 = '<p id="third-nested">the second frame in the same paragraph</p>';
+const SRCDOC_NESTED_4 = '<p id="fourth-nested">rendered inside a foreignObject</p>';
+const SRCDOC_NESTED_5 = '<p id="fifth-nested">inside a hidden frame</p>';
+const SRCDOC_NESTED_6 = '<p id="sixth-nested">inside a hidden paragraph</p>';
+
+// A nested document that is a whole DOCUMENT rather than a snippet: multi-KB (so a truncation cap
+// at any plausible size fails the test), starting with a newline (which a `<pre>` drops only when
+// the text is its FIRST child - the `<code>` in between is what keeps it), and carrying a run of
+// blank lines (which the file-wide `\n{3,}` -> `\n\n` normalization every offline export already
+// applies to its whole serialization reaches here exactly as it reaches an authored `<pre>`).
+const SRCDOC_NESTED_BIG = "\n<h2>big</h2>\n\n\n<p>after a blank run</p>\n"
+  + ("<p>filler line that exists only to make this document larger than any plausible cap</p>\n".repeat(60));
 
 function srcdocAttr(markup) {
   return markup.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -3229,17 +3250,45 @@ const SRCDOC_CONTENT = [
   `<noscript><iframe id="cmh-srcdoc-noscript" srcdoc="${srcdocAttr(SRCDOC_NESTED)}"></iframe></noscript>`,
   `<svg width="1" height="1"><iframe id="cmh-srcdoc-foreign" srcdoc="${srcdocAttr(SRCDOC_NESTED)}"/></svg>`,
   // An EMPTY nested document loads nothing, and it goes too: the strip clears the attribute on
-  // presence, so a value-inspecting gate would bless a file the export still changes.
+  // presence, so a value-inspecting gate would bless a file the export still changes. A
+  // WHITESPACE-ONLY one is the same case - there is no nested document to keep.
   '<iframe id="cmh-srcdoc-empty" title="empty" srcdoc=""></iframe>',
+  '<iframe id="cmh-srcdoc-blank" title="blank" srcdoc=" &#10; "></iframe>',
   // ...and no further. A frame that carries no nested document is ordinary content: the ELEMENT,
   // its title and its relative src all survive intact.
   '<iframe id="cmh-srcdoc-keep" title="keep" src="beacon.html"></iframe>',
+  // An AUTHORED block wearing the same public class. `cmh-srcdoc-export` is markup a source can
+  // legitimately already carry (a previously exported file re-imported, say), so the kept count has
+  // to be taken by IDENTITY rather than by walking that class - otherwise the export reports an
+  // author's own block as preserved markup, and can claim more kept documents than emptied frames.
+  '<details class="cmh-srcdoc-export" id="cmh-srcdoc-decoy"><summary>authored</summary>'
+    + "<pre><code>not from an export</code></pre></details>",
   // Both at once. `srcdoc` wins over `src` while it is there, so removing it does NOT always
   // leave an empty frame - the strip clears only a NETWORK `src`, so this one reopens showing
   // the local file instead. CMH-VAL-24's authoring advisory says exactly that, and this is what
   // pins the claim.
   '<iframe id="cmh-srcdoc-both" title="both" src="beacon.html" '
     + `srcdoc="${srcdocAttr(SRCDOC_NESTED)}"></iframe>`,
+  // A frame inside a PARAGRAPH. An iframe is phrasing content and the preserved block is FLOW, so
+  // a block dropped in beside it would close the `<p>` on reparse, re-parent the trailing text and
+  // leave a stray empty paragraph - the export would not be serialize/reparse stable. TWO frames,
+  // because they share one anchor: inserting each at the paragraph's own nextSibling would emit
+  // them in REVERSE order and pair each nested document with the wrong frame.
+  `<p id="srcdoc-para">before <iframe id="cmh-srcdoc-para" srcdoc="${srcdocAttr(SRCDOC_NESTED_2)}"></iframe>`
+    + ` mid <iframe id="cmh-srcdoc-para2" srcdoc="${srcdocAttr(SRCDOC_NESTED_3)}"></iframe> after</p>`,
+  // An HTML-namespaced frame inside `<foreignObject>` DOES render its nested document, so it gets a
+  // block - but the paragraph re-anchor must not reach across the `<svg>` and drop that block
+  // outside the graphic the frame renders in.
+  '<p id="srcdoc-fo-para">wrapper <svg width="20" height="20"><foreignObject width="20" height="20">'
+    + `<iframe id="cmh-srcdoc-fo" srcdoc="${srcdocAttr(SRCDOC_NESTED_4)}"></iframe>`
+    + "</foreignObject></svg> tail</p>",
+  // Declaratively HIDDEN, directly and through a hidden paragraph. Neither frame rendered anything,
+  // so neither block may render either - and the paragraph case is the sharper one, because the
+  // re-anchor lifts the block OUT of the hidden container.
+  `<iframe id="cmh-srcdoc-hidden" hidden srcdoc="${srcdocAttr(SRCDOC_NESTED_5)}"></iframe>`,
+  `<p id="srcdoc-hidden-para" hidden>tucked away <iframe id="cmh-srcdoc-hidden-para" srcdoc="${srcdocAttr(SRCDOC_NESTED_6)}"></iframe></p>`,
+  // The uncapped case: a whole nested document, not a snippet.
+  `<iframe id="cmh-srcdoc-big" title="big" srcdoc="${srcdocAttr(SRCDOC_NESTED_BIG)}"></iframe>`,
 ].join("\n");
 
 // Every frame that still carries a nested document, read by PARSING the exported bytes in the
@@ -3266,11 +3315,12 @@ async function iframeSrcdocValues(page, html) {
 }
 
 test("CMH-OFFLINE-04: an iframe srcdoc carries a nested document neither the strip nor the gate can inspect", async ({ page, browser }) => {
-  test.setTimeout(90000);
+  test.setTimeout(120000);
   const staged = stageContent(SRCDOC_CONTENT, { key: "cmh-offline-srcdoc", source: "offline-srcdoc.html" });
   const outDir = makeTmpDir();
   let ctx2;
   let ctx3;
+  let ctx4;
   try {
     const sourceRequests = [];
     await page.route(/^https?:\/\//, async (route) => {
@@ -3284,10 +3334,10 @@ test("CMH-OFFLINE-04: an iframe srcdoc carries a nested document neither the str
     // meta refresh navigates the frame - so this is egress an offline export must not carry.
     await expect.poll(() => sourceRequests.filter((u) => u.includes("evil.example")).length,
       { message: "the nested srcdoc document must really reach the network" }).toBeGreaterThan(0);
-    // ...and the positive control for the reader below: it finds all five nested documents in the
+    // ...and the positive control for the reader below: it finds every nested document in the
     // source, so an empty result after the export is a strip that ran, not a blind helper.
     expect(await iframeSrcdocValues(page, fs.readFileSync(staged.html, "utf8")),
-      "the srcdoc reader must see the frames the source really carries").toHaveLength(6);
+      "the srcdoc reader must see the frames the source really carries").toHaveLength(13);
 
     await openToolbarMenu(page);
     await Promise.all([
@@ -3297,10 +3347,147 @@ test("CMH-OFFLINE-04: an iframe srcdoc carries a nested document neither the str
     const exportedHtml = await capturedDownloadText(page);
 
     expect(await iframeSrcdocValues(page, exportedHtml), "no srcdoc may survive an offline export").toEqual([]);
-    expect(exportedHtml, "the nested document must leave with the attribute").not.toContain("evil.example");
+    // The nested document leaves the ATTRIBUTE, which is the whole rule - but it is no longer
+    // dropped on the floor (issue #1119). Ground (4) of the clear-outright decision - the author
+    // still has the source file - answers for the AUTHOR and never for the RECIPIENT, who holds
+    // only the export and used to meet a frame that rendered nothing, with no toast behind it. So
+    // every live spelling of the nested markup is gone while the markup itself is kept beside the
+    // frame as escaped inert TEXT: nothing here parses the nested document, so the strip and the
+    // gate still agree by construction.
+    // Stronger than the substring test it replaces (`not.toContain("evil.example")`, which the
+    // preserved TEXT would now trip) and stronger than a tag whitelist: parse the export and
+    // require that no ELEMENT anywhere - light DOM or template content - carries ANY attribute
+    // mentioning the host. A regression that revived the nested markup in any spelling at all (a
+    // `<script src>`, a `<link href>`, a `srcset` candidate) fails here.
+    expect(await page.evaluate((html) => {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const hits = [];
+      const walk = (root) => {
+        root.querySelectorAll("*").forEach((el) => {
+          for (const a of el.attributes) {
+            if (a.value.includes("evil.example")) hits.push(el.tagName.toLowerCase() + "@" + a.name);
+          }
+        });
+        root.querySelectorAll("template").forEach((t) => { if (t.content) walk(t.content); });
+      };
+      walk(doc);
+      return hits;
+    }, exportedHtml), "the nested markup must be text, never an attribute a parser reads").toEqual([]);
+    expect(exportedHtml, "the nested document must be preserved as escaped text")
+      .toContain("&lt;img src=\"https://evil.example/pixel.png\" alt=\"p\"&gt;");
+    // Read by PARSING the export rather than by regex, for the same reason iframeSrcdocValues is:
+    // the file embeds the whole runtime, whose own source text mentions these names.
+    const preserved = await page.evaluate((html) => {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const out = [];
+      const walk = (root) => {
+        root.querySelectorAll("details.cmh-srcdoc-export").forEach((d) => {
+          const host = d.previousElementSibling;
+          out.push({
+            skip: d.classList.contains("cm-skip"),
+            hidden: d.hasAttribute("hidden"),
+            host: host ? host.tagName.toLowerCase() : null,
+            hostId: host ? host.getAttribute("id") : null,
+            summary: !!d.querySelector("summary"),
+            open: d.hasAttribute("open"),
+            text: (d.querySelector("pre > code") || {}).textContent || "",
+          });
+        });
+        root.querySelectorAll("template").forEach((t) => { if (t.content) walk(t.content); });
+      };
+      walk(doc);
+      return out;
+    }, exportedHtml);
+    // 6 blocks for 9 emptied frames: the EMPTY and WHITESPACE-ONLY frames carry no nested document
+    // to keep, and the SVG-namespaced one renders nothing in any browser, so a block beside it
+    // would be invisible content added where none was ever lost. The template-parked frame is last
+    // only because the reader above walks the light DOM before it descends into template content.
+    // The paragraph frame's block anchors after the PARAGRAPH, not beside the frame: a block is
+    // flow content, so leaving it inside the `<p>` would close the paragraph on reparse.
+    const normalize = (s) => s.replace(/\n{3,}/g, "\n\n");
+    expect(preserved.map((p) => [p.hostId, p.text, p.hidden]),
+      "one block per emptied frame that had a document to keep, anchored where it can legally sit")
+      .toEqual([
+        ["cmh-srcdoc-beacon", SRCDOC_NESTED, false],
+        ["cmh-srcdoc-noscript", SRCDOC_NESTED, false],
+        // The authored decoy: still in the document (the export never touches author content), and
+        // still NOT counted as preserved markup by the toast below.
+        ["cmh-srcdoc-keep", "not from an export", false],
+        ["cmh-srcdoc-both", SRCDOC_NESTED, false],
+        // Both paragraph frames anchor after the SAME `<p>`, in frame order rather than reversed.
+        ["srcdoc-para", SRCDOC_NESTED_2, false],
+        [null, SRCDOC_NESTED_3, false],
+        // The foreignObject frame anchors beside ITSELF: the `<p>` re-anchor must not reach across
+        // the `<svg>` and move the text out of the graphic the frame renders in.
+        ["cmh-srcdoc-fo", SRCDOC_NESTED_4, false],
+        // A frame that rendered nothing keeps a block that renders nothing - directly, and through
+        // a hidden paragraph, where the re-anchor would otherwise lift it out into view.
+        ["cmh-srcdoc-hidden", SRCDOC_NESTED_5, true],
+        ["srcdoc-hidden-para", SRCDOC_NESTED_6, true],
+        ["cmh-srcdoc-big", normalize(SRCDOC_NESTED_BIG), false],
+        [null, SRCDOC_NESTED, false],
+      ]);
+    // Uncapped, stated as a length rather than left implicit in the equality above: a truncation
+    // cap at any plausible size would still satisfy a small fixture.
+    const big = preserved.find((p) => p.hostId === "cmh-srcdoc-big");
+    expect(big.text.length, "a whole nested document must survive, not a capped prefix")
+      .toBe(normalize(SRCDOC_NESTED_BIG).length);
+    expect(big.text.length, "the uncapped fixture must actually be large").toBeGreaterThan(4000);
+    // The leading newline survives: a `<pre>` drops one only when the text is its FIRST child, and
+    // the `<code>` in between is what keeps it.
+    expect(big.text.startsWith("\n"), "a leading newline must survive the round trip").toBe(true);
+    for (const block of preserved.filter((p) => p.text !== "not from an export")) {
+      expect(block.host, "the block must sit beside its frame, or beside the paragraph holding it")
+        .toMatch(/^(iframe|p|details)$/);
+      // cm-skip is what keeps the inserted block out of BOTH hash walks (the runtime's
+      // _cmhScanSkip and the Python section_hash _SKIP_CLASSES) and out of the anchor/selection
+      // walks, so an export cannot shift a section hash, flip a reviewed section to "changed", or
+      // invalidate its own validated stamp. Asserted as an OUTCOME below, not only as this marker.
+      expect(block.skip, "the block must be cm-skip so it shifts no hash or anchor").toBe(true);
+      expect(block.summary, "the block must say what it is").toBe(true);
+      // Collapsed: a srcdoc can be a whole document, so an always-open <pre> would dominate the
+      // page. Bounded layout beats truncation, which would reintroduce the very loss this ends.
+      expect(block.open, "the block must be collapsed by default").toBe(false);
+    }
+    // The three frames that get no block, named rather than merely absent from the list above, and
+    // the two paragraph shapes, whose blocks must land where a reparse keeps them.
+    expect(await page.evaluate((html) => {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const isBlock = (el) => !!(el && el.classList && el.classList.contains("cmh-srcdoc-export"));
+      const para = doc.getElementById("srcdoc-para");
+      const foPara = doc.getElementById("srcdoc-fo-para");
+      const fo = doc.getElementById("cmh-srcdoc-fo");
+      return {
+        none: ["cmh-srcdoc-empty", "cmh-srcdoc-blank", "cmh-srcdoc-foreign"]
+          .map((id) => isBlock((doc.getElementById(id) || {}).nextElementSibling)),
+        // The paragraph must still read as one paragraph, with its trailing text in place: a block
+        // left inside it would have split it and re-parented " after".
+        paraText: para ? para.textContent.replace(/\s+/g, " ").trim() : null,
+        paraHoldsBlock: !!(para && para.querySelector(".cmh-srcdoc-export")),
+        blockAfterPara: isBlock(para && para.nextElementSibling),
+        // ...and the foreignObject frame's block stays INSIDE the graphic, because `<p>` is not in
+        // button scope from an SVG integration point, so a `details` there closes no paragraph. The
+        // paragraph therefore still holds the whole graphic AND both its own text runs - the block's
+        // text is legitimately inside it, which is why this reads the ends rather than the whole.
+        foParaIntact: !!(foPara && foPara.querySelector("svg")
+          && /^wrapper\b/.test(foPara.textContent.trim())
+          && /\btail$/.test(foPara.textContent.trim())),
+        foBlockInsideForeignObject: isBlock(fo && fo.nextElementSibling)
+          && !!(fo && fo.closest("foreignObject")),
+      };
+    }, exportedHtml), "the bounds, and the paragraphs that survive serialize-then-reparse").toEqual({
+      none: [false, false, false],
+      paraText: "before mid after",
+      paraHoldsBlock: false,
+      blockAfterPara: true,
+      foParaIntact: true,
+      foBlockInsideForeignObject: true,
+    });
     // Cleared, not deleted: the frames themselves are content, and so is a relative src.
     for (const id of ["cmh-srcdoc-beacon", "cmh-srcdoc-template", "cmh-srcdoc-noscript",
-      "cmh-srcdoc-foreign", "cmh-srcdoc-empty", "cmh-srcdoc-keep", "cmh-srcdoc-both"]) {
+      "cmh-srcdoc-foreign", "cmh-srcdoc-empty", "cmh-srcdoc-blank", "cmh-srcdoc-keep",
+      "cmh-srcdoc-decoy", "cmh-srcdoc-both", "cmh-srcdoc-para", "cmh-srcdoc-para2",
+      "cmh-srcdoc-fo", "cmh-srcdoc-hidden", "cmh-srcdoc-hidden-para", "cmh-srcdoc-big"]) {
       expect(exportedHtml, `${id} must be kept as an element`).toContain(`id="${id}"`);
     }
     expect(exportedHtml).toContain('src="beacon.html"');
@@ -3313,14 +3500,33 @@ test("CMH-OFFLINE-04: an iframe srcdoc carries a nested document neither the str
       return f ? [f.hasAttribute("srcdoc"), f.getAttribute("src")] : null;
     }, exportedHtml), "a local src must survive beside the removed srcdoc").toEqual([false, "beacon.html"]);
     expect(networkLoadRefs(exportedHtml)).toEqual([]);
-    // Removing a nested document removes content that WORKED offline, so unlike a network strip it
-    // must not be silent. 6 = the beacon, template-parked, noscript-parked, foreign, empty and
-    // both-attributes frames above; the srcdoc-free control is not counted.
+    // Emptying a nested document changes content that WORKED offline, so unlike a network strip it
+    // must not be silent. 13 = every frame in the fixture that carried a `srcdoc`; the srcdoc-free
+    // control is not counted. The second count is the one the author cares about now that the
+    // markup survives: 10 of those 13 keep it (the empty and whitespace-only ones have nothing to
+    // keep, the foreign one nothing that would render). It is read off the FINISHED document by
+    // IDENTITY, so the authored `cmh-srcdoc-export` decoy in the fixture is not counted with them.
     await expect(page.locator("#toast")).toContainText(
-      "6 <iframe srcdoc> nested documents were removed - an offline export cannot inspect a document carried inside an attribute.");
+      "13 <iframe srcdoc> nested documents were emptied from their frames - an offline export cannot"
+      + " inspect a document carried inside an attribute; 10 are kept beside their frames as inert"
+      + " escaped text.");
 
     const exportedPath = path.join(outDir, "offline-srcdoc.html");
     fs.writeFileSync(exportedPath, exportedHtml);
+    // The cm-skip claim as an OUTCOME rather than as a class name: the Python content hasher is the
+    // independent side that decides whether a reviewed section flips to "changed" and whether the
+    // validated stamp still matches, and it must read the export exactly as it reads the source.
+    // A block that entered the walk would change this hash, so a rename on either side fails here.
+    const contentHash = (file) => execFileSync(PYTHON, ["-c",
+      "import sys; sys.path.insert(0, 'tools/authoring'); import io; from section_hash import "
+      + "document_content_hash; print(document_content_hash(io.open(sys.argv[1], encoding='utf-8').read()))",
+      file], { cwd: SKILL, encoding: "utf8" }).trim();
+    // Guarded against passing vacuously: the hasher returns None when it finds no content root, and
+    // None == None would be green for two rootless files.
+    expect(contentHash(staged.html), "the fixture must really have a content root")
+      .toMatch(/^[0-9a-z]{1,16}$/);
+    expect(contentHash(exportedPath), "the export must not shift its own content hash")
+      .toBe(contentHash(staged.html));
     // The gate must agree with the strip: a file the exporter cleans is offline-clean to --strict.
     execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
     // ...and the other direction, which the clean file alone cannot prove: re-inject a srcdoc into
@@ -3352,8 +3558,55 @@ test("CMH-OFFLINE-04: an iframe srcdoc carries a nested document neither the str
       external.push(route.request().url());
       await route.abort();
     });
+    await installDownloadTextCapture(page2);
     await page2.goto(fileUrl(exportedPath));
     await ready(page2);
+    // Idempotence, before anything else mutates this page: re-exporting an already-exported file
+    // must not double-wrap or re-escape. It holds BY CONSTRUCTION rather than by a guard - the
+    // first export removed the attribute, so the second finds no `srcdoc` and inserts nothing, and
+    // the block it left behind is inert text no pass on either side reads - but "by construction"
+    // is exactly the kind of claim that quietly stops being true, so it is pinned.
+    await openToolbarMenu(page2);
+    await Promise.all([
+      page2.waitForEvent("download"),
+      page2.locator("#btnExportOfflineTop").click(),
+    ]);
+    const reExportedHtml = await capturedDownloadText(page2);
+    const blockShape = (html) => page.evaluate((source) => {
+      const doc = new DOMParser().parseFromString(source, "text/html");
+      const out = [];
+      const walk = (root) => {
+        root.querySelectorAll("details.cmh-srcdoc-export").forEach((d) => {
+          out.push({
+            nested: d.querySelectorAll("details.cmh-srcdoc-export").length,
+            text: (d.querySelector("pre > code") || {}).textContent || "",
+          });
+        });
+        root.querySelectorAll("template").forEach((t) => { if (t.content) walk(t.content); });
+      };
+      walk(doc);
+      return out;
+    }, html);
+    expect(await blockShape(reExportedHtml), "a re-export must neither double-wrap nor re-escape")
+      .toEqual(await blockShape(exportedHtml));
+    expect(await iframeSrcdocValues(page, reExportedHtml)).toEqual([]);
+    // The gate must still agree with the SECOND export too: that is the cheapest place the
+    // "both sides agree" criterion can break, because the preserved text has now taken the longest
+    // path there is - serialized, reparsed by a reader, and serialized again.
+    const reExportedPath = path.join(outDir, "offline-srcdoc-reexported.html");
+    fs.writeFileSync(reExportedPath, reExportedHtml);
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", reExportedPath], { cwd: SKILL, stdio: "pipe" });
+    // The placement rule, stated as evidence: the block goes where the FRAME is, so it is visible
+    // to exactly the reader the nested document was visible to. For this reader - scripting ON -
+    // the light-DOM block renders and the `<noscript>`-parked one does not, because a scripting-on
+    // parser reads a noscript body as raw text in a `display:none` element. That is not a gap: the
+    // frame inside it did not render its nested document for this reader either.
+    expect(await page2.evaluate(() => ({
+      lightDom: !!document.querySelector("#cmh-srcdoc-beacon + details.cmh-srcdoc-export"),
+      inNoscript: !!document.querySelector("noscript details.cmh-srcdoc-export"),
+    })), "with scripting on, the block renders exactly where the frame did").toEqual({
+      lightDom: true, inNoscript: false,
+    });
     // Adopt every parked fragment, so a template-parked frame would genuinely get its chance to
     // load its nested document.
     await page2.evaluate(() => {
@@ -3388,11 +3641,85 @@ test("CMH-OFFLINE-04: an iframe srcdoc carries a nested document neither the str
       });
     });
     expect(externalNoCsp).toEqual([]);
+
+    // The other half of the placement rule, and the one reader class this change newly puts content
+    // in front of: with scripting OFF the `<noscript>` body is LIVE MARKUP, so a block parked in one
+    // really does render for the reader who could have seen its nested document - and that is
+    // exactly the context in which an escaping failure would become a real load. So this runs on the
+    // CSP-REMOVED copy with its own recorder, making the zero-network claim browser evidence for the
+    // scripting-off reader too rather than a serialization argument.
+    ctx4 = await browser.newContext({ javaScriptEnabled: false });
+    const page4 = await ctx4.newPage();
+    const externalNoJs = [];
+    await page4.route(/^https?:\/\//, async (route) => {
+      externalNoJs.push(route.request().url());
+      await route.abort();
+    });
+    await page4.goto(fileUrl(noCspPath));
+    // Present before visible: an absent element also fails toBeVisible(), so without this a
+    // regression that stopped inserting the block would look like a display change.
+    await expect(page4.locator("noscript details.cmh-srcdoc-export")).toHaveCount(1);
+    await expect(page4.locator("noscript details.cmh-srcdoc-export summary")).toBeVisible();
+    await expect(page4.locator("noscript details.cmh-srcdoc-export"))
+      .toContainText("evil.example/pixel.png");
+    expect(externalNoJs, "the preserved text must reach no network for the reader who can see it")
+      .toEqual([]);
   } finally {
     if (ctx2) await ctx2.close();
     if (ctx3) await ctx3.close();
+    if (ctx4) await ctx4.close();
     fs.rmSync(staged.dir, { recursive: true, force: true });
     fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+// The two message branches the main test cannot reach, because one document produces one toast:
+// the SINGULAR forms, and the case where nothing was kept at all. Both are user-facing sentences a
+// reader acts on, so a pluralization or omission regression would otherwise ship.
+test("CMH-OFFLINE-04: the offline export note counts what it kept, and claims nothing when it kept nothing", async ({ page }) => {
+  test.setTimeout(90000);
+  const kept = stageContent(
+    `<h1>One kept</h1>\n<iframe id="one-kept" srcdoc="${srcdocAttr(SRCDOC_NESTED_2)}"></iframe>`,
+    { key: "cmh-offline-srcdoc-one", source: "offline-srcdoc-one.html" });
+  // Nothing to keep: an empty value and a foreign-namespaced frame. Both are still EMPTIED (the
+  // attribute goes on presence), so the note must still report them - it just must not promise a
+  // copy that is not there.
+  const none = stageContent(
+    '<h1>None kept</h1>\n<iframe id="none-empty" srcdoc=""></iframe>\n'
+    + `<svg width="1" height="1"><iframe id="none-foreign" srcdoc="${srcdocAttr(SRCDOC_NESTED_2)}"/></svg>`,
+    { key: "cmh-offline-srcdoc-none", source: "offline-srcdoc-none.html" });
+  try {
+    await page.route(/^https?:\/\//, async (route) => { await route.abort(); });
+    await installDownloadTextCapture(page);
+
+    await page.goto(fileUrl(kept.html));
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([page.waitForEvent("download"), page.locator("#btnExportOfflineTop").click()]);
+    await capturedDownloadText(page);
+    await expect(page.locator("#toast")).toContainText(
+      "1 <iframe srcdoc> nested document was emptied from its frame - an offline export cannot"
+      + " inspect a document carried inside an attribute; 1 is kept beside its frame as inert"
+      + " escaped text.");
+
+    await page.goto(fileUrl(none.html));
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([page.waitForEvent("download"), page.locator("#btnExportOfflineTop").click()]);
+    const noneHtml = await capturedDownloadText(page);
+    await expect(page.locator("#toast")).toContainText(
+      "2 <iframe srcdoc> nested documents were emptied from their frames - an offline export cannot"
+      + " inspect a document carried inside an attribute.");
+    await expect(page.locator("#toast")).not.toContainText("kept beside");
+    // Parsed, never a substring scan: the export embeds the whole runtime, whose own source text
+    // spells `cmh-srcdoc-export` in the function that inserts one.
+    expect(await page.evaluate((html) => {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      return doc.querySelectorAll("details.cmh-srcdoc-export").length;
+    }, noneHtml), "no block may be inserted when nothing was kept").toBe(0);
+  } finally {
+    fs.rmSync(kept.dir, { recursive: true, force: true });
+    fs.rmSync(none.dir, { recursive: true, force: true });
   }
 });
 
