@@ -113,6 +113,7 @@ _shared_class_tokens = getattr(_parsing, "class_tokens", None)
 _shared_html_ws_tokens = getattr(_parsing, "html_ws_tokens", None)
 _shared_raw_attrs_class_tokens = getattr(_parsing, "raw_attrs_class_tokens", None)
 _shared_raw_attrs_pairs = getattr(_parsing, "raw_attrs_pairs", None)
+_shared_raw_text_spans = getattr(_parsing, "raw_text_spans", None)
 _shared_tag_names = getattr(_parsing, "BrowserTagNames", None)
 
 # The fallback's copy of the shared attribute-list split, for a partial install only. HTML tokenizes
@@ -194,19 +195,55 @@ def class_tokens(value):
     return _shared_class_tokens(value)
 
 
-# The fallback's copy of the raw `class=` attribute match, for a partial install only. All three
-# HTML quoting forms (a class written `class=cmh-kql` or `class='cmh-kql'` is the same class), an
-# attribute-name boundary so `data-class=` is not read as `class=`, HTML's own unquoted-value
-# terminator (which is ASCII whitespace or `>` ONLY - a `"`, `'`, `<`, `=` or backtick is a parse
-# error a browser KEEPS in the value), and `re.ASCII` beside `re.IGNORECASE` so Python's Unicode
-# fold does not read `cla\u017f\u017f=` as `class=`. It is a DEGRADED stand-in for the shared
-# start-tag tokenizer: it cannot decode character references, and - being a search rather than a
-# parse - it can be fooled by a `class=` spelled inside ANOTHER attribute's quoted value when a
-# space precedes it (`title=" class=cmh-kql"`). Both are exactly why the shared reading exists and
-# why this runs only in its absence, which the shim warns about at import.
-_FALLBACK_CLASS_ATTR_RE = _re.compile(
-    r"""(?<![^\t\n\f\r /])class[\t\n\f\r ]*=[\t\n\f\r ]*"""
-    r"""(?:"([^"]*)"|'([^']*)'|([^\t\n\f\r >]+))""", _re.IGNORECASE | _re.ASCII)
+# The fallback's copy of the shared start-tag split, for a partial install only: the same tag-name
+# and attribute patterns `checks/parsing._tokenize_raw_tag` walks (pinned to them as TEXT by a
+# parity test, like the whitespace splits above), so the degraded reading answers what the shared
+# one answers on the shapes that matter. It is a DEGRADED stand-in, not the tokenizer: it decodes a
+# value with the host's `html.unescape` rather than the browser's numeric end state, and it does
+# not fold a NUL. Both are exactly why it runs only in the shared reading's absence, which the shim
+# warns about at import.
+_FALLBACK_TAG_NAME_RE = _re.compile(r"([a-zA-Z][^\t\n\r\f />]*)(?:[\t\n\r\f ]|/(?!>))*")
+_FALLBACK_ATTR_RE = _re.compile(r"""
+  ((?<=['"\t\n\r\f /])[^\t\n\r\f />][^\t\n\r\f /=>]*)   # attribute name
+  ([\t\n\r\f ]*=[\t\n\r\f ]*                            # value indicator
+    ('[^']*'                                            # single-quoted value
+    |"[^"]*"                                            # double-quoted value
+    |(?!['"])[^>\t\n\r\f ]*                             # bare value
+    )
+   )?
+  (?:[\t\n\r\f ]|/(?!>))*                               # trailing whitespace
+""", _re.VERBOSE)
+
+
+def _fallback_attr_pairs(attrs):
+    """A degraded `(name, value)` split of a RAW start-tag attribute string, in order.
+
+    Walked over the same synthetic `<x ...>` wrapper the shared reader uses (see
+    `raw_attrs_class_tokens`), so a caller holding only the attribute text is served. The name is
+    folded ASCII-ONLY here rather than through `ascii_lower`, whose own fallback degrades to
+    Python's UNICODE `.lower()` under exactly this condition - that fold maps U+212A onto `k` and
+    U+017F onto `s`, so `cla\u017f\u017f=` would become a real `class=`.
+    """
+    raw = "<x " + (attrs or "") + ">"
+    m = _FALLBACK_TAG_NAME_RE.match(raw, 1)
+    if m is None:  # pragma: no cover - the synthetic wrapper always names a tag
+        return []
+    out, k, end = [], m.end(), len(raw)
+    while k < end:
+        m = _FALLBACK_ATTR_RE.match(raw, k)
+        if m is None:
+            break
+        name, has_value, value = m.group(1, 2, 3)
+        if not has_value:
+            value = None
+        else:
+            if value[:1] == "'" == value[-1:] or value[:1] == '"' == value[-1:]:
+                value = value[1:-1]
+            if "&" in value:
+                value = unescape_attr_value(value)
+        out.append((_FALLBACK_ASCII_UPPER_RE.sub(lambda mm: mm.group(0).lower(), name), value))
+        k = m.end()
+    return out
 
 
 def raw_attrs_class_tokens(attrs):
@@ -215,12 +252,15 @@ def raw_attrs_class_tokens(attrs):
     The shared reading (`checks/parsing.raw_attrs_class_tokens`), for a tool that has the start
     tag as TEXT rather than as a parsed attribute dict - the KQL-figure refresh and the two
     `language-XXX` label readers, each of which kept its own `class=` regex before.
+
+    The fallback reads the class off the degraded attribute SPLIT rather than searching for a
+    `class=` in the raw text, so - like the shared reading - it cannot be fooled by a `class=`
+    spelled inside another attribute's quoted value, and it keeps the FIRST of a duplicated
+    attribute as HTML5 does.
     """
     if _shared_raw_attrs_class_tokens is None:
-        m = _FALLBACK_CLASS_ATTR_RE.search(attrs or "")
-        if m is None:
-            return []
-        return html_ws_tokens(next((g for g in m.groups() if g is not None), ""))
+        value = next((v for n, v in _fallback_attr_pairs(attrs) if n == "class"), None)
+        return html_ws_tokens(value)
     return _shared_raw_attrs_class_tokens(attrs)
 
 
@@ -229,12 +269,78 @@ def raw_attrs_pairs(attrs):
 
     The shared reading (`checks/parsing.raw_attrs_pairs`), for a tool that REWRITES a start tag
     and so must not locate an attribute by searching the raw text: a `class=` search matches one
-    spelled inside ANOTHER attribute's quoted value and then rewrites THAT. The degraded fallback
-    can only offer the class, which is all its one caller needs.
+    spelled inside ANOTHER attribute's quoted value and then rewrites THAT.
     """
     if _shared_raw_attrs_pairs is None:
-        return [("class", " ".join(raw_attrs_class_tokens(attrs)))] if attrs else []
+        return _fallback_attr_pairs(attrs)
     return _shared_raw_attrs_pairs(attrs)
+
+
+# One left-to-right scan of the shapes a `<` can OPEN, in the order a tokenizer meets them: a
+# COMMENT and a TAG (start or end - an end tag's attributes are ignored by a browser but still
+# TOKENIZED as part of the tag, so a `>` or a `<!--` inside one of its quoted values ends nothing).
+# The tag names are terminated HTML's way and the attribute region is quote-aware, the same region
+# every scan in this repo uses. A comment ends at `-->` or at the legacy `--!>` (the comment-end-bang
+# state), `<!-->` and `<!--->` close abruptly, and an UNTERMINATED comment runs to the end of the
+# input - the same boundaries the validator's own parser applies
+# (`checks/parsing._COMMENT_CLOSE_RE` / `_COMMENT_ABRUPT_CLOSE_RE`), so the two agree on where a
+# comment stops. Scanning comments and tags in ONE pass is what makes each shield the other: a
+# `<!--` written inside an attribute VALUE is consumed with its own tag and is not a comment opener,
+# and a tag-shaped string written inside an attribute value is consumed with that value and is not a
+# tag. A comment SEARCH alone (`checks/parsing._HTML_COMMENT_RE`) does neither, which is how an
+# attribute-value `<!--` marked a LIVE element inert.
+_TAG_OR_COMMENT_RE = _re.compile(
+    r"""<!--(?:-?>|.*?(?:--!?>|\Z))"""
+    r"""|</?[a-zA-Z][^\t\n\f\r />]*((?:"[^"]*"|'[^']*'|[^>"'])*)>""", _re.DOTALL)
+
+
+def inert_spans(html):
+    """The `(start, end)` regions of `html` where a `<` does NOT open an element: HTML comments,
+    raw-text / RCDATA bodies (`<script>`, `<style>`, `<textarea>`, `<title>`, ...), and the
+    ATTRIBUTE region of a start tag.
+
+    For a tool that finds an element by SCANNING the source text rather than by parsing it. The
+    validator's element views come from a real parse, so a start tag written inside a comment - or
+    inside another tag's quoted attribute value - is not an element to it; a raw scanner that
+    matched one anyway would act on a decoy: rewriting commented-out markup, or a tag-shaped string
+    inside a `title=`, and leaving the LIVE element untouched while reporting success.
+
+    Spans, not a blanked copy, so the caller keeps the authored bytes and can splice the original.
+
+    A raw-text body is inert wholesale, so the scan RESUMES past it rather than reading a `<!--`
+    written inside script data as a comment opener. The degraded path (a partial install with no
+    `checks/parsing`) has no tokenizer to find those bodies with, so it covers comments and
+    attribute regions only.
+
+    Not covered, deliberately: a `</` NOT followed by a tag name opens a BOGUS COMMENT ending at
+    the first `>`, and a `<!` + junk does the same. Both are parse-error shapes no authoring tool
+    here emits, and reading them as ordinary text can only leave a decoy LIVE, never mark a real
+    element inert.
+    """
+    text = html or ""
+    raw = _shared_raw_text_spans(text) if _shared_raw_text_spans is not None else None
+    raw_spans = [(start, end) for start, end, _tag, _in_tpl in (raw or ())]
+    spans = list(raw_spans)
+    pos = 0
+    while True:
+        m = _TAG_OR_COMMENT_RE.search(text, pos)
+        if m is None:
+            break
+        resume = next((end for start, end in raw_spans if start <= m.start() < end), None)
+        if resume is not None:
+            pos = resume
+            continue
+        if m.group(1) is None:
+            spans.append(m.span())        # a comment: inert to its closer, or to the end
+        elif m.end(1) > m.start(1):
+            spans.append(m.span(1))       # a start tag: its attributes are values, not markup
+        pos = m.end()
+    return tuple(sorted(spans))
+
+
+def in_inert_span(pos, spans):
+    """Whether offset `pos` falls inside one of `inert_spans`'s regions."""
+    return any(start <= pos < end for start, end in spans)
 
 
 def attrs_have_class(raw_attrs, class_name):

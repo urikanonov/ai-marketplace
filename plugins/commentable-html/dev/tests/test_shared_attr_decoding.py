@@ -168,6 +168,94 @@ class SharedDecodeShimTests(unittest.TestCase):
         self.assertEqual(_browser_attrs._FALLBACK_REL_WS_RE.pattern, parsing.LINK_REL_WS_RE.pattern)
         self.assertEqual(_browser_attrs._FALLBACK_HTML_WS_RE.pattern, parsing.HTML_WS_RE.pattern)
 
+    def test_the_degraded_start_tag_split_is_pinned_to_the_shared_one(self):
+        # Same discipline for the degraded ATTRIBUTE split: it walks copies of the two patterns
+        # `checks/parsing._tokenize_raw_tag` walks, so an edit to either shared pattern cannot
+        # silently leave the partial-install reading behind. The FLAGS are pinned too - an added
+        # `re.ASCII` or `re.IGNORECASE` on the shared pattern changes what it matches without
+        # changing a character of its text.
+        self.assertEqual(_browser_attrs._FALLBACK_TAG_NAME_RE.pattern, parsing._TAG_NAME_RE.pattern)
+        self.assertEqual(_browser_attrs._FALLBACK_TAG_NAME_RE.flags, parsing._TAG_NAME_RE.flags)
+        self.assertEqual(_browser_attrs._FALLBACK_ATTR_RE.pattern, parsing._ATTR_RE.pattern)
+        self.assertEqual(_browser_attrs._FALLBACK_ATTR_RE.flags, parsing._ATTR_RE.flags)
+
+    def test_the_inert_scan_reads_a_comment_the_way_a_browser_ends_one(self):
+        # Deliberately NOT the shared `_HTML_COMMENT_RE`: that pattern is a comment SEARCH, and a
+        # search alone cannot know an opener sits inside an attribute value. The BOUNDARIES are the
+        # validator's own, though (`_COMMENT_CLOSE_RE` / `_COMMENT_ABRUPT_CLOSE_RE`), so the two
+        # agree on where a comment stops - and a browser keeps consuming an UNTERMINATED one.
+        opener_in_attr = '<div title="a <!-- b"><a class="x" href="y">live</a><!-- note --></div>'
+        spans = _browser_attrs.inert_spans(opener_in_attr)
+        self.assertFalse(_browser_attrs.in_inert_span(opener_in_attr.index('<a class="x"'), spans))
+        self.assertTrue(_browser_attrs.in_inert_span(opener_in_attr.index("<!-- note") + 5, spans))
+        # An END tag is a tag too, so a `<!--` inside ITS quoted attribute opens nothing.
+        end_tag_attr = '</div title="<!--"><a class="x" href="y">live</a><!-- end -->'
+        self.assertFalse(_browser_attrs.in_inert_span(end_tag_attr.index('<a class="x"'),
+                                                      _browser_attrs.inert_spans(end_tag_attr)))
+        # Every close a browser honours ends the comment, so what follows is LIVE.
+        for closed in ('<!-- note --!><a class="x" href="y">',
+                       '<!--><a class="x" href="y">',
+                       '<!---><a class="x" href="y">'):
+            self.assertFalse(
+                _browser_attrs.in_inert_span(closed.index('<a class="x"'),
+                                             _browser_attrs.inert_spans(closed)), closed)
+        unterminated = '<p>text<!-- open <a class="x" href="y">'
+        self.assertTrue(_browser_attrs.in_inert_span(unterminated.index('<a class="x"'),
+                                                     _browser_attrs.inert_spans(unterminated)))
+        # A tag-shaped string inside an attribute VALUE is that value, not a tag.
+        in_value = '<div title="<a class=\'cmh-kql-run\' href=\'z\'>"><a class="x">live</a></div>'
+        spans = _browser_attrs.inert_spans(in_value)
+        self.assertTrue(_browser_attrs.in_inert_span(in_value.index("<a class='cmh-kql-run'"),
+                                                     spans))
+        self.assertFalse(_browser_attrs.in_inert_span(in_value.index('<a class="x"'), spans))
+
+    def test_inert_spans_name_the_regions_a_browser_does_not_parse_as_markup(self):
+        # A tool that finds an element by SCANNING the source must skip what the validator's
+        # PARSED views never see, or it acts on a decoy: rewriting a commented-out run link and
+        # leaving the live one stale is the same silent failure #1160 is about.
+        html = ('<figure><!-- <a class="cmh-kql-run" href="x"> -->'
+                '<a class="cmh-kql-run" href="y"><script>var a = "<a class=cmh-kql-run>";</script>'
+                '</figure>')
+        spans = _browser_attrs.inert_spans(html)
+        self.assertTrue(_browser_attrs.in_inert_span(html.index("<!--") + 5, spans))
+        self.assertTrue(_browser_attrs.in_inert_span(html.index("var a"), spans))
+        self.assertFalse(_browser_attrs.in_inert_span(html.index('<a class="cmh-kql-run" href="y"'),
+                                                      spans))
+        self.assertEqual(_browser_attrs.inert_spans(""), ())
+        self.assertEqual(_browser_attrs.inert_spans(None), ())
+        self.assertFalse(_browser_attrs.in_inert_span(0, ()))
+        with mock.patch.object(_browser_attrs, "_parsing", None), \
+                mock.patch.object(_browser_attrs, "_shared_raw_text_spans", None):
+            # The degraded path covers comments only: a raw-text body needs the tokenizer, which
+            # is exactly what a partial install is missing.
+            degraded = _browser_attrs.inert_spans(html)
+            self.assertTrue(_browser_attrs.in_inert_span(html.index("<!--") + 5, degraded))
+            self.assertFalse(_browser_attrs.in_inert_span(html.index("var a"), degraded))
+
+    def test_the_degraded_path_reads_every_attribute_not_only_the_class(self):
+        # A tool that REWRITES a start tag (the KQL run-link refresh, #1160) needs the whole
+        # attribute list, so the degraded split offers all of them - in order, first occurrence
+        # winning, in every HTML quoting form - rather than the class alone. `_parsing` is patched
+        # away wholesale, so the value decode really is the degraded `html.unescape` one too.
+        with mock.patch.object(_browser_attrs, "_parsing", None), \
+                mock.patch.object(_browser_attrs, "_shared_raw_attrs_pairs", None):
+            pairs = _browser_attrs.raw_attrs_pairs(
+                ' class="cmh-kql-run x" href=\'/a?q=1&amp;r=2\' TARGET=_blank hidden')
+            self.assertEqual(pairs, [("class", "cmh-kql-run x"), ("href", "/a?q=1&r=2"),
+                                     ("target", "_blank"), ("hidden", None)])
+            # A `class=` spelled inside another attribute's quoted value is that value, not a
+            # class - the whole reason a rewrite must parse rather than search.
+            self.assertEqual(_browser_attrs.raw_attrs_pairs(' title=" class=cmh-kql" id="x"'),
+                             [("title", " class=cmh-kql"), ("id", "x")])
+            self.assertEqual(_browser_attrs.raw_attrs_pairs(""), [])
+            self.assertEqual(_browser_attrs.raw_attrs_pairs(None), [])
+        with mock.patch.object(_browser_attrs, "_parsing", None), \
+                mock.patch.object(_browser_attrs, "_shared_raw_attrs_class_tokens", None), \
+                mock.patch.object(_browser_attrs, "_shared_raw_attrs_pairs", None):
+            # The two degraded readings are ONE reading: the class comes off the same split.
+            self.assertEqual(_browser_attrs.raw_attrs_class_tokens(' title=" class=cmh-kql"'), [])
+            self.assertEqual(_browser_attrs.raw_attrs_class_tokens(' class="a" class="b"'), ["a"])
+
     def test_a_class_list_is_tokenized_the_way_html_tokenizes_it(self):
         # CMH-VAL-21 clause 11 (#1139): HTML splits a `class` list on ASCII whitespace ONLY and
         # matches a token by EXACT code points. Python's argument-less `str.split()` additionally
