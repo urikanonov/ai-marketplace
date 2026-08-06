@@ -379,7 +379,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.776.0";
+const CMH_VERSION = "1.777.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -15959,7 +15959,19 @@ function _stripOfflineNetworkLoads(doc, neutralized) {
   all("audio").forEach(function (el) { clearAttr(el, "src"); });
   all("source").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "srcset"); });
   all("track").forEach(function (el) { clearAttr(el, "src"); });
-  all("image").forEach(function (el) { clearAttr(el, "href"); clearAttr(el, "xlink:href"); });
+  // An SVG `<image>` loads through `href` / `xlink:href`, and the `src` / `srcset` pair rides
+  // along because the OTHER `<image>` - one authored in HTML content - is renamed to `img` by tree
+  // construction and fetches through exactly those two. That HTML spelling is already cleared by
+  // the `all("img")` pass above (it IS an `img` element in the DOM), so the two attributes here
+  // only ever reach an SVG-namespaced `image`, where they fetch nothing. Clearing them anyway is
+  // deliberate: the shared egress index the strict validator reads deliberately does not carry the
+  // namespace its parser computes, so it must report `<image src>` to catch the HTML one, and a
+  // strip that left the SVG one behind would have the gate REJECT a file this export just produced
+  // - the CMH-OFFLINE-04 drift (#1165). Keeping both sides identical is the point; the namespace is
+  // reachable here (`el.namespaceURI`) should that over-detection ever become worth closing.
+  all("image").forEach(function (el) {
+    clearAttr(el, "href"); clearAttr(el, "xlink:href"); clearAttr(el, "src"); clearAttr(el, "srcset");
+  });
   all("use").forEach(function (el) { clearAttr(el, "href"); clearAttr(el, "xlink:href"); });
   // An SVG filter primitive fetches exactly like the `image` and `use` above, and was in neither
   // this list nor the strict validator's, so one rode into a zero-network export the gate then

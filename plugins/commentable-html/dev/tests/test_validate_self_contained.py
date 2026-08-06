@@ -2117,6 +2117,61 @@ class NewCheckTests(unittest.TestCase):
         self.assertEqual(errors, [], errors)
         self.assertEqual(warnings, [], warnings)
 
+    # `<image src>` is an `<img>` to a browser and really fetches: HTML tree construction renames an
+    # `<image>` start tag to `img` and reprocesses it with its attributes, so the element that ends up
+    # in the DOM is an `HTMLImageElement` that loads on open. This gate reads the LITERAL tokenized
+    # tag name, and `_MEDIA_LOAD_ATTRS` carried `image` only for the SVG `href`/`xlink:href` pair, so
+    # the load was invisible - a complete INVERSION, since `<image href="https://...">` (which in HTML
+    # content loads nothing) WAS reported while `<image src=...>` was not, in offline mode as well as
+    # shareable (#1165). Widening the gate alone would have been the CMH-OFFLINE-04 drift, so it moved
+    # WITH the exporter strip: `49-offline-export.spec.js` pins that `all("image")` now clears the same
+    # two attributes, so the gate cannot reject a file the export just produced.
+    def test_an_image_element_that_fetches_through_src_is_an_error_in_both_modes(self):
+        for markup, needle in (
+                ('<image src="https://evil.example/x.png">', '<image src'),
+                ('<image srcset="https://evil.example/x.png 1x">', '<image srcset'),
+                # Only a CANDIDATE-LIST read finds this one: the whole attribute value does not start
+                # with a scheme, so a single-URL reading of `srcset` would see nothing network at all.
+                # That is what pins the `True` in the pair, rather than merely riding on the fact that
+                # a lone `https://...` value matches either way.
+                ('<image srcset="local.png 1x, https://evil.example/x.png 2x">', '<image srcset'),
+                ('<svg><image src="https://evil.example/x.png"/></svg>', '<image src'),
+                ('<image src="//evil.example/x.png">', '<image src')):
+            for offline in (False, True):
+                with self.subTest(markup=markup, offline=offline):
+                    doc = build(body=self._body(MAIN, markup))
+                    if offline:
+                        doc = with_offline_mode(doc)
+                    errors, _ = self._errs_warns(doc)
+                    clause = "offline mode" if offline else "self-contained guarantee"
+                    self.assertTrue(any(clause in e and needle in e for e in errors),
+                                    (markup, offline, errors))
+
+    # The control that keeps the widening from becoming a false rejection: a relative or `data:`
+    # reference resolves inside the file and reaches no network, in either spelling and either mode.
+    # The `data:` candidate carries a COMMA of its own, which a comma-splitting `srcset` reading would
+    # cut in half and then report as egress (the #1084 false rejection), so it pins the candidate
+    # boundary from the clean side the way the error case above pins it from the reported side.
+    def test_a_relative_or_data_image_src_stays_clean(self):
+        markup = ('<image src="local-a.png">'
+                  '<image srcset="local-1x.png 1x, data:image/gif;base64,R0lGODlhAQABAAAAACw= 2x">'
+                  '<image srcset="data:text/plain,https://example.invalid/not-a-load 1x">'
+                  '<svg><image src="data:image/gif;base64,R0lGODlhAQABAAAAACw="/></svg>')
+        for offline in (False, True):
+            with self.subTest(offline=offline):
+                doc = build(body=self._body(MAIN, markup))
+                if offline:
+                    doc = with_offline_mode(doc)
+                errors, warnings = self._errs_warns(doc)
+                self.assertEqual(errors, [], (offline, errors))
+                # No WARNING either, deliberately: the local-path "run tools/inline_images.py"
+                # advisory is keyed on `img` `src` and always has been - `img` `srcset`, an
+                # `<input type="image" src>` and every other local reference draw nothing either -
+                # so `<image src="local-a.png">` is not a carve-out from a general local-path rule,
+                # it is that rule's existing scope. Recorded on CMH-VAL-08 so a later "consistency
+                # fix" does not read this silence as an omission.
+                self.assertEqual(warnings, [], (offline, warnings))
+
     # The scope DECISION, pinned as a test so it cannot drift into a silent widening: the guarantee
     # covers what a browser reaches the network for when a reader merely OPENS the file. Egress that
     # needs a CLICK is deliberately out of scope in shareable mode - the top-level rules already
@@ -2317,6 +2372,12 @@ class NewCheckTests(unittest.TestCase):
                  'carries a nested <feimage xlink:href="https://evil.example/x.png">'),
                 ("&lt;source srcset=&quot;https://evil.example/x.png 1x&quot;&gt;",
                  'carries a nested <source srcset="https://evil.example/x.png">'),
+                # `<image src>`/`<image srcset>` (#1165): a browser renames the start tag to `img`
+                # and fetches, and the nested read inherits the widening through `_MEDIA_LOAD_ATTRS`.
+                ("&lt;image src=&quot;https://evil.example/x.png&quot;&gt;",
+                 'carries a nested <image src="https://evil.example/x.png">'),
+                ("&lt;image srcset=&quot;https://evil.example/x.png 1x&quot;&gt;",
+                 'carries a nested <image srcset="https://evil.example/x.png">'),
                 ('&lt;p style=&quot;background: url(https://evil.example/bg.png)&quot;&gt;&lt;/p&gt;',
                  'carries a nested inline style on <p> that contains a network url('),
                 ("&lt;style&gt;@import &quot;https://evil.example/t.css&quot;;&lt;/style&gt;",

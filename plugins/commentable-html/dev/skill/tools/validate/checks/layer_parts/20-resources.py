@@ -47,6 +47,16 @@ _MEDIA_LOAD_ATTRS = (
     ("audio", "src", False), ("source", "src", False), ("source", "srcset", True),
     ("object", "data", False), ("embed", "src", False), ("track", "src", False),
     ("image", "href", False), ("image", "xlink:href", False),
+    # `<image src>` / `<image srcset>`: HTML tree construction RENAMES an `<image>` start tag to
+    # `img` and reprocesses it with its attributes, so what a browser ends up with is an
+    # `HTMLImageElement` that FETCHES on open. This gate reads the LITERAL tokenized name, so the
+    # pair above (the SVG spelling) left the real load invisible while the SVG one, which loads
+    # NOTHING in HTML content, was reported - a complete inversion (#1165). Over-detection rides
+    # along in the other namespace, where an SVG `<image src>` fetches nothing: the parser DOES
+    # compute a namespace, but this shared egress index deliberately does not carry it, and the
+    # export strip now has the SAME over-detection (`all("image")` clears these two attributes
+    # too), which is what keeps the gate from rejecting a file the export just produced.
+    ("image", "src", False), ("image", "srcset", True),
     ("use", "href", False), ("use", "xlink:href", False),
     # An SVG filter primitive fetches exactly like an `<image>` or a `<use>`, but was in
     # neither this list nor the export strip, so a document carrying one rode into a
