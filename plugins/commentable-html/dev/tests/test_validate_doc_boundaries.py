@@ -1239,9 +1239,9 @@ class DocParserScopeCostTests(unittest.TestCase):
         self.assertEqual([a["skip"] for a in li_blocked], [True])
 
     def test_the_ancestor_summary_answers_every_predicate_it_replaced(self):
-        # Each running count / index stands in for a walk of the open elements, so pin each of
-        # them: cm-skip ancestry, the inert <template>, the enclosing <canvas>, the chart <figure>,
-        # the nearest <svg> versus <foreignObject>, and an open <a> around prose.
+        # Each running count stands in for a walk of the open elements, so pin each of them:
+        # cm-skip ancestry, the inert <template>, the enclosing <canvas>, the chart <figure>, and
+        # an open <a> around prose.
         html = ('<main id="commentRoot">'
                 '<div class="cm-skip"><canvas id="c1"></canvas>'
                 '<figure class="chart"><figcaption>a</figcaption></figure></div>'
@@ -1249,8 +1249,6 @@ class DocParserScopeCostTests(unittest.TestCase):
                 '<figure><figcaption>c</figcaption></figure>'
                 '<canvas id="c2"><figcaption>d</figcaption></canvas>'
                 '<template><canvas id="tpl"></canvas><a href="t.html">t</a></template>'
-                '<svg><a href="s.html">s</a>'
-                '<foreignObject><a href="f.html">f</a></foreignObject></svg>'
                 '<a href="l.html">linked</a>prose</main>')
         doc = parsing._parse_document(html)
         self.assertEqual([(c["attrs"].get("id"), c["skip"]) for c in doc.canvases],
@@ -1259,11 +1257,32 @@ class DocParserScopeCostTests(unittest.TestCase):
                           for f in doc.figcaptions],
                          [(True, False, True), (False, False, True),
                           (False, False, False), (False, True, False)])
-        self.assertEqual([(a["href"], a["in_svg"]) for a in doc.anchors],
-                         [("s.html", True), ("f.html", False), ("l.html", False)])
+        self.assertEqual([a["href"] for a in doc.anchors], ["l.html"])
         prose = "".join(doc.commentroot_prose)
         self.assertIn("prose", prose)
         self.assertNotIn("linked", prose)   # text inside an <a> is not unlinked prose
+
+    def test_an_anchor_is_foreign_by_insertion_namespace_not_by_svg_ancestor(self):
+        # The runtime stamps an <a> only when its tagName is "A", which no foreign element has in
+        # any namespace, so the exclusion is the element's own INSERTION NAMESPACE. Keyed on the
+        # nearest svg/foreignObject ANCESTOR instead, a MathML <a> looked like HTML (a false
+        # positive the links check reports) while an <a> under <svg><desc>/<svg><title> looked
+        # foreign (a missed finding) - both are integration points a browser puts back in HTML.
+        html = ('<main id="commentRoot">'
+                '<svg><a href="s.html">s</a>'
+                '<foreignObject><a href="f.html">f</a></foreignObject>'
+                '<desc><a href="d.html">d</a></desc>'
+                '<title><a href="ti.html">t</a></title></svg>'
+                '<math><a href="m.html">m</a>'
+                '<mtext><a href="x.html">x</a></mtext>'
+                '<annotation-xml encoding="text/html"><a href="ax.html">ax</a></annotation-xml>'
+                '<annotation-xml encoding=" text/html"><a href="pad.html">p</a></annotation-xml>'
+                '</math>'
+                '<a href="l.html">l</a></main>')
+        self.assertEqual([(a["href"], a["foreign"]) for a in parsing._parse_document(html).anchors],
+                         [("s.html", True), ("f.html", False), ("d.html", False),
+                          ("ti.html", False), ("m.html", True), ("x.html", False),
+                          ("ax.html", False), ("pad.html", True), ("l.html", False)])
 
 
 class DocParserForeignContentTests(unittest.TestCase):

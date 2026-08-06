@@ -1806,8 +1806,8 @@ class _BrowserBoundaries(_BrowserStartTag):
 
 
 # The ancestor facts each tolerant parser asks about an element while it is being recorded. They
-# are running COUNTS (and, for `svg`, the index of the nearest `svg`/`foreignObject`), kept
-# parallel to the element stack so each question is O(1) instead of a walk of the open elements.
+# are running COUNTS, kept parallel to the element stack so each question is O(1) instead of a walk
+# of the open elements.
 class _DocAncestors(NamedTuple):
     skip: int
     html_template: int
@@ -1816,7 +1816,6 @@ class _DocAncestors(NamedTuple):
     pre: int
     chart_figure: int
     anchor: int
-    svg: int
 
 
 class _CodeAncestors(NamedTuple):
@@ -1885,7 +1884,7 @@ class _DocParser(_BrowserBoundaries):
         # the layer view above cannot be trusted and the layer check errors rather than guessing.
         self.content_region_opened = False
         self.content_region_closed = False
-        self.anchors = []        # [{"href", "target", "skip", "in_root"}] for every <a> element
+        self.anchors = []        # [{"href", "target", "skip", "foreign", "in_root"}] per <a>
         self.metas = {}          # {meta name (lowercased): content} for <meta name content>
         # Every <meta http-equiv=content-security-policy> a browser really APPLIES, in document
         # order, as {"content", "late"}. Collected here rather than off the shared tag index
@@ -1941,10 +1940,10 @@ class _DocParser(_BrowserBoundaries):
         self._anc = []               # parallel to self.stack: the ancestor summary (see below)
         self.has_offline_chart = False
 
-    # Parallel to `self.stack`: the ancestor facts `_record` asks about, as running counts (and,
-    # for the nearest svg / foreignObject, an index). Asking them of the open-element stack was a
-    # walk per recorded element, which is quadratic on a deeply nested document.
-    _NO_ANCESTORS = _DocAncestors(0, 0, 0, 0, 0, 0, 0, -1)
+    # Parallel to `self.stack`: the ancestor facts `_record` asks about, as running counts. Asking
+    # them of the open-element stack was a walk per recorded element, which is quadratic on a
+    # deeply nested document.
+    _NO_ANCESTORS = _DocAncestors(0, 0, 0, 0, 0, 0, 0)
 
     def _ancestors(self):
         return self._anc[-1] if self._anc else self._NO_ANCESTORS
@@ -1958,9 +1957,7 @@ class _DocParser(_BrowserBoundaries):
                                        prev.canvas + (tag == "canvas"),
                                        prev.pre + (tag == "pre"),
                                        prev.chart_figure + bool(is_chart_figure),
-                                       prev.anchor + (tag == "a"),
-                                       len(self._anc) if tag in ("svg", "foreignobject")
-                                       else prev.svg))
+                                       prev.anchor + (tag == "a")))
 
     def _skip_ancestor(self):
         return self._ancestors().skip > 0
@@ -2185,14 +2182,19 @@ class _DocParser(_BrowserBoundaries):
                                      "in_canvas": self._in_canvas(),
                                      "in_chart_figure": self._ancestors().chart_figure > 0})
         if tag == "a":
-            # SVG-namespaced <a> (tagName "a", not "A") is never stamped by the runtime, so exclude
-            # it. But an <a> inside an SVG <foreignObject> is at an HTML integration point (tagName
-            # "A") and IS stamped - detect the nearest svg/foreignObject ancestor, not any svg.
-            nearest = self._ancestors().svg
-            in_svg = nearest >= 0 and self.stack[nearest][0] == "svg"
+            # A FOREIGN-namespaced <a> (SVG or MathML) has tagName "a", not "A", so the runtime's
+            # own test (`assets/js/31-links.js` - `a.tagName !== "A"`) never stamps it: exclude
+            # every non-HTML anchor, not just an SVG one. An <a> at an HTML integration point
+            # (`<svg><foreignObject>`, `<svg><desc>`, `<svg><title>`, a MathML text integration
+            # point such as `<math><mtext>`, or an exactly-matching `<annotation-xml encoding>`)
+            # is inserted in the HTML namespace, has tagName "A" and IS stamped, so the INSERTION
+            # NAMESPACE - not an ancestor tag name - is the whole rule. Keyed on a nearest-svg
+            # ancestor instead, a MathML <a> was reported as opening in the same tab (a false
+            # positive that is fatal under `--strict`) while an <a> under `<svg><desc>` or
+            # `<svg><title>` was exempted though a browser really does stamp it.
             self.anchors.append({"href": ad.get("href"), "target": ad.get("target"),
                                  "skip": self._skip_ancestor() or own_skip,
-                                 "in_svg": in_svg,
+                                 "foreign": ns != "html",
                                  "in_root": self._in_comment_root()})
         if "data-cm-offline-chart" in ad and self._in_comment_root():
             # Scoped to the content root because that is where the Offline export puts a snapshot,

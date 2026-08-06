@@ -52,11 +52,14 @@ def check_links(parser):
     trimmed value is not _blank is flagged, INCLUDING an empty/whitespace target (which the
     browser treats as the current tab); only a link with NO target attribute is exempt (the
     runtime defaults it to a new tab). mailto:/tel:/javascript:/data: schemes, same-page
-    #fragments, and .cm-skip chrome are exempt, as are foreign-namespace (SVG) <a> elements
-    which the runtime does not stamp. Returns a list of warning strings."""
+    #fragments, and .cm-skip chrome are exempt, as is an <a> in ANY foreign namespace (SVG or
+    MathML), which the runtime does not stamp because its tagName is "a", not "A". An <a> at an
+    HTML integration point (<svg><foreignObject>, <svg><desc>, <svg><title>, <math><mtext> and the
+    other MathML text integration points, or an <annotation-xml> whose encoding a browser matches
+    exactly) is HTML and IS checked. Returns a list of warning strings."""
     seen = []
     for a in parser.anchors:
-        if a.get("skip") or a.get("in_svg") or not a.get("in_root"):
+        if a.get("skip") or a.get("foreign") or not a.get("in_root"):
             continue
         target = a.get("target")
         if target is None:

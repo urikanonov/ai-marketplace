@@ -79,6 +79,36 @@ class LinkTargetTests(unittest.TestCase):
         self.assertTrue(self._warns(
             '<p><svg><foreignObject><a href="page.html" target="_self">x</a></foreignObject></svg></p>'))
 
+    def test_mathml_anchor_with_self_target_ok(self):
+        # A MathML-namespaced <a> has tagName "a" too, so the runtime never stamps it either. The
+        # exemption is the NAMESPACE, not the SVG ancestor: keyed on an svg ancestor this warned
+        # about a link that has no problem, and check_links is fatal under --strict.
+        self.assertFalse(self._warns('<p><math><a href="https://example.com/m" target="_self">x</a></math></p>'))
+
+    def test_mathml_mtext_html_anchor_warns_cmh_link_05(self):
+        # <mtext> is a MathML TEXT integration point, so its <a> child is inserted in the HTML
+        # namespace (tagName "A") and the runtime DOES stamp it - the validator must warn.
+        self.assertTrue(self._warns(
+            '<p><math><mtext><a href="page.html" target="_self">x</a></mtext></math></p>'))
+
+    def test_every_html_integration_point_anchor_is_still_checked(self):
+        # `desc` and `title` are HTML integration points too (a mermaid <svg> routinely carries
+        # them), and so is an `annotation-xml` whose encoding a browser matches EXACTLY - each puts
+        # its <a> child in the HTML namespace, where the runtime stamps it. Reading the exemption
+        # off an svg ANCESTOR exempted the first two; reading it off the namespace does not.
+        for frag in ('<svg><desc><a href="page.html" target="_self">x</a></desc></svg>',
+                     '<svg><title><a href="page.html" target="_self">x</a></title></svg>',
+                     '<math><annotation-xml encoding="text/html">'
+                     '<a href="page.html" target="_self">x</a></annotation-xml></math>'):
+            self.assertTrue(self._warns("<p>" + frag + "</p>"), frag)
+
+    def test_a_padded_annotation_xml_encoding_anchor_is_exempt(self):
+        # `encoding=" text/html"` is NOT an integration point (a browser matches the value
+        # exactly), so the <a> stays MathML, has tagName "a", and is never stamped.
+        self.assertFalse(self._warns(
+            '<p><math><annotation-xml encoding=" text/html">'
+            '<a href="page.html" target="_self">x</a></annotation-xml></math></p>'))
+
 
 if __name__ == "__main__":
     unittest.main()
