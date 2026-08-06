@@ -14,6 +14,8 @@ import _paths  # noqa: E402
 
 TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
+import _browser_attrs  # noqa: E402
+import new_document  # noqa: E402
 import retrofit  # noqa: E402
 import validate  # noqa: E402
 
@@ -319,6 +321,174 @@ class RetrofitCliTests(unittest.TestCase):
         html = _read_text(out)
         self.assertIn('<div id="commentRoot"', html)
         self.assertLess(html.index("BEGIN: commentable-html - CONTENT"), html.index("END: commentable-html - CONTENT"))
+        self._strict_clean(out)
+
+    def _root_div_pairs(self, html):
+        """The stamped root `<div>`'s attribute pairs, IN ORDER (HTML keeps the first of a
+        duplicate, so an ordered list is what a regression that re-emitted one would fail)."""
+        found = [m for m in re.finditer(r'<div\b((?:"[^"]*"|\'[^\']*\'|[^>"\'])*)>', html)
+                 if "commentRoot" in m.group(1)]
+        self.assertEqual(len(found), 1, "expected exactly one stamped root div")
+        return [(n, v if v is not None else "")
+                for n, v in _browser_attrs.raw_attrs_pairs(found[0].group(1))]
+
+    def test_root_selector_start_tag_round_trips_a_valueless_attribute(self):
+        # #1195: the stamped root tag is RE-SERIALIZED from its parsed pairs, and a valueless
+        # attribute was written back as a BARE NAME - dropping the `/` HTML uses to terminate an
+        # attribute name. The next attribute, whose name legally begins with `=` (HTML5's
+        # unexpected-equals-sign-before-attribute-name state), then FUSED into it and gained a
+        # value the host document never had. Unlike `new_document`, whose input is the shipped
+        # template, this tool runs over an arbitrary third-party page, so the pairs really are
+        # whatever the host author wrote.
+        d = self._tmpdir()
+        host = HOST_HTML.replace(
+            "<section", '<div id="content" data-a/=onclick title="A &amp; B"><section', 1)
+        host = host.replace("</section>", "</section></div>", 1)
+        src = self._write(d, "host.html", host)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run([
+            "retrofit.py", src, "--label", "Host", "--root-selector", "#content", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        pairs = self._root_div_pairs(_read_text(out))
+        # The whole ORDERED list, so a regression that re-emitted a duplicate (which HTML ignores,
+        # keeping the first) cannot hide behind a name lookup.
+        self.assertEqual(pairs, [
+            ("id", "commentRoot"),
+            # Neither of the two adjacent valueless attributes carries a value it was never given.
+            ("data-a", ""),
+            ("=onclick", ""),
+            # And the value is escaped exactly ONCE from its DECODED form, not a second time: the
+            # tool's own `([^\s=/<>]+)` reading handed back the still-escaped text, so an authored
+            # `A &amp; B` was written back as the literal `A &amp;amp; B`.
+            ("title", "A & B"),
+            ("data-cmh-content-root", ""),
+            ("data-comment-key", pairs[5][1]),
+            ("data-doc-label", "Host"),
+            ("data-doc-source", "host.html"),
+        ])
+        # End to end through the gate too: the fix makes the tool emit an attribute literally NAMED
+        # `=onclick`, so pin that the validator still accepts the retrofitted document rather than
+        # turning a writable file into a hard failure with nothing recording the loss.
+        self._strict_clean(out)
+
+    def test_split_start_tag_terminates_the_name_the_way_html_does(self):
+        # #1195: the tag NAME was split off with Python's `str.strip()` / `str.split(None, 1)`,
+        # which does not break on `/` and DOES break on NBSP, plus a trailing-`/` strip. All three
+        # divergences from HTML's own boundary (ASCII whitespace, `/` or `>`) corrupted an
+        # arbitrary host page, so pin the boundary itself rather than only its end-to-end effect.
+        # `<div/id="content">` is a `div` carrying an `id`; the old split read the whole thing as
+        # the tag NAME with no attributes at all.
+        self.assertEqual(retrofit._split_start_tag('<div/id="content">'), ("div", '/id="content"'))
+        self.assertEqual(_browser_attrs.raw_attrs_pairs('/id="content"'), [("id", "content")])
+        # NBSP is not HTML whitespace, so this is an UNKNOWN element carrying only `id`. The
+        # Python split promoted its tag-name text into a REAL `onclick` handler on the way out.
+        self.assertEqual(retrofit._split_start_tag('<div\u00a0onclick=alert(1) id="content">'),
+                         ("div\u00a0onclick=alert(1)", ' id="content"'))
+        # An unquoted value may legally END in `/`; the trailing-`/` strip truncated it.
+        self.assertEqual(retrofit._split_start_tag("<nav id=x/>"), ("nav", " id=x/"))
+        self.assertEqual(_browser_attrs.raw_attrs_pairs(" id=x/"), [("id", "x/")])
+        # The ordinary shapes are unchanged.
+        self.assertEqual(retrofit._split_start_tag('<div class="a">'), ("div", ' class="a"'))
+        self.assertEqual(retrofit._split_start_tag("<br>"), ("br", ""))
+        self.assertEqual(retrofit._split_start_tag("<div/>"), ("div", "/"))
+        # And a source that is not a start tag at all is REFUSED rather than degraded, because
+        # this tool's input is an arbitrary third-party document.
+        with self.assertRaises(retrofit.RetrofitError):
+            retrofit._split_start_tag("<!-- x -->")
+
+    def test_root_selector_reads_the_tag_name_the_way_html_terminates_one(self):
+        # #1195, the other half of the same reading: the tag NAME was split off with Python's
+        # `str.split()`, which does not break on `/` and DOES break on NBSP. A browser terminates
+        # a tag name on ASCII whitespace, `/` or `>`, so `<div/id="content">` is a `div` carrying
+        # an `id` - but the Python split read the whole thing as the tag NAME with no attributes,
+        # appended the stamp AFTER the host's own `id`, and HTML's first-wins rule then threw the
+        # stamped `id="commentRoot"` away, leaving the retrofitted document with no content root
+        # at all.
+        d = self._tmpdir()
+        host = HOST_HTML.replace("<section", '<div/id="content"><section', 1)
+        host = host.replace("</section>", "</section></div>", 1)
+        src = self._write(d, "host.html", host)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run([
+            "retrofit.py", src, "--label", "Host", "--root-selector", "#content", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        pairs = self._root_div_pairs(_read_text(out))
+        self.assertEqual([n for n, _v in pairs].count("id"), 1)
+        self.assertEqual(pairs[0], ("id", "commentRoot"))
+        self._strict_clean(out)
+
+    def test_skip_selectors_round_trip_a_valueless_attribute_and_a_self_closing_tag(self):
+        # `--skip-selectors` re-serializes an arbitrary host element's start tag through the same
+        # reader and writer, so it carries the same two guarantees (#1195). The self-closing one
+        # matters most here: dropping the source tag's ` /` UN-CLOSES a foreign element, so inside
+        # an inline `<svg>` the next sibling silently becomes its child and stops rendering.
+        d = self._tmpdir()
+        host = HOST_HTML.replace(
+            "<section",
+            '<p class="skipme" data-a/=onclick title="A &amp; B">skip me</p>'
+            '<svg width="10" height="10" class="cm-skip">'
+            '<rect class="skipme" width="4" height="4"/><circle r="2"/></svg>'
+            '<section', 1)
+        src = self._write(d, "host.html", host)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run([
+            "retrofit.py", src, "--label", "Host", "--skip-selectors", ".skipme", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        html = _read_text(out)
+        found = [m for m in re.finditer(r'<p\b((?:"[^"]*"|\'[^\']*\'|[^>"\'])*)>', html)
+                 if "skipme" in m.group(1)]
+        self.assertEqual(len(found), 1)
+        self.assertEqual(
+            [(n, v if v is not None else "")
+             for n, v in _browser_attrs.raw_attrs_pairs(found[0].group(1))],
+            [("class", "skipme cm-skip"), ("data-a", ""), ("=onclick", ""), ("title", "A & B")])
+        self.assertIn('<rect class="skipme cm-skip" width="4" height="4" />', html)
+        self._strict_clean(out)
+
+    def test_tag_end_only_treats_a_value_opening_quote_as_a_quote(self):
+        # The unit under the end-to-end test above (#1195): a `"`/`'` opens a quoted value ONLY in
+        # HTML's before-attribute-value state (right after the `=`, whitespace allowed). Anywhere
+        # else - inside an unquoted value, inside an attribute NAME, or after a closed value - it
+        # is an ordinary character, and the tag still ends at its own `>`.
+        for source, want in (
+                ('<div title=Bob\'s id="content">x</div>', '<div title=Bob\'s id="content">'),
+                ('<div a"b id=x>y</div>', '<div a"b id=x>'),
+                ('<div a = "b>c">y</div>', '<div a = "b>c">'),
+                ('<div a="b>c" d=e>y</div>', '<div a="b>c" d=e>'),
+                ("<div a='b>c'>y</div>", "<div a='b>c'>"),
+                ('<div data-a/=onload>y</div>', '<div data-a/=onload>'),
+                ('<div>y</div>', '<div>'),
+                ('<img src="a.png"/>', '<img src="a.png"/>')):
+            self.assertEqual(source[:new_document._tag_end(source, 0) + 1], want, source)
+        with self.assertRaises(ValueError):
+            new_document._tag_end('<div a="unterminated', 0)
+
+    def test_a_quote_in_an_unquoted_value_does_not_swallow_host_content(self):
+        # #1195: `_tag_end` decided where a start tag ENDS by treating every `"`/`'` as opening a
+        # quoted value. HTML only enters that state for a quote that OPENS a value (the
+        # before-attribute-value state, right after the `=`), so an ordinary unquoted value with
+        # an apostrophe - `<div title=Bob's id="content">` - made the scan run PAST the real `>`
+        # and re-sync at the next quote in the document. The element's recorded extent then
+        # covered live host markup, and the re-serialized start tag OVERWROTE it: the `<section>`
+        # and its heading were silently deleted, the tool exited 0, and the validator passed the
+        # result. An apostrophe in an unquoted value (`title=Bob's`, `alt=Don't`) is ordinary
+        # hand-written HTML, and this tool's input is an arbitrary third-party page.
+        d = self._tmpdir()
+        host = HOST_HTML.replace(
+            "<section", "<div title=Bob's id=\"content\"><section", 1)
+        host = host.replace("</section>", "</section></div>", 1)
+        host = host.replace("<h2 id=\"intro\">Intro</h2>", "<h2 id=\"intro\">Bob's Intro</h2>", 1)
+        src = self._write(d, "host.html", host)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run([
+            "retrofit.py", src, "--label", "Host", "--root-selector", "#content", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        html = _read_text(out)
+        self.assertIn("Bob's Intro", html, "the host heading must survive the retrofit")
+        self.assertIn("Hello review.", html)
+        pairs = self._root_div_pairs(html)
+        self.assertEqual(pairs[0], ("title", "Bob's"))
+        self.assertEqual(pairs[1], ("id", "commentRoot"))
         self._strict_clean(out)
 
     def test_valid_html5_implicit_closed_tags_retrofit(self):

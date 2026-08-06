@@ -20,6 +20,7 @@ import _paths  # noqa: E402  shared pkg/dev split path constants
 ROOT = _paths.PKG
 TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
+import _browser_attrs  # noqa: E402
 import new_document  # noqa: E402
 
 NEW_DOC_PY = os.path.join(TOOLS, "authoring", "new_document.py")
@@ -581,6 +582,42 @@ class ActiveRootAndReservedKeyTests(unittest.TestCase):
         out = new_document.make_document(
             _template(), CONTENT, "commentable-html-demo", "L", allow_reserved_key=True)
         self.assertIn('data-comment-key="commentable-html-demo"', out)
+
+
+class ContentRootStartTagTests(unittest.TestCase):
+    """CMH-TOOL-07 (#1195): the content root's start tag is read and rewritten the way a browser
+    reads and would re-read it."""
+
+    def test_a_valueless_root_attribute_cannot_fuse_with_the_next_one(self):
+        # The root tag is RE-SERIALIZED from its parsed pairs, and a valueless attribute was
+        # written back as a BARE NAME - dropping the `/` HTML uses to terminate an attribute name.
+        # The NEXT attribute, whose name legally begins with `=` (HTML5's
+        # unexpected-equals-sign-before-attribute-name state), then FUSED into it and gained a
+        # value the template never had. `name=""` is the same attribute to a browser and cannot be
+        # terminated by the next name's `=`.
+        tag = new_document._build_main_tag(' id="commentRoot" data-a/=onload', "k", "L", None)
+        pairs = _browser_attrs.raw_attrs_pairs(tag[len("<main"):-1])
+        self.assertEqual([(n, v or "") for n, v in pairs],
+                         [("id", "commentRoot"), ("data-a", ""), ("=onload", ""),
+                          ("data-comment-key", "k"), ("data-doc-label", "L")])
+
+    def test_a_root_attribute_name_beginning_with_equals_is_not_renamed(self):
+        # The second half of the same defect: the tool read the start tag with its own
+        # `([^\s=/<>]+)` name class, which cannot REPRESENT a name containing `=`, so it read
+        # `data-a/=onclick=alert(1)` as a live `onclick` handler where a browser reads the inert
+        # `=onclick`. Reading through the shared start-tag tokenizer answers what a browser
+        # answers.
+        self.assertEqual(new_document._parse_attrs(' data-a/=onclick=alert(1)'),
+                         [("data-a", None), ("=onclick", "alert(1)")])
+
+    def test_a_root_attribute_value_is_escaped_exactly_once(self):
+        # The same reading also DECODES, so a value is re-escaped once from its decoded form
+        # rather than escaped a second time: an authored `A &amp; B` used to come back as the
+        # literal `A &amp;amp; B`, a value the rendered DOM never carries.
+        self.assertEqual(new_document._parse_attrs(' data-x="A &amp; B"'), [("data-x", "A & B")])
+        tag = new_document._build_main_tag(' id="commentRoot" data-x="A &amp; B"', "k", "L", None)
+        self.assertIn('data-x="A &amp; B"', tag)
+        self.assertNotIn("&amp;amp;", tag)
 
 
 class NonShareableCliTests(unittest.TestCase):

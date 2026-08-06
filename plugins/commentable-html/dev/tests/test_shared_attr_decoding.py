@@ -320,6 +320,116 @@ class SharedDecodeShimTests(unittest.TestCase):
             self.assertEqual(_browser_attrs.raw_attrs_class_tokens(' title=" class=cmh-kql"'), [])
             self.assertEqual(_browser_attrs.raw_attrs_class_tokens(' class="a" class="b"'), ["a"])
 
+    def test_the_shared_serializer_cannot_fuse_two_valueless_attributes(self):
+        # #1195: the READING has a matching WRITING, and it lives in one place. A re-serializer
+        # that writes a valueless attribute back as a BARE NAME drops the `/` HTML uses to
+        # terminate an attribute name, so the NEXT attribute - whose name legally begins with `=`
+        # (HTML5's unexpected-equals-sign-before-attribute-name state) - fuses into it and gains a
+        # value the input never had. `name=""` is the same attribute to a browser (an absent value
+        # IS the empty string) and cannot be terminated that way.
+        def norm(pairs):
+            return [(n, v or "") for n, v in pairs]
+
+        for attrs in ('data-a/=onload',
+                      'data-a/=x data-b',
+                      'hidden',
+                      'data-a=""',
+                      'data-a/=',
+                      'data-a/==x',
+                      'data-a=""/=x',
+                      'id="commentRoot" data-a/=onload',
+                      'title="a &amp; b" data-a/=onclick=alert(1)',
+                      # An attribute NAME may legally carry `"`, `'` and `<` (each a parse error
+                      # that the tokenizer nonetheless appends to the name), and the writer emits
+                      # a name verbatim because HTML has no escape for one. The round trip still
+                      # closes because a name can never contain `=`, so the writer's own `="`
+                      # unambiguously starts the value.
+                      'a"b=1 data-c/=x',
+                      "a'b data-c/=x",
+                      'a<b data-c/=x'):
+            pairs = _browser_attrs.raw_attrs_pairs(attrs)
+            tag = _browser_attrs.serialize_start_tag("section", pairs)
+            self.assertTrue(tag.startswith("<section") and tag.endswith(">"), attrs)
+            # The round trip itself: reading the tag it just wrote answers what it was handed.
+            self.assertEqual(norm(_browser_attrs.raw_attrs_pairs(tag[len("<section"):-1])),
+                             norm(pairs), attrs)
+            # And the FORM the round trip rests on: EVERY attribute is written in the one
+            # canonical ` name="value"` shape, so none is left bare for a following name's `=` to
+            # terminate. (The other faithful spelling - re-emitting the `/` name terminator - is
+            # deliberately ruled out: written LAST it lands as the self-closing `/>` solidus.)
+            self.assertEqual(
+                tag,
+                "<section%s>" % "".join(' %s="%s"' % (n, _html.escape(v, quote=True))
+                                        for n, v in norm(pairs)), attrs)
+        # A value is escaped exactly ONCE from its DECODED form, so an authored `&amp;` comes back
+        # as `&amp;` rather than as the literal `&amp;amp;`. Spelled as an expected LITERAL rather
+        # than against another `_html.escape` call, so the escaping CHOICE is pinned and not just
+        # its self-consistency.
+        self.assertEqual(_browser_attrs.serialize_start_tag("a", [("title", "a & b")]),
+                         '<a title="a &amp; b">')
+        self.assertEqual(_browser_attrs.serialize_start_tag("a", [("x", 'a"<b>&c')]),
+                         '<a x="a&quot;&lt;b&gt;&amp;c">')
+        self.assertEqual(_browser_attrs.serialize_start_tag("br", []), "<br>")
+        # A FOREIGN self-closing element keeps its own ` /` terminator. Dropping it un-closed the
+        # element, so inside an inline `<svg>` the next sibling became its CHILD and stopped
+        # rendering. It is safe only because every attribute now ends in `"`: a trailing ` /`
+        # cannot terminate an attribute NAME.
+        self.assertEqual(
+            _browser_attrs.serialize_start_tag("rect", [("width", "4")], self_closing=True),
+            '<rect width="4" />')
+        self.assertEqual(_browser_attrs.serialize_start_tag("br", [], self_closing=True), "<br />")
+
+    def test_every_start_tag_re_serializer_uses_the_shared_one(self):
+        # The four call sites that rebuild a start tag from parsed pairs each kept their own copy
+        # of this rule and drifted: #1191 fixed ONE of them and left three carrying the identical
+        # fusion bug. Pin that each of the four rewrite entry points invokes the shared writer at
+        # RUN TIME and RETURNS what it produced - a source grep would pass on a comment or on dead
+        # code, and a spy that only counted calls would pass on a caller that invoked the shared
+        # writer and then returned a hand-built tag anyway.
+        import deck_scaffold  # noqa: E402
+        import kql_highlight  # noqa: E402
+        import new_document  # noqa: E402
+        import retrofit  # noqa: E402
+
+        seen = []
+        real = _browser_attrs.serialize_start_tag
+
+        def spy(tag, pairs, **kwargs):
+            out = real(tag, pairs, **kwargs)
+            seen.append((tag, out))
+            return out
+
+        figure = kql_highlight.render_block(
+            "help.kusto.windows.net", "Samples", "Demo", "StormEvents | take 1")
+        host = ('<!doctype html><html><head><title>H</title></head><body>'
+                '<p class="skipme" data-a/=onload>x</p></body></html>')
+        with mock.patch.object(_browser_attrs, "serialize_start_tag", spy):
+            prepared, _ids = deck_scaffold.prepare_slides(
+                '<section class="slide" data-a/=onload><p>x</p></section>')
+            refreshed = kql_highlight.refresh_block(figure, "StormEvents | take 2")
+            main_tag = new_document._build_main_tag(
+                ' id="commentRoot" data-a/=onload', "k", "L", None)
+            skipped, _warnings = retrofit._apply_skip_selectors(host, [".skipme"])
+        # Every entry point reached the shared writer: dropping one (a hand-rolled builder coming
+        # back) drops its tag from this set.
+        self.assertEqual(sorted({tag for tag, _out in seen}), ["a", "main", "p", "section"])
+        # ... and every tag it produced is the tag that actually LANDED in that caller's output,
+        # so invoking it and then returning something else fails here.
+        landed = "\n".join((prepared, refreshed, main_tag, skipped))
+        for _tag, out in seen:
+            self.assertIn(out, landed)
+        # ... and the SHAPE fusion turns on, read back off each caller's OWN output rather than
+        # off the writer's: the two adjacent valueless attributes stay two attributes. A writer
+        # that regressed to bare names would answer `data-a="onload"` and no `=onload` at all.
+        for text, tag in ((prepared, "section"), (main_tag, "main"), (skipped, "p")):
+            m = next((mm for mm in re.finditer(
+                r'<%s\b((?:"[^"]*"|\'[^\']*\'|[^>"\'])*)>' % tag, text)
+                if "data-a" in mm.group(1)), None)
+            self.assertIsNotNone(m, text)
+            pairs = dict(_browser_attrs.raw_attrs_pairs(m.group(1)))
+            self.assertEqual(pairs.get("data-a"), "", text)
+            self.assertEqual(pairs.get("=onload"), "", text)
+
     def test_a_class_list_is_tokenized_the_way_html_tokenizes_it(self):
         # CMH-VAL-21 clause 11 (#1139): HTML splits a `class` list on ASCII whitespace ONLY and
         # matches a token by EXACT code points. Python's argument-less `str.split()` additionally

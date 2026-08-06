@@ -56,6 +56,8 @@ _KIND_META_NAME = "commentable-html-kind"
 CSS_COLLISION_RE = re.compile(r"--cp-[A-Za-z0-9_-]*|(?:[.#])cm-[A-Za-z0-9_-]+|color-scheme\s*:", re.I)
 Z_INDEX_RE = re.compile(r"z-index\s*:\s*(-?\d+)", re.I)
 SELECTOR_RE = re.compile(r"^(?:#[A-Za-z_][\w:.-]*|\.[A-Za-z_][\w:.-]*|[A-Za-z][\w:-]*)$")
+# A start tag's NAME, terminated the way HTML terminates one: ASCII whitespace, `/` or `>`.
+_START_TAG_NAME_RE = re.compile(r"<([a-zA-Z][^\t\n\r\f />]*)")
 
 
 class RetrofitError(ValueError):
@@ -414,23 +416,35 @@ def _start_tag_source(text, elem):
 
 
 def _split_start_tag(tag_source):
-    inner = tag_source[1:-1].strip()
-    if inner.endswith("/"):
-        inner = inner[:-1].rstrip()
-    bits = inner.split(None, 1)
-    name = bits[0]
-    rest = bits[1] if len(bits) > 1 else ""
-    return name, rest
+    # The tag NAME is terminated HTML's way - ASCII whitespace, `/` or `>` - not by Python's
+    # `str.strip()` / `str.split(None, 1)`, which also break on VT, NBSP and U+001C-U+001F and do
+    # not break on `/` at all. This tool rewrites an ARBITRARY third-party page, and all three
+    # divergences corrupted one: `<div/id="content">` is a `div` with an `id` to a browser but
+    # read as a tag NAMED `div/id="content"` with no attributes, so the stamped `id="commentRoot"`
+    # was appended AFTER the host's own `id` and lost to HTML's first-wins rule (the retrofitted
+    # document then had no content root at all); `<div\u00a0onclick=alert(1) id="content">` is an
+    # unknown element carrying only `id`, but the Python split promoted its NBSP-joined tag-name
+    # text into a REAL `onclick` handler; and `<nav id=x/>` has the unquoted value `x/`, which the
+    # trailing-`/` strip truncated to `x` (#1195). `raw_attrs_pairs` consumes a leading `/` itself,
+    # so the rest needs no trimming.
+    m = _START_TAG_NAME_RE.match(tag_source)
+    if m is None:
+        # A silent lossy fallback is the wrong default in the one tool that runs over adversarial
+        # third-party HTML, so refuse instead. Unreachable on anything a browser parses as a start
+        # tag (the vendored scanner only opens one on an ASCII letter, which the pattern matches),
+        # but a future parser change must not quietly reinstate the Python-split behavior.
+        raise RetrofitError("start tag does not begin with an ASCII letter: %r" % tag_source[:32])
+    return m.group(1), tag_source[m.end():-1]
 
 
-def _build_start_tag(tag_name, attrs):
-    parts = ["<" + tag_name]
-    for name, value in attrs:
-        if value is None:
-            parts.append(name)
-        else:
-            parts.append('%s="%s"' % (name, _html.escape(value, quote=True)))
-    return " ".join(parts) + ">"
+def _build_start_tag(tag_name, attrs, self_closing=False):
+    # The shared re-serializer, the inverse of the shared reading in `_replace_start_tag`: a
+    # VALUELESS attribute is written back as `name=""` rather than as a bare name, which dropped
+    # the `/` HTML uses to terminate an attribute name and let the next attribute - whose name
+    # legally begins with `=` - fuse into it with a value the host page never had (#1195). The
+    # source tag's own self-closing ` /` is re-emitted, because dropping it un-closed a FOREIGN
+    # self-closing element and re-parented its next sibling.
+    return _browser_attrs.serialize_start_tag(tag_name, attrs, self_closing=self_closing)
 
 
 def _set_attr(attrs, name, value):
@@ -458,9 +472,13 @@ def _class_with_cm_skip(attrs):
 
 def _replace_start_tag(text, elem, mutator):
     tag_name, attr_text = _split_start_tag(_start_tag_source(text, elem))
-    attrs = new_document._parse_attrs(attr_text)
+    # The SHARED raw start-tag reading, not a local regex: this tool rewrites an ARBITRARY
+    # third-party page at `--root-selector`, so a name a local pattern cannot represent - one
+    # containing `=`, which HTML reaches through the unexpected-equals-sign-before-attribute-name
+    # state - was silently RENAMED on the way out (#1195).
+    attrs = _browser_attrs.raw_attrs_pairs(attr_text)
     mutator(attrs)
-    return _build_start_tag(tag_name, attrs)
+    return _build_start_tag(tag_name, attrs, self_closing=elem.self_closing)
 
 
 def _stamp_root_tag(text, elem, key, label, source):

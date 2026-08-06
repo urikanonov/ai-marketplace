@@ -266,6 +266,11 @@ def _run_link_tag(pairs, href):
 
     `pairs` always carries an `href` here: `refresh_block` reads and validates that href before it
     decides to rebuild the link at all, and skips the link when there is none.
+
+    The tag is written by the shared re-serializer, so a VALUELESS attribute comes back as
+    `name=""` rather than as a bare name: the bare name drops the `/` HTML uses to terminate an
+    attribute name, and the next attribute - whose name legally begins with `=` - fused into it
+    and gained a value the authored figure never had (#1195).
     """
     out, seen = [], set()
     for name, value in pairs:
@@ -274,11 +279,8 @@ def _run_link_tag(pairs, href):
         seen.add(name)
         if name == "href":
             value = href
-        if value is None:
-            out.append(" " + name)
-        else:
-            out.append(' %s="%s"' % (name, _html.escape(value, quote=True)))
-    return "<a%s>" % "".join(out)
+        out.append((name, value))
+    return _browser_attrs.serialize_start_tag("a", out)
 
 
 def refresh_block(figure_html, query):
