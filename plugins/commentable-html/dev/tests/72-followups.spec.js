@@ -409,32 +409,425 @@ test.describe("visual-audit follow-ups", () => {
     // EDITING is transient and costs ~28px, because `Save` / `Cancel` / the input cannot be 44px
     // targets in a row that is not 44px tall; while a reviewer is typing a name they are not
     // reading cards, and the row collapses again the moment they save or cancel.
-    const FLOOR = {
-      "": { closed: 73, editing: 46 },
-      compact: { closed: 92, editing: 64 },
-      comfortable: { closed: 53, editing: 27 },
+    //
+    // SEARCH is the third dimension (issue #1167). The search field is the one control in the
+    // pane whose 44px target CANNOT be an overlay - it is a replaced element, which renders no
+    // `::after` - so enlarging it costs real header height, which this viewport cannot afford.
+    // The budget is measured three ways, because the obvious one is misleading: the comment
+    // list's LAYOUT height stops shrinking once the header has pushed it past the pane's bottom
+    // edge, at which point further header growth is paid in list the reviewer cannot SEE. So each
+    // state pins the layout height, the VISIBLE height (the part inside both the pane and the
+    // viewport), and a CEILING on the pane's own vertical overflow - how much of the list the
+    // header has pushed off the bottom. Three cells already start with 0-7px visible and 16-47px
+    // of pane overflow: that is a PRE-EXISTING defect of this viewport (issue #1180), and these
+    // numbers RECORD it rather than bless it - in those cells the layout floor is dead (the list
+    // has bottomed out and cannot move) and the OVERFLOW ceiling is the live assertion, which is
+    // why it is measured + 3 there rather than the looser bound the unstarved cells can afford.
+    // The layout/visible floors are measured-minus-10, the same tolerance convention as the two
+    // rows above. Together they catch gate removal in all six search-open cells; the exact,
+    // binary guard against the gate being DELETED (as opposed to moved) is the `field < 44`
+    // assertion below, and the THRESHOLD itself is pinned by the 359/360 boundary pass in the
+    // CMH-RESP-15 test.
+    const BUDGET = {
+      "": {
+        closed: { layout: 73, visible: 73, overflow: 8 },
+        editing: { layout: 46, visible: 46, overflow: 8 },
+        closedSearch: { layout: 24, visible: 24, overflow: 8 },
+        editingSearch: { layout: 12, visible: 2, overflow: 19 },
+      },
+      compact: {
+        closed: { layout: 92, visible: 92, overflow: 8 },
+        editing: { layout: 64, visible: 64, overflow: 8 },
+        closedSearch: { layout: 49, visible: 49, overflow: 8 },
+        editingSearch: { layout: 20, visible: 20, overflow: 8 },
+      },
+      comfortable: {
+        closed: { layout: 53, visible: 53, overflow: 8 },
+        editing: { layout: 27, visible: 27, overflow: 8 },
+        closedSearch: { layout: 17, visible: 2, overflow: 23 },
+        editingSearch: { layout: 17, visible: 0, overflow: 50 },
+      },
     };
     await page.setViewportSize({ width: 640, height: 320 });
     await page.goto(fileUrl(INLINE));
     await ready(page);
     await addTextComment(page, "#commentRoot p", "landscape budget");
+    // `visible` intersects the vertical axis only, so pin once that the pane is on screen
+    // horizontally - otherwise a pane translated off the side would still measure fully visible.
+    const onScreen = await page.evaluate(() => {
+      const r = document.querySelector(".cm-sidebar").getBoundingClientRect();
+      return r.right > 0 && r.left < window.innerWidth;
+    });
+    expect(onScreen, "the side pane is on screen before the budget is measured").toBe(true);
+    for (const density of DENSITIES) {
+      await setDensity(page, density);
+      for (const editing of [false, true]) {
+        for (const search of [false, true]) {
+          const open = await page.locator("#cmIdentityEdit").isVisible();
+          if (editing && !open) await page.click("#btnEditIdentity");
+          if (!editing && open) await page.click("#btnCancelIdentity");
+          const shown = await page.locator("#cmSearchRow").isVisible();
+          if (search !== shown) await page.click("#btnSearchToggle");
+          await expect(page.locator("#cmSearchRow")).toBeVisible({ visible: search });
+          const budget = await page.evaluate(() => {
+            const list = document.getElementById("commentList");
+            const pane = document.querySelector(".cm-sidebar");
+            if (!list || !pane) throw new Error("the comment list is not present");
+            const lr = list.getBoundingClientRect();
+            const pr = pane.getBoundingClientRect();
+            return {
+              layout: lr.height,
+              visible: Math.max(0, Math.min(lr.bottom, pr.bottom, window.innerHeight) - Math.max(lr.top, pr.top, 0)),
+              overflow: pane.scrollHeight - pane.clientHeight,
+            };
+          });
+          const at = `[density=${density || "default"}, editing=${editing}, search=${search}]`;
+          const want = BUDGET[density][search ? (editing ? "editingSearch" : "closedSearch") : (editing ? "editing" : "closed")];
+          expect(budget.layout, `${at}: the comment list keeps the layout height this viewport already had`)
+            .toBeGreaterThanOrEqual(want.layout);
+          expect(budget.visible, `${at}: the comment list keeps the VISIBLE height this viewport already had`)
+            .toBeGreaterThanOrEqual(want.visible);
+          expect(budget.overflow, `${at}: the header does not push more of the list off the pane's bottom`)
+            .toBeLessThanOrEqual(want.overflow);
+          // The gate must stay a gate: a search field grown for real on THIS viewport is exactly
+          // what would take the last of the list above. The clear button still keeps the WCAG
+          // 2.5.8 AA 24x24 floor here, which costs the header nothing.
+          if (search) {
+            const row = await page.evaluate(() => {
+              const i = document.getElementById("cmSearchInput");
+              const f = i.getBoundingClientRect();
+              i.value = "x";
+              i.dispatchEvent(new Event("input", { bubbles: true }));
+              const c = document.getElementById("cmSearchClear").getBoundingClientRect();
+              i.value = "";
+              i.dispatchEvent(new Event("input", { bubbles: true }));
+              return { field: f.height, clearW: c.width, clearH: c.height };
+            });
+            expect(row.field, `${at}: the search field is not grown on a short viewport`).toBeLessThan(44);
+            expect(row.clearW, `${at}: the clear button keeps the AA 24px floor`).toBeGreaterThanOrEqual(24);
+            expect(row.clearH, `${at}: the clear button keeps the AA 24px floor`).toBeGreaterThanOrEqual(24);
+          }
+        }
+      }
+      // The menus are overlays, so their 44px items cost this viewport no header height - but the
+      // `max-height: min(60vh, 22rem, calc(100vh - 12rem))` cap is only ~128px here, so they were
+      // ALREADY scrollers before the enlargement. What has to hold is that every item stays
+      // reachable by scrolling and the menu stays on screen, not that it never scrolls.
+      for (const [toggle, menu, count] of [
+        ["#btnSidebarExportMenu", "#sidebarExportMenu", 5],
+        ["#btnMoreMenu", "#sidebarMoreMenu", 4],
+      ]) {
+        await page.evaluate((t) => {
+          const b = document.querySelector(t);
+          if (b.getAttribute("aria-expanded") !== "true") b.click();
+        }, toggle);
+        await expect(page.locator(menu)).toBeVisible();
+        const reach = await page.evaluate((m) => {
+          const el = document.querySelector(m);
+          const items = [...el.querySelectorAll("button")];
+          let worst = Infinity;
+          for (const b of items) {
+            b.scrollIntoView({ block: "nearest" });
+            const box = el.getBoundingClientRect();
+            const r = b.getBoundingClientRect();
+            // The whole item must be inside the menu box, not just 44px of it - a taller item
+            // could otherwise stay clipped and still pass.
+            worst = Math.min(worst, Math.min(r.bottom, box.bottom) - Math.max(r.top, box.top) - r.height);
+          }
+          const box = el.getBoundingClientRect();
+          return { items: items.length, worst, top: box.top, bottom: box.bottom, vh: window.innerHeight };
+        }, menu);
+        const at = `[density=${density || "default"}] ${menu}`;
+        expect(reach.items, `${at}: holds all of its items`).toBe(count);
+        expect(reach.worst, `${at}: every item can be scrolled FULLY into the menu`).toBeGreaterThanOrEqual(-0.5);
+        expect(reach.top, `${at}: stays on screen at the top`).toBeGreaterThanOrEqual(-0.5);
+        expect(reach.bottom, `${at}: stays on screen at the bottom`).toBeLessThanOrEqual(reach.vh + 0.5);
+        await page.evaluate((t) => {
+          const b = document.querySelector(t);
+          if (b.getAttribute("aria-expanded") === "true") b.click();
+        }, toggle);
+      }
+    }
+    await setDensity(page, "");
+
+    // The gate's THRESHOLD is only defensible if the viewport at it can afford the grown row. That
+    // is the measurement the threshold was chosen from, so pin it here rather than cite it: same
+    // state machine, one viewport taller than the gate, with the search row open. At 640x360 five
+    // of the six cells hold the whole list with NO pane overflow at all (against 16-47px of it at
+    // 640x320); the sixth - `comfortable` with both transient rows open - still overflows, but by
+    // 14px rather than 47, so it is a large reduction of the #1180 starvation rather than a cure.
+    // Floors are measured-minus-10 and ceilings measured-plus-2, as above.
+    const THRESHOLD = {
+      "": [{ visible: 53, overflow: 2 }, { visible: 26, overflow: 2 }],
+      compact: [{ visible: 75, overflow: 2 }, { visible: 47, overflow: 2 }],
+      comfortable: [{ visible: 29, overflow: 2 }, { visible: 3, overflow: 16 }],
+    };
+    await page.setViewportSize({ width: 640, height: 360 });
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     for (const density of DENSITIES) {
       await setDensity(page, density);
       for (const editing of [false, true]) {
         const open = await page.locator("#cmIdentityEdit").isVisible();
         if (editing && !open) await page.click("#btnEditIdentity");
         if (!editing && open) await page.click("#btnCancelIdentity");
-        const listH = await page.evaluate(() => {
+        if (!(await page.locator("#cmSearchRow").isVisible())) await page.click("#btnSearchToggle");
+        const at = `[640x360, density=${density || "default"}, editing=${editing}]`;
+        const want = THRESHOLD[density][editing ? 1 : 0];
+        const budget = await page.evaluate(() => {
           const list = document.getElementById("commentList");
-          if (!list) throw new Error("the comment list is not present");
-          return list.getBoundingClientRect().height;
+          const pane = document.querySelector(".cm-sidebar");
+          const lr = list.getBoundingClientRect();
+          const pr = pane.getBoundingClientRect();
+          return {
+            field: document.getElementById("cmSearchInput").getBoundingClientRect().height,
+            visible: Math.max(0, Math.min(lr.bottom, pr.bottom, window.innerHeight) - Math.max(lr.top, pr.top, 0)),
+            overflow: pane.scrollHeight - pane.clientHeight,
+          };
         });
-        const at = `[density=${density || "default"}, editing=${editing}]`;
-        expect(listH, `${at}: the comment list keeps a usable height`)
-          .toBeGreaterThanOrEqual(editing ? FLOOR[density].editing : FLOOR[density].closed);
+        expect(budget.field, `${at}: the field is grown at the gate's own threshold`).toBeGreaterThanOrEqual(44);
+        expect(budget.visible, `${at}: the comment list is affordable at the threshold`).toBeGreaterThanOrEqual(want.visible);
+        expect(budget.overflow, `${at}: the header does not push more of the list off the pane than measured`).toBeLessThanOrEqual(want.overflow);
       }
     }
     await setDensity(page, "");
+  });
+
+  // The side pane's LAST compact controls (issue #1167): the search row, the two dropdown menus'
+  // items, and the card `edit` action's WIDTH. CMH-RESP-14 deliberately did not claim the pane was
+  // finished; this is the rest of it.
+  test("the side pane search row, dropdown menu items and card edit action are >=44px touch targets on mobile (CMH-RESP-15)", async ({ page }) => {
+    // 320x720 is the narrowest phone the repo targets, and it is tall enough to afford the search
+    // row's real growth (see the landscape guard below for the short-viewport bound).
+    await page.setViewportSize({ width: 320, height: 720 });
+    await page.goto(fileUrl(INLINE));
+    await ready(page);
+    await addTextComment(page, "#commentRoot p", "side pane touch targets 1167");
+    // A reply gives the card its second actions row, so `reply-edit` / `reply-del` are measured
+    // beside the root card's jump / edit / delete rather than assumed to match them.
+    await page.locator(".cm-card .cm-reply-btn").first().click();
+    await page.locator(".cm-reply-compose textarea").fill("a reply");
+    await page.locator(".cm-reply-compose .cm-reply-save").click();
+    await expect(page.locator('.cm-card [data-act="reply-edit"]')).toHaveCount(1);
+
+    const measure = (sel) => page.evaluate((q) => {
+      const els = [...document.querySelectorAll(q)];
+      return els.map((el) => {
+        const r = el.getBoundingClientRect();
+        return { l: (el.getAttribute("data-act") || el.textContent || el.id || "").trim(), w: r.width, h: r.height };
+      });
+    }, sel);
+
+    for (const density of DENSITIES) {
+      const at = `[density=${density || "default"}]`;
+      await setDensity(page, density);
+
+      // --- the search row -------------------------------------------------------------------
+      // The row is reader-toggled (51-comment-search.js), and the clear (X) button only appears
+      // once there is a query, so drive both into view rather than measuring a hidden box.
+      await page.evaluate(() => {
+        const row = document.querySelector(".head-search");
+        if (row && row.hidden) document.getElementById("btnSearchToggle").click();
+      });
+      await expect(page.locator("#cmSearchRow")).toBeVisible();
+      await page.fill("#cmSearchInput", "side");
+      await expect(page.locator("#cmSearchClear")).toBeVisible();
+      const search = await page.evaluate(() => {
+        const row = document.querySelector(".head-search");
+        const pane = document.querySelector(".cm-sidebar");
+        const input = document.getElementById("cmSearchInput");
+        const clear = document.getElementById("cmSearchClear");
+        const cs = getComputedStyle(row);
+        const rb = row.getBoundingClientRect();
+        const box = (el) => { const r = el.getBoundingClientRect(); return { w: r.width, h: r.height, left: r.left, right: r.right }; };
+        return {
+          input: box(input), clear: box(clear),
+          rowLeft: rb.left + parseFloat(cs.paddingLeft) + parseFloat(cs.borderLeftWidth),
+          rowRight: rb.right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth),
+          paneOverflow: pane.scrollWidth - pane.clientWidth,
+          vw: window.innerWidth,
+        };
+      });
+      expect(search.input.h, `${at}: the search field height`).toBeGreaterThanOrEqual(44);
+      expect(search.clear.h, `${at}: the search clear height`).toBeGreaterThanOrEqual(44);
+      expect(search.clear.w, `${at}: the search clear width`).toBeGreaterThanOrEqual(44);
+      // The clear button takes its width out of the field, which shares the row with it, so the
+      // field must stay a usable place to type rather than the one sliver left in the row.
+      expect(search.input.w, `${at}: the search field keeps a usable width`).toBeGreaterThanOrEqual(88);
+      for (const [name, b] of [["field", search.input], ["clear", search.clear]]) {
+        expect(b.left, `${at}: the search ${name} is clipped at the start edge`).toBeGreaterThanOrEqual(search.rowLeft - 0.5);
+        expect(b.right, `${at}: the search ${name} is clipped at the end edge`).toBeLessThanOrEqual(search.rowRight + 0.5);
+        expect(b.right, `${at}: the search ${name} is off the right of the screen`).toBeLessThanOrEqual(search.vw + 0.5);
+      }
+      expect(search.paneOverflow, `${at}: the search row does not scroll the side pane sideways`).toBeLessThanOrEqual(1);
+
+      // --- the two dropdown menus ------------------------------------------------------------
+      // Both TOGGLES are already 44px (CMH-SIDE-12); these are the items behind them, one of
+      // which is `Clear all comments`. The menus are absolutely-positioned overlays, so this
+      // costs the header nothing - the bound that matters is that a portrait phone does not turn
+      // them into scrollers.
+      for (const [toggle, menu, count] of [
+        ["#btnSidebarExportMenu", "#sidebarExportMenu", 5],
+        ["#btnMoreMenu", "#sidebarMoreMenu", 4],
+      ]) {
+        await page.evaluate((t) => {
+          const b = document.querySelector(t);
+          if (b.getAttribute("aria-expanded") !== "true") b.click();
+        }, toggle);
+        await expect(page.locator(menu)).toBeVisible();
+        const items = await measure(`${menu} button`);
+        expect(items.length, `${at}: ${menu} holds all of its items`).toBe(count);
+        for (const b of items) {
+          expect(b.h, `${at}: ${menu} item '${b.l}' height`).toBeGreaterThanOrEqual(44);
+        }
+        const scroll = await page.evaluate((m) => {
+          const el = document.querySelector(m);
+          return { overflow: el.scrollHeight - el.clientHeight, clientH: el.clientHeight, bottom: el.getBoundingClientRect().bottom, vh: window.innerHeight };
+        }, menu);
+        // A `display: none` menu measures 0 everywhere, which would make the two bounds below pass
+        // vacuously; pin that it is actually laid out.
+        expect(scroll.clientH, `${at}: ${menu} is actually laid out`).toBeGreaterThan(44);
+        expect(scroll.overflow, `${at}: ${menu} is not a scroller on a portrait phone`).toBeLessThanOrEqual(1);
+        expect(scroll.bottom, `${at}: ${menu} stays on screen`).toBeLessThanOrEqual(scroll.vh + 0.5);
+        await page.evaluate((t) => {
+          const b = document.querySelector(t);
+          if (b.getAttribute("aria-expanded") === "true") b.click();
+        }, toggle);
+      }
+
+      // --- the card action rows ---------------------------------------------------------------
+      // Height was already 44px (CMH-RESP-07); the WIDTH was 40-43px, so the pane shipped two
+      // different definitions of the same target. Both axes now, on the root card and the reply.
+      // The query is cleared FIRST: a filtered-out card is `display: none !important`, so measuring
+      // under a live filter would read 0x0 boxes and fail as a phantom layout bug.
+      await page.locator("#cmSearchClear").click();
+      await expect(page.locator("#cmSearchInput")).toHaveValue("");
+      await expect(page.locator(".cm-card.cm-hidden")).toHaveCount(0);
+      const acts = await measure(".cm-card:not(.cm-hidden) .meta .acts button");
+      expect(acts.length, `${at}: the card rows hold exactly their actions`).toBe(5);
+      for (const b of acts) {
+        expect(b.h, `${at}: card action '${b.l}' height`).toBeGreaterThanOrEqual(44);
+        expect(b.w, `${at}: card action '${b.l}' width`).toBeGreaterThanOrEqual(44);
+      }
+      // ...and the row still fits its card when the OTHER half of `.meta` is long. The stamp is
+      // replaced by an UNBREAKABLE token grown until it no longer fits beside the actions, because
+      // a breakable localized string just wraps inside its own flex item and would never exercise
+      // the rule this covers. What is asserted is the wrap itself (the actions move to a line of
+      // their own), that they stay END-aligned there rather than jumping to the start edge, and
+      // that nothing overflows.
+      const wrapped = await page.evaluate(() => {
+        const card = document.querySelector(".cm-card:not(.cm-hidden)");
+        const metas = [...card.querySelectorAll(".meta")];
+        const stamps = metas.map((m) => m.querySelector(":scope > *:not(.acts)"));
+        if (stamps.some((s) => !s)) throw new Error("a .meta row has no timestamp element");
+        const before = stamps.map((s) => s.innerHTML);
+        try {
+          return metas.map((m, i) => {
+            const s = stamps[i];
+            const acts = m.querySelector(".acts");
+            s.style.whiteSpace = "nowrap";
+            // Grow the token until the actions actually MOVE to a line of their own, rather than
+            // until some computed width threshold is crossed - the threshold depends on font
+            // metrics and on how much room the row had, and on a narrow reply row it can be
+            // satisfied while both halves still share one line. Stop growing once the stamp fills
+            // the row's content box, since past that even a wrapped line would overflow.
+            let dropped = false;
+            for (let n = 8; n < 400; n += 4) {
+              s.textContent = "0".repeat(n);
+              const st = s.getBoundingClientRect();
+              if (acts.getBoundingClientRect().top >= st.bottom - 0.5) { dropped = true; break; }
+              if (st.width >= m.clientWidth) break;
+            }
+            const mb = m.getBoundingClientRect();
+            const ab = acts.getBoundingClientRect();
+            return {
+              dropped,
+              endGap: mb.right - ab.right,
+              metaOverflow: m.scrollWidth - m.clientWidth,
+              cardOverflow: card.scrollWidth - card.clientWidth,
+              pastRight: Math.max(0, ...[...acts.querySelectorAll("button")].map((b) => b.getBoundingClientRect().right - mb.right)),
+            };
+          });
+        } finally {
+          stamps.forEach((s, i) => { s.style.whiteSpace = ""; s.innerHTML = before[i]; });
+        }
+      });
+      for (const [i, w] of wrapped.entries()) {
+        expect(w.dropped, `${at}: meta row ${i} drops its actions onto their own line`).toBe(true);
+        expect(w.endGap, `${at}: meta row ${i} keeps its wrapped actions end-aligned`).toBeLessThanOrEqual(1);
+        expect(w.metaOverflow, `${at}: meta row ${i} does not overflow`).toBeLessThanOrEqual(1);
+        expect(w.cardOverflow, `${at}: the card does not overflow`).toBeLessThanOrEqual(1);
+        expect(w.pastRight, `${at}: no action is pushed past the meta row's end edge`).toBeLessThanOrEqual(1);
+      }
+    }
+    await setDensity(page, "");
+
+    // The search row's target is gated on viewport HEIGHT, and a media query reads the LAYOUT
+    // viewport - which this layer's own doctrine (assets/js/04-viewport.js) says is not what the
+    // reader sees. A soft keyboard does not move it under the default `interactive-widget`
+    // behaviour, but split-screen, a rotation, heavy browser zoom, or a host document that opts
+    // into `interactive-widget=resizes-content` can cross the threshold live. Pin the THRESHOLD
+    // itself, not just the gate's existence: 359 and 360 straddle it, so moving it anywhere else
+    // fails here. Below it both controls keep the WCAG 2.5.8 AA 24px floor.
+    for (const [h, want] of [[720, 44], [360, 44], [359, 24], [340, 24]]) {
+      await page.setViewportSize({ width: 320, height: h });
+      await expect(page.locator("#cmSearchRow")).toBeVisible();
+      await page.fill("#cmSearchInput", "side");
+      await expect(page.locator("#cmSearchClear")).toBeVisible();
+      const row = await page.evaluate(() => {
+        const pane = document.querySelector(".cm-sidebar");
+        const c = document.getElementById("cmSearchClear").getBoundingClientRect();
+        return {
+          field: document.getElementById("cmSearchInput").getBoundingClientRect().height,
+          clearW: c.width, clearH: c.height,
+          paneOverflow: pane.scrollWidth - pane.clientWidth,
+        };
+      });
+      const at = `[320x${h}]`;
+      expect(row.field, `${at}: search field height`).toBeGreaterThanOrEqual(want);
+      expect(row.clearW, `${at}: clear button width`).toBeGreaterThanOrEqual(want);
+      expect(row.clearH, `${at}: clear button height`).toBeGreaterThanOrEqual(want);
+      if (want === 24) {
+        // Below the gate the AA floor is all that is promised - pin that the FULL target is
+        // genuinely off, so a threshold moved above 360 cannot pass here.
+        expect(row.field, `${at}: the full target is off below the gate`).toBeLessThan(44);
+      }
+      expect(row.paneOverflow, `${at}: the row does not scroll the pane sideways`).toBeLessThanOrEqual(1);
+    }
+
+    // A host document with a large root font scales the density variables but not an absolute
+    // floor, so the floors are `min-*`: the control must keep the LARGER of the two, never be
+    // shrunk to 44px at the very breakpoint meant to enlarge it.
+    await page.setViewportSize({ width: 320, height: 720 });
+    const bigRoot = await page.evaluate(() => {
+      const root = document.documentElement;
+      const had = root.style.fontSize;
+      root.style.fontSize = "32px";
+      const c = document.getElementById("cmSearchClear").getBoundingClientRect();
+      const out = { w: c.width, h: c.height };
+      root.style.fontSize = had;
+      return out;
+    });
+    expect(bigRoot.w, "a large-root host keeps a clear button wider than the floor").toBeGreaterThan(44);
+    expect(bigRoot.h, "a large-root host keeps a clear button taller than the floor").toBeGreaterThan(44);
+
+    // The enlarged targets must stay INSIDE the phone breakpoint: on a desktop viewport the same
+    // controls keep their compact size, so a rule that escaped its media query fails here. The
+    // query is cleared first, since a filtered-out card measures 0 and would pass `< 44` vacuously.
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.locator("#cmSearchClear").click();
+    await expect(page.locator(".cm-card.cm-hidden")).toHaveCount(0);
+    const desktop = await page.evaluate(() => {
+      const editEl = document.querySelector('.cm-card:not(.cm-hidden) .meta .acts [data-act="edit"]');
+      if (!editEl) throw new Error("the card edit action is not present");
+      return {
+        field: document.getElementById("cmSearchInput").getBoundingClientRect().height,
+        edit: editEl.getBoundingClientRect().width,
+      };
+    });
+    expect(desktop.field, "the desktop search field is measured, not hidden").toBeGreaterThan(0);
+    expect(desktop.edit, "the desktop card edit action is measured, not hidden").toBeGreaterThan(0);
+    expect(desktop.field, "the desktop search field keeps its compact height").toBeLessThan(44);
+    expect(desktop.edit, "the desktop card edit action keeps its compact width").toBeLessThan(44);
   });
 
   test("table-mode checklist rows keep their 44px tap targets from overlapping (CMH-RESP-06)", async ({ page }) => {
