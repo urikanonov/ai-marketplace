@@ -20,6 +20,9 @@ DECK = os.path.join(_paths.PKG, "tools", "deck")
 sys.path.insert(0, DECK)
 import deck_validate  # noqa: E402
 
+sys.path.insert(0, os.path.join(_paths.TOOLS, "validate"))
+from checks import resources  # noqa: E402  the gate's measured presentation-attribute list
+
 SCAFFOLD = os.path.join(DECK, "deck_scaffold.py")
 # Insert a snippet as real markup just before the end-of-content comment (inside the region).
 END_MARK = "<!-- END: commentable-html - CONTENT -->"
@@ -176,6 +179,22 @@ class DeckValidateTests(unittest.TestCase):
         self._assert_error(
             _inject(self.html, "<style>.x{background:url(//evil/bg.png)}</style>"),
             "remote CSS url()")
+
+    # #1186: the SVG presentation attributes the strict layer gate and the offline export now read
+    # as CSS egress. The deck gate needs no fourth reading of the same question - its CSS `url()`
+    # check runs over the whole deck BODY, so the reference is caught wherever it is written, in an
+    # attribute value included. Pinned here so that coverage is a tested property of the deck gate
+    # rather than an accident of how broadly its CSS reading is scoped.
+    def test_a_remote_presentation_attribute_url_fails(self):
+        for attr in resources.SVG_URL_PRESENTATION_ATTRS:
+            snippet = ('<svg width="10" height="10"><rect width="10" height="10" %s='
+                       '"url(https://evil/x.svg#r)"/></svg>' % attr)
+            with self.subTest(attr=attr):
+                self._assert_error(_inject(self.html, snippet), "remote CSS url()")
+        # ... and a LOCAL reference, which is how these attributes are normally written, is clean.
+        errs = _errors(_inject(self.html, '<svg width="10" height="10"><rect width="10" '
+                                          'height="10" clip-path="url(#c)" fill="#336699"/></svg>'))
+        self.assertEqual([e for e in errs if "remote CSS url()" in e], [], errs)
 
     def test_cmh_deck_12_low_contrast_css_pair_fails_with_selector(self):
         bad = _inject(

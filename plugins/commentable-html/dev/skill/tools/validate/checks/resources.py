@@ -563,6 +563,50 @@ def srcset_has_network(value):
 SCRIPT_LOAD_ATTRS = ("src", "href", "xlink:href")
 
 
+# The SVG PRESENTATION ATTRIBUTES whose value is a CSS `<url>` that a browser FETCHES on open
+# (issue #1186). They are not (tag, attribute) URL pairs like `src` or `poster` - the value is a CSS
+# declaration value, so the CSS `url()` reading is what reads them - and they are not part of a
+# stylesheet either, so neither the element rules nor the `style=` / `<style>` CSS reads saw them:
+# `<rect mask="url(https://evil.example/x.svg#m)">` validated STRICT-CLEAN, was given the
+# `commentable-html-validated` stamp, and fetched the moment a recipient opened it. In SHAREABLE
+# mode there is no CSP behind the gate, so this reading is the only layer.
+#
+# WHICH attributes are in scope is decided by MEASUREMENT, not by the list of properties the specs
+# say accept a `<url>` (`tests/62-deck-regressions.spec.js`, Chromium 149, every request routed and
+# aborted, each probe written in the shape a browser actually HONOURS and the page settled to
+# network-idle):
+#   REQUESTED  clip-path, mask, fill, stroke, marker-start, marker-mid, marker-end, cursor
+#   not        filter, mask-image, mask-border-source, the `marker` shorthand, color-profile
+# The probe SHAPE decides the answer, which is why the spec writes one per attribute rather than one
+# for all: `cursor` needs a fallback keyword (`url(...), auto`) to be a valid declaration at all, and
+# measured as INERT while it was probed without one - a `<rect cursor="url(https://host/x.cur),
+# auto">` really is fetched, and `getComputedStyle` shows the value honoured, so the bare-url probe
+# was measuring its own invalidity.
+# `filter` is carried anyway, and that is the one deliberate over-detection here: Chromium REMOVED
+# external filter references, so its negative is an engine decision rather than a structural one
+# (other engines have honoured them), and a rule that fires only on a NETWORK url costs an author
+# with a local `url(#f)` nothing. The remaining negatives are NOT carried, for the reason `lowsrc`
+# left the deck gate (#1179): a rule no engine needs is a rule nobody can retire later. The
+# measurement is a tripwire - if an engine ever revives one, that spec goes red and this list, the
+# offline strip's list, and the spec row move together.
+SVG_URL_PRESENTATION_ATTRS = ("clip-path", "cursor", "fill", "filter", "marker-end", "marker-mid",
+                              "marker-start", "mask", "stroke")
+
+# The presentation attributes that take an IMAGE, so a bare remote string inside `image-set(...)` -
+# which carries no `url()` wrapper and so is invisible to the pattern above - is fetched from one.
+# Measured separately and deliberately NARROWER than the list above, but it is not `mask` alone: a
+# `cursor` takes an image too, and `cursor="image-set('https://host/x.cur' 1x), auto"` really is
+# requested (round-2 review panel, 4 of 8 ducks - the first cut of this list said "only `mask`", and
+# that reasoning, not an oversight, is what left the hole). `fill`, `stroke`, `clip-path` and the
+# markers take a paint server or a shape reference and request nothing from a bare candidate, so
+# reading `image-set()` on them would REJECT a document that reaches no network at all - the
+# false-positive direction this gate cannot afford. Like the `style=` `image-set()` reading it
+# mirrors, this is SHAREABLE-only (CMH-VAL-08): offline has the zero-network CSP behind it (proven
+# live - the export's `img-src data:` blocks the fetch, `tests/49-offline-export.spec.js`), and
+# widening the offline gate alone would reject a file `_offlineCssNoNetwork` just produced.
+SVG_IMAGE_SET_PRESENTATION_ATTRS = ("cursor", "mask")
+
+
 # A DIRECT scripted top-level navigation to a network URL, in an inline script an offline file
 # still carries. It is a SCAN rather than one pattern, and the shared parts below are BYTE-IDENTICAL
 # to the same-named regex literals in assets/js/68-export-offline.js (including the JS-only `\/`
