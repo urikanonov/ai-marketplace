@@ -983,23 +983,50 @@ test.describe("visual-audit follow-ups", () => {
     // The identity NUDGE is the FIRST way a reviewer meets the editor: saving a first comment opens
     // it for them, and deliberately does NOT focus it (`43-identity.js`). Focus is what would
     // otherwise scroll it into the bounded region, so this is the one path that has to scroll
-    // itself - and it is the path a reviewer actually walks. Measured with the search row open,
-    // ...and it runs FIRST because the nudge fires only once. The pane is not open until something
-    // opens it, so open it before reaching for a control inside it.
-    if (!(await page.evaluate(() => document.body.classList.contains("sidebar-open")))) {
-      await page.click("#btnToggleSidebar");
-    }
-    await expect(page.locator("body")).toHaveClass(/sidebar-open/);
-    await setSearchRow(page, true);
+    // itself - and it is the path a reviewer actually walks. It runs FIRST here because the nudge
+    // fires only once. Saving the comment is also what OPENS the pane, so the nudge fires while the
+    // pane is still translated off screen - the closed-pane path.
+    expect(await page.evaluate(() => document.body.classList.contains("sidebar-open")),
+      "the pane is closed when the nudge fires").toBe(false);
     await addTextComment(page, "#commentRoot p", "landscape header reach");
-    await paneSettled(page);
     await expect(page.locator("#cmIdentityEdit")).toBeVisible();
-    const nudged = await revealed(page, "#cmIdentityInput");
+    await paneSettled(page);
+    let nudged = await revealed(page, "#cmIdentityInput");
     expect(nudged.h, "the nudged identity editor is rendered").toBeGreaterThan(0);
     expect(nudged.insideTop, "an unfocused (nudged) identity editor is scrolled into view").toBeGreaterThanOrEqual(-0.5);
     expect(nudged.insideBottom, "an unfocused (nudged) identity editor is scrolled into view").toBeGreaterThanOrEqual(-0.5);
     expect(nudged.onScreenTop, "an unfocused (nudged) identity editor is on screen").toBeGreaterThanOrEqual(-0.5);
     expect(nudged.onScreenBottom, "an unfocused (nudged) identity editor is on screen").toBeGreaterThanOrEqual(-0.5);
+
+    // That reveal is CLAMPED to the region's own scrollTop rather than delegated to
+    // `scrollIntoView`, which walks every scrollable ancestor - the pane is `position: fixed` and
+    // can be translated fully off screen when the nudge fires, and a reveal that moved the DOCUMENT
+    // to chase it would be a bigger side effect than the one it fixes. Put the region back to the
+    // top with the document genuinely scrolled, re-open the editor, and pin that ONLY the region
+    // moved.
+    await setSearchRow(page, true);
+    await setIdentityEditor(page, false);
+    const clamped = await page.evaluate(async () => {
+      const aux = document.querySelector(".cm-sidebar .head-aux");
+      document.body.style.minHeight = "4000px";
+      document.body.style.minWidth = "4000px";
+      window.scrollTo(300, 400);
+      aux.scrollTop = 0;
+      const before = { x: window.scrollX, y: window.scrollY, aux: aux.scrollTop };
+      document.getElementById("btnEditIdentity").click();
+      await new Promise((r) => requestAnimationFrame(r));
+      const after = { x: window.scrollX, y: window.scrollY, aux: aux.scrollTop };
+      document.body.style.minHeight = "";
+      document.body.style.minWidth = "";
+      window.scrollTo(0, 0);
+      return { before, after };
+    });
+    expect(clamped.before.y, "the document is genuinely scrolled before the reveal").toBeGreaterThan(0);
+    expect(clamped.after.y, "revealing the editor does not scroll the document vertically").toBe(clamped.before.y);
+    expect(clamped.after.x, "revealing the editor does not scroll the document horizontally").toBe(clamped.before.x);
+    expect(clamped.after.aux, "the reveal scrolls the bounded region itself").toBeGreaterThan(clamped.before.aux);
+    nudged = await revealed(page, "#cmIdentityInput");
+    expect(nudged.insideBottom, "the editor stays inside the region with the search row open").toBeGreaterThanOrEqual(-0.5);
     await setIdentityEditor(page, false);
     await setSearchRow(page, false);
 
